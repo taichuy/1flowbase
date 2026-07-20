@@ -355,7 +355,12 @@ async fn session_identity(app: &Router, cookie: &str) -> (Uuid, Uuid) {
     )
 }
 
-async fn create_page(app: &Router, cookie: &str, csrf: &str, workspace_id: Uuid) -> (Uuid, Uuid) {
+async fn create_page(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    workspace_id: Uuid,
+) -> (Uuid, Uuid, String) {
     let (status, payload) = json_request(
         app,
         "POST",
@@ -366,10 +371,27 @@ async fn create_page(app: &Router, cookie: &str, csrf: &str, workspace_id: Uuid)
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
-    (
-        Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap(),
-        Uuid::parse_str(payload["data"]["default_tab"]["id"].as_str().unwrap()).unwrap(),
+    let page_id = Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap();
+    let tab_id = Uuid::parse_str(payload["data"]["default_tab"]["id"].as_str().unwrap()).unwrap();
+    let document_root_uid = payload["data"]["default_tab"]["document_root_uid"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (presentation_status, presentation_payload) = json_request(
+        app,
+        "PATCH",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        cookie,
+        csrf,
+        json!({ "content_presentation": "tabs" }),
     )
+    .await;
+    assert_eq!(
+        presentation_status,
+        StatusCode::OK,
+        "{presentation_payload}"
+    );
+    (page_id, tab_id, document_root_uid)
 }
 
 async fn create_tab(
@@ -378,18 +400,24 @@ async fn create_tab(
     csrf: &str,
     workspace_id: Uuid,
     page_id: Uuid,
-) -> Uuid {
+) -> (Uuid, String) {
     let (status, payload) = json_request(
         app,
         "POST",
         &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
         cookie,
         csrf,
-        json!({ "title": "Second", "rank": "b" }),
+        json!({ "title": "Second", "route_segment": "second", "rank": "b" }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
-    Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap()
+    (
+        Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap(),
+        payload["data"]["document_root_uid"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
+    )
 }
 
 async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation: &str) -> Value {
@@ -419,11 +447,13 @@ fn binding(alias: &str, catalog: &Value) -> Value {
     })
 }
 
-fn document(blocks: Vec<(&str, Vec<Value>)>) -> Value {
+fn document(root_uid: &str, blocks: Vec<(&str, Vec<Value>)>) -> Value {
     json!({
         "version": 1,
+        "root_uid": root_uid,
         "blocks": blocks.into_iter().map(|(id, interfaces)| json!({
             "id": id,
+            "renderer_version": "v1",
             "interfaces": interfaces
         })).collect::<Vec<_>>()
     })
@@ -578,8 +608,9 @@ async fn callable_dispatch_resolves_only_the_current_document_block_binding() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
-    let (page_id, tab_id) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let second_tab = create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
+    let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
+    let (second_tab, second_root_uid) =
+        create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
     let catalog = catalog_entry(
         &fixture.app,
         &cookie,
@@ -588,10 +619,13 @@ async fn callable_dispatch_resolves_only_the_current_document_block_binding() {
     )
     .await;
     let digest = catalog["schema_digest"].as_str().unwrap();
-    let bound = document(vec![
-        ("block-a", vec![binding("loadPage", &catalog)]),
-        ("block-b", vec![binding("otherLoad", &catalog)]),
-    ]);
+    let bound = document(
+        &root_uid,
+        vec![
+            ("block-a", vec![binding("loadPage", &catalog)]),
+            ("block-b", vec![binding("otherLoad", &catalog)]),
+        ],
+    );
     save_document(
         &fixture.app,
         &cookie,
@@ -609,7 +643,7 @@ async fn callable_dispatch_resolves_only_the_current_document_block_binding() {
         workspace_id,
         page_id,
         second_tab,
-        &document(vec![("block-a", Vec::new())]),
+        &document(&second_root_uid, vec![("block-a", Vec::new())]),
     )
     .await;
 
@@ -684,7 +718,7 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
-    let (page_id, tab_id) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
+    let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
     let catalog = catalog_entry(
         &fixture.app,
         &cookie,
@@ -693,7 +727,10 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
     )
     .await;
     let digest = catalog["schema_digest"].as_str().unwrap();
-    let document = document(vec![("block-write", vec![binding("savePage", &catalog)])]);
+    let primary_document = document(
+        &root_uid,
+        vec![("block-write", vec![binding("savePage", &catalog)])],
+    );
     save_document(
         &fixture.app,
         &cookie,
@@ -701,7 +738,7 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
         workspace_id,
         page_id,
         tab_id,
-        &document,
+        &primary_document,
     )
     .await;
 
@@ -717,7 +754,7 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
         digest,
         "run-write",
         "draft-write",
-        json!({ "body": { "payload": document.clone() } }),
+        json!({ "body": { "payload": primary_document.clone() } }),
         None,
         Some(true),
     )
@@ -762,7 +799,7 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
         digest,
         "run-write",
         "draft-write",
-        json!({ "body": { "payload": document.clone() } }),
+        json!({ "body": { "payload": primary_document.clone() } }),
         Some(&token),
         None,
     )
@@ -795,7 +832,7 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
         digest,
         "run-write",
         "draft-write",
-        json!({ "body": { "payload": document.clone() } }),
+        json!({ "body": { "payload": primary_document.clone() } }),
         Some(&token),
         Some(false),
     )
@@ -822,7 +859,7 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
         digest,
         "run-write",
         "draft-write",
-        json!({ "body": { "payload": document } }),
+        json!({ "body": { "payload": primary_document } }),
         Some(&token),
         None,
     )
@@ -835,8 +872,9 @@ async fn write_grant_rejects_expiry_and_every_bound_identity_mismatch() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (actor_id, workspace_id) = session_identity(&fixture.app, &cookie).await;
-    let (page_id, tab_id) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let second_tab = create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
+    let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
+    let (second_tab, second_root_uid) =
+        create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
     let catalog = catalog_entry(
         &fixture.app,
         &cookie,
@@ -845,22 +883,40 @@ async fn write_grant_rejects_expiry_and_every_bound_identity_mismatch() {
     )
     .await;
     let digest = catalog["schema_digest"].as_str().unwrap();
-    let document = document(vec![
-        ("block-write", vec![binding("savePage", &catalog)]),
-        ("block-other", vec![binding("saveOther", &catalog)]),
-    ]);
-    for target_tab in [tab_id, second_tab] {
-        save_document(
-            &fixture.app,
-            &cookie,
-            &csrf,
-            workspace_id,
-            page_id,
-            target_tab,
-            &document,
-        )
-        .await;
-    }
+    let primary_document = document(
+        &root_uid,
+        vec![
+            ("block-write", vec![binding("savePage", &catalog)]),
+            ("block-other", vec![binding("saveOther", &catalog)]),
+        ],
+    );
+    save_document(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        &primary_document,
+    )
+    .await;
+    let second_document = document(
+        &second_root_uid,
+        vec![
+            ("block-write", vec![binding("savePage", &catalog)]),
+            ("block-other", vec![binding("saveOther", &catalog)]),
+        ],
+    );
+    save_document(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        second_tab,
+        &second_document,
+    )
+    .await;
 
     struct Case {
         name: &'static str,
@@ -970,7 +1026,7 @@ async fn write_grant_rejects_expiry_and_every_bound_identity_mismatch() {
             digest,
             "run",
             "draft",
-            json!({ "body": { "payload": document.clone() } }),
+            json!({ "body": { "payload": primary_document.clone() } }),
             Some(&token),
             None,
         )
