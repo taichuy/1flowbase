@@ -3,6 +3,7 @@ import type {
   FrontstagePageContentNode,
   SaveFrontstageTabDocumentInput
 } from '../api/page-content';
+import type { FrontstageBlockPorts } from './page-signals/types';
 
 export type FrontstagePageDocumentDiagnosticSeverity = 'warning' | 'error';
 
@@ -62,6 +63,7 @@ export interface FrontstageBlockInstance {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   interfaces?: FrontstageBlockInterfaceBinding[];
+  ports?: FrontstageBlockPorts;
   presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   order: number;
@@ -92,6 +94,7 @@ interface FrontstageBlockPayload {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   interfaces: FrontstageBlockInterfaceBinding[];
+  ports: FrontstageBlockPorts;
   'x-presentation': FrontstageBlockPresentation;
   'x-layout': FrontstageBlockLayout;
   runtime: FrontstageBlockRuntimeHint;
@@ -104,9 +107,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asOptionalString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0
-    ? value
-    : null;
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
 function getFirstString(
@@ -300,6 +301,63 @@ function normalizeInterfaces(
     });
   }
   return bindings;
+}
+
+function normalizePorts(
+  block: Record<string, unknown>,
+  path: string,
+  diagnostics: FrontstagePageDocumentDiagnostic[]
+): FrontstageBlockPorts {
+  if (block.ports === undefined || block.ports === null) {
+    return { inputs: [], outputs: [] };
+  }
+  if (!isRecord(block.ports)) {
+    pushDiagnostic(diagnostics, {
+      severity: 'warning',
+      code: 'invalid_block_ports',
+      path: `${path}.ports`,
+      message: 'Frontstage block ports must be an object.'
+    });
+    return { inputs: [], outputs: [] };
+  }
+  return {
+    inputs: normalizePortList(block.ports.inputs, true),
+    outputs: normalizePortList(block.ports.outputs, false)
+  } as FrontstageBlockPorts;
+}
+
+function normalizePortList(value: unknown, input: boolean): unknown[] {
+  if (!Array.isArray(value)) return [];
+  const names = new Set<string>();
+  return value.flatMap((item) => {
+    if (!isRecord(item) || !isRecord(item.schema)) return [];
+    const name = asOptionalString(item.name);
+    if (!name || names.has(name)) return [];
+    names.add(name);
+    if (!input || !isRecord(item.source)) {
+      return [{ name, schema: { ...item.schema } }];
+    }
+    const blockId = asOptionalString(item.source.block_id);
+    const output = asOptionalString(item.source.output);
+    const scope = item.source.scope === 'page' ? 'page' : 'tab';
+    const tabId = asOptionalString(item.source.tab_id);
+    return [
+      {
+        name,
+        schema: { ...item.schema },
+        ...(blockId && output
+          ? {
+              source: {
+                block_id: blockId,
+                output,
+                scope,
+                ...(tabId ? { tab_id: tabId } : {})
+              }
+            }
+          : {})
+      }
+    ];
+  });
 }
 
 function normalizePresentation(
@@ -500,6 +558,7 @@ function normalizeBlock(
 
   const props = normalizeProps(block, path, diagnostics);
   const interfaces = normalizeInterfaces(block, path, diagnostics);
+  const ports = normalizePorts(block, path, diagnostics);
   const presentation = normalizePresentation(block, path, diagnostics);
   const layout = normalizeLayout(block, blockIndex, path, diagnostics);
   const rendererVersion = normalizeRendererVersion(block, path, diagnostics);
@@ -533,6 +592,7 @@ function normalizeBlock(
     },
     props,
     interfaces,
+    ports,
     presentation,
     layout,
     order: layout.order,
@@ -603,6 +663,17 @@ function createBlockPayload(
     contribution: { ...block.contribution },
     props: { ...block.props },
     interfaces: (block.interfaces ?? []).map((binding) => ({ ...binding })),
+    ports: {
+      inputs: (block.ports?.inputs ?? []).map((port) => ({
+        ...port,
+        schema: { ...port.schema },
+        ...(port.source ? { source: { ...port.source } } : {})
+      })),
+      outputs: (block.ports?.outputs ?? []).map((port) => ({
+        ...port,
+        schema: { ...port.schema }
+      }))
+    },
     'x-presentation': {
       ...(block.presentation ?? { heightMode: 'auto', height: null })
     },

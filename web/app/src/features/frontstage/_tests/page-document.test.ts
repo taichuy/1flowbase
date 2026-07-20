@@ -115,6 +115,7 @@ describe('frontstage page document', () => {
             risk_level: 'low'
           }
         ],
+        ports: { inputs: [], outputs: [] },
         presentation: { heightMode: 'auto', height: null },
         layout: { region: 'main', order: 20, span: 12 },
         order: 20,
@@ -370,6 +371,7 @@ describe('frontstage page document', () => {
         },
         props: {},
         interfaces: [],
+        ports: { inputs: [], outputs: [] },
         presentation: { heightMode: 'auto', height: null },
         layout: { order: 0 },
         order: 0,
@@ -482,6 +484,7 @@ describe('frontstage page document', () => {
       },
       props: { title: 'Hello' },
       interfaces: [],
+      ports: { inputs: [], outputs: [] },
       presentation: { heightMode: 'auto', height: null },
       layout: { region: 'main', order: 99, span: 12, width: 12, height: 4 },
       order: 3,
@@ -522,6 +525,7 @@ describe('frontstage page document', () => {
       },
       props: { title: 'Hello' },
       interfaces: [],
+      ports: { inputs: [], outputs: [] },
       'x-presentation': { heightMode: 'auto', height: null },
       'x-layout': {
         region: 'main',
