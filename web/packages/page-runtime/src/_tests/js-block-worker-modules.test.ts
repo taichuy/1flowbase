@@ -26,6 +26,10 @@ export default defineBlock({
 });
 `;
 
+function withoutPhaseMessages(messages: JsBlockWorkerToHostMessage[]) {
+  return messages.filter((message) => message.type !== 'phase');
+}
+
 describe('JS block default worker modules', () => {
   test('uses catalog modules for editor types, import allowlist, and worker injection', () => {
     const capabilities = createCatalogJsBlockRuntimeCapabilities({
@@ -85,7 +89,7 @@ describe('JS block default worker modules', () => {
       request: createRunRequest()
     });
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'rendered',
@@ -112,7 +116,7 @@ describe('JS block default worker modules', () => {
       request: createRunRequest()
     });
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       {
         direction: 'worker_to_host',
         type: 'rendered',
@@ -158,7 +162,7 @@ describe('JS block default worker modules', () => {
 
     attached.dispose();
 
-    expect(messages).toEqual([
+    expect(withoutPhaseMessages(messages)).toEqual([
       { direction: 'worker_to_host', type: 'ready' },
       {
         direction: 'worker_to_host',

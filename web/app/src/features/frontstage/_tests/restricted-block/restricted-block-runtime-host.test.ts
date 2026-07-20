@@ -110,21 +110,31 @@ function expectFailedSnapshot(
   expect(snapshot.status).toBe('failed');
 }
 
+function emitWorkerReady(worker: FakeWorker): void {
+  worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+}
+
 describe('restricted block runtime host controller', () => {
   test('creates a worker host from the run plan and sends the run request', () => {
     const runPlan = createRunPlan();
     const { worker, host } = createSubject({ runPlan });
 
-    const snapshot = host.run();
+    host.run();
 
     expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' }
+    ]);
+    emitWorkerReady(worker);
+
+    expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' },
       {
         direction: 'host_to_worker',
         type: 'run',
         request: runPlan.request
       }
     ]);
-    expect(snapshot).toMatchObject({
+    expect(host.getSnapshot()).toMatchObject({
       status: 'running',
       requestId: runPlan.request.requestId,
       blockId: runPlan.request.blockId,
@@ -139,6 +149,7 @@ describe('restricted block runtime host controller', () => {
     const { worker, host } = createSubject();
 
     host.run();
+    emitWorkerReady(worker);
     worker.emitMessage({
       direction: 'worker_to_host',
       type: 'log',
@@ -162,6 +173,7 @@ describe('restricted block runtime host controller', () => {
 
     expect(host.getSnapshot()).toEqual({
       status: 'ready',
+      phase: 'ready',
       requestId: 'restricted-block:block-1:code-1',
       blockId: 'block-1',
       schema: { primitive: 'Text', props: { children: 'Ready' } },
@@ -194,7 +206,7 @@ describe('restricted block runtime host controller', () => {
         }
       }
     });
-    expect(worker.messages).toHaveLength(1);
+    expect(worker.messages).toHaveLength(2);
   });
 
   test('reports source policy failure and worker errors as failed snapshots with stable run errors', () => {
@@ -220,12 +232,12 @@ describe('restricted block runtime host controller', () => {
     const workerFailure = failed.host.getSnapshot();
     expectFailedSnapshot(workerFailure);
     expect(workerFailure.error).toEqual({
-      kind: 'runtime_error',
+      kind: 'worker_crash',
       message: 'worker exploded',
       errors: [
         {
           code: 'runtime_error',
-          path: 'runtime',
+          path: 'worker',
           message: 'worker exploded'
         }
       ]
@@ -243,6 +255,7 @@ describe('restricted block runtime host controller', () => {
     });
 
     host.run();
+    emitWorkerReady(worker);
     worker.emitMessage({
       direction: 'worker_to_host',
       type: 'data',
@@ -275,6 +288,7 @@ describe('restricted block runtime host controller', () => {
       payload: { id: 'record-1' }
     });
     expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' },
       {
         direction: 'host_to_worker',
         type: 'run',
@@ -326,6 +340,7 @@ describe('restricted block runtime host controller', () => {
     });
 
     host.run();
+    emitWorkerReady(worker);
     worker.emitMessage({
       direction: 'worker_to_host',
       type: 'data',
@@ -343,7 +358,7 @@ describe('restricted block runtime host controller', () => {
 
     expect(dataHandler).not.toHaveBeenCalled();
     expect(actionHandler).not.toHaveBeenCalled();
-    expect(worker.messages.slice(1)).toEqual([
+    expect(worker.messages.slice(2)).toEqual([
       {
         direction: 'host_to_worker',
         type: 'effect_result',
@@ -387,6 +402,7 @@ describe('restricted block runtime host controller', () => {
     const { worker, host } = createSubject();
 
     host.run();
+    emitWorkerReady(worker);
     host.dispose();
     worker.emitMessage({
       direction: 'worker_to_host',
@@ -406,6 +422,7 @@ describe('restricted block runtime host controller', () => {
     const { worker, host } = createSubject();
 
     host.run();
+    emitWorkerReady(worker);
     worker.emitMessage({
       direction: 'worker_to_host',
       type: 'log',
@@ -456,6 +473,7 @@ describe('restricted block runtime host controller', () => {
 
     expect(host.getSnapshot()).toEqual({
       status: 'ready',
+      phase: 'ready',
       requestId: 'restricted-block:block-1:code-1',
       blockId: 'block-1',
       schema: {

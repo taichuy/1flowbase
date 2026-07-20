@@ -47,6 +47,10 @@ import {
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
 import { createFrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
+import type {
+  FrontstageRuntimeDemandByBlockId,
+  FrontstageRuntimeDemandPriority
+} from '../lib/page-canvas/runtime-demand';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -204,9 +208,26 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : null,
     [displayedPageDocument]
   );
+  const [runtimeDemandsByBlockId, setRuntimeDemandsByBlockId] = useState<
+    FrontstageRuntimeDemandByBlockId
+  >({});
+  useEffect(() => {
+    setRuntimeDemandsByBlockId({});
+  }, [activePageContent?.page.id]);
+  const handleRuntimeDemandChange = useCallback(
+    (blockId: string, priority: FrontstageRuntimeDemandPriority) => {
+      setRuntimeDemandsByBlockId((current) =>
+        current[blockId] === priority
+          ? current
+          : { ...current, [blockId]: priority }
+      );
+    },
+    []
+  );
   const pageCanvasRuntimeSources = useFrontstagePageCanvasRuntimeSources({
     workspaceId,
-    renderPlan: activePageRenderPlan
+    renderPlan: activePageRenderPlan,
+    demandsByBlockId: runtimeDemandsByBlockId
   });
   const pageCanvasRuntimeRunPlanState = useMemo(() => {
     const sourceState = pageCanvasRuntimeSources.sourceState;
@@ -237,7 +258,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   ]);
   const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
     runtimeRunPlanState: pageCanvasRuntimeRunPlanState,
-    handlers: jsBlockCapabilityHandlers
+    handlers: jsBlockCapabilityHandlers,
+    demandsByBlockId: runtimeDemandsByBlockId
   });
   const blockCompositionState = useMemo(
     () =>
@@ -1169,6 +1191,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         runtimeSourceState={pageCanvasRuntimeSources.sourceState}
         runtimeRunPlanState={pageCanvasRuntimeRunPlanState}
         runtimeSessionEntries={pageCanvasRuntimeSessions.entries}
+        onRuntimeDemandChange={handleRuntimeDemandChange}
+        onRuntimeRetry={pageCanvasRuntimeSessions.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
         designActions={designActions}
         toolbarDisabled={isPageContentSavePending}

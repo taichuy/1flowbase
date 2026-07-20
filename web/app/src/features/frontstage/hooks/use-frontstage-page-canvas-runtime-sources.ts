@@ -14,10 +14,15 @@ import {
   type FrontstagePageCanvasBlockCodeReadResult,
   type FrontstagePageCanvasRuntimeSourceState
 } from '../lib/page-canvas/runtime-source';
+import {
+  resolveFrontstageRuntimeDemand,
+  type FrontstageRuntimeDemandByBlockId
+} from '../lib/page-canvas/runtime-demand';
 
 export interface UseFrontstagePageCanvasRuntimeSourcesInput {
   workspaceId: string | null | undefined;
   renderPlan: FrontstagePageRenderPlan | null | undefined;
+  demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
 }
 
 export interface UseFrontstagePageCanvasRuntimeSourcesResult {
@@ -46,8 +51,12 @@ function createCodeResult(
     data?: { code?: unknown };
     error: unknown;
     isError: boolean;
-  }
+  },
+  dormant: boolean
 ): FrontstagePageCanvasBlockCodeReadResult {
+  if (dormant) {
+    return { codeRef: request.codeRef, status: 'dormant' };
+  }
   if (query.isError) {
     return {
       codeRef: request.codeRef,
@@ -80,7 +89,8 @@ function createCodeResult(
 
 export function useFrontstagePageCanvasRuntimeSources({
   workspaceId,
-  renderPlan
+  renderPlan,
+  demandsByBlockId
 }: UseFrontstagePageCanvasRuntimeSourcesInput): UseFrontstagePageCanvasRuntimeSourcesResult {
   const readPlan = useMemo(() => {
     if (!workspaceId || !renderPlan) {
@@ -106,16 +116,34 @@ export function useFrontstagePageCanvasRuntimeSources({
           request.workspaceId,
           request.pageId,
           request.codeRef
-        )
+        ),
+      enabled:
+        !demandsByBlockId ||
+        resolveFrontstageRuntimeDemand(
+          demandsByBlockId,
+          request.blockId,
+          request.slotIndex
+        ) <= 2
     }))
   });
 
   const codeResults = useMemo(
     () =>
       requests.map((request, index) =>
-        createCodeResult(request, blockCodeQueries[index])
+        createCodeResult(
+          request,
+          blockCodeQueries[index],
+          Boolean(
+            demandsByBlockId &&
+              resolveFrontstageRuntimeDemand(
+                demandsByBlockId,
+                request.blockId,
+                request.slotIndex
+              ) === 3
+          )
+        )
       ),
-    [blockCodeQueries, requests]
+    [blockCodeQueries, demandsByBlockId, requests]
   );
 
   const sourceState = useMemo(() => {

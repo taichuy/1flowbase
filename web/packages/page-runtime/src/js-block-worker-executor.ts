@@ -219,7 +219,7 @@ async function runRequest(
   });
 
   if (!evaluation.ok) {
-    postError(request, evaluation.error, postMessage);
+    postError(request, compileError(evaluation.error), postMessage);
     return;
   }
 
@@ -241,6 +241,7 @@ async function runRequest(
     postError(
       request,
       runtimeError(
+        'render_failed',
         'runtime.render',
         `JS block render failed: ${getErrorMessage(error)}`
       ),
@@ -377,16 +378,35 @@ function postError(
   });
 }
 
-function runtimeError(path: string, message: string): JsBlockRunError {
+function runtimeError(
+  kind: JsBlockRunError['kind'],
+  path: string,
+  message: string
+): JsBlockRunError {
   return {
-    kind: 'runtime_error',
+    kind,
     message,
     errors: [{ code: 'runtime_error', path, message }]
   };
 }
 
+function compileError(error: JsBlockRunError): JsBlockRunError {
+  if (error.kind === 'source_policy_failed') {
+    return error;
+  }
+  return {
+    ...error,
+    kind: 'compile_failed',
+    errors: error.errors.map((item) => ({
+      ...item,
+      code: 'transform_failed'
+    }))
+  };
+}
+
 function effectRuntimeError(error: JsBlockWorkerEffectError): JsBlockRunError {
   return runtimeError(
+    'effect_failed',
     'runtime.render',
     `JS block render failed: ${error.message}`
   );

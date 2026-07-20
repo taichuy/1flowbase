@@ -16,6 +16,10 @@ import type {
   RestrictedBlockRuntimeHostSnapshot,
   RestrictedBlockRuntimeHostSnapshotStatus
 } from '../lib/restricted-block-runtime-host';
+import {
+  resolveFrontstageRuntimeDemand,
+  type FrontstageRuntimeDemandByBlockId
+} from '../lib/page-canvas/runtime-demand';
 
 export type FrontstagePageCanvasRuntimeSessionFactory = (
   options: FrontstageRestrictedBlockRuntimeHostOptions
@@ -75,6 +79,8 @@ export interface UseFrontstagePageCanvasRuntimeSessionsInput {
     | undefined;
   runtimeSessionFactory?: FrontstagePageCanvasRuntimeSessionFactory;
   handlers?: JsBlockHostEffectHandlers;
+  demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
+  maxConcurrent?: number;
 }
 
 export interface UseFrontstagePageCanvasRuntimeSessionsResult {
@@ -82,12 +88,25 @@ export interface UseFrontstagePageCanvasRuntimeSessionsResult {
   snapshotsBySlot: Readonly<Record<number, RestrictedBlockRuntimeHostSnapshot>>;
   running: boolean;
   hasError: boolean;
+  retryBlock(blockId: string): void;
 }
 
 interface ActiveRuntimeSession {
   session: FrontstageRestrictedBlockRuntimeSession;
   unsubscribe: () => void;
   snapshot: RestrictedBlockRuntimeHostSnapshot;
+  executing: boolean;
+}
+
+const SESSION_CACHE_TTL_MS = 30_000;
+const SESSION_CACHE_MAX_ENTRIES = 32;
+const successfulSnapshotCache = new Map<
+  string,
+  { snapshot: RestrictedBlockRuntimeHostSnapshot; expiresAt: number }
+>();
+
+export function clearFrontstageRuntimeSessionCache(): void {
+  successfulSnapshotCache.clear();
 }
 
 type InternalRuntimeSessionEntry =
@@ -98,7 +117,9 @@ type InternalRuntimeSessionEntry =
 export function useFrontstagePageCanvasRuntimeSessions({
   runtimeRunPlanState,
   runtimeSessionFactory = createFrontstageRestrictedBlockRuntimeSession,
-  handlers
+  handlers,
+  demandsByBlockId,
+  maxConcurrent = 2
 }: UseFrontstagePageCanvasRuntimeSessionsInput): UseFrontstagePageCanvasRuntimeSessionsResult {
   const activeRuntimeSessionsRef = useRef(
     new Map<string, ActiveRuntimeSession>()
@@ -106,6 +127,21 @@ export function useFrontstagePageCanvasRuntimeSessions({
   const [internalEntries, setInternalEntries] = useState<
     InternalRuntimeSessionEntry[]
   >([]);
+  const [runtimeRevision, setRuntimeRevision] = useState(0);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const handleVisibilityChange = () => {
+      setPageVisible(document.visibilityState !== 'hidden');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   useEffect(() => {
     const activeRuntimeSessions = activeRuntimeSessionsRef.current;
@@ -119,35 +155,17 @@ export function useFrontstagePageCanvasRuntimeSessions({
     }
 
     const nextSessionKeys = new Set<string>();
-    const nextEntries: InternalRuntimeSessionEntry[] = [];
+    const readyItems: Array<{
+      item: FrontstagePageCanvasRuntimeRunPlanReadyItem;
+      sessionKey: string;
+    }> = [];
 
     for (const item of runtimeRunPlanState.items) {
-      if (item.status !== 'run_plan_ready') {
-        nextEntries.push(createSkippedEntry(item));
-        continue;
+      if (item.status === 'run_plan_ready') {
+        const sessionKey = createRuntimeSessionKey(runtimeRunPlanState, item);
+        nextSessionKeys.add(sessionKey);
+        readyItems.push({ item, sessionKey });
       }
-
-      const sessionKey = createRuntimeSessionKey(runtimeRunPlanState, item);
-      nextSessionKeys.add(sessionKey);
-
-      const activeRuntimeSession = activeRuntimeSessions.get(sessionKey);
-      if (activeRuntimeSession) {
-        nextEntries.push({
-          ...createSnapshotEntry(item, activeRuntimeSession.snapshot),
-          sessionKey
-        });
-        continue;
-      }
-
-      const createdEntry = createAndRunRuntimeSession({
-        item,
-        sessionKey,
-        runtimeSessionFactory,
-        handlers,
-        activeRuntimeSessions,
-        setInternalEntries
-      });
-      nextEntries.push(createdEntry);
     }
 
     for (const [sessionKey, activeRuntimeSession] of [
@@ -162,12 +180,76 @@ export function useFrontstagePageCanvasRuntimeSessions({
       }
     }
 
+    const createdEntries = new Map<string, InternalRuntimeSessionEntry>();
+    if (pageVisible) {
+      const runningCount = [...activeRuntimeSessions.values()].filter(
+        (session) => session.executing
+      ).length;
+      const candidates = readyItems
+        .filter(({ sessionKey }) => !activeRuntimeSessions.has(sessionKey))
+        .sort((left, right) => {
+          const priorityDifference =
+            resolveFrontstageRuntimeDemand(
+              demandsByBlockId,
+              left.item.blockId,
+              left.item.slotIndex
+            ) -
+            resolveFrontstageRuntimeDemand(
+              demandsByBlockId,
+              right.item.blockId,
+              right.item.slotIndex
+            );
+          return priorityDifference || left.item.slotIndex - right.item.slotIndex;
+        })
+        .slice(0, Math.max(0, maxConcurrent - runningCount));
+
+      for (const { item, sessionKey } of candidates) {
+        const createdEntry = createAndRunRuntimeSession({
+          item,
+          sessionKey,
+          runtimeSessionFactory,
+          handlers,
+          activeRuntimeSessions,
+          setInternalEntries,
+          setRuntimeRevision,
+          cachedSnapshot: readSuccessfulSnapshot(sessionKey)
+        });
+        createdEntries.set(sessionKey, createdEntry);
+      }
+    }
+
+    const nextEntries: InternalRuntimeSessionEntry[] = runtimeRunPlanState.items.map(
+      (item) => {
+        if (item.status !== 'run_plan_ready') {
+          return createSkippedEntry(item);
+        }
+        const sessionKey = createRuntimeSessionKey(runtimeRunPlanState, item);
+        const createdEntry = createdEntries.get(sessionKey);
+        if (createdEntry?.status === 'factory_failed') {
+          return createdEntry;
+        }
+        const active = activeRuntimeSessions.get(sessionKey);
+        const snapshot = active?.snapshot ?? readSuccessfulSnapshot(sessionKey);
+        return snapshot
+          ? { ...createSnapshotEntry(item, snapshot), sessionKey }
+          : createQueuedEntry(item, sessionKey);
+      }
+    );
+
     setInternalEntries((currentEntries) =>
       areInternalEntriesEqual(currentEntries, nextEntries)
         ? currentEntries
         : nextEntries
     );
-  }, [handlers, runtimeRunPlanState, runtimeSessionFactory]);
+  }, [
+    demandsByBlockId,
+    handlers,
+    maxConcurrent,
+    pageVisible,
+    runtimeRevision,
+    runtimeRunPlanState,
+    runtimeSessionFactory
+  ]);
 
   useEffect(
     () => () => {
@@ -192,12 +274,24 @@ export function useFrontstagePageCanvasRuntimeSessions({
     () => entries.some((entry) => isErrorEntry(entry)),
     [entries]
   );
+  const retryBlock = (blockId: string) => {
+    const activeRuntimeSessions = activeRuntimeSessionsRef.current;
+    for (const [sessionKey, activeRuntimeSession] of [...activeRuntimeSessions]) {
+      if (activeRuntimeSession.snapshot.blockId !== blockId) {
+        continue;
+      }
+      successfulSnapshotCache.delete(sessionKey);
+      disposeRuntimeSession(activeRuntimeSessions, sessionKey, activeRuntimeSession);
+    }
+    setRuntimeRevision((revision) => revision + 1);
+  };
 
   return {
     entries,
     snapshotsBySlot,
     running,
-    hasError
+    hasError,
+    retryBlock
   };
 }
 
@@ -207,7 +301,9 @@ function createAndRunRuntimeSession({
   runtimeSessionFactory,
   handlers,
   activeRuntimeSessions,
-  setInternalEntries
+  setInternalEntries,
+  setRuntimeRevision,
+  cachedSnapshot
 }: {
   item: FrontstagePageCanvasRuntimeRunPlanReadyItem;
   sessionKey: string;
@@ -215,6 +311,8 @@ function createAndRunRuntimeSession({
   handlers: JsBlockHostEffectHandlers | undefined;
   activeRuntimeSessions: Map<string, ActiveRuntimeSession>;
   setInternalEntries: Dispatch<SetStateAction<InternalRuntimeSessionEntry[]>>;
+  setRuntimeRevision: Dispatch<SetStateAction<number>>;
+  cachedSnapshot: RestrictedBlockRuntimeHostSnapshot | undefined;
 }): InternalRuntimeSessionEntry {
   let session: FrontstageRestrictedBlockRuntimeSession | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -236,23 +334,31 @@ function createAndRunRuntimeSession({
       }
 
       activeRuntimeSession.snapshot = snapshot;
+      activeRuntimeSession.executing = snapshot.status === 'running';
+      if (snapshot.status === 'ready') {
+        cacheSuccessfulSnapshot(sessionKey, snapshot);
+      }
       setInternalEntries((currentEntries) =>
         updateInternalEntries(currentEntries, sessionKey, {
           ...createSnapshotEntry(item, snapshot),
           sessionKey
         })
       );
+      if (snapshot.status !== 'running') {
+        setRuntimeRevision((revision) => revision + 1);
+      }
     });
 
     const snapshot = session.run();
     activeRuntimeSessions.set(sessionKey, {
       session,
       unsubscribe,
-      snapshot
+      snapshot: cachedSnapshot ?? snapshot,
+      executing: true
     });
 
     return {
-      ...createSnapshotEntry(item, snapshot),
+      ...createSnapshotEntry(item, cachedSnapshot ?? snapshot),
       sessionKey
     };
   } catch (error) {
@@ -266,6 +372,25 @@ function createAndRunRuntimeSession({
 
     return createFactoryFailedEntry(item, toError(error));
   }
+}
+
+function createQueuedEntry(
+  item: FrontstagePageCanvasRuntimeRunPlanReadyItem,
+  sessionKey: string
+): InternalRuntimeSessionEntry {
+  return {
+    ...createSnapshotEntry(item, {
+      status: 'running',
+      phase: 'queued',
+      requestId: item.runPlan.request.requestId,
+      blockId: item.blockId,
+      schemaValidationOptions: item.runPlan.schemaValidationOptions,
+      logs: [],
+      effects: [],
+      rejections: []
+    }),
+    sessionKey
+  };
 }
 
 function updateInternalEntries(
@@ -321,7 +446,9 @@ function isInternalEntryEqual(
     return (
       'snapshot' in currentEntry &&
       'snapshot' in nextEntry &&
-      currentEntry.snapshot === nextEntry.snapshot
+      (currentEntry.snapshot === nextEntry.snapshot ||
+        stableSerialize(currentEntry.snapshot) ===
+          stableSerialize(nextEntry.snapshot))
     );
   }
 
@@ -483,6 +610,42 @@ function createRuntimeSessionKey(
 
 function stableSerialize(value: unknown): string {
   return JSON.stringify(sortSerializableValue(value));
+}
+
+function readSuccessfulSnapshot(
+  sessionKey: string
+): RestrictedBlockRuntimeHostSnapshot | undefined {
+  const cached = successfulSnapshotCache.get(sessionKey);
+  if (!cached) {
+    return undefined;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    successfulSnapshotCache.delete(sessionKey);
+    return undefined;
+  }
+  successfulSnapshotCache.delete(sessionKey);
+  successfulSnapshotCache.set(sessionKey, cached);
+  return cached.snapshot;
+}
+
+function cacheSuccessfulSnapshot(
+  sessionKey: string,
+  snapshot: RestrictedBlockRuntimeHostSnapshot
+): void {
+  successfulSnapshotCache.delete(sessionKey);
+  successfulSnapshotCache.set(sessionKey, {
+    snapshot,
+    expiresAt: Date.now() + SESSION_CACHE_TTL_MS
+  });
+  while (successfulSnapshotCache.size > SESSION_CACHE_MAX_ENTRIES) {
+    const oldestKey = successfulSnapshotCache.keys().next().value as
+      | string
+      | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    successfulSnapshotCache.delete(oldestKey);
+  }
 }
 
 function sortSerializableValue(value: unknown): unknown {

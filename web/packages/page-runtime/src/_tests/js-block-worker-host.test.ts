@@ -80,7 +80,7 @@ function createManualTimers() {
 }
 
 describe('JS block worker host adapter', () => {
-  test('sends init and run messages, then applies rendered messages through the runtime reducer', () => {
+  test('waits for worker ready before sending run and starting the user budget', () => {
     const worker = new FakeWorker();
     const host = createJsBlockWorkerHost({
       workerFactory: () => worker
@@ -88,6 +88,11 @@ describe('JS block worker host adapter', () => {
 
     host.init();
     host.run(createRunRequest());
+    expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' }
+    ]);
+
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
     worker.emitMessage({
       direction: 'worker_to_host',
       type: 'rendered',
@@ -138,9 +143,15 @@ describe('JS block worker host adapter', () => {
 
     host.run(createRunRequest());
     expect(timers.size).toBe(1);
+    expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' }
+    ]);
 
-    timers.fire(1);
-    timers.fire(1);
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+    expect(timers.size).toBe(1);
+
+    timers.fire(2);
+    timers.fire(2);
 
     expect(host.getState().requests['request-1']).toMatchObject({
       status: 'timed_out',
@@ -153,7 +164,34 @@ describe('JS block worker host adapter', () => {
     expect(worker.terminateCount).toBe(1);
   });
 
-  test('maps worker errors into runtime_error and clears the pending timeout', () => {
+  test('reports startup timeout separately without spending the user runtime budget', () => {
+    const worker = new FakeWorker();
+    const timers = createManualTimers();
+    const host = createJsBlockWorkerHost({
+      workerFactory: () => worker,
+      startupTimeoutMs: 3000,
+      scheduleTimeout: (callback) => timers.schedule(callback),
+      clearScheduledTimeout: (handle) => timers.clear(handle as number)
+    });
+
+    host.run(createRunRequest());
+    timers.fire(1);
+
+    expect(host.getState().requests['request-1']).toMatchObject({
+      status: 'failed',
+      phase: 'failed',
+      result: {
+        ok: false,
+        error: { kind: 'worker_startup_timeout' }
+      }
+    });
+    expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' }
+    ]);
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  test('maps startup worker errors into worker_crash and clears startup timing', () => {
     const worker = new FakeWorker();
     const timers = createManualTimers();
     const host = createJsBlockWorkerHost({
@@ -169,7 +207,7 @@ describe('JS block worker host adapter', () => {
       status: 'failed',
       result: {
         ok: false,
-        error: { kind: 'runtime_error' }
+        error: { kind: 'worker_crash' }
       }
     });
     expect(timers.size).toBe(0);
@@ -182,6 +220,7 @@ describe('JS block worker host adapter', () => {
     });
 
     host.run(createRunRequest());
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
     host.resolveEffect({
       direction: 'host_to_worker',
       type: 'effect_result',
@@ -192,6 +231,7 @@ describe('JS block worker host adapter', () => {
     });
 
     expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' },
       {
         direction: 'host_to_worker',
         type: 'run',
@@ -227,6 +267,7 @@ describe('JS block worker host adapter', () => {
     });
 
     host.run(createRunRequest());
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
     worker.emitMessage({
       direction: 'worker_to_host',
       type: 'data',
@@ -244,6 +285,7 @@ describe('JS block worker host adapter', () => {
     });
 
     expect(worker.messages).toEqual([
+      { direction: 'host_to_worker', type: 'init' },
       {
         direction: 'host_to_worker',
         type: 'run',

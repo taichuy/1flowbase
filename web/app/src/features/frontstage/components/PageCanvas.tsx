@@ -44,6 +44,7 @@ import {
   createFrontstageInteractionCompactor,
   frontstageLayoutsEqualForCommit
 } from '../lib/page-canvas/frontstage-block-interaction';
+import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
 
 type DesignBlockActions = {
   onEditCode: (blockId: string) => void;
@@ -77,6 +78,11 @@ type PageCanvasProps = {
       presentation: FrontstageBlockPresentation;
     }
   ) => void;
+  onRuntimeDemandChange?: (
+    blockId: string,
+    priority: FrontstageRuntimeDemandPriority
+  ) => void;
+  onRuntimeRetry?: (blockId: string) => void;
 };
 
 function renderFrontstageResizeHandle(
@@ -137,6 +143,11 @@ type RenderPlanSlotProps = {
   designActions?: DesignBlockActions;
   toolbarDisabled?: boolean;
   onAutoHeightChange?: (blockId: string, height: number) => void;
+  onRuntimeDemandChange?: (
+    blockId: string,
+    priority: FrontstageRuntimeDemandPriority
+  ) => void;
+  onRuntimeRetry?: (blockId: string) => void;
 };
 
 const blockFrameBaseStyle: CSSProperties = {
@@ -204,12 +215,46 @@ function RenderPlanSlot({
   isDesignMode,
   designActions,
   toolbarDisabled,
-  onAutoHeightChange
+  onAutoHeightChange,
+  onRuntimeDemandChange,
+  onRuntimeRetry
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
+
+  useEffect(() => {
+    if (isSelected) {
+      onRuntimeDemandChange?.(item.blockId, 0);
+      return;
+    }
+
+    const node = blockRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      onRuntimeDemandChange?.(item.blockId, 1);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) {
+          onRuntimeDemandChange?.(item.blockId, 3);
+          return;
+        }
+        const rect = entry.boundingClientRect;
+        const visible =
+          rect.bottom > 0 &&
+          rect.top < window.innerHeight &&
+          rect.right > 0 &&
+          rect.left < window.innerWidth;
+        onRuntimeDemandChange?.(item.blockId, visible ? 1 : 2);
+      },
+      { rootMargin: '400px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isSelected, item.blockId, onRuntimeDemandChange]);
 
   useEffect(() => {
     const node = blockRef.current;
@@ -286,6 +331,10 @@ function RenderPlanSlot({
         >
           <RestrictedBlockRuntimePreview
             snapshot={runtimeSessionEntry.snapshot}
+            diagnostic={isDesignMode}
+            onRetry={
+              onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
+            }
           />
         </div>
       );
@@ -312,7 +361,8 @@ function RenderPlanSlot({
     const isSourceLoading =
       runtimeSessionEntry?.status === 'skipped' &&
       runtimeSessionEntry.skipReason === 'source_not_ready' &&
-      runtimeSessionEntry.sourceStatus === 'loading';
+      (runtimeSessionEntry.sourceStatus === 'loading' ||
+        runtimeSessionEntry.sourceStatus === 'dormant');
 
     if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
       return (
@@ -403,7 +453,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   designActions,
   toolbarDisabled = false,
   showTitle = true,
-  onResponsiveLayoutSave
+  onResponsiveLayoutSave,
+  onRuntimeDemandChange,
+  onRuntimeRetry
 }) => {
   const document = useMemo(
     () => (content ? createFrontstagePageDocument(content) : null),
@@ -660,6 +712,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   designActions={designActions}
                   toolbarDisabled={toolbarDisabled}
                   onAutoHeightChange={updateAutoHeight}
+                  onRuntimeDemandChange={onRuntimeDemandChange}
+                  onRuntimeRetry={onRuntimeRetry}
                 />
               </div>
             ))}
