@@ -591,7 +591,7 @@ impl PgControlPlaneStore {
             where application_id = $1
               and api_key_id is not distinct from $2
               and idempotency_key = $3
-              and run_mode = 'published_api_run'
+              and run_mode in ('published_api_run', 'workflow_schedule_run')
             order by created_at asc, id asc
             limit 1
             "#,

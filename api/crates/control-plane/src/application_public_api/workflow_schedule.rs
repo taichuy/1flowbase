@@ -4,25 +4,27 @@ use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use super::run_service::{
-    public_freeze_workflow_run_input_environment, ApplicationPublishedFlowRunRepository,
-    WorkflowRunTriggerContext,
+use super::{
+    run_service::ApplicationPublishedFlowRunRepository,
+    workflow_invocation::{
+        InvokeWorkflowCommand, WorkflowInvocationService, WorkflowInvocationTrigger,
+    },
+    workflow_start_http_inputs::{
+        build_workflow_start_schedule_input_payload, parse_workflow_start_schedule_inputs,
+    },
 };
 use crate::{
     application_public_api::{
         ensure_application_edit_permission, ensure_application_view_permission,
     },
     errors::ControlPlaneError,
-    flow_run_title::build_flow_run_title,
     ports::{
         ApplicationCompiledPlanRepository, ApplicationPublicationRepository, ApplicationRepository,
-        CreateFlowRunInput, ReplaceWorkflowScheduleTriggerInput, TaskQueue,
-        WorkflowScheduleTriggerRepository,
+        ReplaceWorkflowScheduleTriggerInput, TaskQueue, WorkflowScheduleTriggerRepository,
     },
 };
 
 pub const WORKFLOW_SCHEDULE_RUN_QUEUE: &str = "workflow-schedule-runs";
-const WORKFLOW_SCHEDULE_COMPATIBILITY_MODE: &str = "workflow_schedule_v1";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowScheduleTriggerRecord {
@@ -230,114 +232,88 @@ where
             .get_application(trigger.workspace_id, trigger.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
+        if application.application_type != domain::ApplicationType::Workflow {
+            return Ok(WorkflowScheduleDispatchOutcome::Skipped {
+                reason: "application_type_mismatch",
+            });
+        }
         if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Schedule) {
             return Ok(WorkflowScheduleDispatchOutcome::Skipped {
                 reason: "trigger_type_mismatch",
+            });
+        }
+        if resolve_workflow_schedule_local_time(&trigger.timezone, command.scheduled_at).is_none() {
+            return Ok(WorkflowScheduleDispatchOutcome::Skipped {
+                reason: "invalid_timezone",
             });
         }
         let Some(publication) = self
             .repository
             .load_active_application_publication(trigger.application_id)
             .await?
-            .filter(|publication| publication.api_enabled)
         else {
             return Ok(WorkflowScheduleDispatchOutcome::Skipped {
                 reason: "application_not_published",
             });
         };
-        let compiled_plan = self
-            .repository
-            .get_application_compiled_plan(publication.compiled_plan_id)
-            .await?
-            .ok_or(ControlPlaneError::InvalidInput("compiled_plan"))?;
-        let environment_variables = self
-            .repository
-            .list_application_environment_variables(trigger.workspace_id, trigger.application_id)
-            .await?;
-        let input_payload = public_freeze_workflow_run_input_environment(
-            trigger.input_payload.clone(),
-            &environment_variables,
-            WorkflowRunTriggerContext::Schedule {
-                scheduled_at: command.scheduled_at,
-                timezone: &trigger.timezone,
-            },
-        )?;
-        let idempotency_key =
-            schedule_idempotency_key(trigger.application_id, command.scheduled_at);
-        if let Some(existing) = self
-            .repository
-            .find_published_flow_run_by_idempotency_key(
-                trigger.application_id,
-                None,
-                &idempotency_key,
-            )
-            .await?
-        {
-            return Ok(WorkflowScheduleDispatchOutcome::Dispatched(
-                WorkflowScheduleDispatchResult {
-                    run_id: existing.id,
-                    status: existing.status,
-                    task_id: None,
-                },
-            ));
-        }
-        let created = self
-            .repository
-            .create_published_flow_run(&CreateFlowRunInput {
+        let start_contract =
+            match parse_workflow_start_schedule_inputs(&publication.document_snapshot) {
+                Ok(contract) => contract,
+                Err(_) => {
+                    return Ok(WorkflowScheduleDispatchOutcome::Skipped {
+                        reason: "invalid_input_defaults",
+                    });
+                }
+            };
+        let node_input_payload = match build_workflow_start_schedule_input_payload(
+            &start_contract,
+            &trigger.input_payload,
+        ) {
+            Ok(payload) => payload,
+            Err(_) => {
+                return Ok(WorkflowScheduleDispatchOutcome::Skipped {
+                    reason: "invalid_input_defaults",
+                });
+            }
+        };
+        let scheduled_at = command
+            .scheduled_at
+            .replace_second(0)
+            .expect("zero seconds is always valid")
+            .replace_nanosecond(0)
+            .expect("zero nanoseconds is always valid");
+        let idempotency_key = schedule_idempotency_key(trigger.application_id, scheduled_at);
+        let invoked = WorkflowInvocationService::new(self.repository.clone())
+            .invoke(InvokeWorkflowCommand {
                 actor_user_id: trigger.updated_by,
-                application_id: trigger.application_id,
-                flow_id: publication.flow_id,
-                flow_draft_id: compiled_plan.draft_id,
-                compiled_plan_id: publication.compiled_plan_id,
-                debug_session_id: String::new(),
-                flow_schema_version: publication.flow_schema_version.clone(),
-                document_hash: publication.document_hash.clone(),
-                run_mode: domain::FlowRunMode::PublishedApiRun,
-                target_node_id: None,
-                title: build_flow_run_title(None, "Scheduled workflow"),
-                status: domain::FlowRunStatus::Queued,
-                input_payload,
-                started_at: command.scheduled_at,
-                api_key_id: None,
-                publication_version_id: Some(publication.id),
-                external_user: None,
-                external_conversation_id: None,
-                external_trace_id: Some(format!("workflow-schedule:{}", trigger.application_id)),
-                compatibility_mode: Some(WORKFLOW_SCHEDULE_COMPATIBILITY_MODE.to_string()),
-                idempotency_key: Some(idempotency_key.clone()),
+                publication,
+                node_input_payload,
+                trigger: WorkflowInvocationTrigger::Schedule {
+                    trigger_id: trigger.id,
+                    cron: trigger.cron.clone(),
+                    timezone: trigger.timezone.clone(),
+                    scheduled_at,
+                    idempotency_key: idempotency_key.clone(),
+                },
             })
             .await?;
-        let flow_run = created.flow_run;
-        self.repository
-            .append_published_run_event(&crate::ports::AppendRunEventInput {
-                flow_run_id: flow_run.id,
-                node_run_id: None,
-                event_type: "workflow_schedule_run_enqueued".to_string(),
-                payload: json!({
-                    "trigger_source": "workflow_schedule",
-                    "application_id": trigger.application_id,
-                    "publication_version_id": publication.id,
-                    "cron": trigger.cron,
-                    "timezone": trigger.timezone,
-                    "scheduled_at": command.scheduled_at,
-                }),
-            })
-            .await?;
-        let task_id = match task_queue {
-            Some(queue) => Some(
+        let flow_run = invoked.flow_run;
+        let task_id = match (invoked.created, task_queue) {
+            (false, _) => None,
+            (true, Some(queue)) => Some(
                 queue
                     .enqueue(
                         WORKFLOW_SCHEDULE_RUN_QUEUE,
                         json!({
                             "application_id": trigger.application_id,
                             "flow_run_id": flow_run.id,
-                            "scheduled_at": command.scheduled_at,
+                            "scheduled_at": scheduled_at,
                         }),
                         Some(&idempotency_key),
                     )
                     .await?,
             ),
-            None => None,
+            (true, None) => None,
         };
 
         Ok(WorkflowScheduleDispatchOutcome::Dispatched(

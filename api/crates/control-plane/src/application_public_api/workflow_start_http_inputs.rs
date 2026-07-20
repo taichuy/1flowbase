@@ -92,6 +92,25 @@ pub enum WorkflowStartHttpInputError {
 pub fn parse_workflow_start_http_inputs(
     document_snapshot: &Value,
 ) -> Result<WorkflowStartHttpInputs, WorkflowStartHttpInputError> {
+    parse_workflow_start_inputs(document_snapshot, WorkflowStartInputUsage::Http)
+}
+
+pub fn parse_workflow_start_schedule_inputs(
+    document_snapshot: &Value,
+) -> Result<WorkflowStartHttpInputs, WorkflowStartHttpInputError> {
+    parse_workflow_start_inputs(document_snapshot, WorkflowStartInputUsage::Schedule)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkflowStartInputUsage {
+    Http,
+    Schedule,
+}
+
+fn parse_workflow_start_inputs(
+    document_snapshot: &Value,
+    usage: WorkflowStartInputUsage,
+) -> Result<WorkflowStartHttpInputs, WorkflowStartHttpInputError> {
     let start_node = document_snapshot
         .get("graph")
         .and_then(|graph| graph.get("nodes"))
@@ -135,21 +154,27 @@ pub fn parse_workflow_start_http_inputs(
             return Err(WorkflowStartHttpInputError::TargetSelectorNotAllowed(key));
         }
 
-        let source_value = input_field
-            .get("source")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let source = match source_value {
-            "path" => WorkflowStartHttpInputSource::Path,
-            "query" => WorkflowStartHttpInputSource::Query,
-            "body" => WorkflowStartHttpInputSource::Body,
-            "form" => WorkflowStartHttpInputSource::Form,
-            _ => {
-                return Err(WorkflowStartHttpInputError::InvalidSource {
-                    key,
-                    invalid_source: source_value.to_string(),
-                });
+        let source = if usage == WorkflowStartInputUsage::Http {
+            let source_value = input_field
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            match source_value {
+                "path" => WorkflowStartHttpInputSource::Path,
+                "query" => WorkflowStartHttpInputSource::Query,
+                "body" => WorkflowStartHttpInputSource::Body,
+                "form" => WorkflowStartHttpInputSource::Form,
+                _ => {
+                    return Err(WorkflowStartHttpInputError::InvalidSource {
+                        key,
+                        invalid_source: source_value.to_string(),
+                    });
+                }
             }
+        } else {
+            // Schedule defaults are keyed by the Workflow Start contract;
+            // HTTP transport source is deliberately irrelevant here.
+            WorkflowStartHttpInputSource::Body
         };
         let value_type_value = input_field
             .get("valueType")
@@ -187,6 +212,44 @@ pub fn parse_workflow_start_http_inputs(
         start_node_id,
         fields,
     })
+}
+
+pub fn build_workflow_start_schedule_input_payload(
+    contract: &WorkflowStartHttpInputs,
+    configured_defaults: &Value,
+) -> Result<Value, WorkflowStartHttpInputError> {
+    let defaults = configured_defaults
+        .as_object()
+        .ok_or(WorkflowStartHttpInputError::InputFieldsInvalid)?;
+    for key in defaults.keys() {
+        if !contract.fields.iter().any(|field| field.key == *key) {
+            return Err(WorkflowStartHttpInputError::TargetSelectorNotAllowed(
+                key.clone(),
+            ));
+        }
+    }
+
+    let mut start_node_payload = Map::new();
+    for field in &contract.fields {
+        let value = match defaults.get(&field.key) {
+            Some(value) => coerce_value(&field.key, field.value_type, value)?,
+            None => match &field.default_value {
+                Some(default_value) => default_value.clone(),
+                None if field.required => {
+                    return Err(WorkflowStartHttpInputError::RequiredValueMissing(
+                        field.key.clone(),
+                    ));
+                }
+                None => continue,
+            },
+        };
+        start_node_payload.insert(field.key.clone(), value);
+    }
+
+    Ok(Value::Object(Map::from_iter([(
+        contract.start_node_id.clone(),
+        Value::Object(start_node_payload),
+    )])))
 }
 
 pub fn build_workflow_start_node_input_payload(

@@ -205,7 +205,11 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                 run.application_id == application_id
                     && run.api_key_id == api_key_id
                     && run.idempotency_key.as_deref() == Some(idempotency_key)
-                    && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                    && matches!(
+                        run.run_mode,
+                        domain::FlowRunMode::PublishedApiRun
+                            | domain::FlowRunMode::WorkflowScheduleRun
+                    )
             })
             .cloned())
     }

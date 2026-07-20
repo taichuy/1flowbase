@@ -822,14 +822,17 @@ async fn workflow_schedule_tick_creates_and_executes_async_run() {
         "schedule",
     )
     .await;
-    publish_workflow_extension(
+    publish_workflow_extension_with_enabled(
         &app,
         &cookie,
         &csrf,
         &application_id,
-        "tick-scheduled-workflow",
-        "async",
-        json!([]),
+        WorkflowExtensionPublishOptions::new(
+            "tick-scheduled-workflow",
+            "async",
+            json!([]),
+            false,
+        ),
     )
     .await;
 
@@ -876,6 +879,17 @@ async fn workflow_schedule_tick_creates_and_executes_async_run() {
         })
         .collect::<Vec<_>>();
     assert_eq!(dispatched.len(), 1);
+    let (run_mode, api_key_id, compatibility_mode): (String, Option<Uuid>, Option<String>) =
+        sqlx::query_as(
+            "select run_mode, api_key_id, compatibility_mode from flow_runs where id = $1",
+        )
+        .bind(dispatched[0].run_id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(run_mode, "workflow_schedule_run");
+    assert_eq!(api_key_id, None);
+    assert_eq!(compatibility_mode, None);
 
     let outcome = crate::workers::workflow_schedule::consume_one_workflow_schedule_run(
         state.clone(),

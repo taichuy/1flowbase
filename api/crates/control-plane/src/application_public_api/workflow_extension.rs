@@ -1,29 +1,33 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
-    mapping::{WorkflowExtensionAccessPolicy, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode},
+    mapping::{
+        WorkflowExtensionAccessPolicy, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
+    },
     published_workflow_operation::{
         build_published_workflow_operations, resolve_published_workflow_operation,
         PublishedWorkflowOperationError,
     },
-    run_service::{
-        public_compiled_plan_start_node_id, public_freeze_workflow_run_input_environment,
-        ApplicationPublishedFlowRunRepository, WorkflowRunTriggerContext,
+    run_service::{public_compiled_plan_start_node_id, ApplicationPublishedFlowRunRepository},
+    workflow_invocation::{
+        InvokeWorkflowCommand, WorkflowInvocationError, WorkflowInvocationService,
+        WorkflowInvocationTrigger,
     },
-    workflow_start_http_inputs::{build_workflow_start_node_input_payload, parse_workflow_start_http_inputs},
+    workflow_start_http_inputs::{
+        build_workflow_start_node_input_payload, parse_workflow_start_http_inputs,
+    },
 };
 use crate::{
     application_public_api::ensure_application_view_permission,
     auth::ApiKeyService,
-    flow_run_title::build_flow_run_title,
     ports::{
         ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-        ApplicationRepository, AuthRepository, CreateFlowRunInput,
+        ApplicationRepository, AuthRepository,
     },
 };
 
@@ -158,82 +162,46 @@ where
         if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Extension) {
             return Err(WorkflowExtensionRunError::TriggerTypeMismatch);
         }
-        let extension = publication.mapping_snapshot.extension.as_ref().ok_or(WorkflowExtensionRunError::InvalidMapping)?;
-
-        let compiled_plan = self
-            .repository
-            .get_application_compiled_plan(publication.compiled_plan_id)
-            .await
-            .map_err(|_| WorkflowExtensionRunError::ApplicationNotPublished)?
-            .ok_or(WorkflowExtensionRunError::ApplicationNotPublished)?;
-        let start_node_id = public_compiled_plan_start_node_id(&compiled_plan.plan)
+        let extension = publication
+            .mapping_snapshot
+            .extension
+            .as_ref()
             .ok_or(WorkflowExtensionRunError::InvalidMapping)?;
-        let environment_variables = self
-            .repository
-            .list_application_environment_variables(workspace_id, operation.application_id)
-            .await
-            .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
 
         let mut parameters = command.parameters;
         parameters.path = path;
         let start_contract = parse_workflow_start_http_inputs(&publication.document_snapshot)
             .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let node_input_payload = build_workflow_start_node_input_payload(&start_contract, &parameters)
-            .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let input_payload = public_freeze_workflow_run_input_environment(
-            node_input_payload,
-            &environment_variables,
-            WorkflowRunTriggerContext::Extension,
-        )
-        .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let started_at = OffsetDateTime::now_utc();
-        let created = self
-            .repository
-            .create_published_flow_run(&CreateFlowRunInput {
+        let node_input_payload =
+            build_workflow_start_node_input_payload(&start_contract, &parameters)
+                .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
+        let response_mode = extension.response_mode;
+        let invoked = WorkflowInvocationService::new(self.repository.clone())
+            .invoke(InvokeWorkflowCommand {
                 actor_user_id,
-                application_id: operation.application_id,
-                flow_id: publication.flow_id,
-                flow_draft_id: compiled_plan.draft_id,
-                compiled_plan_id: publication.compiled_plan_id,
-                debug_session_id: String::new(),
-                flow_schema_version: publication.flow_schema_version.clone(),
-                document_hash: publication.document_hash.clone(),
-                run_mode: domain::FlowRunMode::WorkflowHttpRun,
-                target_node_id: None,
-                title: build_flow_run_title(None, &format!("Workflow HTTP {}", operation.route_template)),
-                status: domain::FlowRunStatus::Queued,
-                input_payload: input_payload.clone(),
-                started_at,
-                api_key_id,
-                publication_version_id: Some(publication.id),
-                external_user: None,
-                external_conversation_id: None,
-                external_trace_id: Some(format!("workflow-http:{}", operation.interface_id)),
-                compatibility_mode: Some("workflow_http_v1".to_string()),
-                idempotency_key: None,
+                publication: publication.clone(),
+                node_input_payload,
+                trigger: WorkflowInvocationTrigger::Http {
+                    api_key_id,
+                    interface_id: operation.interface_id.clone(),
+                    route_template: operation.route_template.clone(),
+                    method: command.method.as_str().to_string(),
+                    principal: operation.access_policy.as_str().to_string(),
+                    response_mode: response_mode.as_str().to_string(),
+                },
             })
             .await
-            .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let flow_run = created.flow_run;
-
-        self.repository
-            .append_published_run_event(&crate::ports::AppendRunEventInput {
-                flow_run_id: flow_run.id,
-                node_run_id: None,
-                event_type: "workflow_extension_run_started".to_string(),
-                payload: json!({
-                    "api_key_id": api_key_id,
-                    "principal": operation.access_policy.as_str(),
-                    "application_id": operation.application_id,
-                    "publication_version_id": publication.id,
-                    "trigger_source": "workflow_extension",
-                    "route_template": operation.route_template,
-                    "method": command.method.as_str(),
-                    "response_mode": extension.response_mode.as_str(),
-                }),
-            })
-            .await
-            .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
+            .map_err(|error| match error {
+                WorkflowInvocationError::CompiledPlanUnavailable => {
+                    WorkflowExtensionRunError::ApplicationNotPublished
+                }
+                WorkflowInvocationError::InvalidInvocation(_) => {
+                    WorkflowExtensionRunError::InvalidMapping
+                }
+            })?;
+        let flow_run = invoked.flow_run;
+        let start_node_id = public_compiled_plan_start_node_id(&invoked.compiled_plan.plan)
+            .ok_or(WorkflowExtensionRunError::InvalidMapping)?;
 
         Ok(WorkflowExtensionRunResult {
             id: flow_run.id,
@@ -241,13 +209,15 @@ where
             api_key_id,
             publication_version_id: publication.id,
             status: flow_run.status,
-            response_mode: extension.response_mode,
-            sync_timeout_ms: workflow_sync_timeout_ms(&compiled_plan.plan, &start_node_id),
-            node_input_payload: input_payload,
+            response_mode,
+            sync_timeout_ms: workflow_sync_timeout_ms(
+                &invoked.compiled_plan.plan,
+                &start_node_id,
+            ),
+            node_input_payload: flow_run.input_payload.clone(),
             created_at: flow_run.created_at,
         })
     }
-
 }
 
 fn map_operation_error(error: PublishedWorkflowOperationError) -> WorkflowExtensionRunError {

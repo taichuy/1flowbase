@@ -4,6 +4,7 @@ import {
   Button,
   Form,
   Input,
+  InputNumber,
   Radio,
   Select,
   Space,
@@ -139,7 +140,7 @@ export function ApplicationFormModal({
   const orchestrationQuery = useQuery({
     queryKey: orchestrationQueryKey(applicationId),
     queryFn: () => fetchOrchestrationState(applicationId),
-    enabled: open && isExtension,
+    enabled: open && (isExtension || isSchedule),
     retry: false
   });
 
@@ -587,6 +588,37 @@ export function ApplicationFormModal({
               >
                 <Input />
               </Form.Item>
+              {extensionContract.requestFields
+                .filter((field) =>
+                  ['string', 'number', 'boolean'].includes(field.valueType)
+                )
+                .map((field) => (
+                  <Form.Item
+                    key={field.key}
+                    label={`${field.label} · ${field.valueType}`}
+                    name={['schedule_input_payload', field.key]}
+                    rules={[
+                      {
+                        required:
+                          field.required && field.defaultValue === undefined
+                      }
+                    ]}
+                  >
+                    {field.valueType === 'number' ? (
+                      <InputNumber style={{ width: '100%' }} />
+                    ) : field.valueType === 'boolean' ? (
+                      <Select
+                        allowClear
+                        options={[
+                          { value: true, label: 'true' },
+                          { value: false, label: 'false' }
+                        ]}
+                      />
+                    ) : (
+                      <Input placeholder={field.placeholder} />
+                    )}
+                  </Form.Item>
+                ))}
             </>
           ) : null}
 

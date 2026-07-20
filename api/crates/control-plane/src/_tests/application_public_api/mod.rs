@@ -169,6 +169,40 @@ fn application_public_api_code_js_dependency_document(flow_id: Uuid) -> serde_js
     })
 }
 
+fn workflow_schedule_start_contract_document() -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": "1flowbase.flow/v2",
+        "graph": {
+            "nodes": [{
+                "id": "node-workflow-start",
+                "type": "workflow_start",
+                "config": {
+                    "input_fields": [
+                        {
+                            "key": "customer_id",
+                            "valueType": "string",
+                            "required": true,
+                            "source": "path"
+                        },
+                        {
+                            "key": "attempts",
+                            "valueType": "number",
+                            "defaultValue": 3,
+                            "source": "query"
+                        },
+                        {
+                            "key": "enabled",
+                            "valueType": "boolean",
+                            "source": "body"
+                        }
+                    ]
+                }
+            }],
+            "edges": []
+        }
+    })
+}
+
 #[derive(Default)]
 struct RecordingTaskQueue {
     enqueued: Mutex<Vec<(String, serde_json::Value, Option<String>)>>,
@@ -1456,11 +1490,15 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
             actor_user_id: actor_user_id(),
             application_id: application.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: true,
+            api_enabled: false,
         })
         .await
         .unwrap();
-    service
+    repository.set_active_publication_document_snapshot(
+        application.id,
+        workflow_schedule_start_contract_document(),
+    );
+    let schedule_trigger = service
         .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
             actor_user_id: actor_user_id(),
             application_id: application.id,
@@ -1468,9 +1506,8 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
             cron: "0 9 * * *".into(),
             timezone: "UTC".into(),
             input_payload: serde_json::json!({
-                "node-workflow-start": { "customer_id": "C-42" },
-                "sys": { "user_id": "spoofed" },
-                "trigger": { "type": "spoofed" }
+                "customer_id": "C-42",
+                "enabled": "true"
             }),
         })
         .await
@@ -1482,7 +1519,7 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         .dispatch_due_schedule(
             DispatchWorkflowScheduleCommand {
                 application_id: application.id,
-                scheduled_at,
+                scheduled_at: scheduled_at + Duration::seconds(20),
             },
             Some(&task_queue),
         )
@@ -1504,18 +1541,24 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
 
     assert_eq!(dispatched.status, domain::FlowRunStatus::Queued);
     assert_eq!(dispatched.task_id.as_deref(), Some("task-1"));
-    assert_eq!(stored.run_mode, domain::FlowRunMode::PublishedApiRun);
+    assert_eq!(stored.run_mode, domain::FlowRunMode::WorkflowScheduleRun);
+    assert_eq!(stored.api_key_id, None);
     assert_eq!(
         stored.external_trace_id.as_deref(),
-        Some(format!("workflow-schedule:{}", application.id).as_str())
+        Some(format!("workflow-schedule:{}", schedule_trigger.id).as_str())
     );
-    assert_eq!(
-        stored.compatibility_mode.as_deref(),
-        Some("workflow_schedule_v1")
-    );
+    assert_eq!(stored.compatibility_mode, None);
     assert_eq!(
         stored.input_payload["node-workflow-start"]["customer_id"],
         serde_json::json!("C-42")
+    );
+    assert_eq!(
+        stored.input_payload["node-workflow-start"]["attempts"],
+        serde_json::json!(3)
+    );
+    assert_eq!(
+        stored.input_payload["node-workflow-start"]["enabled"],
+        serde_json::json!(true)
     );
     assert_eq!(
         stored.input_payload["trigger"],
@@ -1526,6 +1569,19 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         })
     );
     assert!(stored.input_payload.get("sys").is_none());
+    let schedule_event = repository
+        .run_events(dispatched.run_id)
+        .into_iter()
+        .find(|event| event.event_type == "workflow_schedule_run_enqueued")
+        .expect("schedule invocation should append its trigger event");
+    assert_eq!(
+        schedule_event.payload["trigger_id"],
+        serde_json::json!(schedule_trigger.id.to_string())
+    );
+    assert_eq!(
+        schedule_event.payload["operation_id"],
+        serde_json::json!(format!("workflow_schedule:{}", schedule_trigger.id))
+    );
     assert_eq!(enqueued.len(), 1);
     assert_eq!(enqueued[0].0, WORKFLOW_SCHEDULE_RUN_QUEUE);
     assert_eq!(
@@ -1566,6 +1622,58 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
     assert_eq!(duplicate.run_id, dispatched.run_id);
     assert_eq!(duplicate.task_id, None);
     assert_eq!(enqueued_after_duplicate.len(), 1);
+}
+
+#[tokio::test]
+async fn workflow_schedule_dispatch_skips_invalid_typed_start_defaults() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Invalid Defaults");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Schedule);
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: false,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(
+        application.id,
+        workflow_schedule_start_contract_document(),
+    );
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "* * * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({ "customer_id": "C-42", "enabled": "yes" }),
+        })
+        .await
+        .unwrap();
+
+    let outcome = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at: time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome,
+        WorkflowScheduleDispatchOutcome::Skipped {
+            reason: "invalid_input_defaults",
+        }
+    );
+    assert_eq!(repository.flow_run_count(), 0);
 }
 
 #[test]

@@ -473,6 +473,13 @@ describe('ApplicationManagementPanel', () => {
       name: '编辑应用信息'
     });
     const cron = await within(drawer).findByDisplayValue('0 9 * * 1-5');
+    const customerId = await within(drawer).findByRole('textbox', {
+      name: 'Customer ID · string'
+    });
+    expect(
+      within(drawer).queryByText(/body · customer_id/)
+    ).not.toBeInTheDocument();
+    fireEvent.change(customerId, { target: { value: 'C-42' } });
     fireEvent.change(cron, { target: { value: '0 10 * * 1-5' } });
     fireEvent.click(within(drawer).getByRole('button', { name: '保存修改' }));
 
@@ -485,7 +492,7 @@ describe('ApplicationManagementPanel', () => {
           enabled: false,
           cron: '0 10 * * 1-5',
           timezone: 'Asia/Shanghai',
-          input_payload: {}
+          input_payload: { customer_id: 'C-42' }
         },
         'csrf-123'
       );

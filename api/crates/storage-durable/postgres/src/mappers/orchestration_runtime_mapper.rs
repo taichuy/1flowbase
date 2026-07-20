@@ -761,6 +761,7 @@ pub fn parse_flow_run_mode(value: &str) -> Result<domain::FlowRunMode> {
         "debug_flow_run" => Ok(domain::FlowRunMode::DebugFlowRun),
         "published_api_run" => Ok(domain::FlowRunMode::PublishedApiRun),
         "workflow_http_run" => Ok(domain::FlowRunMode::WorkflowHttpRun),
+        "workflow_schedule_run" => Ok(domain::FlowRunMode::WorkflowScheduleRun),
         _ => Err(anyhow!("unknown flow run mode: {value}")),
     }
 }

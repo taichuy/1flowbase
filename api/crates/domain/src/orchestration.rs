@@ -11,6 +11,7 @@ pub enum FlowRunMode {
     DebugFlowRun,
     PublishedApiRun,
     WorkflowHttpRun,
+    WorkflowScheduleRun,
 }
 
 impl FlowRunMode {
@@ -20,6 +21,7 @@ impl FlowRunMode {
             Self::DebugFlowRun => "debug_flow_run",
             Self::PublishedApiRun => "published_api_run",
             Self::WorkflowHttpRun => "workflow_http_run",
+            Self::WorkflowScheduleRun => "workflow_schedule_run",
         }
     }
 }

@@ -873,7 +873,9 @@ where
             .ok_or_else(|| anyhow!("flow run not found"))?;
         if !matches!(
             flow_run.run_mode,
-            domain::FlowRunMode::PublishedApiRun | domain::FlowRunMode::WorkflowHttpRun
+            domain::FlowRunMode::PublishedApiRun
+                | domain::FlowRunMode::WorkflowHttpRun
+                | domain::FlowRunMode::WorkflowScheduleRun
         ) {
             return Err(ControlPlaneError::InvalidInput("run_mode").into());
         }
@@ -1500,7 +1502,9 @@ where
     ) {
         if !matches!(
             flow_run.run_mode,
-            domain::FlowRunMode::PublishedApiRun | domain::FlowRunMode::WorkflowHttpRun
+            domain::FlowRunMode::PublishedApiRun
+                | domain::FlowRunMode::WorkflowHttpRun
+                | domain::FlowRunMode::WorkflowScheduleRun
         ) {
             return;
         }

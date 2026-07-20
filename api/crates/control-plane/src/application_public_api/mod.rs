@@ -13,6 +13,7 @@ pub mod published_workflow_operation;
 pub mod publications;
 pub mod run_service;
 pub mod workflow_extension;
+pub mod workflow_invocation;
 pub mod workflow_schedule;
 pub mod workflow_start_http_inputs;
 
