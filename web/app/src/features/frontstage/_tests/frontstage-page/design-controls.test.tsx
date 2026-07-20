@@ -101,17 +101,15 @@ vi.mock('../../api/page-tabs', () => pageTabsApi);
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
 const PLUGIN_CODE_TEMPLATE = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  id: 'plugin-template',
-  title: 'Plugin Template',
-  initialState: {},
-  async render() {
-    return Text({ children: 'Plugin template ready' });
-  }
-});
+async function main() {
+  return {
+    view: Text({ children: 'Plugin template ready' }),
+    outputs: {}
+  };
+}
+export default { main };
 `.trim();
 
 vi.setConfig({ testTimeout: SLOW_FRONTSTAGE_TEST_TIMEOUT });

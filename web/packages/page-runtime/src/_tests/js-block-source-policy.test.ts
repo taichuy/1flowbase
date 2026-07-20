@@ -3,14 +3,15 @@ import { describe, expect, test } from 'vitest';
 import { validateJsBlockSource } from '../index';
 
 const validBlockSkeleton = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Stack, Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  render() {
-    return Stack({ children: [Text({ children: 'Ready' })] });
-  }
-});
+async function main() {
+  return {
+    view: Stack({ children: [Text({ children: 'Ready' })] }),
+    outputs: {}
+  };
+}
+export default { main };
 `;
 
 describe('JS block source static policy', () => {
@@ -130,9 +131,12 @@ describe('JS block source static policy', () => {
     ['optional fetch', "await fetch?.('/api/private');"],
     ['fetch.call', "fetch.call(null, '/api/private');"],
     ['fetch.apply', "fetch.apply(null, ['/api/private']);"],
-    ['fetch.bind', "const boundFetch = fetch.bind(null);"],
+    ['fetch.bind', 'const boundFetch = fetch.bind(null);'],
     ['XMLHttpRequest', 'const xhr = new XMLHttpRequest();'],
-    ['optional XMLHttpRequest', "const xhr = XMLHttpRequest?.('/api/private');"],
+    [
+      'optional XMLHttpRequest',
+      "const xhr = XMLHttpRequest?.('/api/private');"
+    ],
     ['WebSocket', "const socket = new WebSocket('wss://example.com');"],
     ['WebSocket.call', "WebSocket.call(null, 'wss://example.com');"],
     ['sendBeacon', "navigator.sendBeacon('/track');"],
@@ -166,7 +170,10 @@ describe('JS block source static policy', () => {
 
   test.each([
     ['constructor call', "''.sub.constructor('return globalThis')();"],
-    ['computed constructor call', "''.sub['constructor']('return globalThis')();"],
+    [
+      'computed constructor call',
+      "''.sub['constructor']('return globalThis')();"
+    ],
     ['prototype access', 'const proto = Text.prototype;'],
     ['computed prototype access', "const proto = Text['prototype'];"],
     ['__proto__ access', 'const proto = ({}).__proto__;'],

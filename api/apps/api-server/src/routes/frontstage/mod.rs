@@ -293,6 +293,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/write-grants",
+            console_post(
+                callable_interfaces::issue_frontstage_callable_write_grant,
+                Authenticated,
+            ),
+        )
+        .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
             console_post(
                 callable_interfaces::dispatch_frontstage_callable_interface,

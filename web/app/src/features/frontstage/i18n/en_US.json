@@ -254,7 +254,6 @@
     "state": "State",
     "status": "Status",
     "stop": "stop",
-    "structured_configuration": "Block settings",
     "structured_configuration_description": "Set the block title, description, and display height.",
     "synced": "Synced",
     "template": "Template",

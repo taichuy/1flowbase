@@ -22,7 +22,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
-import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
+import {
+  WindowWorkspaceProvider,
+  useOptionalWindowWorkspace,
+  useWindowWorkspace
+} from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
+import {
+  closeWindowWorkspaceEntry,
+  type WindowWorkspaceRect
+} from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
 import { useFrontstageCallableInterfaces } from '../../hooks/use-frontstage-callable-interfaces';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
@@ -95,6 +103,20 @@ const studioSections: Array<{
 ];
 
 export function FrontstageJsxStudioDrawer({
+  ...props
+}: FrontstageJsxStudioDrawerProps) {
+  const sharedWindowWorkspace = useOptionalWindowWorkspace();
+  if (sharedWindowWorkspace) {
+    return <FrontstageJsxStudioWindow {...props} />;
+  }
+  return (
+    <WindowWorkspaceProvider>
+      <FrontstageJsxStudioWindow {...props} />
+    </WindowWorkspaceProvider>
+  );
+}
+
+function FrontstageJsxStudioWindow({
   block,
   pageBlocks = [],
   catalogEntry,
@@ -108,15 +130,9 @@ export function FrontstageJsxStudioDrawer({
   tabId,
   workspaceId
 }: FrontstageJsxStudioDrawerProps) {
+  const windowWorkspace = useWindowWorkspace();
   const [activeSection, setActiveSection] =
     useState<FrontstageJsxStudioSection>(initialSection);
-  const [windowRect, setWindowRect] = useState<WindowWorkspaceRect>(() => ({
-    left: 120,
-    top: 64,
-    width: 1080,
-    height: 760
-  }));
-  const [maximized, setMaximized] = useState(false);
   const [mobile, setMobile] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const callableInterfaces = useFrontstageCallableInterfaces(workspaceId);
@@ -135,6 +151,39 @@ export function FrontstageJsxStudioDrawer({
     pageId,
     codeRef: block.codeRef
   });
+  const mainWindowId = `frontstage-jsx-studio:${block.codeRef}`;
+  const initialWindowRect: WindowWorkspaceRect = {
+    left: 120,
+    top: 64,
+    width: 1080,
+    height: 760
+  };
+
+  useEffect(() => {
+    if (!open) {
+      windowWorkspace.close(mainWindowId);
+      return;
+    }
+    windowWorkspace.open({
+      id: mainWindowId,
+      owner: `frontstage:${pageId}:${tabId ?? 'tab'}`,
+      parent_id: null,
+      rect: initialWindowRect,
+      dirty
+    });
+    return () => windowWorkspace.close(mainWindowId);
+  }, [
+    mainWindowId,
+    open,
+    pageId,
+    tabId,
+    windowWorkspace.close,
+    windowWorkspace.open
+  ]);
+
+  useEffect(() => {
+    windowWorkspace.setDirty(mainWindowId, dirty);
+  }, [dirty, mainWindowId, windowWorkspace.setDirty]);
 
   useEffect(() => {
     if (open) {
@@ -146,12 +195,21 @@ export function FrontstageJsxStudioDrawer({
     const updateViewportMode = () => {
       const nextMobile = window.innerWidth <= 600;
       setMobile(nextMobile);
-      if (nextMobile) setMaximized(true);
     };
     updateViewportMode();
     window.addEventListener('resize', updateViewportMode);
     return () => window.removeEventListener('resize', updateViewportMode);
   }, []);
+
+  const windowEntry = windowWorkspace.state.windows.find(
+    (entry) => entry.id === mainWindowId
+  );
+
+  useEffect(() => {
+    if (mobile && windowEntry && !windowEntry.maximized) {
+      windowWorkspace.toggleMaximized(mainWindowId, viewportRect());
+    }
+  }, [mainWindowId, mobile, windowEntry, windowWorkspace.toggleMaximized]);
 
   const projection = useMemo(
     () =>
@@ -233,14 +291,23 @@ export function FrontstageJsxStudioDrawer({
       : runPanel;
 
   const requestClose = () => {
-    if (!dirty) {
+    const closing = closeWindowWorkspaceEntry(
+      windowWorkspace.state,
+      mainWindowId
+    ).closed;
+    const hasDirtyWindow = closing.some((entry) => entry.dirty);
+    const finishClose = () => {
+      windowWorkspace.close(mainWindowId);
       onClose();
+    };
+    if (!hasDirtyWindow) {
+      finishClose();
       return;
     }
     Modal.confirm({
       title: i18nText('frontstage', 'auto.unsaved_close_title'),
       content: i18nText('frontstage', 'auto.unsaved_close_description'),
-      onOk: onClose
+      onOk: finishClose
     });
   };
   const viewportRect = (): WindowWorkspaceRect => ({
@@ -251,24 +318,29 @@ export function FrontstageJsxStudioDrawer({
   });
 
   if (!open) return null;
+  if (!windowEntry) return null;
 
   return (
     <WindowWorkspaceWindow
-      active
+      active={
+        windowEntry.z_index ===
+        Math.max(...windowWorkspace.state.windows.map((entry) => entry.z_index))
+      }
       title={i18nText('frontstage', 'auto.jsx_studio')}
       testId={`frontstage-jsx-studio-${block.codeRef}`}
       className="frontstage-jsx-studio frontstage-jsx-studio--window"
       bodyClassName="frontstage-jsx-studio__drawer-body"
       dragHandleSelector="[data-window-drag-handle='true']"
-      initialRect={() => (mobile ? viewportRect() : windowRect)}
-      rect={maximized ? viewportRect() : windowRect}
+      initialRect={() => windowEntry.rect}
+      rect={windowEntry.rect}
       minWidth={320}
       minHeight={320}
       resizeLabel={() => i18nText('frontstage', 'auto.resize_jsx_studio')}
-      onActivate={() => undefined}
-      onRectChange={(nextRect) => {
-        if (!maximized) setWindowRect(nextRect);
-      }}
+      zIndex={1050 + windowEntry.z_index}
+      onActivate={() => windowWorkspace.activate(mainWindowId)}
+      onRectChange={(nextRect) =>
+        windowWorkspace.setRect(mainWindowId, nextRect)
+      }
     >
       <header
         className="frontstage-jsx-studio__window-header"
@@ -297,13 +369,21 @@ export function FrontstageJsxStudioDrawer({
           </Button>
           <Button
             aria-label={
-              maximized
+              windowEntry.maximized
                 ? i18nText('frontstage', 'auto.restore_window')
                 : i18nText('frontstage', 'auto.maximize_window')
             }
             disabled={mobile}
-            icon={maximized ? <CompressOutlined /> : <FullscreenOutlined />}
-            onClick={() => setMaximized((value) => !value)}
+            icon={
+              windowEntry.maximized ? (
+                <CompressOutlined />
+              ) : (
+                <FullscreenOutlined />
+              )
+            }
+            onClick={() =>
+              windowWorkspace.toggleMaximized(mainWindowId, viewportRect())
+            }
           />
           <Button
             aria-label={i18nText('frontstage', 'auto.close')}
@@ -346,8 +426,16 @@ export function FrontstageJsxStudioDrawer({
           ))}
         </nav>
 
-        {activeSection === 'code' ? null : (
-          <aside className="frontstage-jsx-studio__resource-panel">
+        <aside
+          className="frontstage-jsx-studio__resource-panel"
+          style={{ display: activeSection === 'code' ? 'none' : undefined }}
+        >
+          <div
+            style={{ display: activeSection === 'run' ? undefined : 'none' }}
+          >
+            {resolvedRunPanel}
+          </div>
+          {activeSection !== 'run' && activeSection !== 'code' ? (
             <JsxStudioResourcePanel
               block={block}
               pageBlocks={pageBlocks}
@@ -357,11 +445,10 @@ export function FrontstageJsxStudioDrawer({
               onInsertCode={insertCode}
               onSaveBlock={onSaveBlock}
               projection={projection}
-              runPanel={resolvedRunPanel}
               section={activeSection}
             />
-          </aside>
-        )}
+          ) : null}
+        </aside>
 
         <main className="frontstage-jsx-studio__editor-panel">
           {permissionDenied ? <PermissionDeniedState /> : null}

@@ -12,14 +12,12 @@ import {
 import type { RestrictedBlockRunPlan } from '../../lib/restricted-block-loader';
 
 const validSource = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  render() {
-    return Text({ children: 'Ready' });
-  }
-});
+async function main() {
+  return { view: Text({ children: 'Ready' }), outputs: {} };
+}
+export default { main };
 `;
 
 class FakeWorker implements JsBlockWorkerLike {
@@ -182,6 +180,7 @@ describe('restricted block runtime host controller', () => {
       requestId: 'restricted-block:block-1:code-1',
       blockId: 'block-1',
       view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {},
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,
@@ -205,6 +204,7 @@ describe('restricted block runtime host controller', () => {
         }
       ],
       rejections: [],
+      interfaceCalls: [],
       mediatorState: {
         eventChains: {
           'restricted-block:block-1:code-1::restricted-block:block-1:code-1': 1
@@ -423,6 +423,7 @@ describe('restricted block runtime host controller', () => {
         primitive: 'Stack',
         children: [{ primitive: 'Text', props: { children: 'Ready' } }]
       },
+      outputs: {},
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,
@@ -447,6 +448,7 @@ describe('restricted block runtime host controller', () => {
         }
       ],
       rejections: [],
+      interfaceCalls: [],
       mediatorState: {
         eventChains: {
           'restricted-block:block-1:code-1::restricted-block:block-1:code-1': 1

@@ -659,7 +659,9 @@ function reduceLogMessage(
     requestId: requestIdResult.value,
     level,
     message: logMessageResult.value.slice(0, MAX_WORKER_LOG_MESSAGE_LENGTH),
-    data: sanitizeWorkerValue(message.data)
+    ...(hasOwn(message, 'data')
+      ? { data: sanitizeWorkerValue(message.data) }
+      : {})
   };
 
   return updateRequest(state, {

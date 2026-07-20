@@ -1,6 +1,7 @@
 import {
   dispatchFrontstageCallable,
   getDefaultApiBaseUrl,
+  issueFrontstageCallableWriteGrant,
   type ApiBaseUrlLocation,
   type FrontstageCallableRequest
 } from '@1flowbase/api-client';
@@ -8,9 +9,11 @@ import type {
   JsBlockHostEffectHandler,
   JsBlockHostInterfaceEffect
 } from '@1flowbase/page-runtime';
+import type { FrontstageBlockInterfaceBinding } from './page-document';
 
 export interface FrontstageJsBlockCapabilityClient {
   dispatchFrontstageCallable: typeof dispatchFrontstageCallable;
+  issueFrontstageCallableWriteGrant: typeof issueFrontstageCallableWriteGrant;
 }
 
 export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
@@ -18,26 +21,34 @@ export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
   pageId: string;
   tabId: string;
   csrfToken?: string | null;
-  resolveOperationId(requestId: string, bindingAlias: string): string | null;
+  resolveBinding(
+    requestId: string,
+    bindingAlias: string
+  ): { blockId: string; binding: FrontstageBlockInterfaceBinding } | null;
   baseUrl?: string;
   locationLike?: ApiBaseUrlLocation;
   client?: FrontstageJsBlockCapabilityClient;
 }
 
 const defaultClient: FrontstageJsBlockCapabilityClient = {
-  dispatchFrontstageCallable
+  dispatchFrontstageCallable,
+  issueFrontstageCallableWriteGrant
 };
-const draftRunWriteAuthorizations = new Map<string, Set<string>>();
 
-export function authorizeFrontstageDraftRunWrites(
-  runId: string,
-  operationIds: readonly string[]
-): void {
-  draftRunWriteAuthorizations.set(runId, new Set(operationIds));
+interface DraftRunAuthorization {
+  draftHash: string;
+  grantsByAlias: Map<string, string>;
 }
 
-export function revokeFrontstageDraftRunWrites(runId: string): void {
-  draftRunWriteAuthorizations.delete(runId);
+export interface FrontstageJsBlockCapabilityHandlers {
+  interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  prepareDraftRun(input: {
+    blockId: string;
+    runId: string;
+    draftHash: string;
+    bindings: readonly FrontstageBlockInterfaceBinding[];
+  }): Promise<void>;
+  revokeDraftRun(runId: string): void;
 }
 
 export function getFrontstageJsBlockCapabilityApiBaseUrl(
@@ -52,43 +63,72 @@ export function getFrontstageJsBlockCapabilityApiBaseUrl(
 
 export function createFrontstageJsBlockCapabilityHandlers(
   options: CreateFrontstageJsBlockCapabilityHandlersOptions
-): {
-  interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
-} {
+): FrontstageJsBlockCapabilityHandlers {
   const client = options.client ?? defaultClient;
   const baseUrl =
     options.baseUrl ??
     getFrontstageJsBlockCapabilityApiBaseUrl(options.locationLike);
+  const draftRuns = new Map<string, DraftRunAuthorization>();
 
   return {
+    async prepareDraftRun({ blockId, runId, draftHash, bindings }) {
+      const csrfToken = requireCsrfToken(options.csrfToken);
+      const grants = await Promise.all(
+        bindings
+          .filter((binding) => binding.risk_level === 'high')
+          .map(async (binding) => {
+            const grant = await client.issueFrontstageCallableWriteGrant(
+              options.workspaceId,
+              options.pageId,
+              options.tabId,
+              {
+                block_id: blockId,
+                binding_alias: binding.alias,
+                schema_digest: binding.schema_digest,
+                run_id: runId,
+                draft_hash: draftHash
+              },
+              csrfToken,
+              baseUrl
+            );
+            return [binding.alias, grant.grant_token] as const;
+          })
+      );
+      draftRuns.set(runId, {
+        draftHash,
+        grantsByAlias: new Map(grants)
+      });
+    },
+    revokeDraftRun(runId) {
+      draftRuns.delete(runId);
+    },
     interface: (effect) => {
-      const operationId = options.resolveOperationId(
+      const resolved = options.resolveBinding(
         effect.requestId,
         effect.bindingAlias
       );
-      if (!operationId) {
+      if (!resolved) {
         throw new Error(
           `Interface binding is not registered: ${effect.bindingAlias}.`
         );
       }
+      const draftRun = draftRuns.get(effect.requestId);
       return client.dispatchFrontstageCallable(
         options.workspaceId,
         options.pageId,
         options.tabId,
         {
-          operation_id: operationId,
+          block_id: resolved.blockId,
+          binding_alias: resolved.binding.alias,
+          schema_digest: resolved.binding.schema_digest,
+          run_id: effect.requestId,
+          draft_hash: draftRun?.draftHash ?? 'runtime',
           ...(effect.request === undefined
             ? {}
             : { request: effect.request as FrontstageCallableRequest }),
-          ...(draftRunWriteAuthorizations
-            .get(effect.requestId)
-            ?.has(operationId)
+          ...(draftRun?.grantsByAlias.has(resolved.binding.alias)
             ? {
-                run_authorization: {
-                  run_id: effect.requestId,
-                  operation_id: operationId,
-                  confirmed: true
-                }
+                write_grant: draftRun.grantsByAlias.get(resolved.binding.alias)
               }
             : {})
         },

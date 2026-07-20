@@ -32,6 +32,8 @@ export interface WindowWorkspaceWindowProps {
   onRectChange?: (rect: WindowWorkspaceRect) => void;
   onInteractionEnd?: (rect: WindowWorkspaceRect) => void;
   rect?: WindowWorkspaceRect;
+  resizeClassName?: (edge: WindowWorkspaceResizeEdge) => string | undefined;
+  resizeEdges?: readonly WindowWorkspaceResizeEdge[];
   resizeLabel: (edge: WindowWorkspaceResizeEdge) => string;
   testId: string;
   title: string;
@@ -51,6 +53,8 @@ export function WindowWorkspaceWindow({
   onInteractionEnd,
   onRectChange,
   rect,
+  resizeClassName,
+  resizeEdges = ['left', 'right', 'top', 'bottom'],
   resizeLabel,
   testId,
   title,
@@ -173,14 +177,20 @@ export function WindowWorkspaceWindow({
       >
         {children}
       </div>
-      {(['left', 'right', 'top', 'bottom'] as const).map((edge) => (
+      {resizeEdges.map((edge) => (
         <div
           key={edge}
           aria-label={resizeLabel(edge)}
           aria-orientation={
             edge === 'left' || edge === 'right' ? 'vertical' : 'horizontal'
           }
-          className={`window-workspace-window__resize window-workspace-window__resize--${edge} application-logs-floating-window__resize application-logs-floating-window__resize--${edge}`}
+          className={[
+            'window-workspace-window__resize',
+            `window-workspace-window__resize--${edge}`,
+            resizeClassName?.(edge)
+          ]
+            .filter(Boolean)
+            .join(' ')}
           role="separator"
           onMouseDown={(event) => resize(edge, event)}
         />

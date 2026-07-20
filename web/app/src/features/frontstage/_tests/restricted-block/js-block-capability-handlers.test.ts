@@ -8,7 +8,11 @@ import {
 
 function createClient(): FrontstageJsBlockCapabilityClient {
   return {
-    dispatchFrontstageCallable: vi.fn().mockResolvedValue({ items: [] })
+    dispatchFrontstageCallable: vi.fn().mockResolvedValue({ items: [] }),
+    issueFrontstageCallableWriteGrant: vi.fn().mockResolvedValue({
+      grant_token: 'grant-1',
+      expires_at: '2026-07-20T00:00:00Z'
+    })
   };
 }
 
@@ -22,9 +26,18 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       csrfToken: 'csrf-1',
       baseUrl: 'http://api.test',
       client,
-      resolveOperationId: (_requestId, alias) =>
+      resolveBinding: (_requestId, alias) =>
         alias === 'listConversations'
-          ? 'list_application_conversations_records'
+          ? {
+              blockId: 'block-1',
+              binding: {
+                alias,
+                operation_id: 'list_application_conversations_records',
+                schema_digest: 'digest-1',
+                scope: 'frontstage_page_tab',
+                risk_level: 'low'
+              }
+            }
           : null
     });
     const effect: JsBlockHostInterfaceEffect = {
@@ -41,7 +54,11 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       'page-1',
       'tab-1',
       {
-        operation_id: 'list_application_conversations_records',
+        block_id: 'block-1',
+        binding_alias: 'listConversations',
+        schema_digest: 'digest-1',
+        run_id: 'restricted-block:block-1:code-1',
+        draft_hash: 'runtime',
         request: { query: { page: 1 } }
       },
       'csrf-1',
@@ -55,7 +72,7 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       pageId: 'page-1',
       tabId: 'tab-1',
       csrfToken: 'csrf-1',
-      resolveOperationId: () => null
+      resolveBinding: () => null
     });
     expect(() =>
       handlers.interface({
@@ -65,5 +82,68 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
         bindingAlias: 'unbound'
       })
     ).toThrow('Interface binding is not registered: unbound.');
+  });
+
+  test('uses a server-issued grant once for the exact high-risk draft binding', async () => {
+    const client = createClient();
+    const binding = {
+      alias: 'savePage',
+      operation_id: 'save_frontstage_tab_document',
+      schema_digest: 'digest-2',
+      scope: 'frontstage_page_tab',
+      risk_level: 'high'
+    };
+    const handlers = createFrontstageJsBlockCapabilityHandlers({
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      csrfToken: 'csrf-1',
+      baseUrl: 'http://api.test',
+      client,
+      resolveBinding: () => ({ blockId: 'block-1', binding })
+    });
+
+    await handlers.prepareDraftRun({
+      blockId: 'block-1',
+      runId: 'run-1',
+      draftHash: 'draft-1',
+      bindings: [binding]
+    });
+    await handlers.interface({
+      type: 'interface',
+      requestId: 'run-1',
+      effectId: 'effect-1',
+      bindingAlias: 'savePage',
+      request: { body: { payload: {} } }
+    });
+
+    expect(client.issueFrontstageCallableWriteGrant).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'tab-1',
+      {
+        block_id: 'block-1',
+        binding_alias: 'savePage',
+        schema_digest: 'digest-2',
+        run_id: 'run-1',
+        draft_hash: 'draft-1'
+      },
+      'csrf-1',
+      'http://api.test'
+    );
+    expect(client.dispatchFrontstageCallable).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'tab-1',
+      expect.objectContaining({
+        block_id: 'block-1',
+        binding_alias: 'savePage',
+        run_id: 'run-1',
+        draft_hash: 'draft-1',
+        write_grant: 'grant-1'
+      }),
+      'csrf-1',
+      'http://api.test'
+    );
   });
 });

@@ -254,7 +254,6 @@
     "state": "状态数据",
     "status": "状态",
     "stop": "停止",
-    "structured_configuration": "区块设置",
     "structured_configuration_description": "设置区块标题、描述和展示高度。",
     "synced": "已同步",
     "template": "模板",

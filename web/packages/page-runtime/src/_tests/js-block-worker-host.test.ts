@@ -7,14 +7,12 @@ import {
 } from '../index';
 
 const validSource = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  render() {
-    return Text({ children: 'Ready' });
-  }
-});
+async function main() {
+  return { view: Text({ children: 'Ready' }), outputs: {} };
+}
+export default { main };
 `;
 
 class FakeWorker implements JsBlockWorkerLike {
@@ -95,9 +93,10 @@ describe('JS block worker host adapter', () => {
     worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'request-1',
-      schema: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {}
     });
 
     expect(worker.messages).toEqual([
@@ -256,12 +255,11 @@ describe('JS block worker host adapter', () => {
       effectBridge: {
         policy: {
           allowedEvents: ['record.saved'],
-          allowedQueries: ['records'],
-          allowedDataOperations: ['query']
+          allowedInterfaces: ['records']
         },
         getContext: () => ({ tickId: 'tick-1' }),
         handlers: {
-          data: () => ({ id: 'record-1', title: 'Ready' })
+          interface: () => ({ id: 'record-1', title: 'Ready' })
         }
       }
     });
@@ -270,11 +268,11 @@ describe('JS block worker host adapter', () => {
     worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'data',
+      type: 'interface',
       requestId: 'request-1',
       effectId: 'effect-data',
-      queryId: 'records',
-      params: { where: { id: 'record-1' } }
+      bindingAlias: 'records',
+      request: { query: { id: 'record-1' } }
     });
     worker.emitMessage({
       direction: 'worker_to_host',
@@ -320,9 +318,10 @@ describe('JS block worker host adapter', () => {
     host.dispose('request-1');
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'request-1',
-      schema: { primitive: 'Text' }
+      view: { primitive: 'Text' },
+      outputs: {}
     });
 
     expect(host.getState().requests['request-1']).toMatchObject({

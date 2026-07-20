@@ -8,14 +8,18 @@ import {
 } from '../index';
 
 const validSource = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  render() {
-    return Text({ children: 'Ready' });
-  }
-});
+async function main() {
+  return {
+    view: Text({ children: 'Ready' }),
+    outputs: {}
+  };
+}
+
+export default {
+  main
+};
 `;
 
 function createRunRequest(
@@ -52,15 +56,16 @@ function run(
   });
 }
 
-function renderedMessage(requestId: string) {
+function completedMessage(requestId: string) {
   return {
     direction: 'worker_to_host',
-    type: 'rendered',
+    type: 'completed',
     requestId,
-    schema: {
+    view: {
       primitive: 'Text',
       props: { children: 'Ready' }
-    }
+    },
+    outputs: {}
   };
 }
 
@@ -77,9 +82,10 @@ describe('JS block worker runtime protocol state machine', () => {
 
     const ready = reduceJsBlockRuntimeSession(pending, {
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
+      outputs: {},
       requestId: 'request-1',
-      schema: {
+      view: {
         primitive: 'Text',
         props: { children: 'Ready' }
       }
@@ -91,7 +97,7 @@ describe('JS block worker runtime protocol state machine', () => {
       result: {
         ok: true,
         requestId: 'request-1',
-        schema: {
+        view: {
           primitive: 'Text',
           props: { children: 'Ready' }
         }
@@ -130,13 +136,11 @@ describe('JS block worker runtime protocol state machine', () => {
       createJsBlockRuntimeSession(),
       createRunRequest({
         source: `
-import { defineBlock } from '@1flowbase/block-sdk';
-
-const block = defineBlock({
-  render() {
-    return { primitive: 'Text' };
+const block = {
+  async main() {
+    return { view: { primitive: 'Text' }, outputs: {} };
   }
-});
+};
 `
       })
     );
@@ -173,7 +177,7 @@ const block = defineBlock({
 
     const afterLateRendered = reduceJsBlockRuntimeSession(
       failed,
-      renderedMessage('request-1')
+      completedMessage('request-1')
     );
 
     expect(afterLateRendered.requests['request-1']).toMatchObject({
@@ -191,9 +195,10 @@ const block = defineBlock({
 
     const failed = reduceJsBlockRuntimeSession(pending, {
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
+      outputs: {},
       requestId: 'request-1',
-      schema: {
+      view: {
         primitive: 'Unknown'
       }
     });
@@ -251,7 +256,10 @@ const block = defineBlock({
   test('applies timeout and runtime error messages only to the current requestId', () => {
     const request1 = createRunRequest({ requestId: 'request-1' });
     const request2 = createRunRequest({ requestId: 'request-2' });
-    const pendingTwo = run(run(createJsBlockRuntimeSession(), request1), request2);
+    const pendingTwo = run(
+      run(createJsBlockRuntimeSession(), request1),
+      request2
+    );
 
     const staleTimeout = reduceJsBlockRuntimeSession(pendingTwo, {
       direction: 'host_to_worker',
@@ -332,7 +340,7 @@ const block = defineBlock({
 
     const afterLateRendered = reduceJsBlockRuntimeSession(
       timedOut,
-      renderedMessage('request-1')
+      completedMessage('request-1')
     );
 
     expect(afterLateRendered.requests['request-1']).toMatchObject({
@@ -361,7 +369,7 @@ const block = defineBlock({
 
     const afterLateRendered = reduceJsBlockRuntimeSession(
       runtimeFailed,
-      renderedMessage('request-1')
+      completedMessage('request-1')
     );
 
     expect(afterLateRendered.requests['request-1']).toMatchObject({
@@ -393,7 +401,7 @@ const block = defineBlock({
 
     const afterLateRendered = reduceJsBlockRuntimeSession(
       disposed,
-      renderedMessage('request-1')
+      completedMessage('request-1')
     );
     const afterLateLog = reduceJsBlockRuntimeSession(afterLateRendered, {
       direction: 'worker_to_host',
@@ -409,39 +417,33 @@ const block = defineBlock({
       name: 'late-event',
       payload: { ok: true }
     });
-    const afterLateData = reduceJsBlockRuntimeSession(afterLateEvent, {
+    const afterLateInterface = reduceJsBlockRuntimeSession(afterLateEvent, {
       direction: 'worker_to_host',
-      type: 'data',
+      type: 'interface',
       requestId: 'request-1',
-      queryId: 'late.query',
-      params: { ok: true }
-    });
-    const afterLateAction = reduceJsBlockRuntimeSession(afterLateData, {
-      direction: 'worker_to_host',
-      type: 'action',
-      requestId: 'request-1',
-      actionId: 'late-action',
-      payload: { ok: true }
+      effectId: 'late-effect',
+      bindingAlias: 'lateInterface',
+      request: { ok: true }
     });
 
-    expect(afterLateAction.requests['request-1']).toMatchObject({
+    expect(afterLateInterface.requests['request-1']).toMatchObject({
       status: 'disposed',
       logs: [],
       effects: []
     });
     expect(
-      afterLateAction.rejections.filter(
+      afterLateInterface.rejections.filter(
         (rejection) =>
           rejection.code === 'request_not_pending' &&
           rejection.requestId === 'request-1'
       )
-    ).toHaveLength(5);
+    ).toHaveLength(4);
   });
 
   test('rejects late runtime errors after a request is ready without overwriting the ready result', () => {
     const ready = reduceJsBlockRuntimeSession(
       run(createJsBlockRuntimeSession(), createRunRequest()),
-      renderedMessage('request-1')
+      completedMessage('request-1')
     );
     const readyResult = ready.requests['request-1']?.result;
 
@@ -484,14 +486,15 @@ const block = defineBlock({
 
     const malformed = reduceJsBlockRuntimeSession(missingRequest, {
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
+      outputs: {},
       requestId: 'missing-schema'
     });
 
     expect(malformed.rejections).toContainEqual(
       expect.objectContaining({
         code: 'invalid_message',
-        path: 'message.schema'
+        path: 'message.view'
       })
     );
   });

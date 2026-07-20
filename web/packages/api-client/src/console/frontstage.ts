@@ -158,13 +158,26 @@ export interface FrontstageCallableRequest {
 }
 
 export interface DispatchFrontstageCallableInput {
-  operation_id: string;
+  block_id: string;
+  binding_alias: string;
+  schema_digest: string;
+  run_id: string;
+  draft_hash: string;
   request?: FrontstageCallableRequest;
-  run_authorization?: {
-    run_id: string;
-    operation_id: string;
-    confirmed: boolean;
-  };
+  write_grant?: string;
+}
+
+export interface IssueFrontstageCallableWriteGrantInput {
+  block_id: string;
+  binding_alias: string;
+  schema_digest: string;
+  run_id: string;
+  draft_hash: string;
+}
+
+export interface FrontstageCallableWriteGrant {
+  grant_token: string;
+  expires_at: string;
 }
 
 export function listFrontstageCallableInterfaces(
@@ -188,6 +201,23 @@ export function dispatchFrontstageCallable<T = unknown>(
 ): Promise<T> {
   return apiFetch<T>({
     path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function issueFrontstageCallableWriteGrant(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: IssueFrontstageCallableWriteGrantInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<FrontstageCallableWriteGrant> {
+  return apiFetch<FrontstageCallableWriteGrant>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/write-grants`,
     method: 'POST',
     body: input,
     csrfToken,

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
+import { WindowWorkspaceProvider } from '../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import type { FrontstageRestrictedBlockRuntimeSession } from '../lib/frontstage-restricted-block-runtime-host';
 import type { FrontstageBlockInstance } from '../lib/page-document';
@@ -121,11 +122,31 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     );
     expect(screen.queryByText('Runtime limits')).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '运行' }));
+    fireEvent.click(screen.getByRole('button', { name: /运\s*行/ }));
     await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
     expect(screen.getByText('预览')).toBeInTheDocument();
     expect(screen.getByText('控制台')).toBeInTheDocument();
     expect(screen.getByText('接口调用')).toBeInTheDocument();
     expect(screen.getByText('问题')).toBeInTheDocument();
+  });
+
+  test('AC-010 opens Draft Run surfaces as independent child windows in Studio', () => {
+    render(
+      <WindowWorkspaceProvider>
+        <JsBlockTrialPanel
+          block={block}
+          catalogEntry={catalog}
+          code="async function main(){return {view:{primitive:'Text'},outputs:{}}} export default {main};"
+          contextSnapshot={{ pageId: 'page-1' }}
+          limits={{ timeoutMs: 1_000 }}
+          runtimeSessionFactory={() => createSession()}
+        />
+      </WindowWorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /预\s*览/ }));
+    fireEvent.click(screen.getByRole('button', { name: '控制台' }));
+    expect(screen.getByRole('dialog', { name: '预览' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '控制台' })).toBeInTheDocument();
   });
 });

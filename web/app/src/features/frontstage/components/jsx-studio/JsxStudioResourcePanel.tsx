@@ -578,7 +578,7 @@ function ConfigurationPanel({
   return (
     <div className="frontstage-jsx-studio__resource-scroll">
       <ResourceHeading
-        title={i18nText('frontstage', 'auto.structured_configuration')}
+        title={i18nText('frontstage', 'auto.configuration')}
         description={i18nText(
           'frontstage',
           'auto.structured_configuration_description'

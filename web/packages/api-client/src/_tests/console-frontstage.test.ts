@@ -8,6 +8,7 @@ import {
   deleteFrontstagePageTab,
   deleteFrontstagePageNode,
   dispatchFrontstageCallable,
+  issueFrontstageCallableWriteGrant,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
   listFrontstagePageTabs,
@@ -82,7 +83,11 @@ describe('console-frontstage client', () => {
         'page-1',
         'tab-1',
         {
-          operation_id: 'list_application_conversations_records',
+          block_id: 'block-1',
+          binding_alias: 'listConversations',
+          schema_digest: 'digest-1',
+          run_id: 'run-1',
+          draft_hash: 'draft-1',
           request: { query: { filter: 'status=active' } }
         },
         'csrf-123'
@@ -91,8 +96,41 @@ describe('console-frontstage client', () => {
       path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/callable-interfaces/dispatch',
       method: 'POST',
       body: {
-        operation_id: 'list_application_conversations_records',
+        block_id: 'block-1',
+        binding_alias: 'listConversations',
+        schema_digest: 'digest-1',
+        run_id: 'run-1',
+        draft_hash: 'draft-1',
         request: { query: { filter: 'status=active' } }
+      },
+      csrfToken: 'csrf-123'
+    });
+  });
+
+  test('issues a server-owned single-use write grant for one draft binding', async () => {
+    await expect(
+      issueFrontstageCallableWriteGrant(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        {
+          block_id: 'block-1',
+          binding_alias: 'savePage',
+          schema_digest: 'digest-2',
+          run_id: 'run-1',
+          draft_hash: 'draft-1'
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/callable-interfaces/write-grants',
+      method: 'POST',
+      body: {
+        block_id: 'block-1',
+        binding_alias: 'savePage',
+        schema_digest: 'digest-2',
+        run_id: 'run-1',
+        draft_hash: 'draft-1'
       },
       csrfToken: 'csrf-123'
     });
@@ -261,12 +299,7 @@ describe('console-frontstage client', () => {
     {
       name: 'tab deletion',
       request: () =>
-        deleteFrontstagePageTab(
-          'workspace-1',
-          'page-1',
-          'tab-1',
-          'csrf-123'
-        ),
+        deleteFrontstagePageTab('workspace-1', 'page-1', 'tab-1', 'csrf-123'),
       expected: {
         path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
         method: 'DELETE',

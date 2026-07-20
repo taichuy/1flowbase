@@ -4,276 +4,127 @@ import type { BlockContext } from '@1flowbase/page-protocol';
 
 import {
   evaluateJsBlockSource,
-  renderJsBlockSource,
+  runJsBlockSource,
   type JsBlockInjectedModuleMap
 } from '../index';
 
-const blockSkeleton = `
-import { defineBlock } from '@1flowbase/block-sdk';
-import { Card, Space, Typography } from '@1flowbase/block-renderer/antd-facade';
+const source = `
+import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  async render(ctx) {
-    return Card({
-      children: Space({
-        children: [
-          Typography.Text({ children: ctx.props.title }),
-          ctx.state.error
-            ? Typography.Text({ children: ctx.state.error })
-            : null
-        ]
-      })
-    });
-  }
-});
+async function main(ctx) {
+  return {
+    view: Text({ children: ctx.props.title }),
+    outputs: { title: ctx.props.title }
+  };
+}
+
+export default { main };
 `;
 
-function createContext(
-  overrides: Partial<BlockContext> = {}
-): BlockContext {
+function modules(
+  overrides: JsBlockInjectedModuleMap = {}
+): JsBlockInjectedModuleMap {
   return {
-    currentUser: { id: 'user-1', displayName: 'Ada' },
-    workspace: { id: 'workspace-1', name: 'Workspace' },
-    application: { id: 'app-1', name: 'Application' },
-    page: { id: 'page-1', route: '/frontstage/workspace-1/page-1' },
-    params: {},
-    props: { title: 'Ready' },
-    state: { error: null },
-    patch: vi.fn(),
-    data: {
-      query: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn()
+    '@1flowbase/block-renderer/antd-facade': {
+      Text(input: { children?: unknown }) {
+        return { primitive: 'Text', props: { children: input.children } };
+      }
     },
-    actions: {
-      invoke: vi.fn()
-    },
-    events: {
-      emit: vi.fn()
-    },
-    theme: { mode: 'light', tokens: {} },
-    ui: { locale: 'zh-CN', density: 'comfortable' },
     ...overrides
   };
 }
 
-function createModules(
-  overrides: JsBlockInjectedModuleMap = {}
-): JsBlockInjectedModuleMap {
-  const text = (input: { children?: unknown; props?: { children?: unknown } }) => ({
-    primitive: 'Text',
-    props: { children: input.props?.children ?? input.children }
-  });
-  const stack = (input: { children?: unknown }) => ({
-    primitive: 'Stack',
-    children: Array.isArray(input.children)
-      ? input.children.filter(Boolean)
-      : input.children
-        ? [input.children]
-        : []
-  });
-
+function context(): BlockContext {
   return {
-    '@1flowbase/block-sdk': {
-      defineBlock(definition: unknown) {
-        return definition;
-      }
-    },
-    '@1flowbase/block-renderer/antd-facade': {
-      Card: stack,
-      Space: stack,
-      Typography: {
-        Text: text
-      },
-      Text: text
-    },
-    ...overrides
+    currentUser: { id: 'user-1', displayName: 'Ada' },
+    workspace: { id: 'workspace-1' },
+    application: { id: 'application-1' },
+    page: { id: 'page-1', route: '/demo' },
+    inputs: {},
+    params: {},
+    props: { title: 'Ready' },
+    state: {},
+    patch: vi.fn(),
+    interfaces: { call: vi.fn() },
+    events: { emit: vi.fn() },
+    theme: { mode: 'light', tokens: {} },
+    ui: { locale: 'en_US' }
   };
 }
 
 describe('JS block source evaluator', () => {
-  test('evaluates and renders a transformed blank JS block skeleton through injected modules', async () => {
-    const view = await renderJsBlockSource({
-      source: blockSkeleton,
-      modules: createModules(),
-      context: createContext()
-    });
-
-    expect(view).toMatchObject({
+  test('evaluates BlockModule.main and returns a validated BlockResult', async () => {
+    await expect(
+      runJsBlockSource({ source, modules: modules(), context: context() })
+    ).resolves.toMatchObject({
       ok: true,
-      schema: {
-        primitive: 'Stack',
-        children: [
-          {
-            primitive: 'Stack',
-            children: [
-              {
-                primitive: 'Text',
-                props: { children: 'Ready' }
-              }
-            ]
-          }
-        ]
+      result: {
+        view: { primitive: 'Text', props: { children: 'Ready' } },
+        outputs: { title: 'Ready' }
       }
     });
   });
 
-  test('evaluates a compiled source object without re-transforming it', () => {
-    const first = evaluateJsBlockSource({
-      source: `
-import { defineBlock } from '@1flowbase/block-sdk';
-
-export default defineBlock({
-  render() {
-    return { primitive: 'Text', props: { children: 'Ready' } };
-  }
-});
-`,
-      modules: createModules()
-    });
-
+  test('reuses a compiled source object without transforming it again', () => {
+    const first = evaluateJsBlockSource({ source, modules: modules() });
     expect(first.ok).toBe(true);
-    if (!first.ok) {
-      return;
-    }
-
+    if (!first.ok) return;
     const second = evaluateJsBlockSource({
       source: first.compiledSource,
-      modules: createModules()
+      modules: modules()
     });
-
     expect(second.ok).toBe(true);
-    if (!second.ok) {
-      return;
-    }
-    expect(second.compiledSource).toBe(first.compiledSource);
-    expect(second.block.render(createContext())).toEqual({
-      primitive: 'Text',
-      props: { children: 'Ready' }
-    });
+    if (second.ok) expect(second.compiledSource).toBe(first.compiledSource);
   });
 
-  test.each([
-    [
-      'missing block sdk module',
-      { '@1flowbase/block-sdk': undefined },
-      'modules.@1flowbase/block-sdk'
-    ],
-    [
-      'missing facade module',
-      { '@1flowbase/block-renderer/antd-facade': undefined },
-      'modules.@1flowbase/block-renderer/antd-facade'
-    ],
-    [
-      'missing defineBlock binding',
-      { '@1flowbase/block-sdk': {} },
-      'modules.@1flowbase/block-sdk.defineBlock'
-    ],
-    [
-      'missing facade binding',
-      { '@1flowbase/block-renderer/antd-facade': { Card: vi.fn(), Space: vi.fn() } },
-      'modules.@1flowbase/block-renderer/antd-facade.Typography'
-    ]
-  ] as const)(
-    'returns a stable runtime error for %s',
-    async (_label, moduleOverrides, path) => {
-      const view = await renderJsBlockSource({
-        source: blockSkeleton,
-        modules: createModules(moduleOverrides),
-        context: createContext()
-      });
-
-      expect(view).toMatchObject({
-        ok: false,
-        error: {
-          kind: 'runtime_error',
-          errors: [{ code: 'runtime_error', path }]
-        }
-      });
-    }
-  );
-
-  test('returns source policy failure when transform rejects the source', async () => {
-    const view = await renderJsBlockSource({
-      source: "import React from 'react';\nexport default {};",
-      modules: createModules(),
-      context: createContext()
-    });
-
-    expect(view).toMatchObject({
-      ok: false,
-      error: {
-        kind: 'source_policy_failed',
-        errors: [{ code: 'import_denied' }]
-      }
-    });
-  });
-
-  test('returns runtime_error when the default export is not a block definition', () => {
-    const result = evaluateJsBlockSource({
-      source: `
-import { defineBlock } from '@1flowbase/block-sdk';
-
-export default defineBlock({ title: 'Missing render' });
-`,
-      modules: createModules()
-    });
-
-    expect(result).toMatchObject({
+  test('fails closed when an imported facade binding is unavailable', () => {
+    expect(
+      evaluateJsBlockSource({
+        source,
+        modules: modules({
+          '@1flowbase/block-renderer/antd-facade': {}
+        })
+      })
+    ).toMatchObject({
       ok: false,
       error: {
         kind: 'runtime_error',
-        errors: [{ path: 'source.defaultExport' }]
+        errors: [{ path: 'modules.@1flowbase/block-renderer/antd-facade.Text' }]
       }
     });
   });
 
-  test('returns runtime_error when render throws', async () => {
-    const view = await renderJsBlockSource({
-      source: `
-import { defineBlock } from '@1flowbase/block-sdk';
-
-export default defineBlock({
-  render() {
-    throw new Error('render failed');
-  }
-});
-`,
-      modules: createModules(),
-      context: createContext()
-    });
-
-    expect(view).toMatchObject({
+  test('rejects a default export without main', () => {
+    expect(
+      evaluateJsBlockSource({ source: 'export default {};', modules: {} })
+    ).toMatchObject({
       ok: false,
-      error: {
-        kind: 'runtime_error',
-        errors: [{ path: 'runtime.render' }]
-      }
+      error: { errors: [{ path: 'source.defaultExport' }] }
     });
   });
 
-  test('returns schema_invalid when render returns an invalid UI schema', async () => {
-    const view = await renderJsBlockSource({
-      source: `
-import { defineBlock } from '@1flowbase/block-sdk';
-
-export default defineBlock({
-  render() {
-    return { primitive: 'Unknown' };
-  }
-});
-`,
-      modules: createModules(),
-      context: createContext()
-    });
-
-    expect(view).toMatchObject({
+  test('maps main failures and invalid BlockResult values to stable paths', async () => {
+    await expect(
+      runJsBlockSource({
+        source:
+          'async function main(){ throw new Error("boom"); } export default { main };',
+        modules: {},
+        context: context()
+      })
+    ).resolves.toMatchObject({
       ok: false,
-      error: {
-        kind: 'schema_invalid',
-        errors: [{ code: 'schema_invalid', path: 'root.primitive' }]
-      }
+      error: { errors: [{ path: 'runtime.main' }] }
+    });
+    await expect(
+      runJsBlockSource({
+        source:
+          'async function main(){ return { primitive: "Text" }; } export default { main };',
+        modules: {},
+        context: context()
+      })
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { errors: [{ path: 'runtime.result' }] }
     });
   });
 });

@@ -151,17 +151,15 @@ type RestrictedBlockRuntimeHostRequestStatus =
 function cloneSchemaValidationOptions(
   options: BlockUiSchemaValidationOptions
 ): BlockUiSchemaValidationOptions {
+  const { allowedActions, allowedDataPermissions, allowedEvents, ...base } =
+    options;
   return {
-    ...options,
-    allowedDataPermissions: options.allowedDataPermissions
-      ? [...options.allowedDataPermissions]
-      : undefined,
-    allowedActions: options.allowedActions
-      ? [...options.allowedActions]
-      : undefined,
-    allowedEvents: options.allowedEvents
-      ? [...options.allowedEvents]
-      : undefined
+    ...base,
+    ...(allowedDataPermissions
+      ? { allowedDataPermissions: [...allowedDataPermissions] }
+      : {}),
+    ...(allowedActions ? { allowedActions: [...allowedActions] } : {}),
+    ...(allowedEvents ? { allowedEvents: [...allowedEvents] } : {})
   };
 }
 

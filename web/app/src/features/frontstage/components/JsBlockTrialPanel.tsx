@@ -1,7 +1,9 @@
 import {
   createJsBlockDiagnostics,
+  hashJsBlockDraft,
   type JsBlockHostEffectHandlers
 } from '@1flowbase/page-runtime';
+import { CloseOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -17,10 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';
-import {
-  authorizeFrontstageDraftRunWrites,
-  revokeFrontstageDraftRunWrites
-} from '../lib/js-block-capability-handlers';
+import type { FrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import {
   createFrontstageRestrictedBlockRuntimeSession,
   type FrontstageRestrictedBlockRuntimeSession
@@ -34,6 +33,8 @@ import {
 import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
 import { BlockRuntimeDiagnostics } from './BlockRuntimeDiagnostics';
 import { RestrictedBlockRuntimePreview } from './RestrictedBlockRuntimePreview';
+import { WindowWorkspaceWindow } from '../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import { useOptionalWindowWorkspace } from '../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 
 export interface JsBlockTrialPanelProps {
   block: FrontstageBlockInstance;
@@ -41,6 +42,8 @@ export interface JsBlockTrialPanelProps {
   code: string;
   contextSnapshot: Record<string, unknown>;
   handlers?: JsBlockHostEffectHandlers;
+  onPrepareDraftRun?: FrontstageJsBlockCapabilityHandlers['prepareDraftRun'];
+  onRevokeDraftRun?: FrontstageJsBlockCapabilityHandlers['revokeDraftRun'];
   limits: RestrictedBlockLoaderLimits;
   onCodeChange?: (code: string) => void;
   onContextSnapshotChange?: (value: Record<string, unknown>) => void;
@@ -54,9 +57,12 @@ export function JsBlockTrialPanel({
   code,
   contextSnapshot,
   handlers,
+  onPrepareDraftRun,
+  onRevokeDraftRun,
   limits,
   runtimeSessionFactory = createFrontstageRestrictedBlockRuntimeSession
 }: JsBlockTrialPanelProps) {
+  const windowWorkspace = useOptionalWindowWorkspace();
   const sessionRef = useRef<FrontstageRestrictedBlockRuntimeSession | null>(
     null
   );
@@ -70,7 +76,7 @@ export function JsBlockTrialPanel({
     const session = sessionRef.current;
     sessionRef.current = null;
     if (session) {
-      revokeFrontstageDraftRunWrites(session.getSnapshot().requestId);
+      onRevokeDraftRun?.(session.getSnapshot().requestId);
       setSnapshot(session.dispose());
     }
   };
@@ -98,12 +104,28 @@ export function JsBlockTrialPanel({
       return;
     }
     const runId = `draft:${block.id}:${Date.now().toString(36)}`;
-    const writeOperations = (block.interfaces ?? [])
-      .filter((binding) => binding.risk_level === 'high')
-      .map((binding) => binding.operation_id);
-    if (writeOperations.length > 0 && !(await confirmWriteRun())) return;
-    if (writeOperations.length > 0) {
-      authorizeFrontstageDraftRunWrites(runId, writeOperations);
+    const bindings = block.interfaces ?? [];
+    if (
+      bindings.some((binding) => binding.risk_level === 'high') &&
+      !(await confirmWriteRun())
+    ) {
+      return;
+    }
+    try {
+      await onPrepareDraftRun?.({
+        blockId: block.id,
+        runId,
+        draftHash: hashJsBlockDraft(code),
+        bindings
+      });
+    } catch (error) {
+      setSnapshot(
+        createRejectedSnapshot(
+          block.id,
+          error instanceof Error ? error.message : String(error)
+        )
+      );
+      return;
     }
     const runPlan = {
       ...plan,
@@ -117,7 +139,7 @@ export function JsBlockTrialPanel({
     unsubscribeRef.current = session.subscribe((next) => {
       setSnapshot(next);
       if (next.status !== 'running' && next.status !== 'idle') {
-        revokeFrontstageDraftRunWrites(runId);
+        onRevokeDraftRun?.(runId);
       }
     });
     setSnapshot(session.run());
@@ -149,6 +171,60 @@ export function JsBlockTrialPanel({
     [block.id, contextSnapshot.pageId, contextSnapshot.tabId, snapshot?.error]
   );
 
+  const runPanels = [
+    {
+      key: 'preview',
+      label: i18nText('frontstage', 'auto.preview'),
+      content: snapshot ? (
+        <RestrictedBlockRuntimePreview snapshot={snapshot} />
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      )
+    },
+    {
+      key: 'console',
+      label: i18nText('frontstage', 'auto.console'),
+      content: <RunLogs snapshot={snapshot} />
+    },
+    {
+      key: 'variables',
+      label: i18nText('frontstage', 'auto.variables'),
+      content: (
+        <RunVariables snapshot={snapshot} contextSnapshot={contextSnapshot} />
+      )
+    },
+    {
+      key: 'interfaces',
+      label: i18nText('frontstage', 'auto.interface_calls'),
+      content: <RunInterfaceCalls snapshot={snapshot} />
+    },
+    {
+      key: 'problems',
+      label: i18nText('frontstage', 'auto.problems'),
+      content:
+        diagnostics.length > 0 ? (
+          <BlockRuntimeDiagnostics diagnostics={diagnostics} />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )
+    }
+  ] as const;
+  const mainWindowId = `frontstage-jsx-studio:${block.codeRef}`;
+  const openRunPanel = (key: string, index: number) => {
+    windowWorkspace?.open({
+      id: `${mainWindowId}:run:${key}`,
+      owner: mainWindowId,
+      parent_id: mainWindowId,
+      rect: {
+        left: 180 + index * 28,
+        top: 110 + index * 28,
+        width: 640,
+        height: 440
+      },
+      dirty: false
+    });
+  };
+
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <Space>
@@ -160,51 +236,76 @@ export function JsBlockTrialPanel({
         </Button>
         {snapshot ? <Tag>{snapshot.requestId}</Tag> : null}
       </Space>
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={[
-          {
-            key: 'preview',
-            label: i18nText('frontstage', 'auto.preview'),
-            children: snapshot ? (
-              <RestrictedBlockRuntimePreview snapshot={snapshot} />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            )
-          },
-          {
-            key: 'console',
-            label: i18nText('frontstage', 'auto.console'),
-            children: <RunLogs snapshot={snapshot} />
-          },
-          {
-            key: 'variables',
-            label: i18nText('frontstage', 'auto.variables'),
-            children: (
-              <RunVariables
-                snapshot={snapshot}
-                contextSnapshot={contextSnapshot}
-              />
-            )
-          },
-          {
-            key: 'interfaces',
-            label: i18nText('frontstage', 'auto.interface_calls'),
-            children: <RunInterfaceCalls snapshot={snapshot} />
-          },
-          {
-            key: 'problems',
-            label: i18nText('frontstage', 'auto.problems'),
-            children:
-              diagnostics.length > 0 ? (
-                <BlockRuntimeDiagnostics diagnostics={diagnostics} />
-              ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      {windowWorkspace ? (
+        <>
+          <Space wrap>
+            {runPanels.map((panel, index) => (
+              <Button
+                key={panel.key}
+                onClick={() => openRunPanel(panel.key, index)}
+              >
+                {panel.label}
+              </Button>
+            ))}
+          </Space>
+          {runPanels.map((panel) => {
+            const id = `${mainWindowId}:run:${panel.key}`;
+            const entry = windowWorkspace.state.windows.find(
+              (candidate) => candidate.id === id
+            );
+            if (!entry) return null;
+            const topZ = Math.max(
+              ...windowWorkspace.state.windows.map(
+                (candidate) => candidate.z_index
               )
-          }
-        ]}
-      />
+            );
+            return (
+              <WindowWorkspaceWindow
+                key={id}
+                active={entry.z_index === topZ}
+                className="frontstage-jsx-studio__run-window"
+                bodyClassName="frontstage-jsx-studio__run-window-body"
+                dragHandleSelector="[data-window-drag-handle='true']"
+                initialRect={() => entry.rect}
+                rect={entry.rect}
+                resizeLabel={(edge) => `${panel.label} ${edge}`}
+                testId={id}
+                title={panel.label}
+                zIndex={1050 + entry.z_index}
+                onActivate={() => windowWorkspace.activate(id)}
+                onRectChange={(rect) => windowWorkspace.setRect(id, rect)}
+              >
+                <header
+                  className="frontstage-jsx-studio__run-window-header"
+                  data-window-drag-handle="true"
+                >
+                  <Typography.Text strong>{panel.label}</Typography.Text>
+                  <Button
+                    aria-label={i18nText('frontstage', 'auto.close')}
+                    icon={<CloseOutlined />}
+                    size="small"
+                    type="text"
+                    onClick={() => windowWorkspace.close(id)}
+                  />
+                </header>
+                <div className="frontstage-jsx-studio__run-window-content">
+                  {panel.content}
+                </div>
+              </WindowWorkspaceWindow>
+            );
+          })}
+        </>
+      ) : (
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={runPanels.map((panel) => ({
+            key: panel.key,
+            label: panel.label,
+            children: panel.content
+          }))}
+        />
+      )}
     </Space>
   );
 }

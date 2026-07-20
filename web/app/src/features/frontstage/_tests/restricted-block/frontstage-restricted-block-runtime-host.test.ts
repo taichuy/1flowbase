@@ -15,14 +15,12 @@ import {
 import { getFrontstageRestrictedBlockWorkerUrl } from '../../lib/restricted-block-worker-factory';
 
 const validSource = `
-import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
-export default defineBlock({
-  render() {
-    return Text({ children: 'Ready' });
-  }
-});
+async function main() {
+  return { view: Text({ children: 'Ready' }), outputs: {} };
+}
+export default { main };
 `;
 
 class FakeWorker implements JsBlockWorkerLike {
@@ -161,16 +159,18 @@ describe('FrontStage restricted block runtime host factory', () => {
     host.run();
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      view: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {}
     });
 
     expect(snapshots).toMatchObject([
       { status: 'running' },
       {
         status: 'ready',
-        view: { primitive: 'Text', props: { children: 'Ready' } }
+        view: { primitive: 'Text', props: { children: 'Ready' } },
+        outputs: {}
       }
     ]);
   });
@@ -240,9 +240,10 @@ describe('FrontStage restricted block runtime host factory', () => {
     host.dispose();
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      view: { primitive: 'Text', props: { children: 'Late' } }
+      view: { primitive: 'Text', props: { children: 'Late' } },
+      outputs: {}
     });
 
     expect(snapshots).toMatchObject([
@@ -263,9 +264,10 @@ describe('FrontStage restricted block runtime host factory', () => {
     unsubscribe();
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      view: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {}
     });
     host.dispose();
 
@@ -298,20 +300,23 @@ describe('FrontStage restricted block runtime host factory', () => {
     host.run();
     worker.emitMessage({
       direction: 'worker_to_host',
-      type: 'rendered',
+      type: 'completed',
       requestId: 'restricted-block:block-1:code-1',
-      view: { primitive: 'Text', props: { children: 'Ready' } }
+      view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {}
     });
 
     expect(mutateFirstSnapshot).toHaveBeenCalledTimes(2);
     expect(secondSnapshots[1]).toMatchObject({
       status: 'ready',
       view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {},
       schemaValidationOptions: {}
     });
     expect(host.getSnapshot()).toMatchObject({
       status: 'ready',
       view: { primitive: 'Text', props: { children: 'Ready' } },
+      outputs: {},
       schemaValidationOptions: {}
     });
   });

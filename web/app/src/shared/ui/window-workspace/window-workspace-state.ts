@@ -102,6 +102,19 @@ export function setWindowWorkspaceDirty(
   };
 }
 
+export function setWindowWorkspaceRect(
+  state: WindowWorkspaceState,
+  id: string,
+  rect: WindowWorkspaceRect
+): WindowWorkspaceState {
+  return {
+    ...state,
+    windows: state.windows.map((window) =>
+      window.id === id ? { ...window, rect } : window
+    )
+  };
+}
+
 export function toggleWindowWorkspaceMaximized(
   state: WindowWorkspaceState,
   id: string,

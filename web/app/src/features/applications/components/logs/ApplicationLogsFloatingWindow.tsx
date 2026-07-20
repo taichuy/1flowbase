@@ -50,6 +50,10 @@ export function ApplicationLogsFloatingWindow({
       minHeight={minHeight}
       minWidth={minWidth}
       rect={rect}
+      resizeEdges={['left', 'right', 'bottom']}
+      resizeClassName={(edge) =>
+        `application-logs-floating-window__resize application-logs-floating-window__resize--${edge}`
+      }
       resizeLabel={(edge) => {
         if (edge === 'left') {
           return t('auto.adjust_width_from_left', { value1: title });

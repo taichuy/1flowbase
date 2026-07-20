@@ -195,16 +195,15 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             pageId: selectedPageId,
             tabId,
             csrfToken,
-            resolveOperationId: (requestId, bindingAlias) => {
+            resolveBinding: (requestId, bindingAlias) => {
               const blockId = requestId.split(':')[1];
               const block = displayedPageDocument?.blocks.find(
                 (candidate) => candidate.id === blockId
               );
-              return (
-                block?.interfaces?.find(
-                  (binding) => binding.alias === bindingAlias
-                )?.operation_id ?? null
+              const binding = block?.interfaces?.find(
+                (candidate) => candidate.alias === bindingAlias
               );
+              return block && binding ? { blockId: block.id, binding } : null;
             }
           })
         : undefined,
@@ -1373,6 +1372,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 code={code}
                 contextSnapshot={jsBlockTrialContextSnapshot}
                 handlers={jsBlockCapabilityHandlers}
+                onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
+                onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
                 limits={selectedBlockRuntimeLimits}
                 onCodeChange={onCodeChange}
                 onContextSnapshotChange={setJsBlockTrialContextSnapshot}
