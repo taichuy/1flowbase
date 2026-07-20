@@ -1,3 +1,4 @@
+import '@ant-design/v5-patch-for-react-19';
 import { ConfigProvider } from 'antd';
 import { StrictMode, useCallback, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -19,16 +20,19 @@ import { createFrontstagePageContentFixture } from '../frontstage-page-content-f
 const params = new URLSearchParams(window.location.search);
 const blockCount = Math.min(50, Math.max(1, Number(params.get('blocks')) || 10));
 const failingBlock = params.get('error') === '1';
-const infiniteBlock = params.get('infinite') === '1';
+const policyBlock = params.get('policy') === '1';
+const nonSettlingBlock = params.get('infinite') === '1';
 
 function createRunPlanItem(index: number): FrontstagePageCanvasRuntimeRunPlanReadyItem {
   const blockId = `runtime-fixture-${index + 1}`;
   const codeRef = `${blockId}-code`;
-  const source = infiniteBlock && index === 0
+  const source = policyBlock && index === 0
     ? `export default { render() { while (true) {} } };`
-    : failingBlock && index === 0
-      ? `export default { render() { throw new Error('Controlled fixture failure'); } };`
-      : `
+    : nonSettlingBlock && index === 0
+      ? `export default { async render() { await new Promise(() => {}); } };`
+      : failingBlock && index === 0
+        ? `export default { render() { throw new Error('Controlled fixture failure'); } };`
+        : `
 import { defineBlock } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 export default defineBlock({
@@ -169,6 +173,11 @@ function RuntimeOrchestrationFixture() {
   const failed = sessions.entries.filter(
     (entry) => entry.status === 'failed' || entry.status === 'timed_out' || entry.status === 'factory_failed'
   ).length;
+  const errorKinds = sessions.entries.flatMap((entry) =>
+    'snapshot' in entry && entry.snapshot.error
+      ? [entry.snapshot.error.kind]
+      : []
+  );
 
   return (
     <div style={{ padding: 16 }}>
@@ -179,6 +188,7 @@ function RuntimeOrchestrationFixture() {
         data-max-active={stats.maxActive}
         data-ready={ready}
         data-failed={failed}
+        data-error-kinds={errorKinds.join(',')}
         style={{ position: 'sticky', top: 0, zIndex: 100, background: '#fff', padding: 8 }}
       >
         created={stats.created} active={stats.active} max={stats.maxActive} ready={ready} failed={failed}
