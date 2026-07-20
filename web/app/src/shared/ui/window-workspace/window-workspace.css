@@ -1,0 +1,45 @@
+.window-workspace-window {
+  position: fixed;
+  overflow: hidden;
+}
+
+.window-workspace-window__body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.window-workspace-window__resize {
+  position: absolute;
+  z-index: 2;
+}
+
+.window-workspace-window__resize--left,
+.window-workspace-window__resize--right {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.window-workspace-window__resize--left {
+  left: 0;
+}
+.window-workspace-window__resize--right {
+  right: 0;
+}
+
+.window-workspace-window__resize--top,
+.window-workspace-window__resize--bottom {
+  right: 0;
+  left: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.window-workspace-window__resize--top {
+  top: 0;
+}
+.window-workspace-window__resize--bottom {
+  bottom: 0;
+}

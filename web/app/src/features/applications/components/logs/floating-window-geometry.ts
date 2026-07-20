@@ -1,9 +1,11 @@
-export type FloatingWindowRect = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
+import {
+  clamp,
+  clampWindowWorkspaceRect,
+  getWindowWorkspaceViewport
+} from '../../../../shared/ui/window-workspace/window-workspace-geometry';
+import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
+
+export type FloatingWindowRect = WindowWorkspaceRect;
 
 export const FLOATING_WINDOW_MARGIN = 8;
 export const DEFAULT_MIN_WIDTH = 360;
@@ -12,19 +14,10 @@ export const DEFAULT_MIN_HEIGHT = 320;
 const FLOATING_WINDOW_WIDTH_STORAGE_PREFIX =
   'applicationLogsFloatingWindowWidth';
 
-export function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
+export { clamp };
 
 export function getViewportSize() {
-  if (typeof window === 'undefined') {
-    return { width: 1280, height: 720 };
-  }
-
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight
-  };
+  return getWindowWorkspaceViewport();
 }
 
 export function clampRect(
@@ -32,32 +25,7 @@ export function clampRect(
   minWidth: number,
   minHeight: number
 ): FloatingWindowRect {
-  const viewport = getViewportSize();
-  const maxWidth = Math.max(
-    minWidth,
-    viewport.width - FLOATING_WINDOW_MARGIN * 2
-  );
-  const maxHeight = Math.max(
-    minHeight,
-    viewport.height - FLOATING_WINDOW_MARGIN * 2
-  );
-  const width = clamp(rect.width, minWidth, maxWidth);
-  const height = clamp(rect.height, minHeight, maxHeight);
-  const maxLeft = Math.max(
-    FLOATING_WINDOW_MARGIN,
-    viewport.width - width - FLOATING_WINDOW_MARGIN
-  );
-  const maxTop = Math.max(
-    FLOATING_WINDOW_MARGIN,
-    viewport.height - height - FLOATING_WINDOW_MARGIN
-  );
-
-  return {
-    left: clamp(rect.left, FLOATING_WINDOW_MARGIN, maxLeft),
-    top: clamp(rect.top, FLOATING_WINDOW_MARGIN, maxTop),
-    width,
-    height
-  };
+  return clampWindowWorkspaceRect(rect, minWidth, minHeight);
 }
 
 function getWidthStorageKey(testId: string) {
