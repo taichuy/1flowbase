@@ -78,6 +78,10 @@ function requireLoopbackUrl(value) {
 }
 
 function normalizeOptions(options) {
+  const artifactRoot = options.artifactRoot
+    ? requireString(options.artifactRoot, 'governance artifact root')
+    : path.resolve('tmp', 'test-governance', 'ai-gateway-concurrency');
+  if (!path.isAbsolute(artifactRoot)) fixtureError('governance artifact root must be absolute');
   return {
     databaseUrl: requirePostgresUrl(options.databaseUrl),
     apiServerBin: requireFile(options.apiServerBin, 'api-server binary', { executable: true }),
@@ -86,6 +90,7 @@ function normalizeOptions(options) {
     anthropicPackage: requireFile(options.anthropicPackage, 'official Anthropic package archive'),
     upstreamBaseUrl: requireLoopbackUrl(options.upstreamBaseUrl),
     readyFile: options.readyFile ? path.resolve(options.readyFile) : null,
+    artifactRoot,
   };
 }
 

@@ -139,6 +139,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       openaiPackage: inputs.openaiPackage,
       anthropicPackage: inputs.anthropicPackage,
       upstreamBaseUrl: mockEndpoints.httpBaseUrl,
+      artifactRoot: paths.root,
     });
     writeJson(paths.readyFile, fixture.result, 0o600);
     ready = readReadyManifest(paths.readyFile);

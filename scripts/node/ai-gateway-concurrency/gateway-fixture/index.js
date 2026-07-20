@@ -9,6 +9,7 @@ const { bootstrapGateway } = require('./bootstrap');
 const { OwnerHttpClient } = require('./http-owner');
 const { normalizeOptions } = require('./inputs');
 const { reserveLoopbackPort, spawnOwned, stopOwned, waitForHealth } = require('./process-owner');
+const { persistServiceLogs, redactServiceLog } = require('./service-logs');
 
 function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -66,12 +67,46 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
   const spawnProcess = dependencies.spawnOwned || spawnOwned;
   const health = dependencies.waitForHealth || waitForHealth;
   const stopProcess = dependencies.stopOwned || stopOwned;
+  const persistLogs = dependencies.persistServiceLogs || persistServiceLogs;
+  const removeScratch = dependencies.removeScratch || ((target) => fs.rmSync(target, { recursive: true, force: true }));
   const Client = dependencies.OwnerHttpClient || OwnerHttpClient;
   let apiProcess = null;
   let runnerProcess = null;
+  let rootPassword = null;
+  let providerSecretMasterKey = null;
+  let ownerClient = null;
+  let providers = null;
   let closed = false;
+  const fixtureSecrets = () => {
+    const databasePassword = (() => {
+      try { return new URL(options.databaseUrl).password; } catch { return ''; }
+    })();
+    const applicationKeys = providers ? [
+      providers.openai.api_key,
+      ...providers.anthropic.map((provider) => provider.api_key),
+    ] : [];
+    return [
+      options.databaseUrl,
+      databasePassword,
+      rootPassword,
+      providerSecretMasterKey,
+      ownerClient?.cookie,
+      'fixture-openai-token',
+      'fixture-anthropic-token',
+      ...applicationKeys,
+    ];
+  };
   const cleanup = async () => {
     let firstError = null;
+    try {
+      persistLogs({
+        artifactRoot: options.artifactRoot,
+        services: { 'api-server': apiProcess, 'plugin-runner': runnerProcess },
+        secrets: fixtureSecrets(),
+      });
+    } catch (error) {
+      firstError ||= error;
+    }
     for (const handle of [apiProcess, runnerProcess]) {
       try {
         await stopProcess(handle);
@@ -80,11 +115,14 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       }
     }
     try {
-      fs.rmSync(scratchRoot, { recursive: true, force: true });
+      removeScratch(scratchRoot);
     } catch (error) {
       firstError ||= error;
     }
-    if (firstError) throw firstError;
+    if (firstError) {
+      firstError.message = redactServiceLog(firstError.message, fixtureSecrets());
+      throw firstError;
+    }
   };
   try {
     const runnerPort = await reservePort();
@@ -101,7 +139,8 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     await health(pluginRunnerBaseUrl, 'plugin-runner');
 
     const rootAccount = `gateway_fixture_${crypto.randomBytes(4).toString('hex')}`;
-    const rootPassword = `Fixture-${crypto.randomBytes(18).toString('base64url')}`;
+    rootPassword = `Fixture-${crypto.randomBytes(18).toString('base64url')}`;
+    providerSecretMasterKey = crypto.randomBytes(32).toString('base64url');
     apiProcess = spawnProcess(options.apiServerBin, {
       ...scrubbedCredentials,
       API_ENV: 'development',
@@ -112,7 +151,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       API_PROVIDER_INSTALL_ROOT: path.join(scratchRoot, 'providers'),
       API_COOKIE_NAME: `gateway_fixture_${crypto.randomBytes(5).toString('hex')}`,
       API_COOKIE_SECURE: 'false',
-      API_PROVIDER_SECRET_MASTER_KEY: crypto.randomBytes(32).toString('base64url'),
+      API_PROVIDER_SECRET_MASTER_KEY: providerSecretMasterKey,
       BOOTSTRAP_WORKSPACE_NAME: 'Gateway Fixture Workspace',
       BOOTSTRAP_ROOT_ACCOUNT: rootAccount,
       BOOTSTRAP_ROOT_EMAIL: `${rootAccount}@example.invalid`,
@@ -124,8 +163,9 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     await health(gatewayBaseUrl, 'api-server');
 
     const client = new Client(gatewayBaseUrl, dependencies.fetchImpl || globalThis.fetch);
+    ownerClient = client;
     const model = 'gateway-fixture-model';
-    const providers = await bootstrapGateway(client, {
+    providers = await bootstrapGateway(client, {
       ...options,
       rootAccount,
       rootPassword,
@@ -177,6 +217,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     }
     const output = `${apiProcess?.output?.() || ''}${runnerProcess?.output?.() || ''}`.trim();
     if (output) error.message = `${error.message}; owned process output: ${output.slice(-4000)}`;
+    error.message = redactServiceLog(error.message, fixtureSecrets());
     throw error;
   }
 }

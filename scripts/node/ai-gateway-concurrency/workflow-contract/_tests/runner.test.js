@@ -92,7 +92,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       };
     },
     async createGatewayFixture(options) {
-      calls.push(['fixture:create', options.upstreamBaseUrl]);
+      calls.push(['fixture:create', options.upstreamBaseUrl, options.artifactRoot]);
       return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
     },
     async runCliSmoke(options) {
@@ -131,6 +131,8 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
     fixtureManifest().targets.openai,
   );
   assert.deepEqual(characterize.anthropicTargetPool, fixtureManifest().pools.anthropic);
+  const fixtureCreate = calls.find((call) => Array.isArray(call) && call[0] === 'fixture:create');
+  assert.equal(fixtureCreate[2], path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency'));
   assert.equal(result.targets.anthropic_pool.length, 2);
   assert.equal(JSON.stringify(result).includes('application-key'), false);
   assert.equal(fs.existsSync(path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/gateway-ready.json')), false);
@@ -156,6 +158,37 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
   assert.deepEqual(calls, ['fixture:close', 'mock:stop']);
   assert.equal(result.error.message.includes('anthropic-application-key-2'), false);
   assert.match(result.error.message, /<redacted>/u);
+});
+
+test('AC service logs: cleanup persistence failure makes the workflow and cleanup fail', async () => {
+  const inputs = fixtureInputs();
+  const calls = [];
+  const result = await runWorkflowContract(inputs, {
+    createMockUpstream() {
+      return {
+        async start() { return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },
+        snapshot() { return { active: 0, peak: 0, arrivals: 0, entries: [] }; },
+        async stop() { calls.push('mock:stop'); },
+      };
+    },
+    async createGatewayFixture() {
+      return {
+        result: fixtureManifest(),
+        async close() { calls.push('fixture:close'); throw new Error('service log persistence failed'); },
+      };
+    },
+    async runCliSmoke() { return { status: 'pass', codex_event_count: 1, claude_event_count: 1 }; },
+    async runGatewayCharacterize() {
+      return {
+        summary: { verdict: 'PASS', totals: { requests: 237, contractFailures: 0 } },
+        artifacts: { outputDirectory: path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency') },
+      };
+    },
+  });
+  assert.equal(result.status, 'fail');
+  assert.equal(result.cleanup.status, 'fail');
+  assert.match(result.error.message, /service log persistence failed/u);
+  assert.deepEqual(calls, ['fixture:close', 'mock:stop']);
 });
 
 test('AC-003 controlled negative: ready target tuple requires endpoint, key, and published model', () => {

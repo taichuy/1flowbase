@@ -34,7 +34,7 @@ function spawnOwned(binary, env, options = {}, spawnImpl = spawn) {
   });
   const stdout = capture(child.stdout);
   const stderr = capture(child.stderr);
-  return { child, output: () => `${stdout()}${stderr()}` };
+  return { child, stdout, stderr, output: () => `${stdout()}${stderr()}` };
 }
 
 async function waitForHealth(baseUrl, service, { fetchImpl = globalThis.fetch, timeoutMs = 30_000 } = {}) {

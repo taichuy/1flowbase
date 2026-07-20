@@ -8,6 +8,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { createGatewayFixture } = require('..');
+const { persistServiceLogs } = require('../service-logs');
 
 function fixtureFiles() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gateway-lifecycle-'));
@@ -25,6 +26,7 @@ function fixtureFiles() {
       openaiPackage: make('openai.1flowbasepkg'),
       anthropicPackage: make('anthropic.1flowbasepkg'),
       upstreamBaseUrl: 'http://127.0.0.1:9123',
+      artifactRoot: path.join(root, 'artifacts'),
     },
   };
 }
@@ -97,23 +99,52 @@ class FakeOwnerClient {
   }
 }
 
-function fakeDependencies({ OwnerClient = FakeOwnerClient } = {}) {
+function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persistServiceLogs } = {}) {
   const spawned = [];
   const stopped = [];
+  const events = [];
   const ports = [41001, 41002];
   return {
     spawned,
     stopped,
+    events,
     dependencies: {
       reserveLoopbackPort: async () => ports.shift(),
       spawnOwned(binary, env) {
-        const handle = { binary, env, child: { exitCode: null }, output: () => '' };
+        const output = [
+          env.API_DATABASE_URL,
+          env.BOOTSTRAP_ROOT_PASSWORD,
+          env.API_PROVIDER_SECRET_MASTER_KEY,
+          'gateway_session=fake',
+          'fixture-openai-token',
+          'fixture-anthropic-token',
+          'sk-application-canary',
+        ].filter(Boolean).join(' ');
+        const handle = {
+          binary,
+          env,
+          child: { exitCode: null },
+          stdout: () => output,
+          stderr: () => `stderr ${output}`,
+          output: () => output,
+        };
         spawned.push(handle);
         return handle;
       },
       waitForHealth: async () => {},
       async stopOwned(handle) {
-        if (handle) stopped.push(handle.binary);
+        if (handle) {
+          events.push(`stop:${path.basename(handle.binary)}`);
+          stopped.push(handle.binary);
+        }
+      },
+      persistServiceLogs(options) {
+        events.push('persist');
+        return persistLogs(options);
+      },
+      removeScratch(target) {
+        events.push('rm');
+        fs.rmSync(target, { recursive: true, force: true });
       },
       OwnerHttpClient: OwnerClient,
     },
@@ -181,6 +212,12 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
       'api-server',
       'plugin-runner',
     ]);
+    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'stop:plugin-runner', 'rm']);
+    for (const service of ['api-server', 'plugin-runner']) {
+      const log = fs.readFileSync(path.join(files.options.artifactRoot, `service-${service}.log`), 'utf8');
+      assert.match(log, /\[REDACTED\]/u);
+      assert.doesNotMatch(log, /postgres:\/\/|Fixture-|master|gateway_session=fake|fixture-(?:openai|anthropic)-token|sk-application-canary/u);
+    }
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
     await fixture?.close();
@@ -205,9 +242,29 @@ test('controlled bootstrap failure terminates both owned children and removes sc
       'api-server',
       'plugin-runner',
     ]);
+    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'stop:plugin-runner', 'rm']);
+    for (const service of ['api-server', 'plugin-runner']) {
+      assert.equal(fs.existsSync(path.join(files.options.artifactRoot, `service-${service}.log`)), true);
+    }
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('injected service-log write failure still stops both children, removes scratch, and rejects close', async () => {
+  const files = fixtureFiles();
+  const fake = fakeDependencies({ persistLogs() { throw new Error('controlled log write failure'); } });
+  let fixture;
+  try {
+    fixture = await createGatewayFixture(files.options, fake.dependencies);
+    const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
+    await assert.rejects(fixture.close(), /controlled log write failure/u);
+    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'stop:plugin-runner', 'rm']);
+    assert.equal(fs.existsSync(path.dirname(installRoot)), false);
+  } finally {
+    await fixture?.close().catch(() => {});
     fs.rmSync(files.root, { recursive: true, force: true });
   }
 });
