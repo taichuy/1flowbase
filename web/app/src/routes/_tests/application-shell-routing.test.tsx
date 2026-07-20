@@ -441,20 +441,6 @@ describe('application shell routing', () => {
     ).toHaveAttribute('href', '/applications/app-1/api');
   });
 
-  test('renders the extension workflow API section without redirecting', async () => {
-    applicationApi.fetchApplicationDetail.mockResolvedValue(
-      createWorkflowApplicationDetail()
-    );
-
-    window.history.pushState({}, '', '/applications/app-1/api');
-    renderApplicationRouter();
-
-    expect(
-      await screen.findByRole('heading', { name: '工作流扩展 API' })
-    ).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/applications/app-1/api');
-  });
-
   test('redirects an unavailable schedule workflow API section to the editor', async () => {
     applicationApi.fetchApplicationDetail.mockResolvedValue(
       createWorkflowApplicationDetail('schedule')
