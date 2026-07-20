@@ -511,8 +511,26 @@ function mockBatchEvidence(before, after, results) {
   };
 }
 
+function identifiedSamePoolMockPeakFailure(row, results, mockEvidence) {
+  if (
+    (row.topology ?? TOPOLOGY.SAME_POOL) !== TOPOLOGY.SAME_POOL
+    || !AUTHORIZED_HTTP_TRANSPORTS.includes(row.transport)
+    || results.length === 0
+  ) return null;
+  const applicationIds = results.map((result) => result.applicationId);
+  const providerInstanceIds = results.map((result) => result.providerInstanceId);
+  const identified = applicationIds.every((id) => typeof id === 'string' && id)
+    && providerInstanceIds.every((id) => typeof id === 'string' && id)
+    && new Set(applicationIds).size === 1
+    && new Set(providerInstanceIds).size === 1;
+  if (!identified || mockEvidence.mockArrivalPeak === 1) return null;
+  return `identified same-pool HTTP SSE row expected mock arrival peak 1, received ${mockEvidence.mockArrivalPeak ?? 'unavailable'}`;
+}
+
 function batchSummary({ row, results, durationMs, mockEvidence, overlapEvidence, durableFailures = [] }) {
   const failures = mockEvidence.contractFailures.map((message) => ({ clientNonce: null, message }));
+  const peakFailure = identifiedSamePoolMockPeakFailure(row, results, mockEvidence);
+  if (peakFailure) failures.push({ clientNonce: null, message: peakFailure });
   failures.push(...durableFailures.map((message) => ({ clientNonce: null, message })));
   if (overlapEvidence && !overlapEvidence.observed) {
     failures.push({ clientNonce: null, message: 'multi-pool slow row did not observe both provider instances active' });
@@ -805,6 +823,7 @@ module.exports = {
   authorizationHeadersByTransport,
   executeCharacterizePlan,
   hasExpectedActiveStreamOverlap,
+  identifiedSamePoolMockPeakFailure,
   normalizeHeadersByTransport,
   normalizeModelByTransport,
   requirePublishedModelsByTransport,

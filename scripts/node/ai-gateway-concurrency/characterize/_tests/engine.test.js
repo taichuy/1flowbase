@@ -8,6 +8,7 @@ const {
   authorizationHeadersByTransport,
   executeCharacterizePlan,
   hasExpectedActiveStreamOverlap,
+  identifiedSamePoolMockPeakFailure,
   normalizeHeadersByTransport,
   normalizeModelByTransport,
   requirePublishedModelsByTransport,
@@ -213,8 +214,8 @@ test('AC topology: each row has one barrier; same-pool pins first and multi-pool
           endpoint: new URL(endpoint),
           headers: { authorization: `Bearer pool-${index}` },
           model: 'published-anthropic-model',
-          applicationId: `application-${index}`,
-          providerInstanceId: `instance-${index}`,
+          applicationId: null,
+          providerInstanceId: null,
           durableTarget: null,
           activeStreamsEndpoint: null,
         })),
@@ -234,11 +235,39 @@ test('AC topology: each row has one barrier; same-pool pins first and multi-pool
     const requests = result.events.filter((event) => event.kind === 'request');
     assert.deepEqual(requests.map((event) => event.targetIndex), [0, 0, 0, 0, 0, 1, 0, 1]);
     assert.equal(new Set(requests.map((event) => event.batchBarrierId)).size, 2);
-    assert.deepEqual(requests.map((event) => event.applicationId), [
-      'application-0', 'application-0', 'application-0', 'application-0',
-      'application-0', 'application-1', 'application-0', 'application-1',
-    ]);
+    assert.equal(requests.every((event) => event.applicationId === null), true);
   });
+});
+
+test('QA F2: identified OpenAI and Anthropic same-pool HTTP SSE peak2 fails and peak1 passes', () => {
+  const results = [1, 2].map(() => ({
+    applicationId: 'application-1',
+    providerInstanceId: 'instance-1',
+  }));
+  for (const transport of [TRANSPORT.RESPONSES_SSE, TRANSPORT.ANTHROPIC_SSE]) {
+    const row = { topology: TOPOLOGY.SAME_POOL, transport };
+    assert.equal(identifiedSamePoolMockPeakFailure(row, results, { mockArrivalPeak: 1 }), null);
+    assert.match(
+      identifiedSamePoolMockPeakFailure(row, results, { mockArrivalPeak: 2 }),
+      /expected mock arrival peak 1, received 2/u,
+    );
+  }
+});
+
+test('QA F2 exclusions: unidentified direct mock, Responses WebSocket, and multi-pool ignore peak2', () => {
+  const identified = [{ applicationId: 'application-1', providerInstanceId: 'instance-1' }];
+  assert.equal(identifiedSamePoolMockPeakFailure({
+    topology: TOPOLOGY.SAME_POOL,
+    transport: TRANSPORT.ANTHROPIC_SSE,
+  }, [{ applicationId: null, providerInstanceId: null }], { mockArrivalPeak: 2 }), null);
+  assert.equal(identifiedSamePoolMockPeakFailure({
+    topology: TOPOLOGY.SAME_POOL,
+    transport: TRANSPORT.RESPONSES_WEBSOCKET,
+  }, identified, { mockArrivalPeak: 2 }), null);
+  assert.equal(identifiedSamePoolMockPeakFailure({
+    topology: TOPOLOGY.MULTI_POOL,
+    transport: TRANSPORT.ANTHROPIC_SSE,
+  }, identified, { mockArrivalPeak: 2 }), null);
 });
 
 test('AC multi-pool controlled negatives: missing tuple and duplicate identity/key fail closed', () => {
