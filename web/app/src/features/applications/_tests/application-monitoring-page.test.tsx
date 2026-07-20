@@ -153,16 +153,28 @@ function monitoringReport() {
     ],
     sources: [
       {
-        source: 'console',
-        request_count: 7,
+        invocation_source: 'debug',
+        request_count: 4,
         success_rate: 0.85,
-        total_tokens: 2600
+        total_tokens: 1600
       },
       {
-        source: 'public_api',
-        request_count: 5,
+        invocation_source: 'agent_flow_api',
+        request_count: 3,
         success_rate: 0.6,
-        total_tokens: 3000
+        total_tokens: 1800
+      },
+      {
+        invocation_source: 'workflow_http',
+        request_count: 3,
+        success_rate: 1,
+        total_tokens: 1200
+      },
+      {
+        invocation_source: 'workflow_schedule',
+        request_count: 2,
+        success_rate: 1,
+        total_tokens: 1000
       }
     ],
     authorized_accounts: [

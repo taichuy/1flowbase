@@ -73,6 +73,7 @@ impl PgControlPlaneStore {
                 title,
                 input_payload,
                 external_user,
+                created_by,
                 authorized_account,
                 api_key_id,
                 api_key_name_snapshot,
@@ -91,7 +92,7 @@ impl PgControlPlaneStore {
                 updated_at
             ) values (
                 $1, (select workspace_id from applications where id = $2), $2, $3, $4,
-                $5, $6, $7, $8,
+                $5, $6, $7, $8, $20,
                 coalesce($9, (select users.account from users where users.id = $20)),
                 $10, (select name from api_keys where id = $10),
                 $11, $12, $13, $14, $15,
@@ -239,6 +240,7 @@ impl PgControlPlaneStore {
                 title = excluded.title,
                 input_payload = excluded.input_payload,
                 external_user = excluded.external_user,
+                created_by = excluded.created_by,
                 authorized_account = excluded.authorized_account,
                 api_key_id = excluded.api_key_id,
                 api_key_name_snapshot = coalesce(
@@ -524,6 +526,7 @@ impl PgControlPlaneStore {
                 title,
                 '{{}}'::jsonb as input_payload,
                 external_user,
+                created_by,
                 authorized_account,
                 api_key_id,
                 publication_version_id,

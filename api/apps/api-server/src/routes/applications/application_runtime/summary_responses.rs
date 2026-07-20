@@ -21,9 +21,10 @@ fn to_flow_run_summary_response(
         draft_id: None,
         target_node_id: summary.target_node_id.clone(),
     };
-    let actor = application_logs::actor_from_console_user(
-        summary.user_id.clone(),
+    let invocation_context = summary.run_mode.invocation_context(
+        summary.created_by,
         summary.authorized_account.clone(),
+        summary.api_key_id,
     );
     let correlation = application_logs::ApplicationRunCorrelationResponse {
         api_key_id: summary.api_key_id.map(|value| value.to_string()),
@@ -49,10 +50,11 @@ fn to_flow_run_summary_response(
         title: summary.title,
         expand_id: summary.user_id,
         authorized_account: summary.authorized_account,
-        source: application_logs::source_for_run(summary.api_key_id),
+        execution_stage: invocation_context.execution_stage.as_str().to_string(),
+        invocation_source: invocation_context.invocation_source.as_str().to_string(),
         compatibility_mode: summary.compatibility_mode,
         subject,
-        actor,
+        principal: application_logs::principal_response(invocation_context.principal),
         correlation,
         statistics,
         started_at: format_time(summary.started_at),

@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use super::{
     AnswerSnapshotResponse, ApplicationRunStitchedTraceResponse, CallbackTaskResponse,
@@ -19,7 +18,7 @@ pub struct ApplicationRunSubjectResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
-pub struct ApplicationRunActorResponse {
+pub struct ApplicationRunPrincipalResponse {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -54,11 +53,12 @@ pub struct ApplicationRunLogResponse {
     pub run_kind: String,
     pub status: String,
     pub title: String,
-    pub source: String,
+    pub execution_stage: String,
+    pub invocation_source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility_mode: Option<String>,
     pub subject: ApplicationRunSubjectResponse,
-    pub actor: ApplicationRunActorResponse,
+    pub principal: ApplicationRunPrincipalResponse,
     pub correlation: ApplicationRunCorrelationResponse,
     pub started_at: String,
     pub finished_at: Option<String>,
@@ -123,22 +123,13 @@ pub struct ApplicationRunTypedDetailResponse {
     pub stitched_trace: Vec<ApplicationRunStitchedTraceResponse>,
 }
 
-pub fn actor_from_console_user(
-    user_id: Option<String>,
-    display_name: Option<String>,
-) -> ApplicationRunActorResponse {
-    ApplicationRunActorResponse {
-        kind: "user".to_string(),
-        id: user_id,
-        display_name,
-    }
-}
-
-pub fn source_for_run(api_key_id: Option<Uuid>) -> String {
-    if api_key_id.is_some() {
-        "public_api".to_string()
-    } else {
-        "console".to_string()
+pub fn principal_response(
+    principal: domain::FlowRunPrincipal,
+) -> ApplicationRunPrincipalResponse {
+    ApplicationRunPrincipalResponse {
+        kind: principal.kind.as_str().to_string(),
+        id: principal.id.map(|value| value.to_string()),
+        display_name: principal.display_name,
     }
 }
 

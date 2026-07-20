@@ -331,6 +331,12 @@ fn application_run_log_response_for_trace_tree(
 ) -> application_logs::ApplicationRunLogResponse {
     let application_type = application.application_type.as_str().to_string();
 
+    let invocation_context = flow_run.run_mode.invocation_context(
+        Some(flow_run.created_by),
+        flow_run.authorized_account.clone(),
+        flow_run.api_key_id,
+    );
+
     application_logs::ApplicationRunLogResponse {
         id: flow_run.id.to_string(),
         application_id: application.id.to_string(),
@@ -339,7 +345,8 @@ fn application_run_log_response_for_trace_tree(
         run_kind: flow_run.run_mode.as_str().to_string(),
         status: flow_run.status.as_str().to_string(),
         title: flow_run.title.clone(),
-        source: application_logs::source_for_run(flow_run.api_key_id),
+        execution_stage: invocation_context.execution_stage.as_str().to_string(),
+        invocation_source: invocation_context.invocation_source.as_str().to_string(),
         compatibility_mode: flow_run.compatibility_mode.clone(),
         subject: application_logs::ApplicationRunSubjectResponse {
             kind: application_type,
@@ -347,10 +354,7 @@ fn application_run_log_response_for_trace_tree(
             draft_id: Some(flow_run.draft_id.to_string()),
             target_node_id: flow_run.target_node_id.clone(),
         },
-        actor: application_logs::actor_from_console_user(
-            Some(flow_run.created_by.to_string()),
-            flow_run.authorized_account.clone(),
-        ),
+        principal: application_logs::principal_response(invocation_context.principal),
         correlation: application_logs::ApplicationRunCorrelationResponse {
             api_key_id: flow_run.api_key_id.map(|value| value.to_string()),
             publication_version_id: flow_run

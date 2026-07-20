@@ -335,6 +335,7 @@ const APPLICATION_RUN_LOG_SUMMARIES_FIELDS: &[&str] = &[
     "target_node_id",
     "title",
     "external_user",
+    "created_by",
     "authorized_account",
     "api_key_id",
     "api_key_name_snapshot",

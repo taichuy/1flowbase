@@ -499,13 +499,19 @@ impl PgControlPlaneStore {
             r#"
             , logs as (
                 select
-                    case when api_key_id is null then 'console' else 'public_api' end as source,
+                    case run_mode
+                        when 'published_api_run' then 'agent_flow_api'
+                        when 'workflow_http_run' then 'workflow_http'
+                        when 'workflow_schedule_run' then 'workflow_schedule'
+                        when 'debug_node_preview' then 'debug'
+                        when 'debug_flow_run' then 'debug'
+                    end as invocation_source,
                     status,
                     total_tokens
                 from monitoring_logs
             )
             select
-                source,
+                invocation_source,
                 count(*)::bigint as request_count,
                 coalesce(
                     count(*) filter (where status = 'succeeded')::double precision
@@ -514,8 +520,8 @@ impl PgControlPlaneStore {
                 ) as success_rate,
                 coalesce(sum(coalesce(total_tokens, 0)), 0)::bigint as total_tokens
             from logs
-            group by source
-            order by request_count desc, source asc
+            group by invocation_source
+            order by request_count desc, invocation_source asc
             "#,
         ))
         .bind(application_id)
@@ -527,7 +533,7 @@ impl PgControlPlaneStore {
         Ok(rows
             .into_iter()
             .map(|row| control_plane::ports::ApplicationRunMonitoringSourceBreakdown {
-                source: row.get("source"),
+                invocation_source: row.get("invocation_source"),
                 request_count: row.get("request_count"),
                 success_rate: row.get("success_rate"),
                 total_tokens: row.get("total_tokens"),

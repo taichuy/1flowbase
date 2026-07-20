@@ -74,7 +74,8 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
         run_kind: "debug_flow_run".to_string(),
         status: "succeeded".to_string(),
         title: "hi".to_string(),
-        source: "console".to_string(),
+        execution_stage: "debug".to_string(),
+        invocation_source: "debug".to_string(),
         compatibility_mode: None,
         subject: application_logs::ApplicationRunSubjectResponse {
             kind: "agent_flow".to_string(),
@@ -82,7 +83,7 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
             draft_id: Some(draft_id.to_string()),
             target_node_id: None,
         },
-        actor: application_logs::ApplicationRunActorResponse {
+        principal: application_logs::ApplicationRunPrincipalResponse {
             kind: "user".to_string(),
             id: Some(user_id.to_string()),
             display_name: Some("root".to_string()),
