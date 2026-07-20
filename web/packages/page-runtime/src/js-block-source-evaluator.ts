@@ -66,7 +66,10 @@ export function evaluateJsBlockSource(
 ): JsBlockSourceEvaluationResult {
   const compiledSource =
     typeof input.source === 'string'
-      ? compileAndTransformSource(input.source, Object.keys(input.modules))
+      ? compileAndTransformJsBlockSource(
+          input.source,
+          Object.keys(input.modules)
+        )
       : input.source;
 
   if (!compiledSource.ok) {
@@ -174,18 +177,19 @@ export async function runJsBlockSource(
   };
 }
 
-function compileAndTransformSource(
+export function compileAndTransformJsBlockSource(
   source: string,
-  allowedImports: string[]
+  allowedImports?: string[]
 ): JsBlockSourceTransformResult {
   const tsxResult = compileJsBlockTsxSource(source);
   if (!tsxResult.ok) {
     return { ok: false, errors: tsxResult.errors };
   }
 
-  const transformed = transformJsBlockSource(tsxResult.code, {
-    allowedImports
-  });
+  const transformed = transformJsBlockSource(
+    tsxResult.code,
+    allowedImports ? { allowedImports } : {}
+  );
   return transformed.ok
     ? { ...transformed, sourceMap: tsxResult.sourceMap }
     : transformed;

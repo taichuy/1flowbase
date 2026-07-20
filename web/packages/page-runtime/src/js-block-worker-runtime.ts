@@ -5,9 +5,9 @@ import {
 } from '@1flowbase/page-protocol';
 
 import {
-  transformJsBlockSource,
   type JsBlockSourceTransformSuccess
 } from './js-block-source-transform';
+import { compileAndTransformJsBlockSource } from './js-block-source-evaluator';
 
 export interface JsBlockRuntimeLimits {
   timeoutMs: number;
@@ -384,9 +384,10 @@ function reduceRunMessage(
   }
 
   const request = requestResult.request;
-  const sourceResult = transformJsBlockSource(request.source, {
-    allowedImports: request.allowedImports
-  });
+  const sourceResult = compileAndTransformJsBlockSource(
+    request.source,
+    request.allowedImports
+  );
   const requestState: JsBlockRuntimeRequestState = {
     requestId: request.requestId,
     blockId: request.blockId,

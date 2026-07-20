@@ -131,6 +131,34 @@ describe('JS block worker runtime protocol state machine', () => {
     });
   });
 
+  test('accepts the typed TSX BlockModule contract during host preflight', () => {
+    const state = run(
+      createJsBlockRuntimeSession(),
+      createRunRequest({
+        source: `
+import type { BlockModule, BlockResult } from '@1flowbase/block-sdk';
+import { Text } from '@1flowbase/block-renderer/antd-facade';
+
+async function main(): Promise<BlockResult> {
+  return { view: <Text>Ready</Text>, outputs: {} };
+}
+
+export default { main } satisfies BlockModule;
+`,
+        allowedImports: [
+          '@1flowbase/block-sdk',
+          '@1flowbase/block-renderer/antd-facade'
+        ]
+      })
+    );
+
+    expect(state.requests['request-1']).toMatchObject({
+      status: 'pending',
+      phase: 'queued',
+      compiledSource: { ok: true }
+    });
+  });
+
   test('maps source transform failures into a stable run result before sending source to a worker', () => {
     const state = run(
       createJsBlockRuntimeSession(),
