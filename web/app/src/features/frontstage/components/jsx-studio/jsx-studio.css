@@ -4,7 +4,28 @@
 }
 
 .frontstage-jsx-studio__drawer-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
+}
+
+.frontstage-jsx-studio--window {
+  border: 1px solid var(--border-default, #d5ddd8);
+  border-radius: 10px;
+  background: var(--bg-surface, #fff);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
+}
+
+.frontstage-jsx-studio__window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-default, #d5ddd8);
+  background: var(--bg-elevated, #f8fcf9);
+  cursor: move;
 }
 
 .frontstage-jsx-studio__workspace {
@@ -126,7 +147,9 @@
   margin: 0;
   padding: 10px 12px;
   color: #334155;
-  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family:
+    'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -148,6 +171,10 @@
 }
 
 @media (max-width: 768px) {
+  .frontstage-jsx-studio--window {
+    border-radius: 0;
+  }
+
   .frontstage-jsx-studio__workspace {
     grid-template-columns: 40px minmax(0, 1fr);
     grid-template-rows: minmax(180px, 40%) minmax(0, 1fr);

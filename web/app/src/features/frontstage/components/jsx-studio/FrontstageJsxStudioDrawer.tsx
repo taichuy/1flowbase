@@ -3,6 +3,9 @@ import {
   AppstoreOutlined,
   CodeOutlined,
   DatabaseOutlined,
+  CloseOutlined,
+  CompressOutlined,
+  FullscreenOutlined,
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -12,13 +15,14 @@ import {
   createJsBlockDiagnostics,
   validateJsBlockSource
 } from '@1flowbase/page-runtime';
-import { Alert, Button, Space, Tooltip, Typography } from 'antd';
+import { Alert, Button, Modal, Space, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
-import { ResizableDrawer } from '../../../../shared/ui/resizable-drawer/ResizableDrawer';
+import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
 import { useFrontstageCallableInterfaces } from '../../hooks/use-frontstage-callable-interfaces';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
@@ -106,6 +110,14 @@ export function FrontstageJsxStudioDrawer({
 }: FrontstageJsxStudioDrawerProps) {
   const [activeSection, setActiveSection] =
     useState<FrontstageJsxStudioSection>(initialSection);
+  const [windowRect, setWindowRect] = useState<WindowWorkspaceRect>(() => ({
+    left: 120,
+    top: 64,
+    width: 1080,
+    height: 760
+  }));
+  const [maximized, setMaximized] = useState(false);
+  const [mobile, setMobile] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const callableInterfaces = useFrontstageCallableInterfaces(workspaceId);
   const {
@@ -129,6 +141,17 @@ export function FrontstageJsxStudioDrawer({
       setActiveSection(initialSection);
     }
   }, [initialSection, open]);
+
+  useEffect(() => {
+    const updateViewportMode = () => {
+      const nextMobile = window.innerWidth <= 600;
+      setMobile(nextMobile);
+      if (nextMobile) setMaximized(true);
+    };
+    updateViewportMode();
+    window.addEventListener('resize', updateViewportMode);
+    return () => window.removeEventListener('resize', updateViewportMode);
+  }, []);
 
   const projection = useMemo(
     () =>
@@ -209,18 +232,51 @@ export function FrontstageJsxStudioDrawer({
       ? runPanel({ code: draft, onCodeChange: setDraft })
       : runPanel;
 
+  const requestClose = () => {
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    Modal.confirm({
+      title: i18nText('frontstage', 'auto.unsaved_close_title'),
+      content: i18nText('frontstage', 'auto.unsaved_close_description'),
+      onOk: onClose
+    });
+  };
+  const viewportRect = (): WindowWorkspaceRect => ({
+    left: 8,
+    top: 8,
+    width: Math.max(320, window.innerWidth - 16),
+    height: Math.max(320, window.innerHeight - 16)
+  });
+
+  if (!open) return null;
+
   return (
-    <ResizableDrawer
-      open={open}
+    <WindowWorkspaceWindow
+      active
       title={i18nText('frontstage', 'auto.jsx_studio')}
-      defaultWidth={960}
-      minWidth={680}
-      maxWidth={1440}
-      resizeLabel={i18nText('frontstage', 'auto.resize_jsx_studio')}
-      rootClassName="frontstage-jsx-studio"
+      testId={`frontstage-jsx-studio-${block.codeRef}`}
+      className="frontstage-jsx-studio frontstage-jsx-studio--window"
       bodyClassName="frontstage-jsx-studio__drawer-body"
-      onClose={onClose}
-      extra={
+      dragHandleSelector="[data-window-drag-handle='true']"
+      initialRect={() => (mobile ? viewportRect() : windowRect)}
+      rect={maximized ? viewportRect() : windowRect}
+      minWidth={320}
+      minHeight={320}
+      resizeLabel={() => i18nText('frontstage', 'auto.resize_jsx_studio')}
+      onActivate={() => undefined}
+      onRectChange={(nextRect) => {
+        if (!maximized) setWindowRect(nextRect);
+      }}
+    >
+      <header
+        className="frontstage-jsx-studio__window-header"
+        data-window-drag-handle="true"
+      >
+        <Typography.Text strong>
+          {i18nText('frontstage', 'auto.jsx_studio')}
+        </Typography.Text>
         <Space size={8}>
           <Typography.Text
             type="secondary"
@@ -239,9 +295,23 @@ export function FrontstageJsxStudioDrawer({
           >
             {i18nText('frontstage', 'auto.save_code')}
           </Button>
+          <Button
+            aria-label={
+              maximized
+                ? i18nText('frontstage', 'auto.restore_window')
+                : i18nText('frontstage', 'auto.maximize_window')
+            }
+            disabled={mobile}
+            icon={maximized ? <CompressOutlined /> : <FullscreenOutlined />}
+            onClick={() => setMaximized((value) => !value)}
+          />
+          <Button
+            aria-label={i18nText('frontstage', 'auto.close')}
+            icon={<CloseOutlined />}
+            onClick={requestClose}
+          />
         </Space>
-      }
-    >
+      </header>
       <div
         className={[
           'frontstage-jsx-studio__workspace',
@@ -337,6 +407,6 @@ export function FrontstageJsxStudioDrawer({
           </div>
         </main>
       </div>
-    </ResizableDrawer>
+    </WindowWorkspaceWindow>
   );
 }
