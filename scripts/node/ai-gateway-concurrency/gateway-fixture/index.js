@@ -136,16 +136,18 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       anthropic: sha256File(options.anthropicPackage),
     };
     for (const code of ['openai', 'anthropic']) {
-      if (providers[code].package_sha256 !== currentDigests[code]) {
+      const candidates = Array.isArray(providers[code]) ? providers[code] : [providers[code]];
+      if (candidates.some((provider) => provider.package_sha256 !== currentDigests[code])) {
         throw new Error(`official ${code} package archive changed during bootstrap`);
       }
     }
-    const targets = Object.fromEntries(
-      Object.entries(providers).map(([code, provider]) => [
-        code,
-        providerTarget(gatewayBaseUrl, pluginRunnerBaseUrl, client, provider),
-      ])
+    const anthropicPool = providers.anthropic.map(
+      (provider) => providerTarget(gatewayBaseUrl, pluginRunnerBaseUrl, client, provider)
     );
+    const targets = {
+      openai: providerTarget(gatewayBaseUrl, pluginRunnerBaseUrl, client, providers.openai),
+      anthropic: anthropicPool[0],
+    };
     const result = {
       schema_version: '1flowbase.ai-gateway-fixture/v1',
       gateway_base_url: gatewayBaseUrl,
@@ -156,6 +158,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
         anthropic: { path: options.anthropicPackage, sha256: currentDigests.anthropic },
       },
       targets,
+      pools: { anthropic: anthropicPool },
     };
 
     return {

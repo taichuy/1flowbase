@@ -54,26 +54,28 @@ function fixtureManifest() {
     headers: { cookie: 'fixture-owner' },
   });
   const streams = { method: 'GET', url: 'http://127.0.0.1:4200/providers/active-streams' };
+  const target = (provider, ordinal, model, gateway) => ({
+    application_id: `${provider}-application-${ordinal}`,
+    provider_instance_id: `${provider}-instance-${ordinal}`,
+    publication_id: `${provider}-publication-${ordinal}`,
+    api_key: `${provider}-application-key-${ordinal}`,
+    model,
+    gateway,
+    durable: durable(`${provider}-${ordinal}`),
+    runtime_activity: activity(`${provider}-${ordinal}`),
+    plugin_runner_active_streams: streams,
+  });
+  const openai = target('openai', 1, 'published-openai-model', { responses_url: 'http://127.0.0.1:4100/v1/responses' });
+  const anthropicPool = [1, 2].map((ordinal) => target(
+    'anthropic', ordinal, 'published-anthropic-model', { anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages' }
+  ));
   return {
     schema_version: '1flowbase.ai-gateway-fixture/v1',
     targets: {
-      openai: {
-        api_key: 'openai-application-key',
-        model: 'published-openai-model',
-        gateway: { responses_url: 'http://127.0.0.1:4100/v1/responses' },
-        durable: durable('openai'),
-        runtime_activity: activity('openai'),
-        plugin_runner_active_streams: streams,
-      },
-      anthropic: {
-        api_key: 'anthropic-application-key',
-        model: 'published-anthropic-model',
-        gateway: { anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages' },
-        durable: durable('anthropic'),
-        runtime_activity: activity('anthropic'),
-        plugin_runner_active_streams: streams,
-      },
+      openai,
+      anthropic: anthropicPool[0],
     },
+    pools: { anthropic: anthropicPool },
   };
 }
 
@@ -102,22 +104,22 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       return {
         summary: {
           verdict: 'PASS',
-          totals: { requests: 180, contractFailures: 0 },
-          durableConvergence: { verdict: 'PASS', requests: 120, polls: 2 },
+          totals: { requests: 237, contractFailures: 0 },
+          durableConvergence: { verdict: 'PASS', requests: 177, polls: 25, rows: 25 },
         },
         artifacts: { outputDirectory: path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency') },
       };
     },
   });
   assert.equal(result.status, 'pass');
-  assert.deepEqual(result.characterize.durable_convergence, { verdict: 'PASS', requests: 120, polls: 2 });
+  assert.deepEqual(result.characterize.durable_convergence, { verdict: 'PASS', requests: 177, polls: 25, rows: 25 });
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
     'mock:create', 'mock:start', 'fixture:create', 'smoke', 'characterize', 'fixture:close', 'mock:stop',
   ]);
   const characterize = calls.find((call) => Array.isArray(call) && call[0] === 'characterize')[1];
   assert.deepEqual(characterize.authorizationTokenByTransport, {
-    [TRANSPORT.RESPONSES_SSE]: 'openai-application-key',
-    [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-application-key',
+    [TRANSPORT.RESPONSES_SSE]: 'openai-application-key-1',
+    [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-application-key-1',
   });
   assert.deepEqual(characterize.modelByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'published-openai-model',
@@ -128,6 +130,8 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
     characterize.durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
     fixtureManifest().targets.openai,
   );
+  assert.deepEqual(characterize.anthropicTargetPool, fixtureManifest().pools.anthropic);
+  assert.equal(result.targets.anthropic_pool.length, 2);
   assert.equal(JSON.stringify(result).includes('application-key'), false);
   assert.equal(fs.existsSync(path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/gateway-ready.json')), false);
 });
@@ -146,11 +150,11 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
     async createGatewayFixture() {
       return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
     },
-    async runCliSmoke() { throw new Error('sentinel failed with openai-application-key'); },
+    async runCliSmoke() { throw new Error('sentinel failed with anthropic-application-key-2'); },
   });
   assert.equal(result.status, 'fail');
   assert.deepEqual(calls, ['fixture:close', 'mock:stop']);
-  assert.equal(result.error.message.includes('openai-application-key'), false);
+  assert.equal(result.error.message.includes('anthropic-application-key-2'), false);
   assert.match(result.error.message, /<redacted>/u);
 });
 
@@ -165,4 +169,12 @@ test('AC-003 controlled negative: ready target tuple requires endpoint, key, and
   invalidEndpoint.targets.openai.gateway.responses_url = 'https://provider.example/v1/responses';
   fs.writeFileSync(readyFile, JSON.stringify(invalidEndpoint));
   assert.throws(() => readReadyManifest(readyFile), /credential-free loopback/u);
+  const duplicateIdentity = fixtureManifest();
+  duplicateIdentity.pools.anthropic[1].provider_instance_id = duplicateIdentity.pools.anthropic[0].provider_instance_id;
+  fs.writeFileSync(readyFile, JSON.stringify(duplicateIdentity));
+  assert.throws(() => readReadyManifest(readyFile), /reused provider_instance_id/u);
+  const duplicateKey = fixtureManifest();
+  duplicateKey.pools.anthropic[1].api_key = duplicateKey.pools.anthropic[0].api_key;
+  fs.writeFileSync(readyFile, JSON.stringify(duplicateKey));
+  assert.throws(() => readReadyManifest(readyFile), /reused api_key/u);
 });

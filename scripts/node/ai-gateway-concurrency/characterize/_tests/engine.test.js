@@ -7,12 +7,14 @@ const { createMockUpstream } = require('../../mock-upstream');
 const {
   authorizationHeadersByTransport,
   executeCharacterizePlan,
+  hasExpectedActiveStreamOverlap,
   normalizeHeadersByTransport,
   normalizeModelByTransport,
   requirePublishedModelsByTransport,
+  requireAnthropicTargetPool,
   validateRequestResult,
 } = require('../engine');
-const { CHARACTERIZE_CONCURRENCY, CHARACTERIZE_PLAN } = require('../plan');
+const { CHARACTERIZE_CONCURRENCY, CHARACTERIZE_PLAN, TOPOLOGY } = require('../plan');
 
 async function withMock(run) {
   const mock = createMockUpstream({ slowChunkDelayMs: 10, cancelObservationMs: 150 });
@@ -194,6 +196,77 @@ test('AC-003 controlled negatives: WebSocket, unknown, and missing published mod
   );
 });
 
+test('AC topology: each row has one barrier; same-pool pins first and multi-pool round-robins', async () => {
+  await withMock(async ({ mock, endpointSet }) => {
+    const calls = [];
+    const endpoint = endpointSet[TRANSPORT.ANTHROPIC_SSE];
+    const result = await executeCharacterizePlan({
+      endpointSet,
+      plan: [TOPOLOGY.SAME_POOL, TOPOLOGY.MULTI_POOL].map((topology) => ({
+        transport: TRANSPORT.ANTHROPIC_SSE,
+        scenario: SCENARIO.NORMAL,
+        concurrency: 4,
+        topology,
+      })),
+      targetPoolsByTransport: {
+        [TRANSPORT.ANTHROPIC_SSE]: [0, 1].map((index) => ({
+          endpoint: new URL(endpoint),
+          headers: { authorization: `Bearer pool-${index}` },
+          model: 'published-anthropic-model',
+          applicationId: `application-${index}`,
+          providerInstanceId: `instance-${index}`,
+          durableTarget: null,
+          activeStreamsEndpoint: null,
+        })),
+      },
+      fetchImpl(url, options) {
+        calls.push({ authorization: options.headers.authorization, traceId: JSON.parse(options.body).metadata.trace_id });
+        return fetch(url, options);
+      },
+      mockSnapshot: mock.snapshot,
+      timeoutMs: 1_000,
+    });
+    assert.equal(result.summary.verdict, 'PASS');
+    assert.deepEqual(calls.map((call) => call.authorization), [
+      'Bearer pool-0', 'Bearer pool-0', 'Bearer pool-0', 'Bearer pool-0',
+      'Bearer pool-0', 'Bearer pool-1', 'Bearer pool-0', 'Bearer pool-1',
+    ]);
+    const requests = result.events.filter((event) => event.kind === 'request');
+    assert.deepEqual(requests.map((event) => event.targetIndex), [0, 0, 0, 0, 0, 1, 0, 1]);
+    assert.equal(new Set(requests.map((event) => event.batchBarrierId)).size, 2);
+    assert.deepEqual(requests.map((event) => event.applicationId), [
+      'application-0', 'application-0', 'application-0', 'application-0',
+      'application-0', 'application-1', 'application-0', 'application-1',
+    ]);
+  });
+});
+
+test('AC multi-pool controlled negatives: missing tuple and duplicate identity/key fail closed', () => {
+  const target = (ordinal) => ({
+    application_id: `application-${ordinal}`,
+    provider_instance_id: `instance-${ordinal}`,
+    api_key: `key-${ordinal}`,
+    model: 'shared-model',
+    publication_id: `publication-${ordinal}`,
+    gateway: { anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages' },
+    durable: {
+      query_run: { url_template: 'http://127.0.0.1:4100/api/agent/v1/runs/{run_id}' },
+      list_runs: { url: `http://127.0.0.1:4100/applications/${ordinal}/runs` },
+    },
+    runtime_activity: { url: `http://127.0.0.1:4100/applications/${ordinal}/activity` },
+    plugin_runner_active_streams: { url: 'http://127.0.0.1:4200/providers/active-streams' },
+  });
+  assert.throws(() => requireAnthropicTargetPool([target(1)]), /exactly two/u);
+  assert.throws(() => requireAnthropicTargetPool([target(1), { ...target(2), provider_instance_id: 'instance-1' }]), /reused provider_instance_id/u);
+  assert.throws(() => requireAnthropicTargetPool([target(1), { ...target(2), api_key: 'key-1' }]), /reused api_key/u);
+  assert.equal(hasExpectedActiveStreamOverlap(['instance-1', 'instance-2'], [[
+    { providerInstanceId: 'instance-1' },
+  ]]), false);
+  assert.equal(hasExpectedActiveStreamOverlap(['instance-1', 'instance-2'], [[
+    { providerInstanceId: 'instance-1' }, { providerInstanceId: 'instance-2' },
+  ]]), true);
+});
+
 test('AC-003/004: characterize matrix fixes 1/4/16/32 normal load and finite fault rows', () => {
   assert.deepEqual(CHARACTERIZE_CONCURRENCY, [1, 4, 16, 32]);
   for (const concurrency of CHARACTERIZE_CONCURRENCY) {
@@ -208,7 +281,16 @@ test('AC-003/004: characterize matrix fixes 1/4/16/32 normal load and finite fau
   }
   assert.equal(CHARACTERIZE_PLAN.filter((row) => row.scenario === SCENARIO.SLOW).every((row) => row.concurrency === 4), true);
   assert.equal(CHARACTERIZE_PLAN.filter((row) => [SCENARIO.CANCEL_OBSERVATION, SCENARIO.HTTP_500, SCENARIO.STREAM_INTERRUPTION].includes(row.scenario)).every((row) => row.concurrency === 1), true);
-  assert.equal(CHARACTERIZE_PLAN.reduce((total, row) => total + row.concurrency, 0), 180);
+  const multiRows = CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.MULTI_POOL);
+  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency]), [
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 1],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 4],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 16],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 32],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4],
+  ]);
+  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.SAME_POOL).reduce((total, row) => total + row.concurrency, 0), 180);
+  assert.equal(CHARACTERIZE_PLAN.reduce((total, row) => total + row.concurrency, 0), 237);
 });
 
 test('AC-003: invalid plan rows fail closed before load generation', async () => {

@@ -23,7 +23,7 @@ async function installProvider(client, archivePath, expectedProviderCode) {
   };
 }
 
-async function createProviderInstance(client, installation, upstreamBaseUrl, model) {
+async function createProviderInstance(client, installation, upstreamBaseUrl, model, ordinal = 1) {
   const providerBaseUrl = installation.provider_code === 'openai'
     ? `${upstreamBaseUrl}/v1`
     : upstreamBaseUrl;
@@ -38,7 +38,7 @@ async function createProviderInstance(client, installation, upstreamBaseUrl, mod
     'POST',
     {
       installation_id: installation.installation_id,
-      display_name: `Gateway fixture ${installation.provider_code}`,
+      display_name: `Gateway fixture ${installation.provider_code} ${ordinal}`,
       configured_models: [{
         model_id: model,
         enabled: true,
@@ -81,13 +81,13 @@ function configureDraft(document, provider) {
   return document;
 }
 
-async function createPublishedApplication(client, provider) {
+async function createPublishedApplication(client, provider, ordinal = 1) {
   const suffix = crypto.randomBytes(5).toString('hex');
   const created = await client.write('/api/console/applications', 'POST', {
     application_type: 'agent_flow',
     workflow_trigger_type: null,
     workflow_trigger_config: null,
-    name: `Gateway fixture ${provider.provider_code} ${suffix}`,
+    name: `Gateway fixture ${provider.provider_code} ${ordinal} ${suffix}`,
     description: 'Temporary AI gateway concurrency fixture',
     icon: null,
     icon_type: null,
@@ -97,7 +97,7 @@ async function createPublishedApplication(client, provider) {
   if (typeof applicationId !== 'string') throw new Error('application response omitted id');
 
   const key = await client.write(`/api/console/applications/${applicationId}/api-keys`, 'POST', {
-    name: 'Gateway fixture key',
+    name: `Gateway fixture key ${ordinal}`,
     expires_at: null,
   });
   if (typeof key.data?.token !== 'string' || typeof key.data?.id !== 'string') {
@@ -132,13 +132,17 @@ async function createPublishedApplication(client, provider) {
     'POST',
     { mapping, api_enabled: true }
   );
+  const publicationId = publication.data?.id ?? publication.data?.version_id;
+  if (typeof publicationId !== 'string' || !publicationId) {
+    throw new Error('application publication response omitted id');
+  }
 
   return {
     ...provider,
     application_id: applicationId,
     api_key_id: key.data.id,
     api_key: key.data.token,
-    publication_id: publication.data?.id ?? publication.data?.version_id ?? null,
+    publication_id: publicationId,
   };
 }
 
@@ -148,17 +152,20 @@ async function bootstrapGateway(client, options) {
     installProvider(client, options.openaiPackage, 'openai'),
     installProvider(client, options.anthropicPackage, 'anthropic'),
   ]);
-  const providers = {};
-  for (const installation of packages) {
-    const instance = await createProviderInstance(
-      client,
-      installation,
-      options.upstreamBaseUrl,
-      options.model
-    );
-    providers[installation.provider_code] = await createPublishedApplication(client, instance);
-  }
-  return providers;
+  const openaiInstallation = packages.find((item) => item.provider_code === 'openai');
+  const anthropicInstallation = packages.find((item) => item.provider_code === 'anthropic');
+  const openaiInstance = await createProviderInstance(
+    client, openaiInstallation, options.upstreamBaseUrl, options.model
+  );
+  const anthropicInstances = await Promise.all([1, 2].map((ordinal) => createProviderInstance(
+    client, anthropicInstallation, options.upstreamBaseUrl, options.model, ordinal
+  )));
+  return {
+    openai: await createPublishedApplication(client, openaiInstance),
+    anthropic: await Promise.all(anthropicInstances.map(
+      (instance, index) => createPublishedApplication(client, instance, index + 1)
+    )),
+  };
 }
 
 module.exports = { bootstrapGateway, configureDraft, createPublishedApplication, installProvider };

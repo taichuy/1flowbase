@@ -18,12 +18,14 @@ function markdownReport(summary) {
     '',
     'Absolute timing values are characterization observations, not performance budgets.',
     '',
-    '| Transport | Scenario | Concurrency | Pass | Outcomes | TTFT p50 ms | Total p50 ms | Throughput rps | Mock peak | Derived queue max ms |',
-    '| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |',
+    '| Topology | Barrier | Transport | Scenario | Concurrency | Targets (application/provider instance:requests) | Overlap | Pass | Outcomes | TTFT p50 ms | Total p50 ms | Throughput rps | Mock peak | Derived queue max ms |',
+    '| --- | --- | --- | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |',
   ];
   for (const batch of summary.batches) {
     const outcomes = Object.entries(batch.outcomes).map(([name, count]) => `${name}:${count}`).join(', ');
-    lines.push(`| ${batch.transport} | ${batch.scenario} | ${batch.concurrency} | ${batch.pass ? 'yes' : 'no'} | ${outcomes} | ${batch.metrics.ttftP50Ms ?? '-'} | ${batch.metrics.totalLatencyP50Ms ?? '-'} | ${batch.metrics.throughputRps} | ${batch.metrics.mockArrivalPeak ?? '-'} | ${batch.metrics.derivedQueueMaxMs ?? '-'} |`);
+    const targets = Object.entries(batch.targetDistribution ?? {}).map(([id, count]) => `${id}:${count}`).join(', ');
+    const overlap = batch.overlapEvidence ? (batch.overlapEvidence.observed ? 'both' : 'missing') : '-';
+    lines.push(`| ${batch.topology ?? 'same-pool'} | ${batch.batchBarrierId ?? '-'} | ${batch.transport} | ${batch.scenario} | ${batch.concurrency} | ${targets || '-'} | ${overlap} | ${batch.pass ? 'yes' : 'no'} | ${outcomes} | ${batch.metrics.ttftP50Ms ?? '-'} | ${batch.metrics.totalLatencyP50Ms ?? '-'} | ${batch.metrics.throughputRps} | ${batch.metrics.mockArrivalPeak ?? '-'} | ${batch.metrics.derivedQueueMaxMs ?? '-'} |`);
   }
   lines.push('', '## Contract failures', '');
   if (summary.failures.length === 0) lines.push('- None');

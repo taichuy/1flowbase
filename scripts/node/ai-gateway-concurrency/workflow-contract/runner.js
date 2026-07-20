@@ -61,6 +61,43 @@ function readReadyManifest(filePath) {
       throw new Error(`WP3 ready manifest omitted ${provider} plugin active streams endpoint`);
     }
   }
+  const anthropicPool = manifest.pools?.anthropic;
+  if (!Array.isArray(anthropicPool) || anthropicPool.length !== 2) {
+    throw new Error('WP3 ready manifest requires exactly two Anthropic pool targets');
+  }
+  for (const [index, target] of anthropicPool.entries()) {
+    for (const field of ['application_id', 'provider_instance_id', 'api_key', 'model', 'publication_id']) {
+      if (typeof target?.[field] !== 'string' || !target[field].trim()) {
+        throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted ${field}`);
+      }
+    }
+    for (const key of ['query_run', 'list_runs']) {
+      if (typeof target.durable?.[key]?.url !== 'string' && typeof target.durable?.[key]?.url_template !== 'string') {
+        throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted durable ${key}`);
+      }
+    }
+    if (typeof target.runtime_activity?.url !== 'string' || typeof target.plugin_runner_active_streams?.url !== 'string') {
+      throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted runtime endpoints`);
+    }
+    requireReadyEndpoint(
+      target.gateway?.anthropic_messages_url,
+      `Anthropic pool target ${index}`,
+      '/v1/messages'
+    );
+  }
+  for (const field of ['application_id', 'provider_instance_id', 'api_key']) {
+    if (new Set(anthropicPool.map((target) => target[field])).size !== 2) {
+      throw new Error(`WP3 ready manifest Anthropic pool reused ${field}`);
+    }
+  }
+  for (const field of ['application_id', 'provider_instance_id', 'api_key', 'model']) {
+    if (manifest.targets.anthropic[field] !== anthropicPool[0][field]) {
+      throw new Error(`WP3 ready manifest Anthropic primary target mismatched pool ${field}`);
+    }
+  }
+  if (manifest.targets.anthropic.gateway.anthropic_messages_url !== anthropicPool[0].gateway.anthropic_messages_url) {
+    throw new Error('WP3 ready manifest Anthropic primary target mismatched pool endpoint');
+  }
   if (manifest.targets.openai.api_key === manifest.targets.anthropic.api_key) {
     throw new Error('WP3 ready manifest reused an Application API key');
   }
@@ -132,6 +169,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
         [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
       },
+      anthropicTargetPool: ready.pools.anthropic,
     });
     if (characterizeResult.summary.verdict !== 'PASS') {
       throw new Error(`gateway characterize verdict was ${characterizeResult.summary.verdict}`);
@@ -152,7 +190,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     fs.rmSync(paths.readyFile, { force: true });
   }
 
-  const secrets = [ready?.targets?.openai?.api_key, ready?.targets?.anthropic?.api_key].filter(Boolean);
+  const secrets = [
+    ready?.targets?.openai?.api_key,
+    ...(ready?.pools?.anthropic ?? []).map((target) => target.api_key),
+  ].filter(Boolean);
   const finalError = executionError ?? cleanupErrors[0] ?? null;
   const result = {
     ...workflowResultBase(inputs),
@@ -171,6 +212,11 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         model: ready.targets.anthropic.model,
         package_sha256: ready.packages?.anthropic?.sha256 ?? null,
       },
+      anthropic_pool: ready.pools.anthropic.map((target) => ({
+        application_id: target.application_id,
+        provider_instance_id: target.provider_instance_id,
+        model: target.model,
+      })),
     } : null,
     characterize: characterizeResult ? {
       verdict: characterizeResult.summary.verdict,

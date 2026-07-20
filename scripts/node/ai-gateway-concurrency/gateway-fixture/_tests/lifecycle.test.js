@@ -37,6 +37,7 @@ class FakeOwnerClient {
     this.cookie = null;
     this.csrf = null;
     this.applicationCount = 0;
+    this.instanceCounts = { openai: 0, anthropic: 0 };
   }
 
   async signIn(identifier, password) {
@@ -58,18 +59,21 @@ class FakeOwnerClient {
     FakeOwnerClient.calls.push({ kind: 'write', pathname, method, body });
     if (pathname === '/api/console/settings/model-providers/instances') {
       const code = body.installation_id.split('-', 1)[0];
-      return { data: { id: `${code}-instance` } };
+      this.instanceCounts[code] += 1;
+      return { data: { id: `${code}-instance-${this.instanceCounts[code]}` } };
     }
     if (pathname === '/api/console/applications') {
       const code = body.name.includes('openai') ? 'openai' : 'anthropic';
-      return { data: { id: `${code}-application` } };
+      this.applicationCount += 1;
+      const ordinal = code === 'openai' ? 1 : this.applicationCount - 1;
+      return { data: { id: `${code}-application-${ordinal}` } };
     }
     if (pathname.endsWith('/api-keys')) {
-      const code = pathname.includes('openai') ? 'openai' : 'anthropic';
-      return { data: { id: `${code}-key-id`, token: `sk-${code}-fixture` } };
+      const application = pathname.split('/').at(-2);
+      return { data: { id: `${application}-key-id`, token: `sk-${application}-fixture` } };
     }
     if (pathname.endsWith('/api-publications')) {
-      return { data: { id: 'publication-1' } };
+      return { data: { id: `${pathname.split('/').at(-2)}-publication` } };
     }
     return { data: {} };
   }
@@ -125,8 +129,19 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
   try {
     fixture = await createGatewayFixture(files.options, fake.dependencies);
     assert.equal(fixture.result.gateway_base_url, 'http://127.0.0.1:41002');
-    assert.equal(fixture.result.targets.openai.application_id, 'openai-application');
+    assert.equal(fixture.result.targets.openai.application_id, 'openai-application-1');
     assert.equal(fixture.result.targets.anthropic.model, 'gateway-fixture-model');
+    assert.equal(fixture.result.pools.anthropic.length, 2);
+    assert.deepEqual(
+      fixture.result.pools.anthropic.map((target) => target.application_id),
+      ['anthropic-application-1', 'anthropic-application-2'],
+    );
+    assert.deepEqual(
+      fixture.result.pools.anthropic.map((target) => target.provider_instance_id),
+      ['anthropic-instance-1', 'anthropic-instance-2'],
+    );
+    assert.equal(new Set(fixture.result.pools.anthropic.map((target) => target.api_key)).size, 2);
+    assert.equal(fixture.result.targets.anthropic, fixture.result.pools.anthropic[0]);
     assert.match(fixture.result.targets.openai.durable.cancel_run.url_template, /\{run_id\}\/cancel$/u);
     assert.match(fixture.result.targets.openai.runtime_activity.url, /runtime-activity$/u);
     assert.match(
@@ -145,8 +160,16 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     assert.equal(
       draftWrite.body.document.graph.nodes.find((node) => node.type === 'llm').config.model_provider
         .source_instance_id,
-      'openai-instance'
+      'openai-instance-1'
     );
+    const anthropicDrafts = FakeOwnerClient.calls.filter(
+      (call) => call.kind === 'write'
+        && call.pathname.includes('anthropic-application')
+        && call.pathname.endsWith('/orchestration/draft')
+    );
+    assert.deepEqual(anthropicDrafts.map((call) =>
+      call.body.document.graph.nodes.find((node) => node.type === 'llm').config.model_provider.source_instance_id
+    ), ['anthropic-instance-1', 'anthropic-instance-2']);
     assert.equal(fake.spawned[0].env.OPENAI_API_KEY, '');
     assert.equal(fake.spawned[1].env.ANTHROPIC_API_KEY, '');
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;

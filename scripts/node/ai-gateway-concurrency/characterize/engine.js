@@ -12,7 +12,7 @@ const {
   assertTransport,
 } = require('../contracts');
 const { createMockUpstream } = require('../mock-upstream');
-const { CHARACTERIZE_PLAN } = require('./plan');
+const { CHARACTERIZE_PLAN, TOPOLOGY } = require('./plan');
 const { collectDurableConvergence } = require('./durable-evidence');
 const { createSseParser, eventText, nonceFromText, protocolEventType, protocolRunId } = require('./stream-parsers');
 const { writeCharacterizeArtifacts } = require('./report');
@@ -161,7 +161,87 @@ function requirePublishedModelsByTransport(modelByTransport) {
   return normalized;
 }
 
-async function runSseRequest({ endpoint, transport, scenario, clientNonce, model, headers, timeoutMs, batchStartedAt, fetchImpl }) {
+function requireAnthropicTargetPool(pool) {
+  if (!Array.isArray(pool) || pool.length !== 2) {
+    throw new Error('Anthropic multi-pool requires exactly two published targets');
+  }
+  const required = ['application_id', 'provider_instance_id', 'api_key', 'model', 'publication_id'];
+  for (const [index, target] of pool.entries()) {
+    for (const field of required) {
+      if (typeof target?.[field] !== 'string' || !target[field].trim()) {
+        throw new Error(`Anthropic pool target ${index} omitted ${field}`);
+      }
+    }
+    endpointUrl({ [TRANSPORT.ANTHROPIC_SSE]: target.gateway?.anthropic_messages_url }, TRANSPORT.ANTHROPIC_SSE);
+    if (
+      typeof target.durable?.query_run?.url_template !== 'string'
+      || typeof target.durable?.list_runs?.url !== 'string'
+      || typeof target.runtime_activity?.url !== 'string'
+      || typeof target.plugin_runner_active_streams?.url !== 'string'
+    ) {
+      throw new Error(`Anthropic pool target ${index} omitted durable or runtime evidence endpoint`);
+    }
+  }
+  for (const field of ['application_id', 'provider_instance_id', 'api_key']) {
+    if (new Set(pool.map((target) => target[field])).size !== pool.length) {
+      throw new Error(`Anthropic pool targets reused ${field}`);
+    }
+  }
+  if (new Set(pool.map((target) => target.plugin_runner_active_streams.url)).size !== 1) {
+    throw new Error('Anthropic pool targets must share one active-stream endpoint');
+  }
+  return pool;
+}
+
+function gatewayRequestTarget(transport, target) {
+  return {
+    endpoint: endpointUrl({ [transport]: target.gateway.anthropic_messages_url }, transport),
+    headers: { authorization: `Bearer ${target.api_key}` },
+    model: target.model,
+    applicationId: target.application_id,
+    providerInstanceId: target.provider_instance_id,
+    durableTarget: target,
+    activeStreamsEndpoint: target.plugin_runner_active_streams,
+  };
+}
+
+function hasExpectedActiveStreamOverlap(expectedInstanceIds, snapshots) {
+  return snapshots.some((snapshot) => expectedInstanceIds.every(
+    (instanceId) => snapshot.some((stream) => stream.providerInstanceId === instanceId)
+  ));
+}
+
+async function observeActiveStreamOverlap({ endpoint, expectedInstanceIds, fetchImpl, isSettled }) {
+  const snapshots = [];
+  const errors = [];
+  while (!isSettled()) {
+    try {
+      const response = await fetchImpl(endpoint.url, { method: endpoint.method ?? 'GET' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const streams = Array.isArray(payload?.streams) ? payload.streams : [];
+      snapshots.push(streams.map((stream) => ({
+        providerInstanceId: stream?.provider_instance_id ?? null,
+        status: stream?.status ?? null,
+        transport: stream?.transport ?? null,
+      })));
+    } catch (error) {
+      errors.push(error.message);
+    }
+    if (!isSettled()) await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return {
+    expectedInstanceIds,
+    observed: hasExpectedActiveStreamOverlap(expectedInstanceIds, snapshots),
+    snapshots,
+    errors,
+  };
+}
+
+async function runSseRequest({
+  endpoint, transport, scenario, clientNonce, model, headers, timeoutMs, batchStartedAt, fetchImpl,
+  topology, batchBarrierId, targetIndex, applicationId, providerInstanceId,
+}) {
   const startedAt = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('request timeout')), timeoutMs);
@@ -230,6 +310,11 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, model
   const evidence = requestNonceEvidence(transport, protocolEvents, texts, errorNonce);
   const uniqueProtocolIds = [...new Set(protocolIds)];
   return {
+    topology,
+    batchBarrierId,
+    targetIndex,
+    applicationId,
+    providerInstanceId,
     clientNonce,
     transport,
     scenario,
@@ -246,7 +331,10 @@ async function runSseRequest({ endpoint, transport, scenario, clientNonce, model
   };
 }
 
-function runWebSocketRequest({ endpoint, scenario, clientNonce, timeoutMs, batchStartedAt, WebSocketImpl }) {
+function runWebSocketRequest({
+  endpoint, scenario, clientNonce, timeoutMs, batchStartedAt, WebSocketImpl,
+  topology, batchBarrierId, targetIndex, applicationId, providerInstanceId,
+}) {
   const startedAt = performance.now();
   const url = new URL(endpoint);
   url.searchParams.set('scenario', scenario);
@@ -264,6 +352,11 @@ function runWebSocketRequest({ endpoint, scenario, clientNonce, timeoutMs, batch
       clearTimeout(timer);
       const evidence = requestNonceEvidence(TRANSPORT.RESPONSES_WEBSOCKET, protocolEvents, texts, errorNonce);
       resolve({
+        topology,
+        batchBarrierId,
+        targetIndex,
+        applicationId,
+        providerInstanceId,
         clientNonce,
         transport: TRANSPORT.RESPONSES_WEBSOCKET,
         scenario,
@@ -340,8 +433,16 @@ function validateRequestResult(result) {
   return failures;
 }
 
-function requestErrorResult({ transport, scenario, clientNonce, batchStartedAt }, error) {
+function requestErrorResult({
+  transport, scenario, clientNonce, batchStartedAt,
+  topology, batchBarrierId, targetIndex, applicationId, providerInstanceId,
+}, error) {
   return {
+    topology,
+    batchBarrierId,
+    targetIndex,
+    applicationId,
+    providerInstanceId,
     clientNonce,
     transport,
     scenario,
@@ -410,8 +511,12 @@ function mockBatchEvidence(before, after, results) {
   };
 }
 
-function batchSummary({ row, results, durationMs, mockEvidence }) {
+function batchSummary({ row, results, durationMs, mockEvidence, overlapEvidence, durableFailures = [] }) {
   const failures = mockEvidence.contractFailures.map((message) => ({ clientNonce: null, message }));
+  failures.push(...durableFailures.map((message) => ({ clientNonce: null, message })));
+  if (overlapEvidence && !overlapEvidence.observed) {
+    failures.push({ clientNonce: null, message: 'multi-pool slow row did not observe both provider instances active' });
+  }
   for (const result of results) {
     for (const message of validateRequestResult(result)) failures.push({ clientNonce: result.clientNonce, message });
   }
@@ -427,6 +532,14 @@ function batchSummary({ row, results, durationMs, mockEvidence }) {
     ...row,
     pass: failures.length === 0,
     outcomes,
+    targetDistribution: Object.fromEntries(results.reduce((counts, result) => {
+      const key = result.applicationId && result.providerInstanceId
+        ? `${result.applicationId}/${result.providerInstanceId}`
+        : 'unidentified';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return counts;
+    }, new Map())),
+    overlapEvidence,
     failures,
     metrics: {
       ttftP50Ms: percentile(results.map((result) => result.ttftMs).filter((value) => value !== null), 0.5),
@@ -447,6 +560,9 @@ async function executeCharacterizePlan({
   timeoutMs = 5_000,
   fetchImpl = globalThis.fetch,
   WebSocketImpl = globalThis.WebSocket,
+  targetPoolsByTransport = {},
+  durableGraceMs,
+  durablePollIntervalMs,
 }) {
   if (!Array.isArray(plan) || plan.length === 0) throw new Error('characterize plan must not be empty');
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is unavailable');
@@ -454,49 +570,122 @@ async function executeCharacterizePlan({
   const requestModels = normalizeModelByTransport(modelByTransport);
   const batches = [];
   const events = [];
+  const durableRows = [];
   let nonceSequence = 0;
+  let batchSequence = 0;
   for (const row of plan) {
     assertTransport(row.transport);
     assertScenario(row.scenario);
     if (!Number.isInteger(row.concurrency) || row.concurrency < 1 || row.concurrency > 32) {
       throw new Error(`invalid characterize concurrency: ${row.concurrency}`);
     }
-    const endpoint = endpointUrl(endpointSet, row.transport);
+    const topology = row.topology ?? TOPOLOGY.SAME_POOL;
+    if (![TOPOLOGY.SAME_POOL, TOPOLOGY.MULTI_POOL].includes(topology)) {
+      throw new Error(`invalid characterize topology: ${topology}`);
+    }
+    const configuredPool = targetPoolsByTransport[row.transport];
+    if (topology === TOPOLOGY.MULTI_POOL && (!Array.isArray(configuredPool) || configuredPool.length !== 2)) {
+      throw new Error(`multi-pool row requires two targets for ${row.transport}`);
+    }
+    const fallbackTarget = {
+      endpoint: endpointUrl(endpointSet, row.transport),
+      headers: requestHeaders[row.transport] ?? {},
+      model: row.transport === TRANSPORT.RESPONSES_WEBSOCKET
+        ? 'mock-model'
+        : (requestModels[row.transport] ?? 'mock-model'),
+      applicationId: null,
+      providerInstanceId: null,
+      durableTarget: null,
+      activeStreamsEndpoint: null,
+    };
+    const pool = Array.isArray(configuredPool) && configuredPool.length ? configuredPool : [fallbackTarget];
     const before = mockSnapshot?.();
     const batchStartedAt = performance.now();
-    const requests = Array.from({ length: row.concurrency }, () => {
+    batchSequence += 1;
+    const batchBarrierId = `batch-${String(batchSequence).padStart(3, '0')}`;
+    let releaseBarrier;
+    const barrier = new Promise((resolve) => { releaseBarrier = resolve; });
+    const requests = Array.from({ length: row.concurrency }, (_, requestIndex) => {
       nonceSequence += 1;
+      const targetIndex = topology === TOPOLOGY.MULTI_POOL ? requestIndex % pool.length : 0;
+      const target = pool[targetIndex];
       const request = {
-        endpoint,
+        endpoint: target.endpoint,
         transport: row.transport,
         scenario: row.scenario,
         clientNonce: createClientNonce(nonceSequence),
-        model: row.transport === TRANSPORT.RESPONSES_WEBSOCKET
-          ? 'mock-model'
-          : (requestModels[row.transport] ?? 'mock-model'),
+        model: target.model,
+        headers: target.headers,
         timeoutMs,
         batchStartedAt,
+        topology,
+        batchBarrierId,
+        targetIndex,
+        applicationId: target.applicationId,
+        providerInstanceId: target.providerInstanceId,
       };
-      let pending;
-      if (row.transport === TRANSPORT.RESPONSES_WEBSOCKET) {
-        if (typeof WebSocketImpl !== 'function') throw new Error('WebSocket implementation is unavailable');
-        pending = runWebSocketRequest({ ...request, WebSocketImpl });
-      } else {
-        pending = runSseRequest({ ...request, headers: requestHeaders[row.transport] ?? {}, fetchImpl });
-      }
+      const pending = (async () => {
+        await barrier;
+        if (row.transport === TRANSPORT.RESPONSES_WEBSOCKET) {
+          if (typeof WebSocketImpl !== 'function') throw new Error('WebSocket implementation is unavailable');
+          return runWebSocketRequest({ ...request, WebSocketImpl });
+        }
+        return runSseRequest({ ...request, fetchImpl });
+      })();
       return pending.catch((error) => requestErrorResult(request, error));
     });
+    let batchSettled = false;
+    const observeOverlap = topology === TOPOLOGY.MULTI_POOL && row.scenario === SCENARIO.SLOW;
+    const overlapPending = observeOverlap ? observeActiveStreamOverlap({
+      endpoint: pool[0].activeStreamsEndpoint,
+      expectedInstanceIds: pool.map((target) => target.providerInstanceId),
+      fetchImpl,
+      isSettled: () => batchSettled,
+    }) : null;
+    releaseBarrier();
     const results = await Promise.all(requests);
+    batchSettled = true;
+    const overlapEvidence = overlapPending ? await overlapPending : null;
     const durationMs = performance.now() - batchStartedAt;
     const after = await waitForMockBatch(before, mockSnapshot, row.concurrency, timeoutMs);
     const evidence = mockBatchEvidence(before, after, results);
-    const summary = batchSummary({ row, results, durationMs, mockEvidence: evidence });
+    const rowDurableLedgers = [];
+    for (const targetIndex of [...new Set(results.map((result) => result.targetIndex))]) {
+      const target = pool[targetIndex];
+      if (!target?.durableTarget) continue;
+      const ledger = await collectDurableConvergence({
+        requestEvents: results.filter((result) => result.targetIndex === targetIndex),
+        targetsByTransport: { [row.transport]: target.durableTarget },
+        fetchImpl,
+        graceMs: durableGraceMs,
+        pollIntervalMs: durablePollIntervalMs,
+      });
+      rowDurableLedgers.push({ targetIndex, applicationId: target.applicationId, ledger });
+      durableRows.push({ batchBarrierId, topology, transport: row.transport, scenario: row.scenario, targetIndex, ledger });
+    }
+    const durableFailures = rowDurableLedgers.flatMap(({ targetIndex, ledger }) =>
+      ledger.failures.map((message) => `target ${targetIndex}: ${message}`));
+    const summary = batchSummary({ row: { ...row, topology, batchBarrierId }, results, durationMs, mockEvidence: evidence, overlapEvidence, durableFailures });
     batches.push(summary);
-    events.push(...results.map((result) => ({ kind: 'request', ...result })));
+    events.push(...results.map((result) => ({
+      kind: 'request',
+      ...result,
+      topologyOverlapObserved: overlapEvidence?.observed ?? null,
+    })));
+    if (overlapEvidence) {
+      events.push({
+        kind: 'topology-overlap',
+        batchBarrierId,
+        topology,
+        applicationIds: pool.map((target) => target.applicationId),
+        providerInstanceIds: pool.map((target) => target.providerInstanceId),
+        ...overlapEvidence,
+      });
+    }
     events.push(...evidence.arrivalEntries.map((entry) => ({ kind: 'mock-timeline', ...entry })));
   }
   const failures = batches.flatMap((batch) => batch.failures.map((failure) => ({
-    batch: `${batch.transport}/${batch.scenario}/c${batch.concurrency}`,
+    batch: `${batch.topology}/${batch.transport}/${batch.scenario}/c${batch.concurrency}`,
     ...failure,
   })));
   try {
@@ -527,6 +716,12 @@ async function executeCharacterizePlan({
       failures,
     },
     events,
+    durableLedger: {
+      schemaVersion: 1,
+      verdict: durableRows.every((row) => row.ledger.verdict === 'PASS') ? 'PASS' : 'FAIL',
+      rows: durableRows,
+      failures: durableRows.flatMap((row) => row.ledger.failures),
+    },
   };
 }
 
@@ -540,7 +735,7 @@ async function runDirectMockCharacterize({ repoRoot, timeoutMs }) {
         [TRANSPORT.RESPONSES_WEBSOCKET]: `${endpoints.websocketBaseUrl}${MOCK_ROUTE.RESPONSES}`,
         [TRANSPORT.ANTHROPIC_SSE]: `${endpoints.httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}`,
       },
-      plan: CHARACTERIZE_PLAN,
+      plan: CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.SAME_POOL),
       mockSnapshot: mock.snapshot,
       timeoutMs,
     });
@@ -560,10 +755,26 @@ async function runGatewayCharacterize({
   durableTargetsByTransport,
   durableGraceMs,
   durablePollIntervalMs,
+  anthropicTargetPool,
   fetchImpl = globalThis.fetch,
 }) {
   const headersByTransport = authorizationHeadersByTransport(authorizationTokenByTransport);
   const publishedModels = requirePublishedModelsByTransport(modelByTransport);
+  const anthropicPool = requireAnthropicTargetPool(anthropicTargetPool);
+  const targetPoolsByTransport = {
+    [TRANSPORT.ANTHROPIC_SSE]: anthropicPool.map(
+      (target) => gatewayRequestTarget(TRANSPORT.ANTHROPIC_SSE, target)
+    ),
+    [TRANSPORT.RESPONSES_SSE]: [{
+      endpoint: endpointUrl(endpointSet, TRANSPORT.RESPONSES_SSE),
+      headers: headersByTransport[TRANSPORT.RESPONSES_SSE],
+      model: publishedModels[TRANSPORT.RESPONSES_SSE],
+      applicationId: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].application_id,
+      providerInstanceId: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].provider_instance_id,
+      durableTarget: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
+      activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].plugin_runner_active_streams,
+    }],
+  };
   const result = await executeCharacterizePlan({
     endpointSet,
     plan: CHARACTERIZE_PLAN,
@@ -572,26 +783,17 @@ async function runGatewayCharacterize({
     mockSnapshot,
     timeoutMs,
     fetchImpl,
+    targetPoolsByTransport,
+    durableGraceMs,
+    durablePollIntervalMs,
   });
-  const durableLedger = await collectDurableConvergence({
-    requestEvents: result.events.filter((event) => event.kind === 'request'),
-    targetsByTransport: durableTargetsByTransport,
-    fetchImpl,
-    graceMs: durableGraceMs,
-    pollIntervalMs: durablePollIntervalMs,
-  });
+  const durableLedger = result.durableLedger;
   result.summary.durableConvergence = {
     verdict: durableLedger.verdict,
-    requests: durableLedger.requests.length,
-    polls: durableLedger.polls.length,
+    requests: durableLedger.rows.reduce((total, row) => total + row.ledger.requests.length, 0),
+    polls: durableLedger.rows.reduce((total, row) => total + row.ledger.polls.length, 0),
+    rows: durableLedger.rows.length,
   };
-  if (durableLedger.verdict !== 'PASS') {
-    result.summary.verdict = 'FAIL';
-    for (const message of durableLedger.failures) {
-      result.summary.failures.push({ batch: 'durable-convergence', clientNonce: null, message });
-    }
-    result.summary.totals.contractFailures = result.summary.failures.length;
-  }
   return {
     ...result,
     durableLedger,
@@ -602,9 +804,11 @@ async function runGatewayCharacterize({
 module.exports = {
   authorizationHeadersByTransport,
   executeCharacterizePlan,
+  hasExpectedActiveStreamOverlap,
   normalizeHeadersByTransport,
   normalizeModelByTransport,
   requirePublishedModelsByTransport,
+  requireAnthropicTargetPool,
   runDirectMockCharacterize,
   runGatewayCharacterize,
   validateRequestResult,
