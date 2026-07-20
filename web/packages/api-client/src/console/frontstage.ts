@@ -116,6 +116,80 @@ export interface DispatchFrontstageActionInput {
   params?: unknown;
 }
 
+export type ConsoleFrontstageCallableParameterLocation =
+  | 'path'
+  | 'query'
+  | 'header'
+  | 'body';
+
+export interface ConsoleFrontstageCallableParameter {
+  name: string;
+  field_type: string;
+  location: ConsoleFrontstageCallableParameterLocation;
+  description: string | null;
+  required: boolean;
+  schema: unknown;
+}
+
+export interface ConsoleFrontstageCallableInterface {
+  operation_id: string;
+  method: string;
+  path: string;
+  name: string;
+  description: string;
+  parameters: ConsoleFrontstageCallableParameter[];
+  request_schema: unknown;
+  response_schema: unknown;
+  schema_digest: string;
+  adapter_id: string;
+  host_injected_parameters: string[];
+  scope: string;
+  risk_level: string;
+  authorization: string;
+  bindable: boolean;
+  disabled_reason: string | null;
+}
+
+export interface FrontstageCallableRequest {
+  path?: Record<string, unknown>;
+  query?: Record<string, unknown>;
+  headers?: Record<string, unknown>;
+  body?: unknown;
+}
+
+export interface DispatchFrontstageCallableInput {
+  operation_id: string;
+  request?: FrontstageCallableRequest;
+}
+
+export function listFrontstageCallableInterfaces(
+  workspaceId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageCallableInterface[]> {
+  return apiFetch<ConsoleFrontstageCallableInterface[]>({
+    path: `/api/console/frontstage/${workspaceId}/callable-interfaces`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function dispatchFrontstageCallable<T = unknown>(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: DispatchFrontstageCallableInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<T> {
+  return apiFetch<T>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
 export function dispatchFrontstageQuery<T = unknown>(
   workspaceId: string,
   pageId: string,

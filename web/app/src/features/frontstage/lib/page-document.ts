@@ -44,6 +44,14 @@ export interface FrontstageBlockPresentation {
   height: number | null;
 }
 
+export interface FrontstageBlockInterfaceBinding {
+  alias: string;
+  operation_id: string;
+  schema_digest: string;
+  scope: string;
+  risk_level: string;
+}
+
 export interface FrontstageBlockInstance {
   id: string;
   rendererVersion: string | null;
@@ -53,6 +61,7 @@ export interface FrontstageBlockInstance {
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
+  interfaces?: FrontstageBlockInterfaceBinding[];
   presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   order: number;
@@ -82,6 +91,7 @@ interface FrontstageBlockPayload {
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
+  interfaces: FrontstageBlockInterfaceBinding[];
   'x-presentation': FrontstageBlockPresentation;
   'x-layout': FrontstageBlockLayout;
   runtime: FrontstageBlockRuntimeHint;
@@ -235,6 +245,61 @@ function normalizeProps(
     message: 'Frontstage block props must be an object.'
   });
   return {};
+}
+
+function normalizeInterfaces(
+  block: Record<string, unknown>,
+  path: string,
+  diagnostics: FrontstagePageDocumentDiagnostic[]
+): FrontstageBlockInterfaceBinding[] {
+  if (block.interfaces === undefined || block.interfaces === null) {
+    return [];
+  }
+  if (!Array.isArray(block.interfaces)) {
+    pushDiagnostic(diagnostics, {
+      severity: 'warning',
+      code: 'invalid_block_interfaces',
+      path: `${path}.interfaces`,
+      message: 'Frontstage block interfaces must be an array.'
+    });
+    return [];
+  }
+
+  const bindings: FrontstageBlockInterfaceBinding[] = [];
+  const aliases = new Set<string>();
+  for (const [index, value] of block.interfaces.entries()) {
+    if (!isRecord(value)) continue;
+    const alias = asOptionalString(value.alias);
+    const operationId = asOptionalString(value.operation_id);
+    const schemaDigest = asOptionalString(value.schema_digest);
+    const scope = asOptionalString(value.scope);
+    const riskLevel = asOptionalString(value.risk_level);
+    if (
+      !alias ||
+      !operationId ||
+      !schemaDigest ||
+      !scope ||
+      !riskLevel ||
+      aliases.has(alias)
+    ) {
+      pushDiagnostic(diagnostics, {
+        severity: 'warning',
+        code: 'invalid_block_interface',
+        path: `${path}.interfaces.${index}`,
+        message: 'Frontstage block interface binding is invalid or duplicated.'
+      });
+      continue;
+    }
+    aliases.add(alias);
+    bindings.push({
+      alias,
+      operation_id: operationId,
+      schema_digest: schemaDigest,
+      scope,
+      risk_level: riskLevel
+    });
+  }
+  return bindings;
 }
 
 function normalizePresentation(
@@ -434,6 +499,7 @@ function normalizeBlock(
   }
 
   const props = normalizeProps(block, path, diagnostics);
+  const interfaces = normalizeInterfaces(block, path, diagnostics);
   const presentation = normalizePresentation(block, path, diagnostics);
   const layout = normalizeLayout(block, blockIndex, path, diagnostics);
   const rendererVersion = normalizeRendererVersion(block, path, diagnostics);
@@ -466,6 +532,7 @@ function normalizeBlock(
       code: contributionCode
     },
     props,
+    interfaces,
     presentation,
     layout,
     order: layout.order,
@@ -535,6 +602,7 @@ function createBlockPayload(
     catalog: { ...block.catalog },
     contribution: { ...block.contribution },
     props: { ...block.props },
+    interfaces: (block.interfaces ?? []).map((binding) => ({ ...binding })),
     'x-presentation': {
       ...(block.presentation ?? { heightMode: 'auto', height: null })
     },

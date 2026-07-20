@@ -70,6 +70,15 @@ describe('frontstage page document', () => {
                   code: 'official.hero'
                 },
                 props: { title: 'Hello' },
+                interfaces: [
+                  {
+                    alias: 'listConversations',
+                    operation_id: 'list_application_conversations_records',
+                    schema_digest: 'digest-1',
+                    scope: 'frontstage_page_tab',
+                    risk_level: 'low'
+                  }
+                ],
                 'x-layout': { region: 'main', order: 20, span: 12 },
                 runtime: { kind: 'iframe', entry: 'blocks/hero.html' }
               }
@@ -97,6 +106,15 @@ describe('frontstage page document', () => {
           code: 'official.hero'
         },
         props: { title: 'Hello' },
+        interfaces: [
+          {
+            alias: 'listConversations',
+            operation_id: 'list_application_conversations_records',
+            schema_digest: 'digest-1',
+            scope: 'frontstage_page_tab',
+            risk_level: 'low'
+          }
+        ],
         presentation: { heightMode: 'auto', height: null },
         layout: { region: 'main', order: 20, span: 12 },
         order: 20,
@@ -351,6 +369,7 @@ describe('frontstage page document', () => {
           code: 'unknown'
         },
         props: {},
+        interfaces: [],
         presentation: { heightMode: 'auto', height: null },
         layout: { order: 0 },
         order: 0,
@@ -462,6 +481,7 @@ describe('frontstage page document', () => {
         code: 'official.hero'
       },
       props: { title: 'Hello' },
+      interfaces: [],
       presentation: { heightMode: 'auto', height: null },
       layout: { region: 'main', order: 99, span: 12, width: 12, height: 4 },
       order: 3,
@@ -501,6 +521,7 @@ describe('frontstage page document', () => {
         code: 'official.hero'
       },
       props: { title: 'Hello' },
+      interfaces: [],
       'x-presentation': { heightMode: 'auto', height: null },
       'x-layout': {
         region: 'main',

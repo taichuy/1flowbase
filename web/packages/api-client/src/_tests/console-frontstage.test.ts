@@ -7,9 +7,11 @@ import {
   createFrontstagePageTab,
   deleteFrontstagePageTab,
   deleteFrontstagePageNode,
+  dispatchFrontstageCallable,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
   listFrontstagePageTabs,
+  listFrontstageCallableInterfaces,
   listFrontstagePages,
   moveFrontstagePageNode,
   saveFrontstageBlockCode,
@@ -24,6 +26,14 @@ describe('console-frontstage client', () => {
   );
 
   test.each([
+    {
+      name: 'callable OpenAPI catalog',
+      request: () => listFrontstageCallableInterfaces('workspace-1'),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/callable-interfaces',
+        method: 'GET'
+      }
+    },
     {
       name: 'page tree collection',
       request: () => listFrontstagePages('workspace-1'),
@@ -64,6 +74,29 @@ describe('console-frontstage client', () => {
       await expect(request()).resolves.toMatchObject(expected);
     }
   );
+
+  test('dispatches a bound callable through the page-tab scope', async () => {
+    await expect(
+      dispatchFrontstageCallable(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        {
+          operation_id: 'list_application_conversations_records',
+          request: { query: { filter: 'status=active' } }
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/callable-interfaces/dispatch',
+      method: 'POST',
+      body: {
+        operation_id: 'list_application_conversations_records',
+        request: { query: { filter: 'status=active' } }
+      },
+      csrfToken: 'csrf-123'
+    });
+  });
 
   test.each([
     {
