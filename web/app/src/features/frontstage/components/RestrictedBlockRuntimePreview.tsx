@@ -11,6 +11,7 @@ import { i18nText } from '../../../shared/i18n/text';
 export interface RestrictedBlockRuntimePreviewProps {
   snapshot: RestrictedBlockRuntimeHostSnapshot;
   onAction?: (event: BlockRendererActionEvent) => void;
+  diagnostic?: boolean;
 }
 
 export type RestrictedBlockRuntimeActionEvent = BlockRendererActionEvent;
@@ -37,7 +38,8 @@ function getStatusView(status: RestrictedBlockRuntimeHostSnapshot['status']): {
 
 export function RestrictedBlockRuntimePreview({
   snapshot,
-  onAction
+  onAction,
+  diagnostic = false
 }: RestrictedBlockRuntimePreviewProps) {
   if (snapshot.status === 'idle' || snapshot.status === 'running') {
     return (
@@ -59,9 +61,9 @@ export function RestrictedBlockRuntimePreview({
       size="small"
       style={{ width: '100%' }}
     >
-      {snapshot.status === 'ready' ? null : (
+      {snapshot.status === 'disposed' ? (
         <Alert type={view.type} showIcon message={view.message} />
-      )}
+      ) : null}
 
       {snapshot.status === 'ready' ? (
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
@@ -78,10 +80,18 @@ export function RestrictedBlockRuntimePreview({
       ) : null}
 
       {snapshot.status === 'failed' || snapshot.status === 'timed_out' ? (
-        <RuntimeErrorSummary snapshot={snapshot} />
+        <Alert
+          type={view.type}
+          showIcon
+          message={view.message}
+          description={snapshot.error?.message}
+        />
       ) : null}
 
-      <RuntimeActivitySummary snapshot={snapshot} />
+      {diagnostic && (snapshot.status === 'failed' || snapshot.status === 'timed_out') ? (
+        <RuntimeErrorSummary snapshot={snapshot} />
+      ) : null}
+      {diagnostic ? <RuntimeActivitySummary snapshot={snapshot} /> : null}
     </Space>
   );
 }

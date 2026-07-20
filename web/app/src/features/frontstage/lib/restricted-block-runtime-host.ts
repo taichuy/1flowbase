@@ -4,6 +4,7 @@ import {
   type BlockContextMediatorState,
   type JsBlockHostEffectHandlers,
   type JsBlockRunError,
+  type JsBlockRunPhase,
   type JsBlockRuntimeRejection,
   type JsBlockRuntimeSessionState,
   type JsBlockWorkerClearTimeout,
@@ -25,6 +26,7 @@ export type RestrictedBlockRuntimeHostSnapshotStatus =
 
 export interface RestrictedBlockRuntimeHostSnapshot {
   status: RestrictedBlockRuntimeHostSnapshotStatus;
+  phase?: JsBlockRunPhase;
   requestId: string;
   blockId: string;
   schemaValidationOptions: BlockUiSchemaValidationOptions;
@@ -76,6 +78,7 @@ export function createRestrictedBlockRuntimeHost(
       status: didDispose
         ? 'disposed'
         : mapSnapshotStatus(requestState?.status),
+      phase: didDispose ? 'disposed' : requestState?.phase,
       requestId: runPlan.request.requestId,
       blockId: runPlan.request.blockId,
       schemaValidationOptions: cloneSchemaValidationOptions(
