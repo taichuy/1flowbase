@@ -206,6 +206,24 @@ fn workflow_schedule_start_contract_document() -> serde_json::Value {
 #[derive(Default)]
 struct RecordingTaskQueue {
     enqueued: Mutex<Vec<(String, serde_json::Value, Option<String>)>>,
+    attempts: Mutex<usize>,
+    failures_remaining: Mutex<usize>,
+}
+
+impl RecordingTaskQueue {
+    fn failing_once() -> Self {
+        Self {
+            failures_remaining: Mutex::new(1),
+            ..Self::default()
+        }
+    }
+
+    fn attempt_count(&self) -> usize {
+        *self
+            .attempts
+            .lock()
+            .expect("recording task queue attempts mutex poisoned")
+    }
 }
 
 #[async_trait]
@@ -216,22 +234,37 @@ impl TaskQueue for RecordingTaskQueue {
         payload: serde_json::Value,
         idempotency_key: Option<&str>,
     ) -> Result<String> {
-        let task_id = format!(
-            "task-{}",
-            self.enqueued
-                .lock()
-                .expect("recording task queue mutex poisoned")
-                .len()
-                + 1
-        );
-        self.enqueued
+        *self
+            .attempts
             .lock()
-            .expect("recording task queue mutex poisoned")
-            .push((
-                queue.to_string(),
-                payload,
-                idempotency_key.map(ToOwned::to_owned),
-            ));
+            .expect("recording task queue attempts mutex poisoned") += 1;
+        let mut failures_remaining = self
+            .failures_remaining
+            .lock()
+            .expect("recording task queue failures mutex poisoned");
+        if *failures_remaining > 0 {
+            *failures_remaining -= 1;
+            anyhow::bail!("injected task queue enqueue failure");
+        }
+        drop(failures_remaining);
+
+        let mut enqueued = self
+            .enqueued
+            .lock()
+            .expect("recording task queue mutex poisoned");
+        if let Some(idempotency_key) = idempotency_key {
+            if let Some(index) = enqueued.iter().position(|entry| {
+                entry.0 == queue && entry.2.as_deref() == Some(idempotency_key)
+            }) {
+                return Ok(format!("task-{}", index + 1));
+            }
+        }
+        let task_id = format!("task-{}", enqueued.len() + 1);
+        enqueued.push((
+            queue.to_string(),
+            payload,
+            idempotency_key.map(ToOwned::to_owned),
+        ));
         Ok(task_id)
     }
 
@@ -1411,10 +1444,7 @@ async fn workflow_http_operation_rejects_application_key_and_runs_with_public_pr
     );
     let expected_trace = format!("workflow-http:published_workflow_operation:{}", application.id);
     assert_eq!(stored.external_trace_id.as_deref(), Some(expected_trace.as_str()));
-    assert_eq!(
-        stored.compatibility_mode.as_deref(),
-        Some("workflow_http_v1")
-    );
+    assert_eq!(stored.compatibility_mode, None);
     assert_eq!(run.api_key_id, None, "public principal is not an API key");
 }
 
@@ -1620,8 +1650,90 @@ async fn workflow_schedule_trigger_dispatch_creates_traceable_async_run_and_task
         .clone();
 
     assert_eq!(duplicate.run_id, dispatched.run_id);
-    assert_eq!(duplicate.task_id, None);
+    assert_eq!(duplicate.task_id.as_deref(), Some("task-1"));
     assert_eq!(enqueued_after_duplicate.len(), 1);
+}
+
+#[tokio::test]
+async fn workflow_schedule_retry_enqueues_existing_run_after_the_first_enqueue_fails() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "Recoverable Schedule");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Schedule);
+    let repository = harness.repository();
+    let service = WorkflowScheduleTriggerService::new(repository.clone());
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: false,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(
+        application.id,
+        workflow_schedule_start_contract_document(),
+    );
+    service
+        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            enabled: true,
+            cron: "0 9 * * *".into(),
+            timezone: "UTC".into(),
+            input_payload: serde_json::json!({ "customer_id": "C-42" }),
+        })
+        .await
+        .unwrap();
+    let task_queue = RecordingTaskQueue::failing_once();
+    let scheduled_at = time::OffsetDateTime::UNIX_EPOCH + Duration::hours(9);
+
+    service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .expect_err("the injected first enqueue must fail after the run is durable");
+    assert_eq!(repository.flow_run_count(), 1);
+
+    let retry = service
+        .dispatch_due_schedule(
+            DispatchWorkflowScheduleCommand {
+                application_id: application.id,
+                scheduled_at,
+            },
+            Some(&task_queue),
+        )
+        .await
+        .unwrap();
+    let WorkflowScheduleDispatchOutcome::Dispatched(retry) = retry else {
+        panic!("retry should recover delivery for the existing schedule run");
+    };
+    let enqueued = task_queue
+        .enqueued
+        .lock()
+        .expect("recording task queue mutex poisoned")
+        .clone();
+
+    assert_eq!(repository.flow_run_count(), 1);
+    assert_eq!(task_queue.attempt_count(), 2);
+    assert_eq!(retry.task_id.as_deref(), Some("task-1"));
+    assert_eq!(enqueued.len(), 1);
+    assert_eq!(
+        enqueued[0].2.as_deref(),
+        Some(
+            format!(
+                "workflow-schedule:{}:{}",
+                application.id,
+                scheduled_at.unix_timestamp()
+            )
+            .as_str()
+        )
+    );
 }
 
 #[tokio::test]

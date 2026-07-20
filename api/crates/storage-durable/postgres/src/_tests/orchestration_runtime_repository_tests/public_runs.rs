@@ -106,7 +106,7 @@ async fn orchestration_runtime_repository_round_trips_canonical_published_public
 }
 
 #[tokio::test]
-async fn published_run_idempotency_lookup_supports_schedule_runs_without_api_key() {
+async fn workflow_schedule_run_create_or_get_is_atomic_across_concurrent_callers() {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -114,36 +114,39 @@ async fn published_run_idempotency_lookup_supports_schedule_runs_without_api_key
     let compiled = seed_compiled_plan(&store, &seeded).await;
     let idempotency_key = "workflow-schedule:test:34200".to_string();
 
-    let created =
+    let input = CreateFlowRunInput {
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        flow_id: seeded.flow_id,
+        flow_draft_id: seeded.draft_id,
+        compiled_plan_id: compiled.id,
+        debug_session_id: String::new(),
+        flow_schema_version: compiled.schema_version.clone(),
+        document_hash: compiled.document_hash.clone(),
+        run_mode: FlowRunMode::WorkflowScheduleRun,
+        target_node_id: None,
+        title: "Scheduled workflow".to_string(),
+        status: FlowRunStatus::Queued,
+        input_payload: json!({ "node-workflow-start": { "customer_id": "C-42" } }),
+        started_at: datetime!(2026-06-30 09:30:00 UTC),
+        api_key_id: None,
+        publication_version_id: None,
+        external_user: None,
+        external_conversation_id: None,
+        external_trace_id: Some(format!("workflow-schedule:{}", seeded.application_id)),
+        compatibility_mode: None,
+        idempotency_key: Some(idempotency_key.clone()),
+    };
+    let (first, second) = tokio::join!(
         <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_published_flow_run(
-            &store,
-            &CreateFlowRunInput {
-                actor_user_id: seeded.actor_user_id,
-                application_id: seeded.application_id,
-                flow_id: seeded.flow_id,
-                flow_draft_id: seeded.draft_id,
-                compiled_plan_id: compiled.id,
-                debug_session_id: String::new(),
-                flow_schema_version: compiled.schema_version.clone(),
-                document_hash: compiled.document_hash.clone(),
-                run_mode: FlowRunMode::PublishedApiRun,
-                target_node_id: None,
-                title: "Scheduled workflow".to_string(),
-                status: FlowRunStatus::Queued,
-                input_payload: json!({ "node-workflow-start": { "customer_id": "C-42" } }),
-                started_at: datetime!(2026-06-30 09:30:00 UTC),
-                api_key_id: None,
-                publication_version_id: None,
-                external_user: None,
-                external_conversation_id: None,
-                external_trace_id: Some(format!("workflow-schedule:{}", seeded.application_id)),
-                compatibility_mode: Some("workflow_schedule_v1".to_string()),
-                idempotency_key: Some(idempotency_key.clone()),
-            },
-        )
-        .await
-        .unwrap()
-        .flow_run;
+            &store, &input,
+        ),
+        <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_published_flow_run(
+            &store, &input,
+        ),
+    );
+    let first = first.unwrap();
+    let second = second.unwrap();
     let fetched = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::find_published_flow_run_by_idempotency_key(
         &store,
         seeded.application_id,
@@ -153,19 +156,28 @@ async fn published_run_idempotency_lookup_supports_schedule_runs_without_api_key
     .await
     .unwrap()
     .expect("schedule run should be found without an api_key_id");
-    let api_key_id = seed_application_api_key(&store, &seeded).await;
-    let api_key_scoped = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::find_published_flow_run_by_idempotency_key(
-        &store,
-        seeded.application_id,
-        Some(api_key_id),
-        &idempotency_key,
+    let persisted_count: i64 = sqlx::query_scalar(
+        r#"
+        select count(*)
+        from flow_runs
+        where application_id = $1
+          and run_mode = 'workflow_schedule_run'
+          and idempotency_key = $2
+        "#,
     )
+    .bind(seeded.application_id)
+    .bind(&idempotency_key)
+    .fetch_one(store.pool())
     .await
     .unwrap();
 
-    assert_eq!(fetched.id, created.id);
+    assert_ne!(first.created, second.created);
+    assert_eq!(first.flow_run.id, second.flow_run.id);
+    assert_eq!(fetched.id, first.flow_run.id);
     assert_eq!(fetched.api_key_id, None);
-    assert!(api_key_scoped.is_none());
+    assert_eq!(fetched.run_mode, FlowRunMode::WorkflowScheduleRun);
+    assert!(fetched.compatibility_mode.is_none());
+    assert_eq!(persisted_count, 1);
 }
 
 #[tokio::test]

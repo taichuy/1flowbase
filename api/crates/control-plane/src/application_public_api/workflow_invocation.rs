@@ -140,7 +140,7 @@ where
                 external_user: None,
                 external_conversation_id: None,
                 external_trace_id: Some(command.trigger.external_trace_id()),
-                compatibility_mode: command.trigger.compatibility_mode(),
+                compatibility_mode: None,
                 idempotency_key: command.trigger.idempotency_key().map(str::to_string),
             })
             .await
@@ -214,13 +214,6 @@ impl WorkflowInvocationTrigger {
         match self {
             Self::Http { interface_id, .. } => format!("workflow-http:{interface_id}"),
             Self::Schedule { trigger_id, .. } => format!("workflow-schedule:{trigger_id}"),
-        }
-    }
-
-    fn compatibility_mode(&self) -> Option<String> {
-        match self {
-            Self::Http { .. } => Some("workflow_http_v1".to_string()),
-            Self::Schedule { .. } => None,
         }
     }
 

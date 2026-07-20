@@ -298,9 +298,8 @@ where
             })
             .await?;
         let flow_run = invoked.flow_run;
-        let task_id = match (invoked.created, task_queue) {
-            (false, _) => None,
-            (true, Some(queue)) => Some(
+        let task_id = match task_queue {
+            Some(queue) => Some(
                 queue
                     .enqueue(
                         WORKFLOW_SCHEDULE_RUN_QUEUE,
@@ -313,7 +312,7 @@ where
                     )
                     .await?,
             ),
-            (true, None) => None,
+            None => None,
         };
 
         Ok(WorkflowScheduleDispatchOutcome::Dispatched(
