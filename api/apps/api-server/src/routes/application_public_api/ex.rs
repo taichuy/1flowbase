@@ -311,11 +311,22 @@ fn optional_bearer_token(headers: &HeaderMap) -> Result<Option<String>, NativeAp
         return Ok(None);
     };
     let value = value.to_str().map_err(|_| {
-        NativeApiError::new(StatusCode::UNAUTHORIZED, "not_authenticated", "invalid authorization header")
+        NativeApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "not_authenticated",
+            "invalid authorization header",
+        )
     })?;
-    let token = value.strip_prefix("Bearer ").filter(|token| !token.is_empty()).ok_or_else(|| {
-        NativeApiError::new(StatusCode::UNAUTHORIZED, "not_authenticated", "invalid authorization header")
-    })?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| {
+            NativeApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "not_authenticated",
+                "invalid authorization header",
+            )
+        })?;
     Ok(Some(token.to_string()))
 }
 

@@ -234,7 +234,11 @@ where
         if let Some(extension) = command.mapping.extension.as_ref() {
             validate_published_workflow_contract(extension, &document)
                 .map_err(|_| ControlPlaneError::InvalidInput("workflow_operation"))?;
-            for existing in self.repository.list_enabled_extension_publications().await? {
+            for existing in self
+                .repository
+                .list_enabled_extension_publications()
+                .await?
+            {
                 let Some(existing_extension) = existing.mapping_snapshot.extension.as_ref() else {
                     continue;
                 };

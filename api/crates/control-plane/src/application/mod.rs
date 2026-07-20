@@ -1459,17 +1459,16 @@ fn product_api_section(
 ) -> domain::ApplicationApiSection {
     match (application_type, workflow_trigger_type) {
         (domain::ApplicationType::AgentFlow, _) => agent_flow_api,
-        (
-            domain::ApplicationType::Workflow,
-            Some(domain::WorkflowTriggerType::Extension),
-        ) => domain::ApplicationApiSection {
-            status: "available".to_string(),
-            credential_kind: "user_or_public".to_string(),
-            invoke_routing_mode: "published_workflow_operation".to_string(),
-            invoke_path_template: Some("/api/ex/{operation}".to_string()),
-            api_capability_status: "available".to_string(),
-            credentials_status: "not_required".to_string(),
-        },
+        (domain::ApplicationType::Workflow, Some(domain::WorkflowTriggerType::Extension)) => {
+            domain::ApplicationApiSection {
+                status: "available".to_string(),
+                credential_kind: "user_or_public".to_string(),
+                invoke_routing_mode: "published_workflow_operation".to_string(),
+                invoke_path_template: Some("/api/ex/{operation}".to_string()),
+                api_capability_status: "available".to_string(),
+                credentials_status: "not_required".to_string(),
+            }
+        }
         (domain::ApplicationType::Workflow, _) => domain::ApplicationApiSection {
             status: "unavailable".to_string(),
             credential_kind: "not_applicable".to_string(),

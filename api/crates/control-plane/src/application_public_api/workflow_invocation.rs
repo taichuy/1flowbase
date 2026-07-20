@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
-use time::OffsetDateTime;
 use thiserror::Error;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
@@ -12,9 +12,7 @@ use super::{
 };
 use crate::{
     flow_run_title::build_flow_run_title,
-    ports::{
-        ApplicationCompiledPlanRepository, ApplicationRepository, CreateFlowRunInput,
-    },
+    ports::{ApplicationCompiledPlanRepository, ApplicationRepository, CreateFlowRunInput},
 };
 
 #[derive(Debug, Clone)]

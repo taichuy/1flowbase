@@ -54,11 +54,15 @@ impl PublishedWorkflowOperation {
             .extension
             .as_ref()
             .ok_or(PublishedWorkflowOperationError::InvalidContract)?;
-        let start = validate_published_workflow_contract(extension, &publication.document_snapshot)?;
+        let start =
+            validate_published_workflow_contract(extension, &publication.document_snapshot)?;
         let route_template = normalize_route_template(&extension.slug)?;
 
         Ok(Self {
-            interface_id: format!("published_workflow_operation:{}", publication.application_id),
+            interface_id: format!(
+                "published_workflow_operation:{}",
+                publication.application_id
+            ),
             application_id: publication.application_id,
             workspace_id: publication.workspace_id,
             publication_version_id: publication.id,
@@ -101,8 +105,10 @@ impl PublishedWorkflowOperation {
 pub fn validate_published_workflow_contract(
     extension: &WorkflowExtensionApiConfig,
     document: &Value,
-) -> Result<super::workflow_start_http_inputs::WorkflowStartHttpInputs, PublishedWorkflowOperationError>
-{
+) -> Result<
+    super::workflow_start_http_inputs::WorkflowStartHttpInputs,
+    PublishedWorkflowOperationError,
+> {
     let start = parse_workflow_start_http_inputs(document)
         .map_err(|_| PublishedWorkflowOperationError::InvalidContract)?;
     let route_template = normalize_route_template(&extension.slug)?;
@@ -124,9 +130,7 @@ pub fn workflow_route_shapes_conflict(left: &str, right: &str) -> bool {
     let right = right.split('/').collect::<Vec<_>>();
     left.len() == right.len()
         && left.iter().zip(right).all(|(left, right)| {
-            *left == right
-                || placeholder_name(left).is_some()
-                || placeholder_name(right).is_some()
+            *left == right || placeholder_name(left).is_some() || placeholder_name(right).is_some()
         })
 }
 
@@ -259,9 +263,9 @@ fn workflow_result_schema(document: &Value) -> Value {
         .and_then(|graph| graph.get("nodes"))
         .and_then(Value::as_array)
         .and_then(|nodes| {
-            nodes.iter().find(|node| {
-                node.get("type").and_then(Value::as_str) == Some("workflow_end")
-            })
+            nodes
+                .iter()
+                .find(|node| node.get("type").and_then(Value::as_str) == Some("workflow_end"))
         })
         .and_then(|node| node.get("outputs"))
         .and_then(Value::as_array)

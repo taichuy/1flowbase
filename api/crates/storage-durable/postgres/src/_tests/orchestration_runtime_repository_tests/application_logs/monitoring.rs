@@ -62,10 +62,15 @@ async fn monitoring_source_breakdown_uses_four_explicit_run_modes() {
         .collect::<std::collections::HashSet<_>>();
     assert_eq!(
         sources,
-        ["agent_flow_api", "workflow_http", "workflow_schedule", "debug"]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
+        [
+            "agent_flow_api",
+            "workflow_http",
+            "workflow_schedule",
+            "debug"
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
     );
 }
 

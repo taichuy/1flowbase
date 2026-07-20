@@ -1205,7 +1205,10 @@ async fn mcp_interface_catalog_entries(
     let mut entries = static_mcp_interface_catalog_entries(&state.api_docs);
     let models = runtime_data_model_docs::ready_models(state, actor_user_id).await?;
     entries.extend(runtime_data_model_mcp_interface_catalog_entries(&models));
-    let actor = state.store.load_actor_context_for_user(actor_user_id).await?;
+    let actor = state
+        .store
+        .load_actor_context_for_user(actor_user_id)
+        .await?;
     let publications = state.store.list_enabled_extension_publications().await?;
     let operations = build_published_workflow_operations(publications)
         .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
@@ -1219,7 +1222,10 @@ async fn mcp_interface_catalog_entries(
             id: operation.interface_id.clone(),
             method: method.clone(),
             path: path.clone(),
-            summary: Some(format!("Invoke published workflow {}", operation.application_id)),
+            summary: Some(format!(
+                "Invoke published workflow {}",
+                operation.application_id
+            )),
             description: Some("Invoke the active publication of a Workflow application".into()),
             tags: vec!["Workflow Extensions".into()],
             group: "workflow_extensions".into(),
@@ -2873,8 +2879,14 @@ mod tests {
         .expect("published workflow operation should become an MCP interface");
 
         assert!(entry.bindable);
-        assert_eq!(entry.interface_id, "published_workflow_operation:11111111-1111-1111-1111-111111111111");
+        assert_eq!(
+            entry.interface_id,
+            "published_workflow_operation:11111111-1111-1111-1111-111111111111"
+        );
         assert_eq!(entry.parameter_descriptors[0].name, "order_id");
-        assert_eq!(entry.result_schema["properties"]["accepted"]["type"], json!("boolean"));
+        assert_eq!(
+            entry.result_schema["properties"]["accepted"]["type"],
+            json!("boolean")
+        );
     }
 }

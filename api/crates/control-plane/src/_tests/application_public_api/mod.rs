@@ -253,9 +253,10 @@ impl TaskQueue for RecordingTaskQueue {
             .lock()
             .expect("recording task queue mutex poisoned");
         if let Some(idempotency_key) = idempotency_key {
-            if let Some(index) = enqueued.iter().position(|entry| {
-                entry.0 == queue && entry.2.as_deref() == Some(idempotency_key)
-            }) {
+            if let Some(index) = enqueued
+                .iter()
+                .position(|entry| entry.0 == queue && entry.2.as_deref() == Some(idempotency_key))
+            {
                 return Ok(format!("task-{}", index + 1));
             }
         }
@@ -1359,11 +1360,12 @@ async fn application_public_api_publish_rejects_extension_slug_used_by_saved_map
 async fn workflow_http_operation_rejects_application_key_and_runs_with_public_principal() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
+    let agent_flow = harness.seed_application(actor_user_id(), "Support Agent");
     let repository = harness.repository();
     let application_token = ApplicationApiKeyService::new(repository.clone())
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: actor_user_id(),
-            application_id: application.id,
+            application_id: agent_flow.id,
             name: "Rejected application key".into(),
             expires_at: None,
         })
@@ -1445,8 +1447,14 @@ async fn workflow_http_operation_rejects_application_key_and_runs_with_public_pr
         stored.input_payload["trigger"],
         serde_json::json!({ "type": "extension" })
     );
-    let expected_trace = format!("workflow-http:published_workflow_operation:{}", application.id);
-    assert_eq!(stored.external_trace_id.as_deref(), Some(expected_trace.as_str()));
+    let expected_trace = format!(
+        "workflow-http:published_workflow_operation:{}",
+        application.id
+    );
+    assert_eq!(
+        stored.external_trace_id.as_deref(),
+        Some(expected_trace.as_str())
+    );
     assert_eq!(stored.compatibility_mode, None);
     assert_eq!(run.api_key_id, None, "public principal is not an API key");
 }

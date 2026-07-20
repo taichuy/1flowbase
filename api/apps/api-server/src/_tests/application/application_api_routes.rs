@@ -386,9 +386,7 @@ async fn ac_004_application_api_key_routes_fail_closed_for_workflows() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!(
-                    "/api/console/applications/{workflow_id}/api-keys"
-                ))
+                .uri(format!("/api/console/applications/{workflow_id}/api-keys"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
@@ -409,9 +407,7 @@ async fn ac_004_application_api_key_routes_fail_closed_for_workflows() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{workflow_id}/api-keys"
-                ))
+                .uri(format!("/api/console/applications/{workflow_id}/api-keys"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

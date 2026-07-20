@@ -123,9 +123,7 @@ pub struct ApplicationRunTypedDetailResponse {
     pub stitched_trace: Vec<ApplicationRunStitchedTraceResponse>,
 }
 
-pub fn principal_response(
-    principal: domain::FlowRunPrincipal,
-) -> ApplicationRunPrincipalResponse {
+pub fn principal_response(principal: domain::FlowRunPrincipal) -> ApplicationRunPrincipalResponse {
     ApplicationRunPrincipalResponse {
         kind: principal.kind.as_str().to_string(),
         id: principal.id.map(|value| value.to_string()),

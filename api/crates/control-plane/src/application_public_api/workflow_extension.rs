@@ -258,7 +258,9 @@ fn map_operation_error(error: PublishedWorkflowOperationError) -> WorkflowExtens
         PublishedWorkflowOperationError::NotFound => WorkflowExtensionRunError::ExtensionNotFound,
         PublishedWorkflowOperationError::RouteConflict => WorkflowExtensionRunError::RouteConflict,
         PublishedWorkflowOperationError::InvalidContract
-        | PublishedWorkflowOperationError::PathFieldsMismatch => WorkflowExtensionRunError::InvalidMapping,
+        | PublishedWorkflowOperationError::PathFieldsMismatch => {
+            WorkflowExtensionRunError::InvalidMapping
+        }
     }
 }
 

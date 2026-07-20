@@ -2,8 +2,8 @@ use control_plane::{
     application_public_api::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
-            ApplicationApiMappingOutput, ApplicationOperationBindings, WorkflowExtensionApiConfig,
-            WorkflowExtensionAccessPolicy, WorkflowExtensionHttpMethod,
+            ApplicationApiMappingOutput, ApplicationOperationBindings,
+            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
             WorkflowExtensionResponseMode,
         },
         publications::ApplicationPublicationJsDependencySnapshot,

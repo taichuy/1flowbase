@@ -242,8 +242,8 @@ async fn dispatch_interface_request(
                 McpParameterType::JsonBody => "application/json",
                 McpParameterType::Url => unreachable!("URL parameters are not request bodies"),
             }
-                .parse()
-                .expect("compiled content type must be a valid header value"),
+            .parse()
+            .expect("compiled content type must be a valid header value"),
         );
     }
 

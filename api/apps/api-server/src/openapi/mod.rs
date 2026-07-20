@@ -800,9 +800,8 @@ mod workflow_operation_tests {
     use super::*;
     use control_plane::application_public_api::{
         mapping::{
-            ApplicationApiMappingConfig, ApplicationApiMappingInput,
-            ApplicationApiMappingOutput, ApplicationOperationBindings,
-            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+            ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
+            ApplicationOperationBindings, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
         },
         publications::ApplicationPublicationVersionRecord,
         published_workflow_operation::PublishedWorkflowOperation,
@@ -863,14 +862,13 @@ mod workflow_operation_tests {
 
     #[test]
     fn ac_006_openapi_projects_start_end_and_user_api_key_security() {
-        let projected = workflow_extension_operation(&operation(
-            WorkflowExtensionAccessPolicy::UserApiKey,
-        ));
+        let projected =
+            workflow_extension_operation(&operation(WorkflowExtensionAccessPolicy::UserApiKey));
         assert_eq!(projected["security"], json!([{ "UserApiKey": [] }]));
         assert_eq!(projected["parameters"][0]["name"], json!("order_id"));
         assert_eq!(
-            projected["responses"]["200"]["content"]["application/json"]["schema"]
-                ["properties"]["accepted"]["type"],
+            projected["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+                ["accepted"]["type"],
             json!("boolean")
         );
     }

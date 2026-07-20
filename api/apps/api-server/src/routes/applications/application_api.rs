@@ -199,7 +199,6 @@ pub enum WorkflowExtensionResponseModeBody {
     Async,
 }
 
-
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ApplicationApiDocsQuery {
     pub locale: Option<String>,
@@ -701,7 +700,10 @@ fn to_publication_response(
 fn to_published_workflow_operation_response(
     operation: PublishedWorkflowOperation,
 ) -> PublishedWorkflowOperationResponse {
-    let extension = operation.publication.mapping_snapshot.extension
+    let extension = operation
+        .publication
+        .mapping_snapshot
+        .extension
         .expect("published workflow operation must have extension config");
     PublishedWorkflowOperationResponse {
         interface_id: operation.interface_id,

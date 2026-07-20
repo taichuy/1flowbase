@@ -134,23 +134,43 @@ pub struct FlowRunPrincipal {
 
 impl FlowRunPrincipal {
     fn user(id: Option<Uuid>, display_name: Option<String>) -> Self {
-        Self { kind: FlowRunPrincipalKind::User, id, display_name }
+        Self {
+            kind: FlowRunPrincipalKind::User,
+            id,
+            display_name,
+        }
     }
 
     fn application_api_key(id: Option<Uuid>) -> Self {
-        Self { kind: FlowRunPrincipalKind::ApplicationApiKey, id, display_name: None }
+        Self {
+            kind: FlowRunPrincipalKind::ApplicationApiKey,
+            id,
+            display_name: None,
+        }
     }
 
     fn user_api_key(id: Option<Uuid>) -> Self {
-        Self { kind: FlowRunPrincipalKind::UserApiKey, id, display_name: None }
+        Self {
+            kind: FlowRunPrincipalKind::UserApiKey,
+            id,
+            display_name: None,
+        }
     }
 
     fn public() -> Self {
-        Self { kind: FlowRunPrincipalKind::Public, id: None, display_name: None }
+        Self {
+            kind: FlowRunPrincipalKind::Public,
+            id: None,
+            display_name: None,
+        }
     }
 
     fn scheduler() -> Self {
-        Self { kind: FlowRunPrincipalKind::Scheduler, id: None, display_name: None }
+        Self {
+            kind: FlowRunPrincipalKind::Scheduler,
+            id: None,
+            display_name: None,
+        }
     }
 }
 
@@ -692,8 +712,10 @@ mod invocation_context_tests {
             assert_eq!(context.execution_stage, stage);
             assert_eq!(context.invocation_source, source);
             assert_eq!(context.principal.kind, principal_kind);
-            if matches!(principal_kind, FlowRunPrincipalKind::Public | FlowRunPrincipalKind::Scheduler)
-            {
+            if matches!(
+                principal_kind,
+                FlowRunPrincipalKind::Public | FlowRunPrincipalKind::Scheduler
+            ) {
                 assert_eq!(context.principal.id, None);
                 assert_eq!(context.principal.display_name, None);
             }
