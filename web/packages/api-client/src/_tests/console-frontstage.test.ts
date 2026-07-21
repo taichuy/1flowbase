@@ -14,7 +14,7 @@ import {
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
   listFrontstagePageTabs,
-  listFrontstageCallableInterfaces,
+  listFrontstageInterfaceCapabilities,
   listFrontstagePages,
   moveFrontstagePageNode,
   saveFrontstageBlockCode,
@@ -46,10 +46,10 @@ describe('console-frontstage client', () => {
 
   test.each([
     {
-      name: 'callable OpenAPI catalog',
-      request: () => listFrontstageCallableInterfaces('workspace-1'),
+      name: 'OpenAPI capability catalog',
+      request: () => listFrontstageInterfaceCapabilities('workspace-1'),
       expected: {
-        path: '/api/console/frontstage/workspace-1/callable-interfaces',
+        path: '/api/console/frontstage/workspace-1/interface-capabilities',
         method: 'GET'
       }
     },

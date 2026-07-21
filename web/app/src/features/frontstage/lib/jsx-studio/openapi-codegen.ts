@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 
 export interface FrontstageOpenApiCodegenResult {
   source: string;
@@ -21,8 +21,8 @@ const sourcePolicyDeniedPropertyNames = new Set([
   '__proto__'
 ]);
 
-export function generateFrontstageCallableSource(
-  operation: ConsoleFrontstageCallableInterface,
+export function generateFrontstageInterfaceSource(
+  operation: ConsoleFrontstageInterfaceCapability,
   bindingAlias: string
 ): FrontstageOpenApiCodegenResult {
   if (!operation.bindable) {
@@ -31,7 +31,7 @@ export function generateFrontstageCallableSource(
   const functionName = requireIdentifier(bindingAlias);
   const typeBase = toPascalCase(functionName) || 'BoundInterface';
   const declarations: string[] = [];
-  const request = asSchema(operation.request_schema);
+  const request = asSchema(operation.parameter_schema);
   const requestProperties = asRecord(request.properties);
   const requestRequired = stringSet(request.required);
   const locations = ['path', 'query', 'headers', 'body'].filter(
@@ -51,7 +51,7 @@ export function generateFrontstageCallableSource(
     ? 'void'
     : isBinaryMediaType(operation.response_media_type)
       ? declareBinaryResource(responseName, declarations)
-      : declareSchema(responseName, operation.response_schema, declarations);
+      : declareSchema(responseName, operation.result_schema, declarations);
 
   let parameterSource: string;
   let requestSource: string;
@@ -85,7 +85,7 @@ export function generateFrontstageCallableSource(
   const provenance = [
     '/**',
     ' * @1flowbase-openapi',
-    ` * operationId=${operation.operation_id}`,
+    ` * operationId=${operation.interface_id}`,
     ` * binding=${functionName}`,
     ` * ${operation.method.toUpperCase()} ${operation.path}`,
     ` * specDigest=${operation.schema_digest}`,
@@ -222,9 +222,9 @@ function declareBinaryResource(name: string, declarations: string[]): string {
 }
 
 function isNoContentResponse(
-  operation: ConsoleFrontstageCallableInterface
+  operation: ConsoleFrontstageInterfaceCapability
 ): boolean {
-  const schema = asSchema(operation.response_schema);
+  const schema = asSchema(operation.result_schema);
   return (
     operation.response_media_type === null && Object.keys(schema).length === 0
   );

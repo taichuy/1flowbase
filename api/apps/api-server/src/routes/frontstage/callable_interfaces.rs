@@ -9,7 +9,7 @@ use axum::{
 use control_plane::{
     errors::ControlPlaneError,
     frontstage::{FrontstagePageService, GetFrontstagePageDetailCommand},
-    ports::{FrontstagePageRepository, ModelDefinitionRepository},
+    ports::FrontstagePageRepository,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,11 +23,10 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_interface::{
-        catalog_entry_from_operation, DispatchArguments, DispatchError,
-        OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
+        build_openapi_capability_catalog, DispatchArguments, DispatchError,
+        OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
     },
     response::ApiSuccess,
-    runtime_data_model_docs,
 };
 
 const WRITE_GRANT_TTL: Duration = Duration::minutes(5);
@@ -41,15 +40,9 @@ const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
 const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
 
 #[derive(Clone)]
-enum CallableAdapter {
-    ConsoleOpenApi,
-    RuntimeDataModel,
-}
-
-#[derive(Clone)]
 struct RegisteredCallable {
     interface: OpenApiInterfaceCatalogEntry,
-    adapter: CallableAdapter,
+    source: OpenApiCapabilitySource,
     bindable: bool,
     disabled_reason: Option<&'static str>,
     host_injected_parameters: Vec<&'static str>,
@@ -59,28 +52,16 @@ struct RegisteredCallable {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageCallableParameterResponse {
-    pub name: String,
-    pub field_type: String,
-    pub location: String,
-    pub description: Option<String>,
-    pub required: bool,
-    #[schema(value_type = Object)]
-    pub schema: Value,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageCallableResponse {
-    pub operation_id: String,
+pub struct FrontstageInterfaceCapabilityResponse {
+    pub interface_id: String,
     pub method: String,
     pub path: String,
     pub name: String,
-    pub description: String,
-    pub parameters: Vec<FrontstageCallableParameterResponse>,
+    pub short_description: String,
     #[schema(value_type = Object)]
-    pub request_schema: Value,
+    pub parameter_schema: Value,
     #[schema(value_type = Object)]
-    pub response_schema: Value,
+    pub result_schema: Value,
     pub request_media_type: Option<String>,
     pub response_media_type: Option<String>,
     pub schema_digest: String,
@@ -152,19 +133,19 @@ struct FrontstageCallableBlock {
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/callable-interfaces",
+    path = "/api/console/frontstage/{workspace_id}/interface-capabilities",
     params(("workspace_id" = String, Path, description = "Workspace id")),
     responses(
-        (status = 200, body = [FrontstageCallableResponse]),
+        (status = 200, body = [FrontstageInterfaceCapabilityResponse]),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody)
     )
 )]
-pub async fn list_frontstage_callable_interfaces(
+pub async fn list_frontstage_interface_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(workspace_id): Path<String>,
-) -> Result<Json<ApiSuccess<Vec<FrontstageCallableResponse>>>, ApiError> {
+) -> Result<Json<ApiSuccess<Vec<FrontstageInterfaceCapabilityResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     let actor = state
@@ -229,7 +210,7 @@ pub async fn dispatch_frontstage_callable_interface(
         &body.schema_digest,
     )
     .await?;
-    if callable.risk_level == "high" {
+    if callable.risk_level != "low" {
         let Some(grant_token) = body.write_grant.as_deref() else {
             return Err(ControlPlaneError::InvalidInput("write_grant").into());
         };
@@ -325,7 +306,7 @@ pub async fn issue_frontstage_callable_write_grant(
         &body.schema_digest,
     )
     .await?;
-    if callable.risk_level != "high" {
+    if callable.risk_level == "low" {
         return Err(ControlPlaneError::InvalidInput("binding_alias").into());
     }
     if body.run_id.trim().is_empty() || body.draft_hash.trim().is_empty() {
@@ -497,62 +478,37 @@ async fn registered_callables(
     state: &ApiState,
     workspace_id: Uuid,
 ) -> Result<Vec<RegisteredCallable>, ApiError> {
-    let mut entries = Vec::new();
-    let console = state
-        .api_docs
-        .category_operations("console")
-        .ok_or_else(|| anyhow::anyhow!("console OpenAPI category is missing"))?;
-    for operation in &console.operations {
-        let spec = state
-            .api_docs
-            .operation_spec(&operation.id)
-            .ok_or_else(|| anyhow::anyhow!("OpenAPI spec is missing for {}", operation.id))?;
-        let interface = catalog_entry_from_operation(operation, spec)
-            .ok_or_else(|| anyhow::anyhow!("OpenAPI operation is invalid: {}", operation.id))?;
-        let host_injected_parameters = host_injected_parameters(&interface);
-        entries.push(RegisteredCallable {
-            risk_level: operation_risk_level(&interface.method),
-            interface,
-            adapter: CallableAdapter::ConsoleOpenApi,
-            bindable: true,
-            disabled_reason: None,
-            host_injected_parameters,
-            scope: "frontstage_page_tab",
-            authorization: "target_api_route_policy",
-        });
-    }
-
-    let mut models = state.store.list_model_definitions(workspace_id).await?;
-    models.retain(|model| model.status == domain::DataModelStatus::Published);
-    models.sort_by(|left, right| left.code.cmp(&right.code));
-    let operations = runtime_data_model_docs::build_category_operations(&models);
-    for operation in operations.operations {
-        let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
-        else {
-            continue;
-        };
-        let Some(model) = models.iter().find(|model| model.id == model_id) else {
-            continue;
-        };
-        let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
-        if let Some(interface) = catalog_entry_from_operation(&operation, &spec) {
-            let risk_level = operation_risk_level(&interface.method);
-            entries.push(RegisteredCallable {
-                interface,
-                adapter: CallableAdapter::RuntimeDataModel,
-                bindable: true,
-                disabled_reason: None,
-                host_injected_parameters: Vec::new(),
+    Ok(build_openapi_capability_catalog(state, workspace_id)
+        .await?
+        .into_iter()
+        .filter(|entry| entry.bindable)
+        .map(|entry| {
+            let host_injected_parameters = match entry.source {
+                OpenApiCapabilitySource::StaticApiDocs => {
+                    host_injected_parameters(&entry.interface)
+                }
+                OpenApiCapabilitySource::RuntimeDataModelCrud => Vec::new(),
+            };
+            RegisteredCallable {
+                interface: entry.interface,
+                source: entry.source,
+                bindable: entry.bindable,
+                disabled_reason: entry.disabled_reason,
+                host_injected_parameters,
                 scope: "frontstage_page_tab",
-                authorization: "runtime_scope_grant_and_page_tab_access",
-                risk_level,
-            });
-        }
-    }
-    Ok(entries)
+                authorization: match entry.source {
+                    OpenApiCapabilitySource::StaticApiDocs => "target_api_route_policy",
+                    OpenApiCapabilitySource::RuntimeDataModelCrud => {
+                        "runtime_scope_grant_and_page_tab_access"
+                    }
+                },
+                risk_level: entry.risk_level,
+            }
+        })
+        .collect())
 }
 
-fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
+fn to_response(mut entry: RegisteredCallable) -> FrontstageInterfaceCapabilityResponse {
     entry.interface.parameter_descriptors.retain(|parameter| {
         !entry
             .host_injected_parameters
@@ -571,42 +527,18 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
     }))
     .expect("serializing OpenAPI interface schema must succeed");
     let schema_digest = format!("{:x}", Sha256::digest(digest_input));
-    FrontstageCallableResponse {
-        operation_id: entry.interface.operation_id,
+    FrontstageInterfaceCapabilityResponse {
+        interface_id: entry.interface.operation_id,
         method: entry.interface.method,
         path: entry.interface.path,
         name: entry.interface.name,
-        description: entry.interface.description,
-        parameters: entry
-            .interface
-            .parameter_descriptors
-            .into_iter()
-            .map(|parameter| FrontstageCallableParameterResponse {
-                name: parameter.name,
-                field_type: parameter.field_type,
-                location: match parameter.location {
-                    OpenApiParameterLocation::Path => "path",
-                    OpenApiParameterLocation::Query => "query",
-                    OpenApiParameterLocation::Header => "header",
-                    OpenApiParameterLocation::JsonBody => "body",
-                    OpenApiParameterLocation::FormBody => "body",
-                }
-                .to_string(),
-                description: parameter.description,
-                required: parameter.required,
-                schema: parameter.schema,
-            })
-            .collect(),
-        request_schema: entry.interface.request_schema,
-        response_schema: entry.interface.response_schema,
+        short_description: entry.interface.description,
+        parameter_schema: entry.interface.request_schema,
+        result_schema: entry.interface.response_schema,
         request_media_type: entry.interface.request_media_type,
         response_media_type: entry.interface.response_media_type,
         schema_digest,
-        adapter_id: match entry.adapter {
-            CallableAdapter::ConsoleOpenApi => "console_openapi",
-            CallableAdapter::RuntimeDataModel => "runtime_data_model",
-        }
-        .to_string(),
+        adapter_id: entry.source.adapter_id().to_string(),
         host_injected_parameters: entry
             .host_injected_parameters
             .into_iter()
@@ -617,17 +549,6 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
         authorization: entry.authorization.to_string(),
         bindable: entry.bindable,
         disabled_reason: entry.disabled_reason.map(str::to_string),
-    }
-}
-
-fn operation_risk_level(method: &str) -> &'static str {
-    if matches!(
-        method.to_ascii_uppercase().as_str(),
-        "GET" | "HEAD" | "OPTIONS"
-    ) {
-        "low"
-    } else {
-        "high"
     }
 }
 

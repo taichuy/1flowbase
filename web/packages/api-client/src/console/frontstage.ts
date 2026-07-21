@@ -116,30 +116,14 @@ export interface DispatchFrontstageActionInput {
   params?: unknown;
 }
 
-export type ConsoleFrontstageCallableParameterLocation =
-  | 'path'
-  | 'query'
-  | 'header'
-  | 'body';
-
-export interface ConsoleFrontstageCallableParameter {
-  name: string;
-  field_type: string;
-  location: ConsoleFrontstageCallableParameterLocation;
-  description: string | null;
-  required: boolean;
-  schema: unknown;
-}
-
-export interface ConsoleFrontstageCallableInterface {
-  operation_id: string;
+export interface ConsoleFrontstageInterfaceCapability {
+  interface_id: string;
   method: string;
   path: string;
   name: string;
-  description: string;
-  parameters: ConsoleFrontstageCallableParameter[];
-  request_schema: unknown;
-  response_schema: unknown;
+  short_description: string;
+  parameter_schema: unknown;
+  result_schema: unknown;
   request_media_type: string | null;
   response_media_type: string | null;
   schema_digest: string;
@@ -192,12 +176,12 @@ export interface FrontstageCallableWriteGrant {
   expires_at: string;
 }
 
-export function listFrontstageCallableInterfaces(
+export function listFrontstageInterfaceCapabilities(
   workspaceId: string,
   baseUrl?: string
-): Promise<ConsoleFrontstageCallableInterface[]> {
-  return apiFetch<ConsoleFrontstageCallableInterface[]>({
-    path: `/api/console/frontstage/${workspaceId}/callable-interfaces`,
+): Promise<ConsoleFrontstageInterfaceCapability[]> {
+  return apiFetch<ConsoleFrontstageInterfaceCapability[]>({
+    path: `/api/console/frontstage/${workspaceId}/interface-capabilities`,
     method: 'GET',
     baseUrl
   });

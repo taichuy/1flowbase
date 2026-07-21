@@ -16,8 +16,8 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
-const callableInterfacesHook = vi.hoisted(() => ({
-  useFrontstageCallableInterfaces: vi.fn()
+const interfaceCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageInterfaceCapabilities: vi.fn()
 }));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
@@ -26,8 +26,8 @@ const monacoHook = vi.hoisted(() => ({
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-callable-interfaces',
-  () => callableInterfacesHook
+  '../../hooks/use-frontstage-interface-capabilities',
+  () => interfaceCapabilitiesHook
 );
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
@@ -156,17 +156,16 @@ describe('FrontstageJsxStudioDrawer', () => {
       reset: vi.fn(),
       save: vi.fn().mockResolvedValue(undefined)
     });
-    callableInterfacesHook.useFrontstageCallableInterfaces.mockReturnValue({
+    interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities.mockReturnValue({
       data: [
         {
-          operation_id: 'list_application_conversations_records',
+          interface_id: 'list_application_conversations_records',
           method: 'GET',
           path: '/api/runtime/models/application_conversations/list',
           name: 'List conversations',
-          description: 'List conversations',
-          parameters: [],
-          request_schema: { type: 'object', properties: {} },
-          response_schema: { type: 'object', properties: {} },
+          short_description: 'List conversations',
+          parameter_schema: { type: 'object', properties: {} },
+          result_schema: { type: 'object', properties: {} },
           request_media_type: null,
           response_media_type: 'application/json',
           schema_digest: 'digest-1',

@@ -101,7 +101,7 @@ export function createFrontstageJsBlockCapabilityHandlers(
       const csrfToken = requireCsrfToken(options.csrfToken);
       const grants = await Promise.all(
         bindings
-          .filter((binding) => binding.risk_level === 'high')
+          .filter((binding) => binding.risk_level !== 'low')
           .map(async (binding) => {
             const grant = await client.issueFrontstageCallableWriteGrant(
               options.workspaceId,

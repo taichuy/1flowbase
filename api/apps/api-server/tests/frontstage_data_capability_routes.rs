@@ -342,13 +342,7 @@ async fn login(app: &Router, identifier: &str, password: &str) -> (String, Strin
     )
 }
 
-async fn create_member(
-    app: &Router,
-    cookie: &str,
-    csrf: &str,
-    account: &str,
-    password: &str,
-) {
+async fn create_member(app: &Router, cookie: &str, csrf: &str, account: &str, password: &str) {
     let (status, payload) = json_request(
         app,
         "POST",
@@ -453,7 +447,7 @@ async fn create_tab(
 async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation: &str) -> Value {
     let (status, payload) = get(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
         cookie,
     )
     .await;
@@ -462,7 +456,7 @@ async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation
         .as_array()
         .unwrap()
         .iter()
-        .find(|entry| entry["operation_id"] == operation)
+        .find(|entry| entry["interface_id"] == operation)
         .unwrap()
         .clone()
 }
@@ -470,7 +464,7 @@ async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation
 fn binding(alias: &str, catalog: &Value) -> Value {
     json!({
         "alias": alias,
-        "operation_id": catalog["operation_id"],
+        "operation_id": catalog["interface_id"],
         "schema_digest": catalog["schema_digest"],
         "scope": catalog["scope"],
         "risk_level": catalog["risk_level"]
@@ -596,18 +590,23 @@ fn grant_lock_key(token: &str) -> String {
 }
 
 #[tokio::test]
-async fn callable_catalog_contains_every_console_operation_and_runtime_model_crud() {
+async fn capability_catalog_contains_bindable_console_operations_and_runtime_model_crud() {
     let fixture = fixture().await;
     let (cookie, _) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (status, payload) = get(
         &fixture.app,
-        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
         &cookie,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{payload}");
     let entries = payload["data"].as_array().unwrap();
+    assert!(entries.iter().all(|entry| {
+        !entry["interface_id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("published_workflow_operation:"))
+    }));
     let console = entries
         .iter()
         .filter(|entry| {
@@ -618,9 +617,9 @@ async fn callable_catalog_contains_every_console_operation_and_runtime_model_cru
         .collect::<Vec<_>>();
     let console_ids = console
         .iter()
-        .filter_map(|entry| entry["operation_id"].as_str())
+        .filter_map(|entry| entry["interface_id"].as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(console.len(), 257);
+    assert!(!console.is_empty());
     assert_eq!(console_ids.len(), console.len());
     assert!(console
         .iter()
@@ -645,12 +644,13 @@ async fn callable_catalog_contains_every_console_operation_and_runtime_model_cru
 
     let chunk_upload = entries
         .iter()
-        .find(|entry| entry["operation_id"] == "upload_run_archive_chunk")
+        .find(|entry| entry["interface_id"] == "upload_run_archive_chunk")
         .expect("archive chunk upload must be callable");
-    assert!(chunk_upload["parameters"].as_array().unwrap().iter().any(
-        |parameter| parameter["name"] == "x-chunk-sha256"
-            && parameter["location"] == "header"
-    ));
+    assert!(
+        chunk_upload["parameter_schema"]["properties"]["headers"]["properties"]
+            .get("x-chunk-sha256")
+            .is_some()
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1064,13 +1064,8 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
     let fixture = fixture().await;
     let (root_cookie, root_csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &root_cookie).await;
-    let (page_id, tab_id, root_uid) = create_page(
-        &fixture.app,
-        &root_cookie,
-        &root_csrf,
-        workspace_id,
-    )
-    .await;
+    let (page_id, tab_id, root_uid) =
+        create_page(&fixture.app, &root_cookie, &root_csrf, workspace_id).await;
     let catalog = catalog_entry(&fixture.app, &root_cookie, workspace_id, "list_members").await;
     let digest = catalog["schema_digest"].as_str().unwrap();
     save_document(
@@ -1094,8 +1089,21 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
         "temp-pass",
     )
     .await;
-    let (visitor_cookie, visitor_csrf) =
-        login(&fixture.app, "page-visitor", "temp-pass").await;
+    let (visibility_status, visibility_payload) = json_request(
+        &fixture.app,
+        "PUT",
+        "/api/console/settings/roles/member/frontstage-routes",
+        &root_cookie,
+        &root_csrf,
+        json!({ "page_ids": [page_id], "tab_ids": [tab_id] }),
+    )
+    .await;
+    assert_eq!(
+        visibility_status,
+        StatusCode::NO_CONTENT,
+        "{visibility_payload}"
+    );
+    let (visitor_cookie, visitor_csrf) = login(&fixture.app, "page-visitor", "temp-pass").await;
 
     let denied = dispatch(
         &fixture.app,

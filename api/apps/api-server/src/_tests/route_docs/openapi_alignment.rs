@@ -290,8 +290,8 @@ async fn openapi_documents_callable_media_protocols() {
         "binary"
     );
     assert_eq!(
-        paths["/api/console/files/{file_table_id}/records/{record_id}/content"]["get"]
-            ["responses"]["200"]["content"]["application/octet-stream"]["schema"]["format"],
+        paths["/api/console/files/{file_table_id}/records/{record_id}/content"]["get"]["responses"]
+            ["200"]["content"]["application/octet-stream"]["schema"]["format"],
         "binary"
     );
 
@@ -401,6 +401,8 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
         paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document");
     let frontstage_block_code_route =
         paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}");
+    let frontstage_interface_capabilities_route =
+        paths.get("/api/console/frontstage/{workspace_id}/interface-capabilities");
 
     assert!(
         frontstage_route.is_some(),
@@ -426,6 +428,10 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
         frontstage_block_code_route.is_some(),
         "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/block-codes/{{code_ref}}"
     );
+    assert!(
+        frontstage_interface_capabilities_route.is_some(),
+        "missing path /api/console/frontstage/{{workspace_id}}/interface-capabilities"
+    );
 
     let get_op = &frontstage_route.unwrap()["get"];
     let post_page_op = &frontstage_route.unwrap()["post"];
@@ -436,8 +442,13 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     let content_put_op = &frontstage_content_route.unwrap()["put"];
     let block_get_op = &frontstage_block_code_route.unwrap()["get"];
     let block_put_op = &frontstage_block_code_route.unwrap()["put"];
+    let interface_capabilities_get_op = &frontstage_interface_capabilities_route.unwrap()["get"];
 
     assert!(get_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
+    assert!(
+        interface_capabilities_get_op["responses"]["200"]["content"]["application/json"]["schema"]
+            .is_object()
+    );
     assert!(post_page_op["responses"]["201"]["content"]["application/json"]["schema"].is_object());
     assert!(post_group_op["responses"]["201"]["content"]["application/json"]["schema"].is_object());
     assert!(patch_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());

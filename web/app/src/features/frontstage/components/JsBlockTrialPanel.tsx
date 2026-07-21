@@ -106,7 +106,7 @@ export function JsBlockTrialPanel({
     const runId = `draft:${block.id}:${Date.now().toString(36)}`;
     const bindings = block.interfaces ?? [];
     if (
-      bindings.some((binding) => binding.risk_level === 'high') &&
+      bindings.some((binding) => binding.risk_level !== 'low') &&
       !(await confirmWriteRun())
     ) {
       return;

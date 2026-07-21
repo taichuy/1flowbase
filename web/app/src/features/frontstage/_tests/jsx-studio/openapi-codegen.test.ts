@@ -1,18 +1,17 @@
 import { describe, expect, test } from 'vitest';
 
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 import { validateJsBlockSource } from '@1flowbase/page-runtime';
 
-import { generateFrontstageCallableSource } from '../../lib/jsx-studio/openapi-codegen';
+import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-codegen';
 
-const operation: ConsoleFrontstageCallableInterface = {
-  operation_id: 'list_application_conversations_records',
+const operation: ConsoleFrontstageInterfaceCapability = {
+  interface_id: 'list_application_conversations_records',
   method: 'GET',
   path: '/api/runtime/models/application_conversations/list',
   name: 'List conversations',
-  description: 'List conversations',
-  parameters: [],
-  request_schema: {
+  short_description: 'List conversations',
+  parameter_schema: {
     type: 'object',
     properties: {
       query: {
@@ -25,7 +24,7 @@ const operation: ConsoleFrontstageCallableInterface = {
       }
     }
   },
-  response_schema: {
+  result_schema: {
     type: 'object',
     required: ['items', 'total'],
     properties: {
@@ -58,7 +57,7 @@ const operation: ConsoleFrontstageCallableInterface = {
 
 describe('Frontstage callable OpenAPI codegen', () => {
   test('AC-002/003 emits editable DTOs and a complete bound function', () => {
-    const result = generateFrontstageCallableSource(
+    const result = generateFrontstageInterfaceSource(
       operation,
       'listApplicationConversations'
     );
@@ -86,7 +85,7 @@ describe('Frontstage callable OpenAPI codegen', () => {
 
   test('rejects catalog entries that are visible but not bindable', () => {
     expect(() =>
-      generateFrontstageCallableSource(
+      generateFrontstageInterfaceSource(
         {
           ...operation,
           bindable: false,
@@ -98,10 +97,10 @@ describe('Frontstage callable OpenAPI codegen', () => {
   });
 
   test('quotes OpenAPI DTO properties so backend field names are not treated as globals', () => {
-    const result = generateFrontstageCallableSource(
+    const result = generateFrontstageInterfaceSource(
       {
         ...operation,
-        response_schema: {
+        result_schema: {
           type: 'object',
           required: ['document'],
           properties: {
@@ -119,12 +118,12 @@ describe('Frontstage callable OpenAPI codegen', () => {
   });
 
   test('emits explicit binary envelopes and no-content results from media truth', () => {
-    const upload = generateFrontstageCallableSource(
+    const upload = generateFrontstageInterfaceSource(
       {
         ...operation,
         request_media_type: 'multipart/form-data',
         response_media_type: null,
-        request_schema: {
+        parameter_schema: {
           type: 'object',
           required: ['body'],
           properties: {
@@ -137,7 +136,7 @@ describe('Frontstage callable OpenAPI codegen', () => {
             }
           }
         },
-        response_schema: {}
+        result_schema: {}
       },
       'uploadFile'
     );
@@ -146,7 +145,7 @@ describe('Frontstage callable OpenAPI codegen', () => {
     expect(upload.source).toContain('base64: string;');
     expect(upload.source).toContain('Promise<void>');
 
-    const download = generateFrontstageCallableSource(
+    const download = generateFrontstageInterfaceSource(
       {
         ...operation,
         response_media_type: 'application/zip'
@@ -159,7 +158,7 @@ describe('Frontstage callable OpenAPI codegen', () => {
   });
 
   test('emits a pull-based AsyncIterable for SSE operations', () => {
-    const stream = generateFrontstageCallableSource(
+    const stream = generateFrontstageInterfaceSource(
       {
         ...operation,
         response_media_type: 'text/event-stream'

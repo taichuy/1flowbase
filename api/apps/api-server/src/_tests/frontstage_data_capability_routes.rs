@@ -158,7 +158,7 @@ async fn dispatch(
 async fn callable_catalog(app: &axum::Router, cookie: &str, workspace_id: &str) -> Value {
     let (status, payload) = get_json(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
         cookie,
     )
     .await;
@@ -225,7 +225,7 @@ async fn callable_catalog_exposes_runtime_model_crud_and_keeps_filter_string() {
         .find(|entry| entry["path"].as_str().unwrap().ends_with("/list"))
         .unwrap();
     assert_eq!(
-        list["request_schema"]["properties"]["query"]["properties"]["filter"]["type"],
+        list["parameter_schema"]["properties"]["query"]["properties"]["filter"]["type"],
         json!("string")
     );
 }
@@ -257,7 +257,7 @@ async fn callable_catalog_requires_frontstage_design_permission() {
     let (cookie, _) = login_and_capture_cookie(&app, "callable-viewer", "temp-pass").await;
     let (status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
         &cookie,
     )
     .await;
@@ -277,7 +277,7 @@ async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|entry| entry["operation_id"] == json!("get_frontstage_page_detail"))
+        .find(|entry| entry["interface_id"] == json!("get_frontstage_page_detail"))
         .expect("registered page-tab read callable");
     assert_eq!(page_tab["adapter_id"], json!("console_openapi"));
     assert_eq!(page_tab["bindable"], json!(true));
@@ -285,7 +285,7 @@ async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
         page_tab["host_injected_parameters"],
         json!(["workspace_id", "page_id", "tab_reference"])
     );
-    assert!(page_tab["request_schema"]["properties"]
+    assert!(page_tab["parameter_schema"]["properties"]
         .get("path")
         .is_none());
 
@@ -362,7 +362,7 @@ async fn callable_dispatch_fails_closed_for_registry_scope_and_schema_negatives(
                 .as_str()
                 .is_some_and(|path| path.contains("/application_conversations/list"))
         })
-        .unwrap()["operation_id"]
+        .unwrap()["interface_id"]
         .as_str()
         .unwrap()
         .to_string();

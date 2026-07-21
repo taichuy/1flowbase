@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'vitest';
 
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import {
-  bindFrontstageCallableInterface,
+  bindFrontstageInterfaceCapability,
   resolveFrontstageInterfaceBindings
 } from '../../lib/jsx-studio/interface-binding';
 
 const operation = {
-  operation_id: 'get_frontstage_page_detail',
+  interface_id: 'get_frontstage_page_detail',
   schema_digest: 'digest-2',
   scope: 'frontstage_page_tab',
   risk_level: 'low',
@@ -16,7 +16,7 @@ const operation = {
   response_media_type: 'application/json',
   bindable: true,
   disabled_reason: null
-} as ConsoleFrontstageCallableInterface;
+} as ConsoleFrontstageInterfaceCapability;
 
 const block = {
   id: 'block-1',
@@ -25,7 +25,7 @@ const block = {
 
 describe('Frontstage interface binding document', () => {
   test('AC-004 persists alias-to-operation identity and reports digest drift', () => {
-    const bound = bindFrontstageCallableInterface(
+    const bound = bindFrontstageInterfaceCapability(
       block,
       'getCurrentPage',
       operation

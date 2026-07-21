@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 
 import type {
   FrontstageBlockInstance,
@@ -7,14 +7,14 @@ import type {
 
 export interface FrontstageResolvedInterfaceBinding {
   binding: FrontstageBlockInterfaceBinding;
-  operation: ConsoleFrontstageCallableInterface | null;
+  operation: ConsoleFrontstageInterfaceCapability | null;
   status: 'current' | 'stale' | 'missing';
 }
 
-export function bindFrontstageCallableInterface(
+export function bindFrontstageInterfaceCapability(
   block: FrontstageBlockInstance,
   alias: string,
-  operation: ConsoleFrontstageCallableInterface
+  operation: ConsoleFrontstageInterfaceCapability
 ): FrontstageBlockInstance {
   if (!operation.bindable) {
     throw new Error(
@@ -23,7 +23,7 @@ export function bindFrontstageCallableInterface(
   }
   const binding: FrontstageBlockInterfaceBinding = {
     alias: requireIdentifier(alias),
-    operation_id: operation.operation_id,
+    operation_id: operation.interface_id,
     schema_digest: operation.schema_digest,
     scope: operation.scope,
     risk_level: operation.risk_level,
@@ -38,10 +38,10 @@ export function bindFrontstageCallableInterface(
 
 export function resolveFrontstageInterfaceBindings(
   block: FrontstageBlockInstance,
-  catalog: readonly ConsoleFrontstageCallableInterface[]
+  catalog: readonly ConsoleFrontstageInterfaceCapability[]
 ): FrontstageResolvedInterfaceBinding[] {
   const byOperationId = new Map(
-    catalog.map((operation) => [operation.operation_id, operation])
+    catalog.map((operation) => [operation.interface_id, operation])
   );
   return (block.interfaces ?? []).map((binding) => {
     const operation = byOperationId.get(binding.operation_id) ?? null;

@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 import {
   Alert,
   Button,
@@ -17,12 +17,12 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
-import { bindFrontstageCallableInterface } from '../../lib/jsx-studio/interface-binding';
+import { bindFrontstageInterfaceCapability } from '../../lib/jsx-studio/interface-binding';
 import {
   createFrontstageJsxBindingSnippet,
   type FrontstageJsxEditorProjection
 } from '../../lib/jsx-studio/editor-projection';
-import { generateFrontstageCallableSource } from '../../lib/jsx-studio/openapi-codegen';
+import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-codegen';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 
@@ -37,9 +37,9 @@ export type FrontstageJsxStudioSection =
 export function JsxStudioResourcePanel({
   block,
   pageBlocks,
-  callableInterfaces,
-  callableInterfacesError,
-  callableInterfacesLoading,
+  interfaceCapabilities,
+  interfaceCapabilitiesError,
+  interfaceCapabilitiesLoading,
   onInsertCode,
   onSaveBlock,
   projection,
@@ -48,9 +48,9 @@ export function JsxStudioResourcePanel({
 }: {
   block: FrontstageBlockInstance;
   pageBlocks: readonly FrontstageBlockInstance[];
-  callableInterfaces: readonly ConsoleFrontstageCallableInterface[];
-  callableInterfacesError: Error | null;
-  callableInterfacesLoading: boolean;
+  interfaceCapabilities: readonly ConsoleFrontstageInterfaceCapability[];
+  interfaceCapabilitiesError: Error | null;
+  interfaceCapabilitiesLoading: boolean;
   onInsertCode: (source: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
@@ -61,9 +61,9 @@ export function JsxStudioResourcePanel({
     return (
       <InterfaceConnectorPanel
         block={block}
-        callableInterfaces={callableInterfaces}
-        error={callableInterfacesError}
-        loading={callableInterfacesLoading}
+        interfaceCapabilities={interfaceCapabilities}
+        error={interfaceCapabilitiesError}
+        loading={interfaceCapabilitiesLoading}
         projection={projection}
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
@@ -107,7 +107,7 @@ export function JsxStudioResourcePanel({
 
 function InterfaceConnectorPanel({
   block,
-  callableInterfaces,
+  interfaceCapabilities,
   error,
   loading,
   onInsertCode,
@@ -115,7 +115,7 @@ function InterfaceConnectorPanel({
   projection
 }: {
   block: FrontstageBlockInstance;
-  callableInterfaces: readonly ConsoleFrontstageCallableInterface[];
+  interfaceCapabilities: readonly ConsoleFrontstageInterfaceCapability[];
   error: Error | null;
   loading: boolean;
   onInsertCode: (source: string) => void;
@@ -126,7 +126,7 @@ function InterfaceConnectorPanel({
   const [selectedOperationId, setSelectedOperationId] = useState<string>();
   const bindings = block.interfaces ?? [];
   const operationsById = new Map(
-    callableInterfaces.map((operation) => [operation.operation_id, operation])
+    interfaceCapabilities.map((operation) => [operation.interface_id, operation])
   );
   const selectedOperation = selectedOperationId
     ? operationsById.get(selectedOperationId)
@@ -146,7 +146,7 @@ function InterfaceConnectorPanel({
     );
   }
 
-  if (callableInterfaces.length === 0) {
+  if (interfaceCapabilities.length === 0) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -156,19 +156,19 @@ function InterfaceConnectorPanel({
   }
 
   const bindCapability = async (
-    operation: ConsoleFrontstageCallableInterface
+    operation: ConsoleFrontstageInterfaceCapability
   ) => {
     const alias = createUniqueBindingAlias(
-      operation.operation_id,
+      operation.interface_id,
       bindings.map((item) => item.alias)
     );
-    setPendingBindingId(operation.operation_id);
+    setPendingBindingId(operation.interface_id);
     try {
       const saved = await onSaveBlock(
-        bindFrontstageCallableInterface(block, alias, operation)
+        bindFrontstageInterfaceCapability(block, alias, operation)
       );
       if (saved !== false) {
-        onInsertCode(generateFrontstageCallableSource(operation, alias).source);
+        onInsertCode(generateFrontstageInterfaceSource(operation, alias).source);
         setSelectedOperationId(undefined);
         void message.success(
           i18nText('frontstage', 'auto.interface_bound_and_inserted')
@@ -262,12 +262,12 @@ function InterfaceConnectorPanel({
               ? resourceSection
               : triggerNode;
           }}
-          options={callableInterfaces.map((operation) => {
+          options={interfaceCapabilities.map((operation) => {
             const isBound = bindings.some(
-              (binding) => binding.operation_id === operation.operation_id
+              (binding) => binding.operation_id === operation.interface_id
             );
             return {
-              value: operation.operation_id,
+              value: operation.interface_id,
               label: `${operation.method.toUpperCase()} ${operation.path}`,
               disabled: isBound || !operation.bindable
             };
@@ -279,10 +279,10 @@ function InterfaceConnectorPanel({
             if (!operation) return false;
             return [
               operation.name,
-              operation.operation_id,
+              operation.interface_id,
               operation.method,
               operation.path,
-              operation.description
+              operation.short_description
             ]
               .filter(Boolean)
               .join(' ')
