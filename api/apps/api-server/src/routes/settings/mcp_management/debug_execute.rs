@@ -107,6 +107,8 @@ pub async fn execute(
         parameter_descriptors: Vec::new(),
         request_schema: interface_entry.parameter_schema.clone(),
         response_schema: interface_entry.result_schema.clone(),
+        request_media_type: Some("application/json".to_string()),
+        response_media_type: Some("application/json".to_string()),
         security: interface_entry.security.clone(),
     };
     let dispatch_arguments = crate::openapi_interface::DispatchArguments {
@@ -128,7 +130,13 @@ pub async fn execute(
     )
     .await
     {
-        Ok(success) => success.value,
+        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => value,
+        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => Value::Null,
+        Ok(crate::openapi_interface::DispatchSuccess::Media(_)) => {
+            return Err(
+                anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
+            )
+        }
         Err(crate::openapi_interface::DispatchError::Api(error)) => {
             return Err(McpDebugExecuteError::Api(error));
         }

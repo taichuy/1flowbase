@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { JsxStudioResourcePanel } from '../../components/jsx-studio/JsxStudioResourcePanel';
@@ -19,13 +19,15 @@ const block = {
 
 const operations = [
   {
-    operation_id: 'list_application_conversations_records',
+    interface_id: 'list_application_conversations_records',
     method: 'GET',
     path: '/api/runtime/models/application_conversations/list',
     name: 'List conversations',
-    description: 'List conversation records',
-    request_schema: { type: 'object', properties: {} },
-    response_schema: { type: 'object', properties: {} },
+    short_description: 'List conversation records',
+    parameter_schema: { type: 'object', properties: {} },
+    result_schema: { type: 'object', properties: {} },
+    request_media_type: null,
+    response_media_type: 'application/json',
     schema_digest: 'digest-list',
     scope: 'frontstage_page_tab',
     risk_level: 'low',
@@ -33,12 +35,12 @@ const operations = [
     disabled_reason: null
   },
   {
-    operation_id: 'get_frontstage_page_detail',
+    interface_id: 'get_frontstage_page_detail',
     method: 'GET',
     path: '/api/frontstage/pages/{page_id}',
     name: 'Get page detail',
-    description: 'Read one frontstage page',
-    request_schema: {
+    short_description: 'Read one frontstage page',
+    parameter_schema: {
       type: 'object',
       properties: {
         path: {
@@ -49,18 +51,20 @@ const operations = [
       },
       required: ['path']
     },
-    response_schema: {
+    result_schema: {
       type: 'object',
       properties: { id: { type: 'string' } },
       required: ['id']
     },
+    request_media_type: null,
+    response_media_type: 'application/json',
     schema_digest: 'digest-detail',
     scope: 'frontstage_page_tab',
     risk_level: 'low',
     bindable: true,
     disabled_reason: null
   }
-] as ConsoleFrontstageCallableInterface[];
+] as ConsoleFrontstageInterfaceCapability[];
 
 const projection: FrontstageJsxEditorProjection = {
   bindings: [],
@@ -86,9 +90,9 @@ function renderInterfacePanel({
     <JsxStudioResourcePanel
       block={block}
       pageBlocks={[block]}
-      callableInterfaces={operations}
-      callableInterfacesError={null}
-      callableInterfacesLoading={false}
+      interfaceCapabilities={operations}
+      interfaceCapabilitiesError={null}
+      interfaceCapabilitiesLoading={false}
       projection={projection}
       section="interfaces"
       onInsertCode={onInsertCode}
@@ -111,15 +115,15 @@ describe('TSX Studio interface connector', () => {
     fireEvent.mouseDown(select);
     fireEvent.change(select, { target: { value: 'page detail' } });
     const option = await screen.findByText(
-      'Get page detail · GET · get_frontstage_page_detail'
+      'GET /api/frontstage/pages/{page_id}'
     );
-    expect(select.closest('.frontstage-jsx-studio__resource-section')).toContainElement(
-      option
-    );
+    expect(screen.queryByText('Get page detail')).not.toBeInTheDocument();
+    expect(screen.queryByText('Read one frontstage page')).not.toBeInTheDocument();
+    expect(
+      select.closest('.frontstage-jsx-studio__resource-section')
+    ).toContainElement(option);
     fireEvent.click(option);
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定并插入' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
@@ -151,13 +155,9 @@ describe('TSX Studio interface connector', () => {
       target: { value: 'get_frontstage_page_detail' }
     });
     fireEvent.click(
-      await screen.findByText(
-        'Get page detail · GET · get_frontstage_page_detail'
-      )
+      await screen.findByText('GET /api/frontstage/pages/{page_id}')
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定并插入' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onInsertCode).not.toHaveBeenCalled();

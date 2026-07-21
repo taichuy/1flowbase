@@ -32,6 +32,7 @@ export type JsBlockHostEffectHandler<
 
 export interface JsBlockHostEffectHandlers {
   interface?: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  disposeRequest?: (requestId?: string) => void;
 }
 
 export interface JsBlockHostEffectBridgeOptions {
@@ -68,6 +69,7 @@ export interface JsBlockHostEffectBridge {
 }
 
 const RUNTIME_ERROR_CODES = new Set<string>(BLOCK_RUNTIME_ERROR_CODES);
+const MAX_INTERFACE_TRACE_JSON_LENGTH = 16_000;
 
 export function createJsBlockHostEffectBridge(
   options: JsBlockHostEffectBridgeOptions
@@ -205,13 +207,30 @@ function emitInterfaceTrace(
 
 function sanitizeTraceValue(value: unknown): unknown {
   try {
-    return JSON.parse(
-      JSON.stringify(value, (key, item) =>
-        /authorization|cookie|token|secret|api[_-]?key/i.test(key)
-          ? '[REDACTED]'
-          : item
-      )
-    );
+    const serialized = JSON.stringify(value, (key, item) => {
+      if (/authorization|cookie|token|secret|api[_-]?key/i.test(key)) {
+        return '[REDACTED]';
+      }
+      if (key === 'base64' && typeof item === 'string') {
+        return `[BASE64 ${item.length} chars]`;
+      }
+      if (item instanceof Uint8Array) {
+        return { type: 'Uint8Array', byte_length: item.byteLength };
+      }
+      if (typeof item === 'string' && item.length > 4_000) {
+        return `${item.slice(0, 4_000)}…[TRUNCATED ${item.length - 4_000} chars]`;
+      }
+      return item;
+    });
+    if (serialized === undefined) return '[Unserializable]';
+    if (serialized.length > MAX_INTERFACE_TRACE_JSON_LENGTH) {
+      return {
+        type: 'truncated',
+        character_length: serialized.length,
+        preview: serialized.slice(0, MAX_INTERFACE_TRACE_JSON_LENGTH)
+      };
+    }
+    return JSON.parse(serialized);
   } catch {
     return '[Unserializable]';
   }

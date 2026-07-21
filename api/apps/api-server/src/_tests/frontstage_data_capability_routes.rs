@@ -1,4 +1,7 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{
+    create_member, create_role, login_and_capture_cookie, replace_member_roles,
+    replace_role_permissions, test_app,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -155,7 +158,7 @@ async fn dispatch(
 async fn callable_catalog(app: &axum::Router, cookie: &str, workspace_id: &str) -> Value {
     let (status, payload) = get_json(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
         cookie,
     )
     .await;
@@ -194,8 +197,8 @@ async fn dispatch_callable(
 }
 
 #[tokio::test]
-async fn callable_catalog_limits_runtime_read_models_and_keeps_filter_string() {
-    // Root AC-002/003: typed RuntimeRead capability is the operation inventory truth.
+async fn callable_catalog_exposes_runtime_model_crud_and_keeps_filter_string() {
+    // Root AC-013: the original Runtime route remains the authorization owner.
     let app = test_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -210,10 +213,7 @@ async fn callable_catalog_limits_runtime_read_models_and_keeps_filter_string() {
                 .is_some_and(|path| path.contains("/application_conversations/"))
         })
         .collect::<Vec<_>>();
-    assert_eq!(conversations.len(), 2, "{entries}");
-    assert!(conversations
-        .iter()
-        .all(|entry| entry["method"] == json!("GET")));
+    assert_eq!(conversations.len(), 5, "{entries}");
     assert!(conversations
         .iter()
         .any(|entry| entry["path"].as_str().unwrap().ends_with("/list")));
@@ -225,9 +225,43 @@ async fn callable_catalog_limits_runtime_read_models_and_keeps_filter_string() {
         .find(|entry| entry["path"].as_str().unwrap().ends_with("/list"))
         .unwrap();
     assert_eq!(
-        list["request_schema"]["properties"]["query"]["properties"]["filter"]["type"],
+        list["parameter_schema"]["properties"]["query"]["properties"]["filter"]["type"],
         json!("string")
     );
+}
+
+#[tokio::test]
+async fn callable_catalog_requires_frontstage_design_permission() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &root_cookie).await;
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "callable-viewer",
+        "temp-pass",
+    )
+    .await;
+    create_role(&app, &root_cookie, &root_csrf, "callable_viewer").await;
+    replace_role_permissions(&app, &root_cookie, &root_csrf, "callable_viewer", &[]).await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["callable_viewer"],
+    )
+    .await;
+
+    let (cookie, _) = login_and_capture_cookie(&app, "callable-viewer", "temp-pass").await;
+    let (status, _) = get_json(
+        &app,
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -243,15 +277,15 @@ async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|entry| entry["operation_id"] == json!("get_frontstage_page_detail"))
+        .find(|entry| entry["interface_id"] == json!("get_frontstage_page_detail"))
         .expect("registered page-tab read callable");
-    assert_eq!(page_tab["adapter_id"], json!("frontstage_page_tab_get"));
+    assert_eq!(page_tab["adapter_id"], json!("console_openapi"));
     assert_eq!(page_tab["bindable"], json!(true));
     assert_eq!(
         page_tab["host_injected_parameters"],
         json!(["workspace_id", "page_id", "tab_reference"])
     );
-    assert!(page_tab["request_schema"]["properties"]
+    assert!(page_tab["parameter_schema"]["properties"]
         .get("path")
         .is_none());
 
@@ -328,7 +362,7 @@ async fn callable_dispatch_fails_closed_for_registry_scope_and_schema_negatives(
                 .as_str()
                 .is_some_and(|path| path.contains("/application_conversations/list"))
         })
-        .unwrap()["operation_id"]
+        .unwrap()["interface_id"]
         .as_str()
         .unwrap()
         .to_string();

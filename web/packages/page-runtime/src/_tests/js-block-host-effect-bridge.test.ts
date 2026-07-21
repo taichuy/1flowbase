@@ -70,6 +70,38 @@ describe('JS block host mediator effect bridge', () => {
     });
   });
 
+  test('summarizes binary payloads instead of copying them into interface traces', async () => {
+    const traces: unknown[] = [];
+    const bridge = createJsBlockHostEffectBridge({
+      mediator: createBlockContextMediator({ allowedInterfaces: ['upload'] }),
+      resolveEffect: vi.fn(),
+      handlers: {
+        interface: async () => ({
+          bytes: new Uint8Array([1, 2, 3]),
+          file_name: 'download.bin',
+          content_type: 'application/octet-stream'
+        })
+      },
+      onInterfaceCall: (trace) => traces.push(trace)
+    });
+    bridge.handle({
+      direction: 'worker_to_host',
+      type: 'interface',
+      requestId: 'run-1',
+      effectId: 'effect-binary',
+      bindingAlias: 'upload',
+      request: { body: { base64: 'A'.repeat(8_000) } }
+    });
+    await vi.waitFor(() => expect(traces).toHaveLength(1));
+    expect(traces[0]).toMatchObject({
+      request: { body: { base64: '[BASE64 8000 chars]' } },
+      response: {
+        bytes: { type: 'Uint8Array', byte_length: 3 },
+        file_name: 'download.bin'
+      }
+    });
+  });
+
   test('passes events without requiring a result handler and ignores unknown messages', () => {
     const bridge = createJsBlockHostEffectBridge({
       mediator: createBlockContextMediator({ allowedEvents: ['ready'] }),

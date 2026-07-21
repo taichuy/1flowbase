@@ -34,7 +34,10 @@ export function commitFrontstageBlockOutputs({
     if (!Object.hasOwn(outputs, port.name)) {
       return failure(snapshot, `Declared output is missing: ${port.name}.`);
     }
-    if (!validateValue(outputs[port.name], port.schema)) {
+    if (
+      !isJsonValue(outputs[port.name]) ||
+      !validateValue(outputs[port.name], port.schema)
+    ) {
       return failure(
         snapshot,
         `Output does not match its schema: ${port.name}.`
@@ -140,5 +143,9 @@ function stringArray(value: unknown): string[] {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }

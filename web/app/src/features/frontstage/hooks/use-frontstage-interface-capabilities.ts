@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../state/auth-store';
-import { fetchFrontstageCallableInterfaces } from '../api/callable-interfaces';
+import { fetchFrontstageInterfaceCapabilities } from '../api/interface-capabilities';
 
-export function useFrontstageCallableInterfaces(workspaceId: string | null) {
+export function useFrontstageInterfaceCapabilities(workspaceId: string | null) {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const actor = useAuthStore((state) => state.actor);
   const enabled = Boolean(
@@ -12,8 +12,8 @@ export function useFrontstageCallableInterfaces(workspaceId: string | null) {
       actor?.current_workspace_id === workspaceId
   );
   const query = useQuery({
-    queryKey: ['frontstage', 'callable-interfaces', workspaceId],
-    queryFn: () => fetchFrontstageCallableInterfaces(workspaceId as string),
+    queryKey: ['frontstage', 'interface-capabilities', workspaceId],
+    queryFn: () => fetchFrontstageInterfaceCapabilities(workspaceId as string),
     enabled
   });
   return {

@@ -36,7 +36,7 @@ import {
   type WindowWorkspaceRect
 } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
-import { useFrontstageCallableInterfaces } from '../../hooks/use-frontstage-callable-interfaces';
+import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -139,7 +139,7 @@ function FrontstageJsxStudioWindow({
     useState<FrontstageJsxStudioSection>(initialSection);
   const [mobile, setMobile] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const callableInterfaces = useFrontstageCallableInterfaces(workspaceId);
+  const interfaceCapabilities = useFrontstageInterfaceCapabilities(workspaceId);
   const {
     draft,
     dirty,
@@ -220,9 +220,9 @@ function FrontstageJsxStudioWindow({
       createFrontstageJsxEditorProjection({
         block,
         catalogEntry,
-        callableInterfaces: callableInterfaces.data
+        interfaceCapabilities: interfaceCapabilities.data
       }),
-    [block, callableInterfaces.data, catalogEntry]
+    [block, interfaceCapabilities.data, catalogEntry]
   );
   const allowedImports = catalogEntry?.codeCapabilities?.allowedImports ?? [];
   const compileDiagnostics = useMemo(() => {
@@ -458,9 +458,9 @@ function FrontstageJsxStudioWindow({
             <JsxStudioResourcePanel
               block={block}
               pageBlocks={pageBlocks}
-              callableInterfaces={callableInterfaces.data}
-              callableInterfacesError={callableInterfaces.error}
-              callableInterfacesLoading={callableInterfaces.loading}
+              interfaceCapabilities={interfaceCapabilities.data}
+              interfaceCapabilitiesError={interfaceCapabilities.error}
+              interfaceCapabilitiesLoading={interfaceCapabilities.loading}
               onInsertCode={insertCode}
               onSaveBlock={onSaveBlock}
               projection={projection}

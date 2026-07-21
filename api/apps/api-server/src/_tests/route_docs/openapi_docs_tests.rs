@@ -30,6 +30,44 @@ fn registry_rejects_duplicate_operation_ids() {
 }
 
 #[test]
+fn console_registry_has_complete_unique_media_aware_inventory() {
+    let registry = api_server::openapi_docs::build_default_api_docs_registry().unwrap();
+    let console = registry.category_operations("console").unwrap();
+    let operation_ids = console
+        .operations
+        .iter()
+        .map(|operation| operation.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(console.operations.len(), 257);
+    assert_eq!(operation_ids.len(), console.operations.len());
+    for operation in &console.operations {
+        assert!(
+            registry.operation_spec(&operation.id).is_some(),
+            "missing closed OpenAPI spec for {}",
+            operation.id
+        );
+    }
+
+    for operation_id in [
+        "start_flow_debug_run_stream",
+        "subscribe_flow_debug_run_stream",
+    ] {
+        let spec = registry.operation_spec(operation_id).unwrap();
+        let operation = console
+            .operations
+            .iter()
+            .find(|operation| operation.id == operation_id)
+            .unwrap();
+        assert!(
+            spec["paths"][&operation.path][&operation.method.to_ascii_lowercase()]["responses"]
+                ["200"]["content"]["text/event-stream"]
+                .is_object()
+        );
+    }
+}
+
+#[test]
 fn operation_spec_builder_keeps_refs_closed() {
     let registry = api_server::openapi_docs::build_default_api_docs_registry().unwrap();
     let spec = registry.operation_spec("patch_me").unwrap();

@@ -183,6 +183,23 @@ pub async fn start_flow_debug_run(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/{id}/orchestration/debug-runs/stream",
+    request_body = StartFlowDebugRunBody,
+    params(
+        ("id" = String, Path, description = "Application id"),
+        ("from_sequence" = Option<i64>, Query, description = "Resume after this stream sequence"),
+        ("last_event_id" = Option<String>, Query, description = "SSE event cursor")
+    ),
+    responses(
+        (status = 200, body = debug_run_stream::RuntimeDebugSseEventResponse, content_type = "text/event-stream"),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
 pub async fn start_flow_debug_run_stream(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -381,6 +398,22 @@ pub async fn start_flow_debug_run_stream(
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{id}/orchestration/runs/{run_id}/debug-stream",
+    params(
+        ("id" = String, Path, description = "Application id"),
+        ("run_id" = String, Path, description = "Flow run id"),
+        ("from_sequence" = Option<i64>, Query, description = "Resume after this stream sequence"),
+        ("last_event_id" = Option<String>, Query, description = "SSE event cursor")
+    ),
+    responses(
+        (status = 200, body = debug_run_stream::RuntimeDebugSseEventResponse, content_type = "text/event-stream"),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
 pub async fn subscribe_flow_debug_run_stream(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -21,34 +21,28 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
-    openapi_docs::DocsCatalogOperation,
+    middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_interface::{
-        catalog_entry_from_operation, DispatchArguments, DispatchError,
-        OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
+        build_openapi_capability_catalog, DispatchArguments, DispatchError,
+        OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
     },
     response::ApiSuccess,
-    runtime_data_model_docs::{self, RuntimeDataModelDocsOperationKind},
 };
 
-const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
-const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
 const WRITE_GRANT_TTL: Duration = Duration::minutes(5);
 const WRITE_GRANT_LOCK_TTL: Duration = Duration::seconds(10);
 const WRITE_GRANT_CACHE_PREFIX: &str = "frontstage:callable-write-grant:";
 const WRITE_GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 
-#[derive(Clone)]
-enum CallableAdapter {
-    RuntimeDataModel,
-    PageTabGet,
-    PageTabSave,
-}
+#[cfg(test)]
+const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
+#[cfg(test)]
+const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
 
 #[derive(Clone)]
 struct RegisteredCallable {
     interface: OpenApiInterfaceCatalogEntry,
-    adapter: CallableAdapter,
+    source: OpenApiCapabilitySource,
     bindable: bool,
     disabled_reason: Option<&'static str>,
     host_injected_parameters: Vec<&'static str>,
@@ -58,28 +52,18 @@ struct RegisteredCallable {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageCallableParameterResponse {
-    pub name: String,
-    pub field_type: String,
-    pub location: String,
-    pub description: Option<String>,
-    pub required: bool,
-    #[schema(value_type = Object)]
-    pub schema: Value,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageCallableResponse {
-    pub operation_id: String,
+pub struct FrontstageInterfaceCapabilityResponse {
+    pub interface_id: String,
     pub method: String,
     pub path: String,
     pub name: String,
-    pub description: String,
-    pub parameters: Vec<FrontstageCallableParameterResponse>,
+    pub short_description: String,
     #[schema(value_type = Object)]
-    pub request_schema: Value,
+    pub parameter_schema: Value,
     #[schema(value_type = Object)]
-    pub response_schema: Value,
+    pub result_schema: Value,
+    pub request_media_type: Option<String>,
+    pub response_media_type: Option<String>,
     pub schema_digest: String,
     pub adapter_id: String,
     pub host_injected_parameters: Vec<String>,
@@ -149,26 +133,29 @@ struct FrontstageCallableBlock {
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/callable-interfaces",
+    path = "/api/console/frontstage/{workspace_id}/interface-capabilities",
     params(("workspace_id" = String, Path, description = "Workspace id")),
     responses(
-        (status = 200, body = [FrontstageCallableResponse]),
+        (status = 200, body = [FrontstageInterfaceCapabilityResponse]),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody)
     )
 )]
-pub async fn list_frontstage_callable_interfaces(
+pub async fn list_frontstage_interface_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(workspace_id): Path<String>,
-) -> Result<Json<ApiSuccess<Vec<FrontstageCallableResponse>>>, ApiError> {
+) -> Result<Json<ApiSuccess<Vec<FrontstageInterfaceCapabilityResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    state
+    let actor = state
         .store
         .load_actor_context_for_workspace(context.user.id, workspace_id)
         .await?;
-    let entries = registered_callables(&state, context.user.id)
+    if !actor.has_permission("frontstage.page.design") {
+        return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
+    }
+    let entries = registered_callables(&state, workspace_id)
         .await?
         .into_iter()
         .map(to_response)
@@ -200,6 +187,7 @@ pub async fn dispatch_frontstage_callable_interface(
     Json(body): Json<DispatchFrontstageCallableBody>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
@@ -215,14 +203,14 @@ pub async fn dispatch_frontstage_callable_interface(
 
     let callable = resolve_bound_callable(
         &state,
-        context.user.id,
+        workspace_id,
         &detail.document.payload,
         &body.block_id,
         &body.binding_alias,
         &body.schema_digest,
     )
     .await?;
-    if callable.risk_level == "high" {
+    if callable.risk_level != "low" {
         let Some(grant_token) = body.write_grant.as_deref() else {
             return Err(ControlPlaneError::InvalidInput("write_grant").into());
         };
@@ -245,19 +233,12 @@ pub async fn dispatch_frontstage_callable_interface(
         .await?;
     }
 
-    let injected_path = match callable.adapter {
-        CallableAdapter::RuntimeDataModel => BTreeMap::new(),
-        CallableAdapter::PageTabGet => BTreeMap::from([
-            ("workspace_id".to_string(), workspace_id.to_string()),
-            ("page_id".to_string(), page_id.to_string()),
-            ("tab_reference".to_string(), tab_id.to_string()),
-        ]),
-        CallableAdapter::PageTabSave => BTreeMap::from([
-            ("workspace_id".to_string(), workspace_id.to_string()),
-            ("page_id".to_string(), page_id.to_string()),
-            ("tab_id".to_string(), tab_id.to_string()),
-        ]),
-    };
+    let injected_path = injected_path_parameters(
+        &callable.host_injected_parameters,
+        workspace_id,
+        page_id,
+        tab_id,
+    );
 
     match crate::openapi_interface::dispatch(
         state,
@@ -268,10 +249,13 @@ pub async fn dispatch_frontstage_callable_interface(
     )
     .await
     {
-        Ok(success) => Ok(Json(ApiSuccess::new(
-            success.value.get("data").cloned().unwrap_or(success.value),
-        ))
-        .into_response()),
+        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => {
+            Ok(Json(ApiSuccess::new(value.get("data").cloned().unwrap_or(value))).into_response())
+        }
+        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => {
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        Ok(crate::openapi_interface::DispatchSuccess::Media(response)) => Ok(response),
         Err(DispatchError::Api(error)) => Err(error.into()),
         Err(DispatchError::Target(response)) => Ok(response),
     }
@@ -301,6 +285,7 @@ pub async fn issue_frontstage_callable_write_grant(
     Json(body): Json<IssueFrontstageCallableWriteGrantBody>,
 ) -> Result<Json<ApiSuccess<FrontstageCallableWriteGrantResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
@@ -314,14 +299,14 @@ pub async fn issue_frontstage_callable_write_grant(
         .await?;
     let callable = resolve_bound_callable(
         &state,
-        context.user.id,
+        workspace_id,
         &detail.document.payload,
         &body.block_id,
         &body.binding_alias,
         &body.schema_digest,
     )
     .await?;
-    if callable.risk_level != "high" {
+    if callable.risk_level == "low" {
         return Err(ControlPlaneError::InvalidInput("binding_alias").into());
     }
     if body.run_id.trim().is_empty() || body.draft_hash.trim().is_empty() {
@@ -368,7 +353,7 @@ pub async fn issue_frontstage_callable_write_grant(
 
 async fn resolve_bound_callable(
     state: &ApiState,
-    actor_user_id: Uuid,
+    workspace_id: Uuid,
     document_payload: &Value,
     block_id: &str,
     binding_alias: &str,
@@ -376,7 +361,7 @@ async fn resolve_bound_callable(
 ) -> Result<RegisteredCallable, ApiError> {
     let binding =
         resolve_document_binding(document_payload, block_id, binding_alias, schema_digest)?;
-    let callable = registered_callables(state, actor_user_id)
+    let callable = registered_callables(state, workspace_id)
         .await?
         .into_iter()
         .find(|entry| entry.interface.operation_id == binding.operation_id)
@@ -491,89 +476,43 @@ fn grant_token_digest(grant_token: &str) -> String {
 
 async fn registered_callables(
     state: &ApiState,
-    actor_user_id: Uuid,
+    workspace_id: Uuid,
 ) -> Result<Vec<RegisteredCallable>, ApiError> {
-    let mut entries = Vec::new();
-    for operation_id in [PAGE_TAB_GET_OPERATION_ID, PAGE_TAB_SAVE_OPERATION_ID] {
-        if let Some((operation, spec)) = static_operation(&state.api_docs, operation_id) {
-            if let Some(interface) = catalog_entry_from_operation(operation, spec) {
-                let is_get = operation_id == PAGE_TAB_GET_OPERATION_ID;
-                entries.push(RegisteredCallable {
-                    interface,
-                    adapter: if is_get {
-                        CallableAdapter::PageTabGet
-                    } else {
-                        CallableAdapter::PageTabSave
-                    },
-                    bindable: true,
-                    disabled_reason: None,
-                    host_injected_parameters: if is_get {
-                        vec!["workspace_id", "page_id", "tab_reference"]
-                    } else {
-                        vec!["workspace_id", "page_id", "tab_id"]
-                    },
-                    scope: "frontstage_page_tab",
-                    authorization: "authenticated_page_tab_access",
-                    risk_level: if is_get { "low" } else { "high" },
-                });
-            }
-        }
-    }
-
-    let models = runtime_data_model_docs::ready_models(state, actor_user_id).await?;
-    let operations = runtime_data_model_docs::build_category_operations(&models);
-    for operation in operations.operations {
-        let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
-        else {
-            continue;
-        };
-        if !matches!(
-            kind,
-            RuntimeDataModelDocsOperationKind::ListRecords
-                | RuntimeDataModelDocsOperationKind::GetRecord
-        ) {
-            continue;
-        }
-        let Some(model) = models.iter().find(|model| model.id == model_id) else {
-            continue;
-        };
-        let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
-        if let Some(interface) = catalog_entry_from_operation(&operation, &spec) {
-            entries.push(RegisteredCallable {
-                interface,
-                adapter: CallableAdapter::RuntimeDataModel,
-                bindable: true,
-                disabled_reason: None,
-                host_injected_parameters: Vec::new(),
+    Ok(build_openapi_capability_catalog(state, workspace_id)
+        .await?
+        .into_iter()
+        .filter(|entry| entry.bindable)
+        .map(|entry| {
+            let host_injected_parameters = match entry.source {
+                OpenApiCapabilitySource::StaticApiDocs => {
+                    host_injected_parameters(&entry.interface)
+                }
+                OpenApiCapabilitySource::RuntimeDataModelCrud => Vec::new(),
+            };
+            RegisteredCallable {
+                interface: entry.interface,
+                source: entry.source,
+                bindable: entry.bindable,
+                disabled_reason: entry.disabled_reason,
+                host_injected_parameters,
                 scope: "frontstage_page_tab",
-                authorization: "runtime_scope_grant_and_page_tab_access",
-                risk_level: "low",
-            });
-        }
-    }
-    Ok(entries)
+                authorization: match entry.source {
+                    OpenApiCapabilitySource::StaticApiDocs => "target_api_route_policy",
+                    OpenApiCapabilitySource::RuntimeDataModelCrud => {
+                        "runtime_scope_grant_and_page_tab_access"
+                    }
+                },
+                risk_level: entry.risk_level,
+            }
+        })
+        .collect())
 }
 
-fn static_operation<'a>(
-    docs: &'a crate::openapi_docs::ApiDocsRegistry,
-    operation_id: &str,
-) -> Option<(&'a DocsCatalogOperation, &'a Value)> {
-    let operation = docs
-        .catalog()
-        .categories
-        .iter()
-        .filter_map(|category| docs.category_operations(&category.id))
-        .flat_map(|category| &category.operations)
-        .find(|operation| operation.id == operation_id)?;
-    Some((operation, docs.operation_spec(operation_id)?))
-}
-
-fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
+fn to_response(mut entry: RegisteredCallable) -> FrontstageInterfaceCapabilityResponse {
     entry.interface.parameter_descriptors.retain(|parameter| {
-        !matches!(parameter.location, OpenApiParameterLocation::Header)
-            && !entry
-                .host_injected_parameters
-                .contains(&parameter.name.as_str())
+        !entry
+            .host_injected_parameters
+            .contains(&parameter.name.as_str())
     });
     strip_injected_path_parameters(
         &mut entry.interface.request_schema,
@@ -583,44 +522,23 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
         "operation_id": entry.interface.operation_id,
         "request_schema": entry.interface.request_schema,
         "response_schema": entry.interface.response_schema,
+        "request_media_type": entry.interface.request_media_type,
+        "response_media_type": entry.interface.response_media_type,
     }))
     .expect("serializing OpenAPI interface schema must succeed");
     let schema_digest = format!("{:x}", Sha256::digest(digest_input));
-    FrontstageCallableResponse {
-        operation_id: entry.interface.operation_id,
+    FrontstageInterfaceCapabilityResponse {
+        interface_id: entry.interface.operation_id,
         method: entry.interface.method,
         path: entry.interface.path,
         name: entry.interface.name,
-        description: entry.interface.description,
-        parameters: entry
-            .interface
-            .parameter_descriptors
-            .into_iter()
-            .map(|parameter| FrontstageCallableParameterResponse {
-                name: parameter.name,
-                field_type: parameter.field_type,
-                location: match parameter.location {
-                    OpenApiParameterLocation::Path => "path",
-                    OpenApiParameterLocation::Query => "query",
-                    OpenApiParameterLocation::Header => "header",
-                    OpenApiParameterLocation::JsonBody => "body",
-                    OpenApiParameterLocation::FormBody => "body",
-                }
-                .to_string(),
-                description: parameter.description,
-                required: parameter.required,
-                schema: parameter.schema,
-            })
-            .collect(),
-        request_schema: entry.interface.request_schema,
-        response_schema: entry.interface.response_schema,
+        short_description: entry.interface.description,
+        parameter_schema: entry.interface.request_schema,
+        result_schema: entry.interface.response_schema,
+        request_media_type: entry.interface.request_media_type,
+        response_media_type: entry.interface.response_media_type,
         schema_digest,
-        adapter_id: match entry.adapter {
-            CallableAdapter::RuntimeDataModel => "runtime_data_model",
-            CallableAdapter::PageTabGet => "frontstage_page_tab_get",
-            CallableAdapter::PageTabSave => "frontstage_page_tab_save",
-        }
-        .to_string(),
+        adapter_id: entry.source.adapter_id().to_string(),
         host_injected_parameters: entry
             .host_injected_parameters
             .into_iter()
@@ -632,6 +550,41 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
         bindable: entry.bindable,
         disabled_reason: entry.disabled_reason.map(str::to_string),
     }
+}
+
+fn host_injected_parameters(interface: &OpenApiInterfaceCatalogEntry) -> Vec<&'static str> {
+    interface
+        .parameter_descriptors
+        .iter()
+        .filter(|parameter| matches!(parameter.location, OpenApiParameterLocation::Path))
+        .filter_map(|parameter| match parameter.name.as_str() {
+            "workspace_id" => Some("workspace_id"),
+            "page_id" => Some("page_id"),
+            "tab_id" => Some("tab_id"),
+            "tab_reference" => Some("tab_reference"),
+            _ => None,
+        })
+        .collect()
+}
+
+fn injected_path_parameters(
+    parameters: &[&str],
+    workspace_id: Uuid,
+    page_id: Uuid,
+    tab_id: Uuid,
+) -> BTreeMap<String, String> {
+    parameters
+        .iter()
+        .filter_map(|parameter| {
+            let value = match *parameter {
+                "workspace_id" => workspace_id,
+                "page_id" => page_id,
+                "tab_id" | "tab_reference" => tab_id,
+                _ => return None,
+            };
+            Some(((*parameter).to_string(), value.to_string()))
+        })
+        .collect()
 }
 
 fn strip_injected_path_parameters(schema: &mut Value, injected: &[&str]) {

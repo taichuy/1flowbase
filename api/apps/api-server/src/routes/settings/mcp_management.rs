@@ -27,7 +27,7 @@ use control_plane::{
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -35,12 +35,14 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
-    openapi_docs::{ApiDocsRegistry, DocsCatalogOperation},
+    openapi_docs::DocsCatalogOperation,
+    openapi_interface::{
+        build_openapi_capability_catalog, OpenApiCapabilityCatalogEntry, OpenApiParameterLocation,
+    },
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,
     },
-    runtime_data_model_docs,
 };
 
 pub use debug_execute::{
@@ -1186,29 +1188,19 @@ fn parse_risk_level(value: &str) -> Result<domain::McpRiskLevel, ApiError> {
     }
 }
 
-#[derive(Clone, Copy)]
-enum McpInterfaceCapabilitySource {
-    StaticApiDocs,
-    RuntimeDataModelCrud,
-    PublishedWorkflowOperation,
-}
-
-struct McpInterfaceScopePolicy {
-    bindable: bool,
-    disabled_reason: Option<&'static str>,
-}
-
 async fn mcp_interface_catalog_entries(
     state: &ApiState,
     actor_user_id: Uuid,
 ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
-    let mut entries = static_mcp_interface_catalog_entries(&state.api_docs);
-    let models = runtime_data_model_docs::ready_models(state, actor_user_id).await?;
-    entries.extend(runtime_data_model_mcp_interface_catalog_entries(&models));
     let actor = state
         .store
         .load_actor_context_for_user(actor_user_id)
         .await?;
+    let mut entries = build_openapi_capability_catalog(state, actor.current_workspace_id)
+        .await?
+        .into_iter()
+        .map(mcp_interface_entry_from_capability)
+        .collect::<Vec<_>>();
     let publications = state.store.list_enabled_extension_publications().await?;
     let operations = build_published_workflow_operations(publications)
         .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
@@ -1239,71 +1231,53 @@ async fn mcp_interface_catalog_entries(
                 }
             }
         });
-        if let Some(entry) = mcp_interface_entry_from_operation(
-            &docs_operation,
-            &spec,
-            McpInterfaceCapabilitySource::PublishedWorkflowOperation,
-        ) {
+        if let Some(entry) = mcp_interface_entry_from_operation(&docs_operation, &spec) {
             entries.push(entry);
         }
     }
     Ok(entries)
 }
 
-fn static_mcp_interface_catalog_entries(
-    api_docs: &ApiDocsRegistry,
-) -> Vec<domain::McpInterfaceCatalogEntry> {
-    let mut entries = Vec::new();
-
-    for category in &api_docs.catalog().categories {
-        let Some(category_operations) = api_docs.category_operations(&category.id) else {
-            continue;
-        };
-
-        for operation in &category_operations.operations {
-            let Some(spec) = api_docs.operation_spec(&operation.id) else {
-                continue;
-            };
-            let Some(entry) = mcp_interface_entry_from_operation(
-                operation,
-                spec,
-                McpInterfaceCapabilitySource::StaticApiDocs,
-            ) else {
-                continue;
-            };
-            entries.push(entry);
-        }
+fn mcp_interface_entry_from_capability(
+    entry: OpenApiCapabilityCatalogEntry,
+) -> domain::McpInterfaceCatalogEntry {
+    let interface = entry.interface;
+    domain::McpInterfaceCatalogEntry {
+        interface_id: interface.operation_id,
+        method: interface.method.clone(),
+        path: interface.path.clone(),
+        name: interface.name,
+        short_description: interface.description,
+        parameter_descriptors: interface
+            .parameter_descriptors
+            .into_iter()
+            .filter_map(|descriptor| {
+                let parameter_type = match descriptor.location {
+                    OpenApiParameterLocation::Path | OpenApiParameterLocation::Query => {
+                        McpParameterType::Url
+                    }
+                    OpenApiParameterLocation::JsonBody => McpParameterType::JsonBody,
+                    OpenApiParameterLocation::FormBody => McpParameterType::Form,
+                    OpenApiParameterLocation::Header => return None,
+                };
+                Some(McpParameterDescriptor {
+                    name: descriptor.name,
+                    field_type: descriptor.field_type,
+                    parameter_type,
+                    description: descriptor.description,
+                    required: descriptor.required,
+                    schema: descriptor.schema,
+                })
+            })
+            .collect(),
+        parameter_schema: interface.request_schema,
+        result_schema: interface.response_schema,
+        permission_code: operation_permission_code(&interface.method, &interface.path),
+        security: interface.security,
+        risk_level: mcp_risk_level(entry.risk_level),
+        bindable: entry.bindable,
+        disabled_reason: entry.disabled_reason.map(str::to_string),
     }
-
-    entries
-}
-
-fn runtime_data_model_mcp_interface_catalog_entries(
-    models: &[domain::ModelDefinitionRecord],
-) -> Vec<domain::McpInterfaceCatalogEntry> {
-    let category_operations = runtime_data_model_docs::build_category_operations(models);
-    let mut entries = Vec::new();
-
-    for operation in &category_operations.operations {
-        let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
-        else {
-            continue;
-        };
-        let Some(model) = models.iter().find(|model| model.id == model_id) else {
-            continue;
-        };
-        let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
-        let Some(entry) = mcp_interface_entry_from_operation(
-            operation,
-            &spec,
-            McpInterfaceCapabilitySource::RuntimeDataModelCrud,
-        ) else {
-            continue;
-        };
-        entries.push(entry);
-    }
-
-    entries
 }
 
 pub(crate) async fn bindable_mcp_interface(
@@ -1347,10 +1321,8 @@ fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> String {
 fn mcp_interface_entry_from_operation(
     operation: &DocsCatalogOperation,
     spec: &Value,
-    source: McpInterfaceCapabilitySource,
 ) -> Option<domain::McpInterfaceCatalogEntry> {
     let interface = crate::openapi_interface::catalog_entry_from_operation(operation, spec)?;
-    let scope_policy = mcp_interface_scope_policy(operation, source);
 
     Some(domain::McpInterfaceCatalogEntry {
         interface_id: interface.operation_id,
@@ -1386,440 +1358,22 @@ fn mcp_interface_entry_from_operation(
         permission_code: operation_permission_code(&operation.method, &operation.path),
         security: interface.security,
         risk_level: operation_risk_level(&operation.method),
-        bindable: scope_policy.bindable,
-        disabled_reason: scope_policy.disabled_reason.map(str::to_string),
+        bindable: true,
+        disabled_reason: None,
     })
 }
 
-fn mcp_interface_scope_policy(
-    operation: &DocsCatalogOperation,
-    source: McpInterfaceCapabilitySource,
-) -> McpInterfaceScopePolicy {
-    if operation.path == "/api/console/mcp/debug/execute" {
-        return McpInterfaceScopePolicy {
-            bindable: false,
-            disabled_reason: Some("unsupported_mcp_interface_scope"),
-        };
-    }
-
-    let bindable = match source {
-        McpInterfaceCapabilitySource::StaticApiDocs => operation.path.starts_with("/api/console/"),
-        McpInterfaceCapabilitySource::RuntimeDataModelCrud => {
-            runtime_data_model_crud_path_is_concrete(&operation.path)
-        }
-        McpInterfaceCapabilitySource::PublishedWorkflowOperation => true,
-    };
-
-    McpInterfaceScopePolicy {
-        bindable,
-        disabled_reason: if bindable {
-            None
-        } else {
-            Some("unsupported_mcp_interface_scope")
-        },
-    }
-}
-
-fn runtime_data_model_crud_path_is_concrete(path: &str) -> bool {
-    path.starts_with("/api/runtime/models/")
-        && !path.contains("{model_code}")
-        && (path.ends_with("/list")
-            || path.ends_with("/create")
-            || path.ends_with("/get/{id}")
-            || path.ends_with("/update/{id}")
-            || path.ends_with("/delete/{id}"))
-}
-
-fn openapi_operation_node<'a>(
-    spec: &'a Value,
-    operation: &DocsCatalogOperation,
-) -> Option<&'a Value> {
-    let method = operation.method.to_ascii_lowercase();
-    spec.pointer(&format!(
-        "/paths/{}/{}",
-        escape_json_pointer_token(&operation.path),
-        method
-    ))
-}
-
-fn openapi_path_item_node<'a>(
-    spec: &'a Value,
-    operation: &DocsCatalogOperation,
-) -> Option<&'a Value> {
-    spec.pointer(&format!(
-        "/paths/{}",
-        escape_json_pointer_token(&operation.path)
-    ))
-}
-
-fn escape_json_pointer_token(token: &str) -> String {
-    token.replace('~', "~0").replace('/', "~1")
-}
-
-fn operation_input_schema(spec: &Value, path_item_node: &Value, operation_node: &Value) -> Value {
-    let mut properties = Map::new();
-    let mut required = Vec::new();
-
-    if let Some(path_schema) =
-        operation_parameter_location_schema(spec, path_item_node, operation_node, "path")
-    {
-        properties.insert("path".into(), path_schema);
-        required.push(Value::String("path".into()));
-    }
-
-    if let Some(query_schema) =
-        operation_parameter_location_schema(spec, path_item_node, operation_node, "query")
-    {
-        let query_required = query_schema
-            .get("required")
-            .and_then(Value::as_array)
-            .map(|items| !items.is_empty())
-            .unwrap_or(false);
-        properties.insert("query".into(), query_schema);
-        if query_required {
-            required.push(Value::String("query".into()));
-        }
-    }
-
-    if let Some((body_schema, body_required)) = operation_request_body_schema(spec, operation_node)
-    {
-        properties.insert("body".into(), body_schema);
-        if body_required {
-            required.push(Value::String("body".into()));
-        }
-    }
-
-    object_schema(properties, required)
-}
-
-fn operation_parameter_descriptors(
-    spec: &Value,
-    path_item_node: &Value,
-    operation_node: &Value,
-) -> Vec<McpParameterDescriptor> {
-    let mut descriptors = Vec::new();
-
-    for location in ["path", "query"] {
-        descriptors.extend(operation_parameter_location_descriptors(
-            spec,
-            path_item_node,
-            operation_node,
-            location,
-        ));
-    }
-
-    descriptors.extend(operation_request_body_descriptors(spec, operation_node));
-    descriptors
-}
-
-fn operation_parameter_location_descriptors(
-    spec: &Value,
-    path_item_node: &Value,
-    operation_node: &Value,
-    location: &str,
-) -> Vec<McpParameterDescriptor> {
-    let mut descriptors = Vec::new();
-
-    for raw_parameter in path_item_node
-        .get("parameters")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .chain(
-            operation_node
-                .get("parameters")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten(),
-        )
-    {
-        let parameter = resolve_openapi_schema(spec, raw_parameter);
-        if parameter.get("in").and_then(Value::as_str) != Some(location) {
-            continue;
-        }
-        let Some(name) = parameter.get("name").and_then(Value::as_str) else {
-            continue;
-        };
-
-        let schema = parameter
-            .get("schema")
-            .map(|schema| resolve_openapi_schema(spec, schema))
-            .unwrap_or_else(default_string_schema);
-        let description = parameter
-            .get("description")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        let required = location == "path"
-            || parameter
-                .get("required")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-
-        descriptors.push(McpParameterDescriptor {
-            name: name.into(),
-            field_type: schema_field_type(&schema),
-            parameter_type: McpParameterType::Url,
-            description,
-            required,
-            schema,
-        });
-    }
-
-    descriptors
-}
-
-fn operation_parameter_location_schema(
-    spec: &Value,
-    path_item_node: &Value,
-    operation_node: &Value,
-    location: &str,
-) -> Option<Value> {
-    let mut properties = Map::new();
-    let mut required = Vec::new();
-
-    for raw_parameter in path_item_node
-        .get("parameters")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .chain(
-            operation_node
-                .get("parameters")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten(),
-        )
-    {
-        let parameter = resolve_openapi_schema(spec, raw_parameter);
-        if parameter.get("in").and_then(Value::as_str) != Some(location) {
-            continue;
-        }
-        let Some(name) = parameter.get("name").and_then(Value::as_str) else {
-            continue;
-        };
-
-        let mut schema = parameter
-            .get("schema")
-            .map(|schema| resolve_openapi_schema(spec, schema))
-            .unwrap_or_else(default_string_schema);
-        if let Some(description) = parameter.get("description").and_then(Value::as_str) {
-            schema = schema_with_description(schema, description);
-        }
-        properties.insert(name.into(), schema);
-
-        if location == "path"
-            || parameter
-                .get("required")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-        {
-            required.push(Value::String(name.into()));
-        }
-    }
-
-    if properties.is_empty() {
-        return None;
-    }
-
-    Some(object_schema(properties, required))
-}
-
-fn operation_request_body_schema(spec: &Value, operation_node: &Value) -> Option<(Value, bool)> {
-    let request_body = operation_node.get("requestBody")?;
-    let request_body = resolve_openapi_schema(spec, request_body);
-    let schema = json_content_schema(spec, request_body.get("content")?)?;
-    let required = request_body
-        .get("required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    Some((schema, required))
-}
-
-fn operation_request_body_descriptors(
-    spec: &Value,
-    operation_node: &Value,
-) -> Vec<McpParameterDescriptor> {
-    let Some(request_body) = operation_node.get("requestBody") else {
-        return Vec::new();
-    };
-    let request_body = resolve_openapi_schema(spec, request_body);
-    let request_body_required = request_body
-        .get("required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let Some((schema, parameter_type)) =
-        request_body_descriptor_schema(spec, request_body.get("content").unwrap_or(&Value::Null))
-    else {
-        return Vec::new();
-    };
-
-    schema_property_descriptors(schema, parameter_type, request_body_required)
-}
-
-fn request_body_descriptor_schema(
-    spec: &Value,
-    content: &Value,
-) -> Option<(Value, McpParameterType)> {
-    let content = content.as_object()?;
-
-    for content_type in ["application/x-www-form-urlencoded", "multipart/form-data"] {
-        if let Some(media_type) = content.get(content_type) {
-            if let Some(schema) = media_type.get("schema") {
-                return Some((resolve_openapi_schema(spec, schema), McpParameterType::Form));
-            }
-        }
-    }
-
-    if let Some(media_type) = content.get("application/json").or_else(|| {
-        content
-            .iter()
-            .find(|(content_type, _)| content_type.ends_with("+json"))
-            .map(|(_, media_type)| media_type)
-    }) {
-        if let Some(schema) = media_type.get("schema") {
-            return Some((
-                resolve_openapi_schema(spec, schema),
-                McpParameterType::JsonBody,
-            ));
-        }
-    }
-
-    None
-}
-
-fn schema_property_descriptors(
-    schema: Value,
-    parameter_type: McpParameterType,
-    request_body_required: bool,
-) -> Vec<McpParameterDescriptor> {
-    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
-        return vec![McpParameterDescriptor {
-            name: "body".into(),
-            field_type: schema_field_type(&schema),
-            parameter_type,
-            description: schema_description(&schema),
-            required: request_body_required,
-            schema,
-        }];
-    };
-
-    let required_fields = schema
-        .get("required")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<BTreeSet<_>>();
-    let mut descriptors = Vec::new();
-    for (name, property_schema) in properties {
-        append_schema_property_descriptors(
-            &mut descriptors,
-            name.clone(),
-            property_schema.clone(),
-            parameter_type,
-            request_body_required && required_fields.contains(name.as_str()),
-        );
-    }
-
-    descriptors
-}
-
-fn append_schema_property_descriptors(
-    descriptors: &mut Vec<McpParameterDescriptor>,
-    path: String,
-    schema: Value,
-    parameter_type: McpParameterType,
-    required: bool,
-) {
-    if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
-        if !properties.is_empty() {
-            let required_fields = schema
-                .get("required")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .collect::<BTreeSet<_>>();
-            for (name, property_schema) in properties {
-                append_schema_property_descriptors(
-                    descriptors,
-                    format!("{path}.{name}"),
-                    property_schema.clone(),
-                    parameter_type,
-                    required && required_fields.contains(name.as_str()),
-                );
-            }
-            return;
-        }
-    }
-
-    descriptors.push(McpParameterDescriptor {
-        name: path,
-        field_type: schema_field_type(&schema),
-        parameter_type,
-        description: schema_description(&schema),
-        required,
-        schema,
-    });
-}
-
-fn operation_response_schema(spec: &Value, operation_node: &Value) -> Value {
-    let Some(responses) = operation_node.get("responses").and_then(Value::as_object) else {
-        return object_schema(Map::new(), Vec::new());
-    };
-
-    let mut status_codes = responses
-        .keys()
-        .filter(|status| status.starts_with('2'))
-        .cloned()
-        .collect::<Vec<_>>();
-    status_codes.sort();
-
-    for status in status_codes {
-        let Some(response) = responses.get(&status) else {
-            continue;
-        };
-        let response = resolve_openapi_schema(spec, response);
-        if let Some(schema) = response
-            .get("content")
-            .and_then(|content| json_content_schema(spec, content))
-        {
-            return schema;
-        }
-    }
-
-    object_schema(Map::new(), Vec::new())
-}
-
-fn json_content_schema(spec: &Value, content: &Value) -> Option<Value> {
-    let content = content.as_object()?;
-    let media_schema = content
-        .get("application/json")
-        .or_else(|| {
-            content
-                .iter()
-                .find(|(content_type, _)| content_type.ends_with("+json"))
-                .map(|(_, media_type)| media_type)
-        })?
-        .get("schema")?;
-
-    Some(resolve_openapi_schema(spec, media_schema))
-}
-
-fn operation_security(spec: &Value, operation_node: &Value) -> Value {
-    operation_node
-        .get("security")
-        .or_else(|| spec.get("security"))
-        .cloned()
-        .unwrap_or_else(|| Value::Array(Vec::new()))
-}
-
 fn operation_risk_level(method: &str) -> domain::McpRiskLevel {
-    match method {
-        "GET" | "HEAD" | "OPTIONS" => domain::McpRiskLevel::Low,
-        "DELETE" => domain::McpRiskLevel::Critical,
-        "POST" | "PUT" | "PATCH" => domain::McpRiskLevel::High,
-        _ => domain::McpRiskLevel::Medium,
+    mcp_risk_level(crate::openapi_interface::operation_risk_level(method))
+}
+
+fn mcp_risk_level(risk_level: &str) -> domain::McpRiskLevel {
+    match risk_level {
+        "low" => domain::McpRiskLevel::Low,
+        "medium" => domain::McpRiskLevel::Medium,
+        "high" => domain::McpRiskLevel::High,
+        "critical" => domain::McpRiskLevel::Critical,
+        _ => unreachable!("shared OpenAPI capability catalog emitted an unknown risk level"),
     }
 }
 
@@ -1943,98 +1497,6 @@ fn operation_permission_code(method: &str, path: &str) -> Option<String> {
     }
 
     None
-}
-
-fn object_schema(properties: Map<String, Value>, required: Vec<Value>) -> Value {
-    let mut schema = Map::new();
-    schema.insert("type".into(), Value::String("object".into()));
-    schema.insert("properties".into(), Value::Object(properties));
-    schema.insert("additionalProperties".into(), Value::Bool(false));
-    if !required.is_empty() {
-        schema.insert("required".into(), Value::Array(required));
-    }
-    Value::Object(schema)
-}
-
-fn default_string_schema() -> Value {
-    let mut fallback = Map::new();
-    fallback.insert("type".into(), Value::String("string".into()));
-    Value::Object(fallback)
-}
-
-fn schema_field_type(schema: &Value) -> String {
-    schema
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("object")
-        .into()
-}
-
-fn schema_description(schema: &Value) -> Option<String> {
-    schema
-        .get("description")
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-}
-
-fn schema_with_description(mut schema: Value, description: &str) -> Value {
-    if let Value::Object(schema_map) = &mut schema {
-        schema_map
-            .entry("description")
-            .or_insert_with(|| Value::String(description.into()));
-    }
-    schema
-}
-
-fn resolve_openapi_schema(spec: &Value, value: &Value) -> Value {
-    resolve_openapi_schema_at_depth(spec, value, 0)
-}
-
-fn resolve_openapi_schema_at_depth(spec: &Value, value: &Value, depth: usize) -> Value {
-    if depth > 16 {
-        return value.clone();
-    }
-
-    match value {
-        Value::Object(map) => {
-            if let Some(reference) = map.get("$ref").and_then(Value::as_str) {
-                if let Some(pointer) = reference.strip_prefix('#') {
-                    if let Some(target) = spec.pointer(pointer) {
-                        let mut resolved = resolve_openapi_schema_at_depth(spec, target, depth + 1);
-                        if let Value::Object(resolved_map) = &mut resolved {
-                            for (key, sibling) in map {
-                                if key != "$ref" {
-                                    resolved_map.insert(
-                                        key.clone(),
-                                        resolve_openapi_schema_at_depth(spec, sibling, depth + 1),
-                                    );
-                                }
-                            }
-                        }
-                        return resolved;
-                    }
-                }
-            }
-
-            Value::Object(
-                map.iter()
-                    .map(|(key, nested)| {
-                        (
-                            key.clone(),
-                            resolve_openapi_schema_at_depth(spec, nested, depth + 1),
-                        )
-                    })
-                    .collect(),
-            )
-        }
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .map(|item| resolve_openapi_schema_at_depth(spec, item, depth + 1))
-                .collect(),
-        ),
-        _ => value.clone(),
-    }
 }
 
 fn to_instance_command(
@@ -2574,7 +2036,6 @@ mod tests {
         let json_entry = mcp_interface_entry_from_operation(
             &operation("create_widget", "POST", "/api/console/widgets/{widget_id}"),
             &spec,
-            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("JSON operation should become an MCP interface entry");
         assert!(json_entry
@@ -2608,7 +2069,6 @@ mod tests {
         let form_entry = mcp_interface_entry_from_operation(
             &operation("upload_widget", "POST", "/api/console/uploads"),
             &spec,
-            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("form operation should become an MCP interface entry");
         assert!(form_entry
@@ -2741,7 +2201,6 @@ mod tests {
                 "/api/console/applications/{application_id}/api-publications",
             ),
             &spec,
-            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("publish operation should become an MCP interface entry");
 
@@ -2794,7 +2253,6 @@ mod tests {
                 "/api/console/optional-publications",
             ),
             &spec,
-            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("optional publish operation should become an MCP interface entry");
         let optional_descriptor = optional_entry
@@ -2841,7 +2299,6 @@ mod tests {
         let entry = mcp_interface_entry_from_operation(
             &operation("submit_raw_body", "POST", "/api/console/raw-body"),
             &spec,
-            McpInterfaceCapabilitySource::StaticApiDocs,
         )
         .expect("raw body operation should become an MCP interface entry");
 
@@ -2885,7 +2342,6 @@ mod tests {
                 path,
             ),
             &spec,
-            McpInterfaceCapabilitySource::PublishedWorkflowOperation,
         )
         .expect("published workflow operation should become an MCP interface");
 

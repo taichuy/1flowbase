@@ -38,7 +38,7 @@ function createContext(): BlockContext {
     props: {},
     state: {},
     patch() {},
-    interfaces: { call: vi.fn() },
+    interfaces: { call: vi.fn(), stream: vi.fn() },
     events: { emit: vi.fn() },
     theme: { mode: 'light', tokens: {} },
     ui: { locale: 'en_US' }
@@ -131,9 +131,7 @@ describe('BlockModule runtime contract', () => {
         })
       );
     });
-    const effect = messages.find(
-      (message) => message.type === 'interface'
-    );
+    const effect = messages.find((message) => message.type === 'interface');
     expect(effect).toMatchObject({ effectId: expect.any(String) });
 
     await executor.handleMessage({
@@ -181,5 +179,69 @@ describe('BlockModule runtime contract', () => {
       code: 'interface_denied',
       path: 'interface.bindingAlias'
     });
+  });
+
+  test('pulls and cancels interface streams without buffering events in the worker', async () => {
+    const messages: JsBlockWorkerToHostMessage[] = [];
+    const executor = createJsBlockWorkerExecutor({
+      modules: {},
+      postMessage: (message) => messages.push(message)
+    });
+    const request = createRequest(`
+      async function main(ctx) {
+        let progress = 0;
+        for await (const event of ctx.interfaces.stream('watchRun')) {
+          progress = event.progress;
+          break;
+        }
+        return {
+          view: { primitive: 'Text', props: { children: progress } },
+          outputs: { progress }
+        };
+      }
+      export default { main };
+    `);
+    const pendingRun = executor.handleMessage({
+      direction: 'host_to_worker',
+      type: 'run',
+      request
+    });
+    let resolvedEffectCount = 0;
+    const resolveNextEffect = async (value: unknown) => {
+      await vi.waitFor(() => {
+        expect(
+          messages.filter((message) => message.type === 'interface').length
+        ).toBeGreaterThan(resolvedEffectCount);
+      });
+      const effect = messages.filter((message) => message.type === 'interface')[
+        resolvedEffectCount
+      ] as { effectId: string };
+      resolvedEffectCount += 1;
+      await executor.handleMessage({
+        direction: 'host_to_worker',
+        type: 'effect_result',
+        requestId: request.requestId,
+        effectId: effect.effectId,
+        ok: true,
+        value
+      });
+    };
+
+    await resolveNextEffect({ stream_id: 'stream-1' });
+    await resolveNextEffect({ done: false, value: { progress: 50 } });
+    await resolveNextEffect(undefined);
+    await pendingRun;
+
+    expect(messages.filter((message) => message.type === 'interface')).toEqual([
+      expect.objectContaining({ operation: 'stream_open' }),
+      expect.objectContaining({
+        operation: 'stream_next',
+        streamId: 'stream-1'
+      }),
+      expect.objectContaining({
+        operation: 'stream_cancel',
+        streamId: 'stream-1'
+      })
+    ]);
   });
 });

@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 
 export interface FrontstageOpenApiCodegenResult {
   source: string;
@@ -21,8 +21,8 @@ const sourcePolicyDeniedPropertyNames = new Set([
   '__proto__'
 ]);
 
-export function generateFrontstageCallableSource(
-  operation: ConsoleFrontstageCallableInterface,
+export function generateFrontstageInterfaceSource(
+  operation: ConsoleFrontstageInterfaceCapability,
   bindingAlias: string
 ): FrontstageOpenApiCodegenResult {
   if (!operation.bindable) {
@@ -31,7 +31,7 @@ export function generateFrontstageCallableSource(
   const functionName = requireIdentifier(bindingAlias);
   const typeBase = toPascalCase(functionName) || 'BoundInterface';
   const declarations: string[] = [];
-  const request = asSchema(operation.request_schema);
+  const request = asSchema(operation.parameter_schema);
   const requestProperties = asRecord(request.properties);
   const requestRequired = stringSet(request.required);
   const locations = ['path', 'query', 'headers', 'body'].filter(
@@ -47,11 +47,11 @@ export function generateFrontstageCallableSource(
     );
   }
   const responseName = `${typeBase}Response`;
-  const responseType = declareSchema(
-    responseName,
-    operation.response_schema,
-    declarations
-  );
+  const responseType = isNoContentResponse(operation)
+    ? 'void'
+    : isBinaryMediaType(operation.response_media_type)
+      ? declareBinaryResource(responseName, declarations)
+      : declareSchema(responseName, operation.result_schema, declarations);
 
   let parameterSource: string;
   let requestSource: string;
@@ -85,17 +85,18 @@ export function generateFrontstageCallableSource(
   const provenance = [
     '/**',
     ' * @1flowbase-openapi',
-    ` * operationId=${operation.operation_id}`,
+    ` * operationId=${operation.interface_id}`,
     ` * binding=${functionName}`,
     ` * ${operation.method.toUpperCase()} ${operation.path}`,
     ` * specDigest=${operation.schema_digest}`,
     ' */'
   ].join('\n');
+  const isStream = operation.response_media_type === 'text/event-stream';
   const callable = [
-    `async function ${functionName}(`,
+    `${isStream ? '' : 'async '}function ${functionName}(`,
     `  ctx: BlockContext${parameterSource}`,
-    `): Promise<${responseType}> {`,
-    `  return ctx.interfaces.call<${responseType}>(`,
+    `): ${isStream ? `AsyncIterable<${responseType}>` : `Promise<${responseType}>`} {`,
+    `  return ctx.interfaces.${isStream ? 'stream' : 'call'}<${responseType}>(`,
     `    '${escapeSingleQuote(functionName)}'${requestSource}`,
     '  );',
     '}'
@@ -114,8 +115,28 @@ function declareSchema(
   declarations: string[]
 ): string {
   const schema = asSchema(value);
+  if (schema.format === 'binary') {
+    return declareBinaryInput(preferredName, declarations);
+  }
   if (Array.isArray(schema.enum) && schema.enum.length > 0) {
     return schema.enum.map(toLiteral).join(' | ');
+  }
+  if ('const' in schema) {
+    return toLiteral(schema.const);
+  }
+  if (Array.isArray(schema.allOf)) {
+    return schema.allOf
+      .map((item, index) =>
+        declareSchema(`${preferredName}Part${index + 1}`, item, declarations)
+      )
+      .join(' & ');
+  }
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf
+      .map((item, index) =>
+        declareSchema(`${preferredName}Option${index + 1}`, item, declarations)
+      )
+      .join(' | ');
   }
   if (Array.isArray(schema.oneOf)) {
     return schema.oneOf
@@ -127,6 +148,17 @@ function declareSchema(
   if (schema.type === 'array') {
     return `${declareSchema(singularize(preferredName), schema.items, declarations)}[]`;
   }
+  if (Array.isArray(schema.type)) {
+    return schema.type
+      .map((type, index) =>
+        declareSchema(
+          `${preferredName}Type${index + 1}`,
+          { ...schema, type },
+          declarations
+        )
+      )
+      .join(' | ');
+  }
   if (schema.type === 'object' || isRecord(schema.properties)) {
     const name = schemaTitle(schema) ?? preferredName;
     const properties = asRecord(schema.properties);
@@ -136,7 +168,9 @@ function declareSchema(
       return `  ${quoteProperty(key)}${required.has(key) ? '' : '?'}: ${declareSchema(childName, child, declarations)};`;
     });
     if (fields.length === 0 && schema.additionalProperties) {
-      return 'Record<string, unknown>';
+      return schema.additionalProperties === true
+        ? 'Record<string, unknown>'
+        : `Record<string, ${declareSchema(`${name}Value`, schema.additionalProperties, declarations)}>`;
     }
     if (!declarations.some((item) => item.startsWith(`interface ${name} `))) {
       declarations.push([`interface ${name} {`, ...fields, '}'].join('\n'));
@@ -155,6 +189,51 @@ function declareSchema(
             ? 'null'
             : 'unknown';
   return schema.nullable === true && base !== 'null' ? `${base} | null` : base;
+}
+
+function declareBinaryInput(name: string, declarations: string[]): string {
+  if (!declarations.some((item) => item.startsWith(`interface ${name} `))) {
+    declarations.push(
+      [
+        `interface ${name} {`,
+        '  base64: string;',
+        '  file_name?: string;',
+        '  content_type?: string;',
+        '}'
+      ].join('\n')
+    );
+  }
+  return name;
+}
+
+function declareBinaryResource(name: string, declarations: string[]): string {
+  if (!declarations.some((item) => item.startsWith(`interface ${name} `))) {
+    declarations.push(
+      [
+        `interface ${name} {`,
+        '  bytes: Uint8Array;',
+        '  file_name: string | null;',
+        '  content_type: string;',
+        '}'
+      ].join('\n')
+    );
+  }
+  return name;
+}
+
+function isNoContentResponse(
+  operation: ConsoleFrontstageInterfaceCapability
+): boolean {
+  const schema = asSchema(operation.result_schema);
+  return (
+    operation.response_media_type === null && Object.keys(schema).length === 0
+  );
+}
+
+function isBinaryMediaType(mediaType: string | null): boolean {
+  if (mediaType === null || mediaType === 'text/event-stream') return false;
+  const normalized = mediaType.split(';', 1)[0]?.trim().toLocaleLowerCase();
+  return normalized !== 'application/json' && !normalized?.endsWith('+json');
 }
 
 function schemaTitle(schema: JsonSchema): string | null {
@@ -192,7 +271,8 @@ function quoteProperty(value: string): string {
 }
 
 function toLiteral(value: unknown): string {
-  return value === null || ['string', 'number', 'boolean'].includes(typeof value)
+  return value === null ||
+    ['string', 'number', 'boolean'].includes(typeof value)
     ? (JSON.stringify(value) ?? 'unknown')
     : 'unknown';
 }

@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 import type { FrontendBlockMonacoExtraLib } from '@1flowbase/page-protocol';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
@@ -7,7 +7,7 @@ import {
   resolveFrontstageInterfaceBindings,
   type FrontstageResolvedInterfaceBinding
 } from './interface-binding';
-import { generateFrontstageCallableSource } from './openapi-codegen';
+import { generateFrontstageInterfaceSource } from './openapi-codegen';
 
 export interface FrontstageJsxEditorProjection {
   bindings: FrontstageResolvedInterfaceBinding[];
@@ -19,16 +19,16 @@ export interface FrontstageJsxEditorProjection {
 export function createFrontstageJsxEditorProjection({
   block,
   catalogEntry,
-  callableInterfaces
+  interfaceCapabilities
 }: {
   block: FrontstageBlockInstance;
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
-  callableInterfaces: readonly ConsoleFrontstageCallableInterface[];
+  interfaceCapabilities: readonly ConsoleFrontstageInterfaceCapability[];
 }): FrontstageJsxEditorProjection {
   const monacoExtraLibs = catalogEntry?.codeCapabilities?.monacoExtraLibs ?? [];
   const bindings = resolveFrontstageInterfaceBindings(
     block,
-    callableInterfaces
+    interfaceCapabilities
   );
   return {
     bindings,
@@ -42,9 +42,9 @@ export function createFrontstageJsxBindingSnippet(
   binding: FrontstageResolvedInterfaceBinding
 ): string {
   if (!binding.operation) {
-    throw new Error(`Callable operation is missing: ${binding.binding.operation_id}.`);
+    throw new Error(`Interface capability is missing: ${binding.binding.operation_id}.`);
   }
-  return generateFrontstageCallableSource(
+  return generateFrontstageInterfaceSource(
     binding.operation,
     binding.binding.alias
   ).source;

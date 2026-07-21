@@ -684,7 +684,7 @@ async fn mcp_debug_execute_forwards_target_interface_failure() {
 }
 
 #[tokio::test]
-async fn mcp_debug_execute_is_not_a_bindable_interface_capability() {
+async fn mcp_debug_execute_is_available_through_the_shared_console_catalog() {
     let app = test_app().await;
     let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -708,11 +708,8 @@ async fn mcp_debug_execute_is_not_a_bindable_interface_capability() {
         .iter()
         .find(|entry| entry["path"] == json!("/api/console/mcp/debug/execute"))
         .expect("debug execute should be documented as a console capability");
-    assert_eq!(debug_entry["bindable"], json!(false));
-    assert_eq!(
-        debug_entry["disabled_reason"],
-        json!("unsupported_mcp_interface_scope")
-    );
+    assert_eq!(debug_entry["bindable"], json!(true));
+    assert_eq!(debug_entry["disabled_reason"], Value::Null);
 
     let bindable_response = app
         .clone()
@@ -728,7 +725,7 @@ async fn mcp_debug_execute_is_not_a_bindable_interface_capability() {
         .unwrap();
     assert_eq!(bindable_response.status(), StatusCode::OK);
     let bindable_payload = response_json(bindable_response).await;
-    assert!(!bindable_payload["data"]
+    assert!(bindable_payload["data"]
         .as_array()
         .unwrap()
         .iter()

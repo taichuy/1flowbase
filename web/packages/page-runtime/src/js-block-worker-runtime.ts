@@ -4,9 +4,7 @@ import {
   type BlockUiSchema
 } from '@1flowbase/page-protocol';
 
-import {
-  type JsBlockSourceTransformSuccess
-} from './js-block-source-transform';
+import { type JsBlockSourceTransformSuccess } from './js-block-source-transform';
 import { compileAndTransformJsBlockSource } from './js-block-source-evaluator';
 
 export interface JsBlockRuntimeLimits {
@@ -106,6 +104,8 @@ export type JsBlockWorkerEffect =
       effectId?: string;
       bindingAlias: string;
       request?: unknown;
+      operation?: 'call' | 'stream_open' | 'stream_next' | 'stream_cancel';
+      streamId?: string;
     };
 
 export interface JsBlockRuntimeRequestState {
@@ -247,6 +247,8 @@ export interface JsBlockWorkerInterfaceRequestMessage {
   effectId?: string;
   bindingAlias: string;
   request?: unknown;
+  operation?: 'call' | 'stream_open' | 'stream_next' | 'stream_cancel';
+  streamId?: string;
 }
 
 export type JsBlockWorkerToHostMessage =

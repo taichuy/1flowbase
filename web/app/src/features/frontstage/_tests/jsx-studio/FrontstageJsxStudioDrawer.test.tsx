@@ -16,8 +16,8 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
-const callableInterfacesHook = vi.hoisted(() => ({
-  useFrontstageCallableInterfaces: vi.fn()
+const interfaceCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageInterfaceCapabilities: vi.fn()
 }));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
@@ -26,8 +26,8 @@ const monacoHook = vi.hoisted(() => ({
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-callable-interfaces',
-  () => callableInterfacesHook
+  '../../hooks/use-frontstage-interface-capabilities',
+  () => interfaceCapabilitiesHook
 );
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
@@ -156,17 +156,18 @@ describe('FrontstageJsxStudioDrawer', () => {
       reset: vi.fn(),
       save: vi.fn().mockResolvedValue(undefined)
     });
-    callableInterfacesHook.useFrontstageCallableInterfaces.mockReturnValue({
+    interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities.mockReturnValue({
       data: [
         {
-          operation_id: 'list_application_conversations_records',
+          interface_id: 'list_application_conversations_records',
           method: 'GET',
           path: '/api/runtime/models/application_conversations/list',
           name: 'List conversations',
-          description: 'List conversations',
-          parameters: [],
-          request_schema: { type: 'object', properties: {} },
-          response_schema: { type: 'object', properties: {} },
+          short_description: 'List conversations',
+          parameter_schema: { type: 'object', properties: {} },
+          result_schema: { type: 'object', properties: {} },
+          request_media_type: null,
+          response_media_type: 'application/json',
           schema_digest: 'digest-1',
           adapter_id: 'runtime_data_model',
           host_injected_parameters: [],
@@ -215,12 +216,10 @@ describe('FrontstageJsxStudioDrawer', () => {
     fireEvent.mouseDown(interfaceSelect);
     fireEvent.click(
       await screen.findByText(
-        'List conversations · GET · list_application_conversations_records'
+        'GET /api/runtime/models/application_conversations/list'
       )
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定并插入' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({

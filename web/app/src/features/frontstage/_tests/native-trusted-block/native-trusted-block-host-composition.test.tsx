@@ -71,7 +71,7 @@ function createFakeBlockContext(
     props: {},
     state: {},
     patch: vi.fn(),
-    interfaces: { call: vi.fn() },
+    interfaces: { call: vi.fn(), stream: vi.fn() },
     events: {
       emit: vi.fn()
     },
@@ -127,7 +127,8 @@ describe('native trusted block host composition smoke contract', () => {
         createFakeBlockContext({
           props: { title: 'Controlled ctx title' },
           interfaces: {
-            call: query as BlockContext['interfaces']['call']
+            call: query as BlockContext['interfaces']['call'],
+            stream: vi.fn()
           }
         }),
       resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()

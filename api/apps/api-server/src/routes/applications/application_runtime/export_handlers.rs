@@ -62,7 +62,7 @@ pub async fn export_application_run_trace_dump(
         ("id" = String, Path, description = "Application id")
     ),
     responses(
-        (status = 200, description = "Zip archive containing manifest.json and selected run JSON dumps"),
+        (status = 200, description = "Zip archive containing manifest.json and selected run JSON dumps", body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/zip"),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),

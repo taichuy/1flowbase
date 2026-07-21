@@ -4,7 +4,11 @@ import type {
   BlockUiSchema
 } from '@1flowbase/page-protocol';
 
-export type { BlockContext } from '@1flowbase/page-protocol';
+export type {
+  BlockBinaryInput,
+  BlockBinaryResource,
+  BlockContext
+} from '@1flowbase/page-protocol';
 
 export interface BlockResult<
   TOutputs extends BlockContextRecord = BlockContextRecord

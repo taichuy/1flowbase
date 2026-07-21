@@ -1,5 +1,7 @@
 import {
   dispatchFrontstageCallable,
+  dispatchFrontstageCallableBinary,
+  dispatchFrontstageCallableStream,
   getDefaultApiBaseUrl,
   issueFrontstageCallableWriteGrant,
   type ApiBaseUrlLocation,
@@ -13,6 +15,8 @@ import type { FrontstageBlockInterfaceBinding } from './page-document';
 
 export interface FrontstageJsBlockCapabilityClient {
   dispatchFrontstageCallable: typeof dispatchFrontstageCallable;
+  dispatchFrontstageCallableBinary: typeof dispatchFrontstageCallableBinary;
+  dispatchFrontstageCallableStream: typeof dispatchFrontstageCallableStream;
   issueFrontstageCallableWriteGrant: typeof issueFrontstageCallableWriteGrant;
 }
 
@@ -32,6 +36,8 @@ export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
 
 const defaultClient: FrontstageJsBlockCapabilityClient = {
   dispatchFrontstageCallable,
+  dispatchFrontstageCallableBinary,
+  dispatchFrontstageCallableStream,
   issueFrontstageCallableWriteGrant
 };
 
@@ -42,6 +48,7 @@ interface DraftRunAuthorization {
 
 export interface FrontstageJsBlockCapabilityHandlers {
   interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  disposeRequest(requestId?: string): void;
   prepareDraftRun(input: {
     blockId: string;
     runId: string;
@@ -69,13 +76,32 @@ export function createFrontstageJsBlockCapabilityHandlers(
     options.baseUrl ??
     getFrontstageJsBlockCapabilityApiBaseUrl(options.locationLike);
   const draftRuns = new Map<string, DraftRunAuthorization>();
+  const streams = new Map<
+    string,
+    {
+      requestId: string;
+      bindingAlias: string;
+      iterator: AsyncIterator<unknown>;
+      cancel: () => void;
+    }
+  >();
+  let nextStreamId = 1;
+
+  const disposeStreams = (requestId?: string) => {
+    for (const [streamId, stream] of streams) {
+      if (requestId !== undefined && stream.requestId !== requestId) continue;
+      streams.delete(streamId);
+      stream.cancel();
+      void stream.iterator.return?.();
+    }
+  };
 
   return {
     async prepareDraftRun({ blockId, runId, draftHash, bindings }) {
       const csrfToken = requireCsrfToken(options.csrfToken);
       const grants = await Promise.all(
         bindings
-          .filter((binding) => binding.risk_level === 'high')
+          .filter((binding) => binding.risk_level !== 'low')
           .map(async (binding) => {
             const grant = await client.issueFrontstageCallableWriteGrant(
               options.workspaceId,
@@ -101,8 +127,10 @@ export function createFrontstageJsBlockCapabilityHandlers(
     },
     revokeDraftRun(runId) {
       draftRuns.delete(runId);
+      disposeStreams(runId);
     },
-    interface: (effect) => {
+    disposeRequest: disposeStreams,
+    interface: async (effect) => {
       const resolved = options.resolveBinding(
         effect.requestId,
         effect.bindingAlias
@@ -113,30 +141,90 @@ export function createFrontstageJsBlockCapabilityHandlers(
         );
       }
       const draftRun = draftRuns.get(effect.requestId);
-      return client.dispatchFrontstageCallable(
+      if (
+        effect.operation === 'stream_next' ||
+        effect.operation === 'stream_cancel'
+      ) {
+        const stream = effect.streamId
+          ? streams.get(effect.streamId)
+          : undefined;
+        if (
+          !stream ||
+          stream.requestId !== effect.requestId ||
+          stream.bindingAlias !== effect.bindingAlias
+        ) {
+          throw new Error('Interface stream is not registered for this run.');
+        }
+        if (effect.operation === 'stream_cancel') {
+          streams.delete(effect.streamId as string);
+          stream.cancel();
+          await stream.iterator.return?.();
+          return undefined;
+        }
+        const item = await stream.iterator.next();
+        if (item.done) streams.delete(effect.streamId as string);
+        return item.done ? { done: true } : { done: false, value: item.value };
+      }
+      if (effect.operation === 'stream_open') {
+        if (resolved.binding.response_media_type !== 'text/event-stream') {
+          throw new Error('Bound interface does not return an event stream.');
+        }
+        const iterable = await client.dispatchFrontstageCallableStream(
+          options.workspaceId,
+          options.pageId,
+          options.tabId,
+          createDispatchInput(effect, resolved, draftRun),
+          requireCsrfToken(options.csrfToken),
+          baseUrl
+        );
+        const streamId = `${effect.requestId}:stream-${nextStreamId++}`;
+        streams.set(streamId, {
+          requestId: effect.requestId,
+          bindingAlias: effect.bindingAlias,
+          iterator: iterable[Symbol.asyncIterator](),
+          cancel: iterable.cancel
+        });
+        return { stream_id: streamId };
+      }
+      const dispatch = isBinaryResponse(resolved.binding.response_media_type)
+        ? client.dispatchFrontstageCallableBinary
+        : client.dispatchFrontstageCallable;
+      return dispatch(
         options.workspaceId,
         options.pageId,
         options.tabId,
-        {
-          block_id: resolved.blockId,
-          binding_alias: resolved.binding.alias,
-          schema_digest: resolved.binding.schema_digest,
-          run_id: effect.requestId,
-          draft_hash: draftRun?.draftHash ?? 'runtime',
-          ...(effect.request === undefined
-            ? {}
-            : { request: effect.request as FrontstageCallableRequest }),
-          ...(draftRun?.grantsByAlias.has(resolved.binding.alias)
-            ? {
-                write_grant: draftRun.grantsByAlias.get(resolved.binding.alias)
-              }
-            : {})
-        },
+        createDispatchInput(effect, resolved, draftRun),
         requireCsrfToken(options.csrfToken),
         baseUrl
       );
     }
   };
+}
+
+function createDispatchInput(
+  effect: JsBlockHostInterfaceEffect,
+  resolved: { blockId: string; binding: FrontstageBlockInterfaceBinding },
+  draftRun: DraftRunAuthorization | undefined
+) {
+  return {
+    block_id: resolved.blockId,
+    binding_alias: resolved.binding.alias,
+    schema_digest: resolved.binding.schema_digest,
+    run_id: effect.requestId,
+    draft_hash: draftRun?.draftHash ?? 'runtime',
+    ...(effect.request === undefined
+      ? {}
+      : { request: effect.request as FrontstageCallableRequest }),
+    ...(draftRun?.grantsByAlias.has(resolved.binding.alias)
+      ? { write_grant: draftRun.grantsByAlias.get(resolved.binding.alias) }
+      : {})
+  };
+}
+
+function isBinaryResponse(mediaType: string | null): boolean {
+  if (mediaType === null || mediaType === 'text/event-stream') return false;
+  const normalized = mediaType.split(';', 1)[0]?.trim().toLocaleLowerCase();
+  return normalized !== 'application/json' && !normalized?.endsWith('+json');
 }
 
 function requireCsrfToken(csrfToken: string | null | undefined): string {

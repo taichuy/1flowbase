@@ -286,9 +286,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/frontstage/:workspace_id/callable-interfaces",
+            "/frontstage/:workspace_id/interface-capabilities",
             console_get(
-                callable_interfaces::list_frontstage_callable_interfaces,
+                callable_interfaces::list_frontstage_interface_capabilities,
                 Authenticated,
             ),
         )

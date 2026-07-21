@@ -38,7 +38,10 @@ function createBlock(
       code: 'unknown'
     },
     props: overrides.props ?? {},
-    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
+    presentation: overrides.presentation ?? {
+      heightMode: 'auto',
+      height: null
+    },
     layout: overrides.layout ?? { order: overrides.order ?? 0 },
     order: overrides.order ?? 0,
     runtime: overrides.runtime ?? {
@@ -59,7 +62,7 @@ function createDocument(
       kind: 'page',
       parentId: null,
       rank: '001000',
-      contentPresentation: 'single',
+      contentPresentation: 'single'
     },
     rootUid: 'root-1',
     layoutMode: 'auto',
@@ -89,8 +92,7 @@ describe('frontstage block composition', () => {
     ]);
     expect(state.document.blocks.map((block) => block.order)).toEqual([0, 1]);
     expect(state.document.blocks.map((block) => block.layout.order)).toEqual([
-      0,
-      1
+      0, 1
     ]);
     expect(state.document.isEmpty).toBe(false);
     expect(state.selectedBlockId).toBe('hero-2');
@@ -123,9 +125,7 @@ describe('frontstage block composition', () => {
       'hero-code-2'
     ]);
     expect(inserted.document.blocks.map((block) => block.order)).toEqual([
-      0,
-      1,
-      2
+      0, 1, 2
     ]);
     expect(
       inserted.document.blocks.map((block) => block.rendererVersion)
@@ -171,9 +171,7 @@ describe('frontstage block composition', () => {
       'hero'
     ]);
     expect(movedToStart.document.blocks.map((block) => block.order)).toEqual([
-      0,
-      1,
-      2
+      0, 1, 2
     ]);
     expect(movedToStart.selectedBlockId).toBe('gallery');
   });
@@ -202,8 +200,7 @@ describe('frontstage block composition', () => {
       height: 4
     });
     expect(nextState.document.blocks.map((block) => block.order)).toEqual([
-      0,
-      1
+      0, 1
     ]);
     expect(nextState.selectedBlockId).toBe('hero');
   });
@@ -243,10 +240,7 @@ describe('frontstage block composition', () => {
       order: 0
     });
     const state = createFrontstageBlockCompositionState(
-      createDocument([
-        currentBlock,
-        createBlock({ id: 'cta', order: 1 })
-      ]),
+      createDocument([currentBlock, createBlock({ id: 'cta', order: 1 })]),
       'hero'
     );
 
@@ -259,7 +253,9 @@ describe('frontstage block composition', () => {
           operation_id: 'get_frontstage_page_detail',
           schema_digest: 'sha256:test',
           scope: 'frontstage',
-          risk_level: 'read'
+          risk_level: 'read',
+          request_media_type: null,
+          response_media_type: 'application/json'
         }
       ],
       ports: {

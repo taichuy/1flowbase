@@ -47,6 +47,7 @@ const expectedErrorCodes = [
   'update_denied',
   'delete_denied',
   'action_denied',
+  'interface_denied',
   'event_denied'
 ] as const;
 
@@ -91,12 +92,12 @@ describe('block UI schema protocol', () => {
       'workspace',
       'application',
       'page',
+      'inputs',
       'params',
       'props',
       'state',
       'patch',
-      'data',
-      'actions',
+      'interfaces',
       'events',
       'theme',
       'ui'

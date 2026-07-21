@@ -274,12 +274,15 @@ async fn mcp_interface_capabilities_include_system_table_create_operation() {
         .iter()
         .map(|descriptor| descriptor["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-    assert!(descriptor_names.is_empty());
+    assert!(!descriptor_names.is_empty());
+    assert!(roles_create_interface["parameter_schema"]["properties"]
+        .get("body")
+        .is_some());
 }
 
 #[tokio::test]
-async fn mcp_interface_capabilities_limit_runtime_read_model_to_list_and_get() {
-    // Root AC-003: MCP consumes the same capability-trimmed dynamic OpenAPI inventory.
+async fn mcp_interface_capabilities_share_complete_runtime_model_crud() {
+    // Root AC-003: MCP and Studio consume the same dynamic OpenAPI inventory.
     let app = test_app().await;
     let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let response = app
@@ -306,8 +309,14 @@ async fn mcp_interface_capabilities_limit_runtime_read_model_to_list_and_get() {
                 .is_some_and(|path| path.contains("/application_conversations/"))
         })
         .collect::<Vec<_>>();
-    assert_eq!(entries.len(), 2, "{payload}");
-    assert!(entries.iter().all(|entry| entry["method"] == json!("GET")));
+    assert_eq!(entries.len(), 5, "{payload}");
+    assert!(entries.iter().any(|entry| entry["method"] == json!("POST")));
+    assert!(entries
+        .iter()
+        .any(|entry| entry["method"] == json!("PATCH")));
+    assert!(entries
+        .iter()
+        .any(|entry| entry["method"] == json!("DELETE")));
     let list = entries
         .iter()
         .find(|entry| entry["path"].as_str().unwrap().ends_with("/list"))

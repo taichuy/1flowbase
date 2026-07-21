@@ -383,6 +383,65 @@ function createBlockContext(
             ? {}
             : { request: interfaceRequest })
         })) as TResponse;
+      },
+      stream<TEvent = unknown>(
+        bindingAlias: string,
+        interfaceRequest?: BlockInterfaceRequest
+      ): AsyncIterable<TEvent> {
+        let streamId: string | undefined;
+        let finished = false;
+        const open = async (): Promise<string> => {
+          if (streamId) return streamId;
+          const opened = (await requestHostEffect({
+            direction: 'worker_to_host',
+            type: 'interface',
+            requestId: request.requestId,
+            bindingAlias,
+            operation: 'stream_open',
+            ...(interfaceRequest === undefined
+              ? {}
+              : { request: interfaceRequest })
+          })) as { stream_id?: unknown };
+          if (typeof opened?.stream_id !== 'string' || !opened.stream_id) {
+            throw new Error('Interface stream did not return a stream id.');
+          }
+          streamId = opened.stream_id;
+          return streamId;
+        };
+        return {
+          [Symbol.asyncIterator]() {
+            return {
+              async next(): Promise<IteratorResult<TEvent>> {
+                if (finished) return { done: true, value: undefined };
+                const currentStreamId = await open();
+                const item = (await requestHostEffect({
+                  direction: 'worker_to_host',
+                  type: 'interface',
+                  requestId: request.requestId,
+                  bindingAlias,
+                  operation: 'stream_next',
+                  streamId: currentStreamId
+                })) as IteratorResult<TEvent>;
+                if (item.done) finished = true;
+                return item;
+              },
+              async return(): Promise<IteratorResult<TEvent>> {
+                finished = true;
+                if (streamId) {
+                  await requestHostEffect({
+                    direction: 'worker_to_host',
+                    type: 'interface',
+                    requestId: request.requestId,
+                    bindingAlias,
+                    operation: 'stream_cancel',
+                    streamId
+                  });
+                }
+                return { done: true, value: undefined };
+              }
+            };
+          }
+        };
       }
     },
     events: {

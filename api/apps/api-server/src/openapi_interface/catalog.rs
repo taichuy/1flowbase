@@ -35,6 +35,8 @@ pub struct OpenApiInterfaceCatalogEntry {
     pub parameter_descriptors: Vec<OpenApiParameterDescriptor>,
     pub request_schema: Value,
     pub response_schema: Value,
+    pub request_media_type: Option<String>,
+    pub response_media_type: Option<String>,
     pub security: Value,
 }
 
@@ -44,6 +46,8 @@ pub fn catalog_entry_from_operation(
 ) -> Option<OpenApiInterfaceCatalogEntry> {
     let operation_node = operation_node(spec, operation)?;
     let path_item_node = path_item_node(spec, operation)?;
+    let request_contract = request_body_contract(spec, operation_node);
+    let response_contract = response_contract(spec, operation_node);
     Some(OpenApiInterfaceCatalogEntry {
         operation_id: operation.id.clone(),
         method: operation.method.clone(),
@@ -58,7 +62,12 @@ pub fn catalog_entry_from_operation(
             .unwrap_or_else(|| format!("{} {}", operation.method, operation.path)),
         parameter_descriptors: parameter_descriptors(spec, path_item_node, operation_node),
         request_schema: input_schema(spec, path_item_node, operation_node),
-        response_schema: response_schema(spec, operation_node),
+        response_schema: response_contract
+            .as_ref()
+            .map(|(_, schema)| schema.clone())
+            .unwrap_or(Value::Bool(true)),
+        request_media_type: request_contract.map(|(media_type, _, _)| media_type),
+        response_media_type: response_contract.map(|(media_type, _)| media_type),
         security: operation_node
             .get("security")
             .or_else(|| spec.get("security"))
@@ -217,9 +226,14 @@ fn parameter_location_schema(
 }
 
 fn request_body_schema(spec: &Value, operation: &Value) -> Option<(Value, bool)> {
+    request_body_contract(spec, operation).map(|(_, schema, required)| (schema, required))
+}
+
+fn request_body_contract(spec: &Value, operation: &Value) -> Option<(String, Value, bool)> {
     let body = resolve(spec, operation.get("requestBody")?, 0);
-    let schema = json_schema(spec, body.get("content")?)?;
+    let (media_type, schema) = media_schema(spec, body.get("content")?)?;
     Some((
+        media_type,
         schema,
         body.get("required")
             .and_then(Value::as_bool)
@@ -236,29 +250,16 @@ fn body_descriptors(spec: &Value, operation: &Value) -> Vec<OpenApiParameterDesc
         .get("required")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let Some(content) = body.get("content").and_then(Value::as_object) else {
+    let Some((media_type, schema, _)) = request_body_contract(spec, operation) else {
         return Vec::new();
     };
-    let (schema, location) = if let Some(media) = content
-        .get("application/x-www-form-urlencoded")
-        .or_else(|| content.get("multipart/form-data"))
-    {
-        (
-            resolve(spec, media.get("schema").unwrap_or(&Value::Null), 0),
-            OpenApiParameterLocation::FormBody,
-        )
-    } else if let Some(media) = content.get("application/json").or_else(|| {
-        content
-            .iter()
-            .find(|(kind, _)| kind.ends_with("+json"))
-            .map(|(_, media)| media)
-    }) {
-        (
-            resolve(spec, media.get("schema").unwrap_or(&Value::Null), 0),
-            OpenApiParameterLocation::JsonBody,
-        )
+    let location = if matches!(
+        media_type.as_str(),
+        "application/x-www-form-urlencoded" | "multipart/form-data"
+    ) {
+        OpenApiParameterLocation::FormBody
     } else {
-        return Vec::new();
+        OpenApiParameterLocation::JsonBody
     };
     let mut result = Vec::new();
     append_body_descriptors(&mut result, String::new(), &schema, location, body_required);
@@ -315,9 +316,9 @@ fn append_body_descriptors(
     });
 }
 
-fn response_schema(spec: &Value, operation: &Value) -> Value {
+fn response_contract(spec: &Value, operation: &Value) -> Option<(String, Value)> {
     let Some(responses) = operation.get("responses").and_then(Value::as_object) else {
-        return object_schema(Map::new(), Vec::new());
+        return None;
     };
     let mut statuses = responses
         .keys()
@@ -326,25 +327,31 @@ fn response_schema(spec: &Value, operation: &Value) -> Value {
     statuses.sort();
     for status in statuses {
         let response = resolve(spec, &responses[status], 0);
-        if let Some(schema) = response
+        if let Some(contract) = response
             .get("content")
-            .and_then(|value| json_schema(spec, value))
+            .and_then(|value| media_schema(spec, value))
         {
-            return schema;
+            return Some(contract);
         }
     }
-    object_schema(Map::new(), Vec::new())
+    None
 }
 
-fn json_schema(spec: &Value, content: &Value) -> Option<Value> {
+fn media_schema(spec: &Value, content: &Value) -> Option<(String, Value)> {
     let content = content.as_object()?;
-    let media = content.get("application/json").or_else(|| {
-        content
-            .iter()
-            .find(|(kind, _)| kind.ends_with("+json"))
-            .map(|(_, media)| media)
-    })?;
-    Some(resolve(spec, media.get("schema")?, 0))
+    let selected = content
+        .get_key_value("application/json")
+        .or_else(|| content.iter().find(|(kind, _)| kind.ends_with("+json")))
+        .or_else(|| content.get_key_value("multipart/form-data"))
+        .or_else(|| content.get_key_value("application/x-www-form-urlencoded"))
+        .or_else(|| content.get_key_value("application/octet-stream"))
+        .or_else(|| content.get_key_value("application/zip"))
+        .or_else(|| content.get_key_value("text/event-stream"))
+        .or_else(|| content.iter().next())?;
+    Some((
+        selected.0.clone(),
+        resolve(spec, selected.1.get("schema")?, 0),
+    ))
 }
 
 fn object_schema(properties: Map<String, Value>, required: Vec<Value>) -> Value {

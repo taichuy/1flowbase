@@ -42,6 +42,7 @@ use uuid::Uuid;
 
 const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
 const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
+const PAGE_TAB_DELETE_OPERATION_ID: &str = "delete_frontstage_page_tab";
 const GRANT_PREFIX: &str = "frontstage:callable-write-grant:";
 const GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 
@@ -341,6 +342,29 @@ async fn login(app: &Router, identifier: &str, password: &str) -> (String, Strin
     )
 }
 
+async fn create_member(app: &Router, cookie: &str, csrf: &str, account: &str, password: &str) {
+    let (status, payload) = json_request(
+        app,
+        "POST",
+        "/api/console/settings/members",
+        cookie,
+        csrf,
+        json!({
+            "account": account,
+            "email": format!("{account}@example.com"),
+            "phone": null,
+            "password": password,
+            "name": account,
+            "nickname": account,
+            "introduction": "",
+            "email_login_enabled": true,
+            "phone_login_enabled": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
+}
+
 async fn session_identity(app: &Router, cookie: &str) -> (Uuid, Uuid) {
     let (status, payload) = get(app, "/api/console/session", cookie).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
@@ -423,7 +447,7 @@ async fn create_tab(
 async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation: &str) -> Value {
     let (status, payload) = get(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
         cookie,
     )
     .await;
@@ -432,7 +456,7 @@ async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation
         .as_array()
         .unwrap()
         .iter()
-        .find(|entry| entry["operation_id"] == operation)
+        .find(|entry| entry["interface_id"] == operation)
         .unwrap()
         .clone()
 }
@@ -440,7 +464,7 @@ async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation
 fn binding(alias: &str, catalog: &Value) -> Value {
     json!({
         "alias": alias,
-        "operation_id": catalog["operation_id"],
+        "operation_id": catalog["interface_id"],
         "schema_digest": catalog["schema_digest"],
         "scope": catalog["scope"],
         "risk_level": catalog["risk_level"]
@@ -563,6 +587,70 @@ fn grant_key(token: &str) -> String {
 
 fn grant_lock_key(token: &str) -> String {
     format!("{GRANT_LOCK_PREFIX}{:x}", Sha256::digest(token.as_bytes()))
+}
+
+#[tokio::test]
+async fn capability_catalog_contains_bindable_console_operations_and_runtime_model_crud() {
+    let fixture = fixture().await;
+    let (cookie, _) = login(&fixture.app, "root", "change-me").await;
+    let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
+    let (status, payload) = get(
+        &fixture.app,
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    let entries = payload["data"].as_array().unwrap();
+    assert!(entries.iter().all(|entry| {
+        !entry["interface_id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("published_workflow_operation:"))
+    }));
+    let console = entries
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.starts_with("/api/console/"))
+        })
+        .collect::<Vec<_>>();
+    let console_ids = console
+        .iter()
+        .filter_map(|entry| entry["interface_id"].as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(!console.is_empty());
+    assert_eq!(console_ids.len(), console.len());
+    assert!(console
+        .iter()
+        .all(|entry| entry["adapter_id"] == "console_openapi"));
+
+    let conversations = entries
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.contains("/application_conversations/"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(conversations.len(), 5, "{conversations:?}");
+    assert_eq!(
+        conversations
+            .iter()
+            .filter_map(|entry| entry["method"].as_str())
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from(["DELETE", "GET", "PATCH", "POST"])
+    );
+
+    let chunk_upload = entries
+        .iter()
+        .find(|entry| entry["interface_id"] == "upload_run_archive_chunk")
+        .expect("archive chunk upload must be callable");
+    assert!(
+        chunk_upload["parameter_schema"]["properties"]["headers"]["properties"]
+            .get("x-chunk-sha256")
+            .is_some()
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -865,6 +953,176 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
     )
     .await;
     assert_eq!(replay.0, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
+    let fixture = fixture().await;
+    let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
+    let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
+    let (page_id, first_tab, first_root_uid) =
+        create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
+    let (second_tab, second_root_uid) =
+        create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
+    let catalog = catalog_entry(
+        &fixture.app,
+        &cookie,
+        workspace_id,
+        PAGE_TAB_DELETE_OPERATION_ID,
+    )
+    .await;
+    let digest = catalog["schema_digest"].as_str().unwrap();
+
+    for (tab_id, root_uid) in [
+        (first_tab, first_root_uid.as_str()),
+        (second_tab, second_root_uid.as_str()),
+    ] {
+        save_document(
+            &fixture.app,
+            &cookie,
+            &csrf,
+            workspace_id,
+            page_id,
+            tab_id,
+            &document(
+                root_uid,
+                vec![("block-delete", vec![binding("deleteTab", &catalog)])],
+            ),
+        )
+        .await;
+    }
+
+    let first_grant = issue_grant(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        first_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-first",
+        "draft-delete-first",
+    )
+    .await;
+    let deleted = dispatch(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        first_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-first",
+        "draft-delete-first",
+        json!({}),
+        Some(&first_grant),
+        None,
+    )
+    .await;
+    assert_eq!(deleted, (StatusCode::NO_CONTENT, Value::Null));
+
+    let second_grant = issue_grant(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        second_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-last",
+        "draft-delete-last",
+    )
+    .await;
+    let conflict = dispatch(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        second_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-last",
+        "draft-delete-last",
+        json!({}),
+        Some(&second_grant),
+        None,
+    )
+    .await;
+    assert_eq!(conflict.0, StatusCode::CONFLICT, "{}", conflict.1);
+}
+
+#[tokio::test]
+async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visitor() {
+    let fixture = fixture().await;
+    let (root_cookie, root_csrf) = login(&fixture.app, "root", "change-me").await;
+    let (_, workspace_id) = session_identity(&fixture.app, &root_cookie).await;
+    let (page_id, tab_id, root_uid) =
+        create_page(&fixture.app, &root_cookie, &root_csrf, workspace_id).await;
+    let catalog = catalog_entry(&fixture.app, &root_cookie, workspace_id, "list_members").await;
+    let digest = catalog["schema_digest"].as_str().unwrap();
+    save_document(
+        &fixture.app,
+        &root_cookie,
+        &root_csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        &document(
+            &root_uid,
+            vec![("block-members", vec![binding("listMembers", &catalog)])],
+        ),
+    )
+    .await;
+    create_member(
+        &fixture.app,
+        &root_cookie,
+        &root_csrf,
+        "page-visitor",
+        "temp-pass",
+    )
+    .await;
+    let (visibility_status, visibility_payload) = json_request(
+        &fixture.app,
+        "PUT",
+        "/api/console/settings/roles/member/frontstage-routes",
+        &root_cookie,
+        &root_csrf,
+        json!({ "page_ids": [page_id], "tab_ids": [tab_id] }),
+    )
+    .await;
+    assert_eq!(
+        visibility_status,
+        StatusCode::NO_CONTENT,
+        "{visibility_payload}"
+    );
+    let (visitor_cookie, visitor_csrf) = login(&fixture.app, "page-visitor", "temp-pass").await;
+
+    let denied = dispatch(
+        &fixture.app,
+        &visitor_cookie,
+        &visitor_csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        "block-members",
+        "listMembers",
+        digest,
+        "run-visitor",
+        "draft-visitor",
+        json!({}),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(denied.0, StatusCode::FORBIDDEN, "{}", denied.1);
 }
 
 #[tokio::test]

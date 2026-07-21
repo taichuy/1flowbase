@@ -53,6 +53,13 @@ pub struct InstallOfficialPluginBody {
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
 }
 
+#[derive(ToSchema)]
+#[allow(dead_code)]
+pub(super) struct PluginUploadMultipartBody {
+    #[schema(value_type = String, format = Binary)]
+    file: Vec<u8>,
+}
+
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct PluginCompatibilityOverrideBody {
     pub reason: String,
@@ -1023,6 +1030,7 @@ pub async fn install_plugin(
     post,
     path = "/api/console/plugins/install-upload",
     operation_id = "plugin_install_upload",
+    request_body(content = inline(PluginUploadMultipartBody), content_type = "multipart/form-data"),
     responses((status = 201, body = InstallPluginResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn install_uploaded_plugin(

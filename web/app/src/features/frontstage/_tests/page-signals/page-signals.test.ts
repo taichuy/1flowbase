@@ -101,4 +101,27 @@ describe('Frontstage page signals', () => {
       })
     ).toBe(2);
   });
+
+  test('rejects binary resources before they enter the JSON signal snapshot', () => {
+    const producer = block('producer', {
+      inputs: [],
+      outputs: [{ name: 'download', schema: { type: 'object' } }]
+    });
+    const initial = createFrontstageSignalSnapshot();
+    const rejected = commitFrontstageBlockOutputs({
+      block: producer,
+      outputs: {
+        download: {
+          bytes: new Uint8Array([1, 2, 3]),
+          file_name: 'export.zip',
+          content_type: 'application/zip'
+        }
+      },
+      scope: 'tab',
+      tabId: 'tab-1',
+      snapshot: initial
+    });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.snapshot).toBe(initial);
+  });
 });
