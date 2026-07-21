@@ -19,6 +19,10 @@ const blockCodeHook = vi.hoisted(() => ({
 const callableInterfacesHook = vi.hoisted(() => ({
   useFrontstageCallableInterfaces: vi.fn()
 }));
+const monacoHook = vi.hoisted(() => ({
+  addExtraLib: vi.fn(),
+  setCompilerOptions: vi.fn()
+}));
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
@@ -43,21 +47,38 @@ vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
 }));
 vi.mock('@monaco-editor/react', () => ({
   default: ({
+    beforeMount,
     value,
     onChange,
     options
   }: {
+    beforeMount?: (monaco: unknown) => void;
     value?: string;
     onChange?: (value?: string) => void;
     options?: { editContext?: boolean };
-  }) => (
-    <textarea
-      aria-label="JSX source"
-      data-edit-context={String(options?.editContext)}
-      value={value}
-      onChange={(event) => onChange?.(event.target.value)}
-    />
-  )
+  }) => {
+    beforeMount?.({
+      languages: {
+        typescript: {
+          JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
+          ModuleResolutionKind: { NodeJs: 'node-js' },
+          ScriptTarget: { ES2022: 'es2022' },
+          typescriptDefaults: {
+            addExtraLib: monacoHook.addExtraLib,
+            setCompilerOptions: monacoHook.setCompilerOptions
+          }
+        }
+      }
+    });
+    return (
+      <textarea
+        aria-label="JSX source"
+        data-edit-context={String(options?.editContext)}
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    );
+  }
 }));
 
 const block: FrontstageBlockInstance = {
@@ -204,6 +225,27 @@ describe('FrontstageJsxStudioDrawer', () => {
         })
       ]
     });
+  });
+
+  test('preserves JSX in Monaco because Page Runtime owns TSX compilation', () => {
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        diagnostics={[]}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    expect(monacoHook.setCompilerOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ jsx: 'preserve' })
+    );
   });
 
   test('AC-004 saves fixed block height from the configuration section', async () => {
