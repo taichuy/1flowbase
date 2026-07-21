@@ -194,7 +194,6 @@ pub struct McpParameterDescriptorResponse {
     pub parameter_type: String,
     pub description: Option<String>,
     pub required: bool,
-    #[schema(value_type = Object)]
     pub schema: serde_json::Value,
 }
 
@@ -206,9 +205,7 @@ pub struct McpInterfaceCatalogEntryResponse {
     pub name: String,
     pub short_description: String,
     pub parameter_descriptors: Vec<McpParameterDescriptorResponse>,
-    #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
-    #[schema(value_type = Object)]
     pub result_schema: serde_json::Value,
     pub permission_code: Option<String>,
     #[schema(value_type = [Object])]

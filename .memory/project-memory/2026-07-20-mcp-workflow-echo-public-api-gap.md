@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: MCP 创建 Workflow 并发布 API 后缺少安全的公开 operation 转 Tool 边界
-summary: 用户已批准 Workflow 长期架构方案与 run_mode CHECK migration；P01～P05 已装配并在 f2302519b 完成首次集中 QA。QA 发现 Schedule 幂等仍缺 PostgreSQL partial unique index，且 enqueue 失败无法恢复，当前再次等待用户确认最小数据约束扩展。
+summary: 用户已批准 Workflow 长期架构方案与 run_mode CHECK migration；P01～P05 已装配并在 f2302519b 完成首次集中 QA。2026-07-21 已验证已发布 Workflow HTTP Extension 可被动态发现、转换、挂载并通过 MCP 调用；Schedule 幂等数据约束仍待后续 Root 决策。
 keywords:
   - MCP
   - workflow
@@ -15,8 +15,8 @@ match_when:
   - 继续把已发布 Workflow API 转换为 MCP Tool
   - 设计应用公开 API 进入 MCP interface catalog 的认证与所有权
 created_at: 2026-07-20 12
-updated_at: 2026-07-20 18
-last_verified_at: 2026-07-20 18
+updated_at: 2026-07-21 17
+last_verified_at: 2026-07-21 17
 decision_policy: verify_before_decision
 scope:
   - application 019f7def-ef16-7610-a553-dfd87fe1e8ed
@@ -81,3 +81,11 @@ scope:
 - 当前最小建议：新增 Schedule idempotency partial unique index；repository 原子 create-or-get；无论 run 是否已存在都使用同一 idempotency key 恢复 queue enqueue。不新增列、不回填历史数据。
 - Root / D4 已返回 `phase:discussion`；阻塞证据回写 [#1387 comment](https://github.com/taichuy/1flowbase/issues/1387#issuecomment-5021560975)。
 - 仍未连接数据库或执行 SQL/migration；真实 PostgreSQL constraint/migration smoke 需要单独授权。
+
+## 本轮 MCP 验证（2026-07-21 17）
+
+- 通过 MCP 创建独立 Workflow `MCP Workflow Test Extension`（application id `019f83e7-60a3-70d0-9b84-bc71b027d2a6`），以 `workflow_start -> template_transform -> workflow_end` 回显必填 `body.query`。
+- 发布得到活动公开 operation `POST /api/ex/mcp-workflow-test`；动态 interface catalog 稳定暴露 `published_workflow_operation:019f83e7-60a3-70d0-9b84-bc71b027d2a6`，输入为 `body.query: string`，输出为 `result: string`。
+- 该 operation 已转换为启用 Tool `workflow_mcp_test_echo` 并挂载到 `taichuy:/applications/workflows`；真实 MCP 调用 `{"body":{"query":"MCP workflow verification"}}` 返回 `{"result":"MCP workflow verification"}`。
+- 发现并修复 shared OpenAPI catalog 的 JSON Schema 表达错误：catalog entry 的 `schema` / `parameter_schema` / `result_schema` 必须允许 OpenAPI 3.1 的 boolean schema，不能标注为 object-only；否则 interface wrapper 在目标响应 schema 校验阶段返回泛化 `-32603`。
+- 此验证闭合“发布 Workflow HTTP operation → dynamic discovery → MCP Tool → mount → invoke”主路径，不替代 #1387 中 Schedule 幂等、运行态与全量集中 QA 的剩余验收。

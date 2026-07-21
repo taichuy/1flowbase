@@ -363,6 +363,93 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
 }
 
 #[tokio::test]
+async fn mcp_call_executes_the_interface_catalog_with_boolean_json_schemas() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+
+    let create_tool_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/tools")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tool_id": "interface_catalog",
+                        "des_id": "catalog123",
+                        "name": "Interface catalog",
+                        "short_description": "List bindable interfaces.",
+                        "full_description": "Lists the current MCP interface catalog.",
+                        "execution_target": {
+                            "kind": "interface_wrapper",
+                            "interface_id": "list_mcp_interface_capabilities"
+                        },
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": { "mappings": [] },
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "low",
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_tool_response.status(), StatusCode::CREATED);
+
+    let create_binding_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/taichuy/tool-bindings")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "group_path": "/runtime",
+                        "tool_id": "interface_catalog",
+                        "display_alias": null,
+                        "visible": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_binding_response.status(), StatusCode::CREATED);
+
+    let payload = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {
+                "name": "mcp.call",
+                "arguments": { "tool_id": "interface_catalog", "arguments": {} }
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(payload["result"]["isError"], json!(false), "{payload}");
+    assert!(payload["result"]["structuredContent"].is_array());
+}
+
+#[tokio::test]
 async fn mcp_call_rejects_stale_or_missing_required_des_id() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
