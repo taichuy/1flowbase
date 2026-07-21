@@ -44,7 +44,7 @@ where
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct RuntimeEventStreamEnvelopeResponse {
     pub event_id: String,
     pub run_id: String,
@@ -58,7 +58,7 @@ pub struct RuntimeEventStreamEnvelopeResponse {
     pub text: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct RuntimeEventReplayExpiredResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
@@ -68,7 +68,7 @@ pub struct RuntimeEventReplayExpiredResponse {
     pub reason: &'static str,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct RuntimeEventDurableBackfillResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
@@ -81,13 +81,23 @@ pub struct RuntimeEventDurableBackfillResponse {
     pub reason: &'static str,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct RuntimeEventReplayGapResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
     pub run_id: String,
     pub from_sequence: Option<i64>,
     pub reason: &'static str,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+pub enum RuntimeDebugSseEventResponse {
+    Event(RuntimeEventStreamEnvelopeResponse),
+    ReplayExpired(RuntimeEventReplayExpiredResponse),
+    DurableBackfill(RuntimeEventDurableBackfillResponse),
+    ReplayGap(RuntimeEventReplayGapResponse),
 }
 
 fn to_runtime_event_stream_envelope_response(

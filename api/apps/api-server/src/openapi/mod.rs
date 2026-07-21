@@ -13,6 +13,11 @@ use control_plane::{
 use serde_json::{json, Map, Value};
 use utoipa::OpenApi;
 
+#[derive(utoipa::ToSchema)]
+#[schema(value_type = String, format = Binary)]
+#[allow(dead_code)]
+pub(crate) struct OpenApiBinaryBody(pub Vec<u8>);
+
 use crate::{app_state::ApiState, error_response::ApiError};
 
 #[derive(OpenApi)]
@@ -70,7 +75,9 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::application_orchestration::restore_version,
         crate::routes::application_orchestration::update_version,
         crate::routes::application_runtime::start_flow_debug_run,
+        crate::routes::application_runtime::start_flow_debug_run_stream,
         crate::routes::application_runtime::get_flow_debug_run_snapshot,
+        crate::routes::application_runtime::subscribe_flow_debug_run_stream,
         crate::routes::application_runtime::cancel_flow_run,
         crate::routes::application_runtime::resume_flow_run,
         crate::routes::application_runtime::complete_callback_task,

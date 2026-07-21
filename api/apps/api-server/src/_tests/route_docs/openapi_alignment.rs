@@ -255,6 +255,57 @@ async fn openapi_contains_file_management_routes() {
     ] {
         assert!(paths.contains_key(route), "missing path {route}");
     }
+
+    assert_eq!(
+        paths["/api/console/files/upload"]["post"]["requestBody"]["content"]["multipart/form-data"]
+            ["schema"]["properties"]["file"]["format"],
+        "binary"
+    );
+    assert_eq!(
+        paths["/api/console/files/{file_table_id}/records/{record_id}/content"]["get"]["responses"]
+            ["200"]["content"]["application/octet-stream"]["schema"]["format"],
+        "binary"
+    );
+}
+
+#[tokio::test]
+async fn openapi_documents_callable_media_protocols() {
+    let paths = openapi_paths().await;
+
+    for route in [
+        "/api/console/plugins/install-upload",
+        "/api/console/settings/model-providers/plugins/install-upload",
+    ] {
+        assert_eq!(
+            paths[route]["post"]["requestBody"]["content"]["multipart/form-data"]["schema"]
+                ["properties"]["file"]["format"],
+            "binary",
+            "missing multipart binary schema for {route}"
+        );
+    }
+
+    assert_eq!(
+        paths["/api/console/applications/{id}/logs/runs/export"]["post"]["responses"]["200"]
+            ["content"]["application/zip"]["schema"]["format"],
+        "binary"
+    );
+
+    for (route, method) in [
+        (
+            "/api/console/applications/{id}/orchestration/debug-runs/stream",
+            "post",
+        ),
+        (
+            "/api/console/applications/{id}/orchestration/runs/{run_id}/debug-stream",
+            "get",
+        ),
+    ] {
+        assert!(
+            paths[route][method]["responses"]["200"]["content"]["text/event-stream"]["schema"]
+                .is_object(),
+            "missing SSE schema for {method} {route}"
+        );
+    }
 }
 
 #[tokio::test]

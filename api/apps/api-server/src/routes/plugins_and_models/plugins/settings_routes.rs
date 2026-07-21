@@ -110,6 +110,7 @@ pub async fn install_official_plugin(
     post,
     path = "/api/console/settings/model-providers/plugins/install-upload",
     operation_id = "model_provider_settings_install_uploaded_plugin",
+    request_body(content = inline(PluginUploadMultipartBody), content_type = "multipart/form-data"),
     responses((status = 201, body = InstallPluginResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn install_uploaded_plugin(

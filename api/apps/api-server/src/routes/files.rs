@@ -31,6 +31,14 @@ pub struct UploadedFileResponse {
     pub record: serde_json::Value,
 }
 
+#[derive(ToSchema)]
+#[allow(dead_code)]
+struct UploadFileMultipartBody {
+    file_table_id: String,
+    #[schema(value_type = String, format = Binary)]
+    file: Vec<u8>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct UploadFileActorInput {
     user_id: Uuid,
@@ -181,6 +189,7 @@ fn upload_file_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKerne
 #[utoipa::path(
     post,
     path = "/api/console/files/upload",
+    request_body(content = inline(UploadFileMultipartBody), content_type = "multipart/form-data"),
     responses((status = 201, body = UploadedFileResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn upload_file(
@@ -243,7 +252,7 @@ pub async fn upload_file(
         ("file_table_id" = String, Path, description = "File table id"),
         ("record_id" = String, Path, description = "Runtime record id")
     ),
-    responses((status = 200), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = crate::openapi::OpenApiBinaryBody, content_type = "application/octet-stream"), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn read_file_content(
     State(state): State<Arc<ApiState>>,
