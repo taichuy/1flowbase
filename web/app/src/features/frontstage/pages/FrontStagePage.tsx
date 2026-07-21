@@ -28,9 +28,9 @@ import {
   appendFrontstageBlock,
   createFrontstageBlockCompositionState,
   removeFrontstageBlock,
+  updateFrontstageBlock,
   updateFrontstageBlockLayout,
   updateFrontstageBlockPresentation,
-  updateFrontstageBlockProps,
   updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
@@ -512,15 +512,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         return false;
       }
 
-      const propsState = updateFrontstageBlockProps(
+      const nextCompositionState = updateFrontstageBlock(
         blockCompositionState,
-        nextBlock.id,
-        nextBlock.props
-      );
-      const nextCompositionState = updateFrontstageBlockPresentation(
-        propsState,
-        nextBlock.id,
-        nextBlock.presentation
+        nextBlock
       );
       return saveBlockComposition(activePageContent, nextCompositionState);
     },

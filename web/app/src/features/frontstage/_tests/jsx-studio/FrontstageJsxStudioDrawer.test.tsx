@@ -211,10 +211,16 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(screen.getByText('区块设置')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '接口' }));
-    expect(
-      screen.getByText('list_application_conversations_records')
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /绑\s*定/ }));
+    const interfaceSelect = screen.getByRole('combobox', { name: '接口' });
+    fireEvent.mouseDown(interfaceSelect);
+    fireEvent.click(
+      await screen.findByText(
+        'List conversations · GET · list_application_conversations_records'
+      )
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: '绑定并插入' })
+    );
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({

@@ -336,6 +336,48 @@ export function updateFrontstagePageLayoutMode(
   };
 }
 
+export function updateFrontstageBlock(
+  state: FrontstageBlockCompositionState,
+  nextBlock: FrontstageBlockInstance
+): FrontstageBlockCompositionState {
+  if (!state.document.blocks.some((block) => block.id === nextBlock.id)) {
+    return state;
+  }
+
+  const document = withBlocks(
+    state.document,
+    state.document.blocks.map((block) =>
+      block.id === nextBlock.id
+        ? {
+            ...block,
+            props: { ...nextBlock.props },
+            interfaces: (nextBlock.interfaces ?? []).map((binding) => ({
+              ...binding
+            })),
+            ports: {
+              inputs: (nextBlock.ports?.inputs ?? []).map((port) => ({
+                ...port,
+                schema: { ...port.schema },
+                ...(port.source ? { source: { ...port.source } } : {})
+              })),
+              outputs: (nextBlock.ports?.outputs ?? []).map((port) => ({
+                ...port,
+                schema: { ...port.schema }
+              }))
+            },
+            presentation: { ...nextBlock.presentation }
+          }
+        : block
+    ),
+    false
+  );
+
+  return {
+    document,
+    selectedBlockId: normalizeSelection(document, state.selectedBlockId)
+  };
+}
+
 export function updateFrontstageBlockProps(
   state: FrontstageBlockCompositionState,
   blockId: string,

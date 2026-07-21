@@ -22,6 +22,7 @@ import {
   createFrontstageJsxBindingSnippet,
   type FrontstageJsxEditorProjection
 } from '../../lib/jsx-studio/editor-projection';
+import { generateFrontstageCallableSource } from '../../lib/jsx-studio/openapi-codegen';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 
@@ -122,7 +123,14 @@ function InterfaceConnectorPanel({
   projection: FrontstageJsxEditorProjection;
 }) {
   const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
+  const [selectedOperationId, setSelectedOperationId] = useState<string>();
   const bindings = block.interfaces ?? [];
+  const operationsById = new Map(
+    callableInterfaces.map((operation) => [operation.operation_id, operation])
+  );
+  const selectedOperation = selectedOperationId
+    ? operationsById.get(selectedOperationId)
+    : undefined;
 
   if (loading) {
     return <Spin />;
@@ -160,8 +168,10 @@ function InterfaceConnectorPanel({
         bindFrontstageCallableInterface(block, alias, operation)
       );
       if (saved !== false) {
+        onInsertCode(generateFrontstageCallableSource(operation, alias).source);
+        setSelectedOperationId(undefined);
         void message.success(
-          i18nText('frontstage', 'auto.interface_binding_saved')
+          i18nText('frontstage', 'auto.interface_bound_and_inserted')
         );
       }
     } finally {
@@ -236,43 +246,77 @@ function InterfaceConnectorPanel({
         <Typography.Text strong>
           {i18nText('frontstage', 'auto.interfaces')}
         </Typography.Text>
-        {callableInterfaces.map((operation) => {
-          const isBound = bindings.some(
-            (binding) => binding.operation_id === operation.operation_id
-          );
-          return (
-            <div
-              className="frontstage-jsx-studio__capability-row"
-              key={operation.operation_id}
-            >
-              <div className="frontstage-jsx-studio__binding-copy">
-                <Space size={6}>
-                  <Typography.Text>{operation.name}</Typography.Text>
-                  <Tag>{operation.method.toUpperCase()}</Tag>
-                  <Tag>{operation.risk_level}</Tag>
-                </Space>
-                <Typography.Text type="secondary" ellipsis>
-                  {operation.operation_id}
-                </Typography.Text>
-                {!operation.bindable && operation.disabled_reason ? (
-                  <Typography.Text type="secondary">
-                    {operation.disabled_reason}
-                  </Typography.Text>
-                ) : null}
-              </div>
-              <Button
-                size="small"
-                disabled={isBound || !operation.bindable}
-                loading={pendingBindingId === operation.operation_id}
-                onClick={() => void bindCapability(operation)}
-              >
-                {isBound
-                  ? i18nText('frontstage', 'auto.bound')
-                  : i18nText('frontstage', 'auto.bind')}
-              </Button>
+        <Select
+          allowClear
+          showSearch
+          aria-label={i18nText('frontstage', 'auto.interfaces')}
+          placeholder={i18nText('frontstage', 'auto.select_interface')}
+          value={selectedOperationId}
+          getPopupContainer={(triggerNode) => {
+            const resourceSection = triggerNode.closest(
+              '.frontstage-jsx-studio__resource-section'
+            );
+            return resourceSection instanceof HTMLElement
+              ? resourceSection
+              : triggerNode;
+          }}
+          options={callableInterfaces.map((operation) => {
+            const isBound = bindings.some(
+              (binding) => binding.operation_id === operation.operation_id
+            );
+            return {
+              value: operation.operation_id,
+              label: `${operation.name} · ${operation.method.toUpperCase()} · ${operation.operation_id}`,
+              disabled: isBound || !operation.bindable
+            };
+          })}
+          filterOption={(input, option) => {
+            const operation = option?.value
+              ? operationsById.get(String(option.value))
+              : undefined;
+            if (!operation) return false;
+            return [
+              operation.name,
+              operation.operation_id,
+              operation.method,
+              operation.path,
+              operation.description
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLocaleLowerCase()
+              .includes(input.trim().toLocaleLowerCase());
+          }}
+          onChange={(value) => setSelectedOperationId(value)}
+          style={{ width: '100%' }}
+        />
+        {selectedOperation ? (
+          <div className="frontstage-jsx-studio__capability-row">
+            <div className="frontstage-jsx-studio__binding-copy">
+              <Space size={6} wrap>
+                <Typography.Text>{selectedOperation.name}</Typography.Text>
+                <Tag>{selectedOperation.method.toUpperCase()}</Tag>
+                <Tag>{selectedOperation.risk_level}</Tag>
+              </Space>
+              <Typography.Text type="secondary">
+                {selectedOperation.operation_id}
+              </Typography.Text>
+              <Typography.Text type="secondary" ellipsis>
+                {selectedOperation.path}
+              </Typography.Text>
             </div>
-          );
-        })}
+          </div>
+        ) : null}
+        <Button
+          type="primary"
+          disabled={!selectedOperation}
+          loading={pendingBindingId === selectedOperationId}
+          onClick={() => {
+            if (selectedOperation) void bindCapability(selectedOperation);
+          }}
+        >
+          {i18nText('frontstage', 'auto.bind_and_insert')}
+        </Button>
       </section>
     </div>
   );
@@ -686,7 +730,7 @@ function createUniqueBindingAlias(
 }
 
 function toCamelCase(value: string): string {
-  const parts = value.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
+  const parts = value.split(/[^A-Za-z0-9$]+/).filter(Boolean);
   return parts
     .map((part, index) =>
       index === 0

@@ -8,6 +8,19 @@ export interface FrontstageOpenApiCodegenResult {
 
 type JsonSchema = Record<string, unknown>;
 
+const sourcePolicyDeniedPropertyNames = new Set([
+  'window',
+  'document',
+  'globalThis',
+  'self',
+  'localStorage',
+  'sessionStorage',
+  'cookie',
+  'constructor',
+  'prototype',
+  '__proto__'
+]);
+
 export function generateFrontstageCallableSource(
   operation: ConsoleFrontstageCallableInterface,
   bindingAlias: string
@@ -172,7 +185,8 @@ function singularize(value: string): string {
 }
 
 function quoteProperty(value: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value)
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) &&
+    !sourcePolicyDeniedPropertyNames.has(value)
     ? value
     : JSON.stringify(value);
 }

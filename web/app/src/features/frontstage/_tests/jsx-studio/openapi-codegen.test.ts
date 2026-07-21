@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import type { ConsoleFrontstageCallableInterface } from '@1flowbase/api-client';
+import { validateJsBlockSource } from '@1flowbase/page-runtime';
 
 import { generateFrontstageCallableSource } from '../../lib/jsx-studio/openapi-codegen';
 
@@ -78,5 +79,26 @@ describe('Frontstage callable OpenAPI codegen', () => {
         'savePage'
       )
     ).toThrow('write_requires_run_authorization');
+  });
+
+  test('quotes OpenAPI DTO properties so backend field names are not treated as globals', () => {
+    const result = generateFrontstageCallableSource(
+      {
+        ...operation,
+        response_schema: {
+          type: 'object',
+          required: ['document'],
+          properties: {
+            document: { type: 'string' },
+            'page-id': { type: 'string' }
+          }
+        }
+      },
+      'getFrontstagePageDetail'
+    );
+
+    expect(result.source).toContain('"document": string;');
+    expect(result.source).toContain('"page-id"?: string;');
+    expect(validateJsBlockSource(result.source)).toMatchObject({ ok: true });
   });
 });

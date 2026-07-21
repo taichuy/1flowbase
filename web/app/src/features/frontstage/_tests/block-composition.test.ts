@@ -7,6 +7,7 @@ import {
   moveFrontstageBlock,
   removeFrontstageBlock,
   selectFrontstageBlock,
+  updateFrontstageBlock,
   updateFrontstageBlockLayout,
   updateFrontstageBlockProps
 } from '../lib/block-composition';
@@ -228,6 +229,69 @@ describe('frontstage block composition', () => {
       props: { title: 'New title', dataBinding: [] },
       layout: { order: 0, width: 12 }
     });
+    expect(nextState.selectedBlockId).toBe('hero');
+  });
+
+  test('updates the complete studio-owned block contract without changing host order or selection', () => {
+    const currentBlock = createBlock({
+      id: 'hero',
+      props: { title: 'Old title' },
+      interfaces: [],
+      ports: { inputs: [], outputs: [] },
+      presentation: { heightMode: 'auto', height: null },
+      layout: { order: 0, region: 'main', width: 12 },
+      order: 0
+    });
+    const state = createFrontstageBlockCompositionState(
+      createDocument([
+        currentBlock,
+        createBlock({ id: 'cta', order: 1 })
+      ]),
+      'hero'
+    );
+
+    const nextState = updateFrontstageBlock(state, {
+      ...currentBlock,
+      props: { title: 'New title' },
+      interfaces: [
+        {
+          alias: 'getFrontstagePageDetail',
+          operation_id: 'get_frontstage_page_detail',
+          schema_digest: 'sha256:test',
+          scope: 'frontstage',
+          risk_level: 'read'
+        }
+      ],
+      ports: {
+        inputs: [],
+        outputs: [{ name: 'total', schema: { type: 'number' } }]
+      },
+      presentation: { heightMode: 'fixed', height: 420 },
+      layout: { order: 99, region: 'sidebar', width: 4 },
+      order: 99
+    });
+
+    expect(nextState.document.blocks[0]).toMatchObject({
+      id: 'hero',
+      props: { title: 'New title' },
+      interfaces: [
+        {
+          alias: 'getFrontstagePageDetail',
+          operation_id: 'get_frontstage_page_detail'
+        }
+      ],
+      ports: {
+        inputs: [],
+        outputs: [{ name: 'total', schema: { type: 'number' } }]
+      },
+      presentation: { heightMode: 'fixed', height: 420 },
+      layout: { order: 0, region: 'main', width: 12 },
+      order: 0
+    });
+    expect(nextState.document.blocks.map((block) => block.id)).toEqual([
+      'hero',
+      'cta'
+    ]);
     expect(nextState.selectedBlockId).toBe('hero');
   });
 
