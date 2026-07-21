@@ -107,6 +107,8 @@ pub async fn execute(
         parameter_descriptors: Vec::new(),
         request_schema: interface_entry.parameter_schema.clone(),
         response_schema: interface_entry.result_schema.clone(),
+        request_media_type: Some("application/json".to_string()),
+        response_media_type: Some("application/json".to_string()),
         security: interface_entry.security.clone(),
     };
     let dispatch_arguments = crate::openapi_interface::DispatchArguments {

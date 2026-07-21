@@ -81,6 +81,8 @@ pub struct FrontstageCallableResponse {
     pub request_schema: Value,
     #[schema(value_type = Object)]
     pub response_schema: Value,
+    pub request_media_type: Option<String>,
+    pub response_media_type: Option<String>,
     pub schema_digest: String,
     pub adapter_id: String,
     pub host_injected_parameters: Vec<String>,
@@ -561,6 +563,8 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
         "operation_id": entry.interface.operation_id,
         "request_schema": entry.interface.request_schema,
         "response_schema": entry.interface.response_schema,
+        "request_media_type": entry.interface.request_media_type,
+        "response_media_type": entry.interface.response_media_type,
     }))
     .expect("serializing OpenAPI interface schema must succeed");
     let schema_digest = format!("{:x}", Sha256::digest(digest_input));
@@ -592,6 +596,8 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageCallableResponse {
             .collect(),
         request_schema: entry.interface.request_schema,
         response_schema: entry.interface.response_schema,
+        request_media_type: entry.interface.request_media_type,
+        response_media_type: entry.interface.response_media_type,
         schema_digest,
         adapter_id: match entry.adapter {
             CallableAdapter::ConsoleOpenApi => "console_openapi",

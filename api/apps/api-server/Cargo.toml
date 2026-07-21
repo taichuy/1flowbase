@@ -15,6 +15,7 @@ flate2.workspace = true
 futures-util.workspace = true
 form_urlencoded = "1"
 hmac.workspace = true
+jsonschema.workspace = true
 rand_core.workspace = true
 regex.workspace = true
 reqwest.workspace = true

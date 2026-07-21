@@ -4,7 +4,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{
         header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE, COOKIE},
-        HeaderMap, HeaderName, Method, Request, StatusCode,
+        HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode,
     },
     response::Response,
 };
@@ -16,6 +16,8 @@ use utoipa::ToSchema;
 use crate::{app_state::ApiState, openapi_interface::OpenApiInterfaceCatalogEntry};
 
 const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
+const CALLABLE_DEPTH_HEADER: HeaderName = HeaderName::from_static("x-1flowbase-callable-depth");
+const MAX_CALLABLE_DEPTH: u8 = 4;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct DispatchArguments {
@@ -81,13 +83,20 @@ pub async fn dispatch(
         .uri(uri)
         .body(body)
         .map_err(|_| invalid("request_schema"))?;
+    request
+        .headers_mut()
+        .insert(CALLABLE_DEPTH_HEADER, next_callable_depth(source_headers)?);
     copy_header(source_headers, request.headers_mut(), COOKIE);
     copy_header(source_headers, request.headers_mut(), AUTHORIZATION);
     copy_header(source_headers, request.headers_mut(), ACCEPT_LANGUAGE);
     copy_header(source_headers, request.headers_mut(), CSRF_HEADER);
     for (name, value) in &arguments.headers {
         let name = HeaderName::try_from(name).map_err(|_| invalid("request_schema"))?;
-        if name == COOKIE || name == AUTHORIZATION || name == CSRF_HEADER {
+        if name == COOKIE
+            || name == AUTHORIZATION
+            || name == CSRF_HEADER
+            || name == CALLABLE_DEPTH_HEADER
+        {
             return Err(invalid("host_injected_parameters").into());
         }
         let value = value
@@ -97,13 +106,15 @@ pub async fn dispatch(
             .map_err(|_| invalid("request_schema"))?;
         request.headers_mut().insert(name, value);
     }
-    if has_body {
+    if has_body && is_json_media_type(entry.request_media_type.as_deref()) {
         request.headers_mut().insert(
             CONTENT_TYPE,
             "application/json"
                 .parse()
                 .expect("application/json is a valid header value"),
         );
+    } else if has_body {
+        return Err(invalid("request_media_type").into());
     }
 
     let response = crate::console_router(state, true)
@@ -113,7 +124,7 @@ pub async fn dispatch(
     if !response.status().is_success() {
         return Err(DispatchError::Target(response));
     }
-    let value = parse_response(response).await?;
+    let value = parse_response(response, entry.response_media_type.as_deref()).await?;
     let contract_value = value.get("data").unwrap_or(&value);
     validate(&entry.response_schema, contract_value, "response_schema")?;
     Ok(DispatchSuccess { value })
@@ -167,7 +178,10 @@ fn scalar(value: &Value, field: &'static str) -> anyhow::Result<String> {
     }
 }
 
-async fn parse_response(response: Response) -> anyhow::Result<Value> {
+async fn parse_response(
+    response: Response,
+    response_media_type: Option<&str>,
+) -> anyhow::Result<Value> {
     if response.status() == StatusCode::NO_CONTENT {
         return Ok(Value::Null);
     }
@@ -177,7 +191,34 @@ async fn parse_response(response: Response) -> anyhow::Result<Value> {
     if bytes.is_empty() {
         return Ok(Value::Null);
     }
+    if !is_json_media_type(response_media_type) {
+        return Err(invalid("response_media_type"));
+    }
     serde_json::from_slice(&bytes).map_err(|_| invalid("response_schema"))
+}
+
+fn is_json_media_type(media_type: Option<&str>) -> bool {
+    media_type.is_some_and(|media_type| {
+        media_type.eq_ignore_ascii_case("application/json") || media_type.ends_with("+json")
+    })
+}
+
+fn next_callable_depth(source_headers: &HeaderMap) -> anyhow::Result<HeaderValue> {
+    let depth = source_headers
+        .get(&CALLABLE_DEPTH_HEADER)
+        .map(|value| {
+            value
+                .to_str()
+                .map_err(|_| invalid("callable_dispatch_depth"))?
+                .parse::<u8>()
+                .map_err(|_| invalid("callable_dispatch_depth"))
+        })
+        .transpose()?
+        .unwrap_or(0);
+    if depth >= MAX_CALLABLE_DEPTH {
+        return Err(invalid("callable_dispatch_depth"));
+    }
+    HeaderValue::from_str(&(depth + 1).to_string()).map_err(|_| invalid("callable_dispatch_depth"))
 }
 
 fn copy_header(source: &HeaderMap, target: &mut HeaderMap, name: HeaderName) {
@@ -187,65 +228,52 @@ fn copy_header(source: &HeaderMap, target: &mut HeaderMap, name: HeaderName) {
 }
 
 fn validate(schema: &Value, value: &Value, field: &'static str) -> anyhow::Result<()> {
-    if let Some(types) = schema.get("type") {
-        let valid = match types {
-            Value::String(kind) => matches_type(kind, value),
-            Value::Array(kinds) => kinds
-                .iter()
-                .filter_map(Value::as_str)
-                .any(|kind| matches_type(kind, value)),
-            _ => true,
-        };
-        if !valid {
-            return Err(invalid(field));
-        }
-    }
-    if let Some(required) = schema.get("required").and_then(Value::as_array) {
-        let object = value.as_object().ok_or_else(|| invalid(field))?;
-        if required
-            .iter()
-            .filter_map(Value::as_str)
-            .any(|name| !object.contains_key(name))
-        {
-            return Err(invalid(field));
-        }
-    }
-    if let (Some(properties), Some(object)) = (
-        schema.get("properties").and_then(Value::as_object),
-        value.as_object(),
-    ) {
-        if schema.get("additionalProperties") == Some(&Value::Bool(false))
-            && object.keys().any(|name| !properties.contains_key(name))
-        {
-            return Err(invalid(field));
-        }
-        for (name, child_schema) in properties {
-            if let Some(child) = object.get(name) {
-                validate(child_schema, child, field)?;
-            }
-        }
-    }
-    if let (Some(item_schema), Some(items)) = (schema.get("items"), value.as_array()) {
-        for item in items {
-            validate(item_schema, item, field)?;
-        }
-    }
-    Ok(())
-}
-
-fn matches_type(kind: &str, value: &Value) -> bool {
-    match kind {
-        "null" => value.is_null(),
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        "string" => value.is_string(),
-        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
-        "number" => value.is_number(),
-        "boolean" => value.is_boolean(),
-        _ => true,
-    }
+    let validator = jsonschema::validator_for(schema).map_err(|_| invalid(field))?;
+    validator.validate(value).map_err(|_| invalid(field))
 }
 
 fn invalid(field: &'static str) -> anyhow::Error {
     control_plane::errors::ControlPlaneError::InvalidInput(field).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn validates_complete_json_schema_constraints() {
+        let schema = json!({
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+                "status": { "enum": ["ready", "done"] },
+                "count": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+        });
+
+        assert!(validate(
+            &schema,
+            &json!({ "status": "ready", "count": 1 }),
+            "request_schema"
+        )
+        .is_ok());
+        assert!(validate(
+            &schema,
+            &json!({ "status": "invalid", "count": 0 }),
+            "request_schema"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn callable_depth_is_internal_bounded_state() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(next_callable_depth(&headers).unwrap(), "1");
+        headers.insert(CALLABLE_DEPTH_HEADER, HeaderValue::from_static("3"));
+        assert_eq!(next_callable_depth(&headers).unwrap(), "4");
+        headers.insert(CALLABLE_DEPTH_HEADER, HeaderValue::from_static("4"));
+        assert!(next_callable_depth(&headers).is_err());
+    }
 }
