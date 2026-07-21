@@ -8,6 +8,19 @@ import { JsxStudioResourcePanel } from '../../components/jsx-studio/JsxStudioRes
 import type { FrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
+const interfaceCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageInterfaceCapabilities: vi.fn()
+}));
+const interfaceCapabilitiesApi = vi.hoisted(() => ({
+  fetchFrontstageInterfaceCapability: vi.fn()
+}));
+
+vi.mock(
+  '../../hooks/use-frontstage-interface-capabilities',
+  () => interfaceCapabilitiesHook
+);
+vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
+
 const block = {
   id: 'orders-block',
   codeRef: 'orders-code',
@@ -37,7 +50,7 @@ const operations = [
   {
     interface_id: 'get_frontstage_page_detail',
     method: 'GET',
-    path: '/api/frontstage/pages/{page_id}',
+    path: '/api/console/frontstage/pages/{page_id}',
     name: 'Get page detail',
     short_description: 'Read one frontstage page',
     parameter_schema: {
@@ -90,9 +103,7 @@ function renderInterfacePanel({
     <JsxStudioResourcePanel
       block={block}
       pageBlocks={[block]}
-      interfaceCapabilities={operations}
-      interfaceCapabilitiesError={null}
-      interfaceCapabilitiesLoading={false}
+      workspaceId="workspace-1"
       projection={projection}
       section="interfaces"
       onInsertCode={onInsertCode}
@@ -106,26 +117,68 @@ describe('TSX Studio interface connector', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await appI18n.changeLanguage('zh_Hans');
+    interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities.mockReturnValue(
+      {
+        data: {
+          items: operations.map(
+            ({
+              interface_id,
+              method,
+              path,
+              adapter_id = 'console_openapi'
+            }) => ({
+              interface_id,
+              method,
+              path,
+              adapter_id
+            })
+          ),
+          total: operations.length,
+          offset: 0,
+          limit: 10,
+          has_more: false,
+          next_offset: null,
+          adapter_ids: ['console_openapi', 'runtime_data_model'],
+          methods: ['GET']
+        },
+        loading: false,
+        error: null
+      }
+    );
+    interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability.mockImplementation(
+      async (_workspaceId: string, interfaceId: string) =>
+        operations.find((operation) => operation.interface_id === interfaceId)
+    );
   });
 
-  test('searches callable interfaces and inserts generated code after binding succeeds', async () => {
+  test('searches paths through the backend page and loads detail before binding', async () => {
     const { onInsertCode, onSaveBlock } = renderInterfacePanel();
-    const select = screen.getByRole('combobox', { name: '接口' });
-
-    fireEvent.mouseDown(select);
-    fireEvent.change(select, { target: { value: 'page detail' } });
-    const option = await screen.findByText(
-      'GET /api/frontstage/pages/{page_id}'
-    );
-    expect(screen.queryByText('Get page detail')).not.toBeInTheDocument();
-    expect(screen.queryByText('Read one frontstage page')).not.toBeInTheDocument();
     expect(
-      select.closest('.frontstage-jsx-studio__resource-section')
-    ).toContainElement(option);
-    fireEvent.click(option);
+      interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
+    ).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索接口路径' }), {
+      target: { value: '/api/console/frontstage' }
+    });
+    await waitFor(() =>
+      expect(
+        interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
+      ).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.objectContaining({ path_query: '/api/console/frontstage' })
+      )
+    );
+    fireEvent.click(
+      await screen.findByText('/api/console/frontstage/pages/{page_id}')
+    );
+    expect(
+      interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
+    ).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
+    expect(
+      interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
+    ).toHaveBeenCalledWith('workspace-1', 'get_frontstage_page_detail');
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
       interfaces: [
         expect.objectContaining({
@@ -148,14 +201,8 @@ describe('TSX Studio interface connector', () => {
     const onInsertCode = createInsertCodeMock();
     const onSaveBlock = createSaveBlockMock().mockResolvedValue(false);
     renderInterfacePanel({ onInsertCode, onSaveBlock });
-
-    const select = screen.getByRole('combobox', { name: '接口' });
-    fireEvent.mouseDown(select);
-    fireEvent.change(select, {
-      target: { value: 'get_frontstage_page_detail' }
-    });
     fireEvent.click(
-      await screen.findByText('GET /api/frontstage/pages/{page_id}')
+      await screen.findByText('/api/console/frontstage/pages/{page_id}')
     );
     fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 

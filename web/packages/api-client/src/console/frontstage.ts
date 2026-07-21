@@ -136,6 +136,32 @@ export interface ConsoleFrontstageInterfaceCapability {
   disabled_reason: string | null;
 }
 
+export interface ConsoleFrontstageInterfaceCapabilitySummary {
+  interface_id: string;
+  method: string;
+  path: string;
+  adapter_id: string;
+}
+
+export interface ConsoleFrontstageInterfaceCapabilityPage {
+  items: ConsoleFrontstageInterfaceCapabilitySummary[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+  next_offset: number | null;
+  adapter_ids: string[];
+  methods: string[];
+}
+
+export interface ConsoleFrontstageInterfaceCapabilityQuery {
+  path_query?: string;
+  adapter_id?: string;
+  method?: string;
+  offset?: number;
+  limit?: number;
+}
+
 export interface FrontstageCallableBinaryResource {
   bytes: Uint8Array;
   file_name: string | null;
@@ -178,10 +204,30 @@ export interface FrontstageCallableWriteGrant {
 
 export function listFrontstageInterfaceCapabilities(
   workspaceId: string,
+  query: ConsoleFrontstageInterfaceCapabilityQuery = {},
   baseUrl?: string
-): Promise<ConsoleFrontstageInterfaceCapability[]> {
-  return apiFetch<ConsoleFrontstageInterfaceCapability[]>({
-    path: `/api/console/frontstage/${workspaceId}/interface-capabilities`,
+): Promise<ConsoleFrontstageInterfaceCapabilityPage> {
+  const params = new URLSearchParams();
+  if (query.path_query) params.set('path_query', query.path_query);
+  if (query.adapter_id) params.set('adapter_id', query.adapter_id);
+  if (query.method) params.set('method', query.method);
+  if (query.offset !== undefined) params.set('offset', String(query.offset));
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const suffix = params.size > 0 ? `?${params.toString()}` : '';
+  return apiFetch<ConsoleFrontstageInterfaceCapabilityPage>({
+    path: `/api/console/frontstage/${workspaceId}/interface-capabilities${suffix}`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function getFrontstageInterfaceCapability(
+  workspaceId: string,
+  interfaceId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageInterfaceCapability> {
+  return apiFetch<ConsoleFrontstageInterfaceCapability>({
+    path: `/api/console/frontstage/${workspaceId}/interface-capabilities/${encodeURIComponent(interfaceId)}`,
     method: 'GET',
     baseUrl
   });

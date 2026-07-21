@@ -17,7 +17,11 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const interfaceCapabilitiesHook = vi.hoisted(() => ({
-  useFrontstageInterfaceCapabilities: vi.fn()
+  useFrontstageInterfaceCapabilities: vi.fn(),
+  useFrontstageInterfaceCapabilityDetails: vi.fn()
+}));
+const interfaceCapabilitiesApi = vi.hoisted(() => ({
+  fetchFrontstageInterfaceCapability: vi.fn()
 }));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
@@ -29,6 +33,7 @@ vi.mock(
   '../../hooks/use-frontstage-interface-capabilities',
   () => interfaceCapabilitiesHook
 );
+vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
     children,
@@ -156,31 +161,58 @@ describe('FrontstageJsxStudioDrawer', () => {
       reset: vi.fn(),
       save: vi.fn().mockResolvedValue(undefined)
     });
-    interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities.mockReturnValue({
-      data: [
-        {
-          interface_id: 'list_application_conversations_records',
-          method: 'GET',
-          path: '/api/runtime/models/application_conversations/list',
-          name: 'List conversations',
-          short_description: 'List conversations',
-          parameter_schema: { type: 'object', properties: {} },
-          result_schema: { type: 'object', properties: {} },
-          request_media_type: null,
-          response_media_type: 'application/json',
-          schema_digest: 'digest-1',
-          adapter_id: 'runtime_data_model',
-          host_injected_parameters: [],
-          scope: 'frontstage_page_tab',
-          risk_level: 'low',
-          authorization: 'runtime_scope_grant_and_page_tab_access',
-          bindable: true,
-          disabled_reason: null
-        }
-      ],
-      loading: false,
-      error: null
-    });
+    const capability = {
+      interface_id: 'list_application_conversations_records',
+      method: 'GET',
+      path: '/api/runtime/models/application_conversations/list',
+      name: 'List conversations',
+      short_description: 'List conversations',
+      parameter_schema: { type: 'object', properties: {} },
+      result_schema: { type: 'object', properties: {} },
+      request_media_type: null,
+      response_media_type: 'application/json',
+      schema_digest: 'digest-1',
+      adapter_id: 'runtime_data_model',
+      host_injected_parameters: [],
+      scope: 'frontstage_page_tab',
+      risk_level: 'low',
+      authorization: 'runtime_scope_grant_and_page_tab_access',
+      bindable: true,
+      disabled_reason: null
+    };
+    interfaceCapabilitiesHook.useFrontstageInterfaceCapabilityDetails.mockReturnValue(
+      {
+        data: [],
+        loading: false,
+        error: null
+      }
+    );
+    interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities.mockReturnValue(
+      {
+        data: {
+          items: [
+            {
+              interface_id: capability.interface_id,
+              method: capability.method,
+              path: capability.path,
+              adapter_id: capability.adapter_id
+            }
+          ],
+          total: 1,
+          offset: 0,
+          limit: 10,
+          has_more: false,
+          next_offset: null,
+          adapter_ids: ['runtime_data_model'],
+          methods: ['GET']
+        },
+        loading: false,
+        error: null
+      }
+    );
+    interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability.mockResolvedValue(
+      capability
+    );
   });
 
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {
@@ -210,13 +242,14 @@ describe('FrontstageJsxStudioDrawer', () => {
       'false'
     );
     expect(screen.getByText('区块设置')).toBeInTheDocument();
+    expect(
+      interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
+    ).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '接口' }));
-    const interfaceSelect = screen.getByRole('combobox', { name: '接口' });
-    fireEvent.mouseDown(interfaceSelect);
     fireEvent.click(
       await screen.findByText(
-        'GET /api/runtime/models/application_conversations/list'
+        '/api/runtime/models/application_conversations/list'
       )
     );
     fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));

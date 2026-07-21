@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
+import type { ConsoleFrontstageInterfaceCapabilitySummary } from '@1flowbase/api-client';
 import {
   Alert,
   Button,
@@ -8,7 +8,7 @@ import {
   InputNumber,
   Select,
   Space,
-  Spin,
+  Table,
   Tag,
   Typography,
   message
@@ -17,6 +17,8 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import { fetchFrontstageInterfaceCapability } from '../../api/interface-capabilities';
+import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
 import { bindFrontstageInterfaceCapability } from '../../lib/jsx-studio/interface-binding';
 import {
   createFrontstageJsxBindingSnippet,
@@ -37,9 +39,7 @@ export type FrontstageJsxStudioSection =
 export function JsxStudioResourcePanel({
   block,
   pageBlocks,
-  interfaceCapabilities,
-  interfaceCapabilitiesError,
-  interfaceCapabilitiesLoading,
+  workspaceId,
   onInsertCode,
   onSaveBlock,
   projection,
@@ -48,9 +48,7 @@ export function JsxStudioResourcePanel({
 }: {
   block: FrontstageBlockInstance;
   pageBlocks: readonly FrontstageBlockInstance[];
-  interfaceCapabilities: readonly ConsoleFrontstageInterfaceCapability[];
-  interfaceCapabilitiesError: Error | null;
-  interfaceCapabilitiesLoading: boolean;
+  workspaceId: string;
   onInsertCode: (source: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
@@ -61,9 +59,7 @@ export function JsxStudioResourcePanel({
     return (
       <InterfaceConnectorPanel
         block={block}
-        interfaceCapabilities={interfaceCapabilities}
-        error={interfaceCapabilitiesError}
-        loading={interfaceCapabilitiesLoading}
+        workspaceId={workspaceId}
         projection={projection}
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
@@ -107,73 +103,81 @@ export function JsxStudioResourcePanel({
 
 function InterfaceConnectorPanel({
   block,
-  interfaceCapabilities,
-  error,
-  loading,
+  workspaceId,
   onInsertCode,
   onSaveBlock,
   projection
 }: {
   block: FrontstageBlockInstance;
-  interfaceCapabilities: readonly ConsoleFrontstageInterfaceCapability[];
-  error: Error | null;
-  loading: boolean;
+  workspaceId: string;
   onInsertCode: (source: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
 }) {
+  const pageSize = 10;
   const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
   const [selectedOperationId, setSelectedOperationId] = useState<string>();
+  const [pathInput, setPathInput] = useState('');
+  const [pathQuery, setPathQuery] = useState('');
+  const [adapterId, setAdapterId] = useState<string>();
+  const [method, setMethod] = useState<string>();
+  const [offset, setOffset] = useState(0);
   const bindings = block.interfaces ?? [];
-  const operationsById = new Map(
-    interfaceCapabilities.map((operation) => [operation.interface_id, operation])
-  );
-  const selectedOperation = selectedOperationId
-    ? operationsById.get(selectedOperationId)
-    : undefined;
+  const capabilityPage = useFrontstageInterfaceCapabilities(workspaceId, {
+    path_query: pathQuery || undefined,
+    adapter_id: adapterId,
+    method,
+    offset,
+    limit: pageSize
+  });
+  const interfaceCapabilities = capabilityPage.data.items;
 
-  if (loading) {
-    return <Spin />;
-  }
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPathQuery(pathInput.trim());
+      setOffset(0);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [pathInput]);
 
-  if (error) {
-    return (
-      <Alert
-        type="error"
-        showIcon
-        message={i18nText('frontstage', 'auto.capability_catalog_load_failed')}
-      />
-    );
-  }
+  useEffect(() => {
+    if (
+      selectedOperationId &&
+      !interfaceCapabilities.some(
+        (operation) => operation.interface_id === selectedOperationId
+      )
+    ) {
+      setSelectedOperationId(undefined);
+    }
+  }, [interfaceCapabilities, selectedOperationId]);
 
-  if (interfaceCapabilities.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={i18nText('frontstage', 'auto.no_data_capabilities')}
-      />
-    );
-  }
-
-  const bindCapability = async (
-    operation: ConsoleFrontstageInterfaceCapability
-  ) => {
-    const alias = createUniqueBindingAlias(
-      operation.interface_id,
-      bindings.map((item) => item.alias)
-    );
-    setPendingBindingId(operation.interface_id);
+  const bindCapability = async (interfaceId: string) => {
+    setPendingBindingId(interfaceId);
     try {
+      const operation = await fetchFrontstageInterfaceCapability(
+        workspaceId,
+        interfaceId
+      );
+      const alias = createUniqueBindingAlias(
+        operation.interface_id,
+        bindings.map((item) => item.alias)
+      );
       const saved = await onSaveBlock(
         bindFrontstageInterfaceCapability(block, alias, operation)
       );
       if (saved !== false) {
-        onInsertCode(generateFrontstageInterfaceSource(operation, alias).source);
+        onInsertCode(
+          generateFrontstageInterfaceSource(operation, alias).source
+        );
         setSelectedOperationId(undefined);
         void message.success(
           i18nText('frontstage', 'auto.interface_bound_and_inserted')
         );
       }
+    } catch {
+      void message.error(
+        i18nText('frontstage', 'auto.capability_catalog_load_failed')
+      );
     } finally {
       setPendingBindingId(null);
     }
@@ -212,18 +216,19 @@ function InterfaceConnectorPanel({
             >
               <div className="frontstage-jsx-studio__binding-copy">
                 <Typography.Text code>{binding.binding.alias}</Typography.Text>
-                <Typography.Text type="secondary" ellipsis>
-                  {binding.operation
-                    ? `${binding.operation.method.toUpperCase()} ${binding.operation.path}`
-                    : binding.binding.operation_id}
-                </Typography.Text>
-                {binding.status !== 'current' ? (
+                {binding.operation ? (
+                  <Typography.Text type="secondary" ellipsis>
+                    {`${binding.operation.method.toUpperCase()} ${binding.operation.path}`}
+                  </Typography.Text>
+                ) : null}
+                {binding.status === 'stale' ? (
                   <Tag color="warning">{binding.status}</Tag>
                 ) : null}
               </div>
               <Space size={4}>
                 <Button
                   size="small"
+                  disabled={!binding.operation}
                   onClick={() =>
                     onInsertCode(createFrontstageJsxBindingSnippet(binding))
                   }
@@ -245,59 +250,117 @@ function InterfaceConnectorPanel({
       ) : null}
 
       <section className="frontstage-jsx-studio__resource-section">
-        <Typography.Text strong>
-          {i18nText('frontstage', 'auto.interfaces')}
-        </Typography.Text>
-        <Select
+        <Input
           allowClear
-          showSearch
-          aria-label={i18nText('frontstage', 'auto.interfaces')}
-          placeholder={i18nText('frontstage', 'auto.select_interface')}
-          value={selectedOperationId}
-          getPopupContainer={(triggerNode) => {
-            const resourceSection = triggerNode.closest(
-              '.frontstage-jsx-studio__resource-section'
-            );
-            return resourceSection instanceof HTMLElement
-              ? resourceSection
-              : triggerNode;
+          aria-label={i18nText('frontstage', 'auto.interface_path_search')}
+          placeholder={i18nText('frontstage', 'auto.interface_path_search')}
+          value={pathInput}
+          onChange={(event) => setPathInput(event.target.value)}
+        />
+        <Space.Compact block>
+          <Select
+            allowClear
+            aria-label={i18nText('frontstage', 'auto.interface_source')}
+            placeholder={i18nText('frontstage', 'auto.all_interface_sources')}
+            value={adapterId}
+            options={capabilityPage.data.adapter_ids.map((value) => ({
+              value,
+              label:
+                value === 'runtime_data_model'
+                  ? i18nText('frontstage', 'auto.data_models')
+                  : i18nText('frontstage', 'auto.console_api')
+            }))}
+            onChange={(value) => {
+              setAdapterId(value);
+              setOffset(0);
+            }}
+            style={{ width: '60%' }}
+          />
+          <Select
+            allowClear
+            aria-label={i18nText('frontstage', 'auto.method')}
+            placeholder={i18nText('frontstage', 'auto.all_methods')}
+            value={method}
+            options={capabilityPage.data.methods.map((value) => ({
+              value,
+              label: value
+            }))}
+            onChange={(value) => {
+              setMethod(value);
+              setOffset(0);
+            }}
+            style={{ width: '40%' }}
+          />
+        </Space.Compact>
+        {capabilityPage.error ? (
+          <Alert
+            type="error"
+            showIcon
+            message={i18nText(
+              'frontstage',
+              'auto.capability_catalog_load_failed'
+            )}
+          />
+        ) : null}
+        <Table<ConsoleFrontstageInterfaceCapabilitySummary>
+          rowKey="interface_id"
+          size="small"
+          loading={capabilityPage.loading}
+          dataSource={interfaceCapabilities}
+          columns={[
+            {
+              title: i18nText('frontstage', 'auto.method'),
+              dataIndex: 'method',
+              width: 82
+            },
+            {
+              title: i18nText('frontstage', 'auto.path'),
+              dataIndex: 'path',
+              ellipsis: true
+            }
+          ]}
+          locale={{
+            emptyText: i18nText('frontstage', 'auto.no_data_capabilities')
           }}
-          options={interfaceCapabilities.map((operation) => {
-            const isBound = bindings.some(
-              (binding) => binding.operation_id === operation.interface_id
-            );
-            return {
-              value: operation.interface_id,
-              label: `${operation.method.toUpperCase()} ${operation.path}`,
-              disabled: isBound || !operation.bindable
-            };
+          rowSelection={{
+            type: 'radio',
+            selectedRowKeys: selectedOperationId ? [selectedOperationId] : [],
+            getCheckboxProps: (operation) => ({
+              disabled: bindings.some(
+                (binding) => binding.operation_id === operation.interface_id
+              )
+            }),
+            onChange: (keys) =>
+              setSelectedOperationId(
+                keys[0] === undefined ? undefined : String(keys[0])
+              )
+          }}
+          onRow={(operation) => ({
+            onClick: () => {
+              if (
+                !bindings.some(
+                  (binding) => binding.operation_id === operation.interface_id
+                )
+              ) {
+                setSelectedOperationId(operation.interface_id);
+              }
+            }
           })}
-          filterOption={(input, option) => {
-            const operation = option?.value
-              ? operationsById.get(String(option.value))
-              : undefined;
-            if (!operation) return false;
-            return [
-              operation.name,
-              operation.interface_id,
-              operation.method,
-              operation.path,
-              operation.short_description
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLocaleLowerCase()
-              .includes(input.trim().toLocaleLowerCase());
+          pagination={{
+            current: Math.floor(offset / pageSize) + 1,
+            pageSize,
+            total: capabilityPage.data.total,
+            showSizeChanger: false,
+            size: 'small',
+            onChange: (page) => setOffset((page - 1) * pageSize)
           }}
-          onChange={(value) => setSelectedOperationId(value)}
-          style={{ width: '100%' }}
         />
         <Button
           type="primary"
-          disabled={!selectedOperation}
+          disabled={!selectedOperationId}
           loading={pendingBindingId === selectedOperationId}
           onClick={() => {
-            if (selectedOperation) void bindCapability(selectedOperation);
+            if (selectedOperationId) void bindCapability(selectedOperationId);
           }}
         >
           {i18nText('frontstage', 'auto.bind_and_insert')}

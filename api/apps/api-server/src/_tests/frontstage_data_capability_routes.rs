@@ -155,10 +155,33 @@ async fn dispatch(
     .await
 }
 
-async fn callable_catalog(app: &axum::Router, cookie: &str, workspace_id: &str) -> Value {
+async fn callable_catalog(
+    app: &axum::Router,
+    cookie: &str,
+    workspace_id: &str,
+    path_query: &str,
+) -> Value {
     let (status, payload) = get_json(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
+        &format!(
+            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_query={path_query}"
+        ),
+        cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    payload["data"]["items"].clone()
+}
+
+async fn callable_detail(
+    app: &axum::Router,
+    cookie: &str,
+    workspace_id: &str,
+    interface_id: &str,
+) -> Value {
+    let (status, payload) = get_json(
+        app,
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities/{interface_id}"),
         cookie,
     )
     .await;
@@ -202,7 +225,7 @@ async fn callable_catalog_exposes_runtime_model_crud_and_keeps_filter_string() {
     let app = test_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
-    let entries = callable_catalog(&app, &cookie, &workspace_id).await;
+    let entries = callable_catalog(&app, &cookie, &workspace_id, "application_conversations").await;
     let conversations = entries
         .as_array()
         .unwrap()
@@ -224,6 +247,13 @@ async fn callable_catalog_exposes_runtime_model_crud_and_keeps_filter_string() {
         .iter()
         .find(|entry| entry["path"].as_str().unwrap().ends_with("/list"))
         .unwrap();
+    let list = callable_detail(
+        &app,
+        &cookie,
+        &workspace_id,
+        list["interface_id"].as_str().unwrap(),
+    )
+    .await;
     assert_eq!(
         list["parameter_schema"]["properties"]["query"]["properties"]["filter"]["type"],
         json!("string")
@@ -272,13 +302,20 @@ async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
     let (page_id, tab_id) = create_page(&app, &cookie, &csrf, &workspace_id).await;
-    let entries = callable_catalog(&app, &cookie, &workspace_id).await;
+    let entries = callable_catalog(&app, &cookie, &workspace_id, "/api/console/frontstage").await;
     let page_tab = entries
         .as_array()
         .unwrap()
         .iter()
         .find(|entry| entry["interface_id"] == json!("get_frontstage_page_detail"))
         .expect("registered page-tab read callable");
+    let page_tab = callable_detail(
+        &app,
+        &cookie,
+        &workspace_id,
+        page_tab["interface_id"].as_str().unwrap(),
+    )
+    .await;
     assert_eq!(page_tab["adapter_id"], json!("console_openapi"));
     assert_eq!(page_tab["bindable"], json!(true));
     assert_eq!(
@@ -352,7 +389,7 @@ async fn callable_dispatch_fails_closed_for_registry_scope_and_schema_negatives(
     .await;
     assert_eq!(host_parameter, StatusCode::BAD_REQUEST);
 
-    let entries = callable_catalog(&app, &cookie, &workspace_id).await;
+    let entries = callable_catalog(&app, &cookie, &workspace_id, "application_conversations").await;
     let list_operation = entries
         .as_array()
         .unwrap()

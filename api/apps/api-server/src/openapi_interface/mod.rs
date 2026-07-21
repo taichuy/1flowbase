@@ -3,8 +3,9 @@ mod catalog;
 mod dispatcher;
 
 pub use capability_catalog::{
-    build_openapi_capability_catalog, operation_risk_level, OpenApiCapabilityCatalogEntry,
-    OpenApiCapabilitySource,
+    build_openapi_capability_catalog, get_openapi_capability, operation_risk_level,
+    query_openapi_capability_catalog, OpenApiCapabilityCatalogEntry, OpenApiCapabilityCatalogPage,
+    OpenApiCapabilityCatalogQuery, OpenApiCapabilityCatalogSummary, OpenApiCapabilitySource,
 };
 pub use catalog::{
     catalog_entry_from_operation, OpenApiInterfaceCatalogEntry, OpenApiParameterDescriptor,

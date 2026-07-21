@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
@@ -23,8 +23,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_interface::{
-        build_openapi_capability_catalog, DispatchArguments, DispatchError,
-        OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
+        get_openapi_capability, query_openapi_capability_catalog, DispatchArguments, DispatchError,
+        OpenApiCapabilityCatalogEntry, OpenApiCapabilityCatalogQuery, OpenApiCapabilitySource,
+        OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
     },
     response::ApiSuccess,
 };
@@ -33,6 +34,7 @@ const WRITE_GRANT_TTL: Duration = Duration::minutes(5);
 const WRITE_GRANT_LOCK_TTL: Duration = Duration::seconds(10);
 const WRITE_GRANT_CACHE_PREFIX: &str = "frontstage:callable-write-grant:";
 const WRITE_GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
+const INTERFACE_CAPABILITY_PAGE_SIZE: usize = 20;
 
 #[cfg(test)]
 const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
@@ -72,6 +74,37 @@ pub struct FrontstageInterfaceCapabilityResponse {
     pub authorization: String,
     pub bindable: bool,
     pub disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FrontstageInterfaceCapabilityQuery {
+    pub path_query: Option<String>,
+    pub adapter_id: Option<String>,
+    pub method: Option<String>,
+    #[param(minimum = 0)]
+    pub offset: Option<usize>,
+    #[param(minimum = 1, maximum = 20)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageInterfaceCapabilitySummaryResponse {
+    pub interface_id: String,
+    pub method: String,
+    pub path: String,
+    pub adapter_id: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageInterfaceCapabilityPageResponse {
+    pub items: Vec<FrontstageInterfaceCapabilitySummaryResponse>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
+    pub adapter_ids: Vec<String>,
+    pub methods: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -134,9 +167,12 @@ struct FrontstageCallableBlock {
 #[utoipa::path(
     get,
     path = "/api/console/frontstage/{workspace_id}/interface-capabilities",
-    params(("workspace_id" = String, Path, description = "Workspace id")),
+    params(
+        FrontstageInterfaceCapabilityQuery,
+        ("workspace_id" = String, Path, description = "Workspace id")
+    ),
     responses(
-        (status = 200, body = [FrontstageInterfaceCapabilityResponse]),
+        (status = 200, body = FrontstageInterfaceCapabilityPageResponse),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody)
     )
@@ -144,8 +180,9 @@ struct FrontstageCallableBlock {
 pub async fn list_frontstage_interface_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    Query(query): Query<FrontstageInterfaceCapabilityQuery>,
     Path(workspace_id): Path<String>,
-) -> Result<Json<ApiSuccess<Vec<FrontstageInterfaceCapabilityResponse>>>, ApiError> {
+) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     let actor = state
@@ -155,12 +192,80 @@ pub async fn list_frontstage_interface_capabilities(
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
     }
-    let entries = registered_callables(&state, workspace_id)
+    let page = query_openapi_capability_catalog(
+        &state,
+        workspace_id,
+        OpenApiCapabilityCatalogQuery {
+            path_query: query.path_query,
+            adapter_id: query.adapter_id,
+            method: query.method,
+            offset: query.offset.unwrap_or(0),
+            limit: query
+                .limit
+                .unwrap_or(INTERFACE_CAPABILITY_PAGE_SIZE)
+                .clamp(1, INTERFACE_CAPABILITY_PAGE_SIZE),
+        },
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(
+        FrontstageInterfaceCapabilityPageResponse {
+            items: page
+                .items
+                .into_iter()
+                .map(|entry| FrontstageInterfaceCapabilitySummaryResponse {
+                    interface_id: entry.interface_id,
+                    method: entry.method,
+                    path: entry.path,
+                    adapter_id: entry.source.adapter_id().to_string(),
+                })
+                .collect(),
+            total: page.total,
+            offset: page.offset,
+            limit: page.limit,
+            has_more: page.has_more,
+            next_offset: page.next_offset,
+            adapter_ids: page.adapter_ids,
+            methods: page.methods,
+        },
+    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/interface-capabilities/{interface_id}",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace id"),
+        ("interface_id" = String, Path, description = "Interface capability id")
+    ),
+    responses(
+        (status = 200, body = FrontstageInterfaceCapabilityResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_frontstage_interface_capability(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, interface_id)): Path<(String, String)>,
+) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
+    let actor = state
+        .store
+        .load_actor_context_for_workspace(context.user.id, workspace_id)
+        .await?;
+    if !actor.has_permission("frontstage.page.design") {
+        return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
+    }
+    let entry = get_openapi_capability(&state, workspace_id, &interface_id)
         .await?
-        .into_iter()
-        .map(to_response)
-        .collect();
-    Ok(Json(ApiSuccess::new(entries)))
+        .ok_or(ControlPlaneError::NotFound(
+            "frontstage_interface_capability",
+        ))?;
+    Ok(Json(ApiSuccess::new(to_response(registered_callable(
+        entry,
+    )))))
 }
 
 #[utoipa::path(
@@ -361,10 +466,9 @@ async fn resolve_bound_callable(
 ) -> Result<RegisteredCallable, ApiError> {
     let binding =
         resolve_document_binding(document_payload, block_id, binding_alias, schema_digest)?;
-    let callable = registered_callables(state, workspace_id)
+    let callable = get_openapi_capability(state, workspace_id, &binding.operation_id)
         .await?
-        .into_iter()
-        .find(|entry| entry.interface.operation_id == binding.operation_id)
+        .map(registered_callable)
         .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
     let catalog = to_response(callable.clone());
     if !catalog.bindable
@@ -474,38 +578,26 @@ fn grant_token_digest(grant_token: &str) -> String {
     format!("{:x}", Sha256::digest(grant_token.as_bytes()))
 }
 
-async fn registered_callables(
-    state: &ApiState,
-    workspace_id: Uuid,
-) -> Result<Vec<RegisteredCallable>, ApiError> {
-    Ok(build_openapi_capability_catalog(state, workspace_id)
-        .await?
-        .into_iter()
-        .filter(|entry| entry.bindable)
-        .map(|entry| {
-            let host_injected_parameters = match entry.source {
-                OpenApiCapabilitySource::StaticApiDocs => {
-                    host_injected_parameters(&entry.interface)
-                }
-                OpenApiCapabilitySource::RuntimeDataModelCrud => Vec::new(),
-            };
-            RegisteredCallable {
-                interface: entry.interface,
-                source: entry.source,
-                bindable: entry.bindable,
-                disabled_reason: entry.disabled_reason,
-                host_injected_parameters,
-                scope: "frontstage_page_tab",
-                authorization: match entry.source {
-                    OpenApiCapabilitySource::StaticApiDocs => "target_api_route_policy",
-                    OpenApiCapabilitySource::RuntimeDataModelCrud => {
-                        "runtime_scope_grant_and_page_tab_access"
-                    }
-                },
-                risk_level: entry.risk_level,
+fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallable {
+    let host_injected_parameters = match entry.source {
+        OpenApiCapabilitySource::StaticApiDocs => host_injected_parameters(&entry.interface),
+        OpenApiCapabilitySource::RuntimeDataModelCrud => Vec::new(),
+    };
+    RegisteredCallable {
+        interface: entry.interface,
+        source: entry.source,
+        bindable: entry.bindable,
+        disabled_reason: entry.disabled_reason,
+        host_injected_parameters,
+        scope: "frontstage_page_tab",
+        authorization: match entry.source {
+            OpenApiCapabilitySource::StaticApiDocs => "target_api_route_policy",
+            OpenApiCapabilitySource::RuntimeDataModelCrud => {
+                "runtime_scope_grant_and_page_tab_access"
             }
-        })
-        .collect())
+        },
+        risk_level: entry.risk_level,
+    }
 }
 
 fn to_response(mut entry: RegisteredCallable) -> FrontstageInterfaceCapabilityResponse {
