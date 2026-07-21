@@ -22,6 +22,7 @@ use control_plane::resource_action::{
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -123,6 +124,7 @@ pub struct FrontstageBlockCodeResponse {
     pub page_id: String,
     pub code_ref: String,
     pub code: String,
+    pub source_sha256: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1062,10 +1064,12 @@ fn to_page_detail_response(
 fn to_block_code_response(
     code: domain::frontstage::FrontstageBlockCodeRecord,
 ) -> FrontstageBlockCodeResponse {
+    let source_sha256 = format!("{:x}", Sha256::digest(code.code.as_bytes()));
     FrontstageBlockCodeResponse {
         page_id: code.page_id.to_string(),
         code_ref: code.code_ref,
         code: code.code,
+        source_sha256,
     }
 }
 

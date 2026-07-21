@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  createCompiledBlockRuntimeFingerprint,
   JS_BLOCK_ALLOWED_IMPORTS,
   validateJsBlockSource,
   type JsBlockRunRequest,
@@ -11,6 +12,7 @@ import {
 import { attachFrontstageRestrictedBlockWorkerRuntime } from '../../lib/restricted-block-worker-runtime';
 import {
   createFrontstageRestrictedBlockWorkerFactory,
+  getFrontstageRestrictedBlockRuntimeFingerprint,
   getFrontstageRestrictedBlockWorkerOptions,
   getFrontstageRestrictedBlockWorkerUrl
 } from '../../lib/restricted-block-worker-factory';
@@ -89,7 +91,7 @@ function createRunRequest(
   return {
     requestId: 'restricted-block:block-1:code-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: {},
     state: {},
     contextSnapshot: {
@@ -238,6 +240,11 @@ describe('FrontStage restricted block worker factory', () => {
       type: 'module',
       name: 'frontstage-restricted-block-runtime'
     });
+    expect(getFrontstageRestrictedBlockRuntimeFingerprint()).toBe(
+      createCompiledBlockRuntimeFingerprint(
+        getFrontstageRestrictedBlockWorkerUrl()
+      )
+    );
   });
 
   test('supports injected Worker constructors and URLs', () => {

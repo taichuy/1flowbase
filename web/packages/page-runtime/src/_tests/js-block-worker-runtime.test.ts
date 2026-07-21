@@ -28,7 +28,7 @@ function createRunRequest(
   return {
     requestId: 'request-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: { label: 'Ready' },
     state: { count: 1 },
     contextSnapshot: {
@@ -109,7 +109,7 @@ describe('JS block worker runtime protocol state machine', () => {
     const state = run(
       createJsBlockRuntimeSession(),
       createRunRequest({
-        source: 'window.location.href;'
+        program: { kind: 'source', source: 'window.location.href;' }
       })
     );
 
@@ -135,7 +135,7 @@ describe('JS block worker runtime protocol state machine', () => {
     const state = run(
       createJsBlockRuntimeSession(),
       createRunRequest({
-        source: `
+        program: { kind: 'source', source: `
 import type { BlockModule, BlockResult } from '@1flowbase/block-sdk';
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
@@ -144,18 +144,17 @@ async function main(): Promise<BlockResult> {
 }
 
 export default { main } satisfies BlockModule;
-`,
-        allowedImports: [
+`, allowedImports: [
           '@1flowbase/block-sdk',
           '@1flowbase/block-renderer/antd-facade'
-        ]
+        ] }
       })
     );
 
     expect(state.requests['request-1']).toMatchObject({
       status: 'pending',
       phase: 'queued',
-      compiledSource: { ok: true }
+      request: { program: { kind: 'source' } }
     });
   });
 
@@ -163,13 +162,13 @@ export default { main } satisfies BlockModule;
     const state = run(
       createJsBlockRuntimeSession(),
       createRunRequest({
-        source: `
+        program: { kind: 'source', source: `
 const block = {
   async main() {
     return { view: { primitive: 'Text' }, outputs: {} };
   }
 };
-`
+` }
       })
     );
 
@@ -196,7 +195,7 @@ const block = {
     const failed = run(
       createJsBlockRuntimeSession(),
       createRunRequest({
-        source: 'window.location.href;'
+        program: { kind: 'source', source: 'window.location.href;' }
       })
     );
     const failureResult = failed.requests['request-1']?.result;

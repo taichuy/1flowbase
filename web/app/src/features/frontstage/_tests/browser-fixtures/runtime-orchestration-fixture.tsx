@@ -1,7 +1,8 @@
 import '@ant-design/v5-patch-for-react-19';
 import { ConfigProvider } from 'antd';
-import { StrictMode, useCallback, useMemo, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import { PageCanvas } from '../../components/PageCanvas';
 import {
@@ -16,6 +17,17 @@ import type {
 } from '../../lib/page-canvas/runtime-run-plan';
 import { useFrontstagePageCanvasRuntimeSessions } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
+import {
+  frontstageCompiledArtifactCache,
+  createIndexedDbArtifactCacheStore
+} from '../../lib/runtime-cache';
+import { clearFrontstageRuntimeSessionCache } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
+import {
+  readFrontstageRuntimeObservations,
+  recordFrontstageRuntimeObservation,
+  resetFrontstageRuntimeObservations
+} from '../../lib/page-canvas/runtime-observation';
+import { getFrontstageRestrictedBlockRuntimeFingerprint } from '../../lib/restricted-block-worker-factory';
 
 const params = new URLSearchParams(window.location.search);
 const blockCount = Math.min(
@@ -86,23 +98,28 @@ export default { main } satisfies BlockModule;`;
     runtimeEntry: 'restricted-block-runtime.worker',
     contributionCode: 'qa.runtime-orchestration',
     sourceStatus: 'ready',
+    source_sha256: sha256Text(source),
     catalogId: 'qa:runtime-orchestration',
     runPlan: {
       ok: true,
       request: {
         requestId: `qa:${blockId}:${codeRef}`,
         blockId,
-        source,
+        program: {
+          kind: 'source',
+          source,
+          sourceSha256: sha256Text(source),
+          allowedImports: [
+            '@1flowbase/block-sdk',
+            '@1flowbase/block-renderer/antd-facade'
+          ]
+        },
         props: { blockId },
         state: {},
         contextSnapshot: {
           page: { id: 'runtime-fixture', route: '/runtime-fixture' }
         },
-        limits: { timeoutMs: 3000, maxRenderDepth: 8, maxRenderNodes: 250 },
-        allowedImports: [
-          '@1flowbase/block-sdk',
-          '@1flowbase/block-renderer/antd-facade'
-        ]
+        limits: { timeoutMs: 3000, maxRenderDepth: 8, maxRenderNodes: 250 }
       },
       schemaValidationOptions: {
         maxDepth: 8,
@@ -119,17 +136,109 @@ export default { main } satisfies BlockModule;`;
   };
 }
 
+function withSourceIdentityVariant(
+  item: FrontstagePageCanvasRuntimeRunPlanReadyItem,
+  variant: 'a' | 'b'
+): FrontstagePageCanvasRuntimeRunPlanReadyItem {
+  if (variant === 'a' || item.runPlan.request.program.kind !== 'source') {
+    return item;
+  }
+  const source = `${item.runPlan.request.program.source}\n// runtime-fixture-identity-b`;
+  return {
+    ...item,
+    source_sha256: sha256Text(source),
+    runPlan: {
+      ...item.runPlan,
+      request: {
+        ...item.runPlan.request,
+        program: {
+          ...item.runPlan.request.program,
+          source,
+          sourceSha256: sha256Text(source)
+        }
+      }
+    }
+  };
+}
+
 function RuntimeOrchestrationFixture() {
-  const items = useMemo(
+  const sourceItems = useMemo(
     () =>
       Array.from({ length: blockCount }, (_, index) =>
         createRunPlanItem(index)
       ),
     []
   );
+  const [items, setItems] = useState(sourceItems);
+  const [sourceIdentity, setSourceIdentity] = useState<'a' | 'b'>('a');
+  const didRecordSourceFetchRef = useRef(false);
+  const [lookupStatus, setLookupStatus] = useState<'ready' | 'pending'>(() =>
+    sessionStorage.getItem('runtime-fixture-mode') === 'l2' ? 'pending' : 'ready'
+  );
+  const [storageScan, setStorageScan] = useState<'idle' | 'clean' | 'canary'>('idle');
+  useEffect(() => {
+    if (didRecordSourceFetchRef.current) return;
+    didRecordSourceFetchRef.current = true;
+    for (const item of sourceItems) {
+      recordFrontstageRuntimeObservation({
+        stage: 'source_fetch',
+        cacheTier: 'network',
+        actorId: 'qa-actor',
+        workspaceId: 'qa',
+        pageId: 'runtime-fixture',
+        tabId: null,
+        blockId: item.blockId
+      });
+    }
+  }, [sourceItems]);
+  useEffect(() => {
+    if (lookupStatus !== 'pending') return;
+    let active = true;
+    void Promise.all(
+      sourceItems.map(async (item) => {
+        const lookup = await frontstageCompiledArtifactCache.get({
+          actorId: 'qa-actor',
+          workspaceId: 'qa',
+          runtimeFingerprint: getFrontstageRestrictedBlockRuntimeFingerprint(),
+          sourceSha256: item.source_sha256
+        });
+        return lookup.status === 'hit'
+          ? {
+              ...item,
+              runPlan: {
+                ...item.runPlan,
+                request: {
+                  ...item.runPlan.request,
+                  program: {
+                    kind: 'compiled_artifact' as const,
+                    artifact: lookup.artifact,
+                    sourceSha256: item.source_sha256,
+                    fallback: item.runPlan.request.program.kind === 'source'
+                      ? item.runPlan.request.program
+                      : item.runPlan.request.program.fallback
+                  }
+                }
+              }
+            }
+          : item;
+      })
+    ).then((nextItems) => {
+      if (!active) return;
+      sessionStorage.removeItem('runtime-fixture-mode');
+      setItems(nextItems);
+      setLookupStatus('ready');
+    });
+    return () => {
+      active = false;
+    };
+  }, [lookupStatus, sourceItems]);
   const runtimeRunPlanState = useMemo<FrontstagePageCanvasRuntimeRunPlanState>(
-    () => ({ workspaceId: 'qa', pageId: 'runtime-fixture', items }),
-    [items]
+    () => ({
+      workspaceId: 'qa',
+      pageId: 'runtime-fixture',
+      items: lookupStatus === 'pending' ? [] : items
+    }),
+    [items, lookupStatus]
   );
   const content = useMemo(
     () =>
@@ -141,7 +250,7 @@ function RuntimeOrchestrationFixture() {
         root: {
           uid: 'runtime-fixture-root',
           payload: {
-            blocks: items.map((item, index) => ({
+            blocks: sourceItems.map((item, index) => ({
               id: item.blockId,
               renderer_version: 'v1',
               codeRef: item.codeRef,
@@ -152,7 +261,7 @@ function RuntimeOrchestrationFixture() {
           }
         }
       }),
-    [items]
+    [sourceItems]
   );
   const [demands, setDemands] = useState<
     Record<string, FrontstageRuntimeDemandPriority>
@@ -160,6 +269,18 @@ function RuntimeOrchestrationFixture() {
   const [stats, setStats] = useState({ created: 0, active: 0, maxActive: 0 });
   const activeLeases = useRef(
     new Set<FrontstageRestrictedBlockRuntimeSession>()
+  );
+  const pendingArtifactWrites = useRef(new Set<Promise<unknown>>());
+  const artifactCache = useMemo(
+    () => ({
+      put(...args: Parameters<typeof frontstageCompiledArtifactCache.put>) {
+        const pending = frontstageCompiledArtifactCache.put(...args);
+        pendingArtifactWrites.current.add(pending);
+        void pending.finally(() => pendingArtifactWrites.current.delete(pending));
+        return pending;
+      }
+    }),
+    []
   );
 
   const runtimeSessionFactory = useCallback(
@@ -202,8 +323,11 @@ function RuntimeOrchestrationFixture() {
   );
 
   const sessions = useFrontstagePageCanvasRuntimeSessions({
+    actorId: 'qa-actor',
+    actorWorkspaceId: 'qa',
     runtimeRunPlanState,
     runtimeSessionFactory,
+    artifactCache,
     demandsByBlockId: demands,
     maxConcurrent: 2,
     handlers: {
@@ -212,7 +336,21 @@ function RuntimeOrchestrationFixture() {
         message.requestId === 'qa:runtime-fixture-1:runtime-fixture-1-code'
           ? new Promise(() => {})
           : new Promise((resolve) =>
-              setTimeout(() => resolve({ ok: true }), 180)
+            setTimeout(
+              () =>
+                resolve({
+                  ok: true,
+                  sequence: Date.now(),
+                  token: 'runtime-secret-canary',
+                  headers: { authorization: 'runtime-secret-canary' },
+                  response: 'runtime-secret-canary',
+                  result: 'runtime-secret-canary',
+                  log: 'runtime-secret-canary',
+                  effect: 'runtime-secret-canary',
+                  interface: 'runtime-secret-canary'
+                }),
+              180
+            )
             )
     }
   });
@@ -230,6 +368,50 @@ function RuntimeOrchestrationFixture() {
       ? [entry.snapshot.error.kind]
       : []
   );
+  const observationStages = readFrontstageRuntimeObservations().map(
+    (entry) => `${entry.stage}:${entry.cacheTier}:${entry.count}`
+  );
+  const apiSequences = sessions.entries.flatMap((entry) => {
+    if (!('snapshot' in entry) || entry.snapshot.status !== 'ready') return [];
+    const response = entry.snapshot.outputs?.response;
+    if (!response || typeof response !== 'object') return [];
+    const sequence = (response as { sequence?: unknown }).sequence;
+    return typeof sequence === 'number' ? [sequence] : [];
+  });
+
+  const changeSourceIdentity = (variant: 'a' | 'b') => {
+    resetFrontstageRuntimeObservations();
+    setSourceIdentity(variant);
+    setItems(
+      variant === 'a'
+        ? sourceItems
+        : sourceItems.map((item, index) =>
+            index === 0 ? withSourceIdentityVariant(item, variant) : item
+          )
+    );
+  };
+
+  const reload = async (mode: 'cold' | 'l2') => {
+    await Promise.allSettled([...pendingArtifactWrites.current]);
+    clearFrontstageRuntimeSessionCache();
+    resetFrontstageRuntimeObservations();
+    if (mode === 'cold') {
+      await frontstageCompiledArtifactCache.deleteActor('qa-actor');
+      sessionStorage.removeItem('runtime-fixture-mode');
+    } else {
+      sessionStorage.setItem('runtime-fixture-mode', 'l2');
+    }
+    window.location.reload();
+  };
+
+  const scanStorage = async () => {
+    const records = await createIndexedDbArtifactCacheStore().list();
+    setStorageScan(
+      JSON.stringify(records).includes('runtime-secret-canary')
+        ? 'canary'
+        : 'clean'
+    );
+  };
 
   return (
     <div style={{ padding: 16 }}>
@@ -241,6 +423,18 @@ function RuntimeOrchestrationFixture() {
         data-ready={ready}
         data-failed={failed}
         data-error-kinds={errorKinds.join(',')}
+        data-lookup-status={lookupStatus}
+        data-observation-stages={observationStages.join(',')}
+        data-source-identity={sourceIdentity}
+        data-api-sequences={apiSequences.join(',')}
+        data-storage-scan={storageScan}
+        data-ready-signal={
+          lookupStatus === 'ready' &&
+          ready + failed === blockCount &&
+          stats.active === 0
+            ? 'settled'
+            : 'pending'
+        }
         style={{
           position: 'sticky',
           top: 0,
@@ -251,6 +445,27 @@ function RuntimeOrchestrationFixture() {
       >
         created={stats.created} active={stats.active} max={stats.maxActive}{' '}
         ready={ready} failed={failed}
+        <button data-testid="runtime-fixture-cold" onClick={() => void reload('cold')}>
+          Cold run
+        </button>
+        <button data-testid="runtime-fixture-l2" onClick={() => void reload('l2')}>
+          L2 reload
+        </button>
+        <button data-testid="runtime-fixture-storage-scan" onClick={() => void scanStorage()}>
+          Scan storage
+        </button>
+        <button
+          data-testid="runtime-fixture-identity-b"
+          onClick={() => changeSourceIdentity('b')}
+        >
+          Identity B
+        </button>
+        <button
+          data-testid="runtime-fixture-identity-a"
+          onClick={() => changeSourceIdentity('a')}
+        >
+          Identity A
+        </button>
       </div>
       <PageCanvas
         content={content}

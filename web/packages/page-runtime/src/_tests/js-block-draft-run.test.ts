@@ -11,7 +11,7 @@ import type { BlockContext } from '@1flowbase/page-protocol';
 const request = {
   requestId: 'run-1',
   blockId: 'block-1',
-  source: 'export default { main };',
+  program: { kind: 'source' as const, source: 'export default { main };' },
   inputs: {},
   props: {},
   state: {},

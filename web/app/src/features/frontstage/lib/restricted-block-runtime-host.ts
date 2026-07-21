@@ -1,6 +1,7 @@
 import type { BlockUiSchemaValidationOptions } from '@1flowbase/page-protocol';
 import {
   createJsBlockWorkerHost,
+  type CompiledBlockArtifact,
   type BlockContextMediatorState,
   type JsBlockHostEffectHandlers,
   type JsBlockInterfaceCallTrace,
@@ -39,6 +40,7 @@ export interface RestrictedBlockRuntimeHostSnapshot {
   rejections: JsBlockRuntimeRejection[];
   mediatorState?: BlockContextMediatorState;
   interfaceCalls?: JsBlockInterfaceCallTrace[];
+  compiledArtifact?: CompiledBlockArtifact;
 }
 
 export interface RestrictedBlockRuntimeHostOptions {
@@ -47,6 +49,7 @@ export interface RestrictedBlockRuntimeHostOptions {
   handlers?: JsBlockHostEffectHandlers;
   scheduleTimeout?: JsBlockWorkerScheduleTimeout;
   clearScheduledTimeout?: JsBlockWorkerClearTimeout;
+  runtimeFingerprint?: string;
 }
 
 export interface RestrictedBlockRuntimeHost {
@@ -65,6 +68,7 @@ export function createRestrictedBlockRuntimeHost(
     workerFactory: options.workerFactory,
     scheduleTimeout: options.scheduleTimeout,
     clearScheduledTimeout: options.clearScheduledTimeout,
+    runtimeFingerprint: options.runtimeFingerprint,
     effectBridge: {
       policy: runPlan.mediatorPolicy,
       handlers: options.handlers,
@@ -100,7 +104,10 @@ export function createRestrictedBlockRuntimeHost(
       effects: cloneSnapshotValue(requestState?.effects ?? []),
       rejections: cloneSnapshotValue(state.rejections),
       mediatorState: cloneSnapshotValue(workerHost.getEffectMediatorState()),
-      interfaceCalls: cloneSnapshotValue(interfaceCalls)
+      interfaceCalls: cloneSnapshotValue(interfaceCalls),
+      ...(requestState?.compiledArtifact
+        ? { compiledArtifact: cloneSnapshotValue(requestState.compiledArtifact) }
+        : {})
     };
   };
 

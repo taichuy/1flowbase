@@ -73,13 +73,17 @@ describe('PageCanvas runtime preview UI', () => {
           runtimeEntry: 'blocks/ready.js',
           contributionCode: 'official.ready',
           sourceStatus: 'ready',
+          source_sha256: 'ready-source-sha256',
           catalogId: 'official:ready',
           runPlan: {
             ok: true,
             request: {
               requestId: 'restricted-block:ready:ready-code',
               blockId: 'ready',
-              source: 'export default {}',
+              program: {
+                kind: 'source',
+                source: 'export default {}'
+              },
               props: {},
               state: {},
               contextSnapshot: {},
@@ -184,6 +188,7 @@ describe('PageCanvas runtime preview UI', () => {
           runtimeEntry: 'blocks/factory-failed.js',
           contributionCode: 'official.factory-failed',
           sourceStatus: 'ready',
+          source_sha256: 'factory-failed-source-sha256',
           catalogId: 'official:factory-failed',
           runPlan: {
             ok: true,

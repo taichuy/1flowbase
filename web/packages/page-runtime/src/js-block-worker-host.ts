@@ -17,6 +17,13 @@ import {
   type JsBlockWorkerEffectResultMessage,
   type JsBlockWorkerRuntimeMessage
 } from './js-block-worker-runtime';
+import {
+  createCompiledBlockRuntimeFingerprint
+} from './js-block-runtime/compiled-artifact';
+import {
+  prepareJsBlockProgram,
+  repairJsBlockProgram
+} from './js-block-runtime/program';
 
 export interface JsBlockWorkerLike {
   onmessage?: ((event: { data: unknown }) => void) | null;
@@ -42,6 +49,7 @@ export interface JsBlockWorkerHostOptions {
   scheduleTimeout?: JsBlockWorkerScheduleTimeout;
   clearScheduledTimeout?: JsBlockWorkerClearTimeout;
   effectBridge?: JsBlockWorkerHostEffectBridgeOptions;
+  runtimeFingerprint?: string;
 }
 
 export interface JsBlockWorkerHostEffectBridgeOptions {
@@ -78,6 +86,12 @@ export function createJsBlockWorkerHost(
   let didTerminate = false;
   let didDispose = false;
   let effectBridge: JsBlockHostEffectBridge | undefined;
+  const runtimeFingerprint =
+    options.runtimeFingerprint ??
+    createCompiledBlockRuntimeFingerprint('page-runtime/default-worker');
+  const requestCompiled = new Map<string, boolean>();
+  const recoverableRequests = new Map<string, JsBlockRunRequest>();
+  const recoveredRequests = new Set<string>();
 
   const clearRequestTimeout = (requestId: string) => {
     const handle = timeoutHandles.get(requestId);
@@ -231,7 +245,7 @@ export function createJsBlockWorkerHost(
       direction: 'worker_to_host',
       type: 'phase',
       requestId: request.requestId,
-      phase: 'compiling'
+      phase: requestCompiled.get(request.requestId) ? 'compiling' : 'executing'
     });
     scheduleRequestTimeout(request);
     worker.postMessage({ direction: 'host_to_worker', type: 'run', request });
@@ -246,6 +260,37 @@ export function createJsBlockWorkerHost(
   worker.onmessage = (event) => {
     if (didDispose) {
       return;
+    }
+
+    if (
+      isArtifactCorruptMessage(event.data) &&
+      !recoveredRequests.has(event.data.requestId)
+    ) {
+      const recoverable = recoverableRequests.get(event.data.requestId);
+      if (recoverable) {
+        recoveredRequests.add(event.data.requestId);
+        const repaired = repairJsBlockProgram(recoverable, runtimeFingerprint);
+        if (repaired.ok) {
+          recoverableRequests.set(event.data.requestId, repaired.request);
+          state = reduceJsBlockRuntimeSession(state, {
+            direction: 'host_to_worker',
+            type: 'run',
+            request: repaired.request
+          });
+          applyMessage({
+            direction: 'worker_to_host',
+            type: 'phase',
+            requestId: event.data.requestId,
+            phase: 'compiling'
+          });
+          worker.postMessage({
+            direction: 'host_to_worker',
+            type: 'run',
+            request: repaired.request
+          });
+          return;
+        }
+      }
     }
 
     const rejectionCount = state.rejections.length;
@@ -317,10 +362,14 @@ export function createJsBlockWorkerHost(
         return state;
       }
 
+      const prepared = prepareJsBlockProgram(request, runtimeFingerprint);
+      const runtimeRequest = prepared.ok
+        ? prepared.request
+        : { ...request, program: prepared.fallback };
       const message = {
         direction: 'host_to_worker',
         type: 'run',
-        request
+        request: runtimeRequest
       } as const;
       state = reduceJsBlockRuntimeSession(state, message);
 
@@ -328,20 +377,24 @@ export function createJsBlockWorkerHost(
       if (requestState?.status !== 'pending') {
         return state;
       }
+      requestCompiled.set(request.requestId, prepared.ok && prepared.compiled);
+      recoverableRequests.set(request.requestId, runtimeRequest);
 
       if (state.workerStatus === 'ready') {
         applyMessage({
           direction: 'worker_to_host',
           type: 'phase',
           requestId: request.requestId,
-          phase: 'compiling'
+          phase: requestCompiled.get(request.requestId)
+            ? 'compiling'
+            : 'executing'
         });
         scheduleRequestTimeout(request);
         worker.postMessage(message);
         return state;
       }
 
-      queuedRequest = request;
+      queuedRequest = runtimeRequest;
       scheduleStartupTimeout();
       if (state.workerStatus === 'idle') {
         const initMessage = {
@@ -387,6 +440,24 @@ export function createJsBlockWorkerHost(
       return state;
     }
   };
+}
+
+function isArtifactCorruptMessage(
+  value: unknown
+): value is {
+  direction: 'worker_to_host';
+  type: 'error';
+  requestId: string;
+  kind: 'artifact_corrupt';
+} {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { direction?: unknown }).direction === 'worker_to_host' &&
+    (value as { type?: unknown }).type === 'error' &&
+    (value as { kind?: unknown }).kind === 'artifact_corrupt' &&
+    typeof (value as { requestId?: unknown }).requestId === 'string'
+  );
 }
 
 function defaultScheduleTimeout(

@@ -22,7 +22,8 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
+  clearFrontstageRuntimeSessionCache: vi.fn()
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
@@ -250,7 +251,8 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
     blockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero-code',
-      code: 'export default { render() {} }'
+      code: 'export default { render() {} }',
+      source_sha256: 'hero-source-sha256'
     });
   });
 

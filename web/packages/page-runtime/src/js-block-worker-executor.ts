@@ -16,6 +16,10 @@ import {
   mapJsBlockRuntimeSourceLocation,
   type JsBlockInjectedModuleMap
 } from './js-block-source-evaluator';
+import {
+  canonicalizeCompiledBlockArtifact,
+  compiledBlockArtifactToTransform
+} from './js-block-runtime/compiled-artifact';
 import type {
   JsBlockHostToWorkerMessage,
   JsBlockRunError,
@@ -216,14 +220,44 @@ async function runRequest(
   createEffectId: (requestId: string) => string,
   pendingEffects: Map<string, PendingEffect>
 ): Promise<void> {
+  const program = request.program;
+  const artifact =
+    program.kind === 'compiled_artifact'
+      ? canonicalizeCompiledBlockArtifact(program.artifact)
+      : null;
+  if (program.kind === 'compiled_artifact' && !artifact) {
+    postError(request, artifactCorruptError('Compiled block artifact shape is invalid.'), postMessage);
+    return;
+  }
+
+  postMessage({
+    direction: 'worker_to_host',
+    type: 'phase',
+    requestId: request.requestId,
+    phase: program.kind === 'source' ? 'compiling' : 'executing'
+  });
   const evaluation = evaluateJsBlockSource({
-    source: request.source,
-    modules: selectRequestModules(modules, request.allowedImports),
+    source:
+      program.kind === 'source'
+        ? program.source
+        : compiledBlockArtifactToTransform(artifact!),
+    modules: selectRequestModules(
+      modules,
+      program.kind === 'source'
+        ? program.allowedImports
+        : artifact!.manifest.allowedImports
+    ),
     console: createWorkerConsole(request.requestId, postMessage)
   });
 
   if (!evaluation.ok) {
-    postError(request, compileError(evaluation.error), postMessage);
+    postError(
+      request,
+      program.kind === 'compiled_artifact'
+        ? artifactCorruptError(evaluation.error.message)
+        : compileError(evaluation.error),
+      postMessage
+    );
     return;
   }
 
@@ -275,6 +309,14 @@ async function runRequest(
     view: blockResult.view,
     outputs: blockResult.outputs
   });
+}
+
+function artifactCorruptError(message: string): JsBlockRunError {
+  return {
+    kind: 'artifact_corrupt',
+    message,
+    errors: [{ code: 'transform_failed', path: 'program.artifact', message }]
+  };
 }
 
 function createWorkerConsole(

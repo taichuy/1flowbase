@@ -60,6 +60,7 @@ export interface ConsoleFrontstageBlockCode {
   page_id: string;
   code_ref: string;
   code: string;
+  source_sha256: string;
 }
 
 export interface CreateFrontstagePageNodeInput {

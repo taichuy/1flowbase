@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { sha256Text, type CompiledBlockArtifact } from '@1flowbase/page-runtime';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type {
@@ -97,11 +98,17 @@ function createSourceState(
 function createReadySource({
   block = createBlock(),
   code = 'export default { render() {} }',
+  source_sha256 = sha256Text(code),
+  artifactLookupStatus,
+  compiledArtifact,
   sourceIndex = 0,
   slotIndex = 0
 }: {
   block?: FrontstageBlockInstance;
   code?: string;
+  source_sha256?: string;
+  artifactLookupStatus?: 'pending' | 'hit' | 'miss' | 'unavailable';
+  compiledArtifact?: CompiledBlockArtifact;
   sourceIndex?: number;
   slotIndex?: number;
 } = {}): FrontstagePageCanvasRuntimeSource {
@@ -111,6 +118,9 @@ function createReadySource({
     ...createSourceBase(block, sourceIndex, slotIndex),
     status: 'ready',
     code,
+    source_sha256,
+    ...(artifactLookupStatus ? { artifactLookupStatus } : {}),
+    ...(compiledArtifact ? { compiledArtifact } : {}),
     block,
     request: {
       requestId: [
@@ -217,6 +227,63 @@ function createSourceBase(
 }
 
 describe('frontstage page canvas runtime run plan model', () => {
+  test('AC-023 blocks cold planning while artifact lookup is pending and passes a hit into the run program', () => {
+    const authoritativeSha = 'a'.repeat(64);
+    const compiledArtifact = {
+      format: '1flowbase/js-block-compiled-artifact',
+      version: 1,
+      runtimeFingerprint: 'runtime-a',
+      sourceSha256: authoritativeSha,
+      program: {
+        injectedModules: [],
+        importBindings: [],
+        executableBody: 'return { main: async () => ({ view: {}, outputs: {} }) };',
+        executablePreambleLines: 0,
+        moduleMapIdentifier: '__modules',
+        defaultExportIdentifier: '__default'
+      },
+      manifest: { allowedImports: [] }
+    } satisfies CompiledBlockArtifact;
+    const createState = (
+      source: FrontstagePageCanvasRuntimeSource
+    ) =>
+      createFrontstagePageCanvasRuntimeRunPlanState({
+        sourceState: createSourceState([source]),
+        catalogEntries: [createCatalogEntry()],
+        contextSnapshot: {},
+        limits: createLimits()
+      });
+
+    expect(
+      createState(
+        createReadySource({
+          source_sha256: authoritativeSha,
+          artifactLookupStatus: 'pending'
+        })
+      ).items[0]
+    ).toMatchObject({ status: 'artifact_lookup_pending' });
+
+    const hit = createState(
+      createReadySource({
+        source_sha256: authoritativeSha,
+        artifactLookupStatus: 'hit',
+        compiledArtifact
+      })
+    ).items[0];
+    expect(hit).toMatchObject({
+      status: 'run_plan_ready',
+      runPlan: {
+        request: {
+          program: {
+            kind: 'compiled_artifact',
+            artifact: compiledArtifact,
+            sourceSha256: authoritativeSha
+          }
+        }
+      }
+    });
+  });
+
   test('builds run plans for ready sources using a stable catalog match', () => {
     const sourceState = createSourceState([
       createReadySource({
@@ -225,6 +292,8 @@ describe('frontstage page canvas runtime run plan model', () => {
           codeRef: 'stable-code',
           sourceCodeRef: 'stable-code'
         }),
+        source_sha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         slotIndex: 2
       })
     ]);
@@ -249,6 +318,8 @@ describe('frontstage page canvas runtime run plan model', () => {
       codeRef: 'stable-code',
       slotIndex: 2,
       sourceStatus: 'ready',
+      source_sha256:
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       catalogId: 'official:hero.banner'
     });
     if (runPlanState.items[0].status !== 'run_plan_ready') {
@@ -257,7 +328,12 @@ describe('frontstage page canvas runtime run plan model', () => {
     expect(runPlanState.items[0].runPlan.request).toMatchObject({
       requestId: 'restricted-block:stable-match:stable-code',
       blockId: 'stable-match',
-      source: 'export default { render() {} }',
+      program: {
+        kind: 'source',
+        source: 'export default { render() {} }',
+        sourceSha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      },
       props: { title: 'Hello' },
       contextSnapshot: { workspaceId: 'workspace-1', pageId: 'page-1' },
       limits: {
