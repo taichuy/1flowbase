@@ -14,11 +14,13 @@ import type {
 export type FrontstagePageCanvasRuntimeRunPlanStatus =
   | 'run_plan_ready'
   | 'source_not_ready'
+  | 'artifact_lookup_pending'
   | 'catalog_missing'
   | 'rejected';
 
 export type FrontstagePageCanvasRuntimeRunPlanIssueCode =
   | 'source_not_ready'
+  | 'artifact_lookup_pending'
   | 'catalog_missing';
 
 export interface FrontstagePageCanvasRuntimeRunPlanIssue {
@@ -56,6 +58,12 @@ export interface FrontstagePageCanvasRuntimeRunPlanSourceNotReadyItem extends Fr
   reason: FrontstagePageCanvasRuntimeRunPlanIssue;
 }
 
+export interface FrontstagePageCanvasRuntimeRunPlanArtifactLookupPendingItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
+  status: 'artifact_lookup_pending';
+  sourceStatus: 'ready';
+  reason: FrontstagePageCanvasRuntimeRunPlanIssue;
+}
+
 export interface FrontstagePageCanvasRuntimeRunPlanCatalogMissingItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
   status: 'catalog_missing';
   sourceStatus: 'ready';
@@ -72,6 +80,7 @@ export interface FrontstagePageCanvasRuntimeRunPlanRejectedItem extends Frontsta
 export type FrontstagePageCanvasRuntimeRunPlanItem =
   | FrontstagePageCanvasRuntimeRunPlanReadyItem
   | FrontstagePageCanvasRuntimeRunPlanSourceNotReadyItem
+  | FrontstagePageCanvasRuntimeRunPlanArtifactLookupPendingItem
   | FrontstagePageCanvasRuntimeRunPlanCatalogMissingItem
   | FrontstagePageCanvasRuntimeRunPlanRejectedItem;
 
@@ -144,6 +153,20 @@ function createRuntimeRunPlanItem({
     };
   }
 
+
+  if (source.artifactLookupStatus === 'pending') {
+    return {
+      ...base,
+      status: 'artifact_lookup_pending',
+      sourceStatus: 'ready',
+      reason: {
+        code: 'artifact_lookup_pending',
+        path: `sources.${sourceIndex}.artifactLookupStatus`,
+        message: `Compiled artifact lookup is pending for block ${source.blockId}.`
+      }
+    };
+  }
+
   const catalogEntry = findMatchingCatalogEntry(
     source,
     catalogEntriesByMatchKey
@@ -163,6 +186,7 @@ function createRuntimeRunPlanItem({
     catalogEntry,
     code: source.code,
     sourceSha256: source.source_sha256,
+    compiledArtifact: source.compiledArtifact,
     contextSnapshot: resolveContextSnapshot(
       contextSnapshot,
       source,

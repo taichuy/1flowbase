@@ -1,9 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type {
+  CompiledBlockArtifact,
   JsBlockHostInterfaceEffect,
   JsBlockHostEffectHandler
 } from '@1flowbase/page-runtime';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { IDBFactory } from 'fake-indexeddb';
 
 import type { FrontstageRestrictedBlockRuntimeSession } from '../../lib/frontstage-restricted-block-runtime-host';
 import type {
@@ -21,13 +23,38 @@ import {
 } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   readFrontstageRuntimeObservations,
+  recordFrontstageRuntimeObservation,
   resetFrontstageRuntimeObservations
 } from '../../lib/page-canvas/runtime-observation';
+import {
+  FrontstageCompiledArtifactCache,
+  createIndexedDbArtifactCacheStore
+} from '../../lib/runtime-cache';
 
 const TEST_RUNTIME_ACTOR = {
   actorId: 'actor-1',
   actorWorkspaceId: 'workspace-1'
 } as const;
+
+function compiledArtifact(
+  sourceSha256 = 'a'.repeat(64)
+): CompiledBlockArtifact {
+  return {
+    format: '1flowbase/js-block-compiled-artifact',
+    version: 1,
+    runtimeFingerprint: 'runtime-a',
+    sourceSha256,
+    program: {
+      injectedModules: [],
+      importBindings: [],
+      executableBody: 'return { main: async () => ({ view: {}, outputs: {} }) };',
+      executablePreambleLines: 0,
+      moduleMapIdentifier: '__modules',
+      defaultExportIdentifier: '__default'
+    },
+    manifest: { allowedImports: [] }
+  };
+}
 
 function createRunPlan(
   overrides: Partial<RestrictedBlockRunPlan['request']> = {}
@@ -41,7 +68,10 @@ function createRunPlan(
     request: {
       requestId,
       blockId,
-      source: 'export default { render() {} }',
+      program: {
+        kind: 'source',
+        source: 'export default { render() {} }'
+      },
       props: { title: 'Hello' },
       state: {},
       contextSnapshot: { pageId: 'page-1' },
@@ -157,6 +187,19 @@ function createSkippedItem(
         code: 'source_not_ready',
         path: `sources.${slotIndex}.status`,
         message: 'waiting for source'
+      }
+    };
+  }
+
+  if (status === 'artifact_lookup_pending') {
+    return {
+      ...base,
+      status,
+      sourceStatus: 'ready',
+      reason: {
+        code: 'artifact_lookup_pending',
+        path: `sources.${slotIndex}.artifactLookupStatus`,
+        message: 'waiting for artifact lookup'
       }
     };
   }
@@ -312,7 +355,8 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
 
     expect(runtimeSessionFactory).toHaveBeenCalledWith({
       runPlan: readyItem.runPlan,
-      handlers: { interface: interfaceEffectHandler }
+      handlers: { interface: interfaceEffectHandler },
+      runtimeFingerprint: expect.any(String)
     });
     expect(runtimeSession.callOrder).toEqual(['subscribe', 'run']);
     expect(result.current.snapshotsBySlot[2]).toMatchObject({
@@ -563,11 +607,20 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
 
   test('records bounded runtime phase transitions without sensitive runtime values', async () => {
     const sensitiveCanary = 'sensitive-runtime-canary';
+    recordFrontstageRuntimeObservation({
+      stage: 'source_fetch',
+      cacheTier: 'network',
+      actorId: 'actor-1',
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      blockId: 'observed'
+    });
     const item = createReadyItem({
       blockId: 'observed',
       runPlan: createRunPlan({
         blockId: 'observed',
-        source: sensitiveCanary,
+        program: { kind: 'source', source: sensitiveCanary },
         props: { secret: sensitiveCanary },
         contextSnapshot: { token: sensitiveCanary }
       })
@@ -617,6 +670,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
 
     const observations = readFrontstageRuntimeObservations();
     expect(observations.map((entry) => entry.stage)).toEqual([
+      'source_fetch',
       'worker_boot',
       'compile',
       'api_wait',
@@ -625,9 +679,185 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       'present'
     ]);
     expect(observations.map((entry) => entry.count)).toEqual([
-      1, 1, 1, 1, 1, 1
+      1, 1, 1, 1, 1, 1, 1
+    ]);
+    expect(observations.map((entry) => entry.cacheTier)).toEqual([
+      'network',
+      'miss',
+      'miss',
+      'miss',
+      'miss',
+      'miss',
+      'miss'
     ]);
     expect(JSON.stringify(observations)).not.toContain(sensitiveCanary);
+  });
+
+  test('AC-023 persists ready L2 artifacts without compile and ignores quota failure', async () => {
+    recordFrontstageRuntimeObservation({
+      stage: 'source_fetch',
+      cacheTier: 'network',
+      actorId: 'actor-1',
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      blockId: 'hero'
+    });
+    const sourceSha256 = 'a'.repeat(64);
+    const artifact = compiledArtifact(sourceSha256);
+    const item = createReadyItem({
+      source_sha256: sourceSha256,
+      runPlan: createRunPlan({
+        program: {
+          kind: 'compiled_artifact',
+          artifact,
+          sourceSha256,
+          fallback: {
+            kind: 'source',
+            source: 'deliberately invalid fallback {'
+          }
+        }
+      })
+    });
+    const runtimeSession = createFakeRuntimeSession();
+    const artifactCache = {
+      put: vi.fn(async () => ({
+        status: 'unavailable' as const,
+        reason: 'quota_exceeded' as const
+      }))
+    };
+    const runtimeSessionFactory = vi.fn(() => runtimeSession.session);
+    const { result } = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        ...TEST_RUNTIME_ACTOR,
+        runtimeRunPlanState: createRunPlanState([item]),
+        runtimeSessionFactory,
+        artifactCache,
+        runtimeFingerprint: 'runtime-a',
+        tabId: 'tab-1'
+      })
+    );
+    await waitFor(() => expect(runtimeSession.session.run).toHaveBeenCalledTimes(1));
+    for (const phase of ['executing', 'waiting_effect', 'validating_schema'] as const) {
+      act(() =>
+        runtimeSession.emit(
+          createSnapshot({
+            status: 'running',
+            phase,
+            requestId: item.runPlan.request.requestId,
+            blockId: item.blockId
+          })
+        )
+      );
+    }
+    act(() =>
+      runtimeSession.emit(
+        createSnapshot({
+          status: 'ready',
+          phase: 'ready',
+          requestId: item.runPlan.request.requestId,
+          blockId: item.blockId,
+          outputs: { apiValue: 'fresh-response' },
+          compiledArtifact: artifact
+        })
+      )
+    );
+
+    await waitFor(() =>
+      expect(result.current.entries[0]).toMatchObject({ status: 'ready' })
+    );
+    expect(runtimeSessionFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeFingerprint: 'runtime-a' })
+    );
+    expect(artifactCache.put).toHaveBeenCalledWith(
+      {
+        actorId: 'actor-1',
+        workspaceId: 'workspace-1',
+        runtimeFingerprint: 'runtime-a',
+        sourceSha256
+      },
+      artifact
+    );
+    expect(
+      readFrontstageRuntimeObservations().map((entry) => [
+        entry.stage,
+        entry.cacheTier
+      ])
+    ).toEqual([
+      ['source_fetch', 'network'],
+      ['worker_boot', 'l2'],
+      ['main', 'l2'],
+      ['api_wait', 'l2'],
+      ['schema_validate', 'l2'],
+      ['present', 'l2']
+    ]);
+  });
+
+  test('AC-022 stores no runtime canary after a real ready execution snapshot', async () => {
+    const sourceSha256 = 'b'.repeat(64);
+    const artifact = compiledArtifact(sourceSha256);
+    const item = createReadyItem({ source_sha256: sourceSha256 });
+    const runtimeSession = createFakeRuntimeSession();
+    const store = createIndexedDbArtifactCacheStore({
+      indexedDB: new IDBFactory(),
+      databaseName: 'runtime-canary-scan'
+    });
+    const artifactCache = new FrontstageCompiledArtifactCache({ store });
+    renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        ...TEST_RUNTIME_ACTOR,
+        runtimeRunPlanState: createRunPlanState([item]),
+        runtimeSessionFactory: () => runtimeSession.session,
+        artifactCache,
+        runtimeFingerprint: 'runtime-a'
+      })
+    );
+    await waitFor(() => expect(runtimeSession.session.run).toHaveBeenCalled());
+    act(() =>
+      runtimeSession.emit(
+        createSnapshot({
+          status: 'ready',
+          phase: 'ready',
+          requestId: item.runPlan.request.requestId,
+          blockId: item.blockId,
+          compiledArtifact: artifact,
+          view: { primitive: 'Text', props: { children: 'runtime-secret-canary' } },
+          outputs: { response: 'runtime-secret-canary' },
+          logs: [{
+            requestId: item.runPlan.request.requestId,
+            level: 'info',
+            message: 'runtime-secret-canary'
+          }],
+          effects: [{
+            type: 'event',
+            requestId: item.runPlan.request.requestId,
+            name: 'runtime-secret-canary',
+            payload: { token: 'runtime-secret-canary' }
+          }],
+          interfaceCalls: [{
+            requestId: item.runPlan.request.requestId,
+            effectId: 'runtime-secret-canary',
+            method: 'GET',
+            path: '/runtime-secret-canary',
+            status: 'succeeded',
+            durationMs: 1,
+            response: { headers: 'runtime-secret-canary' }
+          }]
+        })
+      )
+    );
+    await waitFor(async () => expect(await store.list()).toHaveLength(1));
+    expect(JSON.stringify(await store.list())).not.toContain(
+      'runtime-secret-canary'
+    );
+    await expect(
+      artifactCache.get({
+        actorId: 'actor-1',
+        workspaceId: 'workspace-1',
+        runtimeFingerprint: 'runtime-a',
+        sourceSha256
+      })
+    ).resolves.toMatchObject({ status: 'hit', artifact });
   });
 
   test('reports factory errors as stable entries instead of crashing', async () => {
@@ -779,6 +1009,9 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       .mockReturnValue(baseline + 30_001);
     const revalidation = createFakeRuntimeSession();
     const revalidationFactory = vi.fn(() => revalidation.session);
+    const persistentArtifactCache = {
+      put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+    };
     const restoredEffectHandler: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect> =
       vi.fn(async () => ({ ok: true }));
     const secondRender = renderHook(() =>
@@ -786,6 +1019,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState,
         runtimeSessionFactory: revalidationFactory,
+        artifactCache: persistentArtifactCache,
         handlers: { interface: restoredEffectHandler }
       })
     );
@@ -807,6 +1041,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       expect(revalidationFactory).not.toHaveBeenCalled();
       expect(revalidation.session.run).not.toHaveBeenCalled();
       expect(restoredEffectHandler).not.toHaveBeenCalled();
+      expect(persistentArtifactCache.put).not.toHaveBeenCalled();
       expect(
         readFrontstageRuntimeObservations().map((entry) => [
           entry.stage,
@@ -856,7 +1091,10 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       runPlan: createRunPlan({
         blockId: 'request-stable',
         requestId: 'request-id-after-remount',
-        source: 'raw source is not the authoritative identity'
+        program: {
+          kind: 'source',
+          source: 'raw source is not the authoritative identity'
+        }
       })
     });
     const unexpectedFactory = vi.fn(() => createFakeRuntimeSession().session);

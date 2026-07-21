@@ -23,6 +23,7 @@ import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJs
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
+import { useFrontstagePageCanvasCompiledArtifacts } from '../hooks/use-frontstage-page-canvas-compiled-artifacts';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
 import {
   appendFrontstageBlock,
@@ -237,8 +238,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     renderPlan: activePageRenderPlan,
     demandsByBlockId: runtimeDemandsByBlockId
   });
+  const pageCanvasCompiledArtifacts = useFrontstagePageCanvasCompiledArtifacts({
+    actorId: actor?.id,
+    workspaceId,
+    sourceState: pageCanvasRuntimeSources.sourceState,
+    demandsByBlockId: runtimeDemandsByBlockId
+  });
   const pageCanvasRuntimeRunPlanState = useMemo(() => {
-    const sourceState = pageCanvasRuntimeSources.sourceState;
+    const sourceState = pageCanvasCompiledArtifacts.sourceState;
     if (!sourceState) {
       return null;
     }
@@ -261,7 +268,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     activePageContent?.page.title,
     blockCatalog.items,
     jsBlockTrialLimits,
-    pageCanvasRuntimeSources.sourceState,
+    pageCanvasCompiledArtifacts.sourceState,
     workspaceId
   ]);
   const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
@@ -1194,7 +1201,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             : undefined
         }
         onRetry={onRetryLoadPageContent}
-        runtimeSourceState={pageCanvasRuntimeSources.sourceState}
+        runtimeSourceState={pageCanvasCompiledArtifacts.sourceState}
         runtimeRunPlanState={pageCanvasRuntimeRunPlanState}
         runtimeSessionEntries={pageCanvasRuntimeSessions.entries}
         onRuntimeDemandChange={handleRuntimeDemandChange}

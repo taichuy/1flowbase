@@ -10,7 +10,9 @@ export type FrontstageRuntimeObservationStage =
 export type FrontstageRuntimeObservationCacheTier =
   | 'network'
   | 'runtime'
-  | 'l1';
+  | 'l1'
+  | 'l2'
+  | 'miss';
 
 export interface FrontstageRuntimeObservation {
   sequence: number;

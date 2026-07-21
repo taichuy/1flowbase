@@ -30,6 +30,11 @@ import {
   recordFrontstageRuntimeObservation,
   type FrontstageRuntimeObservationStage
 } from '../lib/page-canvas/runtime-observation';
+import {
+  frontstageCompiledArtifactCache,
+  type FrontstageCompiledArtifactCache
+} from '../lib/runtime-cache';
+import { getFrontstageRestrictedBlockRuntimeFingerprint } from '../lib/restricted-block-worker-factory';
 
 export type FrontstagePageCanvasRuntimeSessionFactory = (
   options: FrontstageRestrictedBlockRuntimeHostOptions
@@ -93,6 +98,8 @@ export interface UseFrontstagePageCanvasRuntimeSessionsInput {
   blocks?: readonly FrontstageBlockInstance[];
   tabId?: string | null;
   runtimeResultCache?: FrontstageRuntimeResultCache;
+  artifactCache?: Pick<FrontstageCompiledArtifactCache, 'put'>;
+  runtimeFingerprint?: string;
 }
 
 export interface UseFrontstagePageCanvasRuntimeSessionsResult {
@@ -110,6 +117,7 @@ interface ActiveRuntimeSession {
   executing: boolean;
   observedStage: FrontstageRuntimeObservationStage;
   observedAtMs: number;
+  cacheTier: 'l2' | 'miss';
 }
 
 interface RuntimeObservationContext {
@@ -229,7 +237,9 @@ export function useFrontstagePageCanvasRuntimeSessions({
   maxConcurrent = 2,
   blocks = EMPTY_BLOCKS,
   tabId = null,
-  runtimeResultCache: resultCache = frontstageRuntimeResultCache
+  runtimeResultCache: resultCache = frontstageRuntimeResultCache,
+  artifactCache = frontstageCompiledArtifactCache,
+  runtimeFingerprint = getFrontstageRestrictedBlockRuntimeFingerprint()
 }: UseFrontstagePageCanvasRuntimeSessionsInput): UseFrontstagePageCanvasRuntimeSessionsResult {
   const activeRuntimeSessionsRef = useRef(
     new Map<string, ActiveRuntimeSession>()
@@ -416,6 +426,8 @@ export function useFrontstagePageCanvasRuntimeSessions({
           setSignalRevision,
           signalCoordinator,
           resultCache,
+          artifactCache,
+          runtimeFingerprint,
           observationContext: {
             actorId,
             workspaceId: runtimeRunPlanState.workspaceId,
@@ -460,6 +472,7 @@ export function useFrontstagePageCanvasRuntimeSessions({
   }, [
     actorId,
     actorWorkspaceId,
+    artifactCache,
     demandsByBlockId,
     handlers,
     maxConcurrent,
@@ -470,7 +483,8 @@ export function useFrontstagePageCanvasRuntimeSessions({
     signalRevision,
     tabId,
     runtimeRunPlanState,
-    runtimeSessionFactory
+    runtimeSessionFactory,
+    runtimeFingerprint
   ]);
 
   useEffect(
@@ -545,6 +559,8 @@ function createAndRunRuntimeSession({
   setSignalRevision,
   signalCoordinator,
   resultCache,
+  artifactCache,
+  runtimeFingerprint,
   observationContext
 }: {
   item: FrontstagePageCanvasRuntimeRunPlanReadyItem;
@@ -557,6 +573,8 @@ function createAndRunRuntimeSession({
   setSignalRevision: Dispatch<SetStateAction<number>>;
   signalCoordinator: FrontstageSignalRuntimeCoordinator | null;
   resultCache: FrontstageRuntimeResultCache;
+  artifactCache: Pick<FrontstageCompiledArtifactCache, 'put'>;
+  runtimeFingerprint: string;
   observationContext: RuntimeObservationContext;
 }): InternalRuntimeSessionEntry {
   let session: FrontstageRestrictedBlockRuntimeSession | null = null;
@@ -564,10 +582,14 @@ function createAndRunRuntimeSession({
 
   try {
     const runtimeStartedAt = Date.now();
+    const cacheTier =
+      item.runPlan.request.program.kind === 'compiled_artifact'
+        ? 'l2'
+        : 'miss';
     recordFrontstageRuntimeObservation({
       ...observationContext,
       stage: 'worker_boot',
-      cacheTier: 'runtime',
+      cacheTier,
       timestampMs: runtimeStartedAt
     });
     const runPlan = signalCoordinator
@@ -581,7 +603,8 @@ function createAndRunRuntimeSession({
       : item.runPlan;
     signalCoordinator?.beginRun(item.blockId, sessionKey);
     const runtimeOptions: FrontstageRestrictedBlockRuntimeHostOptions = {
-      runPlan
+      runPlan,
+      runtimeFingerprint
     };
 
     if (handlers) {
@@ -604,6 +627,19 @@ function createAndRunRuntimeSession({
       );
       if (snapshot.status === 'ready') {
         resultCache.set(sessionKey, toCachedBlockResult(snapshot));
+        if (snapshot.compiledArtifact) {
+          void artifactCache
+            .put(
+              {
+                actorId: observationContext.actorId,
+                workspaceId: observationContext.workspaceId,
+                runtimeFingerprint,
+                sourceSha256: item.source_sha256
+              },
+              snapshot.compiledArtifact
+            )
+            .catch(() => undefined);
+        }
         if (snapshot.outputs) {
           const committed = signalCoordinator?.commit(
             item.blockId,
@@ -631,7 +667,8 @@ function createAndRunRuntimeSession({
       snapshot,
       executing: true,
       observedStage: 'worker_boot',
-      observedAtMs: runtimeStartedAt
+      observedAtMs: runtimeStartedAt,
+      cacheTier
     };
     activeRuntimeSessions.set(sessionKey, activeRuntimeSession);
     observeRuntimeSnapshot(activeRuntimeSession, snapshot, observationContext);
@@ -825,7 +862,10 @@ function isErrorEntry(entry: FrontstagePageCanvasRuntimeSessionEntry): boolean {
   }
 
   if (entry.status === 'skipped') {
-    return entry.skipReason !== 'source_not_ready';
+    return (
+      entry.skipReason !== 'source_not_ready' &&
+      entry.skipReason !== 'artifact_lookup_pending'
+    );
   }
 
   return entry.status === 'failed' || entry.status === 'timed_out';
@@ -880,7 +920,7 @@ function observeRuntimeSnapshot(
   recordFrontstageRuntimeObservation({
     ...context,
     stage,
-    cacheTier: 'runtime',
+    cacheTier: activeRuntimeSession.cacheTier,
     timestampMs,
     durationMs: Math.max(0, timestampMs - activeRuntimeSession.observedAtMs)
   });

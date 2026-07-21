@@ -8,8 +8,7 @@ import {
   frontstageCompiledArtifactCache,
   type FrontstageCompiledArtifactCache
 } from '../lib/runtime-cache';
-import { createCompiledBlockRuntimeFingerprint } from '@1flowbase/page-runtime';
-import { getFrontstageRestrictedBlockWorkerUrl } from '../lib/restricted-block-worker-factory';
+import { getFrontstageRestrictedBlockRuntimeFingerprint } from '../lib/restricted-block-worker-factory';
 
 export interface FrontstageRuntimeCacheLifecycleOptions {
   artifactCache?: Pick<
@@ -33,9 +32,7 @@ export function useFrontstageRuntimeCacheLifecycle(
   const artifactCache = options.artifactCache ?? frontstageCompiledArtifactCache;
   const runtimeFingerprint =
     options.runtimeFingerprint ??
-    createCompiledBlockRuntimeFingerprint(
-      getFrontstageRestrictedBlockWorkerUrl()
-    );
+    getFrontstageRestrictedBlockRuntimeFingerprint();
 
   useLayoutEffect(() => {
     if (previousIdentityRef.current === lifecycleIdentity) {

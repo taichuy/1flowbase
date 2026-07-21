@@ -11,6 +11,7 @@ import type {
   FrontstagePageRenderPlanFallbackReason,
   FrontstagePageRenderMode
 } from './render-plan';
+import type { CompiledBlockArtifact } from '@1flowbase/page-runtime';
 
 export interface FrontstagePageCanvasBlockCodeReadRequest {
   requestId: string;
@@ -86,6 +87,8 @@ export interface FrontstagePageCanvasReadyRuntimeSource extends FrontstagePageCa
   status: 'ready';
   code: string;
   source_sha256: string;
+  artifactLookupStatus?: 'pending' | 'hit' | 'miss' | 'unavailable';
+  compiledArtifact?: CompiledBlockArtifact;
   block: FrontstageBlockInstance;
   request: FrontstagePageCanvasBlockCodeReadRequest;
 }

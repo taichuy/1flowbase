@@ -1,4 +1,5 @@
 import {
+  createCompiledBlockRuntimeFingerprint,
   createJsBlockBrowserWorkerFactory,
   type JsBlockBrowserWorkerConstructor,
   type JsBlockBrowserWorkerFactoryOptions,
@@ -24,6 +25,12 @@ let visibilityCleanupInstalled = false;
 
 export function getFrontstageRestrictedBlockWorkerUrl(): string {
   return frontstageRestrictedBlockWorkerUrl;
+}
+
+export function getFrontstageRestrictedBlockRuntimeFingerprint(): string {
+  return createCompiledBlockRuntimeFingerprint(
+    getFrontstageRestrictedBlockWorkerUrl()
+  );
 }
 
 export function getFrontstageRestrictedBlockWorkerOptions(
