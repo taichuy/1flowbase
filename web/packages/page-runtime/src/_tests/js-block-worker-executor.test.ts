@@ -72,10 +72,7 @@ describe('JS block worker executor', () => {
       type: 'run',
       request: request(`
         async function main(ctx) {
-          const response = await ctx.interfaces.call({
-            interfaceId: 'list_records',
-            schemaDigest: 'digest-1'
-          }, { query: { page: 1 } });
+          const response = await ctx.api.get('/api/console/test', { query: { page: 1 } });
           return {
             view: { primitive: 'Text', props: { children: response.total } },
             outputs: { total: response.total }
@@ -89,8 +86,8 @@ describe('JS block worker executor', () => {
         expect.objectContaining({
           type: 'interface',
           effectId: expect.any(String),
-          interfaceId: 'list_records',
-          schemaDigest: 'digest-1'
+          method: 'GET',
+          path: '/api/console/test'
         })
       )
     );
@@ -112,14 +109,14 @@ describe('JS block worker executor', () => {
     );
   });
 
-  test('fails locally instead of posting an incomplete interface descriptor', async () => {
+  test('fails locally instead of posting a non-canonical API route', async () => {
     const executor = createJsBlockWorkerExecutor({ modules: {} });
     const messages = await executor.handleMessage({
       direction: 'host_to_worker',
       type: 'run',
       request: request(`
         async function main(ctx) {
-          await ctx.interfaces.call({ interfaceId: 'list_records' });
+          await ctx.api.get('https://example.com/private');
           return { view: { primitive: 'Text', props: {} }, outputs: {} };
         }
         export default { main };
@@ -133,7 +130,7 @@ describe('JS block worker executor', () => {
       type: 'error',
       kind: 'main_failed',
       message: expect.stringContaining(
-        'Interface source descriptor requires interfaceId and schemaDigest.'
+        'API path must be a canonical relative path template.'
       )
     });
   });

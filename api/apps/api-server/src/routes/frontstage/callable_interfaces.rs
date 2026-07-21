@@ -23,9 +23,10 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_interface::{
-        get_openapi_capability, query_openapi_capability_catalog, DispatchArguments, DispatchError,
-        OpenApiCapabilityCatalogEntry, OpenApiCapabilityCatalogQuery, OpenApiCapabilitySource,
-        OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
+        get_openapi_capability, get_openapi_capability_by_route, query_openapi_capability_catalog,
+        DispatchArguments, DispatchError, OpenApiCapabilityCatalogEntry,
+        OpenApiCapabilityCatalogQuery, OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry,
+        OpenApiParameterLocation,
     },
     response::ApiSuccess,
 };
@@ -35,11 +36,6 @@ const WRITE_GRANT_LOCK_TTL: Duration = Duration::seconds(10);
 const WRITE_GRANT_CACHE_PREFIX: &str = "frontstage:callable-write-grant:";
 const WRITE_GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 const INTERFACE_CAPABILITY_PAGE_SIZE: usize = 20;
-
-#[cfg(test)]
-const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
-#[cfg(test)]
-const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
 
 #[derive(Clone)]
 struct RegisteredCallable {
@@ -111,8 +107,8 @@ pub struct FrontstageInterfaceCapabilityPageResponse {
 #[serde(deny_unknown_fields)]
 pub struct DispatchFrontstageCallableBody {
     pub block_id: String,
-    pub interface_id: String,
-    pub schema_digest: String,
+    pub method: String,
+    pub path: String,
     pub run_id: String,
     pub draft_hash: String,
     #[serde(default)]
@@ -124,8 +120,8 @@ pub struct DispatchFrontstageCallableBody {
 #[serde(deny_unknown_fields)]
 pub struct IssueFrontstageCallableWriteGrantBody {
     pub block_id: String,
-    pub interface_id: String,
-    pub schema_digest: String,
+    pub method: String,
+    pub path: String,
     pub run_id: String,
     pub draft_hash: String,
 }
@@ -143,8 +139,8 @@ struct FrontstageCallableWriteGrant {
     page_id: Uuid,
     tab_id: Uuid,
     block_id: String,
-    interface_id: String,
-    schema_digest: String,
+    method: String,
+    path: String,
     run_id: String,
     draft_hash: String,
     expires_at: OffsetDateTime,
@@ -297,13 +293,13 @@ pub async fn dispatch_frontstage_callable_interface(
         })
         .await?;
 
-    let callable = resolve_source_callable(
+    let (route, callable) = resolve_source_callable(
         &state,
         workspace_id,
         &detail.document.payload,
         &body.block_id,
-        &body.interface_id,
-        &body.schema_digest,
+        &body.method,
+        &body.path,
     )
     .await?;
     if callable.risk_level != "low" {
@@ -319,8 +315,8 @@ pub async fn dispatch_frontstage_callable_interface(
                 page_id,
                 tab_id,
                 block_id: body.block_id.clone(),
-                interface_id: body.interface_id.clone(),
-                schema_digest: body.schema_digest.clone(),
+                method: route.method.clone(),
+                path: route.path.clone(),
                 run_id: body.run_id.clone(),
                 draft_hash: body.draft_hash.clone(),
                 expires_at: OffsetDateTime::UNIX_EPOCH,
@@ -393,17 +389,17 @@ pub async fn issue_frontstage_callable_write_grant(
             tab_reference: tab_id.to_string(),
         })
         .await?;
-    let callable = resolve_source_callable(
+    let (route, callable) = resolve_source_callable(
         &state,
         workspace_id,
         &detail.document.payload,
         &body.block_id,
-        &body.interface_id,
-        &body.schema_digest,
+        &body.method,
+        &body.path,
     )
     .await?;
     if callable.risk_level == "low" {
-        return Err(ControlPlaneError::InvalidInput("interface_id").into());
+        return Err(ControlPlaneError::InvalidInput("method_path").into());
     }
     if body.run_id.trim().is_empty() || body.draft_hash.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("draft_run").into());
@@ -417,8 +413,8 @@ pub async fn issue_frontstage_callable_write_grant(
         page_id,
         tab_id,
         block_id: body.block_id,
-        interface_id: body.interface_id,
-        schema_digest: body.schema_digest,
+        method: route.method,
+        path: route.path,
         run_id: body.run_id,
         draft_hash: body.draft_hash,
         expires_at,
@@ -452,19 +448,46 @@ async fn resolve_source_callable(
     workspace_id: Uuid,
     document_payload: &Value,
     block_id: &str,
-    interface_id: &str,
-    schema_digest: &str,
-) -> Result<RegisteredCallable, ApiError> {
+    method: &str,
+    path: &str,
+) -> Result<(CanonicalRouteKey, RegisteredCallable), ApiError> {
     ensure_document_block(document_payload, block_id)?;
-    let callable = get_openapi_capability(state, workspace_id, interface_id)
+    let route = canonical_route_key(method, path)?;
+    let callable = get_openapi_capability_by_route(state, workspace_id, &route.method, &route.path)
         .await?
         .map(registered_callable)
         .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
-    let catalog = to_response(callable.clone());
-    if !catalog.bindable || catalog.schema_digest != schema_digest {
-        return Err(ControlPlaneError::InvalidInput("frontstage_callable_descriptor").into());
+    Ok((route, callable))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CanonicalRouteKey {
+    method: String,
+    path: String,
+}
+
+fn canonical_route_key(method: &str, path: &str) -> Result<CanonicalRouteKey, ApiError> {
+    let method = method.trim().to_ascii_uppercase();
+    if !matches!(
+        method.as_str(),
+        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
+    ) {
+        return Err(ControlPlaneError::InvalidInput("method").into());
     }
-    Ok(callable)
+    if path.is_empty()
+        || path != path.trim()
+        || !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains('?')
+        || path.contains('#')
+        || path.split('/').any(|segment| matches!(segment, "." | ".."))
+    {
+        return Err(ControlPlaneError::InvalidInput("path").into());
+    }
+    Ok(CanonicalRouteKey {
+        method,
+        path: path.to_string(),
+    })
 }
 
 fn ensure_document_block(document_payload: &Value, block_id: &str) -> Result<(), ApiError> {
@@ -530,8 +553,8 @@ fn grant_matches(
         && grant.page_id == expected.page_id
         && grant.tab_id == expected.tab_id
         && grant.block_id == expected.block_id
-        && grant.interface_id == expected.interface_id
-        && grant.schema_digest == expected.schema_digest
+        && grant.method == expected.method
+        && grant.path == expected.path
         && grant.run_id == expected.run_id
         && grant.draft_hash == expected.draft_hash
 }
@@ -698,8 +721,9 @@ mod tests {
             page_id: Uuid::new_v4(),
             tab_id: Uuid::new_v4(),
             block_id: "block-1".to_string(),
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID.to_string(),
-            schema_digest: "digest-1".to_string(),
+            method: "PUT".to_string(),
+            path: "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document"
+                .to_string(),
             run_id: "run-1".to_string(),
             draft_hash: "draft-1".to_string(),
             expires_at: OffsetDateTime::now_utc() + Duration::minutes(1),
@@ -717,8 +741,8 @@ mod tests {
             Box::new(|value| value.page_id = Uuid::new_v4()),
             Box::new(|value| value.tab_id = Uuid::new_v4()),
             Box::new(|value| value.block_id = "block-2".to_string()),
-            Box::new(|value| value.interface_id = PAGE_TAB_GET_OPERATION_ID.to_string()),
-            Box::new(|value| value.schema_digest = "digest-2".to_string()),
+            Box::new(|value| value.method = "GET".to_string()),
+            Box::new(|value| value.path = "/api/console/other".to_string()),
             Box::new(|value| value.run_id = "run-2".to_string()),
             Box::new(|value| value.draft_hash = "draft-2".to_string()),
         ];
@@ -741,7 +765,27 @@ mod tests {
     }
 
     #[test]
-    fn source_descriptor_requires_a_current_document_block() {
+    fn ac_020_route_key_requires_a_supported_method_and_canonical_relative_path() {
+        assert_eq!(
+            canonical_route_key("get", "/api/console/applications/catalog").unwrap(),
+            CanonicalRouteKey {
+                method: "GET".to_string(),
+                path: "/api/console/applications/catalog".to_string(),
+            }
+        );
+        for path in [
+            "https://example.com/api/console/applications",
+            "//example.com/api/console/applications",
+            "/api/console/applications?limit=20",
+            "/api/console/../private",
+        ] {
+            assert!(canonical_route_key("GET", path).is_err(), "{path}");
+        }
+        assert!(canonical_route_key("TRACE", "/api/console/applications").is_err());
+    }
+
+    #[test]
+    fn route_dispatch_requires_a_current_document_block() {
         let document = serde_json::json!({
             "blocks": [
                 { "id": "block-1" },

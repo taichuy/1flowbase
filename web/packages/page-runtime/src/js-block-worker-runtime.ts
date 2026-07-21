@@ -102,8 +102,8 @@ export type JsBlockWorkerEffect =
       type: 'interface';
       requestId: string;
       effectId?: string;
-      interfaceId: string;
-      schemaDigest: string;
+      method: string;
+      path: string;
       request?: unknown;
       operation?: 'call' | 'stream_open' | 'stream_next' | 'stream_cancel';
       streamId?: string;
@@ -246,8 +246,8 @@ export interface JsBlockWorkerInterfaceRequestMessage {
   type: 'interface';
   requestId: string;
   effectId?: string;
-  interfaceId: string;
-  schemaDigest: string;
+  method: string;
+  path: string;
   request?: unknown;
   operation?: 'call' | 'stream_open' | 'stream_next' | 'stream_cancel';
   streamId?: string;
@@ -914,17 +914,13 @@ function readWorkerEffect(
     };
   }
 
-  const interfaceId = readString(message, 'interfaceId', 'message.interfaceId');
-  if (!interfaceId.ok) {
-    return interfaceId;
+  const method = readString(message, 'method', 'message.method');
+  if (!method.ok) {
+    return method;
   }
-  const schemaDigest = readString(
-    message,
-    'schemaDigest',
-    'message.schemaDigest'
-  );
-  if (!schemaDigest.ok) {
-    return schemaDigest;
+  const path = readString(message, 'path', 'message.path');
+  if (!path.ok) {
+    return path;
   }
   const effectId =
     typeof message.effectId === 'string' && message.effectId.length > 0
@@ -959,8 +955,8 @@ function readWorkerEffect(
       type: 'interface',
       requestId,
       ...(effectId ? { effectId } : {}),
-      interfaceId: interfaceId.value,
-      schemaDigest: schemaDigest.value,
+      method: method.value,
+      path: path.value,
       request: message.request,
       ...(operation
         ? {

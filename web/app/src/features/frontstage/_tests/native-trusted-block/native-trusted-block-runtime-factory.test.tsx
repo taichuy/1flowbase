@@ -211,7 +211,9 @@ export default function Block() {
   });
 
   test('scopes module overrides to each created resolver', async () => {
-    const OverrideButton: ComponentType<{ children?: ReactNode }> = ({ children }) => (
+    const OverrideButton: ComponentType<{ children?: ReactNode }> = ({
+      children
+    }) => (
       <button data-testid="override-button" type="button">
         Override: {children}
       </button>
@@ -250,12 +252,17 @@ export default function Block() {
     expect(
       await screen.findByRole('button', { name: 'Default modules' })
     ).toBeInTheDocument();
-    expect(screen.queryByText('Override: Default modules')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Override: Default modules')
+    ).not.toBeInTheDocument();
   });
 
   test('does not statically expose API or query clients through the runtime module map', () => {
     const runtimeFactorySource = readFileSync(
-      join(process.cwd(), 'src/features/frontstage/lib/native-trusted-block-runtime-factory.ts'),
+      join(
+        process.cwd(),
+        'src/features/frontstage/lib/native-trusted-block-runtime-factory.ts'
+      ),
       'utf8'
     );
     const moduleMap = createFrontstageNativeTrustedBlockModuleMap();
@@ -284,7 +291,9 @@ export default function Block() {
     );
 
     const matches = scannedFiles.filter((filePath) =>
-      readFileSync(filePath, 'utf8').includes('native-trusted-block-runtime-factory')
+      readFileSync(filePath, 'utf8').includes(
+        'native-trusted-block-runtime-factory'
+      )
     );
 
     expect(matches).toEqual([]);

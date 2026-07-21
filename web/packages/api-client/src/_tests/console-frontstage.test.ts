@@ -29,16 +29,16 @@ describe('console-frontstage client', () => {
     async (input) => input as never
   );
   vi.spyOn(transport, 'apiFetchResource').mockImplementation(async (input) =>
-    (input.body as { interface_id?: string } | undefined)?.interface_id ===
-    'export_logs'
+    (input.body as { path?: string } | undefined)?.path ===
+    '/api/console/export-logs'
       ? {
           kind: 'blob',
           blob: new Blob([new Uint8Array([1, 2, 3])]),
           filename: 'export.zip',
           contentType: 'application/zip'
         }
-      : (input.body as { interface_id?: string } | undefined)?.interface_id ===
-          'delete_tab'
+      : (input.body as { path?: string } | undefined)?.path ===
+          '/api/console/delete-tab'
         ? { kind: 'no_content' }
         : { kind: 'json', value: input as never }
   );
@@ -131,8 +131,8 @@ describe('console-frontstage client', () => {
         'tab-1',
         {
           block_id: 'block-1',
-          interface_id: 'list_conversations',
-          schema_digest: 'digest-1',
+          method: 'GET',
+          path: '/api/console/conversations',
           run_id: 'run-1',
           draft_hash: 'draft-1',
           request: { query: { filter: 'status=active' } }
@@ -144,8 +144,8 @@ describe('console-frontstage client', () => {
       method: 'POST',
       body: {
         block_id: 'block-1',
-        interface_id: 'list_conversations',
-        schema_digest: 'digest-1',
+        method: 'GET',
+        path: '/api/console/conversations',
         run_id: 'run-1',
         draft_hash: 'draft-1',
         request: { query: { filter: 'status=active' } }
@@ -162,8 +162,8 @@ describe('console-frontstage client', () => {
         'tab-1',
         {
           block_id: 'block-1',
-          interface_id: 'export_logs',
-          schema_digest: 'digest-binary',
+          method: 'GET',
+          path: '/api/console/export-logs',
           run_id: 'run-1',
           draft_hash: 'draft-1'
         },
@@ -190,8 +190,8 @@ describe('console-frontstage client', () => {
         'tab-1',
         {
           block_id: 'block-1',
-          interface_id: 'delete_tab',
-          schema_digest: 'digest-delete',
+          method: 'DELETE',
+          path: '/api/console/delete-tab',
           run_id: 'run-1',
           draft_hash: 'draft-1'
         },
@@ -209,8 +209,8 @@ describe('console-frontstage client', () => {
       'tab-1',
       {
         block_id: 'block-1',
-        interface_id: 'watch_run',
-        schema_digest: 'digest-stream',
+        method: 'GET',
+        path: '/api/console/watch-run',
         run_id: 'run-1',
         draft_hash: 'draft-1'
       },
@@ -221,7 +221,7 @@ describe('console-frontstage client', () => {
     expect(events).toEqual([{ progress: 1 }, 'complete']);
   });
 
-  test('issues a server-owned single-use write grant for one draft source descriptor', async () => {
+  test('issues a server-owned single-use write grant for one draft route', async () => {
     await expect(
       issueFrontstageCallableWriteGrant(
         'workspace-1',
@@ -229,8 +229,8 @@ describe('console-frontstage client', () => {
         'tab-1',
         {
           block_id: 'block-1',
-          interface_id: 'save_frontstage_tab_document',
-          schema_digest: 'digest-2',
+          method: 'PUT',
+          path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
           run_id: 'run-1',
           draft_hash: 'draft-1'
         },
@@ -241,8 +241,8 @@ describe('console-frontstage client', () => {
       method: 'POST',
       body: {
         block_id: 'block-1',
-        interface_id: 'save_frontstage_tab_document',
-        schema_digest: 'digest-2',
+        method: 'PUT',
+        path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
         run_id: 'run-1',
         draft_hash: 'draft-1'
       },

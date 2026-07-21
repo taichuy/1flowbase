@@ -58,13 +58,12 @@ block_contributions:
       /**
        * @1flowbase-context
        * inputs: 无
-       * interfaces: 无
        * outputs: 无
        */
       export default {
         main
       } satisfies BlockModule;
-    code_template_version: 2.0.0
+    code_template_version: 3.0.0
     code_template_language: tsx
     code_modules:
       - source: "@1flowbase/block-sdk"
@@ -84,19 +83,22 @@ block_contributions:
               readonly route: string;
               readonly title?: string;
             }
-            export interface BlockInterfaceRequest {
+            export interface BlockApiRequest {
               readonly path?: BlockContextRecord;
               readonly query?: BlockContextRecord;
               readonly headers?: BlockContextRecord;
               readonly body?: unknown;
             }
-            export interface BlockInterfaceDescriptor {
-              readonly interfaceId: string;
-              readonly schemaDigest: string;
-            }
-            export interface BlockContextInterfaces {
-              call<TResponse = unknown>(descriptor: BlockInterfaceDescriptor, request?: BlockInterfaceRequest): Promise<TResponse>;
-              stream<TEvent = unknown>(descriptor: BlockInterfaceDescriptor, request?: BlockInterfaceRequest): AsyncIterable<TEvent>;
+            export type BlockApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+            export interface BlockContextApi {
+              get<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              post<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              put<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              patch<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              delete<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              head<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              options<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
+              stream<TEvent = never>(method: BlockApiMethod, path: string, request?: BlockApiRequest): AsyncIterable<TEvent>;
             }
             export interface BlockContextEvents {
               emit(event: string, payload?: BlockContextRecord): void;
@@ -119,7 +121,7 @@ block_contributions:
               readonly props: BlockContextRecord;
               readonly state: BlockContextRecord;
               patch(patch: BlockContextRecord): void | Promise<void>;
-              readonly interfaces: BlockContextInterfaces;
+              readonly api: BlockContextApi;
               readonly events: BlockContextEvents;
               readonly theme: BlockContextTheme;
               readonly ui: BlockContextUi;

@@ -450,8 +450,8 @@ const block = {
       type: 'interface',
       requestId: 'request-1',
       effectId: 'late-effect',
-      interfaceId: 'late_interface',
-      schemaDigest: 'digest-late',
+      method: 'GET',
+      path: '/api/console/test',
       request: { ok: true }
     });
 
@@ -477,8 +477,8 @@ const block = {
         type: 'interface',
         requestId: 'request-1',
         effectId: 'effect-stream-next',
-        interfaceId: 'watch_run',
-        schemaDigest: 'digest-stream',
+        method: 'GET',
+        path: '/api/console/test',
         operation: 'stream_next',
         streamId: 'run-1:stream-1'
       }
@@ -488,8 +488,8 @@ const block = {
       type: 'interface',
       requestId: 'request-1',
       effectId: 'effect-stream-next',
-      interfaceId: 'watch_run',
-      schemaDigest: 'digest-stream',
+      method: 'GET',
+      path: '/api/console/test',
       operation: 'stream_next',
       streamId: 'run-1:stream-1'
     });

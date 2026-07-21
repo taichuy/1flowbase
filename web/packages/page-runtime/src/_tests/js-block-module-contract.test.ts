@@ -38,7 +38,16 @@ function createContext(): BlockContext {
     props: {},
     state: {},
     patch() {},
-    interfaces: { call: vi.fn(), stream: vi.fn() },
+    api: {
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      head: vi.fn(),
+      options: vi.fn(),
+      stream: vi.fn()
+    },
     events: { emit: vi.fn() },
     theme: { mode: 'light', tokens: {} },
     ui: { locale: 'en_US' }
@@ -106,10 +115,7 @@ describe('BlockModule runtime contract', () => {
     });
     const request = createRequest(`
       async function main(ctx) {
-        const response = await ctx.interfaces.call({
-          interfaceId: 'list_conversations',
-          schemaDigest: 'digest-1'
-        }, {
+        const response = await ctx.api.get('/api/console/test', {
           query: { page: 1 }
         });
         return {
@@ -129,8 +135,8 @@ describe('BlockModule runtime contract', () => {
       expect(messages).toContainEqual(
         expect.objectContaining({
           type: 'interface',
-          interfaceId: 'list_conversations',
-          schemaDigest: 'digest-1',
+          method: 'GET',
+          path: '/api/console/test',
           request: { query: { page: 1 } }
         })
       );
@@ -157,7 +163,7 @@ describe('BlockModule runtime contract', () => {
     });
   });
 
-  test('AC-020 mediator accepts complete source descriptors and rejects incomplete ones', () => {
+  test('AC-020 mediator accepts complete source routes and rejects incomplete ones', () => {
     const mediator = createBlockContextMediator({});
 
     expect(
@@ -165,8 +171,8 @@ describe('BlockModule runtime contract', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-1',
-        interfaceId: 'list_conversations',
-        schemaDigest: 'digest-1',
+        method: 'GET',
+        path: '/api/console/test',
         request: { query: { page: 1 } }
       }).result
     ).toMatchObject({ ok: true });
@@ -175,12 +181,12 @@ describe('BlockModule runtime contract', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-2',
-        interfaceId: 'delete_everything'
+        method: 'GET'
       }).result
     ).toMatchObject({
       ok: false,
       code: 'effect_invalid',
-      path: 'effect.schemaDigest'
+      path: 'effect.path'
     });
   });
 
@@ -193,10 +199,7 @@ describe('BlockModule runtime contract', () => {
     const request = createRequest(`
       async function main(ctx) {
         let progress = 0;
-        for await (const event of ctx.interfaces.stream({
-          interfaceId: 'watch_run',
-          schemaDigest: 'digest-stream'
-        })) {
+        for await (const event of ctx.api.stream('GET', '/api/console/test')) {
           progress = event.progress;
           break;
         }

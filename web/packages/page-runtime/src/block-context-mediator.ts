@@ -184,8 +184,8 @@ function reduceInterfaceEffect(
     type: 'interface',
     requestId: effect.requestId,
     ...(effect.effectId ? { effectId: effect.effectId } : {}),
-    interfaceId: effect.interfaceId,
-    schemaDigest: effect.schemaDigest,
+    method: effect.method,
+    path: effect.path,
     ...(effect.operation ? { operation: effect.operation } : {}),
     ...(effect.streamId ? { streamId: effect.streamId } : {}),
     ...(payloadResult.value === undefined
@@ -275,27 +275,38 @@ function normalizeEffect(
   }
 
   if (type.value === 'interface') {
-    const interfaceId = readStringProperty(
-      value,
-      'interfaceId',
-      'effect.interfaceId'
-    );
-    if (!interfaceId.ok) {
+    const method = readStringProperty(value, 'method', 'effect.method');
+    if (!method.ok) {
+      return effectInvalid(method.path, method.message, requestId.value);
+    }
+    if (
+      !['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(
+        method.value
+      )
+    ) {
       return effectInvalid(
-        interfaceId.path,
-        interfaceId.message,
+        'effect.method',
+        'API method is not supported.',
         requestId.value
       );
     }
-    const schemaDigest = readStringProperty(
-      value,
-      'schemaDigest',
-      'effect.schemaDigest'
-    );
-    if (!schemaDigest.ok) {
+    const path = readStringProperty(value, 'path', 'effect.path');
+    if (!path.ok) {
+      return effectInvalid(path.path, path.message, requestId.value);
+    }
+    if (
+      path.value !== path.value.trim() ||
+      !path.value.startsWith('/') ||
+      path.value.startsWith('//') ||
+      path.value.includes('?') ||
+      path.value.includes('#') ||
+      path.value
+        .split('/')
+        .some((segment) => segment === '.' || segment === '..')
+    ) {
       return effectInvalid(
-        schemaDigest.path,
-        schemaDigest.message,
+        'effect.path',
+        'API path must be a canonical relative path template.',
         requestId.value
       );
     }
@@ -355,8 +366,8 @@ function normalizeEffect(
         type: 'interface',
         requestId: requestId.value,
         ...(effectId.value ? { effectId: effectId.value } : {}),
-        interfaceId: interfaceId.value,
-        schemaDigest: schemaDigest.value,
+        method: method.value,
+        path: path.value,
         ...(operation.value
           ? {
               operation: operation.value as

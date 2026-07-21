@@ -62,8 +62,8 @@ describe('RestrictedBlockRuntimePreview', () => {
               type: 'interface',
               requestId: 'restricted-block:block-1:code-1',
               effectId: 'effect-1',
-              interfaceId: 'save_record',
-              schemaDigest: 'digest-save-record',
+              method: 'GET',
+              path: '/api/console/test',
               request: { hidden: 'raw-effect-value' }
             }
           ],

@@ -40,9 +40,13 @@ use tokio::sync::RwLock;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
 const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
-const PAGE_TAB_DELETE_OPERATION_ID: &str = "delete_frontstage_page_tab";
+const PAGE_TAB_GET_PATH: &str =
+    "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_reference}";
+const PAGE_TAB_SAVE_PATH: &str =
+    "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document";
+const PAGE_TAB_DELETE_PATH: &str =
+    "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}";
 const GRANT_PREFIX: &str = "frontstage:callable-write-grant:";
 const GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 
@@ -496,8 +500,8 @@ async fn dispatch(
     page_id: Uuid,
     tab_id: Uuid,
     block_id: &str,
-    interface_id: &str,
-    schema_digest: &str,
+    method: &str,
+    path: &str,
     run_id: &str,
     draft_hash: &str,
     request: Value,
@@ -505,8 +509,8 @@ async fn dispatch(
 ) -> (StatusCode, Value) {
     let body = json!({
         "block_id": block_id,
-        "interface_id": interface_id,
-        "schema_digest": schema_digest,
+        "method": method,
+        "path": path,
         "run_id": run_id,
         "draft_hash": draft_hash,
         "request": request,
@@ -534,8 +538,8 @@ async fn issue_grant(
     page_id: Uuid,
     tab_id: Uuid,
     block_id: &str,
-    interface_id: &str,
-    schema_digest: &str,
+    method: &str,
+    path: &str,
     run_id: &str,
     draft_hash: &str,
 ) -> String {
@@ -549,8 +553,8 @@ async fn issue_grant(
         csrf,
         json!({
             "block_id": block_id,
-            "interface_id": interface_id,
-            "schema_digest": schema_digest,
+            "method": method,
+            "path": path,
             "run_id": run_id,
             "draft_hash": draft_hash
         }),
@@ -634,8 +638,8 @@ async fn seed_grant(
     page_id: Uuid,
     tab_id: Uuid,
     block_id: &str,
-    interface_id: &str,
-    schema_digest: &str,
+    method: &str,
+    path: &str,
     run_id: &str,
     draft_hash: &str,
     expires_at: OffsetDateTime,
@@ -651,8 +655,8 @@ async fn seed_grant(
                 "page_id": page_id,
                 "tab_id": tab_id,
                 "block_id": block_id,
-                "interface_id": interface_id,
-                "schema_digest": schema_digest,
+                "method": method,
+                "path": path,
                 "run_id": run_id,
                 "draft_hash": draft_hash,
                 "expires_at": serde_json::to_value(expires_at).unwrap()
@@ -664,21 +668,13 @@ async fn seed_grant(
 }
 
 #[tokio::test]
-async fn callable_dispatch_uses_source_descriptor_for_any_current_document_block() {
+async fn callable_dispatch_uses_method_and_path_for_any_current_document_block() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
     let (second_tab, second_root_uid) =
         create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
-    let catalog = catalog_entry(
-        &fixture.app,
-        &cookie,
-        workspace_id,
-        PAGE_TAB_GET_OPERATION_ID,
-    )
-    .await;
-    let digest = catalog["schema_digest"].as_str().unwrap();
     let bound = document(&root_uid, vec!["block-a", "block-b"]);
     save_document(
         &fixture.app,
@@ -701,27 +697,33 @@ async fn callable_dispatch_uses_source_descriptor_for_any_current_document_block
     )
     .await;
 
-    for (target_tab, block, interface_id, supplied_digest, expected) in [
-        (tab_id, "block-a", "missing", digest, StatusCode::NOT_FOUND),
+    for (target_tab, block, method, path, expected) in [
+        (
+            tab_id,
+            "block-a",
+            "GET",
+            "/api/console/missing",
+            StatusCode::NOT_FOUND,
+        ),
         (
             tab_id,
             "missing-block",
-            PAGE_TAB_GET_OPERATION_ID,
-            digest,
+            "GET",
+            PAGE_TAB_GET_PATH,
             StatusCode::NOT_FOUND,
         ),
         (
             tab_id,
             "block-a",
-            PAGE_TAB_GET_OPERATION_ID,
-            "stale-digest",
-            StatusCode::BAD_REQUEST,
+            "POST",
+            PAGE_TAB_GET_PATH,
+            StatusCode::NOT_FOUND,
         ),
         (
             second_tab,
             "block-a",
-            PAGE_TAB_GET_OPERATION_ID,
-            digest,
+            "GET",
+            PAGE_TAB_GET_PATH,
             StatusCode::OK,
         ),
     ] {
@@ -733,15 +735,15 @@ async fn callable_dispatch_uses_source_descriptor_for_any_current_document_block
             page_id,
             target_tab,
             block,
-            interface_id,
-            supplied_digest,
+            method,
+            path,
             "run-read",
             "draft-read",
             json!({}),
             None,
         )
         .await;
-        assert_eq!(status, expected, "{block}/{interface_id}/{target_tab}");
+        assert_eq!(status, expected, "{block}/{method}/{path}/{target_tab}");
     }
 
     let (status, payload) = dispatch(
@@ -752,8 +754,8 @@ async fn callable_dispatch_uses_source_descriptor_for_any_current_document_block
         page_id,
         tab_id,
         "block-a",
-        PAGE_TAB_GET_OPERATION_ID,
-        digest,
+        "GET",
+        PAGE_TAB_GET_PATH,
         "run-read",
         "draft-read",
         json!({}),
@@ -770,14 +772,6 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let catalog = catalog_entry(
-        &fixture.app,
-        &cookie,
-        workspace_id,
-        PAGE_TAB_SAVE_OPERATION_ID,
-    )
-    .await;
-    let digest = catalog["schema_digest"].as_str().unwrap();
     let primary_document = document(&root_uid, vec!["block-write"]);
     save_document(
         &fixture.app,
@@ -802,7 +796,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
             "block_id": "block-write",
             "interface_id": PAGE_TAB_SAVE_OPERATION_ID,
             "binding_alias": "savePage",
-            "schema_digest": digest,
+            "schema_digest": "legacy-digest",
             "run_id": "run-write",
             "draft_hash": "draft-write",
             "request": { "body": { "payload": primary_document.clone() } }
@@ -819,8 +813,8 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         page_id,
         tab_id,
         "block-write",
-        PAGE_TAB_SAVE_OPERATION_ID,
-        digest,
+        "PUT",
+        PAGE_TAB_SAVE_PATH,
         "run-write",
         "draft-write",
     )
@@ -845,8 +839,8 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         page_id,
         tab_id,
         "block-write",
-        PAGE_TAB_SAVE_OPERATION_ID,
-        digest,
+        "PUT",
+        PAGE_TAB_SAVE_PATH,
         "run-write",
         "draft-write",
         json!({ "body": { "payload": primary_document.clone() } }),
@@ -877,8 +871,8 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         page_id,
         tab_id,
         "block-write",
-        PAGE_TAB_SAVE_OPERATION_ID,
-        digest,
+        "PUT",
+        PAGE_TAB_SAVE_PATH,
         "run-write",
         "draft-write",
         json!({ "body": { "payload": primary_document.clone() } }),
@@ -903,8 +897,8 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         page_id,
         tab_id,
         "block-write",
-        PAGE_TAB_SAVE_OPERATION_ID,
-        digest,
+        "PUT",
+        PAGE_TAB_SAVE_PATH,
         "run-write",
         "draft-write",
         json!({ "body": { "payload": primary_document } }),
@@ -923,14 +917,6 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
     let (second_tab, second_root_uid) =
         create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
-    let catalog = catalog_entry(
-        &fixture.app,
-        &cookie,
-        workspace_id,
-        PAGE_TAB_DELETE_OPERATION_ID,
-    )
-    .await;
-    let digest = catalog["schema_digest"].as_str().unwrap();
 
     for (tab_id, root_uid) in [
         (first_tab, first_root_uid.as_str()),
@@ -956,8 +942,8 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         page_id,
         first_tab,
         "block-delete",
-        PAGE_TAB_DELETE_OPERATION_ID,
-        digest,
+        "DELETE",
+        PAGE_TAB_DELETE_PATH,
         "run-delete-first",
         "draft-delete-first",
     )
@@ -970,8 +956,8 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         page_id,
         first_tab,
         "block-delete",
-        PAGE_TAB_DELETE_OPERATION_ID,
-        digest,
+        "DELETE",
+        PAGE_TAB_DELETE_PATH,
         "run-delete-first",
         "draft-delete-first",
         json!({}),
@@ -988,8 +974,8 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         page_id,
         second_tab,
         "block-delete",
-        PAGE_TAB_DELETE_OPERATION_ID,
-        digest,
+        "DELETE",
+        PAGE_TAB_DELETE_PATH,
         "run-delete-last",
         "draft-delete-last",
     )
@@ -1002,8 +988,8 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         page_id,
         second_tab,
         "block-delete",
-        PAGE_TAB_DELETE_OPERATION_ID,
-        digest,
+        "DELETE",
+        PAGE_TAB_DELETE_PATH,
         "run-delete-last",
         "draft-delete-last",
         json!({}),
@@ -1020,8 +1006,6 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
     let (_, workspace_id) = session_identity(&fixture.app, &root_cookie).await;
     let (page_id, tab_id, root_uid) =
         create_page(&fixture.app, &root_cookie, &root_csrf, workspace_id).await;
-    let catalog = catalog_entry(&fixture.app, &root_cookie, workspace_id, "list_members").await;
-    let digest = catalog["schema_digest"].as_str().unwrap();
     save_document(
         &fixture.app,
         &root_cookie,
@@ -1064,8 +1048,8 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
         page_id,
         tab_id,
         "block-members",
-        "list_members",
-        digest,
+        "GET",
+        "/api/console/settings/members",
         "run-visitor",
         "draft-visitor",
         json!({}),
@@ -1083,14 +1067,6 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
     let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
     let (second_tab, second_root_uid) =
         create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
-    let catalog = catalog_entry(
-        &fixture.app,
-        &cookie,
-        workspace_id,
-        PAGE_TAB_SAVE_OPERATION_ID,
-    )
-    .await;
-    let digest = catalog["schema_digest"].as_str().unwrap();
     let primary_document = document(&root_uid, vec!["block-write", "block-other"]);
     save_document(
         &fixture.app,
@@ -1119,8 +1095,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
         actor: Uuid,
         tab: Uuid,
         block: &'static str,
-        interface_id: &'static str,
-        schema_digest: String,
+        method: &'static str,
+        path: &'static str,
         draft: &'static str,
         expires: OffsetDateTime,
         dispatch_tab: Uuid,
@@ -1131,19 +1107,19 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             actor: actor_id,
             tab: tab_id,
             block: "block-write",
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID,
-            schema_digest: digest.to_string(),
+            method: "PUT",
+            path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
             expires: OffsetDateTime::now_utc() - Duration::seconds(1),
             dispatch_tab: tab_id,
         },
         Case {
-            name: "interface",
+            name: "route-method",
             actor: actor_id,
             tab: tab_id,
             block: "block-write",
-            interface_id: PAGE_TAB_GET_OPERATION_ID,
-            schema_digest: digest.to_string(),
+            method: "GET",
+            path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
             expires: OffsetDateTime::now_utc() + Duration::minutes(1),
             dispatch_tab: tab_id,
@@ -1153,19 +1129,19 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             actor: actor_id,
             tab: tab_id,
             block: "block-other",
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID,
-            schema_digest: digest.to_string(),
+            method: "PUT",
+            path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
             expires: OffsetDateTime::now_utc() + Duration::minutes(1),
             dispatch_tab: tab_id,
         },
         Case {
-            name: "schema",
+            name: "route-path",
             actor: actor_id,
             tab: tab_id,
             block: "block-write",
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID,
-            schema_digest: "different-digest".to_string(),
+            method: "PUT",
+            path: "/api/console/frontstage/other",
             draft: "draft",
             expires: OffsetDateTime::now_utc() + Duration::minutes(1),
             dispatch_tab: tab_id,
@@ -1175,8 +1151,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             actor: actor_id,
             tab: tab_id,
             block: "block-write",
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID,
-            schema_digest: digest.to_string(),
+            method: "PUT",
+            path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
             expires: OffsetDateTime::now_utc() + Duration::minutes(1),
             dispatch_tab: second_tab,
@@ -1186,8 +1162,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             actor: Uuid::new_v4(),
             tab: tab_id,
             block: "block-write",
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID,
-            schema_digest: digest.to_string(),
+            method: "PUT",
+            path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
             expires: OffsetDateTime::now_utc() + Duration::minutes(1),
             dispatch_tab: tab_id,
@@ -1197,8 +1173,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             actor: actor_id,
             tab: tab_id,
             block: "block-write",
-            interface_id: PAGE_TAB_SAVE_OPERATION_ID,
-            schema_digest: digest.to_string(),
+            method: "PUT",
+            path: PAGE_TAB_SAVE_PATH,
             draft: "other-draft",
             expires: OffsetDateTime::now_utc() + Duration::minutes(1),
             dispatch_tab: tab_id,
@@ -1214,8 +1190,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             page_id,
             case.tab,
             case.block,
-            case.interface_id,
-            &case.schema_digest,
+            case.method,
+            case.path,
             "run",
             case.draft,
             case.expires,
@@ -1229,8 +1205,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             page_id,
             case.dispatch_tab,
             "block-write",
-            PAGE_TAB_SAVE_OPERATION_ID,
-            digest,
+            "PUT",
+            PAGE_TAB_SAVE_PATH,
             "run",
             "draft",
             json!({ "body": { "payload": primary_document.clone() } }),

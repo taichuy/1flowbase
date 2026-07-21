@@ -181,8 +181,8 @@ export interface FrontstageCallableRequest {
 
 export interface DispatchFrontstageCallableInput {
   block_id: string;
-  interface_id: string;
-  schema_digest: string;
+  method: string;
+  path: string;
   run_id: string;
   draft_hash: string;
   request?: FrontstageCallableRequest;
@@ -191,8 +191,8 @@ export interface DispatchFrontstageCallableInput {
 
 export interface IssueFrontstageCallableWriteGrantInput {
   block_id: string;
-  interface_id: string;
-  schema_digest: string;
+  method: string;
+  path: string;
   run_id: string;
   draft_hash: string;
 }

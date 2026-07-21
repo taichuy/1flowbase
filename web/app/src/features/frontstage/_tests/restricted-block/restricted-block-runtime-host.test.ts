@@ -247,7 +247,7 @@ describe('restricted block runtime host controller', () => {
     });
   });
 
-  test('resolves complete interface descriptors through injected handlers', () => {
+  test('resolves complete interface routes through injected handlers', () => {
     const interfaceHandler = vi.fn(() => ({ rows: [{ id: 'record-1' }] }));
     const { worker, host } = createSubject({
       handlers: { interface: interfaceHandler }
@@ -260,8 +260,8 @@ describe('restricted block runtime host controller', () => {
       type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-interface',
-      interfaceId: 'list_records',
-      schemaDigest: 'digest-list-records',
+      method: 'GET',
+      path: '/api/console/test',
       request: { query: { id: 'record-1' } }
     });
 
@@ -269,8 +269,8 @@ describe('restricted block runtime host controller', () => {
       type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-interface',
-      interfaceId: 'list_records',
-      schemaDigest: 'digest-list-records',
+      method: 'GET',
+      path: '/api/console/test',
       request: { query: { id: 'record-1' } }
     });
     expect(worker.messages).toEqual([
@@ -294,14 +294,14 @@ describe('restricted block runtime host controller', () => {
         type: 'interface',
         requestId: 'restricted-block:block-1:code-1',
         effectId: 'effect-interface',
-        interfaceId: 'list_records',
-        schemaDigest: 'digest-list-records',
+        method: 'GET',
+        path: '/api/console/test',
         request: { query: { id: 'record-1' } }
       }
     ]);
   });
 
-  test('rejects malformed worker descriptors before invoking the host handler', () => {
+  test('rejects malformed worker routes before invoking the host handler', () => {
     const interfaceHandler = vi.fn();
     const { worker, host } = createSubject({
       handlers: { interface: interfaceHandler }
@@ -314,7 +314,7 @@ describe('restricted block runtime host controller', () => {
       type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-interface',
-      interfaceId: 'private_records'
+      method: 'GET'
     });
 
     expect(interfaceHandler).not.toHaveBeenCalled();
@@ -322,7 +322,7 @@ describe('restricted block runtime host controller', () => {
     expect(host.getSnapshot().rejections).toContainEqual(
       expect.objectContaining({
         code: 'invalid_message',
-        path: 'message.schemaDigest'
+        path: 'message.path'
       })
     );
   });

@@ -185,10 +185,10 @@ describe('TSX Studio interface connector', () => {
     ).toHaveBeenCalledWith('workspace-1', 'get_frontstage_page_detail');
     expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).toHaveBeenCalledWith(
-      expect.stringContaining('async function getFrontstagePageDetail(')
+      expect.stringContaining('const getFrontstagePageDetail = (')
     );
     expect(onInsertCode).toHaveBeenCalledWith(
-      expect.stringContaining("interfaceId: 'get_frontstage_page_detail'")
+      expect.stringContaining("'/api/console/frontstage/pages/{page_id}'")
     );
   });
 

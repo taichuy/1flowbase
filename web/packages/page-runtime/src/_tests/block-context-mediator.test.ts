@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { createBlockContextMediator } from '../index';
 
 describe('BlockContext host mediator', () => {
-  test('allows declared events and complete interface source descriptors', () => {
+  test('allows declared events and complete interface routes', () => {
     const mediator = createBlockContextMediator({
       allowedEvents: ['record.saved'],
       maxEventChainDepth: 1
@@ -21,16 +21,16 @@ describe('BlockContext host mediator', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-1',
-        interfaceId: 'records.list',
-        schemaDigest: 'digest-1',
+        method: 'GET',
+        path: '/api/console/test',
         request: { query: { page: 1 } }
       }).result
     ).toMatchObject({
       ok: true,
       effect: {
         type: 'interface',
-        interfaceId: 'records.list',
-        schemaDigest: 'digest-1'
+        method: 'GET',
+        path: '/api/console/test'
       }
     });
   });
@@ -44,7 +44,16 @@ describe('BlockContext host mediator', () => {
       {
         type: 'interface',
         requestId: 'run-1',
-        interfaceId: 'delete_everything'
+        method: 'GET'
+      },
+      'effect_invalid'
+    ],
+    [
+      {
+        type: 'interface',
+        requestId: 'run-1',
+        method: 'GET',
+        path: 'https://example.com/private'
       },
       'effect_invalid'
     ],

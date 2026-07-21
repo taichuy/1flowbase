@@ -19,7 +19,16 @@ const blockContext = {
   props: {},
   state: {},
   patch: vi.fn(),
-  interfaces: { call: vi.fn() },
+  api: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+    head: vi.fn(),
+    options: vi.fn(),
+    stream: vi.fn()
+  },
   events: { emit: vi.fn() },
   theme: { mode: 'light', tokens: {} },
   ui: { locale: 'en_US', density: 'comfortable' }
@@ -67,9 +76,9 @@ describe('BlockModule', () => {
     } satisfies BlockResult;
 
     expect(isBlockResult(legal)).toBe(true);
-    expect(
-      isBlockResult({ view: { primitive: 'Text' }, outputs: [] })
-    ).toBe(false);
+    expect(isBlockResult({ view: { primitive: 'Text' }, outputs: [] })).toBe(
+      false
+    );
     expect(isBlockResult({ view: { primitive: 'Text' } })).toBe(false);
   });
 });

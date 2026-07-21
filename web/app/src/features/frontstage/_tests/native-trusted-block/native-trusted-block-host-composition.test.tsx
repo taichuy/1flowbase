@@ -71,7 +71,16 @@ function createFakeBlockContext(
     props: {},
     state: {},
     patch: vi.fn(),
-    interfaces: { call: vi.fn(), stream: vi.fn() },
+    api: {
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      head: vi.fn(),
+      options: vi.fn(),
+      stream: vi.fn()
+    },
     events: {
       emit: vi.fn()
     },
@@ -94,10 +103,7 @@ import React from 'react';
 import { Button, Space } from 'antd';
 
 export default function HostCompositionBlock(props) {
-  void props.ctx.interfaces.call({
-    interfaceId: 'native_records',
-    schemaDigest: 'digest-native-records'
-  }, { body: { title: props.props.title } });
+  void props.ctx.api.get('/api/console/test', { body: { title: props.props.title } });
 
   return (
     <Space title="native-composition-block">
@@ -129,8 +135,14 @@ describe('native trusted block host composition smoke contract', () => {
       resolveBlockContext: () =>
         createFakeBlockContext({
           props: { title: 'Controlled ctx title' },
-          interfaces: {
-            call: query as BlockContext['interfaces']['call'],
+          api: {
+            get: query as BlockContext['api']['get'],
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+            head: vi.fn(),
+            options: vi.fn(),
             stream: vi.fn()
           }
         }),
@@ -161,7 +173,7 @@ describe('native trusted block host composition smoke contract', () => {
     expect(
       await screen.findByRole('button', { name: 'true' })
     ).toBeInTheDocument();
-    expect(query).toHaveBeenCalledWith('native-records', {
+    expect(query).toHaveBeenCalledWith('/api/console/test', {
       body: { title: 'Prepared JSX AntD block' }
     });
     expect(root).toHaveAttribute(NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE, '');

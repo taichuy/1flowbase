@@ -77,8 +77,8 @@ export function createFrontstageJsBlockCapabilityHandlers(
     string,
     {
       requestId: string;
-      interfaceId: string;
-      schemaDigest: string;
+      method: string;
+      path: string;
       iterator: AsyncIterator<unknown>;
       cancel: () => void;
     }
@@ -128,8 +128,8 @@ export function createFrontstageJsBlockCapabilityHandlers(
         if (
           !stream ||
           stream.requestId !== effect.requestId ||
-          stream.interfaceId !== effect.interfaceId ||
-          stream.schemaDigest !== effect.schemaDigest
+          stream.method !== effect.method ||
+          stream.path !== effect.path
         ) {
           throw new Error('Interface stream is not registered for this run.');
         }
@@ -162,8 +162,8 @@ export function createFrontstageJsBlockCapabilityHandlers(
           const streamId = `${effect.requestId}:stream-${nextStreamId++}`;
           streams.set(streamId, {
             requestId: effect.requestId,
-            interfaceId: effect.interfaceId,
-            schemaDigest: effect.schemaDigest,
+            method: effect.method,
+            path: effect.path,
             iterator: iterable[Symbol.asyncIterator](),
             cancel: iterable.cancel
           });
@@ -191,8 +191,8 @@ export function createFrontstageJsBlockCapabilityHandlers(
           options.tabId,
           {
             block_id: blockId,
-            interface_id: effect.interfaceId,
-            schema_digest: effect.schemaDigest,
+            method: effect.method,
+            path: effect.path,
             run_id: effect.requestId,
             draft_hash: draftRun.draftHash
           },
@@ -213,8 +213,8 @@ function createDispatchInput(
 ) {
   return {
     block_id: blockId,
-    interface_id: effect.interfaceId,
-    schema_digest: effect.schemaDigest,
+    method: effect.method,
+    path: effect.path,
     run_id: effect.requestId,
     draft_hash: draftRun?.draftHash ?? 'runtime',
     ...(effect.request === undefined
