@@ -23,6 +23,10 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import {
+  fitWindowWorkspaceRect,
+  getWindowWorkspaceViewport
+} from '../../../../shared/ui/window-workspace/window-workspace-geometry';
+import {
   WindowWorkspaceProvider,
   useOptionalWindowWorkspace,
   useWindowWorkspace
@@ -310,12 +314,20 @@ function FrontstageJsxStudioWindow({
       onOk: finishClose
     });
   };
-  const viewportRect = (): WindowWorkspaceRect => ({
-    left: 8,
-    top: 8,
-    width: Math.max(320, window.innerWidth - 16),
-    height: Math.max(320, window.innerHeight - 16)
-  });
+  const viewportRect = (): WindowWorkspaceRect => {
+    const viewport = getWindowWorkspaceViewport();
+    return fitWindowWorkspaceRect(
+      {
+        left: viewport.left,
+        top: viewport.top,
+        width: viewport.width,
+        height: viewport.height
+      },
+      320,
+      320,
+      viewport
+    );
+  };
 
   if (!open) return null;
   if (!windowEntry) return null;

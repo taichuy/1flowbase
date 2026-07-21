@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -10,6 +11,7 @@ import {
 
 import {
   clampWindowWorkspaceRect,
+  fitWindowWorkspaceRect,
   WINDOW_WORKSPACE_MIN_HEIGHT,
   WINDOW_WORKSPACE_MIN_WIDTH
 } from './window-workspace-geometry';
@@ -61,27 +63,48 @@ export function WindowWorkspaceWindow({
   zIndex
 }: WindowWorkspaceWindowProps) {
   const [localRect, setLocalRect] = useState(() =>
-    clampWindowWorkspaceRect(initialRect(), minWidth, minHeight)
+    fitWindowWorkspaceRect(initialRect(), minWidth, minHeight)
   );
   const currentRect = rect ?? localRect;
   const currentRectRef = useRef(currentRect);
   currentRectRef.current = currentRect;
   const cleanupRef = useRef<(() => void) | null>(null);
+  const commitRect = useCallback(
+    (next: WindowWorkspaceRect) => {
+      const current = currentRectRef.current;
+      if (
+        current.left === next.left &&
+        current.top === next.top &&
+        current.width === next.width &&
+        current.height === next.height
+      ) {
+        return;
+      }
+      currentRectRef.current = next;
+      if (onRectChange) onRectChange(next);
+      else setLocalRect(next);
+    },
+    [onRectChange]
+  );
   const setRect = useCallback(
     (next: WindowWorkspaceRect) => {
-      const clamped = clampWindowWorkspaceRect(next, minWidth, minHeight);
-      currentRectRef.current = clamped;
-      if (onRectChange) onRectChange(clamped);
-      else setLocalRect(clamped);
+      commitRect(clampWindowWorkspaceRect(next, minWidth, minHeight));
     },
-    [minHeight, minWidth, onRectChange]
+    [commitRect, minHeight, minWidth]
+  );
+  const fitRect = useCallback(
+    (next: WindowWorkspaceRect) => {
+      commitRect(fitWindowWorkspaceRect(next, minWidth, minHeight));
+    },
+    [commitRect, minHeight, minWidth]
   );
 
+  useLayoutEffect(() => fitRect(currentRectRef.current), [fitRect]);
   useEffect(() => {
-    const resize = () => setRect(currentRectRef.current);
+    const resize = () => fitRect(currentRectRef.current);
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
-  }, [setRect]);
+  }, [fitRect]);
   useEffect(() => () => cleanupRef.current?.(), []);
 
   const begin = (
