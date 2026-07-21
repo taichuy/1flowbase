@@ -36,6 +36,10 @@ export type FrontstageJsxStudioSection =
   | 'configuration'
   | 'run';
 
+const INTERFACE_FILTER_POPUP_STYLES = {
+  popup: { root: { zIndex: 1400 } }
+};
+
 export function JsxStudioResourcePanel({
   block,
   pageBlocks,
@@ -275,6 +279,7 @@ function InterfaceConnectorPanel({
               setOffset(0);
             }}
             style={{ width: '60%' }}
+            styles={INTERFACE_FILTER_POPUP_STYLES}
           />
           <Select
             allowClear
@@ -290,6 +295,7 @@ function InterfaceConnectorPanel({
               setOffset(0);
             }}
             style={{ width: '40%' }}
+            styles={INTERFACE_FILTER_POPUP_STYLES}
           />
         </Space.Compact>
         {capabilityPage.error ? (
