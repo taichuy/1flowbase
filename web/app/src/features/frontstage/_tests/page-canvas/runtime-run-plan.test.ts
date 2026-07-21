@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type {
@@ -97,7 +98,7 @@ function createSourceState(
 function createReadySource({
   block = createBlock(),
   code = 'export default { render() {} }',
-  source_sha256 = 'source-sha256',
+  source_sha256 = sha256Text(code),
   sourceIndex = 0,
   slotIndex = 0
 }: {
@@ -228,6 +229,8 @@ describe('frontstage page canvas runtime run plan model', () => {
           codeRef: 'stable-code',
           sourceCodeRef: 'stable-code'
         }),
+        source_sha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         slotIndex: 2
       })
     ]);
@@ -252,7 +255,8 @@ describe('frontstage page canvas runtime run plan model', () => {
       codeRef: 'stable-code',
       slotIndex: 2,
       sourceStatus: 'ready',
-      source_sha256: 'source-sha256',
+      source_sha256:
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       catalogId: 'official:hero.banner'
     });
     if (runPlanState.items[0].status !== 'run_plan_ready') {
@@ -261,7 +265,12 @@ describe('frontstage page canvas runtime run plan model', () => {
     expect(runPlanState.items[0].runPlan.request).toMatchObject({
       requestId: 'restricted-block:stable-match:stable-code',
       blockId: 'stable-match',
-      source: 'export default { render() {} }',
+      program: {
+        kind: 'source',
+        source: 'export default { render() {} }',
+        sourceSha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      },
       props: { title: 'Hello' },
       contextSnapshot: { workspaceId: 'workspace-1', pageId: 'page-1' },
       limits: {

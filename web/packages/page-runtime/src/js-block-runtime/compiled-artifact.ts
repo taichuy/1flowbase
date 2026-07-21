@@ -45,11 +45,13 @@ export function createCompiledBlockRuntimeFingerprint(
 
 export function createCompiledBlockArtifact({
   source,
+  sourceSha256,
   runtimeFingerprint,
   allowedImports,
   transformed
 }: {
   source: string;
+  sourceSha256?: string;
   runtimeFingerprint: string;
   allowedImports: readonly string[];
   transformed: JsBlockSourceTransformSuccess;
@@ -59,7 +61,7 @@ export function createCompiledBlockArtifact({
     format: COMPILED_BLOCK_ARTIFACT_FORMAT,
     version: COMPILED_BLOCK_ARTIFACT_VERSION,
     runtimeFingerprint,
-    sourceSha256: sha256Text(source),
+    sourceSha256: sourceSha256 ?? sha256Text(source),
     program: {
       injectedModules: transformed.injectedModules.map(canonicalInjectedModule),
       importBindings: transformed.importBindings.map(canonicalImportBinding),
@@ -106,16 +108,16 @@ export function canonicalizeCompiledBlockArtifact(
   };
 }
 
-export function compiledBlockArtifactMatchesSource(
+export function compiledBlockArtifactMatchesIdentity(
   artifact: CompiledBlockArtifact,
-  source: string,
+  sourceSha256: string,
   runtimeFingerprint: string
 ): boolean {
   return (
     artifact.format === COMPILED_BLOCK_ARTIFACT_FORMAT &&
     artifact.version === COMPILED_BLOCK_ARTIFACT_VERSION &&
     artifact.runtimeFingerprint === runtimeFingerprint &&
-    artifact.sourceSha256 === sha256Text(source)
+    artifact.sourceSha256 === sourceSha256
   );
 }
 

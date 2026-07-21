@@ -2,6 +2,7 @@ import '@ant-design/v5-patch-for-react-19';
 import { ConfigProvider } from 'antd';
 import { StrictMode, useCallback, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import { PageCanvas } from '../../components/PageCanvas';
 import {
@@ -86,24 +87,28 @@ export default { main } satisfies BlockModule;`;
     runtimeEntry: 'restricted-block-runtime.worker',
     contributionCode: 'qa.runtime-orchestration',
     sourceStatus: 'ready',
-    source_sha256: `qa-source-${blockId}`,
+    source_sha256: sha256Text(source),
     catalogId: 'qa:runtime-orchestration',
     runPlan: {
       ok: true,
       request: {
         requestId: `qa:${blockId}:${codeRef}`,
         blockId,
-        source,
+        program: {
+          kind: 'source',
+          source,
+          sourceSha256: sha256Text(source),
+          allowedImports: [
+            '@1flowbase/block-sdk',
+            '@1flowbase/block-renderer/antd-facade'
+          ]
+        },
         props: { blockId },
         state: {},
         contextSnapshot: {
           page: { id: 'runtime-fixture', route: '/runtime-fixture' }
         },
-        limits: { timeoutMs: 3000, maxRenderDepth: 8, maxRenderNodes: 250 },
-        allowedImports: [
-          '@1flowbase/block-sdk',
-          '@1flowbase/block-renderer/antd-facade'
-        ]
+        limits: { timeoutMs: 3000, maxRenderDepth: 8, maxRenderNodes: 250 }
       },
       schemaValidationOptions: {
         maxDepth: 8,

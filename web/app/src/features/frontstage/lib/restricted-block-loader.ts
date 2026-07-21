@@ -8,7 +8,6 @@ import type {
   JsBlockRunRequest,
   JsBlockRuntimeLimits
 } from '@1flowbase/page-runtime';
-import { sha256Text } from '@1flowbase/page-runtime';
 
 import {
   hasFrontstageBlockActionPermission,
@@ -59,6 +58,7 @@ export interface RestrictedBlockLoaderInput {
   block: FrontstageBlockInstance;
   catalogEntry: NormalizedFrontstageBlockCatalogEntry;
   code: string;
+  sourceSha256?: string;
   contextSnapshot: Record<string, unknown>;
   props?: Record<string, unknown>;
   state?: Record<string, unknown>;
@@ -168,13 +168,16 @@ function createRunProgram(input: RestrictedBlockLoaderInput): JsBlockRunRequest[
   const fallback = {
     kind: 'source' as const,
     source: input.code,
+    ...(input.sourceSha256
+      ? { sourceSha256: input.sourceSha256 }
+      : {}),
     allowedImports: input.catalogEntry.codeCapabilities?.allowedImports ?? []
   };
-  return input.compiledArtifact
+  return input.compiledArtifact && input.sourceSha256
     ? {
         kind: 'compiled_artifact',
         artifact: input.compiledArtifact,
-        sourceSha256: sha256Text(input.code),
+        sourceSha256: input.sourceSha256,
         fallback
       }
     : fallback;

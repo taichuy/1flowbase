@@ -116,7 +116,17 @@ function emitWorkerReady(worker: FakeWorker): void {
 
 describe('restricted block runtime host controller', () => {
   test('creates a worker host from the run plan and sends the run request', () => {
-    const runPlan = createRunPlan();
+    const authoritativeSourceSha256 =
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const runPlan = createRunPlan({
+      request: createRunRequest({
+        program: {
+          kind: 'source',
+          source: validSource,
+          sourceSha256: authoritativeSourceSha256
+        }
+      })
+    });
     const { worker, host } = createSubject({ runPlan });
 
     host.run();
@@ -144,7 +154,7 @@ describe('restricted block runtime host controller', () => {
       schemaValidationOptions: runPlan.schemaValidationOptions,
       compiledArtifact: {
         format: '1flowbase/js-block-compiled-artifact',
-        sourceSha256: expect.any(String)
+        sourceSha256: authoritativeSourceSha256
       },
       logs: [],
       effects: [],

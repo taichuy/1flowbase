@@ -10,6 +10,7 @@ import { compileAndTransformJsBlockSource } from './js-block-source-evaluator';
 export interface JsBlockSourceProgram {
   kind: 'source';
   source: string;
+  sourceSha256?: string;
   allowedImports?: string[];
 }
 
@@ -838,7 +839,17 @@ function readProgram(
       'message.request.program.allowedImports'
     );
     return allowedImports.ok
-      ? { ok: true, value: { kind: 'source', source: source.value, allowedImports: allowedImports.value } }
+      ? {
+          ok: true,
+          value: {
+            kind: 'source',
+            source: source.value,
+            ...(typeof value.sourceSha256 === 'string'
+              ? { sourceSha256: value.sourceSha256 }
+              : {}),
+            allowedImports: allowedImports.value
+          }
+        }
       : allowedImports;
   }
   if (

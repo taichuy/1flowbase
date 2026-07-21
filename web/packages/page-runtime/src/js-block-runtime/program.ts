@@ -77,6 +77,7 @@ function compileSourceProgram(
   if (!transformed.ok) return { ok: false, fallback };
   const artifact = createCompiledBlockArtifact({
     source: fallback.source,
+    sourceSha256: fallback.sourceSha256,
     runtimeFingerprint,
     allowedImports: fallback.allowedImports ?? [],
     transformed
@@ -101,6 +102,9 @@ function cloneSourceProgram(program: JsBlockSourceProgram): JsBlockSourceProgram
   return {
     kind: 'source',
     source: program.source,
+    ...(program.sourceSha256
+      ? { sourceSha256: program.sourceSha256 }
+      : {}),
     ...(program.allowedImports
       ? { allowedImports: [...program.allowedImports] }
       : {})

@@ -162,6 +162,7 @@ function createRuntimeRunPlanItem({
     block: source.block,
     catalogEntry,
     code: source.code,
+    sourceSha256: source.source_sha256,
     contextSnapshot: resolveContextSnapshot(
       contextSnapshot,
       source,
