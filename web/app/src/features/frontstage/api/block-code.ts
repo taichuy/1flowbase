@@ -10,6 +10,7 @@ export interface FrontstageBlockCode {
   pageId: string;
   codeRef: string;
   code: string;
+  source_sha256: string;
 }
 
 export interface SaveFrontstageBlockCodeInput {
@@ -30,7 +31,8 @@ function mapFrontstageBlockCode(
   return {
     pageId: blockCode.page_id,
     codeRef: blockCode.code_ref,
-    code: blockCode.code
+    code: blockCode.code,
+    source_sha256: blockCode.source_sha256
   };
 }
 

@@ -907,24 +907,40 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
         save_payload["data"]["code"],
         json!("export default function Hero() { return 'v1'; }")
     );
+    assert_eq!(
+        save_payload["data"]["source_sha256"],
+        json!("ab3463e9dfd1db406efe272f203d2d1c5e4ce7b39fdef237c7c0ae1769b3a46e")
+    );
 
-    let (overwrite_status, _) = send_json(
+    let (overwrite_status, overwrite_payload) = send_json(
         &app,
         "PUT",
         &code_path,
         &cookie,
         &csrf,
-        json!({ "code": "export default function Hero() { return 'v2'; }" }),
+        json!({ "code": "export default function Hero() { return 'v1'; }\n" }),
     )
     .await;
     assert_eq!(overwrite_status, StatusCode::OK);
+    assert_eq!(
+        overwrite_payload["data"]["source_sha256"],
+        json!("4ba967d040a870a5b7ad333a6ad644a9e154211c3ecdafa8071a6c531c562801")
+    );
+    assert_ne!(
+        save_payload["data"]["source_sha256"],
+        overwrite_payload["data"]["source_sha256"]
+    );
 
     let (read_status, read_payload) = get_json(&app, &code_path, &cookie).await;
     assert_eq!(read_status, StatusCode::OK);
     assert_eq!(read_payload["data"]["code_ref"], json!("hero"));
     assert_eq!(
         read_payload["data"]["code"],
-        json!("export default function Hero() { return 'v2'; }")
+        json!("export default function Hero() { return 'v1'; }\n")
+    );
+    assert_eq!(
+        read_payload["data"]["source_sha256"],
+        overwrite_payload["data"]["source_sha256"]
     );
 
     let (_, other_page_payload) = create_page(

@@ -20,6 +20,7 @@ import {
   moveFrontstagePageNode,
   saveFrontstageBlockCode,
   saveFrontstageTabDocument,
+  type ConsoleFrontstageBlockCode,
   updateFrontstagePageTab,
   updateFrontstagePageNodeTitle
 } from '../console/frontstage';
@@ -52,6 +53,20 @@ describe('console-frontstage client', () => {
       }
     }),
     cancel: vi.fn()
+  });
+
+  test('keeps the block code source hash field in the API DTO contract', () => {
+    const blockCode = {
+      page_id: 'page-1',
+      code_ref: 'hero',
+      code: 'export default 1;',
+      source_sha256:
+        '56332e0a55734bc2b73df56a2df8635ed5c5b24b6d7a456b41de7cab9a2f3814'
+    } satisfies ConsoleFrontstageBlockCode;
+
+    expect(blockCode.source_sha256).toBe(
+      '56332e0a55734bc2b73df56a2df8635ed5c5b24b6d7a456b41de7cab9a2f3814'
+    );
   });
 
   test.each([
