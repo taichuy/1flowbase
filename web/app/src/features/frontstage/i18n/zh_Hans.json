@@ -227,6 +227,7 @@
     "rerun": "重新运行",
     "reset": "重置",
     "resize_jsx_studio": "调整 TSX 编辑器宽度",
+    "resize_resource_panel": "调整资源面板宽度",
     "restricted_runtime_session_create_failed": "受限运行时会话创建失败。",
     "retry": "重试",
     "run": "运行",
