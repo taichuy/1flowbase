@@ -44,6 +44,7 @@ async fn current_schema(pool: &PgPool) -> String {
 }
 
 const APPLICATION_OPERATION_BINDINGS_MIGRATION_VERSION: i64 = 20260718120000;
+const WORKFLOW_EXTENSION_LEGACY_PARAMETERS_MIGRATION_VERSION: i64 = 20260721130000;
 
 fn application_operation_bindings_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
@@ -61,6 +62,20 @@ fn before_application_operation_bindings_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
         .iter()
         .filter(|migration| migration.version < APPLICATION_OPERATION_BINDINGS_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+fn before_workflow_extension_legacy_parameters_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| {
+            migration.version < WORKFLOW_EXTENSION_LEGACY_PARAMETERS_MIGRATION_VERSION
+        })
         .cloned()
         .collect::<Vec<_>>();
     Migrator {
@@ -1004,6 +1019,115 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
         reloaded.dependency_snapshot[0].permissions.network,
         "outbound_only"
     );
+}
+
+#[tokio::test]
+async fn workflow_extension_legacy_parameters_migration_normalizes_current_and_published_mappings()
+{
+    let pool = connect(&isolated_database_url().await).await.unwrap();
+    before_workflow_extension_legacy_parameters_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let workspace_id = seed_workspace(&store, "Legacy Workflow Extension Mapping").await;
+    let actor_user_id = seed_user(&store, workspace_id, "legacy-extension-owner").await;
+    let application_id =
+        seed_application(&store, workspace_id, actor_user_id, "Legacy Extension").await;
+    sqlx::query(
+        "update applications set application_type = 'workflow', workflow_trigger_type = 'extension' where id = $1",
+    )
+    .bind(application_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (flow_id, flow_version_id, compiled_plan_id, document) =
+        seed_flow_version_and_compiled_plan(&store, application_id, actor_user_id).await;
+    let mut legacy_mapping =
+        serde_json::to_value(workflow_extension_mapping("legacy-openai")).unwrap();
+    legacy_mapping["extension"]["parameters"] = serde_json::json!([]);
+    assert_eq!(
+        legacy_mapping["extension"]["parameters"],
+        serde_json::json!([])
+    );
+    let publication_id = Uuid::now_v7();
+
+    sqlx::query(
+        r#"
+        insert into application_api_mappings (
+            id, application_id, scope_id, extension_slug, mapping_config, operation_bindings,
+            created_by, updated_by
+        ) values ($1, $2, (select scope_id from applications where id = $2), $3, $4, '{}'::jsonb, $5, $5)
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(application_id)
+    .bind("legacy-openai")
+    .bind(&legacy_mapping)
+    .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into application_publication_versions (
+            id, application_id, scope_id, flow_id, flow_version_id, compiled_plan_id,
+            extension_slug, version_sequence, active, api_enabled, flow_schema_version,
+            document_hash, document_snapshot, mapping_snapshot, operation_bindings,
+            runtime_profile_snapshot, output_selector, dependency_snapshot, created_by, updated_by
+        ) values (
+            $1, $2, (select scope_id from applications where id = $2), $3, $4, $5,
+            $6, 1, true, true, $7, $8, $9, $10, '{}'::jsonb,
+            '{}'::jsonb, '{}'::jsonb, '[]'::jsonb, $11, $11
+        )
+        "#,
+    )
+    .bind(publication_id)
+    .bind(application_id)
+    .bind(flow_id)
+    .bind(flow_version_id)
+    .bind(compiled_plan_id)
+    .bind("legacy-openai")
+    .bind(domain::FLOW_SCHEMA_VERSION)
+    .bind("sha256:legacy-extension")
+    .bind(document)
+    .bind(&legacy_mapping)
+    .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    run_migrations(&pool).await.unwrap();
+
+    let current =
+        ApplicationApiMappingRepository::get_application_api_mapping(&store, application_id)
+            .await
+            .unwrap()
+            .unwrap();
+    let publications =
+        ApplicationPublicationRepository::list_enabled_extension_publications(&store)
+            .await
+            .unwrap();
+    let current_json: serde_json::Value = sqlx::query_scalar(
+        "select mapping_config from application_api_mappings where application_id = $1",
+    )
+    .bind(application_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let published_json: serde_json::Value = sqlx::query_scalar(
+        "select mapping_snapshot from application_publication_versions where id = $1",
+    )
+    .bind(publication_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(current.mapping, workflow_extension_mapping("legacy-openai"));
+    assert_eq!(publications.len(), 1);
+    assert_eq!(publications[0].id, publication_id);
+    assert!(current_json["extension"]["parameters"].is_null());
+    assert!(published_json["extension"]["parameters"].is_null());
 }
 
 /// Root #1366 AC-003 / AC-006: old snapshots backfill Generate only when identity is unique,

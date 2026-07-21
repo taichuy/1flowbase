@@ -17,8 +17,8 @@ match_when:
   - 调整区块输入输出、跨区块联动、Page/Tab Signal 或 Event Bus
   - 评估 defineBlock/render、OpenAPI 生成源码或 Studio 浮窗交互
 created_at: 2026-07-20 19
-updated_at: 2026-07-20 23
-last_verified_at: 2026-07-20 23
+updated_at: 2026-07-21 12
+last_verified_at: 2026-07-21 12
 decision_policy: verify_before_decision
 status: local_beta_user_acceptance
 source_issue: "#1393"
@@ -49,9 +49,17 @@ scope:
 - Page Document 拥有区块 id/title、接口绑定和 Port Schema；源码不建立第二真值。
 - 连接器严格按 Callable OpenAPI 在当前光标插入 `$ref` 实体、参数、响应与完整命名函数，不自动改写 `main`，不发明 OpenAPI 不存在的类型。
 - `application_conversations` 只暴露真实允许的 list/get；当前 OpenAPI `filter` 为 string 时只生成 `filter?: string`。
+- 接口连接器使用可搜索 Select（名称、operation_id、method、path、description）；“绑定并插入”必须先持久化 binding，成功后才在 Monaco 当前光标插入完整 OpenAPI 函数，失败不插入且不修改 main。Studio 区块保存必须同时持久化 `props/presentation/interfaces/ports`，宿主拥有的 id/order/layout/runtime/codeRef 保持稳定。
+- OpenAPI DTO 保持后端字段原名；与 JS Block 静态策略冲突的属性名（如 `document`）生成字符串属性键，不能让合法响应字段触发全局标识符诊断。
 - 跨区块共享使用 `BlockResult.outputs → Tab/Page Scoped Signal → ctx.inputs`；Signal 单写多读且 V1 拒绝环，Event Bus 不承担状态。
 - 草稿运行统一为单一 `run_id`，观测 Preview、Console、Variables、Interface Calls 与 Problems；写 operation 每次运行单次授权。
+- UI 设计模式画布只展示区块最终视觉结果和设计控件；日志、效果、拒绝项及内部错误详情不进入画布，运行诊断统一留在 TSX Studio 的 Console、Variables、Interface Calls 与 Problems。
 - TSX Studio 使用非模态 Window Workspace；桌面可拖动缩放，移动端视口内最大化，主从关闭与脏源码保护由窗口 owner 状态机负责。
+- TSX Studio 的作者工作区采用右侧资源布局：桌面为 `Editor | Resource Panel | Rail`，代码单栏为 `Editor | Rail`；移动端资源面板与编辑器在左列纵向堆叠，Rail 固定最右侧。
+- 自动生成的 `@1flowbase-context` 注释由标题栏“注入上下文”动作写回源码；按钮不占用 Monaco 内容区，删除注释后仍可重新注入。
+- Monaco 只负责 TSX 解析、补全与类型检查，使用 `JsxEmit.Preserve`；Page Runtime 是 JSX 变换唯一 owner，继续用受控 `antd-facade` 的 `h / Fragment` 编译，不引入或伪造 `react/jsx-runtime`。
+- Window Workspace 首次打开、最大化和浏览器缩放必须完整适配顶部导航栏以下的可用视口并保留 8px 边距；自由拖动仍允许窗口重叠，但标题栏必须保持可找回。窗口内容不足时在窗口内部滚动，不能让窗口初始底部沉出视口。
+- TSX Studio 桌面首次打开使用 `1080 × 680` 默认尺寸，顶部保持在导航栏下方；不默认铺满可用高度。移动端继续在可用视口内自动最大化，桌面最大化和手动缩放能力不变。
 
 ## 相邻边界
 
