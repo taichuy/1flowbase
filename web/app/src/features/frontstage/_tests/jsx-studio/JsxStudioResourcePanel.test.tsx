@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
@@ -194,6 +200,50 @@ describe('TSX Studio interface connector', () => {
     );
     expect(onSaveBlock.mock.invocationCallOrder[0]).toBeLessThan(
       onInsertCode.mock.invocationCallOrder[0]
+    );
+  });
+
+  test('keeps source and method filter menus above the Studio window and applies both filters', async () => {
+    renderInterfacePanel();
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '接口来源' }));
+    const sourcePopup = document.querySelector<HTMLElement>(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
+    );
+    expect(sourcePopup).not.toBeNull();
+    expect(
+      Number.parseInt(getComputedStyle(sourcePopup!).zIndex, 10)
+    ).toBeGreaterThan(1051);
+    fireEvent.click(within(sourcePopup!).getByText('数据模型'));
+
+    await waitFor(() =>
+      expect(
+        interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
+      ).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.objectContaining({ adapter_id: 'runtime_data_model' })
+      )
+    );
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Method' }));
+    const methodPopup = document.querySelector<HTMLElement>(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
+    );
+    expect(methodPopup).not.toBeNull();
+    fireEvent.click(
+      methodPopup!.querySelector<HTMLElement>('.ant-select-item-option')!
+    );
+
+    await waitFor(() =>
+      expect(
+        interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
+      ).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.objectContaining({
+          adapter_id: 'runtime_data_model',
+          method: 'GET'
+        })
+      )
     );
   });
 
