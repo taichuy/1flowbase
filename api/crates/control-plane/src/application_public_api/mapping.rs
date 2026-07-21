@@ -262,29 +262,11 @@ pub struct ApplicationApiMappingOutput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkflowExtensionApiConfig {
     pub slug: String,
     pub method: WorkflowExtensionHttpMethod,
-    #[serde(default)]
-    pub access_policy: WorkflowExtensionAccessPolicy,
     pub response_mode: WorkflowExtensionResponseMode,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowExtensionAccessPolicy {
-    #[default]
-    UserApiKey,
-    Public,
-}
-
-impl WorkflowExtensionAccessPolicy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::UserApiKey => "user_api_key",
-            Self::Public => "public",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

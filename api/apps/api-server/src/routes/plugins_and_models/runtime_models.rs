@@ -872,9 +872,9 @@ mod tests {
     }
 
     #[test]
-    fn runtime_record_response_exposes_public_and_scheduler_without_creator_identity() {
+    fn runtime_record_response_exposes_non_user_principals_without_creator_identity() {
         for (run_mode, invocation_source, principal_kind) in [
-            ("workflow_http_run", "workflow_http", "public"),
+            ("workflow_http_run", "workflow_http", "user_api_key"),
             ("workflow_schedule_run", "workflow_schedule", "scheduler"),
         ] {
             let record = runtime_record_response(

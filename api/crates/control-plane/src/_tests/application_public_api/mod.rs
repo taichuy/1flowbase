@@ -11,8 +11,7 @@ use control_plane::{
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
             ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
-            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionResponseMode,
+            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, LoadActiveApplicationPublicationCommand,
@@ -116,7 +115,6 @@ fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
         extension: Some(WorkflowExtensionApiConfig {
             slug: slug.into(),
             method: WorkflowExtensionHttpMethod::Post,
-            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
         }),
     }
@@ -1357,22 +1355,19 @@ async fn application_public_api_publish_rejects_extension_slug_used_by_saved_map
 }
 
 #[tokio::test]
-async fn workflow_http_operation_rejects_application_key_and_runs_with_public_principal() {
-    let harness = ApplicationPublicApiTestHarness::new();
+async fn workflow_http_operation_runs_with_authenticated_user_api_key_principal() {
+    let harness = ApplicationPublicApiTestHarness::new_with_console_policies(vec![
+        application_console_policy(vec![
+            application_simple_operation(access_control::APPLICATIONS_PUBLISH_OPERATION_ID, true),
+            application_row_operation(
+                access_control::APPLICATIONS_VIEW_OPERATION_ID,
+                domain::ConsoleOperationRowScope::Own,
+            ),
+        ]),
+    ]);
     let application = harness.seed_workflow_application(actor_user_id(), "Ticket Workflow");
-    let agent_flow = harness.seed_application(actor_user_id(), "Support Agent");
     let repository = harness.repository();
-    let application_token = ApplicationApiKeyService::new(repository.clone())
-        .create_api_key(CreateApplicationApiKeyCommand {
-            actor_user_id: actor_user_id(),
-            application_id: agent_flow.id,
-            name: "Rejected application key".into(),
-            expires_at: None,
-        })
-        .await
-        .unwrap()
-        .token;
-    let mut mapping = ApplicationApiMappingConfig {
+    let mapping = ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
             query_target: "node-start.query".into(),
             model_target: None,
@@ -1384,35 +1379,9 @@ async fn workflow_http_operation_rejects_application_key_and_runs_with_public_pr
         extension: Some(WorkflowExtensionApiConfig {
             slug: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
-            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
         }),
     };
-    ApplicationPublicationService::new(repository.clone())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: actor_user_id(),
-            application_id: application.id,
-            mapping: mapping.clone(),
-            api_enabled: true,
-        })
-        .await
-        .unwrap();
-
-    let rejected = WorkflowExtensionRunService::new(repository.clone())
-        .create_run(CreateWorkflowExtensionRunCommand {
-            bearer_token: Some(application_token.clone()),
-            request_path: "open-ticket".into(),
-            method: WorkflowExtensionHttpMethod::Post,
-            parameters: WorkflowExtensionRequestParameters::default(),
-        })
-        .await
-        .unwrap_err();
-    assert!(matches!(
-        rejected,
-        control_plane::application_public_api::workflow_extension::WorkflowExtensionRunError::NotAuthenticated
-    ));
-
-    mapping.extension.as_mut().unwrap().access_policy = WorkflowExtensionAccessPolicy::Public;
     ApplicationPublicationService::new(repository.clone())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: actor_user_id(),
@@ -1423,9 +1392,33 @@ async fn workflow_http_operation_rejects_application_key_and_runs_with_public_pr
         .await
         .unwrap();
 
+    let forbidden = WorkflowExtensionRunService::new(repository.clone())
+        .create_run(CreateWorkflowExtensionRunCommand {
+            actor: domain::ActorContext {
+                user_id: other_user_id(),
+                tenant_id: Uuid::nil(),
+                current_workspace_id: application.workspace_id,
+                effective_display_role: "member".into(),
+                is_root: false,
+                permissions: std::collections::HashSet::new(),
+            },
+            user_api_key_id: Uuid::now_v7(),
+            request_path: "open-ticket".into(),
+            method: WorkflowExtensionHttpMethod::Post,
+            parameters: WorkflowExtensionRequestParameters::default(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        forbidden,
+        control_plane::application_public_api::workflow_extension::WorkflowExtensionRunError::Forbidden
+    ));
+
+    let api_key_id = Uuid::now_v7();
     let run = WorkflowExtensionRunService::new(repository.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
-            bearer_token: Some(application_token),
+            actor: domain::ActorContext::root(actor_user_id(), application.workspace_id, "root"),
+            user_api_key_id: api_key_id,
             request_path: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
             parameters: WorkflowExtensionRequestParameters::default(),
@@ -1456,7 +1449,7 @@ async fn workflow_http_operation_rejects_application_key_and_runs_with_public_pr
         Some(expected_trace.as_str())
     );
     assert_eq!(stored.compatibility_mode, None);
-    assert_eq!(run.api_key_id, None, "public principal is not an API key");
+    assert_eq!(run.api_key_id, Some(api_key_id));
 }
 
 #[tokio::test]

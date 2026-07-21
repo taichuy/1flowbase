@@ -22,6 +22,8 @@ use serde_json::{json, Map, Value};
 
 use crate::{
     app_state::ApiState,
+    error_response::ApiError,
+    middleware::require_session::{require_session, RequestCredential},
     routes::application_public_api::native::{api_provider_runtime, service_error, NativeApiError},
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
@@ -44,12 +46,22 @@ pub async fn invoke_workflow_extension(
     uri: axum::http::Uri,
     body: Bytes,
 ) -> Result<Response, NativeApiError> {
-    let bearer_token = optional_bearer_token(&headers)?;
+    let context = require_session(&state, &headers)
+        .await
+        .map_err(workflow_extension_auth_error)?;
+    let RequestCredential::UserApiKey { api_key_id } = context.credential else {
+        return Err(NativeApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "not_authenticated",
+            "a user API key is required",
+        ));
+    };
     let method = workflow_extension_method(&method)?;
     let parameters = request_parameters(uri.query(), &headers, &body)?;
     let run = WorkflowExtensionRunService::new(state.store.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
-            bearer_token,
+            actor: context.actor,
+            user_api_key_id: api_key_id,
             request_path: slug,
             method,
             parameters,
@@ -222,11 +234,6 @@ fn parse_urlencoded_object(raw: &str) -> Map<String, Value> {
 
 fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError {
     match error {
-        WorkflowExtensionRunError::NotAuthenticated => NativeApiError::new(
-            StatusCode::UNAUTHORIZED,
-            "not_authenticated",
-            "invalid or unavailable user API key",
-        ),
         WorkflowExtensionRunError::ExtensionNotFound => NativeApiError::new(
             StatusCode::NOT_FOUND,
             "workflow_extension_not_found",
@@ -279,13 +286,6 @@ mod error_mapping_tests {
 
     #[test]
     fn user_api_key_errors_use_product_accurate_messages() {
-        let unauthenticated = workflow_extension_error(WorkflowExtensionRunError::NotAuthenticated);
-        assert_eq!(unauthenticated.status, StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            unauthenticated.message,
-            "invalid or unavailable user API key"
-        );
-
         let forbidden = workflow_extension_error(WorkflowExtensionRunError::Forbidden);
         assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
         assert_eq!(
@@ -306,28 +306,30 @@ mod error_mapping_tests {
     }
 }
 
-fn optional_bearer_token(headers: &HeaderMap) -> Result<Option<String>, NativeApiError> {
-    let Some(value) = headers.get(axum::http::header::AUTHORIZATION) else {
-        return Ok(None);
-    };
-    let value = value.to_str().map_err(|_| {
+fn workflow_extension_auth_error(error: ApiError) -> NativeApiError {
+    if error
+        .0
+        .downcast_ref::<control_plane::errors::ControlPlaneError>()
+        .is_some_and(|error| {
+            matches!(
+                error,
+                control_plane::errors::ControlPlaneError::NotAuthenticated
+            )
+        })
+    {
         NativeApiError::new(
             StatusCode::UNAUTHORIZED,
             "not_authenticated",
-            "invalid authorization header",
+            "invalid or unavailable user API key",
         )
-    })?;
-    let token = value
-        .strip_prefix("Bearer ")
-        .filter(|token| !token.is_empty())
-        .ok_or_else(|| {
-            NativeApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "not_authenticated",
-                "invalid authorization header",
-            )
-        })?;
-    Ok(Some(token.to_string()))
+    } else {
+        tracing::error!(error = ?error.0, "workflow extension authentication failed");
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "workflow extension authentication failed",
+        )
+    }
 }
 
 fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Response {

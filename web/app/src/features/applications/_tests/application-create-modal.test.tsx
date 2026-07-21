@@ -77,6 +77,7 @@ describe('ApplicationFormModal create intent', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
     expect(screen.getByText('/api/ex/')).toBeInTheDocument();
+    expect(screen.queryByText('访问策略')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '接口子路径' }), {
       target: { value: 'orders/create' }
     });
@@ -93,7 +94,6 @@ describe('ApplicationFormModal create intent', () => {
           workflow_trigger_config: {
             subpath: 'orders/create',
             http_method: 'POST',
-            access_policy: 'user_api_key',
             response_mode: 'sync'
           },
           name: 'Order workflow'

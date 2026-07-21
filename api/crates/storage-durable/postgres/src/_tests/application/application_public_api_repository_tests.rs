@@ -2,9 +2,8 @@ use control_plane::{
     application_public_api::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
-            ApplicationApiMappingOutput, ApplicationOperationBindings,
-            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionResponseMode,
+            ApplicationApiMappingOutput, ApplicationOperationBindings, WorkflowExtensionApiConfig,
+            WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
         publications::ApplicationPublicationJsDependencySnapshot,
     },
@@ -164,7 +163,6 @@ fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
         extension: Some(WorkflowExtensionApiConfig {
             slug: slug.into(),
             method: WorkflowExtensionHttpMethod::Post,
-            access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
             response_mode: WorkflowExtensionResponseMode::Async,
         }),
     }

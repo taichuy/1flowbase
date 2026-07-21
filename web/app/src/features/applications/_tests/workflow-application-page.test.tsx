@@ -179,7 +179,6 @@ describe('Workflow application page', () => {
       extension: {
         slug: 'orders/{order_id}',
         method: 'POST',
-        access_policy: 'user_api_key',
         response_mode: 'sync'
       }
     });
@@ -190,7 +189,6 @@ describe('Workflow application page', () => {
         interface_id: 'published_workflow_operation:app-workflow',
         method: 'POST',
         route_template: 'orders/{order_id}',
-        access_policy: 'user_api_key',
         response_mode: 'sync',
         parameter_schema: {
           type: 'object',
@@ -247,6 +245,7 @@ describe('Workflow application page', () => {
     expect(screen.getByText('/api/ex/orders/{order_id}')).toBeInTheDocument();
     expect(screen.getByText('path.order_id')).toBeInTheDocument();
     expect(screen.getByText('accepted')).toBeInTheDocument();
+    expect(screen.queryByText('访问策略')).not.toBeInTheDocument();
     expect(screen.getByText('API')).toBeInTheDocument();
     expect(screen.queryByText(/AgentFlow/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/API Key 管理/i)).not.toBeInTheDocument();

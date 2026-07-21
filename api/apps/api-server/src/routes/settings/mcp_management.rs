@@ -2895,6 +2895,7 @@ mod tests {
             "published_workflow_operation:11111111-1111-1111-1111-111111111111"
         );
         assert_eq!(entry.parameter_descriptors[0].name, "order_id");
+        assert_eq!(entry.security, json!([{ "UserApiKey": [] }]));
         assert_eq!(
             entry.result_schema["properties"]["accepted"]["type"],
             json!("boolean")

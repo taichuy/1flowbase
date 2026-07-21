@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{extract::State, Json};
 use control_plane::{
     application_public_api::{
-        mapping::{WorkflowExtensionAccessPolicy, WorkflowExtensionResponseMode},
+        mapping::WorkflowExtensionResponseMode,
         published_workflow_operation::{
             build_published_workflow_operations, PublishedWorkflowOperation,
         },
@@ -691,10 +691,7 @@ pub(crate) fn workflow_extension_operation(operation: &PublishedWorkflowOperatio
         "operationId": operation.interface_id,
         "summary": format!("Invoke published workflow {}", operation.application_id),
         "parameters": openapi_parameters(&operation.parameter_schema),
-        "security": match operation.access_policy {
-            WorkflowExtensionAccessPolicy::UserApiKey => json!([{ "UserApiKey": [] }]),
-            WorkflowExtensionAccessPolicy::Public => json!([]),
-        },
+        "security": [{ "UserApiKey": [] }],
         "responses": {
             "202": {
                 "description": "Workflow run accepted",
@@ -812,7 +809,7 @@ mod workflow_operation_tests {
     use time::OffsetDateTime;
     use uuid::Uuid;
 
-    fn operation(access_policy: WorkflowExtensionAccessPolicy) -> PublishedWorkflowOperation {
+    fn operation() -> PublishedWorkflowOperation {
         let application_id = Uuid::from_u128(0x11111111111111111111111111111111);
         PublishedWorkflowOperation::from_publication(ApplicationPublicationVersionRecord {
             id: Uuid::from_u128(0x22222222222222222222222222222222),
@@ -832,7 +829,6 @@ mod workflow_operation_tests {
                 extension: Some(WorkflowExtensionApiConfig {
                     slug: "orders/{order_id}".into(),
                     method: WorkflowExtensionHttpMethod::Post,
-                    access_policy,
                     response_mode: WorkflowExtensionResponseMode::Sync,
                 }),
             },
@@ -865,8 +861,7 @@ mod workflow_operation_tests {
 
     #[test]
     fn ac_006_openapi_projects_start_end_and_user_api_key_security() {
-        let projected =
-            workflow_extension_operation(&operation(WorkflowExtensionAccessPolicy::UserApiKey));
+        let projected = workflow_extension_operation(&operation());
         assert_eq!(projected["security"], json!([{ "UserApiKey": [] }]));
         assert_eq!(projected["parameters"][0]["name"], json!("order_id"));
         assert_eq!(
@@ -874,12 +869,5 @@ mod workflow_operation_tests {
                 ["accepted"]["type"],
             json!("boolean")
         );
-    }
-
-    #[test]
-    fn ac_005_public_operation_has_no_auth_requirement() {
-        let projected =
-            workflow_extension_operation(&operation(WorkflowExtensionAccessPolicy::Public));
-        assert_eq!(projected["security"], json!([]));
     }
 }
