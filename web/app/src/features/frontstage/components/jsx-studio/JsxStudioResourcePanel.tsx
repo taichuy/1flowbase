@@ -38,6 +38,7 @@ const INTERFACE_FILTER_POPUP_STYLES = {
 
 export function JsxStudioResourcePanel({
   block,
+  codeSource,
   pageBlocks,
   workspaceId,
   onInsertCode,
@@ -47,6 +48,7 @@ export function JsxStudioResourcePanel({
   section
 }: {
   block: FrontstageBlockInstance;
+  codeSource: string;
   pageBlocks: readonly FrontstageBlockInstance[];
   workspaceId: string;
   onInsertCode: (source: string) => void;
@@ -58,6 +60,7 @@ export function JsxStudioResourcePanel({
   if (section === 'interfaces') {
     return (
       <InterfaceConnectorPanel
+        codeSource={codeSource}
         workspaceId={workspaceId}
         onInsertCode={onInsertCode}
       />
@@ -99,9 +102,11 @@ export function JsxStudioResourcePanel({
 }
 
 function InterfaceConnectorPanel({
+  codeSource,
   workspaceId,
   onInsertCode
 }: {
+  codeSource: string;
   workspaceId: string;
   onInsertCode: (source: string) => void;
 }) {
@@ -151,10 +156,7 @@ function InterfaceConnectorPanel({
         interfaceId
       );
       onInsertCode(
-        generateFrontstageInterfaceSource(
-          operation,
-          createInterfaceFunctionName(operation.interface_id)
-        ).source
+        generateFrontstageInterfaceSource(operation, codeSource).source
       );
       setSelectedOperationId(undefined);
       void message.success(
@@ -676,21 +678,6 @@ function ResourceHeading({
       <Typography.Text type="secondary">{description}</Typography.Text>
     </Space>
   );
-}
-
-function createInterfaceFunctionName(operationId: string): string {
-  return toCamelCase(operationId) || 'callInterface';
-}
-
-function toCamelCase(value: string): string {
-  const parts = value.split(/[^A-Za-z0-9$]+/).filter(Boolean);
-  return parts
-    .map((part, index) =>
-      index === 0
-        ? `${part.charAt(0).toLowerCase()}${part.slice(1)}`
-        : `${part.charAt(0).toUpperCase()}${part.slice(1)}`
-    )
-    .join('');
 }
 
 function readString(value: unknown): string {

@@ -509,6 +509,7 @@ function FrontstageJsxStudioWindow({
           {activeSection !== 'run' && activeSection !== 'code' ? (
             <JsxStudioResourcePanel
               block={block}
+              codeSource={draft}
               pageBlocks={pageBlocks}
               workspaceId={workspaceId}
               onInsertCode={insertCode}
