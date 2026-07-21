@@ -217,7 +217,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     fireEvent.mouseDown(interfaceSelect);
     fireEvent.click(
       await screen.findByText(
-        'List conversations · GET · list_application_conversations_records'
+        'GET /api/runtime/models/application_conversations/list'
       )
     );
     fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));

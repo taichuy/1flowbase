@@ -289,6 +289,11 @@ async fn openapi_documents_callable_media_protocols() {
             ["content"]["application/zip"]["schema"]["format"],
         "binary"
     );
+    assert_eq!(
+        paths["/api/console/files/{file_table_id}/records/{record_id}/content"]["get"]
+            ["responses"]["200"]["content"]["application/octet-stream"]["schema"]["format"],
+        "binary"
+    );
 
     for (route, method) in [
         (

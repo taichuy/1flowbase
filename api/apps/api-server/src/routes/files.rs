@@ -252,7 +252,7 @@ pub async fn upload_file(
         ("file_table_id" = String, Path, description = "File table id"),
         ("record_id" = String, Path, description = "Runtime record id")
     ),
-    responses((status = 200, body = crate::openapi::OpenApiBinaryBody, content_type = "application/octet-stream"), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/octet-stream"), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn read_file_content(
     State(state): State<Arc<ApiState>>,

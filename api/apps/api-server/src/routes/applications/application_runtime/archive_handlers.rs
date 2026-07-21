@@ -280,7 +280,8 @@ pub async fn create_run_archive_upload_session(
     params(
         ("id" = String, Path, description = "Application id"),
         ("session_id" = String, Path, description = "Upload session id"),
-        ("chunk_index" = i32, Path, description = "Zero-based chunk index")
+        ("chunk_index" = i32, Path, description = "Zero-based chunk index"),
+        ("x-chunk-sha256" = String, Header, description = "SHA-256 digest of this chunk")
     ),
     responses(
         (status = 200, body = RunArchiveChunkUploadResponse),

@@ -79,7 +79,7 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     );
   });
 
-  test('fails closed when the source block did not bind the alias', () => {
+  test('fails closed when the source block did not bind the alias', async () => {
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
       pageId: 'page-1',
@@ -87,14 +87,14 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       csrfToken: 'csrf-1',
       resolveBinding: () => null
     });
-    expect(() =>
+    await expect(
       handlers.interface({
         type: 'interface',
         requestId: 'restricted-block:block-1:code-1',
         effectId: 'effect-1',
         bindingAlias: 'unbound'
       })
-    ).toThrow('Interface binding is not registered: unbound.');
+    ).rejects.toThrow('Interface binding is not registered: unbound.');
   });
 
   test('uses a server-issued grant once for the exact high-risk draft binding', async () => {

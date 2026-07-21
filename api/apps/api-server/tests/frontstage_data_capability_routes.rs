@@ -42,6 +42,7 @@ use uuid::Uuid;
 
 const PAGE_TAB_GET_OPERATION_ID: &str = "get_frontstage_page_detail";
 const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
+const PAGE_TAB_DELETE_OPERATION_ID: &str = "delete_frontstage_page_tab";
 const GRANT_PREFIX: &str = "frontstage:callable-write-grant:";
 const GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 
@@ -341,6 +342,35 @@ async fn login(app: &Router, identifier: &str, password: &str) -> (String, Strin
     )
 }
 
+async fn create_member(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    account: &str,
+    password: &str,
+) {
+    let (status, payload) = json_request(
+        app,
+        "POST",
+        "/api/console/settings/members",
+        cookie,
+        csrf,
+        json!({
+            "account": account,
+            "email": format!("{account}@example.com"),
+            "phone": null,
+            "password": password,
+            "name": account,
+            "nickname": account,
+            "introduction": "",
+            "email_login_enabled": true,
+            "phone_login_enabled": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
+}
+
 async fn session_identity(app: &Router, cookie: &str) -> (Uuid, Uuid) {
     let (status, payload) = get(app, "/api/console/session", cookie).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
@@ -612,6 +642,15 @@ async fn callable_catalog_contains_every_console_operation_and_runtime_model_cru
             .collect::<std::collections::BTreeSet<_>>(),
         std::collections::BTreeSet::from(["DELETE", "GET", "PATCH", "POST"])
     );
+
+    let chunk_upload = entries
+        .iter()
+        .find(|entry| entry["operation_id"] == "upload_run_archive_chunk")
+        .expect("archive chunk upload must be callable");
+    assert!(chunk_upload["parameters"].as_array().unwrap().iter().any(
+        |parameter| parameter["name"] == "x-chunk-sha256"
+            && parameter["location"] == "header"
+    ));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -914,6 +953,168 @@ async fn write_grant_is_consumed_once_and_confirmed_has_no_authority() {
     )
     .await;
     assert_eq!(replay.0, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
+    let fixture = fixture().await;
+    let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
+    let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
+    let (page_id, first_tab, first_root_uid) =
+        create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
+    let (second_tab, second_root_uid) =
+        create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
+    let catalog = catalog_entry(
+        &fixture.app,
+        &cookie,
+        workspace_id,
+        PAGE_TAB_DELETE_OPERATION_ID,
+    )
+    .await;
+    let digest = catalog["schema_digest"].as_str().unwrap();
+
+    for (tab_id, root_uid) in [
+        (first_tab, first_root_uid.as_str()),
+        (second_tab, second_root_uid.as_str()),
+    ] {
+        save_document(
+            &fixture.app,
+            &cookie,
+            &csrf,
+            workspace_id,
+            page_id,
+            tab_id,
+            &document(
+                root_uid,
+                vec![("block-delete", vec![binding("deleteTab", &catalog)])],
+            ),
+        )
+        .await;
+    }
+
+    let first_grant = issue_grant(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        first_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-first",
+        "draft-delete-first",
+    )
+    .await;
+    let deleted = dispatch(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        first_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-first",
+        "draft-delete-first",
+        json!({}),
+        Some(&first_grant),
+        None,
+    )
+    .await;
+    assert_eq!(deleted, (StatusCode::NO_CONTENT, Value::Null));
+
+    let second_grant = issue_grant(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        second_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-last",
+        "draft-delete-last",
+    )
+    .await;
+    let conflict = dispatch(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        second_tab,
+        "block-delete",
+        "deleteTab",
+        digest,
+        "run-delete-last",
+        "draft-delete-last",
+        json!({}),
+        Some(&second_grant),
+        None,
+    )
+    .await;
+    assert_eq!(conflict.0, StatusCode::CONFLICT, "{}", conflict.1);
+}
+
+#[tokio::test]
+async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visitor() {
+    let fixture = fixture().await;
+    let (root_cookie, root_csrf) = login(&fixture.app, "root", "change-me").await;
+    let (_, workspace_id) = session_identity(&fixture.app, &root_cookie).await;
+    let (page_id, tab_id, root_uid) = create_page(
+        &fixture.app,
+        &root_cookie,
+        &root_csrf,
+        workspace_id,
+    )
+    .await;
+    let catalog = catalog_entry(&fixture.app, &root_cookie, workspace_id, "list_members").await;
+    let digest = catalog["schema_digest"].as_str().unwrap();
+    save_document(
+        &fixture.app,
+        &root_cookie,
+        &root_csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        &document(
+            &root_uid,
+            vec![("block-members", vec![binding("listMembers", &catalog)])],
+        ),
+    )
+    .await;
+    create_member(
+        &fixture.app,
+        &root_cookie,
+        &root_csrf,
+        "page-visitor",
+        "temp-pass",
+    )
+    .await;
+    let (visitor_cookie, visitor_csrf) =
+        login(&fixture.app, "page-visitor", "temp-pass").await;
+
+    let denied = dispatch(
+        &fixture.app,
+        &visitor_cookie,
+        &visitor_csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        "block-members",
+        "listMembers",
+        digest,
+        "run-visitor",
+        "draft-visitor",
+        json!({}),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(denied.0, StatusCode::FORBIDDEN, "{}", denied.1);
 }
 
 #[tokio::test]
