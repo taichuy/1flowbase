@@ -189,6 +189,83 @@ pub async fn get_openapi_capability(
     }))
 }
 
+pub async fn get_openapi_capability_by_route(
+    state: &ApiState,
+    workspace_id: uuid::Uuid,
+    method: &str,
+    path: &str,
+) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
+    let mut static_match = None;
+    for category in &state.api_docs.catalog().categories {
+        let Some(operations) = state.api_docs.category_operations(&category.id) else {
+            continue;
+        };
+        let Some(operation) = operations
+            .operations
+            .iter()
+            .find(|operation| operation.method == method && operation.path == path)
+        else {
+            continue;
+        };
+        if static_match.is_some() {
+            return Err(control_plane::errors::ControlPlaneError::Conflict(
+                "openapi_capability_route",
+            )
+            .into());
+        }
+        static_match = Some(operation.clone());
+    }
+    if let Some(operation) = static_match {
+        if !static_operation_is_bindable(&operation.path) {
+            return Ok(None);
+        }
+        let Some(spec) = state.api_docs.operation_spec(&operation.id) else {
+            return Ok(None);
+        };
+        let Some(interface) = catalog_entry_from_operation(&operation, spec) else {
+            return Ok(None);
+        };
+        return Ok(Some(OpenApiCapabilityCatalogEntry {
+            risk_level: operation_risk_level(&interface.method),
+            interface,
+            source: OpenApiCapabilitySource::StaticApiDocs,
+            bindable: true,
+            disabled_reason: None,
+        }));
+    }
+
+    if !path.starts_with("/api/runtime/models/") {
+        return Ok(None);
+    }
+    let mut models = state.store.list_model_definitions(workspace_id).await?;
+    models.retain(|model| model.status == domain::DataModelStatus::Published);
+    let Some(operation) = runtime_data_model_docs::build_category_operations(&models)
+        .operations
+        .into_iter()
+        .find(|operation| operation.method == method && operation.path == path)
+    else {
+        return Ok(None);
+    };
+    let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
+    else {
+        return Ok(None);
+    };
+    let Some(model) = models.iter().find(|model| model.id == model_id) else {
+        return Ok(None);
+    };
+    let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
+    let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {
+        return Ok(None);
+    };
+    Ok(Some(OpenApiCapabilityCatalogEntry {
+        risk_level: operation_risk_level(&interface.method),
+        interface,
+        source: OpenApiCapabilitySource::RuntimeDataModelCrud,
+        bindable: true,
+        disabled_reason: None,
+    }))
+}
+
 async fn openapi_capability_catalog_summaries(
     state: &ApiState,
     workspace_id: uuid::Uuid,

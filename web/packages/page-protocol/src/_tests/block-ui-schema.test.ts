@@ -97,7 +97,7 @@ describe('block UI schema protocol', () => {
       'props',
       'state',
       'patch',
-      'interfaces',
+      'api',
       'events',
       'theme',
       'ui'

@@ -45,8 +45,8 @@ export interface JsBlockHostEffectBridgeOptions {
 export interface JsBlockInterfaceCallTrace {
   requestId: string;
   effectId: string;
-  interfaceId: string;
-  schemaDigest: string;
+  method: string;
+  path: string;
   request?: unknown;
   response?: unknown;
   status: 'succeeded' | 'failed';
@@ -193,8 +193,8 @@ function emitInterfaceTrace(
   callback?.({
     requestId: effect.requestId,
     effectId: effect.effectId,
-    interfaceId: effect.interfaceId,
-    schemaDigest: effect.schemaDigest,
+    method: effect.method,
+    path: effect.path,
     ...(effect.request === undefined
       ? {}
       : { request: sanitizeTraceValue(effect.request) }),

@@ -56,33 +56,24 @@ const operation: ConsoleFrontstageInterfaceCapability = {
 };
 
 describe('Frontstage callable OpenAPI codegen', () => {
-  test('AC-020/021 emits editable DTOs and a complete source-described function', () => {
+  test('AC-020/021 emits one callable with inline DTOs and a canonical HTTP route', () => {
     const result = generateFrontstageInterfaceSource(
       operation,
       'listApplicationConversations'
     );
 
-    expect(result.source).toContain(
-      'operationId=list_application_conversations_records'
-    );
+    expect(result.source).not.toContain('operationId');
+    expect(result.source).not.toContain('schemaDigest');
+    expect(result.source).not.toContain('interface ListApplication');
     expect(result.source).toContain('filter?: string;');
     expect(result.source).not.toContain('ApplicationConversationFilterValue');
+    expect(result.source).toContain('const listApplicationConversations = (');
+    expect(result.source).toContain('ctx.api.get(');
     expect(result.source).toContain(
-      'interface ListApplicationConversationsResponseItem'
+      "'/api/runtime/models/application_conversations/list'"
     );
-    expect(result.source).toContain(
-      'items: ListApplicationConversationsResponseItem[];'
-    );
-    expect(result.source).toContain(
-      'async function listApplicationConversations('
-    );
-    expect(result.source).toContain(
-      'ctx.interfaces.call<ListApplicationConversationsResponse>'
-    );
-    expect(result.source).toContain(
-      "interfaceId: 'list_application_conversations_records'"
-    );
-    expect(result.source).toContain("schemaDigest: 'digest-1'");
+    expect(result.source).toContain('items: {');
+    expect(result.source).toContain('}[];');
     expect(result.source).not.toContain('function main');
   });
 
@@ -120,6 +111,48 @@ describe('Frontstage callable OpenAPI codegen', () => {
     expect(validateJsBlockSource(result.source)).toMatchObject({ ok: true });
   });
 
+  test('flattens path parameters and keeps the request body inside one callable', () => {
+    const result = generateFrontstageInterfaceSource(
+      {
+        ...operation,
+        method: 'PUT',
+        path: '/api/console/applications/{application_id}',
+        parameter_schema: {
+          type: 'object',
+          required: ['path', 'body'],
+          properties: {
+            path: {
+              type: 'object',
+              required: ['application_id'],
+              properties: { application_id: { type: 'string' } }
+            },
+            body: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name: { type: 'string' },
+                description: { type: 'string' }
+              }
+            }
+          }
+        }
+      },
+      'updateApplication'
+    );
+
+    expect(result.source).toContain('applicationId: string');
+    expect(result.source).toContain('body: {');
+    expect(result.source).toContain("ctx.api.put(");
+    expect(result.source).toContain(
+      "'/api/console/applications/{application_id}'"
+    );
+    expect(result.source).toContain(
+      '{ path: { application_id: applicationId }, body }'
+    );
+    expect(result.source).not.toContain('interface UpdateApplication');
+    expect(validateJsBlockSource(result.source)).toMatchObject({ ok: true });
+  });
+
   test('emits explicit binary envelopes and no-content results from media truth', () => {
     const upload = generateFrontstageInterfaceSource(
       {
@@ -143,8 +176,8 @@ describe('Frontstage callable OpenAPI codegen', () => {
       },
       'uploadFile'
     );
-    expect(upload.source).toContain('interface UploadFileBodyFile {');
-    expect(upload.source).toContain('file: UploadFileBodyFile;');
+    expect(upload.source).not.toContain('interface UploadFile');
+    expect(upload.source).toContain('file: {');
     expect(upload.source).toContain('base64: string;');
     expect(upload.source).toContain('Promise<void>');
 
@@ -155,9 +188,9 @@ describe('Frontstage callable OpenAPI codegen', () => {
       },
       'exportLogs'
     );
-    expect(download.source).toContain('interface ExportLogsResponse {');
+    expect(download.source).not.toContain('interface ExportLogsResponse');
     expect(download.source).toContain('bytes: Uint8Array;');
-    expect(download.source).toContain('Promise<ExportLogsResponse>');
+    expect(download.source).toContain('Promise<{');
   });
 
   test('emits a pull-based AsyncIterable for SSE operations', () => {
@@ -168,12 +201,12 @@ describe('Frontstage callable OpenAPI codegen', () => {
       },
       'watchConversation'
     );
-    expect(stream.source).toContain('function watchConversation(');
+    expect(stream.source).toContain('const watchConversation = (');
+    expect(stream.source).toContain('): AsyncIterable<{');
+    expect(stream.source).toContain('ctx.api.stream(');
+    expect(stream.source).toContain("'GET'");
     expect(stream.source).toContain(
-      '): AsyncIterable<WatchConversationResponse>'
-    );
-    expect(stream.source).toContain(
-      'ctx.interfaces.stream<WatchConversationResponse>'
+      "'/api/runtime/models/application_conversations/list'"
     );
   });
 });

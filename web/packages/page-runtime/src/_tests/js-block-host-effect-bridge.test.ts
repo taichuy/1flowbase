@@ -22,8 +22,8 @@ describe('JS block host mediator effect bridge', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-1',
-        interfaceId: 'records.list',
-        schemaDigest: 'digest-1',
+        method: 'GET',
+        path: '/api/console/test',
         request: { headers: { authorization: 'Bearer secret' } }
       })
     ).toMatchObject({ handled: true, transition: { result: { ok: true } } });
@@ -36,7 +36,7 @@ describe('JS block host mediator effect bridge', () => {
     });
   });
 
-  test('returns failed effect results for incomplete descriptors and missing handlers', () => {
+  test('returns failed effect results for incomplete routes and missing handlers', () => {
     expect(
       createJsBlockHostEffectBridge({
         mediator: createBlockContextMediator({}),
@@ -46,7 +46,7 @@ describe('JS block host mediator effect bridge', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-invalid',
-        interfaceId: 'records.list'
+        method: 'GET'
       })
     ).toMatchObject({
       handled: true,
@@ -62,8 +62,8 @@ describe('JS block host mediator effect bridge', () => {
       type: 'interface',
       requestId: 'run-1',
       effectId: 'effect-1',
-      interfaceId: 'records.list',
-      schemaDigest: 'digest-1'
+      method: 'GET',
+      path: '/api/console/test'
     });
     expect(missing[0]).toMatchObject({
       ok: false,
@@ -90,8 +90,8 @@ describe('JS block host mediator effect bridge', () => {
       type: 'interface',
       requestId: 'run-1',
       effectId: 'effect-binary',
-      interfaceId: 'files.upload',
-      schemaDigest: 'digest-upload',
+      method: 'GET',
+      path: '/api/console/test',
       request: { body: { base64: 'A'.repeat(8_000) } }
     });
     await vi.waitFor(() => expect(traces).toHaveLength(1));

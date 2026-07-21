@@ -270,8 +270,8 @@ describe('JS block worker host adapter', () => {
       type: 'interface',
       requestId: 'request-1',
       effectId: 'effect-data',
-      interfaceId: 'records.get',
-      schemaDigest: 'digest-1',
+      method: 'GET',
+      path: '/api/console/test',
       request: { query: { id: 'record-1' } }
     });
     worker.emitMessage({

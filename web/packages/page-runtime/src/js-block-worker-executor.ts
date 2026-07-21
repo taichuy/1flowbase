@@ -1,9 +1,9 @@
 import type {
   BlockContext,
+  BlockApiMethod,
+  BlockApiRequest,
   BlockContextEntity,
   BlockContextIdentity,
-  BlockInterfaceDescriptor,
-  BlockInterfaceRequest,
   BlockContextPage,
   BlockContextRecord,
   BlockContextTheme,
@@ -370,28 +370,55 @@ function createBlockContext(
         Object.assign(state, patch);
       }
     },
-    interfaces: {
-      async call<TResponse = unknown>(
-        descriptor: BlockInterfaceDescriptor,
-        interfaceRequest?: BlockInterfaceRequest
+    api: {
+      async get<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
       ): Promise<TResponse> {
-        const source = requireBlockInterfaceDescriptor(descriptor);
-        return (await requestHostEffect({
-          direction: 'worker_to_host',
-          type: 'interface',
-          requestId: request.requestId,
-          interfaceId: source.interfaceId,
-          schemaDigest: source.schemaDigest,
-          ...(interfaceRequest === undefined
-            ? {}
-            : { request: interfaceRequest })
-        })) as TResponse;
+        return callApi<TResponse>('GET', path, apiRequest);
+      },
+      async post<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
+      ) {
+        return callApi<TResponse>('POST', path, apiRequest);
+      },
+      async put<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
+      ) {
+        return callApi<TResponse>('PUT', path, apiRequest);
+      },
+      async patch<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
+      ) {
+        return callApi<TResponse>('PATCH', path, apiRequest);
+      },
+      async delete<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
+      ) {
+        return callApi<TResponse>('DELETE', path, apiRequest);
+      },
+      async head<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
+      ) {
+        return callApi<TResponse>('HEAD', path, apiRequest);
+      },
+      async options<TResponse = unknown>(
+        path: string,
+        apiRequest?: BlockApiRequest
+      ) {
+        return callApi<TResponse>('OPTIONS', path, apiRequest);
       },
       stream<TEvent = unknown>(
-        descriptor: BlockInterfaceDescriptor,
-        interfaceRequest?: BlockInterfaceRequest
+        method: BlockApiMethod,
+        path: string,
+        apiRequest?: BlockApiRequest
       ): AsyncIterable<TEvent> {
-        const source = requireBlockInterfaceDescriptor(descriptor);
+        const route = requireBlockApiRoute(method, path);
         let streamId: string | undefined;
         let finished = false;
         const open = async (): Promise<string> => {
@@ -400,15 +427,13 @@ function createBlockContext(
             direction: 'worker_to_host',
             type: 'interface',
             requestId: request.requestId,
-            interfaceId: source.interfaceId,
-            schemaDigest: source.schemaDigest,
+            method: route.method,
+            path: route.path,
             operation: 'stream_open',
-            ...(interfaceRequest === undefined
-              ? {}
-              : { request: interfaceRequest })
+            ...(apiRequest === undefined ? {} : { request: apiRequest })
           })) as { stream_id?: unknown };
           if (typeof opened?.stream_id !== 'string' || !opened.stream_id) {
-            throw new Error('Interface stream did not return a stream id.');
+            throw new Error('API stream did not return a stream id.');
           }
           streamId = opened.stream_id;
           return streamId;
@@ -423,8 +448,8 @@ function createBlockContext(
                   direction: 'worker_to_host',
                   type: 'interface',
                   requestId: request.requestId,
-                  interfaceId: source.interfaceId,
-                  schemaDigest: source.schemaDigest,
+                  method: route.method,
+                  path: route.path,
                   operation: 'stream_next',
                   streamId: currentStreamId
                 })) as IteratorResult<TEvent>;
@@ -438,8 +463,8 @@ function createBlockContext(
                     direction: 'worker_to_host',
                     type: 'interface',
                     requestId: request.requestId,
-                    interfaceId: source.interfaceId,
-                    schemaDigest: source.schemaDigest,
+                    method: route.method,
+                    path: route.path,
                     operation: 'stream_cancel',
                     streamId
                   });
@@ -465,6 +490,22 @@ function createBlockContext(
     theme: readTheme(snapshot.theme),
     ui: readUi(snapshot.ui)
   };
+
+  async function callApi<TResponse>(
+    method: BlockApiMethod,
+    path: string,
+    apiRequest?: BlockApiRequest
+  ): Promise<TResponse> {
+    const route = requireBlockApiRoute(method, path);
+    return (await requestHostEffect({
+      direction: 'worker_to_host',
+      type: 'interface',
+      requestId: request.requestId,
+      method: route.method,
+      path: route.path,
+      ...(apiRequest === undefined ? {} : { request: apiRequest })
+    })) as TResponse;
+  }
 
   return context;
 }
@@ -617,23 +658,34 @@ function readIdentity(value: unknown): BlockContextIdentity | null {
   };
 }
 
-function requireBlockInterfaceDescriptor(
-  value: unknown
-): BlockInterfaceDescriptor {
+function requireBlockApiRoute(method: unknown, path: unknown) {
+  const supportedMethods = new Set<BlockApiMethod>([
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'HEAD',
+    'OPTIONS'
+  ]);
+  if (!supportedMethods.has(method as BlockApiMethod)) {
+    throw new Error('API method is not supported.');
+  }
   if (
-    !isRecord(value) ||
-    typeof value.interfaceId !== 'string' ||
-    value.interfaceId.length === 0 ||
-    typeof value.schemaDigest !== 'string' ||
-    value.schemaDigest.length === 0
+    typeof path !== 'string' ||
+    path.length === 0 ||
+    path !== path.trim() ||
+    !path.startsWith('/') ||
+    path.startsWith('//') ||
+    path.includes('?') ||
+    path.includes('#') ||
+    path.split('/').some((segment) => segment === '.' || segment === '..')
   ) {
-    throw new Error(
-      'Interface source descriptor requires interfaceId and schemaDigest.'
-    );
+    throw new Error('API path must be a canonical relative path template.');
   }
   return {
-    interfaceId: value.interfaceId,
-    schemaDigest: value.schemaDigest
+    method: method as BlockApiMethod,
+    path
   };
 }
 

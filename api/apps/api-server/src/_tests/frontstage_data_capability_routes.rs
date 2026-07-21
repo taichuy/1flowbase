@@ -199,6 +199,17 @@ async fn dispatch_callable(
     interface_id: &str,
     request: Value,
 ) -> (StatusCode, Value) {
+    let (method, path) = match interface_id {
+        "get_frontstage_page_detail" => (
+            "GET",
+            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_reference}",
+        ),
+        "save_frontstage_tab_document" => (
+            "PUT",
+            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document",
+        ),
+        _ => ("GET", "/api/console/missing"),
+    };
     send_json(
         app,
         "POST",
@@ -209,8 +220,8 @@ async fn dispatch_callable(
         csrf,
         json!({
             "block_id": "migrated-host-fixture",
-            "interface_id": interface_id,
-            "schema_digest": "migrated-to-host-integration",
+            "method": method,
+            "path": path,
             "run_id": "migrated-run",
             "draft_hash": "migrated-draft",
             "request": request

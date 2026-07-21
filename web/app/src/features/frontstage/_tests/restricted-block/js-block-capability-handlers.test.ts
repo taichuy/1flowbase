@@ -30,15 +30,15 @@ function effect(
     type: 'interface',
     requestId: 'run-1',
     effectId: 'effect-1',
-    interfaceId: 'list_application_conversations_records',
-    schemaDigest: 'digest-1',
+    method: 'GET',
+    path: '/api/console/test',
     request: { query: { page: 1 } },
     ...overrides
   };
 }
 
 describe('createFrontstageJsBlockCapabilityHandlers', () => {
-  test('AC-020 dispatches the source descriptor without resolving a binding', async () => {
+  test('AC-020 dispatches the source route without resolving a binding', async () => {
     const client = createClient();
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
@@ -57,8 +57,8 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       'tab-1',
       {
         block_id: 'block-1',
-        interface_id: 'list_application_conversations_records',
-        schema_digest: 'digest-1',
+        method: 'GET',
+        path: '/api/console/test',
         run_id: 'run-1',
         draft_hash: 'runtime',
         request: { query: { page: 1 } }
@@ -115,8 +115,8 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       confirmWrite
     });
     const writeEffect = effect({
-      interfaceId: 'save_frontstage_tab_document',
-      schemaDigest: 'digest-write',
+      method: 'PUT',
+      path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
       request: { body: { payload: {} } }
     });
 
@@ -135,8 +135,8 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       'tab-1',
       {
         block_id: 'block-1',
-        interface_id: 'save_frontstage_tab_document',
-        schema_digest: 'digest-write',
+        method: 'PUT',
+        path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
         run_id: 'run-1',
         draft_hash: 'draft-1'
       },
@@ -179,7 +179,7 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     expect(client.issueFrontstageCallableWriteGrant).not.toHaveBeenCalled();
   });
 
-  test('opens, pulls, and cancels an SSE descriptor within the owning run', async () => {
+  test('opens, pulls, and cancels an SSE route within the owning run', async () => {
     const client = createClient();
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
@@ -190,17 +190,17 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       client,
       resolveBlockId: () => 'block-1'
     });
-    const descriptor = {
-      interfaceId: 'stream_application_run_events',
-      schemaDigest: 'digest-stream'
+    const route = {
+      method: 'GET',
+      path: '/api/console/test'
     };
     const opened = (await handlers.interface(
-      effect({ ...descriptor, operation: 'stream_open', request: undefined })
+      effect({ ...route, operation: 'stream_open', request: undefined })
     )) as { stream_id: string };
     await expect(
       handlers.interface(
         effect({
-          ...descriptor,
+          ...route,
           operation: 'stream_next',
           streamId: opened.stream_id,
           request: undefined
@@ -210,7 +210,7 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     await expect(
       handlers.interface(
         effect({
-          ...descriptor,
+          ...route,
           operation: 'stream_cancel',
           streamId: opened.stream_id,
           request: undefined

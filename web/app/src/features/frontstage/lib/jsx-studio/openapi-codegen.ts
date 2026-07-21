@@ -18,6 +18,45 @@ const sourcePolicyDeniedPropertyNames = new Set([
   'prototype',
   '__proto__'
 ]);
+const reservedIdentifierNames = new Set([
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'debugger',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'false',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'in',
+  'instanceof',
+  'new',
+  'null',
+  'return',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typeof',
+  'var',
+  'void',
+  'while',
+  'with',
+  'yield'
+]);
 
 export function generateFrontstageInterfaceSource(
   operation: ConsoleFrontstageInterfaceCapability,
@@ -27,8 +66,6 @@ export function generateFrontstageInterfaceSource(
     throw new Error(operation.disabled_reason ?? 'Operation is not bindable.');
   }
   const functionName = requireIdentifier(localFunctionName);
-  const typeBase = toPascalCase(functionName) || 'BoundInterface';
-  const declarations: string[] = [];
   const request = asSchema(operation.parameter_schema);
   const requestProperties = asRecord(request.properties);
   const requestRequired = stringSet(request.required);
@@ -36,83 +73,93 @@ export function generateFrontstageInterfaceSource(
     (location) => requestProperties[location] !== undefined
   );
 
-  const locationTypes = new Map<string, string>();
-  for (const location of locations) {
-    const name = `${typeBase}${toPascalCase(location)}`;
-    locationTypes.set(
-      location,
-      declareSchema(name, requestProperties[location], declarations)
-    );
-  }
-  const responseName = `${typeBase}Response`;
   const responseType = isNoContentResponse(operation)
     ? 'void'
     : isBinaryMediaType(operation.response_media_type)
-      ? declareBinaryResource(responseName, declarations)
-      : declareSchema(responseName, operation.result_schema, declarations);
+      ? renderBinaryResource()
+      : renderSchemaType(operation.result_schema);
 
-  let parameterSource: string;
-  let requestSource: string;
-  if (locations.length === 0) {
-    parameterSource = '';
-    requestSource = '';
-  } else if (locations.length === 1 && locations[0] === 'query') {
-    const queryType = locationTypes.get('query') as string;
-    const optional = !requestRequired.has('query');
-    parameterSource = `,\n  query: ${queryType}${optional ? ' = {}' : ''}`;
-    requestSource = ',\n    { query }';
+  const parameters: Array<{ source: string; required: boolean }> = [];
+  const requestFields: string[] = [];
+  const parameterNames = new Set(['ctx']);
+  const pathSchema = asSchema(requestProperties.path);
+  const pathProperties = asRecord(pathSchema.properties);
+  const requiredPathProperties = stringSet(pathSchema.required);
+  const pathFields: string[] = [];
+  for (const [propertyName, propertySchema] of Object.entries(pathProperties)) {
+    const parameterName = uniqueParameterName(
+      toCamelCase(propertyName),
+      parameterNames
+    );
+    parameters.push({
+      source: `${parameterName}: ${renderSchemaType(propertySchema, 1)}`,
+      required:
+        requestRequired.has('path') && requiredPathProperties.has(propertyName)
+    });
+    pathFields.push(`${quoteProperty(propertyName)}: ${parameterName}`);
+  }
+  if (pathFields.length > 0) {
+    requestFields.push(`path: { ${pathFields.join(', ')} }`);
+  }
+  for (const location of locations.filter((value) => value !== 'path')) {
+    const required = requestRequired.has(location);
+    const parameterName = uniqueParameterName(location, parameterNames);
+    const schemaType = renderSchemaType(requestProperties[location], 1);
+    const defaultValue =
+      !required && isObjectSchema(requestProperties[location]) ? ' = {}' : '';
+    parameters.push({
+      source: `${parameterName}${!required && !defaultValue ? '?' : ''}: ${schemaType}${defaultValue}`,
+      required
+    });
+    requestFields.push(
+      parameterName === location ? location : `${location}: ${parameterName}`
+    );
+  }
+  parameters.sort(
+    (left, right) => Number(right.required) - Number(left.required)
+  );
+
+  let parameterSource = '';
+  let requestSource: string | null;
+  if (parameters.length === 0) {
+    requestSource = null;
   } else {
-    const requestName = `${typeBase}Request`;
-    declarations.push(
-      [
-        `interface ${requestName} {`,
-        ...locations.map((location) => {
-          const optional = requestRequired.has(location) ? '' : '?';
-          return `  ${location}${optional}: ${locationTypes.get(location)};`;
-        }),
-        '}'
-      ].join('\n')
-    );
-    const allOptional = locations.every(
-      (location) => !requestRequired.has(location)
-    );
-    parameterSource = `,\n  request: ${requestName}${allOptional ? ' = {}' : ''}`;
-    requestSource = ',\n    request';
+    parameterSource = `,\n${parameters.map((parameter) => `  ${parameter.source}`).join(',\n')}`;
+    requestSource = `{ ${requestFields.join(', ')} }`;
   }
 
-  const provenance = [
-    '/**',
-    ' * @1flowbase-openapi',
-    ` * operationId=${operation.interface_id}`,
-    ` * ${operation.method.toUpperCase()} ${operation.path}`,
-    ` * specDigest=${operation.schema_digest}`,
-    ' */'
-  ].join('\n');
   const isStream = operation.response_media_type === 'text/event-stream';
+  const method = operation.method.toUpperCase();
+  if (
+    !['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(
+      method
+    )
+  ) {
+    throw new Error(`Unsupported HTTP method: ${method}.`);
+  }
+  const methodName = method.toLowerCase();
+  const escapedPath = escapeSingleQuote(operation.path);
+  const callSource = isStream
+    ? requestSource
+      ? `ctx.api.stream(\n    '${escapeSingleQuote(method)}',\n    '${escapedPath}',\n    ${requestSource}\n  )`
+      : `ctx.api.stream('${escapeSingleQuote(method)}', '${escapedPath}')`
+    : requestSource
+      ? `ctx.api.${methodName}(\n    '${escapedPath}',\n    ${requestSource}\n  )`
+      : `ctx.api.${methodName}('${escapedPath}')`;
   const callable = [
-    `${isStream ? '' : 'async '}function ${functionName}(`,
+    `const ${functionName} = (`,
     `  ctx: BlockContext${parameterSource}`,
-    `): ${isStream ? `AsyncIterable<${responseType}>` : `Promise<${responseType}>`} {`,
-    `  return ctx.interfaces.${isStream ? 'stream' : 'call'}<${responseType}>(`,
-    '    {',
-    `      interfaceId: '${escapeSingleQuote(operation.interface_id)}',`,
-    `      schemaDigest: '${escapeSingleQuote(operation.schema_digest)}'`,
-    `    }${requestSource}`,
-    '  );',
-    '}'
+    `): ${isStream ? `AsyncIterable<${responseType}>` : `Promise<${responseType}>`} =>`,
+    `  ${callSource};`
   ].join('\n');
 
-  return { source: [provenance, ...declarations, callable].join('\n\n') };
+  return { source: callable };
 }
 
-function declareSchema(
-  preferredName: string,
-  value: unknown,
-  declarations: string[]
-): string {
+function renderSchemaType(value: unknown, indent = 0): string {
   const schema = asSchema(value);
   if (schema.format === 'binary') {
-    return declareBinaryInput(preferredName, declarations);
+    return renderBinaryInput(indent);
   }
   if (Array.isArray(schema.enum) && schema.enum.length > 0) {
     return schema.enum.map(toLiteral).join(' | ');
@@ -122,56 +169,39 @@ function declareSchema(
   }
   if (Array.isArray(schema.allOf)) {
     return schema.allOf
-      .map((item, index) =>
-        declareSchema(`${preferredName}Part${index + 1}`, item, declarations)
-      )
+      .map((item) => renderSchemaType(item, indent))
       .join(' & ');
   }
   if (Array.isArray(schema.anyOf)) {
     return schema.anyOf
-      .map((item, index) =>
-        declareSchema(`${preferredName}Option${index + 1}`, item, declarations)
-      )
+      .map((item) => renderSchemaType(item, indent))
       .join(' | ');
   }
   if (Array.isArray(schema.oneOf)) {
     return schema.oneOf
-      .map((item, index) =>
-        declareSchema(`${preferredName}Variant${index + 1}`, item, declarations)
-      )
+      .map((item) => renderSchemaType(item, indent))
       .join(' | ');
   }
   if (schema.type === 'array') {
-    return `${declareSchema(singularize(preferredName), schema.items, declarations)}[]`;
+    return `${renderSchemaType(schema.items, indent)}[]`;
   }
   if (Array.isArray(schema.type)) {
     return schema.type
-      .map((type, index) =>
-        declareSchema(
-          `${preferredName}Type${index + 1}`,
-          { ...schema, type },
-          declarations
-        )
-      )
+      .map((type) => renderSchemaType({ ...schema, type }, indent))
       .join(' | ');
   }
   if (schema.type === 'object' || isRecord(schema.properties)) {
-    const name = schemaTitle(schema) ?? preferredName;
     const properties = asRecord(schema.properties);
     const required = stringSet(schema.required);
     const fields = Object.entries(properties).map(([key, child]) => {
-      const childName = `${name}${toPascalCase(singularize(key))}`;
-      return `  ${quoteProperty(key)}${required.has(key) ? '' : '?'}: ${declareSchema(childName, child, declarations)};`;
+      return `${'  '.repeat(indent + 1)}${quoteProperty(key)}${required.has(key) ? '' : '?'}: ${renderSchemaType(child, indent + 1)};`;
     });
     if (fields.length === 0 && schema.additionalProperties) {
       return schema.additionalProperties === true
         ? 'Record<string, unknown>'
-        : `Record<string, ${declareSchema(`${name}Value`, schema.additionalProperties, declarations)}>`;
+        : `Record<string, ${renderSchemaType(schema.additionalProperties, indent)}>`;
     }
-    if (!declarations.some((item) => item.startsWith(`interface ${name} `))) {
-      declarations.push([`interface ${name} {`, ...fields, '}'].join('\n'));
-    }
-    return name;
+    return ['{', ...fields, `${'  '.repeat(indent)}}`].join('\n');
   }
 
   const base =
@@ -187,34 +217,25 @@ function declareSchema(
   return schema.nullable === true && base !== 'null' ? `${base} | null` : base;
 }
 
-function declareBinaryInput(name: string, declarations: string[]): string {
-  if (!declarations.some((item) => item.startsWith(`interface ${name} `))) {
-    declarations.push(
-      [
-        `interface ${name} {`,
-        '  base64: string;',
-        '  file_name?: string;',
-        '  content_type?: string;',
-        '}'
-      ].join('\n')
-    );
-  }
-  return name;
+function renderBinaryInput(indent: number): string {
+  const fieldIndent = '  '.repeat(indent + 1);
+  return [
+    '{',
+    `${fieldIndent}base64: string;`,
+    `${fieldIndent}file_name?: string;`,
+    `${fieldIndent}content_type?: string;`,
+    `${'  '.repeat(indent)}}`
+  ].join('\n');
 }
 
-function declareBinaryResource(name: string, declarations: string[]): string {
-  if (!declarations.some((item) => item.startsWith(`interface ${name} `))) {
-    declarations.push(
-      [
-        `interface ${name} {`,
-        '  bytes: Uint8Array;',
-        '  file_name: string | null;',
-        '  content_type: string;',
-        '}'
-      ].join('\n')
-    );
-  }
-  return name;
+function renderBinaryResource(): string {
+  return [
+    '{',
+    '  bytes: Uint8Array;',
+    '  file_name: string | null;',
+    '  content_type: string;',
+    '}'
+  ].join('\n');
 }
 
 function isNoContentResponse(
@@ -232,31 +253,43 @@ function isBinaryMediaType(mediaType: string | null): boolean {
   return normalized !== 'application/json' && !normalized?.endsWith('+json');
 }
 
-function schemaTitle(schema: JsonSchema): string | null {
-  return typeof schema.title === 'string' && schema.title.trim()
-    ? toPascalCase(schema.title)
-    : null;
-}
-
 function requireIdentifier(value: string): string {
   const identifier = value.trim();
   if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier)) {
-    throw new Error('Binding alias must be a TypeScript identifier.');
+    throw new Error('Function name must be a TypeScript identifier.');
   }
   return identifier;
 }
 
-function toPascalCase(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((part) => part[0].toUpperCase() + part.slice(1))
+function toCamelCase(value: string): string {
+  const words = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const candidate = words
+    .map((word, index) =>
+      index === 0
+        ? word.charAt(0).toLowerCase() + word.slice(1)
+        : word.charAt(0).toUpperCase() + word.slice(1)
+    )
     .join('');
+  const identifier = requireIdentifier(candidate || 'value');
+  return reservedIdentifierNames.has(identifier)
+    ? `${identifier}Value`
+    : identifier;
 }
 
-function singularize(value: string): string {
-  return value.endsWith('s') && value.length > 1 ? value.slice(0, -1) : value;
+function uniqueParameterName(value: string, used: Set<string>): string {
+  let candidate = value;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${value}${suffix}`;
+    suffix += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function isObjectSchema(value: unknown): boolean {
+  const schema = asSchema(value);
+  return schema.type === 'object' || isRecord(schema.properties);
 }
 
 function quoteProperty(value: string): string {

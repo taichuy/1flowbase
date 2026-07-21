@@ -19,10 +19,7 @@ const validSource = `
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
 async function main(ctx) {
-  const record = await ctx.interfaces.call({
-    interfaceId: 'list_records',
-    schemaDigest: 'digest-list-records'
-  }, { query: { limit: 1 } });
+  const record = await ctx.api.get('/api/console/test', { query: { limit: 1 } });
   ctx.events.emit('record.loaded', { title: record.title });
   return { view: Text({ children: record.title }), outputs: { title: record.title } };
 }
@@ -172,8 +169,8 @@ describe('FrontStage restricted block worker runtime', () => {
         direction: 'worker_to_host',
         type: 'interface',
         requestId: 'restricted-block:block-1:code-1',
-        interfaceId: 'list_records',
-        schemaDigest: 'digest-list-records',
+        method: 'GET',
+        path: '/api/console/test',
         request: { query: { limit: 1 } },
         effectId: effectMessage.effectId
       },

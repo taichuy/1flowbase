@@ -112,7 +112,16 @@ function createFakeBlockContext(
     props: {},
     state: {},
     patch: vi.fn(),
-    interfaces: { call: vi.fn(), stream: vi.fn() },
+    api: {
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      head: vi.fn(),
+      options: vi.fn(),
+      stream: vi.fn()
+    },
     events: {
       emit: vi.fn()
     },
@@ -478,13 +487,8 @@ describe('frontstage native trusted block React adapter', () => {
         ui: {}
       })
     );
-    await expect(
-      receivedContext?.interfaces.call({
-        interfaceId: 'records.get',
-        schemaDigest: 'digest-records'
-      })
-    ).rejects.toThrow(
-      'Native trusted block ctx.interfaces.call is unavailable until the host injects a controlled BlockContext.'
+    await expect(receivedContext?.api.get('/api/console/test')).rejects.toThrow(
+      'Native trusted block ctx.api.get is unavailable until the host injects a controlled BlockContext.'
     );
     expect(() => receivedContext?.events.emit('record.opened')).toThrow(
       'Native trusted block ctx.events.emit is unavailable until the host injects a controlled BlockContext.'
@@ -496,10 +500,16 @@ describe('frontstage native trusted block React adapter', () => {
     const testingRoot = createTestingRoot();
     const fakeContext = createFakeBlockContext({
       props: { title: 'Injected context' },
-      interfaces: {
-        call: vi.fn(async () => ({
+      api: {
+        get: vi.fn(async () => ({
           title: 'Queried title'
-        })) as BlockContext['interfaces']['call'],
+        })) as BlockContext['api']['get'],
+        post: vi.fn(),
+        put: vi.fn(),
+        patch: vi.fn(),
+        delete: vi.fn(),
+        head: vi.fn(),
+        options: vi.fn(),
         stream: vi.fn()
       }
     });
@@ -508,15 +518,9 @@ describe('frontstage native trusted block React adapter', () => {
       createRoot: testingRoot.createRoot,
       resolveBlockContext,
       resolveComponent: () => (props) => {
-        void props.ctx.interfaces.call(
-          {
-            interfaceId: 'records.get',
-            schemaDigest: 'digest-records'
-          },
-          {
-            body: { blockId: props.plan.blockId }
-          }
-        );
+        void props.ctx.api.get('/api/console/test', {
+          body: { blockId: props.plan.blockId }
+        });
 
         return (
           <output data-testid="native-injected-context">
@@ -541,7 +545,7 @@ describe('frontstage native trusted block React adapter', () => {
         portalContainment: expect.objectContaining({ root })
       })
     );
-    expect(fakeContext.interfaces.call).toHaveBeenCalledWith('records', {
+    expect(fakeContext.api.get).toHaveBeenCalledWith('/api/console/test', {
       body: { blockId: 'native-block-ctx' }
     });
   });

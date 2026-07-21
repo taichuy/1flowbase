@@ -365,7 +365,9 @@ function RunInterfaceCalls({
       renderItem={(call) => (
         <List.Item>
           <Space direction="vertical">
-            <Typography.Text code>{call.interfaceId}</Typography.Text>
+            <Typography.Text code>
+              {call.method} {call.path}
+            </Typography.Text>
             <Typography.Text type="secondary">
               {call.status} · {call.durationMs}ms
             </Typography.Text>

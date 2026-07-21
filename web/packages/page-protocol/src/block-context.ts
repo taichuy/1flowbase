@@ -8,7 +8,7 @@ export const BLOCK_CONTEXT_KEYS = [
   'props',
   'state',
   'patch',
-  'interfaces',
+  'api',
   'events',
   'theme',
   'ui'
@@ -34,16 +34,11 @@ export interface BlockContextPage {
   title?: string;
 }
 
-export interface BlockInterfaceRequest {
+export interface BlockApiRequest {
   path?: BlockContextRecord;
   query?: BlockContextRecord;
   headers?: BlockContextRecord;
   body?: unknown;
-}
-
-export interface BlockInterfaceDescriptor {
-  interfaceId: string;
-  schemaDigest: string;
 }
 
 export interface BlockBinaryInput {
@@ -58,14 +53,48 @@ export interface BlockBinaryResource {
   content_type: string;
 }
 
-export interface BlockContextInterfaces {
-  call<TResponse = unknown>(
-    descriptor: BlockInterfaceDescriptor,
-    request?: BlockInterfaceRequest
+export type BlockApiMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'PATCH'
+  | 'DELETE'
+  | 'HEAD'
+  | 'OPTIONS';
+
+export interface BlockContextApi {
+  get<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
   ): Promise<TResponse>;
-  stream<TEvent = unknown>(
-    descriptor: BlockInterfaceDescriptor,
-    request?: BlockInterfaceRequest
+  post<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
+  ): Promise<TResponse>;
+  put<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
+  ): Promise<TResponse>;
+  patch<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
+  ): Promise<TResponse>;
+  delete<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
+  ): Promise<TResponse>;
+  head<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
+  ): Promise<TResponse>;
+  options<TResponse = never>(
+    path: string,
+    request?: BlockApiRequest
+  ): Promise<TResponse>;
+  stream<TEvent = never>(
+    method: BlockApiMethod,
+    path: string,
+    request?: BlockApiRequest
   ): AsyncIterable<TEvent>;
 }
 
@@ -95,7 +124,7 @@ export interface BlockContext<
   props: BlockContextRecord;
   state: BlockContextRecord;
   patch(patch: BlockContextRecord): void | Promise<void>;
-  interfaces: BlockContextInterfaces;
+  api: BlockContextApi;
   events: BlockContextEvents;
   theme: BlockContextTheme;
   ui: BlockContextUi;

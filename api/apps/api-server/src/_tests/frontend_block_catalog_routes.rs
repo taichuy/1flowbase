@@ -141,7 +141,7 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .expect("system bootstrap must register the built-in JSX block");
 
     assert_eq!(jsx_block["code_template_language"], "tsx");
-    assert_eq!(jsx_block["code_template_version"], "2.0.0");
+    assert_eq!(jsx_block["code_template_version"], "3.0.0");
     let code_template = jsx_block["code_template"].as_str().unwrap();
     assert!(code_template.contains("async function main"));
     assert!(code_template.contains("satisfies BlockModule"));
@@ -157,7 +157,10 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .unwrap();
     assert!(sdk_declarations.contains("interface BlockModule"));
     assert!(sdk_declarations.contains("readonly inputs"));
-    assert!(sdk_declarations.contains("readonly interfaces"));
+    assert!(sdk_declarations.contains("readonly api"));
+    assert!(sdk_declarations.contains("interface BlockContextApi"));
+    assert!(!sdk_declarations.contains("interfaceId"));
+    assert!(!sdk_declarations.contains("schemaDigest"));
     assert!(!sdk_declarations.contains("defineBlock"));
     assert_eq!(
         jsx_block["code_modules"]

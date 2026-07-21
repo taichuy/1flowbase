@@ -185,11 +185,17 @@ function createUnavailableBlockContext(
     patch(patch) {
       Object.assign(state, patch);
     },
-    interfaces: {
-      call: rejectUnavailable('ctx.interfaces.call'),
+    api: {
+      get: rejectUnavailable('ctx.api.get'),
+      post: rejectUnavailable('ctx.api.post'),
+      put: rejectUnavailable('ctx.api.put'),
+      patch: rejectUnavailable('ctx.api.patch'),
+      delete: rejectUnavailable('ctx.api.delete'),
+      head: rejectUnavailable('ctx.api.head'),
+      options: rejectUnavailable('ctx.api.options'),
       stream: () => ({
         async *[Symbol.asyncIterator]() {
-          throw createUnavailableContextError('ctx.interfaces.stream');
+          throw createUnavailableContextError('ctx.api.stream');
         }
       })
     },

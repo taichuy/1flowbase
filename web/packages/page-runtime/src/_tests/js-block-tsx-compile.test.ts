@@ -15,7 +15,32 @@ const context = {
   props: { visible: true },
   state: {},
   patch() {},
-  interfaces: { async call() {} },
+  api: {
+    async get() {
+      throw new Error('unused');
+    },
+    async post() {
+      throw new Error('unused');
+    },
+    async put() {
+      throw new Error('unused');
+    },
+    async patch() {
+      throw new Error('unused');
+    },
+    async delete() {
+      throw new Error('unused');
+    },
+    async head() {
+      throw new Error('unused');
+    },
+    async options() {
+      throw new Error('unused');
+    },
+    stream() {
+      throw new Error('unused');
+    }
+  },
   events: { emit() {} },
   theme: { mode: 'light', tokens: {} },
   ui: { locale: 'en_US' }

@@ -59,10 +59,7 @@ import type {
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
 async function main(ctx: BlockContext): Promise<BlockResult> {
-  const response = await ctx.interfaces.call({
-    interfaceId: 'list_records',
-    schemaDigest: 'digest-list-records'
-  }, {
+  const response = await ctx.api.get('/api/console/test', {
     body: { blockId: ctx.props.blockId }
   });
 
