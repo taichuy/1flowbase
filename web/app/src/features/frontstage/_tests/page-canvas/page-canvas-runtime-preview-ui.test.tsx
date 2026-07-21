@@ -80,7 +80,10 @@ describe('PageCanvas runtime preview UI', () => {
             request: {
               requestId: 'restricted-block:ready:ready-code',
               blockId: 'ready',
-              source: 'export default {}',
+              program: {
+                kind: 'source',
+                source: 'export default {}'
+              },
               props: {},
               state: {},
               contextSnapshot: {},

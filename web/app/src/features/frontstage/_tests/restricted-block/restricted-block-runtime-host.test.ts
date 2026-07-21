@@ -196,6 +196,10 @@ describe('restricted block runtime host controller', () => {
       blockId: 'block-1',
       view: { primitive: 'Text', props: { children: 'Ready' } },
       outputs: {},
+      compiledArtifact: expect.objectContaining({
+        format: '1flowbase/js-block-compiled-artifact',
+        sourceSha256: expect.any(String)
+      }),
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,
@@ -423,6 +427,7 @@ describe('restricted block runtime host controller', () => {
       snapshot.schemaValidationOptions.allowedActions as string[] | undefined
     )?.push('record.delete');
     snapshot.mediatorState!.eventChains.mutated = 99;
+    snapshot.compiledArtifact!.program.executableBody = 'mutated artifact';
 
     const hostState = host.getHostState();
     hostState.requests['restricted-block:block-1:code-1']!.status = 'failed';
@@ -437,6 +442,12 @@ describe('restricted block runtime host controller', () => {
         children: [{ primitive: 'Text', props: { children: 'Ready' } }]
       },
       outputs: {},
+      compiledArtifact: expect.objectContaining({
+        format: '1flowbase/js-block-compiled-artifact',
+        program: expect.objectContaining({
+          executableBody: expect.not.stringContaining('mutated artifact')
+        })
+      }),
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,

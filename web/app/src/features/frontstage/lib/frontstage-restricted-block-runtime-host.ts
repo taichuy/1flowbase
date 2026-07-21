@@ -1,6 +1,7 @@
 import type {
   JsBlockWorkerFactory,
   JsBlockWorkerLike,
+  JsBlockRunPhase,
   JsBlockWorkerScheduleTimeout
 } from '@1flowbase/page-runtime';
 
@@ -62,10 +63,15 @@ export function createObservableFrontstageRestrictedBlockRuntimeHost(
 ): ObservableFrontstageRestrictedBlockRuntimeHost {
   const listeners = new Set<FrontstageRestrictedBlockRuntimeSnapshotListener>();
 
-  const notifySnapshotChange = () => {
+  const notifySnapshotChange = (phaseOverride?: JsBlockRunPhase) => {
     for (const listener of [...listeners]) {
       if (listeners.has(listener)) {
-        listener(host.getSnapshot());
+        const snapshot = host.getSnapshot();
+        listener(
+          phaseOverride && snapshot.status === 'running'
+            ? { ...snapshot, phase: phaseOverride }
+            : snapshot
+        );
       }
     }
   };
@@ -92,7 +98,8 @@ export function createObservableFrontstageRestrictedBlockRuntimeHost(
     workerFactory: createNotifyingWorkerFactory(
       workerFactory ??
         createFrontstageRestrictedBlockWorkerFactory(browserWorkerFactoryOptions),
-      notifySnapshotChange
+      notifySnapshotChange,
+      () => notifySnapshotChange('validating_schema')
     )
   });
 
@@ -130,12 +137,14 @@ export function createFrontstageRestrictedBlockRuntimeSession(
 
 function createNotifyingWorkerFactory(
   workerFactory: JsBlockWorkerFactory,
-  notifySnapshotChange: () => void
+  notifySnapshotChange: () => void,
+  notifySchemaValidation: () => void
 ): JsBlockWorkerFactory {
   return () =>
     new SnapshotNotifyingJsBlockWorker(
       workerFactory(),
-      notifySnapshotChange
+      notifySnapshotChange,
+      notifySchemaValidation
     );
 }
 
@@ -169,7 +178,8 @@ class SnapshotNotifyingJsBlockWorker implements JsBlockWorkerLike {
 
   constructor(
     private readonly worker: JsBlockWorkerLike,
-    private readonly notifySnapshotChange: () => void
+    private readonly notifySnapshotChange: () => void,
+    private readonly notifySchemaValidation: () => void
   ) {}
 
   get onmessage(): JsBlockWorkerMessageHandler | null {
@@ -183,6 +193,9 @@ class SnapshotNotifyingJsBlockWorker implements JsBlockWorkerLike {
         ? null
         : (event) => {
             try {
+              if (isCompletedWorkerMessage(event.data)) {
+                this.notifySchemaValidation();
+              }
               handler(event);
             } finally {
               this.notifySnapshotChange();
@@ -233,4 +246,13 @@ class SnapshotNotifyingJsBlockWorker implements JsBlockWorkerLike {
   terminate(): void {
     this.worker.terminate();
   }
+}
+
+function isCompletedWorkerMessage(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { direction?: unknown }).direction === 'worker_to_host' &&
+    (value as { type?: unknown }).type === 'completed'
+  );
 }

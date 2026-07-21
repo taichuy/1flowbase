@@ -630,8 +630,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       useFrontstagePageCanvasRuntimeSessions({
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState: createRunPlanState([item]),
-        runtimeSessionFactory: () => runtimeSession.session,
-        tabId: 'tab-1'
+        runtimeSessionFactory: () => runtimeSession.session
       })
     );
     await waitFor(() =>
@@ -733,8 +732,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         runtimeRunPlanState: createRunPlanState([item]),
         runtimeSessionFactory,
         artifactCache,
-        runtimeFingerprint: 'runtime-a',
-        tabId: 'tab-1'
+        runtimeFingerprint: 'runtime-a'
       })
     );
     await waitFor(() => expect(runtimeSession.session.run).toHaveBeenCalledTimes(1));

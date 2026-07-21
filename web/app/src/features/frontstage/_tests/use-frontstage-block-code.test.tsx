@@ -240,7 +240,7 @@ describe('useFrontstageBlockCode', () => {
   });
 
   test('block code save rejects missing csrf token before calling feature api', async () => {
-    authenticate(null);
+    useAuthStore.setState({ csrfToken: null });
     const { result } = setupBlockCode();
     let saveError: unknown;
 

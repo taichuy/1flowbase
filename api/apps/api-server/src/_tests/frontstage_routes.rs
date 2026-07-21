@@ -924,7 +924,7 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
     assert_eq!(overwrite_status, StatusCode::OK);
     assert_eq!(
         overwrite_payload["data"]["source_sha256"],
-        json!("4ba967d040a870a5b7ad333a6ad644a9e154211c3ecdafa8071a6c531c562801")
+        json!("8a4cd977e632b3c538e8aa30fa97b8d0e3a4f220ec246bd29c89a427ebe3e599")
     );
     assert_ne!(
         save_payload["data"]["source_sha256"],

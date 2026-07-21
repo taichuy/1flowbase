@@ -169,6 +169,7 @@ describe('FrontStage restricted block runtime host factory', () => {
 
     expect(snapshots).toMatchObject([
       { status: 'running' },
+      { status: 'running', phase: 'validating_schema' },
       {
         status: 'ready',
         view: { primitive: 'Text', props: { children: 'Ready' } },
@@ -308,8 +309,8 @@ describe('FrontStage restricted block runtime host factory', () => {
       outputs: {}
     });
 
-    expect(mutateFirstSnapshot).toHaveBeenCalledTimes(2);
-    expect(secondSnapshots[1]).toMatchObject({
+    expect(mutateFirstSnapshot).toHaveBeenCalledTimes(3);
+    expect(secondSnapshots[2]).toMatchObject({
       status: 'ready',
       view: { primitive: 'Text', props: { children: 'Ready' } },
       outputs: {},

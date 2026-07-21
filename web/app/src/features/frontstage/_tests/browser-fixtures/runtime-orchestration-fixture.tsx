@@ -136,6 +136,31 @@ export default { main } satisfies BlockModule;`;
   };
 }
 
+function withSourceIdentityVariant(
+  item: FrontstagePageCanvasRuntimeRunPlanReadyItem,
+  variant: 'a' | 'b'
+): FrontstagePageCanvasRuntimeRunPlanReadyItem {
+  if (variant === 'a' || item.runPlan.request.program.kind !== 'source') {
+    return item;
+  }
+  const source = `${item.runPlan.request.program.source}\n// runtime-fixture-identity-b`;
+  return {
+    ...item,
+    source_sha256: sha256Text(source),
+    runPlan: {
+      ...item.runPlan,
+      request: {
+        ...item.runPlan.request,
+        program: {
+          ...item.runPlan.request.program,
+          source,
+          sourceSha256: sha256Text(source)
+        }
+      }
+    }
+  };
+}
+
 function RuntimeOrchestrationFixture() {
   const sourceItems = useMemo(
     () =>
@@ -145,6 +170,7 @@ function RuntimeOrchestrationFixture() {
     []
   );
   const [items, setItems] = useState(sourceItems);
+  const [sourceIdentity, setSourceIdentity] = useState<'a' | 'b'>('a');
   const didRecordSourceFetchRef = useRef(false);
   const [lookupStatus, setLookupStatus] = useState<'ready' | 'pending'>(() =>
     sessionStorage.getItem('runtime-fixture-mode') === 'l2' ? 'pending' : 'ready'
@@ -345,6 +371,25 @@ function RuntimeOrchestrationFixture() {
   const observationStages = readFrontstageRuntimeObservations().map(
     (entry) => `${entry.stage}:${entry.cacheTier}:${entry.count}`
   );
+  const apiSequences = sessions.entries.flatMap((entry) => {
+    if (!('snapshot' in entry) || entry.snapshot.status !== 'ready') return [];
+    const response = entry.snapshot.outputs?.response;
+    if (!response || typeof response !== 'object') return [];
+    const sequence = (response as { sequence?: unknown }).sequence;
+    return typeof sequence === 'number' ? [sequence] : [];
+  });
+
+  const changeSourceIdentity = (variant: 'a' | 'b') => {
+    resetFrontstageRuntimeObservations();
+    setSourceIdentity(variant);
+    setItems(
+      variant === 'a'
+        ? sourceItems
+        : sourceItems.map((item, index) =>
+            index === 0 ? withSourceIdentityVariant(item, variant) : item
+          )
+    );
+  };
 
   const reload = async (mode: 'cold' | 'l2') => {
     await Promise.allSettled([...pendingArtifactWrites.current]);
@@ -380,6 +425,8 @@ function RuntimeOrchestrationFixture() {
         data-error-kinds={errorKinds.join(',')}
         data-lookup-status={lookupStatus}
         data-observation-stages={observationStages.join(',')}
+        data-source-identity={sourceIdentity}
+        data-api-sequences={apiSequences.join(',')}
         data-storage-scan={storageScan}
         data-ready-signal={
           lookupStatus === 'ready' &&
@@ -406,6 +453,18 @@ function RuntimeOrchestrationFixture() {
         </button>
         <button data-testid="runtime-fixture-storage-scan" onClick={() => void scanStorage()}>
           Scan storage
+        </button>
+        <button
+          data-testid="runtime-fixture-identity-b"
+          onClick={() => changeSourceIdentity('b')}
+        >
+          Identity B
+        </button>
+        <button
+          data-testid="runtime-fixture-identity-a"
+          onClick={() => changeSourceIdentity('a')}
+        >
+          Identity A
         </button>
       </div>
       <PageCanvas
