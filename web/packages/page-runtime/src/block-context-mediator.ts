@@ -3,10 +3,7 @@ import type { BlockRuntimeErrorCode } from '@1flowbase/page-protocol';
 import type { JsBlockWorkerEffect } from './js-block-worker-runtime';
 
 export type BlockContextMediatorRejectionCode =
-  | Extract<
-      BlockRuntimeErrorCode,
-      'event_denied' | 'interface_denied'
-    >
+  | Extract<BlockRuntimeErrorCode, 'event_denied' | 'interface_denied'>
   | 'payload_invalid'
   | 'effect_invalid';
 
@@ -198,6 +195,8 @@ function reduceInterfaceEffect(
     requestId: effect.requestId,
     ...(effect.effectId ? { effectId: effect.effectId } : {}),
     bindingAlias: effect.bindingAlias,
+    ...(effect.operation ? { operation: effect.operation } : {}),
+    ...(effect.streamId ? { streamId: effect.streamId } : {}),
     ...(payloadResult.value === undefined
       ? {}
       : { request: payloadResult.value })
@@ -309,6 +308,43 @@ function normalizeEffect(
     if (!effectId.ok) {
       return effectInvalid(effectId.path, effectId.message, requestId.value);
     }
+    const operation = readOptionalStringProperty(
+      value,
+      'operation',
+      'effect.operation'
+    );
+    if (
+      !operation.ok ||
+      (operation.value !== undefined &&
+        !['call', 'stream_open', 'stream_next', 'stream_cancel'].includes(
+          operation.value
+        ))
+    ) {
+      return effectInvalid(
+        'effect.operation',
+        'Interface operation is invalid.',
+        requestId.value
+      );
+    }
+    const streamId = readOptionalStringProperty(
+      value,
+      'streamId',
+      'effect.streamId'
+    );
+    if (!streamId.ok) {
+      return effectInvalid(streamId.path, streamId.message, requestId.value);
+    }
+    if (
+      (operation.value === 'stream_next' ||
+        operation.value === 'stream_cancel') &&
+      !streamId.value
+    ) {
+      return effectInvalid(
+        'effect.streamId',
+        'Interface stream id is required.',
+        requestId.value
+      );
+    }
 
     return {
       ok: true,
@@ -317,6 +353,16 @@ function normalizeEffect(
         requestId: requestId.value,
         ...(effectId.value ? { effectId: effectId.value } : {}),
         bindingAlias: bindingAlias.value,
+        ...(operation.value
+          ? {
+              operation: operation.value as
+                | 'call'
+                | 'stream_open'
+                | 'stream_next'
+                | 'stream_cancel'
+            }
+          : {}),
+        ...(streamId.value ? { streamId: streamId.value } : {}),
         ...(request.hasValue ? { request: request.value } : {})
       }
     };
@@ -529,9 +575,7 @@ function readRequiredProperty(
   record: Record<string, unknown>,
   key: string,
   path: string
-):
-  | { ok: true; value: unknown }
-  | { ok: false; path: string; message: string } {
+): { ok: true; value: unknown } | { ok: false; path: string; message: string } {
   const property = readOptionalProperty(record, key);
   if (!property.ok) {
     return property;
@@ -706,6 +750,9 @@ function getMaxEventChainDepth(policy: BlockContextMediatorPolicy): number {
   return Math.floor(depth);
 }
 
-function getEventChainKey(requestId: string, tickId: string | undefined): string {
+function getEventChainKey(
+  requestId: string,
+  tickId: string | undefined
+): string {
   return `${requestId}::${tickId ?? 'default'}`;
 }

@@ -1,4 +1,4 @@
-import { apiFetch } from '../transport';
+import { apiFetch, apiFetchBlob, apiFetchStream } from '../transport';
 
 export type ConsoleFrontstageNavigationPlacement = 'topbar' | 'sidebar';
 export type ConsoleFrontstagePageContentPresentation = 'single' | 'tabs';
@@ -140,6 +140,8 @@ export interface ConsoleFrontstageCallableInterface {
   parameters: ConsoleFrontstageCallableParameter[];
   request_schema: unknown;
   response_schema: unknown;
+  request_media_type: string | null;
+  response_media_type: string | null;
   schema_digest: string;
   adapter_id: string;
   host_injected_parameters: string[];
@@ -148,6 +150,16 @@ export interface ConsoleFrontstageCallableInterface {
   authorization: string;
   bindable: boolean;
   disabled_reason: string | null;
+}
+
+export interface FrontstageCallableBinaryResource {
+  bytes: Uint8Array;
+  file_name: string | null;
+  content_type: string;
+}
+
+export interface FrontstageCallableEventStream<T> extends AsyncIterable<T> {
+  cancel(): void;
 }
 
 export interface FrontstageCallableRequest {
@@ -206,6 +218,124 @@ export function dispatchFrontstageCallable<T = unknown>(
     csrfToken,
     baseUrl
   });
+}
+
+export async function dispatchFrontstageCallableBinary(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: DispatchFrontstageCallableInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<FrontstageCallableBinaryResource> {
+  const response = await apiFetchBlob({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+  return {
+    bytes: new Uint8Array(await response.blob.arrayBuffer()),
+    file_name: response.filename,
+    content_type: response.contentType
+  };
+}
+
+const MAX_SSE_BUFFER_LENGTH = 1024 * 1024;
+
+export async function dispatchFrontstageCallableStream<T = unknown>(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: DispatchFrontstageCallableInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<FrontstageCallableEventStream<T>> {
+  const response = await apiFetchStream({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl,
+    headers: { accept: 'text/event-stream' }
+  });
+  return createSseIterable<T>(response.body, response.cancel);
+}
+
+function createSseIterable<T>(
+  stream: ReadableStream<Uint8Array>,
+  cancel: () => void
+): FrontstageCallableEventStream<T> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let closed = false;
+  let nextQueue: Promise<void> = Promise.resolve();
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    cancel();
+    void reader.cancel().catch(() => undefined);
+  };
+  const readNext = async (): Promise<IteratorResult<T>> => {
+    while (!closed) {
+      const boundary = buffer.search(/\r?\n\r?\n/u);
+      if (boundary >= 0) {
+        const delimiter = /^\r\n/u.test(buffer.slice(boundary)) ? 4 : 2;
+        const event = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + delimiter);
+        const data = event
+          .split(/\r?\n/u)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).replace(/^ /u, ''))
+          .join('\n');
+        if (data.length > 0) {
+          return { done: false, value: parseSseData(data) as T };
+        }
+        continue;
+      }
+      const chunk = await reader.read();
+      if (chunk.done) {
+        close();
+        break;
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      if (buffer.length > MAX_SSE_BUFFER_LENGTH) {
+        close();
+        throw new Error('Callable SSE event exceeded the 1 MiB limit.');
+      }
+    }
+    return { done: true, value: undefined };
+  };
+  const iterator: AsyncIterator<T> = {
+    next() {
+      const result = nextQueue.then(readNext);
+      nextQueue = result.then(
+        () => undefined,
+        () => undefined
+      );
+      return result;
+    },
+    async return() {
+      close();
+      return { done: true, value: undefined };
+    }
+  };
+  return {
+    cancel: close,
+    [Symbol.asyncIterator]() {
+      return iterator;
+    }
+  };
+}
+
+function parseSseData(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 export function issueFrontstageCallableWriteGrant(

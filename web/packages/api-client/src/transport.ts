@@ -37,6 +37,11 @@ export interface ApiBlobResponse {
   contentType: string;
 }
 
+export interface ApiStreamResponse {
+  body: ReadableStream<Uint8Array>;
+  cancel(): void;
+}
+
 function normalizeDispositionFilename(value: string): string | null {
   const trimmed = value.trim().replace(/^"|"$/g, '');
 
@@ -212,6 +217,57 @@ export async function apiFetchBlob({
       response.headers.get('content-disposition')
     ),
     contentType: response.headers.get('content-type') ?? ''
+  };
+}
+
+export async function apiFetchStream({
+  path,
+  method = 'GET',
+  body,
+  rawBody,
+  contentType,
+  headers: extraHeaders,
+  csrfToken,
+  baseUrl = getDefaultApiBaseUrl()
+}: Omit<
+  ApiRequestOptions,
+  'expectJson' | 'unwrapSuccess'
+>): Promise<ApiStreamResponse> {
+  if (body !== undefined && rawBody !== undefined) {
+    throw new Error(
+      'apiFetchStream does not support body and rawBody at the same time'
+    );
+  }
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  if (contentType !== undefined && contentType !== null) {
+    headers['content-type'] = contentType;
+  }
+  Object.assign(headers, extraHeaders);
+  if (csrfToken) headers['x-csrf-token'] = csrfToken;
+
+  const controller = new AbortController();
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    credentials: 'include',
+    headers,
+    signal: controller.signal,
+    body:
+      body !== undefined
+        ? JSON.stringify(body)
+        : rawBody !== undefined
+          ? rawBody
+          : undefined
+  });
+  if (!response.ok) {
+    throw await ApiClientError.fromResponse(response);
+  }
+  if (!response.body) {
+    throw new Error('Streaming response body is unavailable.');
+  }
+  return {
+    body: response.body,
+    cancel: () => controller.abort()
   };
 }
 

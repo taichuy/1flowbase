@@ -167,6 +167,8 @@ describe('FrontstageJsxStudioDrawer', () => {
           parameters: [],
           request_schema: { type: 'object', properties: {} },
           response_schema: { type: 'object', properties: {} },
+          request_media_type: null,
+          response_media_type: 'application/json',
           schema_digest: 'digest-1',
           adapter_id: 'runtime_data_model',
           host_injected_parameters: [],
@@ -218,9 +220,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         'List conversations · GET · list_application_conversations_records'
       )
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定并插入' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({

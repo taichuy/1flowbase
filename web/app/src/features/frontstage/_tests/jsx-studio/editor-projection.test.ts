@@ -13,6 +13,8 @@ const callable = {
   path: '/api/runtime/models/application_conversations/list',
   request_schema: { type: 'object', properties: {} },
   response_schema: { type: 'object', properties: {} },
+  request_media_type: null,
+  response_media_type: 'application/json',
   schema_digest: 'digest-1',
   bindable: true,
   disabled_reason: null
@@ -26,7 +28,9 @@ const block = {
       operation_id: callable.operation_id,
       schema_digest: callable.schema_digest,
       scope: 'frontstage_page_tab',
-      risk_level: 'low'
+      risk_level: 'low',
+      request_media_type: null,
+      response_media_type: 'application/json'
     }
   ]
 } as unknown as FrontstageBlockInstance;

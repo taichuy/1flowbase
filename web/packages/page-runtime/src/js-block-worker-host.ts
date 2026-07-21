@@ -72,6 +72,7 @@ export function createJsBlockWorkerHost(
   const clearScheduledTimeout =
     options.clearScheduledTimeout ?? defaultClearTimeout;
   const timeoutHandles = new Map<string, JsBlockWorkerTimeoutHandle>();
+  const disposedEffectRequests = new Set<string>();
   let startupTimeoutHandle: JsBlockWorkerTimeoutHandle | undefined;
   let queuedRequest: JsBlockRunRequest | undefined;
   let didTerminate = false;
@@ -138,6 +139,22 @@ export function createJsBlockWorkerHost(
   const applyMessage = (message: unknown): JsBlockRuntimeSessionState => {
     state = reduceJsBlockRuntimeSession(state, message);
     reconcileTimeouts();
+    if (
+      typeof message === 'object' &&
+      message !== null &&
+      typeof (message as { requestId?: unknown }).requestId === 'string'
+    ) {
+      const requestId = (message as { requestId: string }).requestId;
+      const request = state.requests[requestId];
+      if (
+        request &&
+        request.status !== 'pending' &&
+        !disposedEffectRequests.has(requestId)
+      ) {
+        disposedEffectRequests.add(requestId);
+        options.effectBridge?.handlers?.disposeRequest?.(requestId);
+      }
+    }
     return state;
   };
 
@@ -345,6 +362,7 @@ export function createJsBlockWorkerHost(
       }
 
       didDispose = true;
+      options.effectBridge?.handlers?.disposeRequest?.(requestId);
       const message =
         requestId === undefined
           ? ({

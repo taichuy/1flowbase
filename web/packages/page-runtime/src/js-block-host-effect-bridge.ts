@@ -32,6 +32,7 @@ export type JsBlockHostEffectHandler<
 
 export interface JsBlockHostEffectHandlers {
   interface?: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  disposeRequest?: (requestId?: string) => void;
 }
 
 export interface JsBlockHostEffectBridgeOptions {

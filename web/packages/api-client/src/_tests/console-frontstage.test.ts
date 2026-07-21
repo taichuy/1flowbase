@@ -8,6 +8,8 @@ import {
   deleteFrontstagePageTab,
   deleteFrontstagePageNode,
   dispatchFrontstageCallable,
+  dispatchFrontstageCallableBinary,
+  dispatchFrontstageCallableStream,
   issueFrontstageCallableWriteGrant,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
@@ -25,6 +27,22 @@ describe('console-frontstage client', () => {
   vi.spyOn(transport, 'apiFetch').mockImplementation(
     async (input) => input as never
   );
+  vi.spyOn(transport, 'apiFetchBlob').mockResolvedValue({
+    blob: new Blob([new Uint8Array([1, 2, 3])]),
+    filename: 'export.zip',
+    contentType: 'application/zip'
+  });
+  vi.spyOn(transport, 'apiFetchStream').mockResolvedValue({
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('data: {"progress":1}\n\ndata: complete\n\n')
+        );
+        controller.close();
+      }
+    }),
+    cancel: vi.fn()
+  });
 
   test.each([
     {
@@ -105,6 +123,55 @@ describe('console-frontstage client', () => {
       },
       csrfToken: 'csrf-123'
     });
+  });
+
+  test('preserves controlled binary responses as a worker-safe byte resource', async () => {
+    await expect(
+      dispatchFrontstageCallableBinary(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        {
+          block_id: 'block-1',
+          binding_alias: 'exportLogs',
+          schema_digest: 'digest-binary',
+          run_id: 'run-1',
+          draft_hash: 'draft-1'
+        },
+        'csrf-123'
+      )
+    ).resolves.toEqual({
+      bytes: new Uint8Array([1, 2, 3]),
+      file_name: 'export.zip',
+      content_type: 'application/zip'
+    });
+    expect(transport.apiFetchBlob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        csrfToken: 'csrf-123'
+      })
+    );
+  });
+
+  test('parses callable SSE data through a cancellable async iterable', async () => {
+    const iterable = await dispatchFrontstageCallableStream<
+      { progress: number } | string
+    >(
+      'workspace-1',
+      'page-1',
+      'tab-1',
+      {
+        block_id: 'block-1',
+        binding_alias: 'watchRun',
+        schema_digest: 'digest-stream',
+        run_id: 'run-1',
+        draft_hash: 'draft-1'
+      },
+      'csrf-123'
+    );
+    const events = [];
+    for await (const event of iterable) events.push(event);
+    expect(events).toEqual([{ progress: 1 }, 'complete']);
   });
 
   test('issues a server-owned single-use write grant for one draft binding', async () => {

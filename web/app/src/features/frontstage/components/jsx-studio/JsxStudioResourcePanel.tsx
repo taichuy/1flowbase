@@ -213,7 +213,9 @@ function InterfaceConnectorPanel({
               <div className="frontstage-jsx-studio__binding-copy">
                 <Typography.Text code>{binding.binding.alias}</Typography.Text>
                 <Typography.Text type="secondary" ellipsis>
-                  {binding.binding.operation_id}
+                  {binding.operation
+                    ? `${binding.operation.method.toUpperCase()} ${binding.operation.path}`
+                    : binding.binding.operation_id}
                 </Typography.Text>
                 {binding.status !== 'current' ? (
                   <Tag color="warning">{binding.status}</Tag>
@@ -266,7 +268,7 @@ function InterfaceConnectorPanel({
             );
             return {
               value: operation.operation_id,
-              label: `${operation.name} · ${operation.method.toUpperCase()} · ${operation.operation_id}`,
+              label: `${operation.method.toUpperCase()} ${operation.path}`,
               disabled: isBound || !operation.bindable
             };
           })}
@@ -290,23 +292,6 @@ function InterfaceConnectorPanel({
           onChange={(value) => setSelectedOperationId(value)}
           style={{ width: '100%' }}
         />
-        {selectedOperation ? (
-          <div className="frontstage-jsx-studio__capability-row">
-            <div className="frontstage-jsx-studio__binding-copy">
-              <Space size={6} wrap>
-                <Typography.Text>{selectedOperation.name}</Typography.Text>
-                <Tag>{selectedOperation.method.toUpperCase()}</Tag>
-                <Tag>{selectedOperation.risk_level}</Tag>
-              </Space>
-              <Typography.Text type="secondary">
-                {selectedOperation.operation_id}
-              </Typography.Text>
-              <Typography.Text type="secondary" ellipsis>
-                {selectedOperation.path}
-              </Typography.Text>
-            </div>
-          </div>
-        ) : null}
         <Button
           type="primary"
           disabled={!selectedOperation}

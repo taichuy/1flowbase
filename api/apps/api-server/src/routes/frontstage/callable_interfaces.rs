@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -268,10 +268,13 @@ pub async fn dispatch_frontstage_callable_interface(
     )
     .await
     {
-        Ok(success) => Ok(Json(ApiSuccess::new(
-            success.value.get("data").cloned().unwrap_or(success.value),
-        ))
-        .into_response()),
+        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => {
+            Ok(Json(ApiSuccess::new(value.get("data").cloned().unwrap_or(value))).into_response())
+        }
+        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => {
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        Ok(crate::openapi_interface::DispatchSuccess::Media(response)) => Ok(response),
         Err(DispatchError::Api(error)) => Err(error.into()),
         Err(DispatchError::Target(response)) => Ok(response),
     }

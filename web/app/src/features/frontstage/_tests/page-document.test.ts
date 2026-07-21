@@ -76,7 +76,9 @@ describe('frontstage page document', () => {
                     operation_id: 'list_application_conversations_records',
                     schema_digest: 'digest-1',
                     scope: 'frontstage_page_tab',
-                    risk_level: 'low'
+                    risk_level: 'low',
+                    request_media_type: null,
+                    response_media_type: 'application/json'
                   }
                 ],
                 'x-layout': { region: 'main', order: 20, span: 12 },
@@ -112,7 +114,9 @@ describe('frontstage page document', () => {
             operation_id: 'list_application_conversations_records',
             schema_digest: 'digest-1',
             scope: 'frontstage_page_tab',
-            risk_level: 'low'
+            risk_level: 'low',
+            request_media_type: null,
+            response_media_type: 'application/json'
           }
         ],
         ports: { inputs: [], outputs: [] },

@@ -26,6 +26,8 @@ const operations = [
     description: 'List conversation records',
     request_schema: { type: 'object', properties: {} },
     response_schema: { type: 'object', properties: {} },
+    request_media_type: null,
+    response_media_type: 'application/json',
     schema_digest: 'digest-list',
     scope: 'frontstage_page_tab',
     risk_level: 'low',
@@ -54,6 +56,8 @@ const operations = [
       properties: { id: { type: 'string' } },
       required: ['id']
     },
+    request_media_type: null,
+    response_media_type: 'application/json',
     schema_digest: 'digest-detail',
     scope: 'frontstage_page_tab',
     risk_level: 'low',
@@ -111,15 +115,13 @@ describe('TSX Studio interface connector', () => {
     fireEvent.mouseDown(select);
     fireEvent.change(select, { target: { value: 'page detail' } });
     const option = await screen.findByText(
-      'Get page detail · GET · get_frontstage_page_detail'
+      'GET /api/frontstage/pages/{page_id}'
     );
-    expect(select.closest('.frontstage-jsx-studio__resource-section')).toContainElement(
-      option
-    );
+    expect(
+      select.closest('.frontstage-jsx-studio__resource-section')
+    ).toContainElement(option);
     fireEvent.click(option);
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定并插入' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
@@ -151,13 +153,9 @@ describe('TSX Studio interface connector', () => {
       target: { value: 'get_frontstage_page_detail' }
     });
     fireEvent.click(
-      await screen.findByText(
-        'Get page detail · GET · get_frontstage_page_detail'
-      )
+      await screen.findByText('GET /api/frontstage/pages/{page_id}')
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: '绑定并插入' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onInsertCode).not.toHaveBeenCalled();

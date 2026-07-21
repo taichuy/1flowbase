@@ -51,6 +51,8 @@ export interface FrontstageBlockInterfaceBinding {
   schema_digest: string;
   scope: string;
   risk_level: string;
+  request_media_type: string | null;
+  response_media_type: string | null;
 }
 
 export interface FrontstageBlockInstance {
@@ -275,12 +277,22 @@ function normalizeInterfaces(
     const schemaDigest = asOptionalString(value.schema_digest);
     const scope = asOptionalString(value.scope);
     const riskLevel = asOptionalString(value.risk_level);
+    const requestMediaType =
+      value.request_media_type === null
+        ? null
+        : asOptionalString(value.request_media_type);
+    const responseMediaType =
+      value.response_media_type === null
+        ? null
+        : asOptionalString(value.response_media_type);
     if (
       !alias ||
       !operationId ||
       !schemaDigest ||
       !scope ||
       !riskLevel ||
+      (value.request_media_type !== null && !requestMediaType) ||
+      (value.response_media_type !== null && !responseMediaType) ||
       aliases.has(alias)
     ) {
       pushDiagnostic(diagnostics, {
@@ -297,7 +309,9 @@ function normalizeInterfaces(
       operation_id: operationId,
       schema_digest: schemaDigest,
       scope,
-      risk_level: riskLevel
+      risk_level: riskLevel,
+      request_media_type: requestMediaType,
+      response_media_type: responseMediaType
     });
   }
   return bindings;

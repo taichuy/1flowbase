@@ -112,7 +112,7 @@ function createFakeBlockContext(
     props: {},
     state: {},
     patch: vi.fn(),
-    interfaces: { call: vi.fn() },
+    interfaces: { call: vi.fn(), stream: vi.fn() },
     events: {
       emit: vi.fn()
     },
@@ -494,7 +494,8 @@ describe('frontstage native trusted block React adapter', () => {
       interfaces: {
         call: vi.fn(async () => ({
           title: 'Queried title'
-        })) as BlockContext['interfaces']['call']
+        })) as BlockContext['interfaces']['call'],
+        stream: vi.fn()
       }
     });
     const resolveBlockContext = vi.fn(() => fakeContext);

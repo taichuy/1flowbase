@@ -130,7 +130,13 @@ pub async fn execute(
     )
     .await
     {
-        Ok(success) => success.value,
+        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => value,
+        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => Value::Null,
+        Ok(crate::openapi_interface::DispatchSuccess::Media(_)) => {
+            return Err(
+                anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
+            )
+        }
         Err(crate::openapi_interface::DispatchError::Api(error)) => {
             return Err(McpDebugExecuteError::Api(error));
         }

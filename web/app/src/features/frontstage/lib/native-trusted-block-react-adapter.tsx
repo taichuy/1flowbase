@@ -186,7 +186,12 @@ function createUnavailableBlockContext(
       Object.assign(state, patch);
     },
     interfaces: {
-      call: rejectUnavailable('ctx.interfaces.call')
+      call: rejectUnavailable('ctx.interfaces.call'),
+      stream: () => ({
+        async *[Symbol.asyncIterator]() {
+          throw createUnavailableContextError('ctx.interfaces.stream');
+        }
+      })
     },
     events: {
       emit() {

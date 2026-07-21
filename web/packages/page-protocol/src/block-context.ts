@@ -3,12 +3,12 @@ export const BLOCK_CONTEXT_KEYS = [
   'workspace',
   'application',
   'page',
+  'inputs',
   'params',
   'props',
   'state',
   'patch',
-  'data',
-  'actions',
+  'interfaces',
   'events',
   'theme',
   'ui'
@@ -41,11 +41,27 @@ export interface BlockInterfaceRequest {
   body?: unknown;
 }
 
+export interface BlockBinaryInput {
+  base64: string;
+  file_name?: string;
+  content_type?: string;
+}
+
+export interface BlockBinaryResource {
+  bytes: Uint8Array;
+  file_name: string | null;
+  content_type: string;
+}
+
 export interface BlockContextInterfaces {
   call<TResponse = unknown>(
     bindingAlias: string,
     request?: BlockInterfaceRequest
   ): Promise<TResponse>;
+  stream<TEvent = unknown>(
+    bindingAlias: string,
+    request?: BlockInterfaceRequest
+  ): AsyncIterable<TEvent>;
 }
 
 export interface BlockContextEvents {

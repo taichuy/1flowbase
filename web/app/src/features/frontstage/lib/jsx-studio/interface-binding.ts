@@ -26,7 +26,9 @@ export function bindFrontstageCallableInterface(
     operation_id: operation.operation_id,
     schema_digest: operation.schema_digest,
     scope: operation.scope,
-    risk_level: operation.risk_level
+    risk_level: operation.risk_level,
+    request_media_type: operation.request_media_type,
+    response_media_type: operation.response_media_type
   };
   const existing = (block.interfaces ?? []).filter(
     (item) => item.alias !== binding.alias

@@ -12,6 +12,8 @@ const operation = {
   schema_digest: 'digest-2',
   scope: 'frontstage_page_tab',
   risk_level: 'low',
+  request_media_type: null,
+  response_media_type: 'application/json',
   bindable: true,
   disabled_reason: null
 } as ConsoleFrontstageCallableInterface;
@@ -23,17 +25,25 @@ const block = {
 
 describe('Frontstage interface binding document', () => {
   test('AC-004 persists alias-to-operation identity and reports digest drift', () => {
-    const bound = bindFrontstageCallableInterface(block, 'getCurrentPage', operation);
+    const bound = bindFrontstageCallableInterface(
+      block,
+      'getCurrentPage',
+      operation
+    );
     expect(bound.interfaces).toEqual([
       {
         alias: 'getCurrentPage',
         operation_id: 'get_frontstage_page_detail',
         schema_digest: 'digest-2',
         scope: 'frontstage_page_tab',
-        risk_level: 'low'
+        risk_level: 'low',
+        request_media_type: null,
+        response_media_type: 'application/json'
       }
     ]);
-    expect(resolveFrontstageInterfaceBindings(bound, [operation])[0].status).toBe('current');
+    expect(
+      resolveFrontstageInterfaceBindings(bound, [operation])[0].status
+    ).toBe('current');
     expect(
       resolveFrontstageInterfaceBindings(bound, [
         { ...operation, schema_digest: 'digest-3' }
