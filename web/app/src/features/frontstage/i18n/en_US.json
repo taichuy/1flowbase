@@ -227,6 +227,7 @@
     "rerun": "Rerun",
     "reset": "reset",
     "resize_jsx_studio": "Resize TSX Editor",
+    "resize_resource_panel": "Resize resource panel",
     "restricted_runtime_session_create_failed": "Restricted runtime session creation failed.",
     "retry": "Try again",
     "run": "run",

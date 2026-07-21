@@ -265,6 +265,47 @@ describe('FrontstageJsxStudioDrawer', () => {
     });
   });
 
+  test('resizes the resource panel horizontally without resizing the Studio window', () => {
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="interfaces"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        diagnostics={[]}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'TSX 编辑器' });
+    const workspace = dialog.querySelector<HTMLElement>(
+      '.frontstage-jsx-studio__workspace'
+    );
+    const resizeHandle = screen.getByRole('separator', {
+      name: '调整资源面板宽度'
+    });
+
+    expect(workspace?.style.getPropertyValue('--resource-panel-width')).toBe(
+      '320px'
+    );
+    fireEvent.mouseDown(resizeHandle, { clientX: 500 });
+    fireEvent.mouseMove(document, { clientX: 400 });
+    fireEvent.mouseUp(document);
+    expect(workspace?.style.getPropertyValue('--resource-panel-width')).toBe(
+      '420px'
+    );
+    expect(dialog).toHaveStyle({ width: '1080px' });
+
+    fireEvent.keyDown(resizeHandle, { key: 'ArrowRight' });
+    expect(workspace?.style.getPropertyValue('--resource-panel-width')).toBe(
+      '380px'
+    );
+  });
+
   test('preserves JSX in Monaco because Page Runtime owns TSX compilation', () => {
     render(
       <FrontstageJsxStudioDrawer

@@ -16,7 +16,7 @@ import {
   validateJsBlockSource
 } from '@1flowbase/page-runtime';
 import { Alert, Button, Modal, Space, Tooltip, Typography } from 'antd';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
@@ -106,6 +106,12 @@ const studioSections: Array<{
   }
 ];
 
+const DEFAULT_RESOURCE_PANEL_WIDTH = 320;
+const MIN_RESOURCE_PANEL_WIDTH = 260;
+const MIN_EDITOR_PANEL_WIDTH = 320;
+const STUDIO_RAIL_WIDTH = 44;
+const STUDIO_SPLITTER_WIDTH = 8;
+
 export function FrontstageJsxStudioDrawer({
   ...props
 }: FrontstageJsxStudioDrawerProps) {
@@ -138,7 +144,15 @@ function FrontstageJsxStudioWindow({
   const [activeSection, setActiveSection] =
     useState<FrontstageJsxStudioSection>(initialSection);
   const [mobile, setMobile] = useState(false);
+  const [resourcePanelWidth, setResourcePanelWidth] = useState(
+    DEFAULT_RESOURCE_PANEL_WIDTH
+  );
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const liveResourcePanelWidthRef = useRef(DEFAULT_RESOURCE_PANEL_WIDTH);
+  const resourcePanelDragStartRef = useRef<{
+    pointerX: number;
+    width: number;
+  } | null>(null);
   const boundInterfaceIds = useMemo(
     () => [
       ...new Set(
@@ -220,6 +234,47 @@ function FrontstageJsxStudioWindow({
   const windowEntry = windowWorkspace.state.windows.find(
     (entry) => entry.id === mainWindowId
   );
+  const maxResourcePanelWidth = Math.max(
+    MIN_RESOURCE_PANEL_WIDTH,
+    (windowEntry?.rect.width ?? initialWindowRect.width) -
+      MIN_EDITOR_PANEL_WIDTH -
+      STUDIO_RAIL_WIDTH -
+      STUDIO_SPLITTER_WIDTH
+  );
+
+  useEffect(() => {
+    liveResourcePanelWidthRef.current = resourcePanelWidth;
+  }, [resourcePanelWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      const dragStart = resourcePanelDragStartRef.current;
+      if (!dragStart) return;
+      setResourcePanelWidth(
+        clampResourcePanelWidth(
+          dragStart.width + dragStart.pointerX - event.clientX,
+          maxResourcePanelWidth
+        )
+      );
+    };
+    const handleMouseUp = () => {
+      resourcePanelDragStartRef.current = null;
+      document.body.classList.remove('frontstage-jsx-studio--resizing-panel');
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('frontstage-jsx-studio--resizing-panel');
+    };
+  }, [maxResourcePanelWidth]);
+
+  useEffect(() => {
+    setResourcePanelWidth((current) =>
+      clampResourcePanelWidth(current, maxResourcePanelWidth)
+    );
+  }, [maxResourcePanelWidth]);
 
   useEffect(() => {
     if (mobile && windowEntry && !windowEntry.maximized) {
@@ -428,6 +483,11 @@ function FrontstageJsxStudioWindow({
         ]
           .filter(Boolean)
           .join(' ')}
+        style={
+          {
+            '--resource-panel-width': `${resourcePanelWidth}px`
+          } as CSSProperties
+        }
       >
         <nav
           aria-label={i18nText('frontstage', 'auto.jsx_studio_resources')}
@@ -475,6 +535,51 @@ function FrontstageJsxStudioWindow({
           ) : null}
         </aside>
 
+        {activeSection !== 'code' ? (
+          <div
+            aria-label={i18nText(
+              'frontstage',
+              'auto.resize_resource_panel'
+            )}
+            aria-orientation="vertical"
+            aria-valuemax={maxResourcePanelWidth}
+            aria-valuemin={MIN_RESOURCE_PANEL_WIDTH}
+            aria-valuenow={resourcePanelWidth}
+            className="frontstage-jsx-studio__panel-resize-handle"
+            role="separator"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                setResourcePanelWidth((current) =>
+                  clampResourcePanelWidth(current + 40, maxResourcePanelWidth)
+                );
+              } else if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                setResourcePanelWidth((current) =>
+                  clampResourcePanelWidth(current - 40, maxResourcePanelWidth)
+                );
+              } else if (event.key === 'Home') {
+                event.preventDefault();
+                setResourcePanelWidth(MIN_RESOURCE_PANEL_WIDTH);
+              } else if (event.key === 'End') {
+                event.preventDefault();
+                setResourcePanelWidth(maxResourcePanelWidth);
+              }
+            }}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              resourcePanelDragStartRef.current = {
+                pointerX: event.clientX,
+                width: liveResourcePanelWidthRef.current
+              };
+              document.body.classList.add(
+                'frontstage-jsx-studio--resizing-panel'
+              );
+            }}
+          />
+        ) : null}
+
         <main className="frontstage-jsx-studio__editor-panel">
           {permissionDenied ? <PermissionDeniedState /> : null}
           {error && !permissionDenied ? (
@@ -516,4 +621,8 @@ function FrontstageJsxStudioWindow({
       </div>
     </WindowWorkspaceWindow>
   );
+}
+
+function clampResourcePanelWidth(width: number, maxWidth: number) {
+  return Math.min(maxWidth, Math.max(MIN_RESOURCE_PANEL_WIDTH, width));
 }

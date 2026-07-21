@@ -36,7 +36,9 @@
 
 .frontstage-jsx-studio__workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px) 44px;
+  grid-template-columns:
+    minmax(0, 1fr) 8px minmax(260px, var(--resource-panel-width, 320px))
+    44px;
   height: 100%;
   min-height: 0;
   background: var(--bg-surface, #fff);
@@ -56,7 +58,7 @@
 }
 
 .frontstage-jsx-studio__rail {
-  grid-column: 3;
+  grid-column: 4;
   grid-row: 1;
   display: flex;
   flex-direction: column;
@@ -82,12 +84,40 @@
 }
 
 .frontstage-jsx-studio__resource-panel {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--border-default, #d5ddd8);
   background: #fff;
+}
+
+.frontstage-jsx-studio__panel-resize-handle {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.frontstage-jsx-studio__panel-resize-handle::after {
+  position: absolute;
+  inset: 0 3px;
+  background: var(--border-default, #d5ddd8);
+  content: '';
+}
+
+.frontstage-jsx-studio__panel-resize-handle:hover::after,
+.frontstage-jsx-studio__panel-resize-handle:focus-visible::after,
+.frontstage-jsx-studio--resizing-panel
+  .frontstage-jsx-studio__panel-resize-handle::after {
+  background: var(--color-primary, #2563eb);
+}
+
+body.frontstage-jsx-studio--resizing-panel {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .frontstage-jsx-studio__resource-scroll {
@@ -242,6 +272,10 @@
   .frontstage-jsx-studio__resource-panel {
     grid-column: 1;
     grid-row: 1;
+  }
+
+  .frontstage-jsx-studio__panel-resize-handle {
+    display: none;
   }
 
   .frontstage-jsx-studio__editor-panel {
