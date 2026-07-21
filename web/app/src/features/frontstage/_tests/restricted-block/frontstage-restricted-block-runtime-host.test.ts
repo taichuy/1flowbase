@@ -90,7 +90,7 @@ function createRunRequest(
   return {
     requestId: 'restricted-block:block-1:code-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: { title: 'Hello' },
     state: { selected: false },
     contextSnapshot: { pageId: 'page-1' },

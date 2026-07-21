@@ -4,9 +4,11 @@ import type {
 } from '@1flowbase/page-protocol';
 import type {
   BlockContextMediatorPolicy,
+  CompiledBlockArtifact,
   JsBlockRunRequest,
   JsBlockRuntimeLimits
 } from '@1flowbase/page-runtime';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import {
   hasFrontstageBlockActionPermission,
@@ -62,6 +64,7 @@ export interface RestrictedBlockLoaderInput {
   state?: Record<string, unknown>;
   inputs?: Record<string, unknown>;
   limits?: RestrictedBlockLoaderLimits;
+  compiledArtifact?: CompiledBlockArtifact;
 }
 
 export function createRestrictedBlockRunPlan(
@@ -137,13 +140,12 @@ export function createRestrictedBlockRunPlan(
     request: {
       requestId: createRequestId(input.block.id, codeRef),
       blockId: input.block.id,
-      source: input.code,
+      program: createRunProgram(input),
       inputs: { ...(input.inputs ?? {}) },
       props: { ...props },
       state: { ...state },
       contextSnapshot: { ...input.contextSnapshot },
-      limits: limits.value,
-      allowedImports: input.catalogEntry.codeCapabilities?.allowedImports ?? []
+      limits: limits.value
     },
     schemaValidationOptions: {
       maxDepth: limits.value.maxRenderDepth,
@@ -160,6 +162,22 @@ export function createRestrictedBlockRunPlan(
     },
     mediatorPolicy: policy
   };
+}
+
+function createRunProgram(input: RestrictedBlockLoaderInput): JsBlockRunRequest['program'] {
+  const fallback = {
+    kind: 'source' as const,
+    source: input.code,
+    allowedImports: input.catalogEntry.codeCapabilities?.allowedImports ?? []
+  };
+  return input.compiledArtifact
+    ? {
+        kind: 'compiled_artifact',
+        artifact: input.compiledArtifact,
+        sourceSha256: sha256Text(input.code),
+        fallback
+      }
+    : fallback;
 }
 
 function validateCatalogMatch(

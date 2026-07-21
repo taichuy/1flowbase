@@ -89,7 +89,7 @@ function createRunRequest(
   return {
     requestId: 'restricted-block:block-1:code-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: {},
     state: {},
     contextSnapshot: {

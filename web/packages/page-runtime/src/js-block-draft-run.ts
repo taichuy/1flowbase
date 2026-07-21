@@ -36,7 +36,7 @@ export function createJsBlockDraftRun({
   const result = request.result;
   return {
     run_id: requestId,
-    draft_hash: hashJsBlockDraft(request.request.source),
+    draft_hash: hashJsBlockDraft(readRequestSource(request.request.program)),
     context_snapshot: { ...request.request.contextSnapshot },
     status:
       request.status === 'ready'
@@ -53,6 +53,12 @@ export function createJsBlockDraftRun({
     interface_calls: [...interfaceCalls],
     diagnostics: [...diagnostics]
   };
+}
+
+function readRequestSource(
+  program: JsBlockRuntimeSessionState['requests'][string]['request']['program']
+): string {
+  return program.kind === 'source' ? program.source : program.fallback.source;
 }
 
 export function hashJsBlockDraft(source: string): string {

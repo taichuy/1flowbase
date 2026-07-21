@@ -943,7 +943,10 @@ function createRuntimeSessionKey(
       inputs: request.inputs,
       signalInputs: inputSignature ?? '',
       limits: request.limits,
-      allowedImports: request.allowedImports,
+      allowedImports:
+        request.program.kind === 'source'
+          ? request.program.allowedImports
+          : request.program.fallback.allowedImports,
       schemaValidationOptions: item.runPlan.schemaValidationOptions,
       mediatorPolicy: item.runPlan.mediatorPolicy
     }

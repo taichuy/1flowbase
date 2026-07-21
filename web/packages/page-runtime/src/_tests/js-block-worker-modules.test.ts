@@ -19,12 +19,15 @@ export default { main };
 const request = {
   requestId: 'request-1',
   blockId: 'block-1',
-  source,
+  program: {
+    kind: 'source' as const,
+    source,
+    allowedImports: [...JS_BLOCK_ALLOWED_IMPORTS]
+  },
   props: {},
   state: {},
   contextSnapshot: {},
-  limits: { timeoutMs: 1_000 },
-  allowedImports: [...JS_BLOCK_ALLOWED_IMPORTS]
+  limits: { timeoutMs: 1_000 }
 };
 
 describe('JS block default worker modules', () => {

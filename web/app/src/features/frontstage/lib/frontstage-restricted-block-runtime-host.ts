@@ -3,6 +3,7 @@ import type {
   JsBlockWorkerLike,
   JsBlockWorkerScheduleTimeout
 } from '@1flowbase/page-runtime';
+import { createCompiledBlockRuntimeFingerprint } from '@1flowbase/page-runtime';
 
 import {
   createRestrictedBlockRuntimeHost,
@@ -12,6 +13,7 @@ import {
 } from './restricted-block-runtime-host';
 import {
   createFrontstageRestrictedBlockWorkerFactory,
+  getFrontstageRestrictedBlockWorkerUrl,
   type FrontstageRestrictedBlockWorkerFactoryOptions
 } from './restricted-block-worker-factory';
 
@@ -43,6 +45,12 @@ export function createFrontstageRestrictedBlockRuntimeHost(
 
   return createRestrictedBlockRuntimeHost({
     ...runtimeOptions,
+    runtimeFingerprint:
+      runtimeOptions.runtimeFingerprint ??
+      createCompiledBlockRuntimeFingerprint(
+        browserWorkerFactoryOptions?.workerUrl ??
+          getFrontstageRestrictedBlockWorkerUrl()
+      ),
     workerFactory:
       workerFactory ??
       createFrontstageRestrictedBlockWorkerFactory(browserWorkerFactoryOptions)
@@ -71,6 +79,12 @@ export function createObservableFrontstageRestrictedBlockRuntimeHost(
 
   const host = createRestrictedBlockRuntimeHost({
     ...runtimeOptions,
+    runtimeFingerprint:
+      runtimeOptions.runtimeFingerprint ??
+      createCompiledBlockRuntimeFingerprint(
+        browserWorkerFactoryOptions?.workerUrl ??
+          getFrontstageRestrictedBlockWorkerUrl()
+      ),
     scheduleTimeout: createNotifyingScheduleTimeout(
       scheduleTimeout,
       notifySnapshotChange
