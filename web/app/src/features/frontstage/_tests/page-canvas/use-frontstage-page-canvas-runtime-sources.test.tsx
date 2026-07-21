@@ -13,13 +13,23 @@ import {
 } from '../../lib/page-canvas/render-plan';
 import { useFrontstagePageCanvasRuntimeSources } from '../../hooks/use-frontstage-page-canvas-runtime-sources';
 import type { FrontstageRuntimeDemandByBlockId } from '../../lib/page-canvas/runtime-demand';
+import {
+  readFrontstageRuntimeObservations,
+  resetFrontstageRuntimeObservations
+} from '../../lib/page-canvas/runtime-observation';
 
 const frontstageBlockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
   frontstageBlockCodeQueryKey: vi.fn(
-    (workspaceId: string, pageId: string, codeRef: string) =>
+    (
+      workspaceId: string,
+      pageId: string,
+      codeRef: string,
+      actorId: string
+    ) =>
       [
         'frontstage',
+        actorId,
         workspaceId,
         'pages',
         pageId,
@@ -30,6 +40,11 @@ const frontstageBlockCodeApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/block-code', () => frontstageBlockCodeApi);
+
+const TEST_RUNTIME_ACTOR = {
+  actorId: 'actor-1',
+  actorWorkspaceId: 'workspace-1'
+} as const;
 
 function createBlock(
   overrides: Partial<FrontstageBlockInstance> = {}
@@ -110,10 +125,14 @@ function createQueryClient() {
 }
 
 function setupRuntimeSources({
+  actorId,
+  actorWorkspaceId,
   workspaceId = 'workspace-1',
   renderPlan = createRenderPlan([]),
   demandsByBlockId
 }: {
+  actorId: string | null;
+  actorWorkspaceId: string | null;
   workspaceId?: string | null;
   renderPlan?: FrontstagePageRenderPlan | null;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
@@ -126,6 +145,8 @@ function setupRuntimeSources({
   return renderHook(
     () =>
       useFrontstagePageCanvasRuntimeSources({
+        actorId,
+        actorWorkspaceId,
         workspaceId,
         renderPlan,
         demandsByBlockId
@@ -137,6 +158,7 @@ function setupRuntimeSources({
 describe('useFrontstagePageCanvasRuntimeSources', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetFrontstageRuntimeObservations();
   });
 
   test('queries only eligible render plan slots with the block code query key', async () => {
@@ -177,7 +199,10 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
       source_sha256: 'hero-source-sha256'
     });
 
-    const { result } = setupRuntimeSources({ renderPlan });
+    const { result } = setupRuntimeSources({
+      ...TEST_RUNTIME_ACTOR,
+      renderPlan
+    });
 
     await waitFor(() => {
       expect(result.current.sourceState?.sources[0]).toMatchObject({
@@ -193,7 +218,8 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     expect(frontstageBlockCodeApi.frontstageBlockCodeQueryKey).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
-      'hero-code'
+      'hero-code',
+      'actor-1'
     );
     expect(frontstageBlockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledWith(
       'workspace-1',
@@ -208,6 +234,16 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.hasError).toBe(false);
     expect(result.current.errors).toEqual([]);
+    expect(readFrontstageRuntimeObservations()).toEqual([
+      expect.objectContaining({
+        stage: 'source_fetch',
+        cacheTier: 'network',
+        actorId: 'actor-1',
+        workspaceId: 'workspace-1',
+        pageId: 'page-1',
+        blockId: 'hero'
+      })
+    ]);
   });
 
   test('maps loading, failed, and empty successful code responses into source states', async () => {
@@ -257,7 +293,10 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
       }
     );
 
-    const { result } = setupRuntimeSources({ renderPlan });
+    const { result } = setupRuntimeSources({
+      ...TEST_RUNTIME_ACTOR,
+      renderPlan
+    });
 
     await waitFor(() => {
       expect(result.current.sourceState?.sources.map((source) => source.status))
@@ -286,6 +325,7 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
 
   test('does not query when workspace id or render plan is missing', async () => {
     const missingWorkspace = setupRuntimeSources({
+      ...TEST_RUNTIME_ACTOR,
       workspaceId: null,
       renderPlan: createRenderPlan([
         createSlot(
@@ -299,6 +339,7 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
       ])
     });
     const missingRenderPlan = setupRuntimeSources({
+      ...TEST_RUNTIME_ACTOR,
       renderPlan: null
     });
 
@@ -314,6 +355,29 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     expect(missingRenderPlan.result.current.sourceState).toBeNull();
   });
 
+  test('does not query or observe source fetches for anonymous or mismatched actors', async () => {
+    const renderPlan = createRenderPlan([
+      createSlot({ id: 'hero', codeRef: 'hero-code' }, 0)
+    ]);
+    const anonymous = setupRuntimeSources({
+      actorId: null,
+      actorWorkspaceId: null,
+      renderPlan
+    });
+    const mismatched = setupRuntimeSources({
+      actorId: 'actor-1',
+      actorWorkspaceId: 'workspace-2',
+      renderPlan
+    });
+
+    await waitFor(() => {
+      expect(anonymous.result.current.loading).toBe(false);
+      expect(mismatched.result.current.loading).toBe(false);
+    });
+    expect(frontstageBlockCodeApi.fetchFrontstageBlockCode).not.toHaveBeenCalled();
+    expect(readFrontstageRuntimeObservations()).toEqual([]);
+  });
+
   test('keeps dormant blocks out of the network until viewport demand arrives', async () => {
     const renderPlan = createRenderPlan([
       createSlot({ id: 'hero', codeRef: 'hero-code', sourceCodeRef: 'hero-code' }, 0),
@@ -327,6 +391,7 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     });
 
     const { result } = setupRuntimeSources({
+      ...TEST_RUNTIME_ACTOR,
       renderPlan,
       demandsByBlockId: { hero: 1, below: 3 }
     });

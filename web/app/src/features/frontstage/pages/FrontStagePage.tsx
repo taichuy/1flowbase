@@ -230,7 +230,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     []
   );
   const pageCanvasRuntimeSources = useFrontstagePageCanvasRuntimeSources({
+    actorId: actor?.id,
+    actorWorkspaceId: actor?.current_workspace_id,
     workspaceId,
+    tabId: activePageContent?.tab.id ?? null,
     renderPlan: activePageRenderPlan,
     demandsByBlockId: runtimeDemandsByBlockId
   });
@@ -262,6 +265,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     workspaceId
   ]);
   const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
+    actorId: actor?.id,
+    actorWorkspaceId: actor?.current_workspace_id,
     runtimeRunPlanState: pageCanvasRuntimeRunPlanState,
     handlers: jsBlockCapabilityHandlers,
     demandsByBlockId: runtimeDemandsByBlockId,

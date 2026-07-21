@@ -14,13 +14,17 @@ import {
   type FrontstagePageCanvasBlockCodeReadResult,
   type FrontstagePageCanvasRuntimeSourceState
 } from '../lib/page-canvas/runtime-source';
+import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 import {
   resolveFrontstageRuntimeDemand,
   type FrontstageRuntimeDemandByBlockId
 } from '../lib/page-canvas/runtime-demand';
 
 export interface UseFrontstagePageCanvasRuntimeSourcesInput {
+  actorId: string | null | undefined;
+  actorWorkspaceId: string | null | undefined;
   workspaceId: string | null | undefined;
+  tabId?: string | null;
   renderPlan: FrontstagePageRenderPlan | null | undefined;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
 }
@@ -92,7 +96,10 @@ function createCodeResult(
 }
 
 export function useFrontstagePageCanvasRuntimeSources({
+  actorId,
+  actorWorkspaceId,
   workspaceId,
+  tabId = null,
   renderPlan,
   demandsByBlockId
 }: UseFrontstagePageCanvasRuntimeSourcesInput): UseFrontstagePageCanvasRuntimeSourcesResult {
@@ -107,27 +114,48 @@ export function useFrontstagePageCanvasRuntimeSources({
     });
   }, [renderPlan, workspaceId]);
   const requests = readPlan?.requests ?? EMPTY_BLOCK_CODE_REQUESTS;
+  const canAccessWorkspace = Boolean(
+    actorId && workspaceId && actorWorkspaceId === workspaceId
+  );
 
   const blockCodeQueries = useQueries({
     queries: requests.map((request) => ({
       queryKey: frontstageBlockCodeQueryKey(
         request.workspaceId,
         request.pageId,
-        request.codeRef
+        request.codeRef,
+        actorId ?? ''
       ),
-      queryFn: () =>
-        fetchFrontstageBlockCode(
-          request.workspaceId,
-          request.pageId,
-          request.codeRef
-        ),
+      queryFn: async () => {
+        const startedAt = Date.now();
+        try {
+          return await fetchFrontstageBlockCode(
+            request.workspaceId,
+            request.pageId,
+            request.codeRef
+          );
+        } finally {
+          recordFrontstageRuntimeObservation({
+            stage: 'source_fetch',
+            cacheTier: 'network',
+            actorId: actorId ?? '',
+            workspaceId: request.workspaceId,
+            pageId: request.pageId,
+            tabId,
+            blockId: request.blockId,
+            timestampMs: startedAt,
+            durationMs: Math.max(0, Date.now() - startedAt)
+          });
+        }
+      },
       enabled:
-        !demandsByBlockId ||
-        resolveFrontstageRuntimeDemand(
-          demandsByBlockId,
-          request.blockId,
-          request.slotIndex
-        ) <= 2,
+        canAccessWorkspace &&
+        (!demandsByBlockId ||
+          resolveFrontstageRuntimeDemand(
+            demandsByBlockId,
+            request.blockId,
+            request.slotIndex
+          ) <= 2),
       staleTime: Infinity,
       gcTime: Infinity,
       refetchOnMount: false,

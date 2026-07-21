@@ -9,9 +9,15 @@ import { useFrontstageBlockCode } from '../hooks/use-frontstage-block-code';
 const frontstageApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
   frontstageBlockCodeQueryKey: vi.fn(
-    (workspaceId: string, pageId: string, codeRef: string) =>
+    (
+      workspaceId: string,
+      pageId: string,
+      codeRef: string,
+      actorId: string
+    ) =>
       [
         'frontstage',
+        actorId,
         workspaceId,
         'pages',
         pageId,
@@ -191,6 +197,46 @@ describe('useFrontstageBlockCode', () => {
     });
 
     expect(frontstageApi.fetchFrontstageBlockCode).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not share block code queries across actors', async () => {
+    const queryClient = createQueryClient();
+    const first = setupBlockCode({}, queryClient);
+    await waitFor(() => {
+      expect(first.result.current.code).toBe('export default 1;');
+    });
+    first.unmount();
+
+    authenticate('csrf-actor-b');
+    useAuthStore.setState((state) => ({
+      actor: state.actor ? { ...state.actor, id: 'actor-b' } : null
+    }));
+    const second = setupBlockCode({}, queryClient);
+    await waitFor(() => {
+      expect(second.result.current.code).toBe('export default 1;');
+    });
+
+    expect(frontstageApi.fetchFrontstageBlockCode).toHaveBeenCalledTimes(2);
+    expect(frontstageApi.frontstageBlockCodeQueryKey).toHaveBeenLastCalledWith(
+      'workspace-1',
+      'page-1',
+      'hero',
+      'actor-b'
+    );
+  });
+
+  test('does not read block code for anonymous or mismatched actors', async () => {
+    authenticate(null);
+    const anonymous = setupBlockCode();
+    expect(anonymous.result.current.loading).toBe(false);
+    anonymous.unmount();
+    authenticate();
+    const mismatched = setupBlockCode({ workspaceId: 'workspace-2' });
+
+    await waitFor(() => {
+      expect(mismatched.result.current.loading).toBe(false);
+    });
+    expect(frontstageApi.fetchFrontstageBlockCode).not.toHaveBeenCalled();
   });
 
   test('block code save rejects missing csrf token before calling feature api', async () => {

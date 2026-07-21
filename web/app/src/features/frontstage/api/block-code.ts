@@ -21,9 +21,18 @@ export interface SaveFrontstageBlockCodeInput {
 export const frontstageBlockCodeQueryKey = (
   workspaceId: string,
   pageId: string,
-  codeRef: string
+  codeRef: string,
+  actorId: string
 ) =>
-  ['frontstage', workspaceId, 'pages', pageId, 'block-code', codeRef] as const;
+  [
+    'frontstage',
+    actorId,
+    workspaceId,
+    'pages',
+    pageId,
+    'block-code',
+    codeRef
+  ] as const;
 
 function mapFrontstageBlockCode(
   blockCode: ConsoleFrontstageBlockCode

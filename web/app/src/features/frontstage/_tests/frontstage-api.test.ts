@@ -403,11 +403,17 @@ describe('frontstage page content feature api', () => {
 });
 
 describe('frontstage block code feature api', () => {
-  test('uses a workspace, page, and codeRef scoped query key', () => {
+  test('uses an actor, workspace, page, and codeRef scoped query key', () => {
     expect(
-      frontstageBlockCodeQueryKey('workspace-1', 'page-1', 'hero')
+      frontstageBlockCodeQueryKey(
+        'workspace-1',
+        'page-1',
+        'hero',
+        'actor-1'
+      )
     ).toEqual([
       'frontstage',
+      'actor-1',
       'workspace-1',
       'pages',
       'page-1',

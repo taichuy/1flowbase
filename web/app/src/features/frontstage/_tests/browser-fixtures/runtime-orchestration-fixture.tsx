@@ -203,6 +203,8 @@ function RuntimeOrchestrationFixture() {
   );
 
   const sessions = useFrontstagePageCanvasRuntimeSessions({
+    actorId: 'qa-actor',
+    actorWorkspaceId: 'qa',
     runtimeRunPlanState,
     runtimeSessionFactory,
     demandsByBlockId: demands,
