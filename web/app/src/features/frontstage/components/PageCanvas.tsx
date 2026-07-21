@@ -331,7 +331,6 @@ function RenderPlanSlot({
         >
           <RestrictedBlockRuntimePreview
             snapshot={runtimeSessionEntry.snapshot}
-            diagnostic={isDesignMode}
             onRetry={
               onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
             }

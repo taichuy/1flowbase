@@ -76,7 +76,6 @@ describe('RestrictedBlockRuntimePreview', () => {
           ]
         })}
         onAction={onAction}
-        diagnostic
       />
     );
 
@@ -94,12 +93,12 @@ describe('RestrictedBlockRuntimePreview', () => {
       payload: { id: 'record-1' }
     });
 
-    expect(screen.getByText('日志')).toBeInTheDocument();
-    expect(screen.getByText('1 条')).toBeInTheDocument();
-    expect(screen.getByText('效果')).toBeInTheDocument();
-    expect(screen.getByText('接口: saveRecord')).toBeInTheDocument();
-    expect(screen.getByText('拒绝项')).toBeInTheDocument();
-    expect(screen.getByText('invalid_message')).toBeInTheDocument();
+    expect(screen.queryByText('日志')).not.toBeInTheDocument();
+    expect(screen.queryByText('1 条')).not.toBeInTheDocument();
+    expect(screen.queryByText('效果')).not.toBeInTheDocument();
+    expect(screen.queryByText('接口: saveRecord')).not.toBeInTheDocument();
+    expect(screen.queryByText('拒绝项')).not.toBeInTheDocument();
+    expect(screen.queryByText('invalid_message')).not.toBeInTheDocument();
     expect(screen.queryByText(/raw-log-value/)).not.toBeInTheDocument();
     expect(screen.queryByText(/raw-effect-value/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\{"hidden"/)).not.toBeInTheDocument();
@@ -108,7 +107,6 @@ describe('RestrictedBlockRuntimePreview', () => {
   test('renders failed and timed out snapshots as controlled error summaries', () => {
     const { rerender } = render(
       <RestrictedBlockRuntimePreview
-        diagnostic
         snapshot={createSnapshot({
           status: 'failed',
           error: {
@@ -127,16 +125,15 @@ describe('RestrictedBlockRuntimePreview', () => {
     );
 
     expect(screen.getByText('运行失败')).toBeInTheDocument();
-    expect(screen.getAllByText('runtime_error').length).toBeGreaterThan(0);
-    expect(screen.getByText('runtime.render')).toBeInTheDocument();
     expect(
       screen.getAllByText('Worker crashed while rendering.').length
     ).toBeGreaterThan(0);
+    expect(screen.queryByText('runtime_error')).not.toBeInTheDocument();
+    expect(screen.queryByText('runtime.render')).not.toBeInTheDocument();
     expect(screen.queryByText(/errors/)).not.toBeInTheDocument();
 
     rerender(
       <RestrictedBlockRuntimePreview
-        diagnostic
         snapshot={createSnapshot({
           status: 'timed_out',
           error: {
@@ -155,8 +152,8 @@ describe('RestrictedBlockRuntimePreview', () => {
     );
 
     expect(screen.getByText('运行超时')).toBeInTheDocument();
-    expect(screen.getAllByText('runtime_timeout').length).toBeGreaterThan(0);
-    expect(screen.getByText('runtime.timeout')).toBeInTheDocument();
+    expect(screen.queryByText('runtime_timeout')).not.toBeInTheDocument();
+    expect(screen.queryByText('runtime.timeout')).not.toBeInTheDocument();
   });
 
   test('renders idle and running as local loading shells while keeping disposed explicit', () => {
