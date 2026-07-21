@@ -218,6 +218,62 @@ async fn create_user_api_key(app: &Router, cookie: &str, csrf: &str) -> String {
         .to_string()
 }
 
+async fn create_agent_flow_application_key(app: &Router, cookie: &str, csrf: &str) -> String {
+    let application_id = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "agent_flow",
+                        "name": "AgentFlow key owner",
+                        "description": "authentication boundary fixture",
+                        "icon": null,
+                        "icon_type": null,
+                        "icon_background": null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(application_id.status(), StatusCode::CREATED);
+    let application_id = response_json(application_id).await["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-keys"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "name": "AgentFlow application key", "expires_at": null }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response_json(response).await["data"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
 async fn publish_workflow_extension_with_enabled(
     app: &Router,
     cookie: &str,
@@ -255,7 +311,6 @@ async fn publish_workflow_extension_with_enabled(
                             "extension": {
                                 "slug": options.slug,
                                 "method": "POST",
-                                "access_policy": "user_api_key",
                                 "response_mode": options.response_mode
                             }
                         },
@@ -268,14 +323,8 @@ async fn publish_workflow_extension_with_enabled(
         .await
         .unwrap();
 
-    let status = response.status();
-    let body = response_json(response).await;
-    assert_eq!(
-        status,
-        StatusCode::CREATED,
-        "unexpected publish response: {body}"
-    );
-    body
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response_json(response).await
 }
 
 struct WorkflowExtensionPublishOptions {
@@ -705,6 +754,32 @@ async fn workflow_extension_route_describes_user_api_key_authentication_neutrall
 }
 
 #[tokio::test]
+async fn workflow_extension_route_rejects_agent_flow_application_api_key() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_key = create_agent_flow_application_key(&app, &cookie, &csrf).await;
+    setup_workflow_extension_app(&app, "open-ticket-app-key", "async", json!([])).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ex/open-ticket-app-key")
+                .header("authorization", format!("Bearer {application_key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response_json(response).await["code"],
+        json!("not_authenticated")
+    );
+}
+
+#[tokio::test]
 async fn workflow_extension_route_allows_authorized_user_api_key_across_applications() {
     let app = test_app().await;
     let (first_token, _) = setup_workflow_extension_app(
@@ -833,6 +908,8 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
     let operation = &payload["paths"]["/api/ex/open-ticket-docs/{slug}"]["post"];
+    assert_eq!(operation["security"], json!([{ "UserApiKey": [] }]));
+    assert!(operation.get("access_policy").is_none());
     assert_eq!(operation["parameters"][0]["in"], json!("path"));
     assert_eq!(operation["parameters"][1]["in"], json!("query"));
     assert_eq!(

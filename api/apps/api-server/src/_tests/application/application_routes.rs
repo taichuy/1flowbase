@@ -239,7 +239,6 @@ async fn application_routes_create_extension_mapping_draft() {
                         "workflow_trigger_config": {
                             "subpath": "orders/create",
                             "http_method": "POST",
-                            "access_policy": "user_api_key",
                             "response_mode": "sync"
                         },
                         "name": "Order Workflow",

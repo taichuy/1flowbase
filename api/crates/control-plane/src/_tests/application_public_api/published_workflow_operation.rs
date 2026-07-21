@@ -1,7 +1,6 @@
 use control_plane::application_public_api::{
     mapping::{
-        WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-        WorkflowExtensionResponseMode,
+        WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
     },
     published_workflow_operation::{
         validate_published_workflow_contract, workflow_route_shapes_conflict,
@@ -14,7 +13,6 @@ fn extension(route: &str) -> WorkflowExtensionApiConfig {
     WorkflowExtensionApiConfig {
         slug: route.into(),
         method: WorkflowExtensionHttpMethod::Post,
-        access_policy: WorkflowExtensionAccessPolicy::UserApiKey,
         response_mode: WorkflowExtensionResponseMode::Sync,
     }
 }

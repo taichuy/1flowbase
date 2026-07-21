@@ -7,9 +7,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
-    mapping::{
-        WorkflowExtensionAccessPolicy, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
-    },
+    mapping::{WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode},
     published_workflow_operation::{
         build_published_workflow_operations, resolve_published_workflow_operation,
         PublishedWorkflowOperationError,
@@ -25,16 +23,16 @@ use super::{
 };
 use crate::{
     application_public_api::ensure_application_view_permission,
-    auth::ApiKeyService,
     ports::{
-        ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-        ApplicationRepository, AuthRepository,
+        ApplicationCompiledPlanRepository, ApplicationPublicationRepository, ApplicationRepository,
+        AuthRepository,
     },
 };
 
 #[derive(Debug, Clone)]
 pub struct CreateWorkflowExtensionRunCommand {
-    pub bearer_token: Option<String>,
+    pub actor: domain::ActorContext,
+    pub user_api_key_id: Uuid,
     pub request_path: String,
     pub method: WorkflowExtensionHttpMethod,
     pub parameters: WorkflowExtensionRequestParameters,
@@ -50,8 +48,6 @@ pub struct WorkflowExtensionRequestParameters {
 
 #[derive(Debug, Error)]
 pub enum WorkflowExtensionRunError {
-    #[error("workflow extension request is not authenticated")]
-    NotAuthenticated,
     #[error("workflow extension was not found")]
     ExtensionNotFound,
     #[error("workflow application is not published")]
@@ -90,7 +86,6 @@ pub struct WorkflowExtensionRunService<R> {
 impl<R> WorkflowExtensionRunService<R>
 where
     R: ApplicationRepository
-        + ApiKeyRepository
         + AuthRepository
         + ApplicationPublicationRepository
         + ApplicationCompiledPlanRepository
@@ -128,48 +123,19 @@ where
         )
         .map_err(map_operation_error)?;
         let publication = operation.publication.clone();
-        let (actor_user_id, workspace_id, api_key_id) = match operation.access_policy {
-            WorkflowExtensionAccessPolicy::UserApiKey => {
-                let token = command
-                    .bearer_token
-                    .as_deref()
-                    .ok_or(WorkflowExtensionRunError::NotAuthenticated)?;
-                let user_api_key = ApiKeyService::new(self.repository.clone())
-                    .authenticate_user_api_key(token)
-                    .await
-                    .map_err(map_authentication_error)?;
-                if user_api_key.actor.current_workspace_id != operation.workspace_id {
-                    return Err(WorkflowExtensionRunError::Forbidden);
-                }
-                let application = self
-                    .repository
-                    .get_application(operation.workspace_id, operation.application_id)
-                    .await
-                    .map_err(WorkflowExtensionRunError::Internal)?
-                    .ok_or(WorkflowExtensionRunError::ExtensionNotFound)?;
-                ensure_application_view_permission(
-                    &self.repository,
-                    &user_api_key.actor,
-                    &application,
-                )
-                .await
-                .map_err(map_authorization_error)?;
-                (
-                    user_api_key.user.id,
-                    user_api_key.actor.current_workspace_id,
-                    Some(user_api_key.api_key.id),
-                )
-            }
-            WorkflowExtensionAccessPolicy::Public => {
-                (publication.created_by, operation.workspace_id, None)
-            }
-        };
+        if command.actor.current_workspace_id != operation.workspace_id {
+            return Err(WorkflowExtensionRunError::Forbidden);
+        }
+        let workspace_id = command.actor.current_workspace_id;
         let application = self
             .repository
             .get_application(workspace_id, operation.application_id)
             .await
             .map_err(WorkflowExtensionRunError::Internal)?
             .ok_or(WorkflowExtensionRunError::ExtensionNotFound)?;
+        ensure_application_view_permission(&self.repository, &command.actor, &application)
+            .await
+            .map_err(map_authorization_error)?;
         if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Extension) {
             return Err(WorkflowExtensionRunError::TriggerTypeMismatch);
         }
@@ -189,15 +155,15 @@ where
         let response_mode = extension.response_mode;
         let invoked = WorkflowInvocationService::new(self.repository.clone())
             .invoke(InvokeWorkflowCommand {
-                actor_user_id,
+                actor_user_id: command.actor.user_id,
                 publication: publication.clone(),
                 node_input_payload,
                 trigger: WorkflowInvocationTrigger::Http {
-                    api_key_id,
+                    api_key_id: Some(command.user_api_key_id),
                     interface_id: operation.interface_id.clone(),
                     route_template: operation.route_template.clone(),
                     method: command.method.as_str().to_string(),
-                    principal: operation.access_policy.as_str().to_string(),
+                    principal: "user_api_key".to_string(),
                     response_mode: response_mode.as_str().to_string(),
                 },
             })
@@ -210,7 +176,7 @@ where
         Ok(WorkflowExtensionRunResult {
             id: flow_run.id,
             application_id: flow_run.application_id,
-            api_key_id,
+            api_key_id: Some(command.user_api_key_id),
             publication_version_id: publication.id,
             status: flow_run.status,
             response_mode,
@@ -218,17 +184,6 @@ where
             node_input_payload: flow_run.input_payload.clone(),
             created_at: flow_run.created_at,
         })
-    }
-}
-
-fn map_authentication_error(error: anyhow::Error) -> WorkflowExtensionRunError {
-    if error
-        .downcast_ref::<crate::errors::ControlPlaneError>()
-        .is_some_and(|error| matches!(error, crate::errors::ControlPlaneError::NotAuthenticated))
-    {
-        WorkflowExtensionRunError::NotAuthenticated
-    } else {
-        WorkflowExtensionRunError::Internal(error)
     }
 }
 
@@ -303,21 +258,5 @@ mod error_taxonomy_tests {
             }
             other => panic!("expected internal error, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn authentication_only_maps_explicit_auth_failures_to_unauthorized() {
-        let unauthenticated =
-            map_authentication_error(crate::errors::ControlPlaneError::NotAuthenticated.into());
-        assert!(matches!(
-            unauthenticated,
-            WorkflowExtensionRunError::NotAuthenticated
-        ));
-
-        let repository_failure = map_authentication_error(anyhow::anyhow!("auth store failed"));
-        assert!(matches!(
-            repository_failure,
-            WorkflowExtensionRunError::Internal(_)
-        ));
     }
 }

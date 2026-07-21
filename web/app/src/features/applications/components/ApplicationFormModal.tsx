@@ -16,7 +16,6 @@ import { useTranslation } from 'react-i18next';
 
 import type {
   ConsoleWorkflowExtensionHttpMethod,
-  ConsoleWorkflowExtensionAccessPolicy,
   ConsoleWorkflowExtensionResponseMode,
   ConsoleWorkflowTriggerType
 } from '@1flowbase/api-client';
@@ -68,7 +67,6 @@ interface ApplicationFormValues {
     ConsoleWorkflowExtensionHttpMethod,
     'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   >;
-  extension_access_policy: ConsoleWorkflowExtensionAccessPolicy;
   extension_response_mode: ConsoleWorkflowExtensionResponseMode;
   schedule_enabled: boolean;
   schedule_cron: string;
@@ -155,7 +153,6 @@ export function ApplicationFormModal({
         trigger_type: DEFAULT_WORKFLOW_TRIGGER_TYPE,
         extension_subpath: '',
         extension_http_method: 'POST',
-        extension_access_policy: 'user_api_key',
         extension_response_mode: 'sync',
         schedule_enabled: false,
         schedule_cron: '',
@@ -185,7 +182,6 @@ export function ApplicationFormModal({
       extension_subpath: extension.slug,
       extension_http_method:
         extension.method as ApplicationFormValues['extension_http_method'],
-      extension_access_policy: extension.access_policy,
       extension_response_mode: extension.response_mode
     });
   }, [form, mappingQuery.data]);
@@ -243,7 +239,6 @@ export function ApplicationFormModal({
                 : {
                     subpath: values.extension_subpath,
                     http_method: values.extension_http_method,
-                    access_policy: values.extension_access_policy,
                     response_mode: values.extension_response_mode
                   }
               : null,
@@ -423,20 +418,6 @@ export function ApplicationFormModal({
                   />
                 </Form.Item>
                 <Form.Item
-                  label={t('auto.access_policy')}
-                  htmlFor="readonly_access_policy"
-                >
-                  <Input
-                    id="readonly_access_policy"
-                    readOnly
-                    value={
-                      extension?.access_policy === 'public'
-                        ? t('auto.access_policy_public')
-                        : t('auto.access_policy_user_api_key')
-                    }
-                  />
-                </Form.Item>
-                <Form.Item
                   label={t('auto.response_mode')}
                   htmlFor="readonly_response_mode"
                 >
@@ -516,23 +497,6 @@ export function ApplicationFormModal({
                     options={['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(
                       (value) => ({ value, label: value })
                     )}
-                  />
-                </Form.Item>
-                <Form.Item
-                  label={t('auto.access_policy')}
-                  name="extension_access_policy"
-                >
-                  <Select
-                    options={[
-                      {
-                        value: 'user_api_key',
-                        label: t('auto.access_policy_user_api_key')
-                      },
-                      {
-                        value: 'public',
-                        label: t('auto.access_policy_public')
-                      }
-                    ]}
                   />
                 </Form.Item>
                 <Form.Item

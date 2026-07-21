@@ -118,7 +118,6 @@ describe('application public API client', () => {
       extension: {
         slug: 'ticket_webhook',
         method: 'PATCH',
-        access_policy: 'user_api_key',
         response_mode: 'sync'
       }
     };
