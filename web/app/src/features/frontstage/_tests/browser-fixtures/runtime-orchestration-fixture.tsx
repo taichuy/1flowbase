@@ -86,6 +86,7 @@ export default { main } satisfies BlockModule;`;
     runtimeEntry: 'restricted-block-runtime.worker',
     contributionCode: 'qa.runtime-orchestration',
     sourceStatus: 'ready',
+    source_sha256: `qa-source-${blockId}`,
     catalogId: 'qa:runtime-orchestration',
     runPlan: {
       ok: true,

@@ -48,7 +48,7 @@ function isNonEmptyCode(code: unknown): code is string {
 function createCodeResult(
   request: FrontstagePageCanvasBlockCodeReadRequest,
   query: {
-    data?: { code?: unknown };
+    data?: { code?: unknown; source_sha256?: unknown };
     error: unknown;
     isError: boolean;
   },
@@ -66,11 +66,15 @@ function createCodeResult(
   }
 
   if (query.data) {
-    if (isNonEmptyCode(query.data.code)) {
+    if (
+      isNonEmptyCode(query.data.code) &&
+      isNonEmptyCode(query.data.source_sha256)
+    ) {
       return {
         codeRef: request.codeRef,
         status: 'ready',
-        code: query.data.code
+        code: query.data.code,
+        source_sha256: query.data.source_sha256
       };
     }
 
@@ -123,7 +127,12 @@ export function useFrontstagePageCanvasRuntimeSources({
           demandsByBlockId,
           request.blockId,
           request.slotIndex
-        ) <= 2
+        ) <= 2,
+      staleTime: Infinity,
+      gcTime: Infinity,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false
     }))
   });
 

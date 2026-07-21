@@ -39,6 +39,7 @@ export type FrontstagePageCanvasBlockCodeReadResult =
       codeRef: string;
       status: 'ready';
       code: string;
+      source_sha256: string;
     }
   | {
       codeRef: string;
@@ -84,6 +85,7 @@ interface FrontstagePageCanvasRuntimeSourceBase {
 export interface FrontstagePageCanvasReadyRuntimeSource extends FrontstagePageCanvasRuntimeSourceBase {
   status: 'ready';
   code: string;
+  source_sha256: string;
   block: FrontstageBlockInstance;
   request: FrontstagePageCanvasBlockCodeReadRequest;
 }
@@ -226,6 +228,7 @@ export function createFrontstagePageCanvasRuntimeSourceState({
         ...createRuntimeSourceBase(slot, slotIndex),
         status: 'ready',
         code: result.code,
+        source_sha256: result.source_sha256,
         block: createBlockFromSlot(slot),
         request: cloneReadRequest(request)
       };

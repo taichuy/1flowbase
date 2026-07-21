@@ -173,7 +173,8 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     frontstageBlockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero-code',
-      code: 'export default "hero";'
+      code: 'export default "hero";',
+      source_sha256: 'hero-source-sha256'
     });
 
     const { result } = setupRuntimeSources({ renderPlan });
@@ -183,7 +184,8 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
         status: 'ready',
         blockId: 'hero',
         codeRef: 'hero-code',
-        code: 'export default "hero";'
+        code: 'export default "hero";',
+        source_sha256: 'hero-source-sha256'
       });
     });
 
@@ -320,7 +322,8 @@ describe('useFrontstagePageCanvasRuntimeSources', () => {
     frontstageBlockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero-code',
-      code: 'export default "ready";'
+      code: 'export default "ready";',
+      source_sha256: 'ready-source-sha256'
     });
 
     const { result } = setupRuntimeSources({

@@ -67,7 +67,12 @@ export function useFrontstageBlockCode({
         requireValue(pageId, 'page id'),
         requireValue(codeRef, 'code ref')
       ),
-    enabled: canRead
+    enabled: canRead,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
   const code = blockCodeQuery.data?.code ?? '';
@@ -97,9 +102,8 @@ export function useFrontstageBlockCode({
       ),
     onMutate: clearMutationError,
     onError: captureMutationError,
-    onSuccess: async (savedBlockCode: FrontstageBlockCode) => {
+    onSuccess: (savedBlockCode: FrontstageBlockCode) => {
       queryClient.setQueryData(queryKey, savedBlockCode);
-      await queryClient.invalidateQueries({ queryKey, refetchType: 'active' });
     }
   });
 

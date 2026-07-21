@@ -15,6 +15,7 @@ import type { RestrictedBlockRunPlan } from '../../lib/restricted-block-loader';
 import type { RestrictedBlockRuntimeHostSnapshot } from '../../lib/restricted-block-runtime-host';
 import {
   clearFrontstageRuntimeSessionCache,
+  FrontstageRuntimeResultCache,
   useFrontstagePageCanvasRuntimeSessions,
   type FrontstagePageCanvasRuntimeSessionFactory
 } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
@@ -80,6 +81,7 @@ function createSnapshot(
 function createReadyItem({
   blockId = 'hero',
   codeRef = 'hero-code',
+  source_sha256 = `${blockId}-source-sha256`,
   slotIndex = 0,
   sourceIndex = slotIndex,
   runPlan = createRunPlan({
@@ -89,6 +91,7 @@ function createReadyItem({
 }: {
   blockId?: string;
   codeRef?: string;
+  source_sha256?: string;
   slotIndex?: number;
   sourceIndex?: number;
   runPlan?: RestrictedBlockRunPlan;
@@ -108,6 +111,7 @@ function createReadyItem({
     runtimeEntry: `blocks/${blockId}.js`,
     contributionCode: `official.${blockId}`,
     sourceStatus: 'ready',
+    source_sha256,
     catalogId: `official:${blockId}`,
     runPlan
   };
@@ -616,7 +620,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
   });
 
-  test('restores a recent successful snapshot immediately and revalidates it in the background', async () => {
+  test('restores a successful result beyond the former TTL without factory, run, or effects', async () => {
     const item = createReadyItem({ blockId: 'cached' });
     const runtimeRunPlanState = createRunPlanState([item]);
     const first = createFakeRuntimeSession(
@@ -639,29 +643,246 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
           status: 'ready',
           requestId: item.runPlan.request.requestId,
           blockId: item.blockId,
-          view: { primitive: 'Text', props: { children: 'cached' } }
+          view: { primitive: 'Text', props: { children: 'cached' } },
+          outputs: { value: 'cached-output' },
+          logs: [{ message: 'must not be cached' } as never],
+          effects: [{ kind: 'must-not-be-cached' } as never],
+          rejections: [{ code: 'must-not-be-cached' } as never],
+          mediatorState: {} as never,
+          interfaceCalls: [{ path: '/must-not-be-cached' } as never]
         })
       );
     });
     firstRender.unmount();
 
+    const baseline = Date.now();
+    const dateNow = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(baseline + 30_001);
     const revalidation = createFakeRuntimeSession();
     const revalidationFactory = vi.fn(() => revalidation.session);
+    const restoredEffectHandler: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect> =
+      vi.fn(async () => ({ ok: true }));
     const secondRender = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         runtimeRunPlanState,
-        runtimeSessionFactory: revalidationFactory
+        runtimeSessionFactory: revalidationFactory,
+        handlers: { interface: restoredEffectHandler }
+      })
+    );
+
+    try {
+      await waitFor(() => {
+        expect(secondRender.result.current.entries[0]).toMatchObject({
+          status: 'ready',
+          snapshot: {
+            view: { primitive: 'Text', props: { children: 'cached' } },
+            outputs: { value: 'cached-output' },
+            logs: [],
+            effects: [],
+            rejections: []
+          }
+        });
+      });
+      const restoredSnapshot = secondRender.result.current.entries[0];
+      expect(revalidationFactory).not.toHaveBeenCalled();
+      expect(revalidation.session.run).not.toHaveBeenCalled();
+      expect(restoredEffectHandler).not.toHaveBeenCalled();
+      expect(
+        restoredSnapshot && 'snapshot' in restoredSnapshot
+          ? restoredSnapshot.snapshot.mediatorState
+          : null
+      ).toBeUndefined();
+      expect(
+        restoredSnapshot && 'snapshot' in restoredSnapshot
+          ? restoredSnapshot.snapshot.interfaceCalls
+          : null
+      ).toBeUndefined();
+    } finally {
+      dateNow.mockRestore();
+    }
+  });
+
+  test('excludes requestId and raw source from identity while using the current requestId', async () => {
+    const firstItem = createReadyItem({ blockId: 'request-stable' });
+    const first = createFakeRuntimeSession();
+    const firstRender = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState: createRunPlanState([firstItem]),
+        runtimeSessionFactory: () => first.session
+      })
+    );
+    await waitFor(() => expect(first.session.run).toHaveBeenCalledTimes(1));
+    act(() => {
+      first.emit(
+        createSnapshot({
+          status: 'ready',
+          requestId: firstItem.runPlan.request.requestId,
+          blockId: firstItem.blockId,
+          view: { primitive: 'Text', props: { children: 'stable' } }
+        })
+      );
+    });
+    firstRender.unmount();
+
+    const changedRequestIdItem = createReadyItem({
+      blockId: 'request-stable',
+      runPlan: createRunPlan({
+        blockId: 'request-stable',
+        requestId: 'request-id-after-remount',
+        source: 'raw source is not the authoritative identity'
+      })
+    });
+    const unexpectedFactory = vi.fn(() => createFakeRuntimeSession().session);
+    const secondRender = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState: createRunPlanState([changedRequestIdItem]),
+        runtimeSessionFactory: unexpectedFactory
       })
     );
 
     await waitFor(() => {
       expect(secondRender.result.current.entries[0]).toMatchObject({
         status: 'ready',
-        snapshot: {
-          view: { primitive: 'Text', props: { children: 'cached' } }
-        }
+        snapshot: { requestId: 'request-id-after-remount' }
       });
-      expect(revalidationFactory).toHaveBeenCalledTimes(1);
     });
+    expect(unexpectedFactory).not.toHaveBeenCalled();
+  });
+
+  test('reruns only the affected block once for hash and explicit dependency changes', async () => {
+    const hero = createReadyItem({ blockId: 'hero' });
+    const stable = createReadyItem({ blockId: 'stable', slotIndex: 1 });
+    const startedBlockIds: string[] = [];
+    const runtimeSessionFactory: FrontstagePageCanvasRuntimeSessionFactory =
+      vi.fn((options) => {
+        startedBlockIds.push(options.runPlan.request.blockId);
+        const session = createFakeRuntimeSession();
+        return session.session;
+      });
+    const { rerender } = renderHook(
+      ({ items }) =>
+        useFrontstagePageCanvasRuntimeSessions({
+          runtimeRunPlanState: createRunPlanState(items),
+          runtimeSessionFactory
+        }),
+      { initialProps: { items: [hero, stable] } }
+    );
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+
+    const withHashChange = createReadyItem({
+      blockId: 'hero',
+      source_sha256: 'hero-source-sha256-v2'
+    });
+    rerender({ items: [withHashChange, stable] });
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(3));
+
+    const withPropsChange = createReadyItem({
+      blockId: 'hero',
+      source_sha256: 'hero-source-sha256-v2',
+      runPlan: createRunPlan({
+        blockId: 'hero',
+        props: { title: 'Changed' }
+      })
+    });
+    rerender({ items: [withPropsChange, stable] });
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(4));
+
+    const withContextChange = createReadyItem({
+      blockId: 'hero',
+      source_sha256: 'hero-source-sha256-v2',
+      runPlan: createRunPlan({
+        blockId: 'hero',
+        props: { title: 'Changed' },
+        contextSnapshot: { pageId: 'page-2' }
+      })
+    });
+    rerender({ items: [withContextChange, stable] });
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(5));
+
+    const withInputsChange = createReadyItem({
+      blockId: 'hero',
+      source_sha256: 'hero-source-sha256-v2',
+      runPlan: createRunPlan({
+        blockId: 'hero',
+        props: { title: 'Changed' },
+        contextSnapshot: { pageId: 'page-2' },
+        inputs: { selectedId: 'record-2' }
+      })
+    });
+    rerender({ items: [withInputsChange, stable] });
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(6));
+
+    expect(startedBlockIds).toEqual([
+      'hero',
+      'stable',
+      'hero',
+      'hero',
+      'hero',
+      'hero'
+    ]);
+  });
+
+  test('manual retry evicts the block result and runs that block exactly once', async () => {
+    const item = createReadyItem({ blockId: 'retry' });
+    const first = createFakeRuntimeSession();
+    const firstRender = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState: createRunPlanState([item]),
+        runtimeSessionFactory: () => first.session
+      })
+    );
+    await waitFor(() => expect(first.session.run).toHaveBeenCalledTimes(1));
+    act(() => {
+      first.emit(
+        createSnapshot({
+          status: 'ready',
+          requestId: item.runPlan.request.requestId,
+          blockId: item.blockId,
+          view: { primitive: 'Text', props: { children: 'retry-cache' } }
+        })
+      );
+    });
+    firstRender.unmount();
+
+    const retrySession = createFakeRuntimeSession();
+    const runtimeSessionFactory = vi.fn(() => retrySession.session);
+    const { result } = renderHook(() =>
+      useFrontstagePageCanvasRuntimeSessions({
+        runtimeRunPlanState: createRunPlanState([item]),
+        runtimeSessionFactory
+      })
+    );
+    await waitFor(() => expect(result.current.entries[0]?.status).toBe('ready'));
+    expect(runtimeSessionFactory).not.toHaveBeenCalled();
+
+    act(() => result.current.retryBlock('retry'));
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+    expect(retrySession.session.run).toHaveBeenCalledTimes(1);
+  });
+
+  test('evicts deterministically by byte-weighted LRU under a hard budget', () => {
+    const schemaValidationOptions = createSnapshot().schemaValidationOptions;
+    const value = (label: string) => ({
+      view: { primitive: 'Text', props: { children: label.repeat(64) } },
+      outputs: { label },
+      schemaValidationOptions
+    });
+
+    const probe = new FrontstageRuntimeResultCache(100_000);
+    probe.set('a', value('a'));
+    probe.set('b', value('b'));
+    const cache = new FrontstageRuntimeResultCache(probe.byteSize);
+    cache.set('a', value('a'));
+    cache.set('b', value('b'));
+    expect(cache.get('a')).toBeDefined();
+
+    cache.set('c', value('c'));
+
+    expect(cache.get('b')).toBeUndefined();
+    expect(cache.get('a')).toBeDefined();
+    expect(cache.get('c')).toBeDefined();
+    expect(cache.byteSize).toBeLessThanOrEqual(cache.byteBudget);
   });
 });

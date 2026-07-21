@@ -46,6 +46,7 @@ export interface FrontstagePageCanvasRuntimeRunPlanItemBase {
 export interface FrontstagePageCanvasRuntimeRunPlanReadyItem extends FrontstagePageCanvasRuntimeRunPlanItemBase {
   status: 'run_plan_ready';
   sourceStatus: 'ready';
+  source_sha256: string;
   catalogId: string;
   runPlan: RestrictedBlockRunPlan;
 }
@@ -183,6 +184,7 @@ function createRuntimeRunPlanItem({
     ...base,
     status: 'run_plan_ready',
     sourceStatus: 'ready',
+    source_sha256: source.source_sha256,
     catalogId: catalogEntry.id,
     runPlan: runPlanResult
   };

@@ -250,7 +250,8 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
     blockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero-code',
-      code: 'export default { render() {} }'
+      code: 'export default { render() {} }',
+      source_sha256: 'hero-source-sha256'
     });
   });
 

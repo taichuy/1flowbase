@@ -97,11 +97,13 @@ function createSourceState(
 function createReadySource({
   block = createBlock(),
   code = 'export default { render() {} }',
+  source_sha256 = 'source-sha256',
   sourceIndex = 0,
   slotIndex = 0
 }: {
   block?: FrontstageBlockInstance;
   code?: string;
+  source_sha256?: string;
   sourceIndex?: number;
   slotIndex?: number;
 } = {}): FrontstagePageCanvasRuntimeSource {
@@ -111,6 +113,7 @@ function createReadySource({
     ...createSourceBase(block, sourceIndex, slotIndex),
     status: 'ready',
     code,
+    source_sha256,
     block,
     request: {
       requestId: [
@@ -249,6 +252,7 @@ describe('frontstage page canvas runtime run plan model', () => {
       codeRef: 'stable-code',
       slotIndex: 2,
       sourceStatus: 'ready',
+      source_sha256: 'source-sha256',
       catalogId: 'official:hero.banner'
     });
     if (runPlanState.items[0].status !== 'run_plan_ready') {

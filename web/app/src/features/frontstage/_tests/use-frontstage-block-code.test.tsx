@@ -78,7 +78,8 @@ function setupBlockCode(
 
   return {
     invalidateQueriesSpy,
-    result: view.result
+    result: view.result,
+    unmount: view.unmount
   };
 }
 
@@ -90,12 +91,14 @@ describe('useFrontstageBlockCode', () => {
     frontstageApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero',
-      code: 'export default 1;'
+      code: 'export default 1;',
+      source_sha256: 'source-v1'
     });
     frontstageApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero',
-      code: 'export default 2;'
+      code: 'export default 2;',
+      source_sha256: 'source-v2'
     });
   });
 
@@ -144,7 +147,7 @@ describe('useFrontstageBlockCode', () => {
     expect(missingCodeRef.result.current.draft).toBe('');
   });
 
-  test('saves the current draft with csrf token and invalidates block code query', async () => {
+  test('treats the saved response as authoritative without a second fetch', async () => {
     const { invalidateQueriesSpy, result } = setupBlockCode();
 
     await waitFor(() => {
@@ -165,21 +168,29 @@ describe('useFrontstageBlockCode', () => {
       { codeRef: 'hero', code: 'export default 2;' },
       'csrf-123'
     );
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey: [
-        'frontstage',
-        'workspace-1',
-        'pages',
-        'page-1',
-        'block-code',
-        'hero'
-      ],
-      refetchType: 'active'
-    });
+    expect(invalidateQueriesSpy).not.toHaveBeenCalled();
+    expect(frontstageApi.fetchFrontstageBlockCode).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(result.current.code).toBe('export default 2;');
       expect(result.current.dirty).toBe(false);
     });
+  });
+
+  test('reuses authoritative block code across an unmount and remount', async () => {
+    const queryClient = createQueryClient();
+    const first = setupBlockCode({}, queryClient);
+
+    await waitFor(() => {
+      expect(first.result.current.code).toBe('export default 1;');
+    });
+    first.unmount();
+
+    const second = setupBlockCode({}, queryClient);
+    await waitFor(() => {
+      expect(second.result.current.code).toBe('export default 1;');
+    });
+
+    expect(frontstageApi.fetchFrontstageBlockCode).toHaveBeenCalledTimes(1);
   });
 
   test('block code save rejects missing csrf token before calling feature api', async () => {
