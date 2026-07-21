@@ -160,7 +160,7 @@ function FrontstageJsxStudioWindow({
     left: 120,
     top: 64,
     width: 1080,
-    height: 760
+    height: 680
   };
 
   useEffect(() => {

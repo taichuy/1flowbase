@@ -114,6 +114,14 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
 describe('FrontstageJsxStudioDrawer', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1400
+    });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900
+    });
     await appI18n.changeLanguage('zh_Hans');
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
       code: 'export default {}',
@@ -171,9 +179,9 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    expect(
-      screen.getByRole('dialog', { name: 'TSX 编辑器' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'TSX 编辑器' })).toHaveStyle({
+      height: '680px'
+    });
     expect(screen.getByLabelText('JSX source')).toBeInTheDocument();
     expect(screen.getByLabelText('JSX source')).toHaveAttribute(
       'data-edit-context',
