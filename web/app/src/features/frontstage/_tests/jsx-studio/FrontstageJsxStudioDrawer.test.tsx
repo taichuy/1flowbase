@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -250,7 +256,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     });
   });
 
-  test('shows generated context in the editor surface and saves code through the existing hook', async () => {
+  test('injects generated context from the window header and saves code through the existing hook', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const setDraft = vi.fn();
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
@@ -284,7 +290,18 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '重新注入上下文' }));
+    const windowHeader = document.querySelector(
+      '.frontstage-jsx-studio__window-header'
+    );
+    expect(windowHeader).not.toBeNull();
+    expect(
+      windowHeader?.querySelector('.frontstage-jsx-studio__window-actions')
+    ).toHaveStyle({ flexWrap: 'wrap' });
+    fireEvent.click(
+      within(windowHeader as HTMLElement).getByRole('button', {
+        name: '注入上下文'
+      })
+    );
     expect(setDraft).toHaveBeenCalledWith(
       expect.stringContaining('@1flowbase-context')
     );

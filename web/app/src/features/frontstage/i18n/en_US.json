@@ -97,7 +97,7 @@
     "fields": "Fields",
     "filter": "Filter",
     "frontstage": "front desk",
-    "generated_context": "Re-inject context",
+    "inject_context": "Inject context",
     "group": "Group",
     "group_node": "Group nodes",
     "group_with_index": "Group {{value1}}",

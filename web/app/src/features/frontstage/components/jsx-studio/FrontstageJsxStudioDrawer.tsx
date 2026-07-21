@@ -361,7 +361,14 @@ function FrontstageJsxStudioWindow({
         <Typography.Text strong>
           {i18nText('frontstage', 'auto.jsx_studio')}
         </Typography.Text>
-        <Space size={8}>
+        <Space
+          className="frontstage-jsx-studio__window-actions"
+          size={8}
+          wrap
+        >
+          <Button onClick={reinjectContext}>
+            {i18nText('frontstage', 'auto.inject_context')}
+          </Button>
           <Typography.Text
             type="secondary"
             className="frontstage-jsx-studio__status"
@@ -471,11 +478,6 @@ function FrontstageJsxStudioWindow({
               message={i18nText('frontstage', 'auto.code_load_or_save_failed')}
             />
           ) : null}
-          <div className="frontstage-jsx-studio__context-actions">
-            <Button size="small" onClick={reinjectContext}>
-              {i18nText('frontstage', 'auto.generated_context')}
-            </Button>
-          </div>
           <div className="frontstage-jsx-studio__monaco">
             <Editor
               height="100%"

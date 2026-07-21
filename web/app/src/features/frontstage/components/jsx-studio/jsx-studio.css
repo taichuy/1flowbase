@@ -28,6 +28,12 @@
   cursor: move;
 }
 
+.frontstage-jsx-studio__window-actions {
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .frontstage-jsx-studio__workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px) 44px;
@@ -132,7 +138,7 @@
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  grid-template-rows: auto minmax(320px, 1fr) auto;
+  grid-template-rows: minmax(320px, 1fr) auto;
   min-width: 0;
   min-height: 0;
   overflow: hidden;

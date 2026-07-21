@@ -97,7 +97,7 @@
     "fields": "字段",
     "filter": "筛选",
     "frontstage": "前台",
-    "generated_context": "重新注入上下文",
+    "inject_context": "注入上下文",
     "group": "分组",
     "group_node": "分组节点",
     "group_with_index": "分组 {{value1}}",
