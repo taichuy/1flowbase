@@ -37,11 +37,17 @@ impl FlowRunMode {
                 FlowRunInvocationSource::AgentFlowApi,
                 FlowRunPrincipal::application_api_key(api_key_id),
             ),
-            Self::WorkflowHttpRun => (
-                FlowRunExecutionStage::Published,
-                FlowRunInvocationSource::WorkflowHttp,
-                FlowRunPrincipal::user_api_key(api_key_id),
-            ),
+            Self::WorkflowHttpRun => {
+                let principal = match api_key_id {
+                    Some(api_key_id) => FlowRunPrincipal::user_api_key(Some(api_key_id)),
+                    None => FlowRunPrincipal::user(created_by, authorized_account),
+                };
+                (
+                    FlowRunExecutionStage::Published,
+                    FlowRunInvocationSource::WorkflowHttp,
+                    principal,
+                )
+            }
             Self::WorkflowScheduleRun => (
                 FlowRunExecutionStage::Published,
                 FlowRunInvocationSource::WorkflowSchedule,
@@ -695,5 +701,20 @@ mod invocation_context_tests {
                 assert_eq!(context.principal.display_name, None);
             }
         }
+
+        let current_user_context = FlowRunMode::WorkflowHttpRun.invocation_context(
+            Some(user_id),
+            Some("current user".to_string()),
+            None,
+        );
+        assert_eq!(
+            current_user_context.principal.kind,
+            FlowRunPrincipalKind::User
+        );
+        assert_eq!(current_user_context.principal.id, Some(user_id));
+        assert_eq!(
+            current_user_context.principal.display_name.as_deref(),
+            Some("current user")
+        );
     }
 }

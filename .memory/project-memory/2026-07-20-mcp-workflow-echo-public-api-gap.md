@@ -15,8 +15,8 @@ match_when:
   - 继续把已发布 Workflow API 转换为 MCP Tool
   - 设计应用公开 API 进入 MCP interface catalog 的认证与所有权
 created_at: 2026-07-20 12
-updated_at: 2026-07-21 17
-last_verified_at: 2026-07-21 17
+updated_at: 2026-07-22 07
+last_verified_at: 2026-07-22 07
 decision_policy: verify_before_decision
 scope:
   - application 019f7def-ef16-7610-a553-dfd87fe1e8ed
@@ -51,7 +51,7 @@ scope:
 - Application 只作为共享壳；AgentFlow 与 Workflow 是两个 bounded product contracts，触发、认证、发布和运行 contract 分别归属各自产品。
 - AgentFlow 保留 AgentFlow 专属 Start / End 与 Application API Key；Workflow 保留 Workflow Start / End，并由 Start 输入与 End 输出分别作为唯一真值。
 - Workflow 当前一个应用只选择 HTTP Extension 或 Schedule 一个触发器；HTTP route、OpenAPI 与 MCP 共用稳定的 Published Workflow Operation。
-- Workflow HTTP 默认使用 User API Key，只有显式 `public` 才允许匿名；不再借用 AgentFlow Application API Key。
+- Workflow HTTP 外部调用使用 User API Key；站内文档测试可使用当前 Session + CSRF。两种身份都走同一 ACL / workspace / published operation，不开放匿名访问，也不借用 AgentFlow Application API Key。
 - 用户已确认节点注册规则：通用执行节点默认共享，产品专属节点显式绑定 application type，trigger-specific 只作为产品专属节点中的更小例外；不为每个共享节点重复声明产品适用范围。
 - 不拆独立 Workflow runtime / run / logs，不兼容尚未正式发布的旧 mapping。
 
@@ -89,3 +89,10 @@ scope:
 - 该 operation 已转换为启用 Tool `workflow_mcp_test_echo` 并挂载到 `taichuy:/applications/workflows`；真实 MCP 调用 `{"body":{"query":"MCP workflow verification"}}` 返回 `{"result":"MCP workflow verification"}`。
 - 发现并修复 shared OpenAPI catalog 的 JSON Schema 表达错误：catalog entry 的 `schema` / `parameter_schema` / `result_schema` 必须允许 OpenAPI 3.1 的 boolean schema，不能标注为 object-only；否则 interface wrapper 在目标响应 schema 校验阶段返回泛化 `-32603`。
 - 此验证闭合“发布 Workflow HTTP operation → dynamic discovery → MCP Tool → mount → invoke”主路径，不替代 #1387 中 Schedule 幂等、运行态与全量集中 QA 的剩余验收。
+
+## 当前登录用户测试认证（2026-07-22 07）
+
+- 用户批准 Workflow `/api/ex/*` 同时接受 `Session + CSRF` 与 User API Key，Scalar 文档默认当前登录用户。
+- Session 模式不得绕过 application ACL、workspace 边界或 CSRF；所有 HTTP method 的 Workflow 调用都会产生运行，因此 Session 请求统一要求 CSRF。
+- 运行主体必须准确区分 `user` 与 `user_api_key`；Session ID 不进入 Scalar authentication value 或 Code Snippet。
+- 范围不扩展到 AgentFlow Application API，也不新增 console 代理执行链或匿名访问。

@@ -409,19 +409,21 @@ function FrontstageJsxStudioWindow({
         className="frontstage-jsx-studio__window-header"
         data-window-drag-handle="true"
       >
-        <Typography.Text strong>
-          {i18nText('frontstage', 'auto.jsx_studio')}
-        </Typography.Text>
-        <Space className="frontstage-jsx-studio__window-actions" size={8} wrap>
-          <Button onClick={reinjectContext}>
-            {i18nText('frontstage', 'auto.inject_context')}
-          </Button>
+        <Space size={8}>
+          <Typography.Text strong>
+            {i18nText('frontstage', 'auto.jsx_studio')}
+          </Typography.Text>
           <Typography.Text
             type="secondary"
             className="frontstage-jsx-studio__status"
           >
             {statusText}
           </Typography.Text>
+        </Space>
+        <Space className="frontstage-jsx-studio__window-actions" size={8} wrap>
+          <Button onClick={reinjectContext}>
+            {i18nText('frontstage', 'auto.inject_context')}
+          </Button>
           <Button disabled={!dirty || loading || saving} onClick={reset}>
             {i18nText('frontstage', 'auto.reset')}
           </Button>

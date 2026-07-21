@@ -1402,7 +1402,9 @@ async fn workflow_http_operation_runs_with_authenticated_user_api_key_principal(
                 is_root: false,
                 permissions: std::collections::HashSet::new(),
             },
-            user_api_key_id: Uuid::now_v7(),
+            principal: control_plane::application_public_api::workflow_extension::WorkflowHttpPrincipal::UserApiKey {
+                api_key_id: Uuid::now_v7(),
+            },
             request_path: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
             parameters: WorkflowExtensionRequestParameters::default(),
@@ -1418,7 +1420,9 @@ async fn workflow_http_operation_runs_with_authenticated_user_api_key_principal(
     let run = WorkflowExtensionRunService::new(repository.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
             actor: domain::ActorContext::root(actor_user_id(), application.workspace_id, "root"),
-            user_api_key_id: api_key_id,
+            principal: control_plane::application_public_api::workflow_extension::WorkflowHttpPrincipal::UserApiKey {
+                api_key_id,
+            },
             request_path: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
             parameters: WorkflowExtensionRequestParameters::default(),

@@ -669,6 +669,10 @@ pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, 
         "scheme": "bearer",
         "bearerFormat": "User API Key"
     });
+    let document_map = document
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("dynamic OpenAPI document must be an object"))?;
+    crate::openapi_docs::ensure_session_security_schemes(document_map, &state.cookie_name)?;
     append_workflow_extension_paths(&mut document, &operations);
     Ok(document)
 }
@@ -716,7 +720,10 @@ pub(crate) fn workflow_extension_operation(operation: &PublishedWorkflowOperatio
         "operationId": operation.interface_id,
         "summary": format!("Invoke published workflow {}", operation.application_id),
         "parameters": openapi_parameters(&operation.parameter_schema),
-        "security": [{ "UserApiKey": [] }],
+        "security": [
+            { "sessionCookie": [], "csrfHeader": [] },
+            { "UserApiKey": [] }
+        ],
         "responses": {
             "202": {
                 "description": "Workflow run accepted",
@@ -885,9 +892,15 @@ mod workflow_operation_tests {
     }
 
     #[test]
-    fn ac_006_openapi_projects_start_end_and_user_api_key_security() {
+    fn ac_006_openapi_projects_start_end_and_current_user_or_api_key_security() {
         let projected = workflow_extension_operation(&operation());
-        assert_eq!(projected["security"], json!([{ "UserApiKey": [] }]));
+        assert_eq!(
+            projected["security"],
+            json!([
+                { "sessionCookie": [], "csrfHeader": [] },
+                { "UserApiKey": [] }
+            ])
+        );
         assert_eq!(projected["parameters"][0]["name"], json!("order_id"));
         assert_eq!(
             projected["responses"]["200"]["content"]["application/json"]["schema"]["properties"]

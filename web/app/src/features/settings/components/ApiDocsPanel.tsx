@@ -146,8 +146,7 @@ function buildScalarAuthenticationConfig(
 
   if (Object.keys(sessionCookieScheme).length > 0) {
     authenticationSecuritySchemes.sessionCookie = {
-      ...sessionCookieScheme,
-      value: sessionSnapshot?.session.id ?? ''
+      ...sessionCookieScheme
     };
   }
 

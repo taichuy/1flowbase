@@ -12,7 +12,7 @@ use control_plane::{
         mapping::{WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode},
         workflow_extension::{
             CreateWorkflowExtensionRunCommand, WorkflowExtensionRequestParameters,
-            WorkflowExtensionRunError, WorkflowExtensionRunService,
+            WorkflowExtensionRunError, WorkflowExtensionRunService, WorkflowHttpPrincipal,
         },
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
@@ -23,6 +23,7 @@ use serde_json::{json, Map, Value};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
+    middleware::require_csrf::require_csrf,
     middleware::require_session::{require_session, RequestCredential},
     routes::application_public_api::native::{api_provider_runtime, service_error, NativeApiError},
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
@@ -49,19 +50,21 @@ pub async fn invoke_workflow_extension(
     let context = require_session(&state, &headers)
         .await
         .map_err(workflow_extension_auth_error)?;
-    let RequestCredential::UserApiKey { api_key_id } = context.credential else {
-        return Err(NativeApiError::new(
-            StatusCode::UNAUTHORIZED,
-            "not_authenticated",
-            "a user API key is required",
-        ));
+    let principal = match &context.credential {
+        RequestCredential::CookieSession(_) => {
+            require_csrf(&headers, &context).map_err(workflow_extension_auth_error)?;
+            WorkflowHttpPrincipal::User
+        }
+        RequestCredential::UserApiKey { api_key_id } => WorkflowHttpPrincipal::UserApiKey {
+            api_key_id: *api_key_id,
+        },
     };
     let method = workflow_extension_method(&method)?;
     let parameters = request_parameters(uri.query(), &headers, &body)?;
     let run = WorkflowExtensionRunService::new(state.store.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
             actor: context.actor,
-            user_api_key_id: api_key_id,
+            principal,
             request_path: slug,
             method,
             parameters,
@@ -247,7 +250,7 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
         WorkflowExtensionRunError::Forbidden => NativeApiError::new(
             StatusCode::FORBIDDEN,
             "workflow_extension_forbidden",
-            "this user API key cannot invoke the workflow extension API",
+            "the current user cannot invoke the workflow extension API",
         ),
         WorkflowExtensionRunError::MethodNotAllowed => NativeApiError::new(
             StatusCode::METHOD_NOT_ALLOWED,
@@ -285,12 +288,12 @@ mod error_mapping_tests {
     use super::*;
 
     #[test]
-    fn user_api_key_errors_use_product_accurate_messages() {
+    fn authorization_errors_use_credential_neutral_messages() {
         let forbidden = workflow_extension_error(WorkflowExtensionRunError::Forbidden);
         assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
         assert_eq!(
             forbidden.message,
-            "this user API key cannot invoke the workflow extension API"
+            "the current user cannot invoke the workflow extension API"
         );
     }
 
@@ -307,28 +310,28 @@ mod error_mapping_tests {
 }
 
 fn workflow_extension_auth_error(error: ApiError) -> NativeApiError {
-    if error
+    match error
         .0
         .downcast_ref::<control_plane::errors::ControlPlaneError>()
-        .is_some_and(|error| {
-            matches!(
-                error,
-                control_plane::errors::ControlPlaneError::NotAuthenticated
-            )
-        })
     {
-        NativeApiError::new(
+        Some(control_plane::errors::ControlPlaneError::NotAuthenticated) => NativeApiError::new(
             StatusCode::UNAUTHORIZED,
             "not_authenticated",
-            "invalid or unavailable user API key",
-        )
-    } else {
-        tracing::error!(error = ?error.0, "workflow extension authentication failed");
-        NativeApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal_error",
-            "workflow extension authentication failed",
-        )
+            "a current login session or user API key is required",
+        ),
+        Some(control_plane::errors::ControlPlaneError::PermissionDenied(_)) => NativeApiError::new(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "current login session validation failed",
+        ),
+        _ => {
+            tracing::error!(error = ?error.0, "workflow extension authentication failed");
+            NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "workflow extension authentication failed",
+            )
+        }
     }
 }
 

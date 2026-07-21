@@ -401,8 +401,8 @@ describe('ApiDocsPanel', () => {
     expect(screen.getByTestId('scalar-viewer')).toHaveTextContent(
       '"preferredSecurityScheme":["sessionCookie"]'
     );
-    expect(screen.getByTestId('scalar-viewer')).toHaveTextContent(
-      '"value":"session-123"'
+    expect(screen.getByTestId('scalar-viewer')).not.toHaveTextContent(
+      'session-123'
     );
     expect(screen.getByTestId('scalar-viewer')).toHaveTextContent(
       '"value":"csrf-123"'

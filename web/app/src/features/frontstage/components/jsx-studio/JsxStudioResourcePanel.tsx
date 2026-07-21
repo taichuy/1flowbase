@@ -235,6 +235,16 @@ function InterfaceConnectorPanel({
             )}
           />
         ) : null}
+        <Button
+          type="primary"
+          disabled={!selectedOperationId}
+          loading={pendingInterfaceId === selectedOperationId}
+          onClick={() => {
+            if (selectedOperationId) void insertCapability(selectedOperationId);
+          }}
+        >
+          {i18nText('frontstage', 'auto.insert_code')}
+        </Button>
         <Table<ConsoleFrontstageInterfaceCapabilitySummary>
           rowKey="interface_id"
           size="small"
@@ -275,16 +285,6 @@ function InterfaceConnectorPanel({
             onChange: (page) => setOffset((page - 1) * pageSize)
           }}
         />
-        <Button
-          type="primary"
-          disabled={!selectedOperationId}
-          loading={pendingInterfaceId === selectedOperationId}
-          onClick={() => {
-            if (selectedOperationId) void insertCapability(selectedOperationId);
-          }}
-        >
-          {i18nText('frontstage', 'auto.insert_code')}
-        </Button>
       </section>
     </div>
   );

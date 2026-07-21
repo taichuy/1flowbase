@@ -676,6 +676,53 @@ async fn workflow_extension_async_route_returns_accepted_run_status() {
 }
 
 #[tokio::test]
+async fn workflow_extension_route_accepts_current_session_with_csrf() {
+    let app = test_app().await;
+    setup_workflow_extension_app(
+        &app,
+        "open-ticket-current-session",
+        "async",
+        json!([{
+            "name": "customer_id",
+            "source": "query",
+            "target": "node-workflow-start.customer_id"
+        }]),
+    )
+    .await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let missing_csrf = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ex/open-ticket-current-session?customer_id=C-42")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ex/open-ticket-current-session?customer_id=C-42")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(response_json(response).await["status"], json!("queued"));
+}
+
+#[tokio::test]
 async fn workflow_extension_route_returns_stable_errors_for_missing_slug_and_method_mismatch() {
     let app = test_app().await;
     let (token, _) = setup_workflow_extension_app(
@@ -749,7 +796,7 @@ async fn workflow_extension_route_describes_user_api_key_authentication_neutrall
     assert_eq!(payload["code"], json!("not_authenticated"));
     assert_eq!(
         payload["message"],
-        json!("invalid or unavailable user API key")
+        json!("a current login session or user API key is required")
     );
 }
 
@@ -929,7 +976,13 @@ async fn workflow_extension_openapi_and_settings_docs_register_concrete_slug_ope
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
     let operation = &payload["paths"]["/api/ex/open-ticket-docs/{slug}"]["post"];
-    assert_eq!(operation["security"], json!([{ "UserApiKey": [] }]));
+    assert_eq!(
+        operation["security"],
+        json!([
+            { "sessionCookie": [], "csrfHeader": [] },
+            { "UserApiKey": [] }
+        ])
+    );
     assert!(operation.get("access_policy").is_none());
     assert_eq!(operation["parameters"][0]["in"], json!("path"));
     assert_eq!(operation["parameters"][1]["in"], json!("query"));

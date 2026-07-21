@@ -415,6 +415,36 @@ fn ensure_security_schemes(
     canonical_map: &mut Map<String, Value>,
     cookie_name: &str,
 ) -> Result<()> {
+    ensure_session_security_schemes(canonical_map, cookie_name)?;
+    let components = canonical_map
+        .entry("components".to_string())
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("components must be an object")?;
+    let security_schemes = components
+        .entry("securitySchemes".to_string())
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("components.securitySchemes must be an object")?;
+
+    security_schemes
+        .entry(PAT_BEARER_SECURITY_SCHEME.to_string())
+        .or_insert_with(|| {
+            json!({
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "pat_ user API key",
+                "description": "Use Authorization: Bearer pat_... for user API key requests. PAT requests use the bound user's role permissions and do not require CSRF."
+            })
+        });
+
+    Ok(())
+}
+
+pub(crate) fn ensure_session_security_schemes(
+    canonical_map: &mut Map<String, Value>,
+    cookie_name: &str,
+) -> Result<()> {
     let components = canonical_map
         .entry("components".to_string())
         .or_insert_with(|| Value::Object(Map::new()))
@@ -433,7 +463,7 @@ fn ensure_security_schemes(
                 "type": "apiKey",
                 "in": "cookie",
                 "name": cookie_name,
-                "description": "Console session cookie for authenticated requests."
+                "description": "Current login session sent automatically by the browser."
             })
         });
     security_schemes
@@ -443,17 +473,7 @@ fn ensure_security_schemes(
                 "type": "apiKey",
                 "in": "header",
                 "name": CSRF_HEADER_NAME,
-                "description": "CSRF token header required by mutating console operations."
-            })
-        });
-    security_schemes
-        .entry(PAT_BEARER_SECURITY_SCHEME.to_string())
-        .or_insert_with(|| {
-            json!({
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "pat_ user API key",
-                "description": "Use Authorization: Bearer pat_... for user API key requests. PAT requests use the bound user's role permissions and do not require CSRF."
+                "description": "CSRF token required when using the current login session."
             })
         });
 

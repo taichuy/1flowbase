@@ -32,10 +32,32 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct CreateWorkflowExtensionRunCommand {
     pub actor: domain::ActorContext,
-    pub user_api_key_id: Uuid,
+    pub principal: WorkflowHttpPrincipal,
     pub request_path: String,
     pub method: WorkflowExtensionHttpMethod,
     pub parameters: WorkflowExtensionRequestParameters,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowHttpPrincipal {
+    User,
+    UserApiKey { api_key_id: Uuid },
+}
+
+impl WorkflowHttpPrincipal {
+    fn api_key_id(self) -> Option<Uuid> {
+        match self {
+            Self::User => None,
+            Self::UserApiKey { api_key_id } => Some(api_key_id),
+        }
+    }
+
+    fn kind(self) -> domain::FlowRunPrincipalKind {
+        match self {
+            Self::User => domain::FlowRunPrincipalKind::User,
+            Self::UserApiKey { .. } => domain::FlowRunPrincipalKind::UserApiKey,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -153,17 +175,18 @@ where
             build_workflow_start_node_input_payload(&start_contract, &parameters)
                 .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
         let response_mode = extension.response_mode;
+        let api_key_id = command.principal.api_key_id();
         let invoked = WorkflowInvocationService::new(self.repository.clone())
             .invoke(InvokeWorkflowCommand {
                 actor_user_id: command.actor.user_id,
                 publication: publication.clone(),
                 node_input_payload,
                 trigger: WorkflowInvocationTrigger::Http {
-                    api_key_id: Some(command.user_api_key_id),
+                    api_key_id,
                     interface_id: operation.interface_id.clone(),
                     route_template: operation.route_template.clone(),
                     method: command.method.as_str().to_string(),
-                    principal: "user_api_key".to_string(),
+                    principal: command.principal.kind(),
                     response_mode: response_mode.as_str().to_string(),
                 },
             })
@@ -176,7 +199,7 @@ where
         Ok(WorkflowExtensionRunResult {
             id: flow_run.id,
             application_id: flow_run.application_id,
-            api_key_id: Some(command.user_api_key_id),
+            api_key_id,
             publication_version_id: publication.id,
             status: flow_run.status,
             response_mode,

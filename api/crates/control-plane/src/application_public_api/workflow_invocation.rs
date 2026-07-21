@@ -22,7 +22,7 @@ pub enum WorkflowInvocationTrigger {
         interface_id: String,
         route_template: String,
         method: String,
-        principal: String,
+        principal: domain::FlowRunPrincipalKind,
         response_mode: String,
     },
     Schedule {
@@ -244,7 +244,7 @@ impl WorkflowInvocationTrigger {
                 response_mode,
             } => json!({
                 "api_key_id": api_key_id,
-                "principal": principal,
+                "principal": principal.as_str(),
                 "application_id": application_id,
                 "publication_version_id": publication_version_id,
                 "trigger_source": "workflow_extension",
