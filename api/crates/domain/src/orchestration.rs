@@ -37,15 +37,10 @@ impl FlowRunMode {
                 FlowRunInvocationSource::AgentFlowApi,
                 FlowRunPrincipal::application_api_key(api_key_id),
             ),
-            Self::WorkflowHttpRun if api_key_id.is_some() => (
-                FlowRunExecutionStage::Published,
-                FlowRunInvocationSource::WorkflowHttp,
-                FlowRunPrincipal::user_api_key(api_key_id),
-            ),
             Self::WorkflowHttpRun => (
                 FlowRunExecutionStage::Published,
                 FlowRunInvocationSource::WorkflowHttp,
-                FlowRunPrincipal::public(),
+                FlowRunPrincipal::user_api_key(api_key_id),
             ),
             Self::WorkflowScheduleRun => (
                 FlowRunExecutionStage::Published,
@@ -109,7 +104,6 @@ pub enum FlowRunPrincipalKind {
     User,
     ApplicationApiKey,
     UserApiKey,
-    Public,
     Scheduler,
 }
 
@@ -119,7 +113,6 @@ impl FlowRunPrincipalKind {
             Self::User => "user",
             Self::ApplicationApiKey => "application_api_key",
             Self::UserApiKey => "user_api_key",
-            Self::Public => "public",
             Self::Scheduler => "scheduler",
         }
     }
@@ -153,14 +146,6 @@ impl FlowRunPrincipal {
         Self {
             kind: FlowRunPrincipalKind::UserApiKey,
             id,
-            display_name: None,
-        }
-    }
-
-    fn public() -> Self {
-        Self {
-            kind: FlowRunPrincipalKind::Public,
-            id: None,
             display_name: None,
         }
     }
@@ -681,13 +666,6 @@ mod invocation_context_tests {
                 FlowRunPrincipalKind::UserApiKey,
             ),
             (
-                FlowRunMode::WorkflowHttpRun,
-                None,
-                FlowRunExecutionStage::Published,
-                FlowRunInvocationSource::WorkflowHttp,
-                FlowRunPrincipalKind::Public,
-            ),
-            (
                 FlowRunMode::WorkflowScheduleRun,
                 None,
                 FlowRunExecutionStage::Published,
@@ -712,10 +690,7 @@ mod invocation_context_tests {
             assert_eq!(context.execution_stage, stage);
             assert_eq!(context.invocation_source, source);
             assert_eq!(context.principal.kind, principal_kind);
-            if matches!(
-                principal_kind,
-                FlowRunPrincipalKind::Public | FlowRunPrincipalKind::Scheduler
-            ) {
+            if matches!(principal_kind, FlowRunPrincipalKind::Scheduler) {
                 assert_eq!(context.principal.id, None);
                 assert_eq!(context.principal.display_name, None);
             }

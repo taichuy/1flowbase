@@ -22,8 +22,7 @@ use control_plane::{
             ApplicationApiMappingService, ApplicationCompactOperationBindings,
             ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
-            WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionResponseMode,
+            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, ApplicationPublicationVersionRecord,
@@ -166,18 +165,11 @@ pub struct ApplicationOperationBindingsBody {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WorkflowExtensionApiBody {
     pub slug: String,
     pub method: WorkflowExtensionHttpMethodBody,
-    pub access_policy: WorkflowExtensionAccessPolicyBody,
     pub response_mode: WorkflowExtensionResponseModeBody,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowExtensionAccessPolicyBody {
-    UserApiKey,
-    Public,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -313,7 +305,6 @@ pub struct PublishedWorkflowOperationResponse {
     pub interface_id: String,
     pub method: WorkflowExtensionHttpMethodBody,
     pub route_template: String,
-    pub access_policy: WorkflowExtensionAccessPolicyBody,
     pub response_mode: WorkflowExtensionResponseModeBody,
     #[schema(value_type = Object)]
     pub parameter_schema: Value,
@@ -611,12 +602,6 @@ fn to_extension_config(body: WorkflowExtensionApiBody) -> WorkflowExtensionApiCo
             WorkflowExtensionHttpMethodBody::Head => WorkflowExtensionHttpMethod::Head,
             WorkflowExtensionHttpMethodBody::Options => WorkflowExtensionHttpMethod::Options,
         },
-        access_policy: match body.access_policy {
-            WorkflowExtensionAccessPolicyBody::UserApiKey => {
-                WorkflowExtensionAccessPolicy::UserApiKey
-            }
-            WorkflowExtensionAccessPolicyBody::Public => WorkflowExtensionAccessPolicy::Public,
-        },
         response_mode: match body.response_mode {
             WorkflowExtensionResponseModeBody::Sync => WorkflowExtensionResponseMode::Sync,
             WorkflowExtensionResponseModeBody::Async => WorkflowExtensionResponseMode::Async,
@@ -635,12 +620,6 @@ fn to_extension_body(config: WorkflowExtensionApiConfig) -> WorkflowExtensionApi
             WorkflowExtensionHttpMethod::Delete => WorkflowExtensionHttpMethodBody::Delete,
             WorkflowExtensionHttpMethod::Head => WorkflowExtensionHttpMethodBody::Head,
             WorkflowExtensionHttpMethod::Options => WorkflowExtensionHttpMethodBody::Options,
-        },
-        access_policy: match config.access_policy {
-            WorkflowExtensionAccessPolicy::UserApiKey => {
-                WorkflowExtensionAccessPolicyBody::UserApiKey
-            }
-            WorkflowExtensionAccessPolicy::Public => WorkflowExtensionAccessPolicyBody::Public,
         },
         response_mode: match config.response_mode {
             WorkflowExtensionResponseMode::Sync => WorkflowExtensionResponseModeBody::Sync,
@@ -709,7 +688,6 @@ fn to_published_workflow_operation_response(
         interface_id: operation.interface_id,
         method: to_extension_body(extension.clone()).method,
         route_template: operation.route_template,
-        access_policy: to_extension_body(extension.clone()).access_policy,
         response_mode: to_extension_body(extension).response_mode,
         parameter_schema: operation.parameter_schema,
         result_schema: operation.result_schema,

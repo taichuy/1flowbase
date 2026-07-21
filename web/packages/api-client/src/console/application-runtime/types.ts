@@ -20,7 +20,7 @@ export interface ConsoleApplicationRunSubject {
 }
 
 export interface ConsoleApplicationRunPrincipal {
-  kind: 'user' | 'application_api_key' | 'user_api_key' | 'public' | 'scheduler';
+  kind: 'user' | 'application_api_key' | 'user_api_key' | 'scheduler';
   id?: string | null;
   display_name?: string | null;
 }

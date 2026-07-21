@@ -26,7 +26,7 @@ fn parse_run_archive_accepts_selected_runs_trace_zip() {
 
 #[test]
 fn trace_archive_import_keeps_non_user_principals_without_a_created_by_identity() {
-    for principal_kind in ["public", "scheduler", "user_api_key"] {
+    for principal_kind in ["scheduler", "user_api_key"] {
         let mut run_export = trace_export_fixture("019ef419-9a7d-7eb1-a777-963d56131f65");
         run_export.run.principal = application_logs::ApplicationRunPrincipalResponse {
             kind: principal_kind.to_string(),

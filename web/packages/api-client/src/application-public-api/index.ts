@@ -132,12 +132,10 @@ export type ConsoleWorkflowExtensionHttpMethod =
   | 'OPTIONS';
 
 export type ConsoleWorkflowExtensionResponseMode = 'sync' | 'async';
-export type ConsoleWorkflowExtensionAccessPolicy = 'user_api_key' | 'public';
 
 export interface ConsoleWorkflowExtensionApiConfig {
   slug: string;
   method: ConsoleWorkflowExtensionHttpMethod;
-  access_policy: ConsoleWorkflowExtensionAccessPolicy;
   response_mode: ConsoleWorkflowExtensionResponseMode;
 }
 
@@ -145,7 +143,6 @@ export interface ConsolePublishedWorkflowOperation {
   interface_id: string;
   method: ConsoleWorkflowExtensionHttpMethod;
   route_template: string;
-  access_policy: ConsoleWorkflowExtensionAccessPolicy;
   response_mode: ConsoleWorkflowExtensionResponseMode;
   parameter_schema: Record<string, unknown>;
   result_schema: Record<string, unknown>;

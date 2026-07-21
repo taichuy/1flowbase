@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Descriptions, Select, Space, Tag, Typography } from 'antd';
-import { useState } from 'react';
+import { Alert, Button, Descriptions, Space, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import type { ConsoleWorkflowExtensionAccessPolicy } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../state/auth-store';
 import type { ApplicationDetail } from '../api/applications';
 import {
@@ -12,7 +10,6 @@ import {
   fetchApplicationApiMapping,
   fetchApplicationApiPublication,
   publishApplicationApiVersion,
-  saveApplicationApiMapping,
   unpublishApplicationApiVersion
 } from '../api/public-api';
 
@@ -34,10 +31,6 @@ export function WorkflowExtensionApiPage({
     retry: false
   });
   const extension = mappingQuery.data?.extension ?? null;
-  const [selectedAccessPolicy, setSelectedAccessPolicy] = useState<
-    ConsoleWorkflowExtensionAccessPolicy | undefined
-  >();
-  const accessPolicy = selectedAccessPolicy ?? extension?.access_policy;
   const invalidate = () =>
     Promise.all([
       queryClient.invalidateQueries({
@@ -47,23 +40,6 @@ export function WorkflowExtensionApiPage({
         queryKey: applicationApiPublicationQueryKey(application.id)
       })
     ]);
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!mappingQuery.data || !extension || !accessPolicy) return;
-      await saveApplicationApiMapping(
-        application.id,
-        {
-          ...mappingQuery.data,
-          extension: { ...extension, access_policy: accessPolicy }
-        },
-        csrfToken
-      );
-    },
-    onSuccess: async () => {
-      setSelectedAccessPolicy(undefined);
-      await invalidate();
-    }
-  });
   const publishMutation = useMutation({
     mutationFn: async () => {
       const mapping =
@@ -127,36 +103,6 @@ export function WorkflowExtensionApiPage({
             key: 'response',
             label: t('auto.response_mode'),
             children: extension?.response_mode ?? '—'
-          },
-          {
-            key: 'access',
-            label: t('auto.access_policy'),
-            children: (
-              <Space>
-                <Select<ConsoleWorkflowExtensionAccessPolicy>
-                  value={accessPolicy}
-                  style={{ minWidth: 220 }}
-                  onChange={setSelectedAccessPolicy}
-                  options={[
-                    {
-                      value: 'user_api_key',
-                      label: t('auto.access_policy_user_api_key')
-                    },
-                    {
-                      value: 'public',
-                      label: t('auto.access_policy_public')
-                    }
-                  ]}
-                />
-                <Button
-                  disabled={!selectedAccessPolicy}
-                  loading={saveMutation.isPending}
-                  onClick={() => saveMutation.mutate()}
-                >
-                  {t('auto.save_changes')}
-                </Button>
-              </Space>
-            )
           }
         ]}
       />

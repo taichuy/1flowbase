@@ -73,9 +73,7 @@ function principalKindLabel(
     case 'application_api_key':
       return t('auto.principal_application_api_key');
     case 'user_api_key':
-      return t('auto.access_policy_user_api_key');
-    case 'public':
-      return t('auto.principal_public');
+      return t('auto.principal_user_api_key');
     case 'scheduler':
       return t('auto.principal_scheduler');
   }

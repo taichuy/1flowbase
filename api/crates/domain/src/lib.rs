@@ -158,8 +158,8 @@ mod attribution_exports_tests {
     #[test]
     fn attribution_types_are_available_from_the_domain_root() {
         let principal = crate::FlowRunPrincipal {
-            kind: crate::FlowRunPrincipalKind::Public,
-            id: None,
+            kind: crate::FlowRunPrincipalKind::UserApiKey,
+            id: Some(uuid::Uuid::now_v7()),
             display_name: None,
         };
         let context = crate::FlowRunInvocationContext {
@@ -168,6 +168,9 @@ mod attribution_exports_tests {
             principal,
         };
 
-        assert_eq!(context.principal.kind, crate::FlowRunPrincipalKind::Public);
+        assert_eq!(
+            context.principal.kind,
+            crate::FlowRunPrincipalKind::UserApiKey
+        );
     }
 }

@@ -7,8 +7,7 @@ use uuid::Uuid;
 
 use super::{
     mapping::{
-        WorkflowExtensionAccessPolicy, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-        WorkflowExtensionResponseMode,
+        WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
     },
     publications::ApplicationPublicationVersionRecord,
     workflow_start_http_inputs::{
@@ -25,7 +24,6 @@ pub struct PublishedWorkflowOperation {
     pub publication_version_id: Uuid,
     pub method: WorkflowExtensionHttpMethod,
     pub route_template: String,
-    pub access_policy: WorkflowExtensionAccessPolicy,
     pub response_mode: WorkflowExtensionResponseMode,
     pub parameter_schema: Value,
     pub result_schema: Value,
@@ -68,7 +66,6 @@ impl PublishedWorkflowOperation {
             publication_version_id: publication.id,
             method: extension.method,
             route_template,
-            access_policy: extension.access_policy,
             response_mode: extension.response_mode,
             parameter_schema: workflow_parameter_schema(start.fields()),
             result_schema: workflow_result_schema(&publication.document_snapshot),
