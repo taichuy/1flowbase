@@ -826,7 +826,7 @@ async fn workflow_extension_route_allows_authorized_user_api_key_across_applicat
 }
 
 #[tokio::test]
-async fn workflow_extension_route_rejects_disabled_publication() {
+async fn workflow_extension_route_and_settings_docs_reject_disabled_publication() {
     let app = test_app().await;
     let (token, _) = setup_workflow_extension_app_with_enabled(
         &app,
@@ -844,6 +844,7 @@ async fn workflow_extension_route_rejects_disabled_publication() {
     .await;
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -860,12 +861,31 @@ async fn workflow_extension_route_rejects_disabled_publication() {
         response_json(response).await["code"],
         json!("workflow_extension_not_found")
     );
+
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let catalog_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/docs/catalog")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog = response_json(catalog_response).await;
+    assert!(catalog["data"]["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|category| category["id"] != json!("workflow_extensions")));
 }
 
 #[tokio::test]
-async fn workflow_extension_openapi_registers_concrete_slug_operation() {
+async fn workflow_extension_openapi_and_settings_docs_register_concrete_slug_operation() {
     let app = test_app().await;
-    setup_workflow_extension_app(
+    let (_, publication) = setup_workflow_extension_app(
         &app,
         "open-ticket-docs/{slug}",
         "sync",
@@ -895,6 +915,7 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
     .await;
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
@@ -926,6 +947,72 @@ async fn workflow_extension_openapi_registers_concrete_slug_operation() {
         operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
             ["ticket_id"]["type"],
         json!("string")
+    );
+
+    let interface_id = publication["data"]["operation"]["interface_id"]
+        .as_str()
+        .expect("published workflow operation should expose its interface id");
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let catalog_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/docs/catalog")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog = response_json(catalog_response).await;
+    assert!(catalog["data"]["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|category| {
+            category["id"] == json!("workflow_extensions")
+                && category["label"] == json!("Workflow Extensions")
+                && category["operation_count"] == json!(1)
+        }));
+
+    let operations_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/docs/categories/workflow_extensions/operations")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(operations_response.status(), StatusCode::OK);
+    let operations = response_json(operations_response).await;
+    assert_eq!(operations["data"]["total"], json!(1));
+    assert_eq!(operations["data"]["operations"][0]["id"], interface_id);
+    assert_eq!(
+        operations["data"]["operations"][0]["path"],
+        json!("/api/ex/open-ticket-docs/{slug}")
+    );
+
+    let operation_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/docs/operations/{interface_id}/openapi.json"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(operation_response.status(), StatusCode::OK);
+    let settings_operation = response_json(operation_response).await;
+    assert_eq!(
+        &settings_operation["paths"]["/api/ex/open-ticket-docs/{slug}"]["post"],
+        operation
     );
 }
 
@@ -1068,7 +1155,7 @@ async fn workflow_extension_route_rejects_schedule_trigger_application() {
 }
 
 #[tokio::test]
-async fn workflow_extension_openapi_excludes_schedule_trigger_applications() {
+async fn workflow_extension_openapi_and_settings_docs_exclude_schedule_trigger_applications() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id = create_workflow_application_with_trigger(
@@ -1091,6 +1178,7 @@ async fn workflow_extension_openapi_excludes_schedule_trigger_applications() {
     .await;
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
@@ -1108,4 +1196,22 @@ async fn workflow_extension_openapi_excludes_schedule_trigger_applications() {
         .unwrap()
         .get("/api/ex/schedule-typed-docs")
         .is_none());
+
+    let catalog_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/docs/catalog")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog = response_json(catalog_response).await;
+    assert!(catalog["data"]["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|category| category["id"] != json!("workflow_extensions")));
 }

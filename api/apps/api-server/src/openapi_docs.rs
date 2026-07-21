@@ -171,7 +171,7 @@ pub fn filter_category_operations(
     }
 }
 
-fn build_api_docs_registry_with_cookie_name(
+pub(crate) fn build_api_docs_registry_with_cookie_name(
     canonical: Value,
     cookie_name: &str,
 ) -> Result<ApiDocsRegistry> {
@@ -343,6 +343,11 @@ fn derive_category(path: &str, operation_id: &str) -> (String, String, bool) {
         .collect::<Vec<_>>();
 
     match segments.as_slice() {
+        ["api", "ex", ..] => (
+            "workflow_extensions".to_string(),
+            "Workflow Extensions".to_string(),
+            false,
+        ),
         ["api", category, ..] if !category.starts_with('{') => {
             let category = (*category).to_string();
             (category.clone(), category, false)

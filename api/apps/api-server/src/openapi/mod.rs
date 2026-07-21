@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use axum::{extract::State, Json};
 use control_plane::{
     application_public_api::{
@@ -658,7 +659,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
 )]
 pub struct ApiDoc;
 
-pub async fn dynamic_openapi(State(state): State<Arc<ApiState>>) -> Result<Json<Value>, ApiError> {
+pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, ApiError> {
     let mut document = serde_json::to_value(ApiDoc::openapi())?;
     let publications = state.store.list_enabled_extension_publications().await?;
     let operations = build_published_workflow_operations(publications)
@@ -669,7 +670,23 @@ pub async fn dynamic_openapi(State(state): State<Arc<ApiState>>) -> Result<Json<
         "bearerFormat": "User API Key"
     });
     append_workflow_extension_paths(&mut document, &operations);
-    Ok(Json(document))
+    Ok(document)
+}
+
+pub(crate) async fn workflow_extension_openapi_document(
+    state: &ApiState,
+) -> Result<Value, ApiError> {
+    let mut document = dynamic_openapi_document(state).await?;
+    let paths = document
+        .get_mut("paths")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("dynamic OpenAPI document must contain paths"))?;
+    paths.retain(|path, _| path.starts_with("/api/ex/"));
+    Ok(document)
+}
+
+pub async fn dynamic_openapi(State(state): State<Arc<ApiState>>) -> Result<Json<Value>, ApiError> {
+    Ok(Json(dynamic_openapi_document(&state).await?))
 }
 
 fn append_workflow_extension_paths(

@@ -20,7 +20,8 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::require_session,
     openapi_docs::{
-        filter_category_operations, paginate_category_operations, DocsCatalog,
+        build_api_docs_registry_with_cookie_name, filter_category_operations,
+        paginate_category_operations, ApiDocsRegistry, DocsCatalog,
         DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
     },
     response::ApiSuccess,
@@ -126,7 +127,11 @@ pub async fn get_docs_catalog(
 ) -> Result<Json<ApiSuccess<DocsCatalog>>, ApiError> {
     let context = require_session(&state, &headers).await?;
 
+    let extension_docs = build_current_workflow_extension_docs_registry(&state).await?;
     let mut catalog = state.api_docs.catalog().clone();
+    catalog
+        .categories
+        .extend(extension_docs.catalog().categories.iter().cloned());
     let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
     if let Some(category) = runtime_data_model_docs::build_category(&models) {
         catalog.categories.push(category);
@@ -157,8 +162,17 @@ pub async fn get_category_operations(
         ))));
     }
 
-    let operations = state
-        .api_docs
+    if let Some(operations) = state.api_docs.category_operations(&category_id) {
+        let filtered_operations = filter_category_operations(operations, query.search_query());
+        return Ok(Json(ApiSuccess::new(paginate_category_operations(
+            &filtered_operations,
+            query.offset(),
+            query.limit(),
+        ))));
+    }
+
+    let extension_docs = build_current_workflow_extension_docs_registry(&state).await?;
+    let operations = extension_docs
         .category_operations(&category_id)
         .ok_or(ControlPlaneError::NotFound("category_id"))?;
     let filtered_operations = filter_category_operations(operations, query.search_query());
@@ -187,8 +201,12 @@ pub async fn get_category_openapi(
         )));
     }
 
-    let spec = state
-        .api_docs
+    if let Some(spec) = state.api_docs.category_spec(&category_id) {
+        return Ok(Json(spec.clone()));
+    }
+
+    let extension_docs = build_current_workflow_extension_docs_registry(&state).await?;
+    let spec = extension_docs
         .category_spec(&category_id)
         .cloned()
         .ok_or(ControlPlaneError::NotFound("category_id"))?;
@@ -214,13 +232,27 @@ pub async fn get_operation_openapi(
         )));
     }
 
-    let spec = state
-        .api_docs
+    if let Some(spec) = state.api_docs.operation_spec(&operation_id) {
+        return Ok(Json(spec.clone()));
+    }
+
+    let extension_docs = build_current_workflow_extension_docs_registry(&state).await?;
+    let spec = extension_docs
         .operation_spec(&operation_id)
         .cloned()
         .ok_or(ControlPlaneError::NotFound("operation_id"))?;
 
     Ok(Json(spec))
+}
+
+async fn build_current_workflow_extension_docs_registry(
+    state: &ApiState,
+) -> Result<ApiDocsRegistry, ApiError> {
+    let document = crate::openapi::workflow_extension_openapi_document(state).await?;
+    Ok(build_api_docs_registry_with_cookie_name(
+        document,
+        &state.cookie_name,
+    )?)
 }
 
 #[utoipa::path(
