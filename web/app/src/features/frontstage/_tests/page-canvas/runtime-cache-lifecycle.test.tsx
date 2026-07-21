@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { useFrontstageRuntimeCacheLifecycle } from '../../hooks/use-frontstage-runtime-cache-lifecycle';
@@ -114,5 +114,44 @@ describe('frontstage runtime cache lifecycle', () => {
       expect.objectContaining({ sequence: 2, stage: 'present', count: 1 }),
       expect.objectContaining({ sequence: 3, stage: 'present', count: 2 })
     ]);
+  });
+
+  test('AC-022 starts non-blocking persistent prune and purges the previous actor on logout/switch', async () => {
+    const queryClient = new QueryClient();
+    const artifactCache = {
+      deleteActor: vi.fn(async () => ({ status: 'completed' as const, deleted: 0 })),
+      pruneWorkspace: vi.fn(async () => ({ status: 'completed' as const, deleted: 0 }))
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    authenticate('actor-a');
+    renderHook(
+      () =>
+        useFrontstageRuntimeCacheLifecycle({
+          artifactCache,
+          runtimeFingerprint: 'runtime-a'
+        }),
+      { wrapper }
+    );
+    expect(artifactCache.pruneWorkspace).toHaveBeenCalledWith({
+      actorId: 'actor-a',
+      workspaceId: 'workspace-1',
+      runtimeFingerprint: 'runtime-a'
+    });
+
+    act(() => authenticate('actor-b'));
+    await waitFor(() => {
+      expect(artifactCache.deleteActor).toHaveBeenCalledWith('actor-a');
+      expect(artifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
+        actorId: 'actor-b',
+        workspaceId: 'workspace-1',
+        runtimeFingerprint: 'runtime-a'
+      });
+    });
+    act(() => useAuthStore.getState().setAnonymous());
+    await waitFor(() =>
+      expect(artifactCache.deleteActor).toHaveBeenLastCalledWith('actor-b')
+    );
   });
 });
