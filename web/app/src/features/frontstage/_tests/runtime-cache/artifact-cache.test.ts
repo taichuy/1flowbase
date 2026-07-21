@@ -194,6 +194,58 @@ describe('Frontstage compiled artifact IndexedDB cache', () => {
     });
   });
 
+  test('D5-006 does not report stored when a readwrite transaction aborts after request success', async () => {
+    const store = createIndexedDbArtifactCacheStore({
+      indexedDB: new IDBFactory(),
+      databaseName: 'transaction-abort',
+      onRequestSuccess: ({ mode, transaction }) => {
+        if (mode === 'readwrite') transaction.abort();
+      }
+    });
+    const cache = new FrontstageCompiledArtifactCache({ store });
+    await expect(cache.put(identity(), artifact())).resolves.toEqual({
+      status: 'unavailable',
+      reason: 'write_failed'
+    });
+    await expect(store.list()).resolves.toEqual([]);
+  });
+
+  test('D5-006 retries a rejected open and reopens after versionchange closes the cached database', async () => {
+    const factory = new IDBFactory();
+    let failFirstOpen = true;
+    const flakyFactory = new Proxy(factory, {
+      get(target, property) {
+        if (property === 'open') {
+          return (...args: Parameters<IDBFactory['open']>) => {
+            if (failFirstOpen) {
+              failFirstOpen = false;
+              throw new Error('first open failed');
+            }
+            return target.open(...args);
+          };
+        }
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+    });
+    const databaseName = 'open-retry';
+    const store = createIndexedDbArtifactCacheStore({
+      indexedDB: flakyFactory,
+      databaseName
+    });
+    const cache = new FrontstageCompiledArtifactCache({ store });
+    await expect(cache.get(identity())).resolves.toMatchObject({
+      status: 'unavailable'
+    });
+    await expect(cache.get(identity())).resolves.toEqual({
+      status: 'miss',
+      reason: 'not_found'
+    });
+    await cache.put(identity(), artifact());
+    await deleteDatabase(factory, databaseName);
+    await expect(store.list()).resolves.toEqual([]);
+  });
+
   test('AC-022 removes corrupt and identity-mismatched records as misses', async () => {
     const { cache, store } = subject('corrupt');
     await cache.put(identity(sourceB), artifact(sourceB));
@@ -291,4 +343,12 @@ function quotaStore(store: FrontstageArtifactCacheStore, failures: number) {
     },
     putAttempts: () => attempts
   } satisfies FrontstageArtifactCacheStore & { putAttempts(): number };
+}
+
+function deleteDatabase(factory: IDBFactory, name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = factory.deleteDatabase(name);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
 }
