@@ -17,7 +17,6 @@ export type BlockContextJsonValue =
 
 export interface BlockContextMediatorPolicy {
   allowedEvents?: readonly string[];
-  allowedInterfaces?: readonly string[];
   maxEventChainDepth?: number;
 }
 
@@ -174,17 +173,8 @@ function reduceEventEffect(
 function reduceInterfaceEffect(
   state: BlockContextMediatorState,
   effect: Extract<NormalizedEffect, { type: 'interface' }>,
-  policy: BlockContextMediatorPolicy
+  _policy: BlockContextMediatorPolicy
 ): BlockContextMediatorTransition {
-  if (!toSet(policy.allowedInterfaces).has(effect.bindingAlias)) {
-    return reject(state, {
-      requestId: effect.requestId,
-      code: 'interface_denied',
-      path: 'interface.bindingAlias',
-      message: `Interface binding is not allowed: ${effect.bindingAlias}.`
-    });
-  }
-
   const payloadResult = normalizeOptionalPayload(effect.request, 'request');
   if (!payloadResult.ok) {
     return rejectPayload(state, effect.requestId, payloadResult);
@@ -194,7 +184,8 @@ function reduceInterfaceEffect(
     type: 'interface',
     requestId: effect.requestId,
     ...(effect.effectId ? { effectId: effect.effectId } : {}),
-    bindingAlias: effect.bindingAlias,
+    interfaceId: effect.interfaceId,
+    schemaDigest: effect.schemaDigest,
     ...(effect.operation ? { operation: effect.operation } : {}),
     ...(effect.streamId ? { streamId: effect.streamId } : {}),
     ...(payloadResult.value === undefined
@@ -284,15 +275,27 @@ function normalizeEffect(
   }
 
   if (type.value === 'interface') {
-    const bindingAlias = readStringProperty(
+    const interfaceId = readStringProperty(
       value,
-      'bindingAlias',
-      'effect.bindingAlias'
+      'interfaceId',
+      'effect.interfaceId'
     );
-    if (!bindingAlias.ok) {
+    if (!interfaceId.ok) {
       return effectInvalid(
-        bindingAlias.path,
-        bindingAlias.message,
+        interfaceId.path,
+        interfaceId.message,
+        requestId.value
+      );
+    }
+    const schemaDigest = readStringProperty(
+      value,
+      'schemaDigest',
+      'effect.schemaDigest'
+    );
+    if (!schemaDigest.ok) {
+      return effectInvalid(
+        schemaDigest.path,
+        schemaDigest.message,
         requestId.value
       );
     }
@@ -352,7 +355,8 @@ function normalizeEffect(
         type: 'interface',
         requestId: requestId.value,
         ...(effectId.value ? { effectId: effectId.value } : {}),
-        bindingAlias: bindingAlias.value,
+        interfaceId: interfaceId.value,
+        schemaDigest: schemaDigest.value,
         ...(operation.value
           ? {
               operation: operation.value as

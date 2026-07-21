@@ -102,7 +102,8 @@ export type JsBlockWorkerEffect =
       type: 'interface';
       requestId: string;
       effectId?: string;
-      bindingAlias: string;
+      interfaceId: string;
+      schemaDigest: string;
       request?: unknown;
       operation?: 'call' | 'stream_open' | 'stream_next' | 'stream_cancel';
       streamId?: string;
@@ -245,7 +246,8 @@ export interface JsBlockWorkerInterfaceRequestMessage {
   type: 'interface';
   requestId: string;
   effectId?: string;
-  bindingAlias: string;
+  interfaceId: string;
+  schemaDigest: string;
   request?: unknown;
   operation?: 'call' | 'stream_open' | 'stream_next' | 'stream_cancel';
   streamId?: string;
@@ -912,26 +914,64 @@ function readWorkerEffect(
     };
   }
 
-  const bindingAlias = readString(
+  const interfaceId = readString(message, 'interfaceId', 'message.interfaceId');
+  if (!interfaceId.ok) {
+    return interfaceId;
+  }
+  const schemaDigest = readString(
     message,
-    'bindingAlias',
-    'message.bindingAlias'
+    'schemaDigest',
+    'message.schemaDigest'
   );
-  if (!bindingAlias.ok) {
-    return bindingAlias;
+  if (!schemaDigest.ok) {
+    return schemaDigest;
   }
   const effectId =
     typeof message.effectId === 'string' && message.effectId.length > 0
       ? message.effectId
       : undefined;
+  const operation = message.operation;
+  if (
+    operation !== undefined &&
+    (typeof operation !== 'string' ||
+      !['call', 'stream_open', 'stream_next', 'stream_cancel'].includes(
+        operation
+      ))
+  ) {
+    return invalid(
+      'message.operation',
+      'Interface operation must be a supported string.'
+    );
+  }
+  const streamId = message.streamId;
+  if (
+    streamId !== undefined &&
+    (typeof streamId !== 'string' || streamId.length === 0)
+  ) {
+    return invalid(
+      'message.streamId',
+      'Interface stream id must be a non-empty string.'
+    );
+  }
   return {
     ok: true,
     effect: {
       type: 'interface',
       requestId,
       ...(effectId ? { effectId } : {}),
-      bindingAlias: bindingAlias.value,
-      request: message.request
+      interfaceId: interfaceId.value,
+      schemaDigest: schemaDigest.value,
+      request: message.request,
+      ...(operation
+        ? {
+            operation: operation as
+              | 'call'
+              | 'stream_open'
+              | 'stream_next'
+              | 'stream_cancel'
+          }
+        : {}),
+      ...(streamId ? { streamId } : {})
     }
   };
 }

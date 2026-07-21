@@ -36,7 +36,6 @@ import {
   type WindowWorkspaceRect
 } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
-import { useFrontstageInterfaceCapabilityDetails } from '../../hooks/use-frontstage-interface-capabilities';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -153,19 +152,6 @@ function FrontstageJsxStudioWindow({
     pointerX: number;
     width: number;
   } | null>(null);
-  const boundInterfaceIds = useMemo(
-    () => [
-      ...new Set(
-        (block.interfaces ?? []).map((binding) => binding.operation_id)
-      )
-    ],
-    [block.interfaces]
-  );
-  const interfaceCapabilities = useFrontstageInterfaceCapabilityDetails(
-    workspaceId,
-    boundInterfaceIds,
-    activeSection === 'interfaces'
-  );
   const {
     draft,
     dirty,
@@ -285,11 +271,9 @@ function FrontstageJsxStudioWindow({
   const projection = useMemo(
     () =>
       createFrontstageJsxEditorProjection({
-        block,
-        catalogEntry,
-        interfaceCapabilities: interfaceCapabilities.data
+        catalogEntry
       }),
-    [block, interfaceCapabilities.data, catalogEntry]
+    [catalogEntry]
   );
   const allowedImports = catalogEntry?.codeCapabilities?.allowedImports ?? [];
   const compileDiagnostics = useMemo(() => {
@@ -537,10 +521,7 @@ function FrontstageJsxStudioWindow({
 
         {activeSection !== 'code' ? (
           <div
-            aria-label={i18nText(
-              'frontstage',
-              'auto.resize_resource_panel'
-            )}
+            aria-label={i18nText('frontstage', 'auto.resize_resource_panel')}
             aria-orientation="vertical"
             aria-valuemax={maxResourcePanelWidth}
             aria-valuemin={MIN_RESOURCE_PANEL_WIDTH}

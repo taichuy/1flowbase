@@ -75,8 +75,6 @@ function createRunPlan(
     mediatorPolicy: {
       allowedEvents: ['record.saved'],
 
-      allowedInterfaces: ['listRecords'],
-
       maxEventChainDepth: 4
     },
     ...overrides
@@ -249,7 +247,7 @@ describe('restricted block runtime host controller', () => {
     });
   });
 
-  test('resolves allowed interface effects through mediator policy and injected handlers', () => {
+  test('resolves complete interface descriptors through injected handlers', () => {
     const interfaceHandler = vi.fn(() => ({ rows: [{ id: 'record-1' }] }));
     const { worker, host } = createSubject({
       handlers: { interface: interfaceHandler }
@@ -262,7 +260,8 @@ describe('restricted block runtime host controller', () => {
       type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-interface',
-      bindingAlias: 'listRecords',
+      interfaceId: 'list_records',
+      schemaDigest: 'digest-list-records',
       request: { query: { id: 'record-1' } }
     });
 
@@ -270,7 +269,8 @@ describe('restricted block runtime host controller', () => {
       type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-interface',
-      bindingAlias: 'listRecords',
+      interfaceId: 'list_records',
+      schemaDigest: 'digest-list-records',
       request: { query: { id: 'record-1' } }
     });
     expect(worker.messages).toEqual([
@@ -294,13 +294,14 @@ describe('restricted block runtime host controller', () => {
         type: 'interface',
         requestId: 'restricted-block:block-1:code-1',
         effectId: 'effect-interface',
-        bindingAlias: 'listRecords',
+        interfaceId: 'list_records',
+        schemaDigest: 'digest-list-records',
         request: { query: { id: 'record-1' } }
       }
     ]);
   });
 
-  test('returns failed effect_result for denied effects', () => {
+  test('rejects malformed worker descriptors before invoking the host handler', () => {
     const interfaceHandler = vi.fn();
     const { worker, host } = createSubject({
       handlers: { interface: interfaceHandler }
@@ -313,30 +314,17 @@ describe('restricted block runtime host controller', () => {
       type: 'interface',
       requestId: 'restricted-block:block-1:code-1',
       effectId: 'effect-interface',
-      bindingAlias: 'privateRecords'
+      interfaceId: 'private_records'
     });
 
     expect(interfaceHandler).not.toHaveBeenCalled();
-    expect(worker.messages.slice(2)).toEqual([
-      {
-        direction: 'host_to_worker',
-        type: 'effect_result',
-        requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-interface',
-        ok: false,
-        error: {
-          kind: 'runtime_error',
-          message: 'Interface binding is not allowed: privateRecords.',
-          errors: [
-            {
-              code: 'interface_denied',
-              path: 'interface.bindingAlias',
-              message: 'Interface binding is not allowed: privateRecords.'
-            }
-          ]
-        }
-      }
-    ]);
+    expect(worker.messages.slice(2)).toEqual([]);
+    expect(host.getSnapshot().rejections).toContainEqual(
+      expect.objectContaining({
+        code: 'invalid_message',
+        path: 'message.schemaDigest'
+      })
+    );
   });
 
   test('disposes the current request and ignores late worker messages', () => {

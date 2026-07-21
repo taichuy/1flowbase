@@ -478,7 +478,12 @@ describe('frontstage native trusted block React adapter', () => {
         ui: {}
       })
     );
-    await expect(receivedContext?.interfaces.call('records')).rejects.toThrow(
+    await expect(
+      receivedContext?.interfaces.call({
+        interfaceId: 'records.get',
+        schemaDigest: 'digest-records'
+      })
+    ).rejects.toThrow(
       'Native trusted block ctx.interfaces.call is unavailable until the host injects a controlled BlockContext.'
     );
     expect(() => receivedContext?.events.emit('record.opened')).toThrow(
@@ -503,9 +508,15 @@ describe('frontstage native trusted block React adapter', () => {
       createRoot: testingRoot.createRoot,
       resolveBlockContext,
       resolveComponent: () => (props) => {
-        void props.ctx.interfaces.call('records', {
-          body: { blockId: props.plan.blockId }
-        });
+        void props.ctx.interfaces.call(
+          {
+            interfaceId: 'records.get',
+            schemaDigest: 'digest-records'
+          },
+          {
+            body: { blockId: props.plan.blockId }
+          }
+        );
 
         return (
           <output data-testid="native-injected-context">

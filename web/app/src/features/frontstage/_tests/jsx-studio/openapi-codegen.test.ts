@@ -56,7 +56,7 @@ const operation: ConsoleFrontstageInterfaceCapability = {
 };
 
 describe('Frontstage callable OpenAPI codegen', () => {
-  test('AC-002/003 emits editable DTOs and a complete bound function', () => {
+  test('AC-020/021 emits editable DTOs and a complete source-described function', () => {
     const result = generateFrontstageInterfaceSource(
       operation,
       'listApplicationConversations'
@@ -79,7 +79,10 @@ describe('Frontstage callable OpenAPI codegen', () => {
     expect(result.source).toContain(
       'ctx.interfaces.call<ListApplicationConversationsResponse>'
     );
-    expect(result.source).toContain("'listApplicationConversations'");
+    expect(result.source).toContain(
+      "interfaceId: 'list_application_conversations_records'"
+    );
+    expect(result.source).toContain("schemaDigest: 'digest-1'");
     expect(result.source).not.toContain('function main');
   });
 

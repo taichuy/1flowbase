@@ -22,7 +22,6 @@ export interface RestrictedBlockLoaderLimits extends JsBlockRuntimeLimits {
   allowedEvents?: readonly string[];
   allowedQueries?: readonly string[];
   allowedDataOperations?: readonly BlockDataPermission[];
-  allowedInterfaces?: readonly string[];
   maxEventChainDepth?: number;
 }
 
@@ -295,7 +294,6 @@ function createPolicy(
 
   return {
     allowedEvents,
-    allowedInterfaces: [...(limits?.allowedInterfaces ?? [])],
     maxEventChainDepth: limits?.maxEventChainDepth
   };
 }

@@ -166,14 +166,7 @@ function createRuntimeRunPlanItem({
       source,
       sourceIndex
     ),
-    limits: limits
-      ? {
-          ...limits,
-          allowedInterfaces: (source.block.interfaces ?? []).map(
-            (binding) => binding.alias
-          )
-        }
-      : undefined
+    limits
   });
 
   if (!runPlanResult.ok) {

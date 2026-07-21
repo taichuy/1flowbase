@@ -450,7 +450,8 @@ const block = {
       type: 'interface',
       requestId: 'request-1',
       effectId: 'late-effect',
-      bindingAlias: 'lateInterface',
+      interfaceId: 'late_interface',
+      schemaDigest: 'digest-late',
       request: { ok: true }
     });
 
@@ -466,6 +467,32 @@ const block = {
           rejection.requestId === 'request-1'
       )
     ).toHaveLength(4);
+  });
+
+  test('AC-025 preserves stream operation identity in the runtime effect log', () => {
+    const next = reduceJsBlockRuntimeSession(
+      run(createJsBlockRuntimeSession(), createRunRequest()),
+      {
+        direction: 'worker_to_host',
+        type: 'interface',
+        requestId: 'request-1',
+        effectId: 'effect-stream-next',
+        interfaceId: 'watch_run',
+        schemaDigest: 'digest-stream',
+        operation: 'stream_next',
+        streamId: 'run-1:stream-1'
+      }
+    );
+
+    expect(next.requests['request-1']?.effects).toContainEqual({
+      type: 'interface',
+      requestId: 'request-1',
+      effectId: 'effect-stream-next',
+      interfaceId: 'watch_run',
+      schemaDigest: 'digest-stream',
+      operation: 'stream_next',
+      streamId: 'run-1:stream-1'
+    });
   });
 
   test('rejects late runtime errors after a request is ready without overwriting the ready result', () => {

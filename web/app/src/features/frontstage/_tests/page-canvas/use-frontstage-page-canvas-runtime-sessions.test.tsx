@@ -50,8 +50,6 @@ function createRunPlan(
       allowedEvents: ['record.saved']
     },
     mediatorPolicy: {
-      allowedInterfaces: ['listRecords'],
-
       allowedEvents: ['record.saved'],
       maxEventChainDepth: 4
     }

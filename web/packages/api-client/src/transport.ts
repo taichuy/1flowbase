@@ -42,6 +42,11 @@ export interface ApiStreamResponse {
   cancel(): void;
 }
 
+export type ApiResourceResponse<T> =
+  | { kind: 'json'; value: T }
+  | { kind: 'no_content' }
+  | ({ kind: 'blob' } & ApiBlobResponse);
+
 function normalizeDispositionFilename(value: string): string | null {
   const trimmed = value.trim().replace(/^"|"$/g, '');
 
@@ -217,6 +222,68 @@ export async function apiFetchBlob({
       response.headers.get('content-disposition')
     ),
     contentType: response.headers.get('content-type') ?? ''
+  };
+}
+
+export async function apiFetchResource<T>({
+  path,
+  method = 'GET',
+  body,
+  rawBody,
+  contentType,
+  headers: extraHeaders,
+  csrfToken,
+  baseUrl = getDefaultApiBaseUrl()
+}: Omit<ApiRequestOptions, 'expectJson' | 'unwrapSuccess'>): Promise<
+  ApiResourceResponse<T>
+> {
+  if (body !== undefined && rawBody !== undefined) {
+    throw new Error(
+      'apiFetchResource does not support body and rawBody at the same time'
+    );
+  }
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  if (contentType !== undefined && contentType !== null) {
+    headers['content-type'] = contentType;
+  }
+  Object.assign(headers, extraHeaders);
+  if (csrfToken) headers['x-csrf-token'] = csrfToken;
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    credentials: 'include',
+    headers,
+    body:
+      body !== undefined
+        ? JSON.stringify(body)
+        : rawBody !== undefined
+          ? rawBody
+          : undefined
+  });
+  if (!response.ok) {
+    throw await ApiClientError.fromResponse(response);
+  }
+  if (response.status === 204) return { kind: 'no_content' };
+  const responseContentType = response.headers.get('content-type') ?? '';
+  if (
+    responseContentType.includes('application/json') ||
+    responseContentType.includes('+json')
+  ) {
+    return {
+      kind: 'json',
+      value: unwrapApiSuccess<T>(
+        (await response.json()) as ApiSuccessEnvelope<T>
+      )
+    };
+  }
+  return {
+    kind: 'blob',
+    blob: await response.blob(),
+    filename: parseContentDispositionFilename(
+      response.headers.get('content-disposition')
+    ),
+    contentType: responseContentType
   };
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 
+import { ApiClientError } from '@1flowbase/api-client';
 import type { JsBlockHostInterfaceEffect } from '@1flowbase/page-runtime';
 import {
   createFrontstageJsBlockCapabilityHandlers,
@@ -9,11 +10,6 @@ import {
 function createClient(): FrontstageJsBlockCapabilityClient {
   return {
     dispatchFrontstageCallable: vi.fn().mockResolvedValue({ items: [] }),
-    dispatchFrontstageCallableBinary: vi.fn().mockResolvedValue({
-      bytes: new Uint8Array([1]),
-      file_name: 'download.bin',
-      content_type: 'application/octet-stream'
-    }),
     dispatchFrontstageCallableStream: vi.fn().mockResolvedValue({
       cancel: vi.fn(),
       async *[Symbol.asyncIterator]() {
@@ -27,8 +23,22 @@ function createClient(): FrontstageJsBlockCapabilityClient {
   };
 }
 
+function effect(
+  overrides: Partial<JsBlockHostInterfaceEffect> = {}
+): JsBlockHostInterfaceEffect {
+  return {
+    type: 'interface',
+    requestId: 'run-1',
+    effectId: 'effect-1',
+    interfaceId: 'list_application_conversations_records',
+    schemaDigest: 'digest-1',
+    request: { query: { page: 1 } },
+    ...overrides
+  };
+}
+
 describe('createFrontstageJsBlockCapabilityHandlers', () => {
-  test('AC-004 resolves the local alias before dispatching the registered operation', async () => {
+  test('AC-020 dispatches the source descriptor without resolving a binding', async () => {
     const client = createClient();
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
@@ -37,40 +47,19 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       csrfToken: 'csrf-1',
       baseUrl: 'http://api.test',
       client,
-      resolveBinding: (_requestId, alias) =>
-        alias === 'listConversations'
-          ? {
-              blockId: 'block-1',
-              binding: {
-                alias,
-                operation_id: 'list_application_conversations_records',
-                schema_digest: 'digest-1',
-                scope: 'frontstage_page_tab',
-                risk_level: 'low',
-                request_media_type: null,
-                response_media_type: 'application/json'
-              }
-            }
-          : null
+      resolveBlockId: () => 'block-1'
     });
-    const effect: JsBlockHostInterfaceEffect = {
-      type: 'interface',
-      requestId: 'restricted-block:block-1:code-1',
-      effectId: 'effect-1',
-      bindingAlias: 'listConversations',
-      request: { query: { page: 1 } }
-    };
 
-    await expect(handlers.interface(effect)).resolves.toEqual({ items: [] });
+    await expect(handlers.interface(effect())).resolves.toEqual({ items: [] });
     expect(client.dispatchFrontstageCallable).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
       'tab-1',
       {
         block_id: 'block-1',
-        binding_alias: 'listConversations',
+        interface_id: 'list_application_conversations_records',
         schema_digest: 'digest-1',
-        run_id: 'restricted-block:block-1:code-1',
+        run_id: 'run-1',
         draft_hash: 'runtime',
         request: { query: { page: 1 } }
       },
@@ -79,35 +68,37 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     );
   });
 
-  test('fails closed when the source block did not bind the alias', async () => {
+  test('fails closed when the source block is not registered for the run', async () => {
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
       pageId: 'page-1',
       tabId: 'tab-1',
       csrfToken: 'csrf-1',
-      resolveBinding: () => null
+      resolveBlockId: () => null
     });
-    await expect(
-      handlers.interface({
-        type: 'interface',
-        requestId: 'restricted-block:block-1:code-1',
-        effectId: 'effect-1',
-        bindingAlias: 'unbound'
-      })
-    ).rejects.toThrow('Interface binding is not registered: unbound.');
+
+    await expect(handlers.interface(effect())).rejects.toThrow(
+      'Interface source block is not registered.'
+    );
   });
 
-  test('uses a server-issued grant once for the exact high-risk draft binding', async () => {
+  test('AC-024 confirms once and issues a fresh one-time grant for every write call', async () => {
     const client = createClient();
-    const binding = {
-      alias: 'savePage',
-      operation_id: 'save_frontstage_tab_document',
-      schema_digest: 'digest-2',
-      scope: 'frontstage_page_tab',
-      risk_level: 'high',
-      request_media_type: 'application/json',
-      response_media_type: 'application/json'
-    };
+    vi.mocked(client.dispatchFrontstageCallable)
+      .mockRejectedValueOnce(writeGrantRequired())
+      .mockResolvedValueOnce({ saved: 1 })
+      .mockRejectedValueOnce(writeGrantRequired())
+      .mockResolvedValueOnce({ saved: 2 });
+    vi.mocked(client.issueFrontstageCallableWriteGrant)
+      .mockResolvedValueOnce({
+        grant_token: 'grant-1',
+        expires_at: '2026-07-20T00:00:00Z'
+      })
+      .mockResolvedValueOnce({
+        grant_token: 'grant-2',
+        expires_at: '2026-07-20T00:00:00Z'
+      });
+    const confirmWrite = vi.fn().mockResolvedValue(true);
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
       pageId: 'page-1',
@@ -115,64 +106,81 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       csrfToken: 'csrf-1',
       baseUrl: 'http://api.test',
       client,
-      resolveBinding: () => ({ blockId: 'block-1', binding })
+      resolveBlockId: () => 'block-1'
     });
-
     await handlers.prepareDraftRun({
       blockId: 'block-1',
       runId: 'run-1',
       draftHash: 'draft-1',
-      bindings: [binding]
+      confirmWrite
     });
-    await handlers.interface({
-      type: 'interface',
-      requestId: 'run-1',
-      effectId: 'effect-1',
-      bindingAlias: 'savePage',
+    const writeEffect = effect({
+      interfaceId: 'save_frontstage_tab_document',
+      schemaDigest: 'digest-write',
       request: { body: { payload: {} } }
     });
 
-    expect(client.issueFrontstageCallableWriteGrant).toHaveBeenCalledWith(
+    await expect(handlers.interface(writeEffect)).resolves.toEqual({
+      saved: 1
+    });
+    await expect(handlers.interface(writeEffect)).resolves.toEqual({
+      saved: 2
+    });
+
+    expect(confirmWrite).toHaveBeenCalledTimes(1);
+    expect(client.issueFrontstageCallableWriteGrant).toHaveBeenCalledTimes(2);
+    expect(client.issueFrontstageCallableWriteGrant).toHaveBeenLastCalledWith(
       'workspace-1',
       'page-1',
       'tab-1',
       {
         block_id: 'block-1',
-        binding_alias: 'savePage',
-        schema_digest: 'digest-2',
+        interface_id: 'save_frontstage_tab_document',
+        schema_digest: 'digest-write',
         run_id: 'run-1',
         draft_hash: 'draft-1'
       },
       'csrf-1',
       'http://api.test'
     );
-    expect(client.dispatchFrontstageCallable).toHaveBeenCalledWith(
+    expect(client.dispatchFrontstageCallable).toHaveBeenLastCalledWith(
       'workspace-1',
       'page-1',
       'tab-1',
-      expect.objectContaining({
-        block_id: 'block-1',
-        binding_alias: 'savePage',
-        run_id: 'run-1',
-        draft_hash: 'draft-1',
-        write_grant: 'grant-1'
-      }),
+      expect.objectContaining({ write_grant: 'grant-2' }),
       'csrf-1',
       'http://api.test'
     );
   });
 
-  test('opens, pulls, and cancels an SSE binding within the owning run', async () => {
+  test('does not issue a write grant when the draft confirmation is cancelled', async () => {
     const client = createClient();
-    const binding = {
-      alias: 'watchRun',
-      operation_id: 'stream_application_run_events',
-      schema_digest: 'digest-stream',
-      scope: 'frontstage_page_tab',
-      risk_level: 'low',
-      request_media_type: 'application/json',
-      response_media_type: 'text/event-stream'
-    };
+    vi.mocked(client.dispatchFrontstageCallable).mockRejectedValue(
+      writeGrantRequired()
+    );
+    const handlers = createFrontstageJsBlockCapabilityHandlers({
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      csrfToken: 'csrf-1',
+      client,
+      resolveBlockId: () => 'block-1'
+    });
+    await handlers.prepareDraftRun({
+      blockId: 'block-1',
+      runId: 'run-1',
+      draftHash: 'draft-1',
+      confirmWrite: vi.fn().mockResolvedValue(false)
+    });
+
+    await expect(handlers.interface(effect())).rejects.toThrow(
+      'Write interface call was cancelled.'
+    );
+    expect(client.issueFrontstageCallableWriteGrant).not.toHaveBeenCalled();
+  });
+
+  test('opens, pulls, and cancels an SSE descriptor within the owning run', async () => {
+    const client = createClient();
     const handlers = createFrontstageJsBlockCapabilityHandlers({
       workspaceId: 'workspace-1',
       pageId: 'page-1',
@@ -180,34 +188,42 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
       csrfToken: 'csrf-1',
       baseUrl: 'http://api.test',
       client,
-      resolveBinding: () => ({ blockId: 'block-1', binding })
+      resolveBlockId: () => 'block-1'
     });
-    const opened = (await handlers.interface({
-      type: 'interface',
-      requestId: 'run-1',
-      effectId: 'effect-open',
-      bindingAlias: 'watchRun',
-      operation: 'stream_open'
-    })) as { stream_id: string };
+    const descriptor = {
+      interfaceId: 'stream_application_run_events',
+      schemaDigest: 'digest-stream'
+    };
+    const opened = (await handlers.interface(
+      effect({ ...descriptor, operation: 'stream_open', request: undefined })
+    )) as { stream_id: string };
     await expect(
-      handlers.interface({
-        type: 'interface',
-        requestId: 'run-1',
-        effectId: 'effect-next',
-        bindingAlias: 'watchRun',
-        operation: 'stream_next',
-        streamId: opened.stream_id
-      })
+      handlers.interface(
+        effect({
+          ...descriptor,
+          operation: 'stream_next',
+          streamId: opened.stream_id,
+          request: undefined
+        })
+      )
     ).resolves.toEqual({ done: false, value: { progress: 1 } });
     await expect(
-      handlers.interface({
-        type: 'interface',
-        requestId: 'run-1',
-        effectId: 'effect-cancel',
-        bindingAlias: 'watchRun',
-        operation: 'stream_cancel',
-        streamId: opened.stream_id
-      })
+      handlers.interface(
+        effect({
+          ...descriptor,
+          operation: 'stream_cancel',
+          streamId: opened.stream_id,
+          request: undefined
+        })
+      )
     ).resolves.toBeUndefined();
   });
 });
+
+function writeGrantRequired(): ApiClientError {
+  return new ApiClientError({
+    status: 400,
+    code: 'write_grant',
+    message: 'write grant required'
+  });
+}

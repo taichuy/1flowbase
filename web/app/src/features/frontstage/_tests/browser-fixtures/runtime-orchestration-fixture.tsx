@@ -59,7 +59,10 @@ import type {
 import { Text } from '@1flowbase/block-renderer/antd-facade';
 
 async function main(ctx: BlockContext): Promise<BlockResult> {
-  const response = await ctx.interfaces.call('listRecords', {
+  const response = await ctx.interfaces.call({
+    interfaceId: 'list_records',
+    schemaDigest: 'digest-list-records'
+  }, {
     body: { blockId: ctx.props.blockId }
   });
 
@@ -112,8 +115,6 @@ export default { main } satisfies BlockModule;`;
         allowedEvents: []
       },
       mediatorPolicy: {
-        allowedInterfaces: ['listRecords'],
-
         allowedEvents: [],
         maxEventChainDepth: 4
       }

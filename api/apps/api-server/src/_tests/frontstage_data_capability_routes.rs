@@ -196,7 +196,7 @@ async fn dispatch_callable(
     workspace_id: &str,
     page_id: &str,
     tab_id: &str,
-    binding_alias: &str,
+    interface_id: &str,
     request: Value,
 ) -> (StatusCode, Value) {
     send_json(
@@ -209,7 +209,7 @@ async fn dispatch_callable(
         csrf,
         json!({
             "block_id": "migrated-host-fixture",
-            "binding_alias": binding_alias,
+            "interface_id": interface_id,
             "schema_digest": "migrated-to-host-integration",
             "run_id": "migrated-run",
             "draft_hash": "migrated-draft",

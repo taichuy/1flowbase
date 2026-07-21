@@ -90,8 +90,13 @@ block_contributions:
               readonly headers?: BlockContextRecord;
               readonly body?: unknown;
             }
+            export interface BlockInterfaceDescriptor {
+              readonly interfaceId: string;
+              readonly schemaDigest: string;
+            }
             export interface BlockContextInterfaces {
-              call<TResponse = unknown>(bindingAlias: string, request?: BlockInterfaceRequest): Promise<TResponse>;
+              call<TResponse = unknown>(descriptor: BlockInterfaceDescriptor, request?: BlockInterfaceRequest): Promise<TResponse>;
+              stream<TEvent = unknown>(descriptor: BlockInterfaceDescriptor, request?: BlockInterfaceRequest): AsyncIterable<TEvent>;
             }
             export interface BlockContextEvents {
               emit(event: string, payload?: BlockContextRecord): void;

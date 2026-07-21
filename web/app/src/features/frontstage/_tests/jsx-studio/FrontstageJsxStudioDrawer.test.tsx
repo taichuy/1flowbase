@@ -102,7 +102,6 @@ const block: FrontstageBlockInstance = {
     code: 'frontstage.js-ui-block'
   },
   props: { title: 'Orders' },
-  interfaces: [],
   presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },
   order: 0,
@@ -252,17 +251,12 @@ describe('FrontstageJsxStudioDrawer', () => {
         '/api/runtime/models/application_conversations/list'
       )
     );
-    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
+    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
-    await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
-    expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
-      interfaces: [
-        expect.objectContaining({
-          operation_id: 'list_application_conversations_records',
-          schema_digest: 'digest-1'
-        })
-      ]
-    });
+    await waitFor(() =>
+      expect(screen.getByText('接口代码已插入')).toBeInTheDocument()
+    );
+    expect(onSaveBlock).not.toHaveBeenCalled();
   });
 
   test('resizes the resource panel horizontally without resizing the Studio window', () => {
@@ -408,10 +402,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         workspaceId="workspace-1"
         pageId="page-1"
         tabId="tab-1"
-        block={{
-          ...block,
-          interfaces: []
-        }}
+        block={block}
         catalogEntry={catalogEntry}
         diagnostics={[]}
         onClose={vi.fn()}

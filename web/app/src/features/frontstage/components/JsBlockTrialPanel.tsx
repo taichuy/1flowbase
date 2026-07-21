@@ -92,31 +92,19 @@ export function JsBlockTrialPanel({
       code,
       contextSnapshot,
       inputs: {},
-      limits: {
-        ...limits,
-        allowedInterfaces: (block.interfaces ?? []).map(
-          (binding) => binding.alias
-        )
-      }
+      limits
     });
     if (!plan.ok) {
       setSnapshot(createRejectedSnapshot(block.id, plan.message));
       return;
     }
     const runId = `draft:${block.id}:${Date.now().toString(36)}`;
-    const bindings = block.interfaces ?? [];
-    if (
-      bindings.some((binding) => binding.risk_level !== 'low') &&
-      !(await confirmWriteRun())
-    ) {
-      return;
-    }
     try {
       await onPrepareDraftRun?.({
         blockId: block.id,
         runId,
         draftHash: hashJsBlockDraft(code),
-        bindings
+        confirmWrite: confirmWriteRun
       });
     } catch (error) {
       setSnapshot(
@@ -377,7 +365,7 @@ function RunInterfaceCalls({
       renderItem={(call) => (
         <List.Item>
           <Space direction="vertical">
-            <Typography.Text code>{call.bindingAlias}</Typography.Text>
+            <Typography.Text code>{call.interfaceId}</Typography.Text>
             <Typography.Text type="secondary">
               {call.status} · {call.durationMs}ms
             </Typography.Text>

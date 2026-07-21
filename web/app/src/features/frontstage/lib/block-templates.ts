@@ -111,7 +111,6 @@ async function main(_ctx: BlockContext): Promise<BlockResult> {
 /**
  * @1flowbase-context
  * inputs: 无
- * interfaces: 无
  * outputs: 无
  */
 export default {
