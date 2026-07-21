@@ -1,54 +1,23 @@
 import { describe, expect, test } from 'vitest';
 
-import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
-import type { FrontstageBlockInstance } from '../../lib/page-document';
 import {
-  createFrontstageJsxBindingSnippet,
+  createFrontstageContextComment,
   createFrontstageJsxEditorProjection
 } from '../../lib/jsx-studio/editor-projection';
 
-const capability = {
-  interface_id: 'list_application_conversations_records',
-  method: 'GET',
-  path: '/api/runtime/models/application_conversations/list',
-  parameter_schema: { type: 'object', properties: {} },
-  result_schema: { type: 'object', properties: {} },
-  request_media_type: null,
-  response_media_type: 'application/json',
-  schema_digest: 'digest-1',
-  bindable: true,
-  disabled_reason: null
-} as ConsoleFrontstageInterfaceCapability;
-
-const block = {
-  id: 'block-1',
-  interfaces: [
-    {
-      alias: 'listApplicationConversations',
-      operation_id: capability.interface_id,
-      schema_digest: capability.schema_digest,
-      scope: 'frontstage_page_tab',
-      risk_level: 'low',
-      request_media_type: null,
-      response_media_type: 'application/json'
-    }
-  ]
-} as unknown as FrontstageBlockInstance;
-
 describe('Frontstage JSX editor projection', () => {
-  test('AC-002/005 projects persisted bindings and an editable source comment', () => {
+  test('AC-021 projects only catalog components and the editable context comment', () => {
     const projection = createFrontstageJsxEditorProjection({
-      block,
-      catalogEntry: null,
-      interfaceCapabilities: [capability]
+      catalogEntry: null
     });
-    expect(projection.bindings[0].status).toBe('current');
+
+    expect(projection).toEqual({
+      components: [],
+      contextComment: createFrontstageContextComment(),
+      monacoExtraLibs: []
+    });
     expect(projection.contextComment).toContain('@1flowbase-context');
-    expect(projection.contextComment).toContain('listApplicationConversations');
-    expect(createFrontstageJsxBindingSnippet(projection.bindings[0])).toContain(
-      'async function listApplicationConversations('
-    );
+    expect(projection.contextComment).not.toContain('interfaces:');
     expect(projection.contextComment).not.toContain('ctx.data');
-    expect(projection.monacoExtraLibs).toEqual([]);
   });
 });

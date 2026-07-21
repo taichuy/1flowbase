@@ -233,7 +233,6 @@ describe('frontstage block composition', () => {
     const currentBlock = createBlock({
       id: 'hero',
       props: { title: 'Old title' },
-      interfaces: [],
       ports: { inputs: [], outputs: [] },
       presentation: { heightMode: 'auto', height: null },
       layout: { order: 0, region: 'main', width: 12 },
@@ -247,17 +246,6 @@ describe('frontstage block composition', () => {
     const nextState = updateFrontstageBlock(state, {
       ...currentBlock,
       props: { title: 'New title' },
-      interfaces: [
-        {
-          alias: 'getFrontstagePageDetail',
-          operation_id: 'get_frontstage_page_detail',
-          schema_digest: 'sha256:test',
-          scope: 'frontstage',
-          risk_level: 'read',
-          request_media_type: null,
-          response_media_type: 'application/json'
-        }
-      ],
       ports: {
         inputs: [],
         outputs: [{ name: 'total', schema: { type: 'number' } }]
@@ -270,12 +258,6 @@ describe('frontstage block composition', () => {
     expect(nextState.document.blocks[0]).toMatchObject({
       id: 'hero',
       props: { title: 'New title' },
-      interfaces: [
-        {
-          alias: 'getFrontstagePageDetail',
-          operation_id: 'get_frontstage_page_detail'
-        }
-      ],
       ports: {
         inputs: [],
         outputs: [{ name: 'total', schema: { type: 'number' } }]

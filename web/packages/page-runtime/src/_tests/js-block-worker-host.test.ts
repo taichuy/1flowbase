@@ -254,8 +254,7 @@ describe('JS block worker host adapter', () => {
       workerFactory: () => worker,
       effectBridge: {
         policy: {
-          allowedEvents: ['record.saved'],
-          allowedInterfaces: ['records']
+          allowedEvents: ['record.saved']
         },
         getContext: () => ({ tickId: 'tick-1' }),
         handlers: {
@@ -271,7 +270,8 @@ describe('JS block worker host adapter', () => {
       type: 'interface',
       requestId: 'request-1',
       effectId: 'effect-data',
-      bindingAlias: 'records',
+      interfaceId: 'records.get',
+      schemaDigest: 'digest-1',
       request: { query: { id: 'record-1' } }
     });
     worker.emitMessage({

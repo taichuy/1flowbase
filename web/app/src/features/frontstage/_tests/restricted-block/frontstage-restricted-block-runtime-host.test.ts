@@ -115,8 +115,6 @@ function createRunPlan(
     mediatorPolicy: {
       allowedEvents: ['record.saved'],
 
-      allowedInterfaces: ['listRecords'],
-
       maxEventChainDepth: 4
     },
     ...overrides

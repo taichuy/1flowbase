@@ -195,15 +195,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             pageId: selectedPageId,
             tabId,
             csrfToken,
-            resolveBinding: (requestId, bindingAlias) => {
+            resolveBlockId: (requestId) => {
               const blockId = requestId.split(':')[1];
-              const block = displayedPageDocument?.blocks.find(
-                (candidate) => candidate.id === blockId
+              return (
+                displayedPageDocument?.blocks.find(
+                  (candidate) => candidate.id === blockId
+                )?.id ?? null
               );
-              const binding = block?.interfaces?.find(
-                (candidate) => candidate.alias === bindingAlias
-              );
-              return block && binding ? { blockId: block.id, binding } : null;
             }
           })
         : undefined,

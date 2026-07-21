@@ -1,8 +1,7 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
-  fetchFrontstageInterfaceCapability,
   fetchFrontstageInterfaceCapabilities,
   type FrontstageInterfaceCapabilityPage,
   type FrontstageInterfaceCapabilityQuery
@@ -43,40 +42,5 @@ export function useFrontstageInterfaceCapabilities(
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error : null,
     refetch: query.refetch
-  };
-}
-
-export function useFrontstageInterfaceCapabilityDetails(
-  workspaceId: string | null,
-  interfaceIds: readonly string[],
-  active = true
-) {
-  const sessionStatus = useAuthStore((state) => state.sessionStatus);
-  const actor = useAuthStore((state) => state.actor);
-  const enabled = Boolean(
-    active &&
-    sessionStatus === 'authenticated' &&
-    workspaceId &&
-    actor?.current_workspace_id === workspaceId
-  );
-  const queries = useQueries({
-    queries: interfaceIds.map((interfaceId) => ({
-      queryKey: [
-        'frontstage',
-        'interface-capabilities',
-        workspaceId,
-        interfaceId
-      ],
-      queryFn: () =>
-        fetchFrontstageInterfaceCapability(workspaceId as string, interfaceId),
-      enabled
-    }))
-  });
-  return {
-    data: enabled
-      ? queries.flatMap((query) => (query.data ? [query.data] : []))
-      : [],
-    loading: enabled && queries.some((query) => query.isLoading),
-    error: queries.find((query) => query.error instanceof Error)?.error ?? null
   };
 }

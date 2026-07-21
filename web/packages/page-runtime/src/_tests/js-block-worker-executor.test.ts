@@ -61,7 +61,7 @@ describe('JS block worker executor', () => {
     });
   });
 
-  test('waits for a bound interface result before main completes', async () => {
+  test('waits for a source-described interface result before main completes', async () => {
     const messages: JsBlockWorkerToHostMessage[] = [];
     const executor = createJsBlockWorkerExecutor({
       modules: {},
@@ -72,7 +72,10 @@ describe('JS block worker executor', () => {
       type: 'run',
       request: request(`
         async function main(ctx) {
-          const response = await ctx.interfaces.call('listRecords', { query: { page: 1 } });
+          const response = await ctx.interfaces.call({
+            interfaceId: 'list_records',
+            schemaDigest: 'digest-1'
+          }, { query: { page: 1 } });
           return {
             view: { primitive: 'Text', props: { children: response.total } },
             outputs: { total: response.total }
@@ -86,7 +89,8 @@ describe('JS block worker executor', () => {
         expect.objectContaining({
           type: 'interface',
           effectId: expect.any(String),
-          bindingAlias: 'listRecords'
+          interfaceId: 'list_records',
+          schemaDigest: 'digest-1'
         })
       )
     );
@@ -106,6 +110,32 @@ describe('JS block worker executor', () => {
         outputs: { total: 3 }
       })
     );
+  });
+
+  test('fails locally instead of posting an incomplete interface descriptor', async () => {
+    const executor = createJsBlockWorkerExecutor({ modules: {} });
+    const messages = await executor.handleMessage({
+      direction: 'host_to_worker',
+      type: 'run',
+      request: request(`
+        async function main(ctx) {
+          await ctx.interfaces.call({ interfaceId: 'list_records' });
+          return { view: { primitive: 'Text', props: {} }, outputs: {} };
+        }
+        export default { main };
+      `)
+    });
+
+    expect(messages.some((message) => message.type === 'interface')).toBe(
+      false
+    );
+    expect(messages.at(-1)).toMatchObject({
+      type: 'error',
+      kind: 'main_failed',
+      message: expect.stringContaining(
+        'Interface source descriptor requires interfaceId and schemaDigest.'
+      )
+    });
   });
 
   test('maps invalid modules, main failures and invalid results to stable errors', async () => {

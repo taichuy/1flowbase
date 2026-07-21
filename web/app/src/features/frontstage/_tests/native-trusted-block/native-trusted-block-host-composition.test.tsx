@@ -94,7 +94,10 @@ import React from 'react';
 import { Button, Space } from 'antd';
 
 export default function HostCompositionBlock(props) {
-  void props.ctx.interfaces.call('native-records', { body: { title: props.props.title } });
+  void props.ctx.interfaces.call({
+    interfaceId: 'native_records',
+    schemaDigest: 'digest-native-records'
+  }, { body: { title: props.props.title } });
 
   return (
     <Space title="native-composition-block">

@@ -8,9 +8,9 @@ import {
   deleteFrontstagePageTab,
   deleteFrontstagePageNode,
   dispatchFrontstageCallable,
-  dispatchFrontstageCallableBinary,
   dispatchFrontstageCallableStream,
   issueFrontstageCallableWriteGrant,
+  type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
@@ -28,11 +28,20 @@ describe('console-frontstage client', () => {
   vi.spyOn(transport, 'apiFetch').mockImplementation(
     async (input) => input as never
   );
-  vi.spyOn(transport, 'apiFetchBlob').mockResolvedValue({
-    blob: new Blob([new Uint8Array([1, 2, 3])]),
-    filename: 'export.zip',
-    contentType: 'application/zip'
-  });
+  vi.spyOn(transport, 'apiFetchResource').mockImplementation(async (input) =>
+    (input.body as { interface_id?: string } | undefined)?.interface_id ===
+    'export_logs'
+      ? {
+          kind: 'blob',
+          blob: new Blob([new Uint8Array([1, 2, 3])]),
+          filename: 'export.zip',
+          contentType: 'application/zip'
+        }
+      : (input.body as { interface_id?: string } | undefined)?.interface_id ===
+          'delete_tab'
+        ? { kind: 'no_content' }
+        : { kind: 'json', value: input as never }
+  );
   vi.spyOn(transport, 'apiFetchStream').mockResolvedValue({
     body: new ReadableStream({
       start(controller) {
@@ -114,7 +123,7 @@ describe('console-frontstage client', () => {
     });
   });
 
-  test('dispatches a bound callable through the page-tab scope', async () => {
+  test('dispatches a source-described callable through the page-tab scope', async () => {
     await expect(
       dispatchFrontstageCallable(
         'workspace-1',
@@ -122,7 +131,7 @@ describe('console-frontstage client', () => {
         'tab-1',
         {
           block_id: 'block-1',
-          binding_alias: 'listConversations',
+          interface_id: 'list_conversations',
           schema_digest: 'digest-1',
           run_id: 'run-1',
           draft_hash: 'draft-1',
@@ -135,7 +144,7 @@ describe('console-frontstage client', () => {
       method: 'POST',
       body: {
         block_id: 'block-1',
-        binding_alias: 'listConversations',
+        interface_id: 'list_conversations',
         schema_digest: 'digest-1',
         run_id: 'run-1',
         draft_hash: 'draft-1',
@@ -147,13 +156,13 @@ describe('console-frontstage client', () => {
 
   test('preserves controlled binary responses as a worker-safe byte resource', async () => {
     await expect(
-      dispatchFrontstageCallableBinary(
+      dispatchFrontstageCallable<FrontstageCallableBinaryResource>(
         'workspace-1',
         'page-1',
         'tab-1',
         {
           block_id: 'block-1',
-          binding_alias: 'exportLogs',
+          interface_id: 'export_logs',
           schema_digest: 'digest-binary',
           run_id: 'run-1',
           draft_hash: 'draft-1'
@@ -165,12 +174,30 @@ describe('console-frontstage client', () => {
       file_name: 'export.zip',
       content_type: 'application/zip'
     });
-    expect(transport.apiFetchBlob).toHaveBeenCalledWith(
+    expect(transport.apiFetchResource).toHaveBeenCalledWith(
       expect.objectContaining({
         method: 'POST',
         csrfToken: 'csrf-123'
       })
     );
+  });
+
+  test('maps a 204 callable response to undefined', async () => {
+    await expect(
+      dispatchFrontstageCallable(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        {
+          block_id: 'block-1',
+          interface_id: 'delete_tab',
+          schema_digest: 'digest-delete',
+          run_id: 'run-1',
+          draft_hash: 'draft-1'
+        },
+        'csrf-123'
+      )
+    ).resolves.toBeUndefined();
   });
 
   test('parses callable SSE data through a cancellable async iterable', async () => {
@@ -182,7 +209,7 @@ describe('console-frontstage client', () => {
       'tab-1',
       {
         block_id: 'block-1',
-        binding_alias: 'watchRun',
+        interface_id: 'watch_run',
         schema_digest: 'digest-stream',
         run_id: 'run-1',
         draft_hash: 'draft-1'
@@ -194,7 +221,7 @@ describe('console-frontstage client', () => {
     expect(events).toEqual([{ progress: 1 }, 'complete']);
   });
 
-  test('issues a server-owned single-use write grant for one draft binding', async () => {
+  test('issues a server-owned single-use write grant for one draft source descriptor', async () => {
     await expect(
       issueFrontstageCallableWriteGrant(
         'workspace-1',
@@ -202,7 +229,7 @@ describe('console-frontstage client', () => {
         'tab-1',
         {
           block_id: 'block-1',
-          binding_alias: 'savePage',
+          interface_id: 'save_frontstage_tab_document',
           schema_digest: 'digest-2',
           run_id: 'run-1',
           draft_hash: 'draft-1'
@@ -214,7 +241,7 @@ describe('console-frontstage client', () => {
       method: 'POST',
       body: {
         block_id: 'block-1',
-        binding_alias: 'savePage',
+        interface_id: 'save_frontstage_tab_document',
         schema_digest: 'digest-2',
         run_id: 'run-1',
         draft_hash: 'draft-1'

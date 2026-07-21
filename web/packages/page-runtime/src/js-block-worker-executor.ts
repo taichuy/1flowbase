@@ -2,6 +2,7 @@ import type {
   BlockContext,
   BlockContextEntity,
   BlockContextIdentity,
+  BlockInterfaceDescriptor,
   BlockInterfaceRequest,
   BlockContextPage,
   BlockContextRecord,
@@ -371,23 +372,26 @@ function createBlockContext(
     },
     interfaces: {
       async call<TResponse = unknown>(
-        bindingAlias: string,
+        descriptor: BlockInterfaceDescriptor,
         interfaceRequest?: BlockInterfaceRequest
       ): Promise<TResponse> {
+        const source = requireBlockInterfaceDescriptor(descriptor);
         return (await requestHostEffect({
           direction: 'worker_to_host',
           type: 'interface',
           requestId: request.requestId,
-          bindingAlias,
+          interfaceId: source.interfaceId,
+          schemaDigest: source.schemaDigest,
           ...(interfaceRequest === undefined
             ? {}
             : { request: interfaceRequest })
         })) as TResponse;
       },
       stream<TEvent = unknown>(
-        bindingAlias: string,
+        descriptor: BlockInterfaceDescriptor,
         interfaceRequest?: BlockInterfaceRequest
       ): AsyncIterable<TEvent> {
+        const source = requireBlockInterfaceDescriptor(descriptor);
         let streamId: string | undefined;
         let finished = false;
         const open = async (): Promise<string> => {
@@ -396,7 +400,8 @@ function createBlockContext(
             direction: 'worker_to_host',
             type: 'interface',
             requestId: request.requestId,
-            bindingAlias,
+            interfaceId: source.interfaceId,
+            schemaDigest: source.schemaDigest,
             operation: 'stream_open',
             ...(interfaceRequest === undefined
               ? {}
@@ -418,7 +423,8 @@ function createBlockContext(
                   direction: 'worker_to_host',
                   type: 'interface',
                   requestId: request.requestId,
-                  bindingAlias,
+                  interfaceId: source.interfaceId,
+                  schemaDigest: source.schemaDigest,
                   operation: 'stream_next',
                   streamId: currentStreamId
                 })) as IteratorResult<TEvent>;
@@ -432,7 +438,8 @@ function createBlockContext(
                     direction: 'worker_to_host',
                     type: 'interface',
                     requestId: request.requestId,
-                    bindingAlias,
+                    interfaceId: source.interfaceId,
+                    schemaDigest: source.schemaDigest,
                     operation: 'stream_cancel',
                     streamId
                   });
@@ -607,6 +614,26 @@ function readIdentity(value: unknown): BlockContextIdentity | null {
     ...(typeof value.displayName === 'string'
       ? { displayName: value.displayName }
       : {})
+  };
+}
+
+function requireBlockInterfaceDescriptor(
+  value: unknown
+): BlockInterfaceDescriptor {
+  if (
+    !isRecord(value) ||
+    typeof value.interfaceId !== 'string' ||
+    value.interfaceId.length === 0 ||
+    typeof value.schemaDigest !== 'string' ||
+    value.schemaDigest.length === 0
+  ) {
+    throw new Error(
+      'Interface source descriptor requires interfaceId and schemaDigest.'
+    );
+  }
+  return {
+    interfaceId: value.interfaceId,
+    schemaDigest: value.schemaDigest
   };
 }
 

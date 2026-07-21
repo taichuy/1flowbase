@@ -41,7 +41,10 @@ function clampIndex(index: number, maxIndex: number): number {
   return Math.trunc(index);
 }
 
-function toUniqueValue(preferredValue: string, usedValues: Set<string>): string {
+function toUniqueValue(
+  preferredValue: string,
+  usedValues: Set<string>
+): string {
   if (!usedValues.has(preferredValue)) {
     usedValues.add(preferredValue);
     return preferredValue;
@@ -112,8 +115,7 @@ function normalizeBlocks(
   const uniqueBlocks = blocks.map((block, index) => {
     const preferredId = asNonEmptyString(block.id) ?? `block-${index + 1}`;
     const id = toUniqueValue(preferredId, usedIds);
-    const preferredCodeRef =
-      asNonEmptyString(block.codeRef) ?? `${id}-code`;
+    const preferredCodeRef = asNonEmptyString(block.codeRef) ?? `${id}-code`;
     const codeRef = toUniqueValue(preferredCodeRef, usedCodeRefs);
 
     return cloneBlock(block, id, codeRef, block.order);
@@ -192,7 +194,7 @@ function createBlockFromInput(
       heightMode: input.presentation?.heightMode ?? 'auto',
       height:
         input.presentation?.heightMode === 'fixed'
-          ? input.presentation.height ?? 320
+          ? (input.presentation.height ?? 320)
           : null
     },
     layout: {
@@ -351,9 +353,6 @@ export function updateFrontstageBlock(
         ? {
             ...block,
             props: { ...nextBlock.props },
-            interfaces: (nextBlock.interfaces ?? []).map((binding) => ({
-              ...binding
-            })),
             ports: {
               inputs: (nextBlock.ports?.inputs ?? []).map((port) => ({
                 ...port,

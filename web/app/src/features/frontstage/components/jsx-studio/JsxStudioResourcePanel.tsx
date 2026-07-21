@@ -19,11 +19,7 @@ import { useEffect, useState } from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
 import { fetchFrontstageInterfaceCapability } from '../../api/interface-capabilities';
 import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
-import { bindFrontstageInterfaceCapability } from '../../lib/jsx-studio/interface-binding';
-import {
-  createFrontstageJsxBindingSnippet,
-  type FrontstageJsxEditorProjection
-} from '../../lib/jsx-studio/editor-projection';
+import type { FrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-codegen';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
@@ -62,11 +58,8 @@ export function JsxStudioResourcePanel({
   if (section === 'interfaces') {
     return (
       <InterfaceConnectorPanel
-        block={block}
         workspaceId={workspaceId}
-        projection={projection}
         onInsertCode={onInsertCode}
-        onSaveBlock={onSaveBlock}
       />
     );
   }
@@ -106,27 +99,22 @@ export function JsxStudioResourcePanel({
 }
 
 function InterfaceConnectorPanel({
-  block,
   workspaceId,
-  onInsertCode,
-  onSaveBlock,
-  projection
+  onInsertCode
 }: {
-  block: FrontstageBlockInstance;
   workspaceId: string;
   onInsertCode: (source: string) => void;
-  onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
-  projection: FrontstageJsxEditorProjection;
 }) {
   const pageSize = 10;
-  const [pendingBindingId, setPendingBindingId] = useState<string | null>(null);
+  const [pendingInterfaceId, setPendingInterfaceId] = useState<string | null>(
+    null
+  );
   const [selectedOperationId, setSelectedOperationId] = useState<string>();
   const [pathInput, setPathInput] = useState('');
   const [pathQuery, setPathQuery] = useState('');
   const [adapterId, setAdapterId] = useState<string>();
   const [method, setMethod] = useState<string>();
   const [offset, setOffset] = useState(0);
-  const bindings = block.interfaces ?? [];
   const capabilityPage = useFrontstageInterfaceCapabilities(workspaceId, {
     path_query: pathQuery || undefined,
     adapter_id: adapterId,
@@ -155,47 +143,29 @@ function InterfaceConnectorPanel({
     }
   }, [interfaceCapabilities, selectedOperationId]);
 
-  const bindCapability = async (interfaceId: string) => {
-    setPendingBindingId(interfaceId);
+  const insertCapability = async (interfaceId: string) => {
+    setPendingInterfaceId(interfaceId);
     try {
       const operation = await fetchFrontstageInterfaceCapability(
         workspaceId,
         interfaceId
       );
-      const alias = createUniqueBindingAlias(
-        operation.interface_id,
-        bindings.map((item) => item.alias)
+      onInsertCode(
+        generateFrontstageInterfaceSource(
+          operation,
+          createInterfaceFunctionName(operation.interface_id)
+        ).source
       );
-      const saved = await onSaveBlock(
-        bindFrontstageInterfaceCapability(block, alias, operation)
+      setSelectedOperationId(undefined);
+      void message.success(
+        i18nText('frontstage', 'auto.interface_code_inserted')
       );
-      if (saved !== false) {
-        onInsertCode(
-          generateFrontstageInterfaceSource(operation, alias).source
-        );
-        setSelectedOperationId(undefined);
-        void message.success(
-          i18nText('frontstage', 'auto.interface_bound_and_inserted')
-        );
-      }
     } catch {
       void message.error(
         i18nText('frontstage', 'auto.capability_catalog_load_failed')
       );
     } finally {
-      setPendingBindingId(null);
-    }
-  };
-
-  const removeBinding = async (bindingKey: string) => {
-    setPendingBindingId(bindingKey);
-    try {
-      await onSaveBlock({
-        ...block,
-        interfaces: bindings.filter((binding) => binding.alias !== bindingKey)
-      });
-    } finally {
-      setPendingBindingId(null);
+      setPendingInterfaceId(null);
     }
   };
 
@@ -208,51 +178,6 @@ function InterfaceConnectorPanel({
           'auto.interface_connector_description'
         )}
       />
-      {projection.bindings.length > 0 ? (
-        <section className="frontstage-jsx-studio__resource-section">
-          <Typography.Text strong>
-            {i18nText('frontstage', 'auto.bound_interfaces')}
-          </Typography.Text>
-          {projection.bindings.map((binding) => (
-            <div
-              className="frontstage-jsx-studio__binding-row"
-              key={binding.binding.alias}
-            >
-              <div className="frontstage-jsx-studio__binding-copy">
-                <Typography.Text code>{binding.binding.alias}</Typography.Text>
-                {binding.operation ? (
-                  <Typography.Text type="secondary" ellipsis>
-                    {`${binding.operation.method.toUpperCase()} ${binding.operation.path}`}
-                  </Typography.Text>
-                ) : null}
-                {binding.status === 'stale' ? (
-                  <Tag color="warning">{binding.status}</Tag>
-                ) : null}
-              </div>
-              <Space size={4}>
-                <Button
-                  size="small"
-                  disabled={!binding.operation}
-                  onClick={() =>
-                    onInsertCode(createFrontstageJsxBindingSnippet(binding))
-                  }
-                >
-                  {i18nText('frontstage', 'auto.insert_code')}
-                </Button>
-                <Button
-                  danger
-                  size="small"
-                  loading={pendingBindingId === binding.binding.alias}
-                  onClick={() => void removeBinding(binding.binding.alias)}
-                >
-                  {i18nText('frontstage', 'auto.unbind')}
-                </Button>
-              </Space>
-            </div>
-          ))}
-        </section>
-      ) : null}
-
       <section className="frontstage-jsx-studio__resource-section">
         <Input
           allowClear
@@ -331,26 +256,13 @@ function InterfaceConnectorPanel({
           rowSelection={{
             type: 'radio',
             selectedRowKeys: selectedOperationId ? [selectedOperationId] : [],
-            getCheckboxProps: (operation) => ({
-              disabled: bindings.some(
-                (binding) => binding.operation_id === operation.interface_id
-              )
-            }),
             onChange: (keys) =>
               setSelectedOperationId(
                 keys[0] === undefined ? undefined : String(keys[0])
               )
           }}
           onRow={(operation) => ({
-            onClick: () => {
-              if (
-                !bindings.some(
-                  (binding) => binding.operation_id === operation.interface_id
-                )
-              ) {
-                setSelectedOperationId(operation.interface_id);
-              }
-            }
+            onClick: () => setSelectedOperationId(operation.interface_id)
           })}
           pagination={{
             current: Math.floor(offset / pageSize) + 1,
@@ -364,12 +276,12 @@ function InterfaceConnectorPanel({
         <Button
           type="primary"
           disabled={!selectedOperationId}
-          loading={pendingBindingId === selectedOperationId}
+          loading={pendingInterfaceId === selectedOperationId}
           onClick={() => {
-            if (selectedOperationId) void bindCapability(selectedOperationId);
+            if (selectedOperationId) void insertCapability(selectedOperationId);
           }}
         >
-          {i18nText('frontstage', 'auto.bind_and_insert')}
+          {i18nText('frontstage', 'auto.insert_code')}
         </Button>
       </section>
     </div>
@@ -766,21 +678,8 @@ function ResourceHeading({
   );
 }
 
-function createUniqueBindingAlias(
-  operationId: string,
-  usedAliases: readonly string[]
-): string {
-  const base = toCamelCase(operationId) || 'boundInterface';
-  const used = new Set(usedAliases);
-  if (!used.has(base)) {
-    return base;
-  }
-
-  let suffix = 2;
-  while (used.has(`${base}${suffix}`)) {
-    suffix += 1;
-  }
-  return `${base}${suffix}`;
+function createInterfaceFunctionName(operationId: string): string {
+  return toCamelCase(operationId) || 'callInterface';
 }
 
 function toCamelCase(value: string): string {

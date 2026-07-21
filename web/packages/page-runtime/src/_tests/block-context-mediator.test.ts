@@ -3,10 +3,9 @@ import { describe, expect, test } from 'vitest';
 import { createBlockContextMediator } from '../index';
 
 describe('BlockContext host mediator', () => {
-  test('allows only declared events and interface aliases', () => {
+  test('allows declared events and complete interface source descriptors', () => {
     const mediator = createBlockContextMediator({
       allowedEvents: ['record.saved'],
-      allowedInterfaces: ['records'],
       maxEventChainDepth: 1
     });
     expect(
@@ -22,12 +21,17 @@ describe('BlockContext host mediator', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-1',
-        bindingAlias: 'records',
+        interfaceId: 'records.list',
+        schemaDigest: 'digest-1',
         request: { query: { page: 1 } }
       }).result
     ).toMatchObject({
       ok: true,
-      effect: { type: 'interface', bindingAlias: 'records' }
+      effect: {
+        type: 'interface',
+        interfaceId: 'records.list',
+        schemaDigest: 'digest-1'
+      }
     });
   });
 
@@ -40,9 +44,9 @@ describe('BlockContext host mediator', () => {
       {
         type: 'interface',
         requestId: 'run-1',
-        bindingAlias: 'deleteEverything'
+        interfaceId: 'delete_everything'
       },
-      'interface_denied'
+      'effect_invalid'
     ],
     [
       { type: 'action', requestId: 'run-1', actionId: 'legacy' },

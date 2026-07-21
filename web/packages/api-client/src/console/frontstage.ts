@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchBlob, apiFetchStream } from '../transport';
+import { apiFetch, apiFetchResource, apiFetchStream } from '../transport';
 
 export type ConsoleFrontstageNavigationPlacement = 'topbar' | 'sidebar';
 export type ConsoleFrontstagePageContentPresentation = 'single' | 'tabs';
@@ -181,7 +181,7 @@ export interface FrontstageCallableRequest {
 
 export interface DispatchFrontstageCallableInput {
   block_id: string;
-  binding_alias: string;
+  interface_id: string;
   schema_digest: string;
   run_id: string;
   draft_hash: string;
@@ -191,7 +191,7 @@ export interface DispatchFrontstageCallableInput {
 
 export interface IssueFrontstageCallableWriteGrantInput {
   block_id: string;
-  binding_alias: string;
+  interface_id: string;
   schema_digest: string;
   run_id: string;
   draft_hash: string;
@@ -241,35 +241,39 @@ export function dispatchFrontstageCallable<T = unknown>(
   csrfToken: string,
   baseUrl?: string
 ): Promise<T> {
-  return apiFetch<T>({
+  return dispatchFrontstageCallableResource<T>({
     path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
-    method: 'POST',
-    body: input,
+    input,
     csrfToken,
     baseUrl
   });
 }
 
-export async function dispatchFrontstageCallableBinary(
-  workspaceId: string,
-  pageId: string,
-  tabId: string,
-  input: DispatchFrontstageCallableInput,
-  csrfToken: string,
-  baseUrl?: string
-): Promise<FrontstageCallableBinaryResource> {
-  const response = await apiFetchBlob({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+async function dispatchFrontstageCallableResource<T>({
+  path,
+  input,
+  csrfToken,
+  baseUrl
+}: {
+  path: string;
+  input: DispatchFrontstageCallableInput;
+  csrfToken: string;
+  baseUrl?: string;
+}): Promise<T> {
+  const response = await apiFetchResource<T>({
+    path,
     method: 'POST',
     body: input,
     csrfToken,
     baseUrl
   });
+  if (response.kind === 'json') return response.value;
+  if (response.kind === 'no_content') return undefined as T;
   return {
     bytes: new Uint8Array(await response.blob.arrayBuffer()),
     file_name: response.filename,
     content_type: response.contentType
-  };
+  } as T;
 }
 
 const MAX_SSE_BUFFER_LENGTH = 1024 * 1024;

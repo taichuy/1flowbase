@@ -2,8 +2,6 @@ import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client
 
 export interface FrontstageOpenApiCodegenResult {
   source: string;
-  function_name: string;
-  schema_digest: string;
 }
 
 type JsonSchema = Record<string, unknown>;
@@ -23,12 +21,12 @@ const sourcePolicyDeniedPropertyNames = new Set([
 
 export function generateFrontstageInterfaceSource(
   operation: ConsoleFrontstageInterfaceCapability,
-  bindingAlias: string
+  localFunctionName: string
 ): FrontstageOpenApiCodegenResult {
   if (!operation.bindable) {
     throw new Error(operation.disabled_reason ?? 'Operation is not bindable.');
   }
-  const functionName = requireIdentifier(bindingAlias);
+  const functionName = requireIdentifier(localFunctionName);
   const typeBase = toPascalCase(functionName) || 'BoundInterface';
   const declarations: string[] = [];
   const request = asSchema(operation.parameter_schema);
@@ -86,7 +84,6 @@ export function generateFrontstageInterfaceSource(
     '/**',
     ' * @1flowbase-openapi',
     ` * operationId=${operation.interface_id}`,
-    ` * binding=${functionName}`,
     ` * ${operation.method.toUpperCase()} ${operation.path}`,
     ` * specDigest=${operation.schema_digest}`,
     ' */'
@@ -97,16 +94,15 @@ export function generateFrontstageInterfaceSource(
     `  ctx: BlockContext${parameterSource}`,
     `): ${isStream ? `AsyncIterable<${responseType}>` : `Promise<${responseType}>`} {`,
     `  return ctx.interfaces.${isStream ? 'stream' : 'call'}<${responseType}>(`,
-    `    '${escapeSingleQuote(functionName)}'${requestSource}`,
+    '    {',
+    `      interfaceId: '${escapeSingleQuote(operation.interface_id)}',`,
+    `      schemaDigest: '${escapeSingleQuote(operation.schema_digest)}'`,
+    `    }${requestSource}`,
     '  );',
     '}'
   ].join('\n');
 
-  return {
-    source: [provenance, ...declarations, callable].join('\n\n'),
-    function_name: functionName,
-    schema_digest: operation.schema_digest
-  };
+  return { source: [provenance, ...declarations, callable].join('\n\n') };
 }
 
 function declareSchema(

@@ -98,7 +98,7 @@ describe('BlockModule runtime contract', () => {
     });
   });
 
-  test('AC-004 waits for a bound interface effect before completing main', async () => {
+  test('AC-020 waits for a source-described interface effect before completing main', async () => {
     const messages: JsBlockWorkerToHostMessage[] = [];
     const executor = createJsBlockWorkerExecutor({
       modules: {},
@@ -106,7 +106,10 @@ describe('BlockModule runtime contract', () => {
     });
     const request = createRequest(`
       async function main(ctx) {
-        const response = await ctx.interfaces.call('listConversations', {
+        const response = await ctx.interfaces.call({
+          interfaceId: 'list_conversations',
+          schemaDigest: 'digest-1'
+        }, {
           query: { page: 1 }
         });
         return {
@@ -126,7 +129,8 @@ describe('BlockModule runtime contract', () => {
       expect(messages).toContainEqual(
         expect.objectContaining({
           type: 'interface',
-          bindingAlias: 'listConversations',
+          interfaceId: 'list_conversations',
+          schemaDigest: 'digest-1',
           request: { query: { page: 1 } }
         })
       );
@@ -153,17 +157,16 @@ describe('BlockModule runtime contract', () => {
     });
   });
 
-  test('AC-004 mediator accepts only explicitly bound interface aliases', () => {
-    const mediator = createBlockContextMediator({
-      allowedInterfaces: ['listConversations']
-    });
+  test('AC-020 mediator accepts complete source descriptors and rejects incomplete ones', () => {
+    const mediator = createBlockContextMediator({});
 
     expect(
       mediator.handle({
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-1',
-        bindingAlias: 'listConversations',
+        interfaceId: 'list_conversations',
+        schemaDigest: 'digest-1',
         request: { query: { page: 1 } }
       }).result
     ).toMatchObject({ ok: true });
@@ -172,12 +175,12 @@ describe('BlockModule runtime contract', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-2',
-        bindingAlias: 'deleteEverything'
+        interfaceId: 'delete_everything'
       }).result
     ).toMatchObject({
       ok: false,
-      code: 'interface_denied',
-      path: 'interface.bindingAlias'
+      code: 'effect_invalid',
+      path: 'effect.schemaDigest'
     });
   });
 
@@ -190,7 +193,10 @@ describe('BlockModule runtime contract', () => {
     const request = createRequest(`
       async function main(ctx) {
         let progress = 0;
-        for await (const event of ctx.interfaces.stream('watchRun')) {
+        for await (const event of ctx.interfaces.stream({
+          interfaceId: 'watch_run',
+          schemaDigest: 'digest-stream'
+        })) {
           progress = event.progress;
           break;
         }

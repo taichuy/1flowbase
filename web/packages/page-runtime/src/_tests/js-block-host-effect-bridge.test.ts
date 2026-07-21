@@ -11,7 +11,7 @@ describe('JS block host mediator effect bridge', () => {
     const messages: JsBlockWorkerEffectResultMessage[] = [];
     const traces: unknown[] = [];
     const bridge = createJsBlockHostEffectBridge({
-      mediator: createBlockContextMediator({ allowedInterfaces: ['records'] }),
+      mediator: createBlockContextMediator({}),
       resolveEffect: (message) => messages.push(message),
       handlers: { interface: async () => ({ token: 'secret', total: 2 }) },
       onInterfaceCall: (trace) => traces.push(trace)
@@ -22,7 +22,8 @@ describe('JS block host mediator effect bridge', () => {
         type: 'interface',
         requestId: 'run-1',
         effectId: 'effect-1',
-        bindingAlias: 'records',
+        interfaceId: 'records.list',
+        schemaDigest: 'digest-1',
         request: { headers: { authorization: 'Bearer secret' } }
       })
     ).toMatchObject({ handled: true, transition: { result: { ok: true } } });
@@ -35,34 +36,34 @@ describe('JS block host mediator effect bridge', () => {
     });
   });
 
-  test('returns failed effect results for denied aliases and missing handlers', () => {
-    const denied: JsBlockWorkerEffectResultMessage[] = [];
-    const deniedBridge = createJsBlockHostEffectBridge({
-      mediator: createBlockContextMediator({ allowedInterfaces: [] }),
-      resolveEffect: (message) => denied.push(message)
-    });
-    deniedBridge.handle({
-      direction: 'worker_to_host',
-      type: 'interface',
-      requestId: 'run-1',
-      effectId: 'effect-1',
-      bindingAlias: 'records'
-    });
-    expect(denied[0]).toMatchObject({
-      ok: false,
-      error: { errors: [{ code: 'interface_denied' }] }
+  test('returns failed effect results for incomplete descriptors and missing handlers', () => {
+    expect(
+      createJsBlockHostEffectBridge({
+        mediator: createBlockContextMediator({}),
+        resolveEffect: vi.fn()
+      }).handle({
+        direction: 'worker_to_host',
+        type: 'interface',
+        requestId: 'run-1',
+        effectId: 'effect-invalid',
+        interfaceId: 'records.list'
+      })
+    ).toMatchObject({
+      handled: true,
+      transition: { result: { ok: false, code: 'effect_invalid' } }
     });
 
     const missing: JsBlockWorkerEffectResultMessage[] = [];
     createJsBlockHostEffectBridge({
-      mediator: createBlockContextMediator({ allowedInterfaces: ['records'] }),
+      mediator: createBlockContextMediator({}),
       resolveEffect: (message) => missing.push(message)
     }).handle({
       direction: 'worker_to_host',
       type: 'interface',
       requestId: 'run-1',
       effectId: 'effect-1',
-      bindingAlias: 'records'
+      interfaceId: 'records.list',
+      schemaDigest: 'digest-1'
     });
     expect(missing[0]).toMatchObject({
       ok: false,
@@ -73,7 +74,7 @@ describe('JS block host mediator effect bridge', () => {
   test('summarizes binary payloads instead of copying them into interface traces', async () => {
     const traces: unknown[] = [];
     const bridge = createJsBlockHostEffectBridge({
-      mediator: createBlockContextMediator({ allowedInterfaces: ['upload'] }),
+      mediator: createBlockContextMediator({}),
       resolveEffect: vi.fn(),
       handlers: {
         interface: async () => ({
@@ -89,7 +90,8 @@ describe('JS block host mediator effect bridge', () => {
       type: 'interface',
       requestId: 'run-1',
       effectId: 'effect-binary',
-      bindingAlias: 'upload',
+      interfaceId: 'files.upload',
+      schemaDigest: 'digest-upload',
       request: { body: { base64: 'A'.repeat(8_000) } }
     });
     await vi.waitFor(() => expect(traces).toHaveLength(1));

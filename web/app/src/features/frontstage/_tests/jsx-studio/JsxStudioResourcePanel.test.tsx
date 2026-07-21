@@ -30,7 +30,6 @@ vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
 const block = {
   id: 'orders-block',
   codeRef: 'orders-code',
-  interfaces: [],
   ports: { inputs: [], outputs: [] },
   props: {},
   presentation: { heightMode: 'auto', height: null }
@@ -86,7 +85,6 @@ const operations = [
 ] as ConsoleFrontstageInterfaceCapability[];
 
 const projection: FrontstageJsxEditorProjection = {
-  bindings: [],
   components: [],
   contextComment: '',
   monacoExtraLibs: []
@@ -157,7 +155,7 @@ describe('TSX Studio interface connector', () => {
     );
   });
 
-  test('searches paths through the backend page and loads detail before binding', async () => {
+  test('searches paths, loads one detail, and inserts code without saving a binding', async () => {
     const { onInsertCode, onSaveBlock } = renderInterfacePanel();
     expect(
       interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
@@ -179,27 +177,18 @@ describe('TSX Studio interface connector', () => {
     expect(
       interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
     ).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
+    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
-    await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onInsertCode).toHaveBeenCalledTimes(1));
     expect(
       interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
     ).toHaveBeenCalledWith('workspace-1', 'get_frontstage_page_detail');
-    expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
-      interfaces: [
-        expect.objectContaining({
-          alias: 'getFrontstagePageDetail',
-          operation_id: 'get_frontstage_page_detail',
-          schema_digest: 'digest-detail'
-        })
-      ]
-    });
-    expect(onInsertCode).toHaveBeenCalledTimes(1);
+    expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).toHaveBeenCalledWith(
       expect.stringContaining('async function getFrontstagePageDetail(')
     );
-    expect(onSaveBlock.mock.invocationCallOrder[0]).toBeLessThan(
-      onInsertCode.mock.invocationCallOrder[0]
+    expect(onInsertCode).toHaveBeenCalledWith(
+      expect.stringContaining("interfaceId: 'get_frontstage_page_detail'")
     );
   });
 
@@ -247,16 +236,24 @@ describe('TSX Studio interface connector', () => {
     );
   });
 
-  test('does not insert generated code when binding is rejected', async () => {
+  test('does not insert generated code when capability detail loading fails', async () => {
     const onInsertCode = createInsertCodeMock();
-    const onSaveBlock = createSaveBlockMock().mockResolvedValue(false);
+    const onSaveBlock = createSaveBlockMock();
+    interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability.mockRejectedValueOnce(
+      new Error('detail unavailable')
+    );
     renderInterfacePanel({ onInsertCode, onSaveBlock });
     fireEvent.click(
       await screen.findByText('/api/console/frontstage/pages/{page_id}')
     );
-    fireEvent.click(screen.getByRole('button', { name: '绑定并插入' }));
+    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
-    await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
+      ).toHaveBeenCalledTimes(1)
+    );
+    expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).not.toHaveBeenCalled();
   });
 });

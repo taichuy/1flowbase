@@ -22,7 +22,6 @@ const block = {
     code: 'tsx'
   },
   props: {},
-  interfaces: [],
   ports: { inputs: [], outputs: [] },
   presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },

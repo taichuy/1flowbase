@@ -41,6 +41,11 @@ export interface BlockInterfaceRequest {
   body?: unknown;
 }
 
+export interface BlockInterfaceDescriptor {
+  interfaceId: string;
+  schemaDigest: string;
+}
+
 export interface BlockBinaryInput {
   base64: string;
   file_name?: string;
@@ -55,11 +60,11 @@ export interface BlockBinaryResource {
 
 export interface BlockContextInterfaces {
   call<TResponse = unknown>(
-    bindingAlias: string,
+    descriptor: BlockInterfaceDescriptor,
     request?: BlockInterfaceRequest
   ): Promise<TResponse>;
   stream<TEvent = unknown>(
-    bindingAlias: string,
+    descriptor: BlockInterfaceDescriptor,
     request?: BlockInterfaceRequest
   ): AsyncIterable<TEvent>;
 }

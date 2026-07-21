@@ -97,8 +97,6 @@ describe('PageCanvas runtime preview UI', () => {
               allowedDataPermissions: []
             },
             mediatorPolicy: {
-              allowedInterfaces: ['listRecords'],
-
               allowedEvents: [],
               maxEventChainDepth: 4
             }
@@ -210,8 +208,6 @@ describe('PageCanvas runtime preview UI', () => {
               allowedDataPermissions: []
             },
             mediatorPolicy: {
-              allowedInterfaces: ['listRecords'],
-
               allowedEvents: [],
               maxEventChainDepth: 4
             }

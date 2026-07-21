@@ -108,9 +108,10 @@ pub struct FrontstageInterfaceCapabilityPageResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DispatchFrontstageCallableBody {
     pub block_id: String,
-    pub binding_alias: String,
+    pub interface_id: String,
     pub schema_digest: String,
     pub run_id: String,
     pub draft_hash: String,
@@ -120,9 +121,10 @@ pub struct DispatchFrontstageCallableBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct IssueFrontstageCallableWriteGrantBody {
     pub block_id: String,
-    pub binding_alias: String,
+    pub interface_id: String,
     pub schema_digest: String,
     pub run_id: String,
     pub draft_hash: String,
@@ -141,27 +143,16 @@ struct FrontstageCallableWriteGrant {
     page_id: Uuid,
     tab_id: Uuid,
     block_id: String,
-    binding_alias: String,
+    interface_id: String,
+    schema_digest: String,
     run_id: String,
     draft_hash: String,
-    operation_id: String,
     expires_at: OffsetDateTime,
-}
-
-#[derive(Debug, Deserialize)]
-struct FrontstageCallableBinding {
-    alias: String,
-    operation_id: String,
-    schema_digest: String,
-    scope: String,
-    risk_level: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct FrontstageCallableBlock {
     id: String,
-    #[serde(default)]
-    interfaces: Vec<FrontstageCallableBinding>,
 }
 
 #[utoipa::path(
@@ -306,12 +297,12 @@ pub async fn dispatch_frontstage_callable_interface(
         })
         .await?;
 
-    let callable = resolve_bound_callable(
+    let callable = resolve_source_callable(
         &state,
         workspace_id,
         &detail.document.payload,
         &body.block_id,
-        &body.binding_alias,
+        &body.interface_id,
         &body.schema_digest,
     )
     .await?;
@@ -328,10 +319,10 @@ pub async fn dispatch_frontstage_callable_interface(
                 page_id,
                 tab_id,
                 block_id: body.block_id.clone(),
-                binding_alias: body.binding_alias.clone(),
+                interface_id: body.interface_id.clone(),
+                schema_digest: body.schema_digest.clone(),
                 run_id: body.run_id.clone(),
                 draft_hash: body.draft_hash.clone(),
-                operation_id: callable.interface.operation_id.clone(),
                 expires_at: OffsetDateTime::UNIX_EPOCH,
             },
         )
@@ -402,17 +393,17 @@ pub async fn issue_frontstage_callable_write_grant(
             tab_reference: tab_id.to_string(),
         })
         .await?;
-    let callable = resolve_bound_callable(
+    let callable = resolve_source_callable(
         &state,
         workspace_id,
         &detail.document.payload,
         &body.block_id,
-        &body.binding_alias,
+        &body.interface_id,
         &body.schema_digest,
     )
     .await?;
     if callable.risk_level == "low" {
-        return Err(ControlPlaneError::InvalidInput("binding_alias").into());
+        return Err(ControlPlaneError::InvalidInput("interface_id").into());
     }
     if body.run_id.trim().is_empty() || body.draft_hash.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("draft_run").into());
@@ -426,10 +417,10 @@ pub async fn issue_frontstage_callable_write_grant(
         page_id,
         tab_id,
         block_id: body.block_id,
-        binding_alias: body.binding_alias,
+        interface_id: body.interface_id,
+        schema_digest: body.schema_digest,
         run_id: body.run_id,
         draft_hash: body.draft_hash,
-        operation_id: callable.interface.operation_id,
         expires_at,
     };
     state
@@ -456,37 +447,27 @@ pub async fn issue_frontstage_callable_write_grant(
     )))
 }
 
-async fn resolve_bound_callable(
+async fn resolve_source_callable(
     state: &ApiState,
     workspace_id: Uuid,
     document_payload: &Value,
     block_id: &str,
-    binding_alias: &str,
+    interface_id: &str,
     schema_digest: &str,
 ) -> Result<RegisteredCallable, ApiError> {
-    let binding =
-        resolve_document_binding(document_payload, block_id, binding_alias, schema_digest)?;
-    let callable = get_openapi_capability(state, workspace_id, &binding.operation_id)
+    ensure_document_block(document_payload, block_id)?;
+    let callable = get_openapi_capability(state, workspace_id, interface_id)
         .await?
         .map(registered_callable)
         .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
     let catalog = to_response(callable.clone());
-    if !catalog.bindable
-        || catalog.schema_digest != binding.schema_digest
-        || catalog.scope != binding.scope
-        || catalog.risk_level != binding.risk_level
-    {
-        return Err(ControlPlaneError::InvalidInput("frontstage_callable_binding").into());
+    if !catalog.bindable || catalog.schema_digest != schema_digest {
+        return Err(ControlPlaneError::InvalidInput("frontstage_callable_descriptor").into());
     }
     Ok(callable)
 }
 
-fn resolve_document_binding(
-    document_payload: &Value,
-    block_id: &str,
-    binding_alias: &str,
-    schema_digest: &str,
-) -> Result<FrontstageCallableBinding, ApiError> {
+fn ensure_document_block(document_payload: &Value, block_id: &str) -> Result<(), ApiError> {
     let blocks = document_payload
         .get("blocks")
         .and_then(Value::as_array)
@@ -498,16 +479,11 @@ fn resolve_document_binding(
         .find(|block| block.get("id").and_then(Value::as_str) == Some(block_id))
         .ok_or(ControlPlaneError::NotFound("frontstage_block"))?;
     let block: FrontstageCallableBlock = serde_json::from_value(block.clone())
-        .map_err(|_| ControlPlaneError::InvalidInput("frontstage_block_interfaces"))?;
-    let binding = block
-        .interfaces
-        .into_iter()
-        .find(|binding| binding.alias == binding_alias)
-        .ok_or(ControlPlaneError::NotFound("frontstage_callable_binding"))?;
-    if block.id != block_id || binding.schema_digest != schema_digest {
-        return Err(ControlPlaneError::InvalidInput("schema_digest").into());
+        .map_err(|_| ControlPlaneError::InvalidInput("frontstage_block"))?;
+    if block.id != block_id {
+        return Err(ControlPlaneError::InvalidInput("block_id").into());
     }
-    Ok(binding)
+    Ok(())
 }
 
 async fn consume_write_grant(
@@ -554,10 +530,10 @@ fn grant_matches(
         && grant.page_id == expected.page_id
         && grant.tab_id == expected.tab_id
         && grant.block_id == expected.block_id
-        && grant.binding_alias == expected.binding_alias
+        && grant.interface_id == expected.interface_id
+        && grant.schema_digest == expected.schema_digest
         && grant.run_id == expected.run_id
         && grant.draft_hash == expected.draft_hash
-        && grant.operation_id == expected.operation_id
 }
 
 fn write_grant_cache_key(grant_token: &str) -> String {
@@ -722,10 +698,10 @@ mod tests {
             page_id: Uuid::new_v4(),
             tab_id: Uuid::new_v4(),
             block_id: "block-1".to_string(),
-            binding_alias: "savePage".to_string(),
+            interface_id: PAGE_TAB_SAVE_OPERATION_ID.to_string(),
+            schema_digest: "digest-1".to_string(),
             run_id: "run-1".to_string(),
             draft_hash: "draft-1".to_string(),
-            operation_id: PAGE_TAB_SAVE_OPERATION_ID.to_string(),
             expires_at: OffsetDateTime::now_utc() + Duration::minutes(1),
         }
     }
@@ -741,10 +717,10 @@ mod tests {
             Box::new(|value| value.page_id = Uuid::new_v4()),
             Box::new(|value| value.tab_id = Uuid::new_v4()),
             Box::new(|value| value.block_id = "block-2".to_string()),
-            Box::new(|value| value.binding_alias = "otherAlias".to_string()),
+            Box::new(|value| value.interface_id = PAGE_TAB_GET_OPERATION_ID.to_string()),
+            Box::new(|value| value.schema_digest = "digest-2".to_string()),
             Box::new(|value| value.run_id = "run-2".to_string()),
             Box::new(|value| value.draft_hash = "draft-2".to_string()),
-            Box::new(|value| value.operation_id = PAGE_TAB_GET_OPERATION_ID.to_string()),
         ];
         for mutate in mutations {
             let mut replay = expected.clone();
@@ -765,41 +741,15 @@ mod tests {
     }
 
     #[test]
-    fn ac_004_document_binding_is_scoped_to_one_block_alias_and_digest() {
+    fn source_descriptor_requires_a_current_document_block() {
         let document = serde_json::json!({
             "blocks": [
-                {
-                    "id": "block-1",
-                    "interfaces": [{
-                        "alias": "listRecords",
-                        "operation_id": "list_records",
-                        "schema_digest": "digest-1",
-                        "scope": "frontstage_page_tab",
-                        "risk_level": "low"
-                    }]
-                },
-                {
-                    "id": "block-2",
-                    "interfaces": [{
-                        "alias": "saveRecords",
-                        "operation_id": "save_records",
-                        "schema_digest": "digest-2",
-                        "scope": "frontstage_page_tab",
-                        "risk_level": "high"
-                    }]
-                }
+                { "id": "block-1" },
+                { "id": "block-2" }
             ]
         });
-        let binding = resolve_document_binding(&document, "block-1", "listRecords", "digest-1")
-            .expect("bound alias must resolve");
-        assert_eq!(binding.operation_id, "list_records");
-        assert!(resolve_document_binding(&document, "block-1", "saveRecords", "digest-2").is_err());
-        assert!(
-            resolve_document_binding(&document, "block-1", "listRecords", "digest-stale").is_err()
-        );
-        assert!(
-            resolve_document_binding(&document, "missing-block", "listRecords", "digest-1")
-                .is_err()
-        );
+        assert!(ensure_document_block(&document, "block-1").is_ok());
+        assert!(ensure_document_block(&document, "block-2").is_ok());
+        assert!(ensure_document_block(&document, "missing-block").is_err());
     }
 }

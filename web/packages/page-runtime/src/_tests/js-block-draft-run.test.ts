@@ -49,7 +49,8 @@ describe('JS block Draft Run', () => {
           {
             requestId: 'run-1',
             effectId: 'effect-1',
-            bindingAlias: 'listRecords',
+            interfaceId: 'list_records',
+            schemaDigest: 'digest-1',
             status: 'succeeded',
             durationMs: 12,
             response: { total: 2 }
@@ -61,7 +62,7 @@ describe('JS block Draft Run', () => {
       status: 'succeeded',
       outputs: { total: 2 },
       logs: [{ message: 'ready' }],
-      interface_calls: [{ bindingAlias: 'listRecords' }]
+      interface_calls: [{ interfaceId: 'list_records' }]
     });
   });
 

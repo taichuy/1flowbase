@@ -62,7 +62,8 @@ describe('RestrictedBlockRuntimePreview', () => {
               type: 'interface',
               requestId: 'restricted-block:block-1:code-1',
               effectId: 'effect-1',
-              bindingAlias: 'saveRecord',
+              interfaceId: 'save_record',
+              schemaDigest: 'digest-save-record',
               request: { hidden: 'raw-effect-value' }
             }
           ],
@@ -96,7 +97,7 @@ describe('RestrictedBlockRuntimePreview', () => {
     expect(screen.queryByText('日志')).not.toBeInTheDocument();
     expect(screen.queryByText('1 条')).not.toBeInTheDocument();
     expect(screen.queryByText('效果')).not.toBeInTheDocument();
-    expect(screen.queryByText('接口: saveRecord')).not.toBeInTheDocument();
+    expect(screen.queryByText('接口: save_record')).not.toBeInTheDocument();
     expect(screen.queryByText('拒绝项')).not.toBeInTheDocument();
     expect(screen.queryByText('invalid_message')).not.toBeInTheDocument();
     expect(screen.queryByText(/raw-log-value/)).not.toBeInTheDocument();

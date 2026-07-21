@@ -49,7 +49,7 @@ describe('frontstage page document', () => {
     });
   });
 
-  test('normalizes valid block instances from the root payload', () => {
+  test('normalizes valid blocks and drops legacy persisted interface bindings', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
         root: {
@@ -108,17 +108,6 @@ describe('frontstage page document', () => {
           code: 'official.hero'
         },
         props: { title: 'Hello' },
-        interfaces: [
-          {
-            alias: 'listConversations',
-            operation_id: 'list_application_conversations_records',
-            schema_digest: 'digest-1',
-            scope: 'frontstage_page_tab',
-            risk_level: 'low',
-            request_media_type: null,
-            response_media_type: 'application/json'
-          }
-        ],
         ports: { inputs: [], outputs: [] },
         presentation: { heightMode: 'auto', height: null },
         layout: { region: 'main', order: 20, span: 12 },
@@ -374,7 +363,6 @@ describe('frontstage page document', () => {
           code: 'unknown'
         },
         props: {},
-        interfaces: [],
         ports: { inputs: [], outputs: [] },
         presentation: { heightMode: 'auto', height: null },
         layout: { order: 0 },
@@ -487,7 +475,6 @@ describe('frontstage page document', () => {
         code: 'official.hero'
       },
       props: { title: 'Hello' },
-      interfaces: [],
       ports: { inputs: [], outputs: [] },
       presentation: { heightMode: 'auto', height: null },
       layout: { region: 'main', order: 99, span: 12, width: 12, height: 4 },
@@ -528,7 +515,6 @@ describe('frontstage page document', () => {
         code: 'official.hero'
       },
       props: { title: 'Hello' },
-      interfaces: [],
       ports: { inputs: [], outputs: [] },
       'x-presentation': { heightMode: 'auto', height: null },
       'x-layout': {
