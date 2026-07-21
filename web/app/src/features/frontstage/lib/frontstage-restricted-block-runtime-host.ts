@@ -13,6 +13,7 @@ import {
 import {
   createFrontstageRestrictedBlockWorkerFactory,
   getFrontstageRestrictedBlockRuntimeFingerprint,
+  getFrontstageRestrictedBlockWorkerUrl,
   type FrontstageRestrictedBlockWorkerFactoryOptions
 } from './restricted-block-worker-factory';
 
@@ -46,7 +47,10 @@ export function createFrontstageRestrictedBlockRuntimeHost(
     ...runtimeOptions,
     runtimeFingerprint:
       runtimeOptions.runtimeFingerprint ??
-      getFrontstageRestrictedBlockRuntimeFingerprint(),
+      getFrontstageRestrictedBlockRuntimeFingerprint(
+        browserWorkerFactoryOptions?.workerUrl ??
+          getFrontstageRestrictedBlockWorkerUrl()
+      ),
     workerFactory:
       workerFactory ??
       createFrontstageRestrictedBlockWorkerFactory(browserWorkerFactoryOptions)
@@ -77,7 +81,10 @@ export function createObservableFrontstageRestrictedBlockRuntimeHost(
     ...runtimeOptions,
     runtimeFingerprint:
       runtimeOptions.runtimeFingerprint ??
-      getFrontstageRestrictedBlockRuntimeFingerprint(),
+      getFrontstageRestrictedBlockRuntimeFingerprint(
+        browserWorkerFactoryOptions?.workerUrl ??
+          getFrontstageRestrictedBlockWorkerUrl()
+      ),
     scheduleTimeout: createNotifyingScheduleTimeout(
       scheduleTimeout,
       notifySnapshotChange

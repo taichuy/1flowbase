@@ -27,9 +27,11 @@ export function getFrontstageRestrictedBlockWorkerUrl(): string {
   return frontstageRestrictedBlockWorkerUrl;
 }
 
-export function getFrontstageRestrictedBlockRuntimeFingerprint(): string {
+export function getFrontstageRestrictedBlockRuntimeFingerprint(
+  workerUrl: string | URL = getFrontstageRestrictedBlockWorkerUrl()
+): string {
   return createCompiledBlockRuntimeFingerprint(
-    getFrontstageRestrictedBlockWorkerUrl()
+    workerUrl
   );
 }
 

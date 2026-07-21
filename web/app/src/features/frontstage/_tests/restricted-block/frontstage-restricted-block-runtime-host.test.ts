@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  createCompiledBlockRuntimeFingerprint,
   JsBlockWorkerAdapterError,
   type JsBlockRunRequest,
   type JsBlockWorkerLike
@@ -12,7 +13,10 @@ import {
   createFrontstageRestrictedBlockRuntimeHost,
   type FrontstageRestrictedBlockRuntimeHostOptions
 } from '../../lib/frontstage-restricted-block-runtime-host';
-import { getFrontstageRestrictedBlockWorkerUrl } from '../../lib/restricted-block-worker-factory';
+import {
+  getFrontstageRestrictedBlockRuntimeFingerprint,
+  getFrontstageRestrictedBlockWorkerUrl
+} from '../../lib/restricted-block-worker-factory';
 
 const validSource = `
 import { Text } from '@1flowbase/block-renderer/antd-facade';
@@ -357,6 +361,17 @@ describe('FrontStage restricted block runtime host factory', () => {
       type: 'module',
       name: 'frontstage-restricted-block-runtime'
     });
+  });
+
+  test('binds the runtime fingerprint to an injected Worker asset URL', () => {
+    const workerUrl = new URL('https://example.test/custom-worker.js');
+
+    expect(getFrontstageRestrictedBlockRuntimeFingerprint(workerUrl)).toBe(
+      createCompiledBlockRuntimeFingerprint(workerUrl)
+    );
+    expect(getFrontstageRestrictedBlockRuntimeFingerprint(workerUrl)).not.toBe(
+      getFrontstageRestrictedBlockRuntimeFingerprint()
+    );
   });
 
   test('uses an injected workerFactory instead of browser Worker options', () => {
