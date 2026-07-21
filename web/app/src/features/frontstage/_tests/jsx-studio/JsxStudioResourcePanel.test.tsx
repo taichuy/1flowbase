@@ -37,7 +37,8 @@ const block = {
 
 const operations = [
   {
-    interface_id: 'list_application_conversations_records',
+    interface_id:
+      'data_model__019f56b6-c8d9-7981-af0b-eb38d1b29393__list_records',
     method: 'GET',
     path: '/api/runtime/models/application_conversations/list',
     name: 'List conversations',
@@ -97,15 +98,18 @@ const createSaveBlockMock = () =>
     .mockResolvedValue(true);
 
 function renderInterfacePanel({
+  codeSource = '',
   onInsertCode = createInsertCodeMock(),
   onSaveBlock = createSaveBlockMock()
 }: {
+  codeSource?: string;
   onInsertCode?: ReturnType<typeof createInsertCodeMock>;
   onSaveBlock?: ReturnType<typeof createSaveBlockMock>;
 } = {}) {
   render(
     <JsxStudioResourcePanel
       block={block}
+      codeSource={codeSource}
       pageBlocks={[block]}
       workspaceId="workspace-1"
       projection={projection}
@@ -185,10 +189,30 @@ describe('TSX Studio interface connector', () => {
     ).toHaveBeenCalledWith('workspace-1', 'get_frontstage_page_detail');
     expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).toHaveBeenCalledWith(
-      expect.stringContaining('const getFrontstagePageDetail = (')
+      expect.stringContaining('const getPageDetail = (')
     );
     expect(onInsertCode).toHaveBeenCalledWith(
       expect.stringContaining("'/api/console/frontstage/pages/{page_id}'")
+    );
+  });
+
+  test('inserts a readable callable alias without leaking a dynamic data model id', async () => {
+    const { onInsertCode } = renderInterfacePanel({
+      codeSource: 'const listApplicationConversations = () => null;'
+    });
+    fireEvent.click(
+      await screen.findByText(
+        '/api/runtime/models/application_conversations/list'
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
+
+    await waitFor(() => expect(onInsertCode).toHaveBeenCalledTimes(1));
+    const source = onInsertCode.mock.calls[0]?.[0] ?? '';
+    expect(source).toContain('const listApplicationConversations2 = (');
+    expect(source).not.toContain('019f56b6');
+    expect(source).toContain(
+      "'/api/runtime/models/application_conversations/list'"
     );
   });
 

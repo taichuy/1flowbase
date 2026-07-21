@@ -58,7 +58,11 @@ function createRequest(source: string): JsBlockRunRequest {
   return {
     requestId: 'run-1',
     blockId: 'block-1',
-    source,
+    program: {
+      kind: 'source',
+      source,
+      allowedImports: ['@1flowbase/block-sdk']
+    },
     inputs: { title: 'Conversations' },
     props: {},
     state: {},
@@ -67,8 +71,7 @@ function createRequest(source: string): JsBlockRunRequest {
       application: { id: 'application-1' },
       page: { id: 'page-1', route: '/demo' }
     },
-    limits: { timeoutMs: 1_000 },
-    allowedImports: ['@1flowbase/block-sdk']
+    limits: { timeoutMs: 1_000 }
   };
 }
 

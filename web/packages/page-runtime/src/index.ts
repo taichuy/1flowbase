@@ -16,3 +16,5 @@ export * from './js-block-worker-executor';
 export * from './js-block-worker-modules';
 export * from './js-block-diagnostics';
 export * from './js-block-draft-run';
+export * from './js-block-runtime/compiled-artifact';
+export * from './js-block-runtime/program';

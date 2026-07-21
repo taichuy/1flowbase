@@ -359,9 +359,10 @@ function RenderPlanSlot({
 
     const isSourceLoading =
       runtimeSessionEntry?.status === 'skipped' &&
-      runtimeSessionEntry.skipReason === 'source_not_ready' &&
-      (runtimeSessionEntry.sourceStatus === 'loading' ||
-        runtimeSessionEntry.sourceStatus === 'dormant');
+      (runtimeSessionEntry.skipReason === 'artifact_lookup_pending' ||
+        (runtimeSessionEntry.skipReason === 'source_not_ready' &&
+          (runtimeSessionEntry.sourceStatus === 'loading' ||
+            runtimeSessionEntry.sourceStatus === 'dormant')));
 
     if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
       return (

@@ -403,11 +403,17 @@ describe('frontstage page content feature api', () => {
 });
 
 describe('frontstage block code feature api', () => {
-  test('uses a workspace, page, and codeRef scoped query key', () => {
+  test('uses an actor, workspace, page, and codeRef scoped query key', () => {
     expect(
-      frontstageBlockCodeQueryKey('workspace-1', 'page-1', 'hero')
+      frontstageBlockCodeQueryKey(
+        'workspace-1',
+        'page-1',
+        'hero',
+        'actor-1'
+      )
     ).toEqual([
       'frontstage',
+      'actor-1',
       'workspace-1',
       'pages',
       'page-1',
@@ -416,20 +422,22 @@ describe('frontstage block code feature api', () => {
     ]);
   });
 
-  test('adapts block code read and CSRF write calls to camelCase contracts', async () => {
+  test('adapts block code calls while preserving the source hash field', async () => {
     const readSpy = vi
       .spyOn(apiClient, 'getFrontstageBlockCode')
       .mockResolvedValue({
         page_id: 'page-1',
         code_ref: 'hero',
-        code: 'export default 1;'
+        code: 'export default 1;',
+        source_sha256: 'read-source-sha256'
       });
     const saveSpy = vi
       .spyOn(apiClient, 'saveFrontstageBlockCode')
       .mockResolvedValue({
         page_id: 'page-1',
         code_ref: 'hero',
-        code: 'export default 2;'
+        code: 'export default 2;',
+        source_sha256: 'saved-source-sha256'
       });
 
     try {
@@ -438,7 +446,8 @@ describe('frontstage block code feature api', () => {
       ).resolves.toEqual({
         pageId: 'page-1',
         codeRef: 'hero',
-        code: 'export default 1;'
+        code: 'export default 1;',
+        source_sha256: 'read-source-sha256'
       });
       await expect(
         saveFrontstageBlockCode(
@@ -450,7 +459,8 @@ describe('frontstage block code feature api', () => {
       ).resolves.toEqual({
         pageId: 'page-1',
         codeRef: 'hero',
-        code: 'export default 2;'
+        code: 'export default 2;',
+        source_sha256: 'saved-source-sha256'
       });
       expect(readSpy).toHaveBeenCalledWith(
         'workspace-1',

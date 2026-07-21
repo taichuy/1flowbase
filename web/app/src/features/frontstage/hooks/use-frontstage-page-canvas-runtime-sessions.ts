@@ -26,6 +26,15 @@ import {
   FrontstageSignalRuntimeCoordinator,
   type FrontstagePageSignalSession
 } from '../lib/page-canvas/signal-runtime';
+import {
+  recordFrontstageRuntimeObservation,
+  type FrontstageRuntimeObservationStage
+} from '../lib/page-canvas/runtime-observation';
+import {
+  frontstageCompiledArtifactCache,
+  type FrontstageCompiledArtifactCache
+} from '../lib/runtime-cache';
+import { getFrontstageRestrictedBlockRuntimeFingerprint } from '../lib/restricted-block-worker-factory';
 
 export type FrontstagePageCanvasRuntimeSessionFactory = (
   options: FrontstageRestrictedBlockRuntimeHostOptions
@@ -76,6 +85,8 @@ export type FrontstagePageCanvasRuntimeSessionEntry =
   | FrontstagePageCanvasRuntimeSessionFactoryFailedEntry;
 
 export interface UseFrontstagePageCanvasRuntimeSessionsInput {
+  actorId: string | null | undefined;
+  actorWorkspaceId: string | null | undefined;
   runtimeRunPlanState:
     | FrontstagePageCanvasRuntimeRunPlanState
     | null
@@ -86,6 +97,9 @@ export interface UseFrontstagePageCanvasRuntimeSessionsInput {
   maxConcurrent?: number;
   blocks?: readonly FrontstageBlockInstance[];
   tabId?: string | null;
+  runtimeResultCache?: FrontstageRuntimeResultCache;
+  artifactCache?: Pick<FrontstageCompiledArtifactCache, 'put'>;
+  runtimeFingerprint?: string;
 }
 
 export interface UseFrontstagePageCanvasRuntimeSessionsResult {
@@ -101,18 +115,112 @@ interface ActiveRuntimeSession {
   unsubscribe: () => void;
   snapshot: RestrictedBlockRuntimeHostSnapshot;
   executing: boolean;
+  observedStage: FrontstageRuntimeObservationStage;
+  observedAtMs: number;
+  cacheTier: 'l2' | 'miss';
 }
 
-const SESSION_CACHE_TTL_MS = 30_000;
-const SESSION_CACHE_MAX_ENTRIES = 32;
+interface RuntimeObservationContext {
+  actorId: string;
+  workspaceId: string;
+  pageId: string;
+  tabId: string | null;
+  blockId: string;
+}
+
+const DEFAULT_RUNTIME_RESULT_CACHE_BYTE_BUDGET = 4 * 1024 * 1024;
 const EMPTY_BLOCKS: readonly FrontstageBlockInstance[] = [];
-const successfulSnapshotCache = new Map<
-  string,
-  { snapshot: RestrictedBlockRuntimeHostSnapshot; expiresAt: number }
->();
+
+export type FrontstageCachedBlockResult = Pick<
+  RestrictedBlockRuntimeHostSnapshot,
+  'view' | 'outputs' | 'schemaValidationOptions'
+>;
+
+interface FrontstageCachedBlockResultEntry {
+  value: FrontstageCachedBlockResult;
+  byteWeight: number;
+}
+
+export class FrontstageRuntimeResultCache {
+  readonly byteBudget: number;
+  private readonly entries = new Map<
+    string,
+    FrontstageCachedBlockResultEntry
+  >();
+  private usedBytes = 0;
+
+  constructor(byteBudget = DEFAULT_RUNTIME_RESULT_CACHE_BYTE_BUDGET) {
+    if (!Number.isSafeInteger(byteBudget) || byteBudget < 0) {
+      throw new Error(
+        'runtime result cache byte budget must be a non-negative integer'
+      );
+    }
+    this.byteBudget = byteBudget;
+  }
+
+  get byteSize(): number {
+    return this.usedBytes;
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get(sessionKey: string): FrontstageCachedBlockResult | undefined {
+    const cached = this.entries.get(sessionKey);
+    if (!cached) {
+      return undefined;
+    }
+    this.entries.delete(sessionKey);
+    this.entries.set(sessionKey, cached);
+    return cached.value;
+  }
+
+  set(sessionKey: string, value: FrontstageCachedBlockResult): void {
+    this.delete(sessionKey);
+    const byteWeight = utf8ByteLength(stableSerialize([sessionKey, value]));
+    if (byteWeight > this.byteBudget) {
+      return;
+    }
+
+    while (this.usedBytes + byteWeight > this.byteBudget) {
+      const leastRecentlyUsedKey = this.entries.keys().next().value as
+        | string
+        | undefined;
+      if (leastRecentlyUsedKey === undefined) {
+        break;
+      }
+      this.delete(leastRecentlyUsedKey);
+    }
+
+    this.entries.set(sessionKey, { value, byteWeight });
+    this.usedBytes += byteWeight;
+  }
+
+  delete(sessionKey: string): void {
+    const cached = this.entries.get(sessionKey);
+    if (!cached) {
+      return;
+    }
+    this.entries.delete(sessionKey);
+    this.usedBytes -= cached.byteWeight;
+  }
+
+  clear(): void {
+    this.entries.clear();
+    this.usedBytes = 0;
+  }
+}
+
+export const frontstageRuntimeResultCache =
+  new FrontstageRuntimeResultCache();
 
 export function clearFrontstageRuntimeSessionCache(): void {
-  successfulSnapshotCache.clear();
+  frontstageRuntimeResultCache.clear();
+}
+
+export function readFrontstageRuntimeSessionCacheSize(): number {
+  return frontstageRuntimeResultCache.size;
 }
 
 type InternalRuntimeSessionEntry = FrontstagePageCanvasRuntimeSessionEntry & {
@@ -120,13 +228,18 @@ type InternalRuntimeSessionEntry = FrontstagePageCanvasRuntimeSessionEntry & {
 };
 
 export function useFrontstagePageCanvasRuntimeSessions({
+  actorId,
+  actorWorkspaceId,
   runtimeRunPlanState,
   runtimeSessionFactory = createFrontstageRestrictedBlockRuntimeSession,
   handlers,
   demandsByBlockId,
   maxConcurrent = 2,
   blocks = EMPTY_BLOCKS,
-  tabId = null
+  tabId = null,
+  runtimeResultCache: resultCache = frontstageRuntimeResultCache,
+  artifactCache = frontstageCompiledArtifactCache,
+  runtimeFingerprint = getFrontstageRestrictedBlockRuntimeFingerprint()
 }: UseFrontstagePageCanvasRuntimeSessionsInput): UseFrontstagePageCanvasRuntimeSessionsResult {
   const activeRuntimeSessionsRef = useRef(
     new Map<string, ActiveRuntimeSession>()
@@ -134,6 +247,8 @@ export function useFrontstagePageCanvasRuntimeSessions({
   const pageSignalSessionsRef = useRef(
     new Map<string, FrontstagePageSignalSession>()
   );
+  const restoredSignalSessionKeysRef = useRef(new Set<string>());
+  const restoredObservationSessionKeysRef = useRef(new Set<string>());
   const [internalEntries, setInternalEntries] = useState<
     InternalRuntimeSessionEntry[]
   >([]);
@@ -169,7 +284,11 @@ export function useFrontstagePageCanvasRuntimeSessions({
   useEffect(() => {
     const activeRuntimeSessions = activeRuntimeSessionsRef.current;
 
-    if (!runtimeRunPlanState) {
+    if (
+      !runtimeRunPlanState ||
+      !actorId ||
+      actorWorkspaceId !== runtimeRunPlanState.workspaceId
+    ) {
       disposeAllRuntimeSessions(activeRuntimeSessions);
       setInternalEntries((currentEntries) =>
         currentEntries.length === 0 ? currentEntries : []
@@ -188,6 +307,8 @@ export function useFrontstagePageCanvasRuntimeSessions({
         const sessionKey = createRuntimeSessionKey(
           runtimeRunPlanState,
           item,
+          actorId,
+          tabId,
           signalCoordinator?.inputSignature(item.blockId)
         );
         nextSessionKeys.add(sessionKey);
@@ -207,13 +328,73 @@ export function useFrontstagePageCanvasRuntimeSessions({
       }
     }
 
+    for (const restoredSessionKey of restoredSignalSessionKeysRef.current) {
+      if (!nextSessionKeys.has(restoredSessionKey)) {
+        restoredSignalSessionKeysRef.current.delete(restoredSessionKey);
+      }
+    }
+    for (const restoredSessionKey of restoredObservationSessionKeysRef.current) {
+      if (!nextSessionKeys.has(restoredSessionKey)) {
+        restoredObservationSessionKeysRef.current.delete(restoredSessionKey);
+      }
+    }
+
+    const restoredSnapshots = new Map<
+      string,
+      RestrictedBlockRuntimeHostSnapshot
+    >();
+    let didRestoreSignalOutputs = false;
+    for (const { item, sessionKey } of readyItems) {
+      if (activeRuntimeSessions.has(sessionKey)) {
+        continue;
+      }
+      const cachedResult = resultCache.get(sessionKey);
+      if (!cachedResult) {
+        continue;
+      }
+
+      restoredSnapshots.set(
+        sessionKey,
+        createRestoredSnapshot(item, cachedResult)
+      );
+      if (!restoredObservationSessionKeysRef.current.has(sessionKey)) {
+        restoredObservationSessionKeysRef.current.add(sessionKey);
+        recordFrontstageRuntimeObservation({
+          stage: 'present',
+          cacheTier: 'l1',
+          actorId,
+          workspaceId: runtimeRunPlanState.workspaceId,
+          pageId: runtimeRunPlanState.pageId,
+          tabId,
+          blockId: item.blockId
+        });
+      }
+      if (
+        cachedResult.outputs &&
+        !restoredSignalSessionKeysRef.current.has(sessionKey)
+      ) {
+        restoredSignalSessionKeysRef.current.add(sessionKey);
+        signalCoordinator?.beginRun(item.blockId, sessionKey);
+        const committed = signalCoordinator?.commit(
+          item.blockId,
+          sessionKey,
+          cachedResult.outputs
+        );
+        if (committed?.ok) {
+          didRestoreSignalOutputs = true;
+          setSignalRevision((revision) => revision + 1);
+        }
+      }
+    }
+
     const createdEntries = new Map<string, InternalRuntimeSessionEntry>();
-    if (pageVisible) {
+    if (pageVisible && !didRestoreSignalOutputs) {
       const runningCount = [...activeRuntimeSessions.values()].filter(
         (session) => session.executing
       ).length;
       const candidates = readyItems
         .filter(({ sessionKey }) => !activeRuntimeSessions.has(sessionKey))
+        .filter(({ sessionKey }) => !restoredSnapshots.has(sessionKey))
         .filter(({ item }) => signalCoordinator?.canRun(item.blockId) ?? true)
         .sort((left, right) => {
           const priorityDifference =
@@ -244,7 +425,16 @@ export function useFrontstagePageCanvasRuntimeSessions({
           setRuntimeRevision,
           setSignalRevision,
           signalCoordinator,
-          cachedSnapshot: readSuccessfulSnapshot(sessionKey)
+          resultCache,
+          artifactCache,
+          runtimeFingerprint,
+          observationContext: {
+            actorId,
+            workspaceId: runtimeRunPlanState.workspaceId,
+            pageId: runtimeRunPlanState.pageId,
+            tabId,
+            blockId: item.blockId
+          }
         });
         createdEntries.set(sessionKey, createdEntry);
       }
@@ -258,6 +448,8 @@ export function useFrontstagePageCanvasRuntimeSessions({
         const sessionKey = createRuntimeSessionKey(
           runtimeRunPlanState,
           item,
+          actorId,
+          tabId,
           signalCoordinator?.inputSignature(item.blockId)
         );
         const createdEntry = createdEntries.get(sessionKey);
@@ -265,7 +457,8 @@ export function useFrontstagePageCanvasRuntimeSessions({
           return createdEntry;
         }
         const active = activeRuntimeSessions.get(sessionKey);
-        const snapshot = active?.snapshot ?? readSuccessfulSnapshot(sessionKey);
+        const snapshot =
+          active?.snapshot ?? restoredSnapshots.get(sessionKey);
         return snapshot
           ? { ...createSnapshotEntry(item, snapshot), sessionKey }
           : createQueuedEntry(item, sessionKey);
@@ -277,15 +470,21 @@ export function useFrontstagePageCanvasRuntimeSessions({
         : nextEntries
     );
   }, [
+    actorId,
+    actorWorkspaceId,
+    artifactCache,
     demandsByBlockId,
     handlers,
     maxConcurrent,
     pageVisible,
     runtimeRevision,
+    resultCache,
     signalCoordinator,
     signalRevision,
+    tabId,
     runtimeRunPlanState,
-    runtimeSessionFactory
+    runtimeSessionFactory,
+    runtimeFingerprint
   ]);
 
   useEffect(
@@ -321,18 +520,21 @@ export function useFrontstagePageCanvasRuntimeSessions({
   );
   const retryBlock = (blockId: string) => {
     const activeRuntimeSessions = activeRuntimeSessionsRef.current;
-    for (const [sessionKey, activeRuntimeSession] of [
-      ...activeRuntimeSessions
-    ]) {
-      if (activeRuntimeSession.snapshot.blockId !== blockId) {
+    for (const entry of internalEntries) {
+      if (entry.blockId !== blockId || !entry.sessionKey) {
         continue;
       }
-      successfulSnapshotCache.delete(sessionKey);
-      disposeRuntimeSession(
-        activeRuntimeSessions,
-        sessionKey,
-        activeRuntimeSession
-      );
+      resultCache.delete(entry.sessionKey);
+      restoredSignalSessionKeysRef.current.delete(entry.sessionKey);
+      restoredObservationSessionKeysRef.current.delete(entry.sessionKey);
+      const activeRuntimeSession = activeRuntimeSessions.get(entry.sessionKey);
+      if (activeRuntimeSession) {
+        disposeRuntimeSession(
+          activeRuntimeSessions,
+          entry.sessionKey,
+          activeRuntimeSession
+        );
+      }
     }
     setRuntimeRevision((revision) => revision + 1);
   };
@@ -356,7 +558,10 @@ function createAndRunRuntimeSession({
   setRuntimeRevision,
   setSignalRevision,
   signalCoordinator,
-  cachedSnapshot
+  resultCache,
+  artifactCache,
+  runtimeFingerprint,
+  observationContext
 }: {
   item: FrontstagePageCanvasRuntimeRunPlanReadyItem;
   sessionKey: string;
@@ -367,12 +572,26 @@ function createAndRunRuntimeSession({
   setRuntimeRevision: Dispatch<SetStateAction<number>>;
   setSignalRevision: Dispatch<SetStateAction<number>>;
   signalCoordinator: FrontstageSignalRuntimeCoordinator | null;
-  cachedSnapshot: RestrictedBlockRuntimeHostSnapshot | undefined;
+  resultCache: FrontstageRuntimeResultCache;
+  artifactCache: Pick<FrontstageCompiledArtifactCache, 'put'>;
+  runtimeFingerprint: string;
+  observationContext: RuntimeObservationContext;
 }): InternalRuntimeSessionEntry {
   let session: FrontstageRestrictedBlockRuntimeSession | null = null;
   let unsubscribe: (() => void) | null = null;
 
   try {
+    const runtimeStartedAt = Date.now();
+    const cacheTier =
+      item.runPlan.request.program.kind === 'compiled_artifact'
+        ? 'l2'
+        : 'miss';
+    recordFrontstageRuntimeObservation({
+      ...observationContext,
+      stage: 'worker_boot',
+      cacheTier,
+      timestampMs: runtimeStartedAt
+    });
     const runPlan = signalCoordinator
       ? {
           ...item.runPlan,
@@ -384,7 +603,8 @@ function createAndRunRuntimeSession({
       : item.runPlan;
     signalCoordinator?.beginRun(item.blockId, sessionKey);
     const runtimeOptions: FrontstageRestrictedBlockRuntimeHostOptions = {
-      runPlan
+      runPlan,
+      runtimeFingerprint
     };
 
     if (handlers) {
@@ -400,8 +620,26 @@ function createAndRunRuntimeSession({
 
       activeRuntimeSession.snapshot = snapshot;
       activeRuntimeSession.executing = snapshot.status === 'running';
+      observeRuntimeSnapshot(
+        activeRuntimeSession,
+        snapshot,
+        observationContext
+      );
       if (snapshot.status === 'ready') {
-        cacheSuccessfulSnapshot(sessionKey, snapshot);
+        resultCache.set(sessionKey, toCachedBlockResult(snapshot));
+        if (snapshot.compiledArtifact) {
+          void artifactCache
+            .put(
+              {
+                actorId: observationContext.actorId,
+                workspaceId: observationContext.workspaceId,
+                runtimeFingerprint,
+                sourceSha256: item.source_sha256
+              },
+              snapshot.compiledArtifact
+            )
+            .catch(() => undefined);
+        }
         if (snapshot.outputs) {
           const committed = signalCoordinator?.commit(
             item.blockId,
@@ -423,15 +661,20 @@ function createAndRunRuntimeSession({
     });
 
     const snapshot = session.run();
-    activeRuntimeSessions.set(sessionKey, {
+    const activeRuntimeSession: ActiveRuntimeSession = {
       session,
       unsubscribe,
-      snapshot: cachedSnapshot ?? snapshot,
-      executing: true
-    });
+      snapshot,
+      executing: true,
+      observedStage: 'worker_boot',
+      observedAtMs: runtimeStartedAt,
+      cacheTier
+    };
+    activeRuntimeSessions.set(sessionKey, activeRuntimeSession);
+    observeRuntimeSnapshot(activeRuntimeSession, snapshot, observationContext);
 
     return {
-      ...createSnapshotEntry(item, cachedSnapshot ?? snapshot),
+      ...createSnapshotEntry(item, snapshot),
       sessionKey
     };
   } catch (error) {
@@ -619,7 +862,10 @@ function isErrorEntry(entry: FrontstagePageCanvasRuntimeSessionEntry): boolean {
   }
 
   if (entry.status === 'skipped') {
-    return entry.skipReason !== 'source_not_ready';
+    return (
+      entry.skipReason !== 'source_not_ready' &&
+      entry.skipReason !== 'artifact_lookup_pending'
+    );
   }
 
   return entry.status === 'failed' || entry.status === 'timed_out';
@@ -661,63 +907,125 @@ function disposeRuntimeSession(
   activeRuntimeSession.session.dispose();
 }
 
+function observeRuntimeSnapshot(
+  activeRuntimeSession: ActiveRuntimeSession,
+  snapshot: RestrictedBlockRuntimeHostSnapshot,
+  context: RuntimeObservationContext
+): void {
+  const stage = runtimeObservationStage(snapshot);
+  if (!stage || stage === activeRuntimeSession.observedStage) {
+    return;
+  }
+  const timestampMs = Date.now();
+  recordFrontstageRuntimeObservation({
+    ...context,
+    stage,
+    cacheTier: activeRuntimeSession.cacheTier,
+    timestampMs,
+    durationMs: Math.max(0, timestampMs - activeRuntimeSession.observedAtMs)
+  });
+  activeRuntimeSession.observedStage = stage;
+  activeRuntimeSession.observedAtMs = timestampMs;
+}
+
+function runtimeObservationStage(
+  snapshot: RestrictedBlockRuntimeHostSnapshot
+): FrontstageRuntimeObservationStage | null {
+  if (snapshot.status === 'ready') {
+    return 'present';
+  }
+  switch (snapshot.phase) {
+    case 'starting':
+      return 'worker_boot';
+    case 'compiling':
+      return 'compile';
+    case 'waiting_effect':
+      return 'api_wait';
+    case 'executing':
+      return 'main';
+    case 'validating_schema':
+      return 'schema_validate';
+    default:
+      return null;
+  }
+}
+
 function createRuntimeSessionKey(
   state: FrontstagePageCanvasRuntimeRunPlanState,
   item: FrontstagePageCanvasRuntimeRunPlanReadyItem,
+  actorId: string,
+  tabId: string | null,
   inputSignature?: string
 ): string {
-  return stableSerialize([
-    state.workspaceId,
-    state.pageId,
-    item.sourceIndex,
-    item.slotIndex,
-    item.blockId,
-    item.codeRef,
-    item.runPlan.request,
-    item.runPlan.schemaValidationOptions,
-    item.runPlan.mediatorPolicy,
-    inputSignature ?? ''
-  ]);
+  const request = item.runPlan.request;
+  return stableSerialize({
+    actorId,
+    workspaceId: state.workspaceId,
+    pageId: state.pageId,
+    tabId,
+    blockId: item.blockId,
+    sourceBlockId: item.sourceBlockId,
+    codeRef: item.codeRef,
+    sourceCodeRef: item.sourceCodeRef,
+    source_sha256: item.source_sha256,
+    runtime: {
+      kind: item.runtimeKind,
+      entry: item.runtimeEntry
+    },
+    catalog: {
+      id: item.catalogId,
+      contributionCode: item.contributionCode
+    },
+    dependencies: {
+      props: request.props,
+      state: request.state,
+      contextSnapshot: request.contextSnapshot,
+      inputs: request.inputs,
+      signalInputs: inputSignature ?? '',
+      limits: request.limits,
+      allowedImports:
+        request.program.kind === 'source'
+          ? request.program.allowedImports
+          : request.program.fallback.allowedImports,
+      schemaValidationOptions: item.runPlan.schemaValidationOptions,
+      mediatorPolicy: item.runPlan.mediatorPolicy
+    }
+  });
 }
 
 function stableSerialize(value: unknown): string {
   return JSON.stringify(sortSerializableValue(value));
 }
 
-function readSuccessfulSnapshot(
-  sessionKey: string
-): RestrictedBlockRuntimeHostSnapshot | undefined {
-  const cached = successfulSnapshotCache.get(sessionKey);
-  if (!cached) {
-    return undefined;
-  }
-  if (cached.expiresAt <= Date.now()) {
-    successfulSnapshotCache.delete(sessionKey);
-    return undefined;
-  }
-  successfulSnapshotCache.delete(sessionKey);
-  successfulSnapshotCache.set(sessionKey, cached);
-  return cached.snapshot;
+function toCachedBlockResult(
+  snapshot: RestrictedBlockRuntimeHostSnapshot
+): FrontstageCachedBlockResult {
+  return {
+    view: snapshot.view,
+    outputs: snapshot.outputs,
+    schemaValidationOptions: snapshot.schemaValidationOptions
+  };
 }
 
-function cacheSuccessfulSnapshot(
-  sessionKey: string,
-  snapshot: RestrictedBlockRuntimeHostSnapshot
-): void {
-  successfulSnapshotCache.delete(sessionKey);
-  successfulSnapshotCache.set(sessionKey, {
-    snapshot,
-    expiresAt: Date.now() + SESSION_CACHE_TTL_MS
-  });
-  while (successfulSnapshotCache.size > SESSION_CACHE_MAX_ENTRIES) {
-    const oldestKey = successfulSnapshotCache.keys().next().value as
-      | string
-      | undefined;
-    if (!oldestKey) {
-      break;
-    }
-    successfulSnapshotCache.delete(oldestKey);
-  }
+function createRestoredSnapshot(
+  item: FrontstagePageCanvasRuntimeRunPlanReadyItem,
+  cachedResult: FrontstageCachedBlockResult
+): RestrictedBlockRuntimeHostSnapshot {
+  return {
+    status: 'ready',
+    requestId: item.runPlan.request.requestId,
+    blockId: item.blockId,
+    schemaValidationOptions: cachedResult.schemaValidationOptions,
+    view: cachedResult.view,
+    outputs: cachedResult.outputs,
+    logs: [],
+    effects: [],
+    rejections: []
+  };
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function sortSerializableValue(value: unknown): unknown {

@@ -1,10 +1,26 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  compileAndTransformJsBlockSource,
+  createCompiledBlockArtifact,
+  createCompiledBlockRuntimeFingerprint,
   createJsBlockWorkerHost,
   type JsBlockRunRequest,
   type JsBlockWorkerLike
 } from '../index';
+
+const runtimeFingerprint = createCompiledBlockRuntimeFingerprint('/worker.js');
+
+function createArtifact(source = validSource) {
+  const transformed = compileAndTransformJsBlockSource(source);
+  if (!transformed.ok) throw new Error('fixture transform failed');
+  return createCompiledBlockArtifact({
+    source,
+    runtimeFingerprint,
+    allowedImports: [],
+    transformed
+  });
+}
 
 const validSource = `
 import { Text } from '@1flowbase/block-renderer/antd-facade';
@@ -45,7 +61,7 @@ function createRunRequest(
   return {
     requestId: 'request-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: {},
     state: {},
     contextSnapshot: { pageId: 'page-1' },
@@ -78,6 +94,139 @@ function createManualTimers() {
 }
 
 describe('JS block worker host adapter', () => {
+  test('AC-021 D5-001 transforms a cold source once on the host and sends only its canonical artifact', () => {
+    const worker = new FakeWorker();
+    const host = createJsBlockWorkerHost({
+      workerFactory: () => worker,
+      runtimeFingerprint
+    });
+    const snapshot = host.run(createRunRequest());
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+
+    const runMessage = worker.messages.find(
+      (message) => (message as { type?: unknown }).type === 'run'
+    ) as { request: JsBlockRunRequest };
+    expect(runMessage.request.program).toMatchObject({
+      kind: 'compiled_artifact',
+      artifact: { runtimeFingerprint }
+    });
+    expect(snapshot.requests['request-1']).toMatchObject({
+      phase: 'starting',
+      compiledArtifact: { runtimeFingerprint }
+    });
+    expect(host.getState().requests['request-1']?.phase).toBe('compiling');
+  });
+
+  test.each(['format', 'runtimeFingerprint', 'sourceSha256'] as const)(
+    'AC-023 repairs an artifact %s identity mismatch through one cold compile',
+    (mismatch) => {
+      const worker = new FakeWorker();
+      const artifact = createArtifact();
+      const damaged = { ...artifact } as Record<string, unknown>;
+      damaged[mismatch] = `mismatch-${mismatch}`;
+      const host = createJsBlockWorkerHost({ workerFactory: () => worker, runtimeFingerprint });
+      host.run(createRunRequest({
+        program: {
+          kind: 'compiled_artifact',
+          artifact: damaged as never,
+          sourceSha256: artifact.sourceSha256,
+          fallback: { kind: 'source', source: validSource }
+        }
+      }));
+      worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+      expect(host.getState().requests['request-1']).toMatchObject({
+        phase: 'compiling',
+        compiledArtifact: { runtimeFingerprint, sourceSha256: artifact.sourceSha256 }
+      });
+      expect(worker.messages.filter((message) => (message as { type?: unknown }).type === 'run')).toHaveLength(1);
+    }
+  );
+
+  test('AC-023 artifact hit enters executing without compiling or reading fallback source', () => {
+    const worker = new FakeWorker();
+    const artifact = createArtifact();
+    const host = createJsBlockWorkerHost({ workerFactory: () => worker, runtimeFingerprint });
+    host.run(createRunRequest({
+      program: {
+        kind: 'compiled_artifact',
+        artifact,
+        sourceSha256: artifact.sourceSha256,
+        fallback: { kind: 'source', source: 'deliberately invalid {' }
+      }
+    }));
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+    expect(host.getState().requests['request-1']?.phase).toBe('executing');
+    expect(worker.messages.filter((message) => (message as { type?: unknown }).type === 'run')).toHaveLength(1);
+  });
+
+  test('AC-023 D5-002 retries a corrupt executable body once and exposes the repaired artifact', () => {
+    const worker = new FakeWorker();
+    const artifact = createArtifact();
+    const corrupt = {
+      ...artifact,
+      program: { ...artifact.program, executableBody: 'const truncated = {' }
+    };
+    const host = createJsBlockWorkerHost({ workerFactory: () => worker, runtimeFingerprint });
+    host.run(createRunRequest({
+      program: {
+        kind: 'compiled_artifact',
+        artifact: corrupt,
+        sourceSha256: artifact.sourceSha256,
+        fallback: { kind: 'source', source: validSource }
+      }
+    }));
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+    worker.emitMessage({
+      direction: 'worker_to_host',
+      type: 'error',
+      requestId: 'request-1',
+      kind: 'artifact_corrupt',
+      message: 'truncated',
+      errors: []
+    });
+    worker.emitMessage({
+      direction: 'worker_to_host',
+      type: 'error',
+      requestId: 'request-1',
+      kind: 'artifact_corrupt',
+      message: 'still broken',
+      errors: []
+    });
+
+    const runs = worker.messages.filter((message) => (message as { type?: unknown }).type === 'run') as Array<{ request: JsBlockRunRequest }>;
+    expect(runs).toHaveLength(2);
+    expect(runs[1]?.request.program).toMatchObject({
+      kind: 'compiled_artifact',
+      artifact: { program: { executableBody: expect.stringContaining('return') } }
+    });
+    expect(host.getState().requests['request-1']).toMatchObject({
+      status: 'failed',
+      result: { ok: false, error: { kind: 'artifact_corrupt' } },
+      compiledArtifact: runs[1]?.request.program.kind === 'compiled_artifact'
+        ? runs[1].request.program.artifact
+        : undefined
+    });
+  });
+
+  test('AC-023 D5-007 does not retry main failures as artifact corruption', () => {
+    const worker = new FakeWorker();
+    const host = createJsBlockWorkerHost({ workerFactory: () => worker, runtimeFingerprint });
+    host.run(createRunRequest());
+    worker.emitMessage({ direction: 'worker_to_host', type: 'ready' });
+    worker.emitMessage({
+      direction: 'worker_to_host',
+      type: 'error',
+      requestId: 'request-1',
+      kind: 'main_failed',
+      message: 'boom',
+      errors: [{ code: 'runtime_error', path: 'runtime.main', message: 'boom' }]
+    });
+    expect(worker.messages.filter((message) => (message as { type?: unknown }).type === 'run')).toHaveLength(1);
+    expect(host.getState().requests['request-1']).toMatchObject({
+      status: 'failed',
+      result: { ok: false, error: { kind: 'main_failed' } }
+    });
+  });
   test('waits for worker ready before sending run and starting the user budget', () => {
     const worker = new FakeWorker();
     const host = createJsBlockWorkerHost({
@@ -104,7 +253,10 @@ describe('JS block worker host adapter', () => {
       {
         direction: 'host_to_worker',
         type: 'run',
-        request: createRunRequest()
+        request: expect.objectContaining({
+          requestId: 'request-1',
+          program: expect.objectContaining({ kind: 'compiled_artifact' })
+        })
       }
     ]);
     expect(host.getState().requests['request-1']).toMatchObject({
@@ -119,7 +271,9 @@ describe('JS block worker host adapter', () => {
       workerFactory: () => worker
     });
 
-    host.run(createRunRequest({ source: 'window.location.href;' }));
+    host.run(createRunRequest({
+      program: { kind: 'source', source: 'window.location.href;' }
+    }));
 
     expect(worker.messages).toEqual([]);
     expect(host.getState().requests['request-1']).toMatchObject({
@@ -234,7 +388,10 @@ describe('JS block worker host adapter', () => {
       {
         direction: 'host_to_worker',
         type: 'run',
-        request: createRunRequest()
+        request: expect.objectContaining({
+          requestId: 'request-1',
+          program: expect.objectContaining({ kind: 'compiled_artifact' })
+        })
       },
       {
         direction: 'host_to_worker',
@@ -287,7 +444,10 @@ describe('JS block worker host adapter', () => {
       {
         direction: 'host_to_worker',
         type: 'run',
-        request: createRunRequest()
+        request: expect.objectContaining({
+          requestId: 'request-1',
+          program: expect.objectContaining({ kind: 'compiled_artifact' })
+        })
       },
       {
         direction: 'host_to_worker',

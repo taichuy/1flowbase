@@ -260,7 +260,8 @@ describe('frontstage page canvas runtime source model', () => {
       {
         codeRef: 'ready-code',
         status: 'ready',
-        code: 'export default { render() {} }'
+        code: 'export default { render() {} }',
+        source_sha256: 'ready-source-sha256'
       },
       {
         codeRef: 'missing-code',
@@ -293,6 +294,7 @@ describe('frontstage page canvas runtime source model', () => {
       codeRef: 'ready-code',
       runtimeEntry: 'blocks/ready.js',
       code: 'export default { render() {} }',
+      source_sha256: 'ready-source-sha256',
       block: {
         id: 'ready',
         codeRef: 'ready-code',
@@ -385,7 +387,8 @@ describe('frontstage page canvas runtime source model', () => {
         {
           codeRef: 'shared-code',
           status: 'ready',
-          code: 'export default "latest";'
+          code: 'export default "latest";',
+          source_sha256: 'latest-source-sha256'
         }
       ]
     });
@@ -402,13 +405,15 @@ describe('frontstage page canvas runtime source model', () => {
         status: 'ready',
         blockId: 'shared-a',
         codeRef: 'shared-code',
-        code: 'export default "latest";'
+        code: 'export default "latest";',
+        source_sha256: 'latest-source-sha256'
       }),
       expect.objectContaining({
         status: 'ready',
         blockId: 'shared-b',
         codeRef: 'shared-code',
-        code: 'export default "latest";'
+        code: 'export default "latest";',
+        source_sha256: 'latest-source-sha256'
       })
     ]);
   });
@@ -457,7 +462,8 @@ describe('frontstage page canvas runtime source model', () => {
         {
           codeRef: 'ready-code',
           status: 'ready',
-          code: 'export default {}'
+          code: 'export default {}',
+          source_sha256: 'ready-source-sha256'
         }
       ]
     });

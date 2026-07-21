@@ -60,12 +60,12 @@ const reservedIdentifierNames = new Set([
 
 export function generateFrontstageInterfaceSource(
   operation: ConsoleFrontstageInterfaceCapability,
-  localFunctionName: string
+  existingSource = ''
 ): FrontstageOpenApiCodegenResult {
   if (!operation.bindable) {
     throw new Error(operation.disabled_reason ?? 'Operation is not bindable.');
   }
-  const functionName = requireIdentifier(localFunctionName);
+  const functionName = createCallableName(operation, existingSource);
   const request = asSchema(operation.parameter_schema);
   const requestProperties = asRecord(request.properties);
   const requestRequired = stringSet(request.required);
@@ -259,6 +259,90 @@ function requireIdentifier(value: string): string {
     throw new Error('Function name must be a TypeScript identifier.');
   }
   return identifier;
+}
+
+function createCallableName(
+  operation: ConsoleFrontstageInterfaceCapability,
+  existingSource: string
+): string {
+  const baseName =
+    createRuntimeDataModelCallableName(operation.path) ??
+    (operation.name === operation.interface_id
+      ? null
+      : createIdentifierFromWords(operation.name)) ??
+    createRouteCallableName(operation.method, operation.path);
+  let candidate = baseName;
+  let suffix = 2;
+  while (sourceContainsIdentifier(existingSource, candidate)) {
+    candidate = `${baseName}${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function createRuntimeDataModelCallableName(path: string): string | null {
+  const match = path.match(
+    /^\/api\/runtime\/models\/([^/]+)\/(list|create|get|update|delete)(?:\/\{[^/{}]+\})?$/
+  );
+  if (!match) return null;
+  const resourceName = createPascalIdentifier(match[1] ?? '');
+  const action = match[2];
+  if (!resourceName || !action) return null;
+  return action === 'list'
+    ? `list${resourceName}`
+    : `${action}${resourceName}Record`;
+}
+
+function createRouteCallableName(method: string, path: string): string {
+  const routeWords = path
+    .split('/')
+    .filter(
+      (part) =>
+        part.length > 0 &&
+        part !== 'api' &&
+        part !== 'console' &&
+        part !== 'runtime'
+    )
+    .flatMap((part) =>
+      part.startsWith('{') && part.endsWith('}')
+        ? ['by', part.slice(1, -1)]
+        : [part]
+    );
+  return (
+    createIdentifierFromWords(
+      `${method.toLowerCase()} ${routeWords.join(' ')}`
+    ) ?? 'callApi'
+  );
+}
+
+function createIdentifierFromWords(value: string): string | null {
+  const words = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (words.length === 0) return null;
+  const candidate = words
+    .map((word, index) =>
+      index === 0
+        ? word.charAt(0).toLowerCase() + word.slice(1)
+        : word.charAt(0).toUpperCase() + word.slice(1)
+    )
+    .join('');
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(candidate)) return null;
+  return reservedIdentifierNames.has(candidate)
+    ? `${candidate}Operation`
+    : candidate;
+}
+
+function createPascalIdentifier(value: string): string | null {
+  const candidate = createIdentifierFromWords(value);
+  return candidate
+    ? candidate.charAt(0).toUpperCase() + candidate.slice(1)
+    : null;
+}
+
+function sourceContainsIdentifier(source: string, identifier: string): boolean {
+  const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9_$])${escaped}(?![A-Za-z0-9_$])`).test(
+    source
+  );
 }
 
 function toCamelCase(value: string): string {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../lib/page-document';
@@ -6,6 +7,9 @@ import {
   createRestrictedBlockRunPlan,
   type RestrictedBlockLoaderLimits
 } from '../lib/restricted-block-loader';
+
+const blockSource = 'export default { render() {} }';
+const blockSourceSha256 = sha256Text(blockSource);
 
 function createBlock(
   overrides: Partial<FrontstageBlockInstance> = {}
@@ -97,7 +101,8 @@ describe('restricted block loader core', () => {
           workerModuleSources: []
         }
       }),
-      code: 'export default { render() {} }',
+      code: blockSource,
+      sourceSha256: blockSourceSha256,
       contextSnapshot: {
         workspaceId: 'workspace-1',
         pageId: 'page-1'
@@ -112,7 +117,15 @@ describe('restricted block loader core', () => {
       request: {
         requestId: 'restricted-block:hero-block:hero-code',
         blockId: 'hero-block',
-        source: 'export default { render() {} }',
+        program: {
+          kind: 'source',
+          source: blockSource,
+          sourceSha256: blockSourceSha256,
+          allowedImports: [
+            '@1flowbase/block-sdk',
+            '@1flowbase/block-renderer/antd-facade'
+          ]
+        },
         props: { title: 'Override' },
         state: { selected: true },
         contextSnapshot: {
@@ -123,11 +136,7 @@ describe('restricted block loader core', () => {
           timeoutMs: 1000,
           maxRenderDepth: 8,
           maxRenderNodes: 250
-        },
-        allowedImports: [
-          '@1flowbase/block-sdk',
-          '@1flowbase/block-renderer/antd-facade'
-        ]
+        }
       },
       schemaValidationOptions: {
         maxDepth: 8,
@@ -153,6 +162,7 @@ describe('restricted block loader core', () => {
       block,
       catalogEntry: createCatalogEntry(),
       code: 'export default {}',
+      sourceSha256: sha256Text('export default {}'),
       contextSnapshot,
       limits: createLimits({ allowedActions: [], allowedEvents: [] })
     });
@@ -233,6 +243,7 @@ describe('restricted block loader core', () => {
         block: createBlock(),
         catalogEntry: createCatalogEntry(),
         code: 'export default {}',
+        sourceSha256: sha256Text('export default {}'),
         contextSnapshot: {},
         limits: createLimits()
       };

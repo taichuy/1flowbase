@@ -50,7 +50,7 @@ function createRunRequest(
   return {
     requestId: 'restricted-block:block-1:code-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: { title: 'Hello' },
     state: { selected: false },
     contextSnapshot: { pageId: 'page-1' },
@@ -116,7 +116,17 @@ function emitWorkerReady(worker: FakeWorker): void {
 
 describe('restricted block runtime host controller', () => {
   test('creates a worker host from the run plan and sends the run request', () => {
-    const runPlan = createRunPlan();
+    const authoritativeSourceSha256 =
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const runPlan = createRunPlan({
+      request: createRunRequest({
+        program: {
+          kind: 'source',
+          source: validSource,
+          sourceSha256: authoritativeSourceSha256
+        }
+      })
+    });
     const { worker, host } = createSubject({ runPlan });
 
     host.run();
@@ -131,7 +141,10 @@ describe('restricted block runtime host controller', () => {
       {
         direction: 'host_to_worker',
         type: 'run',
-        request: runPlan.request
+        request: expect.objectContaining({
+          requestId: runPlan.request.requestId,
+          program: expect.objectContaining({ kind: 'compiled_artifact' })
+        })
       }
     ]);
     expect(host.getSnapshot()).toMatchObject({
@@ -139,6 +152,10 @@ describe('restricted block runtime host controller', () => {
       requestId: runPlan.request.requestId,
       blockId: runPlan.request.blockId,
       schemaValidationOptions: runPlan.schemaValidationOptions,
+      compiledArtifact: {
+        format: '1flowbase/js-block-compiled-artifact',
+        sourceSha256: authoritativeSourceSha256
+      },
       logs: [],
       effects: [],
       rejections: []
@@ -179,6 +196,10 @@ describe('restricted block runtime host controller', () => {
       blockId: 'block-1',
       view: { primitive: 'Text', props: { children: 'Ready' } },
       outputs: {},
+      compiledArtifact: expect.objectContaining({
+        format: '1flowbase/js-block-compiled-artifact',
+        sourceSha256: expect.any(String)
+      }),
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,
@@ -214,7 +235,12 @@ describe('restricted block runtime host controller', () => {
 
   test('reports source policy failure and worker errors as failed snapshots with stable run errors', () => {
     const blockedPlan = createRunPlan({
-      request: createRunRequest({ source: 'window.location.href = "/bad";' })
+      request: createRunRequest({
+        program: {
+          kind: 'source',
+          source: 'window.location.href = "/bad";'
+        }
+      })
     });
     const blocked = createSubject({ runPlan: blockedPlan });
 
@@ -278,7 +304,10 @@ describe('restricted block runtime host controller', () => {
       {
         direction: 'host_to_worker',
         type: 'run',
-        request: createRunRequest()
+        request: expect.objectContaining({
+          requestId: 'restricted-block:block-1:code-1',
+          program: expect.objectContaining({ kind: 'compiled_artifact' })
+        })
       },
       {
         direction: 'host_to_worker',
@@ -398,6 +427,7 @@ describe('restricted block runtime host controller', () => {
       snapshot.schemaValidationOptions.allowedActions as string[] | undefined
     )?.push('record.delete');
     snapshot.mediatorState!.eventChains.mutated = 99;
+    snapshot.compiledArtifact!.program.executableBody = 'mutated artifact';
 
     const hostState = host.getHostState();
     hostState.requests['restricted-block:block-1:code-1']!.status = 'failed';
@@ -412,6 +442,12 @@ describe('restricted block runtime host controller', () => {
         children: [{ primitive: 'Text', props: { children: 'Ready' } }]
       },
       outputs: {},
+      compiledArtifact: expect.objectContaining({
+        format: '1flowbase/js-block-compiled-artifact',
+        program: expect.objectContaining({
+          executableBody: expect.not.stringContaining('mutated artifact')
+        })
+      }),
       schemaValidationOptions: {
         maxDepth: 8,
         maxNodes: 250,

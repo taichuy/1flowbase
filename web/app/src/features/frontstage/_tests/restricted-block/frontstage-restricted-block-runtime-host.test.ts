@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  createCompiledBlockRuntimeFingerprint,
   JsBlockWorkerAdapterError,
   type JsBlockRunRequest,
   type JsBlockWorkerLike
@@ -12,7 +13,10 @@ import {
   createFrontstageRestrictedBlockRuntimeHost,
   type FrontstageRestrictedBlockRuntimeHostOptions
 } from '../../lib/frontstage-restricted-block-runtime-host';
-import { getFrontstageRestrictedBlockWorkerUrl } from '../../lib/restricted-block-worker-factory';
+import {
+  getFrontstageRestrictedBlockRuntimeFingerprint,
+  getFrontstageRestrictedBlockWorkerUrl
+} from '../../lib/restricted-block-worker-factory';
 
 const validSource = `
 import { Text } from '@1flowbase/block-renderer/antd-facade';
@@ -90,7 +94,7 @@ function createRunRequest(
   return {
     requestId: 'restricted-block:block-1:code-1',
     blockId: 'block-1',
-    source: validSource,
+    program: { kind: 'source', source: validSource },
     props: { title: 'Hello' },
     state: { selected: false },
     contextSnapshot: { pageId: 'page-1' },
@@ -165,6 +169,7 @@ describe('FrontStage restricted block runtime host factory', () => {
 
     expect(snapshots).toMatchObject([
       { status: 'running' },
+      { status: 'running', phase: 'validating_schema' },
       {
         status: 'ready',
         view: { primitive: 'Text', props: { children: 'Ready' } },
@@ -304,8 +309,8 @@ describe('FrontStage restricted block runtime host factory', () => {
       outputs: {}
     });
 
-    expect(mutateFirstSnapshot).toHaveBeenCalledTimes(2);
-    expect(secondSnapshots[1]).toMatchObject({
+    expect(mutateFirstSnapshot).toHaveBeenCalledTimes(3);
+    expect(secondSnapshots[2]).toMatchObject({
       status: 'ready',
       view: { primitive: 'Text', props: { children: 'Ready' } },
       outputs: {},
@@ -357,6 +362,17 @@ describe('FrontStage restricted block runtime host factory', () => {
       type: 'module',
       name: 'frontstage-restricted-block-runtime'
     });
+  });
+
+  test('binds the runtime fingerprint to an injected Worker asset URL', () => {
+    const workerUrl = new URL('https://example.test/custom-worker.js');
+
+    expect(getFrontstageRestrictedBlockRuntimeFingerprint(workerUrl)).toBe(
+      createCompiledBlockRuntimeFingerprint(workerUrl)
+    );
+    expect(getFrontstageRestrictedBlockRuntimeFingerprint(workerUrl)).not.toBe(
+      getFrontstageRestrictedBlockRuntimeFingerprint()
+    );
   });
 
   test('uses an injected workerFactory instead of browser Worker options', () => {

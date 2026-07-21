@@ -44,19 +44,27 @@ export function useFrontstageBlockCode({
   codeRef
 }: UseFrontstageBlockCodeInput) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const actor = useAuthStore((state) => state.actor);
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const [mutationError, setMutationError] = useState<Error | null>(null);
-  const canRead = Boolean(workspaceId && pageId && codeRef);
+  const canRead = Boolean(
+    actor &&
+      workspaceId &&
+      actor.current_workspace_id === workspaceId &&
+      pageId &&
+      codeRef
+  );
 
   const queryKey = useMemo(
     () =>
       frontstageBlockCodeQueryKey(
         workspaceId ?? '',
         pageId ?? '',
-        codeRef ?? ''
+        codeRef ?? '',
+        actor?.id ?? ''
       ),
-    [codeRef, pageId, workspaceId]
+    [actor?.id, codeRef, pageId, workspaceId]
   );
 
   const blockCodeQuery = useQuery({
@@ -67,7 +75,12 @@ export function useFrontstageBlockCode({
         requireValue(pageId, 'page id'),
         requireValue(codeRef, 'code ref')
       ),
-    enabled: canRead
+    enabled: canRead,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
   const code = blockCodeQuery.data?.code ?? '';
@@ -97,9 +110,8 @@ export function useFrontstageBlockCode({
       ),
     onMutate: clearMutationError,
     onError: captureMutationError,
-    onSuccess: async (savedBlockCode: FrontstageBlockCode) => {
+    onSuccess: (savedBlockCode: FrontstageBlockCode) => {
       queryClient.setQueryData(queryKey, savedBlockCode);
-      await queryClient.invalidateQueries({ queryKey, refetchType: 'active' });
     }
   });
 

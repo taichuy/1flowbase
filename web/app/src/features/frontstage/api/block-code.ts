@@ -10,6 +10,7 @@ export interface FrontstageBlockCode {
   pageId: string;
   codeRef: string;
   code: string;
+  source_sha256: string;
 }
 
 export interface SaveFrontstageBlockCodeInput {
@@ -20,9 +21,18 @@ export interface SaveFrontstageBlockCodeInput {
 export const frontstageBlockCodeQueryKey = (
   workspaceId: string,
   pageId: string,
-  codeRef: string
+  codeRef: string,
+  actorId: string
 ) =>
-  ['frontstage', workspaceId, 'pages', pageId, 'block-code', codeRef] as const;
+  [
+    'frontstage',
+    actorId,
+    workspaceId,
+    'pages',
+    pageId,
+    'block-code',
+    codeRef
+  ] as const;
 
 function mapFrontstageBlockCode(
   blockCode: ConsoleFrontstageBlockCode
@@ -30,7 +40,8 @@ function mapFrontstageBlockCode(
   return {
     pageId: blockCode.page_id,
     codeRef: blockCode.code_ref,
-    code: blockCode.code
+    code: blockCode.code,
+    source_sha256: blockCode.source_sha256
   };
 }
 

@@ -4,8 +4,26 @@ import {
   type BlockUiSchema
 } from '@1flowbase/page-protocol';
 
-import { type JsBlockSourceTransformSuccess } from './js-block-source-transform';
+import type { CompiledBlockArtifact } from './js-block-runtime/compiled-artifact';
 import { compileAndTransformJsBlockSource } from './js-block-source-evaluator';
+
+export interface JsBlockSourceProgram {
+  kind: 'source';
+  source: string;
+  sourceSha256?: string;
+  allowedImports?: string[];
+}
+
+export interface JsBlockCompiledArtifactProgram {
+  kind: 'compiled_artifact';
+  artifact: CompiledBlockArtifact;
+  sourceSha256: string;
+  fallback: JsBlockSourceProgram;
+}
+
+export type JsBlockProgram =
+  | JsBlockSourceProgram
+  | JsBlockCompiledArtifactProgram;
 
 export interface JsBlockRuntimeLimits {
   timeoutMs: number;
@@ -16,13 +34,12 @@ export interface JsBlockRuntimeLimits {
 export interface JsBlockRunRequest {
   requestId: string;
   blockId: string;
-  source: string;
+  program: JsBlockProgram;
   inputs?: Record<string, unknown>;
   props: Record<string, unknown>;
   state: Record<string, unknown>;
   contextSnapshot: Record<string, unknown>;
   limits: JsBlockRuntimeLimits;
-  allowedImports?: string[];
 }
 
 export type JsBlockRunErrorKind =
@@ -30,6 +47,7 @@ export type JsBlockRunErrorKind =
   | 'worker_startup_timeout'
   | 'worker_crash'
   | 'compile_failed'
+  | 'artifact_corrupt'
   | 'main_failed'
   | 'effect_failed'
   | 'schema_invalid'
@@ -115,7 +133,7 @@ export interface JsBlockRuntimeRequestState {
   status: JsBlockRunStatus;
   phase: JsBlockRunPhase;
   request: JsBlockRunRequest;
-  compiledSource?: JsBlockSourceTransformSuccess;
+  compiledArtifact?: CompiledBlockArtifact;
   result?: JsBlockRunResult;
   logs: JsBlockWorkerLogEntry[];
   effects: JsBlockWorkerEffect[];
@@ -388,10 +406,6 @@ function reduceRunMessage(
   }
 
   const request = requestResult.request;
-  const sourceResult = compileAndTransformJsBlockSource(
-    request.source,
-    request.allowedImports
-  );
   const requestState: JsBlockRuntimeRequestState = {
     requestId: request.requestId,
     blockId: request.blockId,
@@ -402,7 +416,14 @@ function reduceRunMessage(
     effects: []
   };
 
-  if (!sourceResult.ok) {
+  if (request.program.kind === 'source') {
+    const sourceResult = compileAndTransformJsBlockSource(
+      request.program.source,
+      request.program.allowedImports
+    );
+    if (sourceResult.ok) {
+      return withRequest(state, requestState, request.requestId);
+    }
     const failedRequest = withRunFailure(
       requestState,
       'source_policy_failed',
@@ -417,7 +438,7 @@ function reduceRunMessage(
     state,
     {
       ...requestState,
-      compiledSource: sourceResult
+      compiledArtifact: request.program.artifact
     },
     request.requestId
   );
@@ -754,10 +775,8 @@ function readRunRequest(
     return blockId;
   }
 
-  const source = readString(value, 'source', 'message.request.source');
-  if (!source.ok) {
-    return source;
-  }
+  const program = readProgram(value.program);
+  if (!program.ok) return program;
 
   const props = readRecord(value, 'props', 'message.request.props');
   if (!props.ok) {
@@ -789,28 +808,72 @@ function readRunRequest(
   if (!limits.ok) {
     return limits;
   }
-  const allowedImports = readOptionalStringArray(
-    value.allowedImports,
-    'message.request.allowedImports'
-  );
-  if (!allowedImports.ok) {
-    return allowedImports;
-  }
-
   return {
     ok: true,
     request: {
       requestId: requestId.value,
       blockId: blockId.value,
-      source: source.value,
+      program: program.value,
       inputs: inputs.value,
       props: props.value,
       state: state.value,
       contextSnapshot: contextSnapshot.value,
-      limits: limits.value,
-      allowedImports: allowedImports.value
+      limits: limits.value
     }
   };
+}
+
+function readProgram(
+  value: unknown
+):
+  | { ok: true; value: JsBlockProgram }
+  | { ok: false; rejection: JsBlockRuntimeRejection } {
+  if (!isRecord(value)) {
+    return invalid('message.request.program', 'Run message program must be an object.');
+  }
+  if (value.kind === 'source') {
+    const source = readString(value, 'source', 'message.request.program.source');
+    if (!source.ok) return source;
+    const allowedImports = readOptionalStringArray(
+      value.allowedImports,
+      'message.request.program.allowedImports'
+    );
+    return allowedImports.ok
+      ? {
+          ok: true,
+          value: {
+            kind: 'source',
+            source: source.value,
+            ...(typeof value.sourceSha256 === 'string'
+              ? { sourceSha256: value.sourceSha256 }
+              : {}),
+            allowedImports: allowedImports.value
+          }
+        }
+      : allowedImports;
+  }
+  if (
+    value.kind === 'compiled_artifact' &&
+    isRecord(value.artifact) &&
+    /^[a-f0-9]{64}$/.test(String(value.sourceSha256)) &&
+    isRecord(value.fallback)
+  ) {
+    const fallback = readProgram(value.fallback);
+    if (!fallback.ok) return fallback;
+    if (fallback.value.kind !== 'source') {
+      return invalid('message.request.program.fallback', 'Artifact fallback must be a source program.');
+    }
+    return {
+      ok: true,
+      value: {
+        kind: 'compiled_artifact',
+        artifact: value.artifact as unknown as CompiledBlockArtifact,
+        sourceSha256: value.sourceSha256 as string,
+        fallback: fallback.value
+      }
+    };
+  }
+  return invalid('message.request.program.kind', 'Run message program kind is invalid.');
 }
 
 function readOptionalStringArray(
@@ -1198,6 +1261,7 @@ function isRunErrorKind(value: unknown): value is JsBlockRunErrorKind {
     value === 'worker_startup_timeout' ||
     value === 'worker_crash' ||
     value === 'compile_failed' ||
+    value === 'artifact_corrupt' ||
     value === 'main_failed' ||
     value === 'effect_failed' ||
     value === 'schema_invalid' ||

@@ -17,8 +17,8 @@ match_when:
   - 修改 Frontstage 页面、Tab 或区块的设计态操作入口
   - 修改 JSX 区块代码编辑、配置、接口绑定或变量注入体验
 created_at: 2026-07-17 23
-updated_at: 2026-07-21 20
-last_verified_at: 2026-07-21 20
+updated_at: 2026-07-21 23
+last_verified_at: 2026-07-21 23
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -39,6 +39,7 @@ scope:
 - 接口连接器的产品职责到“生成并插入代码片段”为止；不要要求用户先绑定、展示“已绑定接口”、提供取消绑定，或让 alias / schema digest 成为额外可管理对象。运行时需要的 operation identity、Schema freshness、权限校验与写授权应由生成函数和受控 runtime contract 吸收，不能泄漏成第二套编程状态。
 - 单次接口插入的阅读单位必须是一个可直接调用的函数或 callable 变量，参数与返回结构服务于这个入口；不要把响应对象每一层机械展开为一组顶层 `interface`，让类型声明淹没调用方法。
 - Frontstage 内部 HTTP/OpenAPI 接口的作者侧身份优先使用规范化 `method + path template`；不要把 `operationId`、`schemaDigest` 或 descriptor 对象泄漏到生成源码。绝对 URL、认证、权限、写授权和 Catalog 解析仍由受控 Host/Backend 吸收。
+- 生成的 callable 函数 / 变量名也是作者源码，只是可重命名的本地别名；必须使用可读业务语义，不得从 `interface_id`、`operationId` 或数据定义 UUID 生成。真正的运行接口身份仍是 `method + path template`。
 
 ## 原因
 
