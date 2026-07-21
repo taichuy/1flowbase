@@ -189,7 +189,26 @@ async fn handle_mcp_request(
                             .await
                             {
                                 Ok(value) => tool_result(value),
-                                Err(_) => {
+                                Err(super::mcp_management::debug_execute::McpDebugExecuteError::Api(error)) => {
+                                    tracing::warn!(
+                                        tool_id = %tool.tool_id,
+                                        interface_id = %interface_id,
+                                        error = %error,
+                                        "MCP interface tool dispatch failed before receiving a target response"
+                                    );
+                                    return Ok(jsonrpc_error(
+                                        request.id,
+                                        -32603,
+                                        "Tool execution failed",
+                                    ));
+                                }
+                                Err(super::mcp_management::debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
+                                    tracing::warn!(
+                                        tool_id = %tool.tool_id,
+                                        interface_id = %interface_id,
+                                        status = %response.status(),
+                                        "MCP interface tool target returned a non-success status"
+                                    );
                                     return Ok(jsonrpc_error(
                                         request.id,
                                         -32603,
