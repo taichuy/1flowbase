@@ -447,18 +447,12 @@ async fn create_tab(
 async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation: &str) -> Value {
     let (status, payload) = get(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities/{operation}"),
         cookie,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{payload}");
-    payload["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|entry| entry["interface_id"] == operation)
-        .unwrap()
-        .clone()
+    payload["data"].clone()
 }
 
 fn binding(alias: &str, catalog: &Value) -> Value {
@@ -590,67 +584,60 @@ fn grant_lock_key(token: &str) -> String {
 }
 
 #[tokio::test]
-async fn capability_catalog_contains_bindable_console_operations_and_runtime_model_crud() {
+async fn capability_catalog_pages_lightweight_path_matches_and_loads_one_detail() {
     let fixture = fixture().await;
     let (cookie, _) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (status, payload) = get(
         &fixture.app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
+        &format!(
+            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_query=application_conversations&adapter_id=runtime_data_model&method=GET&offset=0&limit=1"
+        ),
         &cookie,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{payload}");
-    let entries = payload["data"].as_array().unwrap();
-    assert!(entries.iter().all(|entry| {
-        !entry["interface_id"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("published_workflow_operation:"))
-    }));
-    let console = entries
-        .iter()
-        .filter(|entry| {
-            entry["path"]
-                .as_str()
-                .is_some_and(|path| path.starts_with("/api/console/"))
-        })
-        .collect::<Vec<_>>();
-    let console_ids = console
-        .iter()
-        .filter_map(|entry| entry["interface_id"].as_str())
-        .collect::<std::collections::BTreeSet<_>>();
-    assert!(!console.is_empty());
-    assert_eq!(console_ids.len(), console.len());
-    assert!(console
-        .iter()
-        .all(|entry| entry["adapter_id"] == "console_openapi"));
+    let page = &payload["data"];
+    assert_eq!(page["items"].as_array().unwrap().len(), 1, "{payload}");
+    assert_eq!(page["total"], 2);
+    assert_eq!(page["offset"], 0);
+    assert_eq!(page["limit"], 1);
+    assert_eq!(page["has_more"], true);
+    assert_eq!(page["next_offset"], 1);
+    assert!(page["adapter_ids"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("runtime_data_model")));
+    assert!(page["methods"].as_array().unwrap().contains(&json!("GET")));
 
-    let conversations = entries
-        .iter()
-        .filter(|entry| {
-            entry["path"]
-                .as_str()
-                .is_some_and(|path| path.contains("/application_conversations/"))
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(conversations.len(), 5, "{conversations:?}");
-    assert_eq!(
-        conversations
-            .iter()
-            .filter_map(|entry| entry["method"].as_str())
-            .collect::<std::collections::BTreeSet<_>>(),
-        std::collections::BTreeSet::from(["DELETE", "GET", "PATCH", "POST"])
-    );
+    let summary = &page["items"][0];
+    assert_eq!(summary["method"], "GET");
+    assert_eq!(summary["adapter_id"], "runtime_data_model");
+    assert!(summary["path"]
+        .as_str()
+        .unwrap()
+        .contains("/application_conversations/"));
+    assert!(summary.get("parameter_schema").is_none());
+    assert!(summary.get("result_schema").is_none());
+    assert!(summary.get("name").is_none());
 
-    let chunk_upload = entries
-        .iter()
-        .find(|entry| entry["interface_id"] == "upload_run_archive_chunk")
-        .expect("archive chunk upload must be callable");
-    assert!(
-        chunk_upload["parameter_schema"]["properties"]["headers"]["properties"]
-            .get("x-chunk-sha256")
-            .is_some()
-    );
+    let interface_id = summary["interface_id"].as_str().unwrap();
+    let detail = catalog_entry(&fixture.app, &cookie, workspace_id, interface_id).await;
+    assert_eq!(detail["interface_id"], interface_id);
+    assert!(detail["parameter_schema"].is_object());
+    assert!(detail["result_schema"].is_object());
+    assert!(detail["schema_digest"].is_string());
+
+    let (id_search_status, id_search_payload) = get(
+        &fixture.app,
+        &format!(
+            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_query={interface_id}"
+        ),
+        &cookie,
+    )
+    .await;
+    assert_eq!(id_search_status, StatusCode::OK, "{id_search_payload}");
+    assert_eq!(id_search_payload["data"]["total"], 0);
 }
 
 #[allow(clippy::too_many_arguments)]

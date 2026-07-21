@@ -11,6 +11,7 @@ import {
   dispatchFrontstageCallableBinary,
   dispatchFrontstageCallableStream,
   issueFrontstageCallableWriteGrant,
+  getFrontstageInterfaceCapability,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
   listFrontstagePageTabs,
@@ -47,9 +48,16 @@ describe('console-frontstage client', () => {
   test.each([
     {
       name: 'OpenAPI capability catalog',
-      request: () => listFrontstageInterfaceCapabilities('workspace-1'),
+      request: () =>
+        listFrontstageInterfaceCapabilities('workspace-1', {
+          path_query: '/api/console/applications',
+          adapter_id: 'console_openapi',
+          method: 'GET',
+          offset: 20,
+          limit: 20
+        }),
       expected: {
-        path: '/api/console/frontstage/workspace-1/interface-capabilities',
+        path: '/api/console/frontstage/workspace-1/interface-capabilities?path_query=%2Fapi%2Fconsole%2Fapplications&adapter_id=console_openapi&method=GET&offset=20&limit=20',
         method: 'GET'
       }
     },
@@ -93,6 +101,18 @@ describe('console-frontstage client', () => {
       await expect(request()).resolves.toMatchObject(expected);
     }
   );
+
+  test('loads one encoded interface capability detail on demand', async () => {
+    await expect(
+      getFrontstageInterfaceCapability(
+        'workspace-1',
+        'published/interface:detail'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/interface-capabilities/published%2Finterface%3Adetail',
+      method: 'GET'
+    });
+  });
 
   test('dispatches a bound callable through the page-tab scope', async () => {
     await expect(

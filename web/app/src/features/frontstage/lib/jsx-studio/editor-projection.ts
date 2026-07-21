@@ -42,7 +42,9 @@ export function createFrontstageJsxBindingSnippet(
   binding: FrontstageResolvedInterfaceBinding
 ): string {
   if (!binding.operation) {
-    throw new Error(`Interface capability is missing: ${binding.binding.operation_id}.`);
+    throw new Error(
+      `Interface capability is missing: ${binding.binding.operation_id}.`
+    );
   }
   return generateFrontstageInterfaceSource(
     binding.operation,
@@ -56,9 +58,7 @@ export function createFrontstageContextComment(
   const interfaceSummary =
     bindings.length === 0
       ? '无'
-      : bindings
-          .map(({ binding, status }) => `${binding.alias} (${status})`)
-          .join(', ');
+      : bindings.map(({ binding }) => binding.alias).join(', ');
   return [
     '/**',
     ' * @1flowbase-context',

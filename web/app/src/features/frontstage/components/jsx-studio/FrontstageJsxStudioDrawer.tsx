@@ -36,7 +36,7 @@ import {
   type WindowWorkspaceRect
 } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
-import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
+import { useFrontstageInterfaceCapabilityDetails } from '../../hooks/use-frontstage-interface-capabilities';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -139,7 +139,19 @@ function FrontstageJsxStudioWindow({
     useState<FrontstageJsxStudioSection>(initialSection);
   const [mobile, setMobile] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const interfaceCapabilities = useFrontstageInterfaceCapabilities(workspaceId);
+  const boundInterfaceIds = useMemo(
+    () => [
+      ...new Set(
+        (block.interfaces ?? []).map((binding) => binding.operation_id)
+      )
+    ],
+    [block.interfaces]
+  );
+  const interfaceCapabilities = useFrontstageInterfaceCapabilityDetails(
+    workspaceId,
+    boundInterfaceIds,
+    activeSection === 'interfaces'
+  );
   const {
     draft,
     dirty,
@@ -361,11 +373,7 @@ function FrontstageJsxStudioWindow({
         <Typography.Text strong>
           {i18nText('frontstage', 'auto.jsx_studio')}
         </Typography.Text>
-        <Space
-          className="frontstage-jsx-studio__window-actions"
-          size={8}
-          wrap
-        >
+        <Space className="frontstage-jsx-studio__window-actions" size={8} wrap>
           <Button onClick={reinjectContext}>
             {i18nText('frontstage', 'auto.inject_context')}
           </Button>
@@ -458,9 +466,7 @@ function FrontstageJsxStudioWindow({
             <JsxStudioResourcePanel
               block={block}
               pageBlocks={pageBlocks}
-              interfaceCapabilities={interfaceCapabilities.data}
-              interfaceCapabilitiesError={interfaceCapabilities.error}
-              interfaceCapabilitiesLoading={interfaceCapabilities.loading}
+              workspaceId={workspaceId}
               onInsertCode={insertCode}
               onSaveBlock={onSaveBlock}
               projection={projection}
