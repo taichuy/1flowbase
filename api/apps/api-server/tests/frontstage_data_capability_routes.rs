@@ -565,6 +565,55 @@ fn grant_lock_key(token: &str) -> String {
     format!("{GRANT_LOCK_PREFIX}{:x}", Sha256::digest(token.as_bytes()))
 }
 
+#[tokio::test]
+async fn callable_catalog_contains_every_console_operation_and_runtime_model_crud() {
+    let fixture = fixture().await;
+    let (cookie, _) = login(&fixture.app, "root", "change-me").await;
+    let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
+    let (status, payload) = get(
+        &fixture.app,
+        &format!("/api/console/frontstage/{workspace_id}/callable-interfaces"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    let entries = payload["data"].as_array().unwrap();
+    let console = entries
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.starts_with("/api/console/"))
+        })
+        .collect::<Vec<_>>();
+    let console_ids = console
+        .iter()
+        .filter_map(|entry| entry["operation_id"].as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(console.len(), 257);
+    assert_eq!(console_ids.len(), console.len());
+    assert!(console
+        .iter()
+        .all(|entry| entry["adapter_id"] == "console_openapi"));
+
+    let conversations = entries
+        .iter()
+        .filter(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.contains("/application_conversations/"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(conversations.len(), 5, "{conversations:?}");
+    assert_eq!(
+        conversations
+            .iter()
+            .filter_map(|entry| entry["method"].as_str())
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from(["DELETE", "GET", "PATCH", "POST"])
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn seed_grant(
     state: &ApiState,

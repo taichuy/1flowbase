@@ -32,20 +32,6 @@ impl RuntimeDataModelDocsOperationKind {
         ]
     }
 
-    pub fn allowed_for(model: &domain::ModelDefinitionRecord) -> Vec<Self> {
-        let record = domain::data_model_capabilities(model).record;
-        Self::all()
-            .into_iter()
-            .filter(|kind| match kind {
-                Self::ListRecords => record.can_list,
-                Self::CreateRecord => record.can_create,
-                Self::GetRecord => record.can_get,
-                Self::UpdateRecord => record.can_update,
-                Self::DeleteRecord => record.can_delete,
-            })
-            .collect()
-    }
-
     fn id_suffix(self) -> &'static str {
         match self {
             Self::ListRecords => "list_records",
@@ -231,7 +217,7 @@ pub fn build_category(models: &[domain::ModelDefinitionRecord]) -> Option<DocsCa
         label: DATA_MODEL_DOCS_CATEGORY_LABEL.to_string(),
         operation_count: models
             .iter()
-            .map(|model| RuntimeDataModelDocsOperationKind::allowed_for(model).len())
+            .map(|_| RuntimeDataModelDocsOperationKind::all().len())
             .sum(),
     })
 }
@@ -246,7 +232,7 @@ pub fn build_category_operations(
         } else {
             model.title.clone()
         };
-        for kind in RuntimeDataModelDocsOperationKind::allowed_for(model) {
+        for kind in RuntimeDataModelDocsOperationKind::all() {
             operations.push(DocsCatalogOperation {
                 id: operation_id(model.id, kind),
                 method: kind.method().to_string(),
@@ -279,7 +265,7 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
     let create_schema_ref = format!("#/components/schemas/{create_schema_name}");
     let update_schema_ref = format!("#/components/schemas/{update_schema_name}");
 
-    let mut spec = json!({
+    let spec = json!({
         "openapi": "3.1.0",
         "info": {
             "title": format!("{} Data Model API", model.title),
@@ -363,13 +349,6 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
         "x-scope-permission-note": "Runtime Data Model APIs accept pat_ user API keys with bound user role permissions and require an enabled owner or scope_all scope grant for the request scope.",
         "x-external-source-safety-limits": external_source_safety_limits(model)
     });
-    let allowed_paths = RuntimeDataModelDocsOperationKind::allowed_for(model)
-        .into_iter()
-        .map(|kind| operation_path(model, kind))
-        .collect::<std::collections::BTreeSet<_>>();
-    if let Some(paths) = spec.get_mut("paths").and_then(Value::as_object_mut) {
-        paths.retain(|path, _| allowed_paths.contains(path));
-    }
     spec
 }
 
