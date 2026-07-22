@@ -27,6 +27,13 @@ const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
   setCompilerOptions: vi.fn()
 }));
+const monacoEditor = vi.hoisted(() => ({
+  executeEdits: vi.fn(),
+  focus: vi.fn(),
+  getModel: vi.fn(),
+  getSelection: vi.fn(),
+  pushUndoStop: vi.fn()
+}));
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
@@ -55,11 +62,13 @@ vi.mock('@monaco-editor/react', () => ({
     beforeMount,
     value,
     onChange,
+    onMount,
     options
   }: {
     beforeMount?: (monaco: unknown) => void;
     value?: string;
     onChange?: (value?: string) => void;
+    onMount?: (editor: unknown) => void;
     options?: { editContext?: boolean };
   }) => {
     beforeMount?.({
@@ -75,6 +84,7 @@ vi.mock('@monaco-editor/react', () => ({
         }
       }
     });
+    onMount?.(monacoEditor);
     return (
       <textarea
         aria-label="JSX source"
@@ -126,9 +136,10 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
     allowedImports: ['@1flowbase/block-renderer/antd-facade'],
     monacoExtraLibs: [
       {
+        source: '@1flowbase/block-renderer/antd-facade',
         filePath: 'file:///node_modules/antd-facade/index.d.ts',
         content:
-          "declare module '@1flowbase/block-renderer/antd-facade' { export const Stack: unknown; }"
+          "declare module '@1flowbase/block-renderer/antd-facade' { export const Button: unknown; export const Stack: unknown; }"
       }
     ],
     workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
@@ -139,6 +150,8 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
 describe('FrontstageJsxStudioDrawer', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    monacoEditor.getSelection.mockReturnValue(null);
+    monacoEditor.getModel.mockReturnValue(null);
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 1400
@@ -319,6 +332,83 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(monacoHook.setCompilerOptions).toHaveBeenCalledWith(
       expect.objectContaining({ jsx: 'preserve' })
     );
+  });
+
+  test('AC-005 submits snippet and import changes as one Monaco edit batch', () => {
+    const source = `import {
+  Stack
+} from '@1flowbase/block-renderer/antd-facade';
+
+async function main(ctx: unknown) {
+  return { view: null, outputs: {} };
+}`;
+    const selectionOffset = source.indexOf('null');
+    const positionAt = (offset: number) => {
+      const before = source.slice(0, offset).split('\n');
+      return {
+        lineNumber: before.length,
+        column: (before.at(-1)?.length ?? 0) + 1
+      };
+    };
+    const offsetAt = ({
+      lineNumber,
+      column
+    }: {
+      lineNumber: number;
+      column: number;
+    }) => {
+      const lines = source.split('\n');
+      return (
+        lines
+          .slice(0, lineNumber - 1)
+          .reduce((total, line) => total + line.length + 1, 0) +
+        column -
+        1
+      );
+    };
+    const selectionPosition = positionAt(selectionOffset);
+    monacoEditor.getSelection.mockReturnValue({
+      getStartPosition: () => selectionPosition,
+      getEndPosition: () => selectionPosition
+    });
+    monacoEditor.getModel.mockReturnValue({
+      getValue: () => source,
+      getOffsetAt: offsetAt,
+      getPositionAt: positionAt
+    });
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: source,
+      draft: source,
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined)
+    });
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="components"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        diagnostics={[]}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+    const row = screen.getByText('Button').closest('div');
+    fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
+
+    expect(monacoEditor.executeEdits).toHaveBeenCalledTimes(1);
+    expect(monacoEditor.executeEdits.mock.calls[0]?.[1]).toHaveLength(2);
+    expect(monacoEditor.pushUndoStop).toHaveBeenCalledTimes(2);
   });
 
   test('AC-004 saves fixed block height from the configuration section', async () => {

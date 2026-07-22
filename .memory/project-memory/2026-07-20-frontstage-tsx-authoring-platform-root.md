@@ -17,8 +17,8 @@ match_when:
   - 调整区块输入输出、跨区块联动、Page/Tab Signal 或 Event Bus
   - 评估 defineBlock/render、OpenAPI 生成源码或 Studio 浮窗交互
 created_at: 2026-07-20 19
-updated_at: 2026-07-21 23
-last_verified_at: 2026-07-21 23
+updated_at: 2026-07-22 07
+last_verified_at: 2026-07-22 07
 decision_policy: verify_before_decision
 status: local_beta_user_acceptance
 source_issue: "#1393"
@@ -51,6 +51,7 @@ scope:
 - Studio 目录使用 `GET /api/console/frontstage/{workspace_id}/interface-capabilities` 与 `frontstage.page.design` 设计权限；运行 dispatch 继续由页面访问者的目标 API 权限决定。Published Workflow / Agent Flow 不进入 Studio 目录。
 - 连接器严格按 Capability Catalog 在当前光标插入 `$ref` 实体、参数、响应与完整命名函数，不自动改写 `main`，不发明 OpenAPI 不存在的类型。接口选择器只显示 `METHOD /path`，用户只搜索 path，来源、Method 与分页由后端执行。
 - 选择接口后只加载详情、生成一个参数/返回结构内联的 callable variable 并插入光标；不保存 binding，不展示已绑定/取消绑定，也不调用 `onSaveBlock`。作者与 Runtime 使用受控 `ctx.api.<method>(path, request)`；HTTP 身份是规范化 method + path template，不暴露 `interfaceId`、`schemaDigest` 或 descriptor。
+- Studio 的“插入代码”采用依赖感知 contract：上下文变量绑定到 `main` 的实际参数名，组件携带 catalog module source 并新增或合并 value import，接口 callable 声明并合并 `BlockContext` type import；片段与 import 作为同一 Monaco edit batch 和单次 undo transaction 提交，重复插入不得制造重复 import。
 - OpenAPI DTO 保持后端字段原名；与 JS Block 静态策略冲突的属性名（如 `document`）生成字符串属性键，不能让合法响应字段触发全局标识符诊断。
 - 跨区块共享使用 `BlockResult.outputs → Tab/Page Scoped Signal → ctx.inputs`；Signal 单写多读且 V1 拒绝环，Event Bus 不承担状态。
 - 草稿运行统一为单一 `run_id`，观测 Preview、Console、Variables、Interface Calls 与 Problems；写 operation 每次运行单次授权。

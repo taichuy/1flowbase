@@ -12,6 +12,7 @@ import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { JsxStudioResourcePanel } from '../../components/jsx-studio/JsxStudioResourcePanel';
 import type { FrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
+import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
 const interfaceCapabilitiesHook = vi.hoisted(() => ({
@@ -91,7 +92,8 @@ const projection: FrontstageJsxEditorProjection = {
   monacoExtraLibs: []
 };
 
-const createInsertCodeMock = () => vi.fn<(source: string) => void>();
+const createInsertCodeMock = () =>
+  vi.fn<(insertion: FrontstageJsxInsertion) => void>();
 const createSaveBlockMock = () =>
   vi
     .fn<(nextBlock: FrontstageBlockInstance) => Promise<boolean | void>>()
@@ -189,10 +191,24 @@ describe('TSX Studio interface connector', () => {
     ).toHaveBeenCalledWith('workspace-1', 'get_frontstage_page_detail');
     expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).toHaveBeenCalledWith(
-      expect.stringContaining('const getPageDetail = (')
+      expect.objectContaining({
+        kind: 'source',
+        source: expect.stringContaining('const getPageDetail = ('),
+        requiredImports: [
+          {
+            kind: 'type',
+            name: 'BlockContext',
+            moduleSource: '@1flowbase/block-sdk'
+          }
+        ]
+      })
     );
-    expect(onInsertCode).toHaveBeenCalledWith(
-      expect.stringContaining("'/api/console/frontstage/pages/{page_id}'")
+    expect(onInsertCode.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        source: expect.stringContaining(
+          "'/api/console/frontstage/pages/{page_id}'"
+        )
+      })
     );
   });
 
@@ -208,7 +224,9 @@ describe('TSX Studio interface connector', () => {
     fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
     await waitFor(() => expect(onInsertCode).toHaveBeenCalledTimes(1));
-    const source = onInsertCode.mock.calls[0]?.[0] ?? '';
+    const insertion = onInsertCode.mock.calls[0]?.[0];
+    expect(insertion?.kind).toBe('source');
+    const source = insertion?.kind === 'source' ? insertion.source : '';
     expect(source).toContain('const listApplicationConversations2 = (');
     expect(source).not.toContain('019f56b6');
     expect(source).toContain(
@@ -279,5 +297,68 @@ describe('TSX Studio interface connector', () => {
     );
     expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).not.toHaveBeenCalled();
+  });
+});
+
+describe('TSX Studio insertion descriptors', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await appI18n.changeLanguage('zh_Hans');
+  });
+
+  test('AC-001 describes a context reference instead of assuming a global ctx', () => {
+    const onInsertCode = createInsertCodeMock();
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={projection}
+        section="variables"
+        onInsertCode={onInsertCode}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    const row = screen.getByText('ctx.currentUser').closest('div');
+    fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
+
+    expect(onInsertCode).toHaveBeenCalledWith({
+      kind: 'context-reference',
+      memberPath: 'currentUser'
+    });
+  });
+
+  test('AC-002 carries the catalog module source with a component insertion', () => {
+    const onInsertCode = createInsertCodeMock();
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={{
+          ...projection,
+          components: [
+            {
+              name: 'Button',
+              moduleSource: '@1flowbase/block-renderer/antd-facade'
+            }
+          ]
+        }}
+        section="components"
+        onInsertCode={onInsertCode}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
+
+    expect(onInsertCode).toHaveBeenCalledWith({
+      kind: 'component',
+      name: 'Button',
+      moduleSource: '@1flowbase/block-renderer/antd-facade'
+    });
   });
 });

@@ -39,6 +39,11 @@ import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
+import {
+  applyFrontstageJsxInsertionPlan,
+  planFrontstageJsxInsertion,
+  type FrontstageJsxInsertion
+} from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { BlockRuntimeDiagnostics } from '../BlockRuntimeDiagnostics';
 import {
@@ -310,23 +315,50 @@ function FrontstageJsxStudioWindow({
     });
   };
 
-  const insertCode = (source: string) => {
+  const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
-    if (editor && selection) {
-      editor.executeEdits('frontstage-jsx-studio', [
-        {
-          range: selection,
-          text: source,
-          forceMoveMarkers: true
-        }
-      ]);
+    const model = editor?.getModel();
+    if (editor && selection && model) {
+      const plan = planFrontstageJsxInsertion({
+        source: model.getValue(),
+        selection: {
+          start: model.getOffsetAt(selection.getStartPosition()),
+          end: model.getOffsetAt(selection.getEndPosition())
+        },
+        insertion
+      });
+      editor.pushUndoStop();
+      editor.executeEdits(
+        'frontstage-jsx-studio',
+        plan.edits.map((edit) => {
+          const start = model.getPositionAt(edit.start);
+          const end = model.getPositionAt(edit.end);
+          return {
+            range: {
+              startLineNumber: start.lineNumber,
+              startColumn: start.column,
+              endLineNumber: end.lineNumber,
+              endColumn: end.column
+            },
+            text: edit.text,
+            forceMoveMarkers: true
+          };
+        })
+      );
+      editor.pushUndoStop();
       editor.focus();
       return;
     }
 
     const separator = draft.length > 0 && !draft.endsWith('\n') ? '\n' : '';
-    setDraft(`${draft}${separator}${source}\n`);
+    const source = `${draft}${separator}`;
+    const plan = planFrontstageJsxInsertion({
+      source,
+      selection: { start: source.length, end: source.length },
+      insertion
+    });
+    setDraft(`${applyFrontstageJsxInsertionPlan(source, plan)}\n`);
   };
 
   const saveCode = () => {
