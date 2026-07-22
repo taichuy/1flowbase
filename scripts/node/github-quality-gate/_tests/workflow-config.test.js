@@ -209,7 +209,7 @@ test("verify workflow keeps React Doctor out of automatic merge blockers", () =>
   assert.doesNotMatch(workflow, /--fail-on warning/u);
 });
 
-test("quality gate workflow runs React Doctor as a nightly-only component gate", () => {
+test("quality gate workflow includes React Doctor in scheduled and manual ci runs", () => {
   const workflow = readQualityGateWorkflow();
   const jobBlock = workflow.match(
     /repo-frontend-react-doctor-gate:[\s\S]*?\n\n  repo-backend-gate:/u,
@@ -218,7 +218,7 @@ test("quality gate workflow runs React Doctor as a nightly-only component gate",
   assert.match(workflow, /- repo-frontend-react-doctor/u);
   assert.match(
     jobBlock,
-    /repo-frontend-react-doctor-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \}\}/u,
+    /repo-frontend-react-doctor-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
   );
   assert.match(
     jobBlock,
@@ -238,9 +238,9 @@ test("quality gate workflow runs React Doctor as a nightly-only component gate",
   );
   assert.match(
     workflow,
-    /INPUT_EXPECTED_SCOPES: \$\{\{ github\.event_name == 'schedule' && '[^']*repo-frontend-react-doctor[^']*' \|\| '[^']*container-images[^']*' \}\}/u,
+    /INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,[^']*container-images'/u,
   );
-  assert.doesNotMatch(
+  assert.match(
     jobBlock,
     /inputs\.scope == 'ci'/u,
   );
@@ -427,11 +427,12 @@ test("GitHub automation docs describe latest-only issue publishing", () => {
   assert.doesNotMatch(readme, /refs\/heads\/main/u);
 });
 
-test("GitHub automation docs describe React Doctor as nightly-only structural debt evidence", () => {
+test("GitHub automation docs include React Doctor in full ci but not fast verify", () => {
   const readme = readGitHubAutomationDocs();
 
-  assert.match(readme, /React Doctor is no longer an automatic PR merge blocker/u);
-  assert.match(readme, /nightly-only/u);
+  assert.match(readme, /manual `scope: ci`/u);
+  assert.match(readme, /parallel component/u);
+  assert.match(readme, /outside the automatic PR merge blockers in `verify\.yml`/u);
   assert.match(
     readme,
     /npm exec --yes --package react-doctor@0\.2\.16 -- react-doctor web\/app --diff <parent-sha> --no-score --fail-on warning --verbose --no-color/u,
@@ -440,8 +441,7 @@ test("GitHub automation docs describe React Doctor as nightly-only structural de
   assert.match(readme, /scope: repo-frontend-react-doctor/u);
   assert.match(readme, /tmp\/test-governance\/react-doctor\.\*/u);
   assert.match(readme, /web\/app\/doctor\.config\.json/u);
-  assert.match(readme, /manual `scope: ci`/u);
-  assert.doesNotMatch(readme, /React Doctor, and container/u);
+  assert.doesNotMatch(readme, /nightly-only/u);
 });
 
 test("GitHub automation docs describe container image CD as artifact-only reporting", () => {
@@ -513,7 +513,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(
     workflow,
-    /repo-frontend-react-doctor-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \}\}/u,
+    /repo-frontend-react-doctor-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
   );
   assert.match(
     workflow,

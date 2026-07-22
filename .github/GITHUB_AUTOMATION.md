@@ -43,11 +43,11 @@ directory-pressure findings. It also runs `security-risk`, which writes
 communication, CI, Docker, deploy, proxy, plugin, and runtime execution-path
 risks. Advisory findings remain warnings; focused tests still fail the repo gate.
 
-React Doctor is no longer an automatic PR merge blocker. It is a nightly-only
-structural frontend debt gate in the scheduled quality gate, and it is excluded
-from `verify.yml` and manual `scope: ci` runs. Re-run it directly with
-`scope: repo-frontend-react-doctor` when you need focused structural frontend debt
-evidence:
+React Doctor remains outside the automatic PR merge blockers in `verify.yml`.
+It runs as a parallel component in scheduled quality gates and manual `scope: ci`
+runs, so the aggregate report includes structural frontend debt without requiring
+a second dispatch. Run `scope: repo-frontend-react-doctor` directly when you need
+focused structural frontend debt evidence:
 
 ```yaml
 scope: repo-frontend-react-doctor
@@ -127,10 +127,10 @@ environment: leave empty
 ```
 
 For manual `scope: ci`, runs use the full quality gate shape: repo tooling,
-full repo frontend, backend static/fmt/package shards, backend app test package shards,
-backend consistency, frontend coverage, backend coverage package shards, state protocols,
-and container image security run as separate jobs. Scheduled `scope: ci` runs add the
-nightly-only `repo-frontend-react-doctor` structural debt gate.
+full repo frontend, React Doctor, backend static/fmt/package shards, backend app test
+package shards, backend consistency, frontend coverage, backend coverage package shards,
+state protocols, and container image security run as separate jobs. Scheduled `scope: ci`
+runs use the same component set.
 An aggregate job downloads their artifacts, publishes one Issue report, and uploads
 `test-governance-artifacts`.
 This keeps wall time close to the slowest component gate instead of the sum of all gates.
@@ -141,8 +141,7 @@ For narrower dispatch scopes such as `repo-frontend-pr`, `repo-frontend`, `repo-
 `coverage-backend`, or `container-images`,
 `quality-gate.yml` runs one targeted job and publishes that single-scope report directly.
 Manual runs share the same target-branch concurrency group as automatic quality gates.
-Scheduled runs target `latest`, use `scope: ci`, add `repo-frontend-react-doctor`,
-and set `environment: nightly-latest`.
+Scheduled runs target `latest`, use `scope: ci`, and set `environment: nightly-latest`.
 
 ## Scope Options
 
