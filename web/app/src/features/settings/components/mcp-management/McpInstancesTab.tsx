@@ -14,7 +14,7 @@ import {
   SearchOutlined,
   SettingOutlined
 } from '@ant-design/icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Dropdown,
@@ -59,6 +59,8 @@ import {
   deleteSettingsMcpInstance,
   deleteSettingsMcpToolBinding,
   exportSettingsMcpInstanceBundle,
+  fetchSettingsMcpBundleExportDefaults,
+  settingsMcpBundleExportDefaultsQueryKey,
   moveSettingsMcpGroup,
   settingsMcpCatalogQueryKey,
   updateSettingsMcpInstance,
@@ -138,6 +140,11 @@ export function McpInstancesTab({
 }) {
   const csrfToken = useCsrfToken();
   const queryClient = useQueryClient();
+  const exportDefaults = useQuery({
+    queryKey: settingsMcpBundleExportDefaultsQueryKey,
+    queryFn: fetchSettingsMcpBundleExportDefaults,
+    enabled: canManage
+  });
   const [instanceForm] = Form.useForm<InstanceFormValues>();
   const [copyInstanceForm] = Form.useForm<CopyInstanceFormValues>();
   const [groupForm] = Form.useForm<GroupFormValues>();
@@ -1338,6 +1345,7 @@ export function McpInstancesTab({
         )}
         okText={i18nText('settingsMcpManagement', 'auto.mcp_instance_export')}
         defaultBundleId={bundleExportInstance?.instance_id ?? ''}
+        exportDefaults={exportDefaults.data}
         exporting={exportingInstanceBundle}
         onCancel={() => setBundleExportInstance(null)}
         onExport={handleExportInstanceBundle}

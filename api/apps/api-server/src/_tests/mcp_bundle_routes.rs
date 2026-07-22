@@ -9,10 +9,28 @@ use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{get_json, login_and_capture_cookie, test_app};
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn mcp_bundle_export_defaults_use_the_backend_system_version() {
+    // AC-001: export defaults come from the backend version source of truth.
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let payload = get_json(&app, "/api/console/mcp/bundles/export-defaults", &cookie).await;
+
+    assert_eq!(
+        payload["data"]["minimum_host_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
+    assert_eq!(
+        payload["data"]["current_system_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -182,7 +200,10 @@ async fn mcp_bundle_preview_reports_older_source_and_missing_interface_without_w
         payload["data"]["version_status"],
         json!("exported_from_older_system")
     );
-    assert_eq!(payload["data"]["current_system_version"], json!("0.2.6"));
+    assert_eq!(
+        payload["data"]["current_system_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(payload["data"]["tools"][0]["result"], json!("unavailable"));
     assert_eq!(
         payload["data"]["tools"][0]["reason"],
@@ -389,7 +410,10 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
     let manifest: Value =
         serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
     assert_eq!(manifest["schema_version"], json!("1flowbase.mcp.bundle/v2"));
-    assert_eq!(manifest["exported_from_system_version"], json!("0.2.6"));
+    assert_eq!(
+        manifest["exported_from_system_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
 
     let tool_path = manifest["files"]

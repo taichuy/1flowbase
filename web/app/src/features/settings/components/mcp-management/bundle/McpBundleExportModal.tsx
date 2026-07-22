@@ -2,13 +2,17 @@ import { Form, Input, Modal, Select, Typography } from 'antd';
 import { useEffect } from 'react';
 
 import { i18nText } from '../../../../../shared/i18n/text';
-import type { ExportSettingsMcpBundleBody } from '../../../api/mcp-management';
+import type {
+  ExportSettingsMcpBundleBody,
+  SettingsMcpBundleExportDefaults
+} from '../../../api/mcp-management';
 
 export function McpBundleExportModal({
   open,
   title,
   okText,
   defaultBundleId,
+  exportDefaults,
   exporting,
   onCancel,
   onExport
@@ -17,6 +21,7 @@ export function McpBundleExportModal({
   title: string;
   okText: string;
   defaultBundleId: string;
+  exportDefaults: SettingsMcpBundleExportDefaults | undefined;
   exporting: boolean;
   onCancel: () => void;
   onExport: (values: ExportSettingsMcpBundleBody) => void | Promise<void>;
@@ -25,14 +30,28 @@ export function McpBundleExportModal({
 
   useEffect(() => {
     if (!open) return;
+    form.resetFields();
     form.setFieldsValue({
       organization: 'taichuy',
       bundle_id: defaultBundleId,
       bundle_version: '1.0.0',
-      locale: 'zh_Hans',
-      minimum_host_version: '0.2.6'
+      locale: 'zh_Hans'
     });
   }, [defaultBundleId, form, open]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !exportDefaults ||
+      form.isFieldTouched('minimum_host_version')
+    ) {
+      return;
+    }
+    form.setFieldValue(
+      'minimum_host_version',
+      exportDefaults.minimum_host_version
+    );
+  }, [exportDefaults, form, open]);
 
   return (
     <Modal
@@ -80,6 +99,12 @@ export function McpBundleExportModal({
           <Input />
         </Form.Item>
         <Typography.Text type="secondary">
+          {exportDefaults
+            ? `${i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_current_version'
+              )}: ${exportDefaults.current_system_version}. `
+            : null}
           {i18nText(
             'settingsMcpManagement',
             'auto.mcp_bundle_system_version_recorded'

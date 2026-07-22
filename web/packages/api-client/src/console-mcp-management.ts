@@ -145,6 +145,11 @@ export interface ExportConsoleMcpBundleBody {
   minimum_host_version: string;
 }
 
+export interface ConsoleMcpBundleExportDefaults {
+  minimum_host_version: string;
+  current_system_version: string;
+}
+
 export interface ConsoleOfficialMcpBundleEntry {
   organization: string;
   bundle_id: string;
@@ -506,6 +511,13 @@ export function fetchConsoleMcpListItems(
 export function exportConsoleMcpCatalog(baseUrl?: string) {
   return apiFetch<ConsoleMcpExportPackage>({
     path: '/api/console/mcp/export',
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpBundleExportDefaults(baseUrl?: string) {
+  return apiFetch<ConsoleMcpBundleExportDefaults>({
+    path: '/api/console/mcp/bundles/export-defaults',
     baseUrl
   });
 }

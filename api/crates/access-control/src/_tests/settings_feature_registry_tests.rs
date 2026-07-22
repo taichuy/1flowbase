@@ -279,6 +279,7 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
     assert!(mcp_routes.contains(&("GET", "/api/console/mcp/catalog")));
     assert!(mcp_routes.contains(&("POST", "/api/console/mcp/instances")));
     for route in [
+        ("GET", "/api/console/mcp/bundles/export-defaults"),
         ("GET", "/api/console/mcp/upstream-connections"),
         ("POST", "/api/console/mcp/upstream-connections"),
         (
@@ -425,6 +426,19 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
                 "/api/console/settings/data-models/model-definitions:batchDelete",
             ),
         ]
+    );
+}
+
+#[test]
+fn mcp_bundle_export_defaults_belong_to_the_existing_mcp_management_feature() {
+    let registry = SettingsFeatureRegistry::compile(core_settings_feature_registrations())
+        .expect("Core SettingsFeature inventory must compile");
+
+    assert_eq!(
+        registry.access_rule("GET", "/api/console/mcp/bundles/export-defaults"),
+        Some(&AccessRule::SettingsFeature(
+            "system.mcp-management".to_string()
+        ))
     );
 }
 

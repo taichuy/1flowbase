@@ -18,6 +18,7 @@ import {
   exportConsoleMcpBundle,
   exportConsoleMcpInstanceBundle,
   exportConsoleMcpCatalog,
+  fetchConsoleMcpBundleExportDefaults,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
@@ -90,6 +91,11 @@ describe('console-mcp-management client', () => {
       name: 'official MCP bundles',
       request: () => fetchConsoleOfficialMcpBundles(),
       expected: { path: '/api/console/mcp/bundles/official' }
+    },
+    {
+      name: 'MCP bundle export defaults',
+      request: () => fetchConsoleMcpBundleExportDefaults(),
+      expected: { path: '/api/console/mcp/bundles/export-defaults' }
     },
     {
       name: 'single tool',

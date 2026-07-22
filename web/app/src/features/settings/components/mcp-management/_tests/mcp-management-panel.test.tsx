@@ -16,6 +16,11 @@ const mcpManagementApi = vi.hoisted(() => ({
     'mcp-management',
     'official-bundles'
   ],
+  settingsMcpBundleExportDefaultsQueryKey: [
+    'settings',
+    'mcp-management',
+    'bundle-export-defaults'
+  ],
   settingsMcpUpstreamConnectionsQueryKey: [
     'settings',
     'mcp-management',
@@ -43,6 +48,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
+  fetchSettingsMcpBundleExportDefaults: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(
     async (): Promise<{ saved: boolean; api_key?: string }> => ({
       saved: false
@@ -503,6 +509,10 @@ describe('McpManagementPanel', () => {
     mcpManagementApi.fetchSettingsMcpClientCredential.mockResolvedValue({
       saved: false
     });
+    mcpManagementApi.fetchSettingsMcpBundleExportDefaults.mockResolvedValue({
+      minimum_host_version: '0.3.0',
+      current_system_version: '0.3.0'
+    });
     mcpManagementApi.saveSettingsMcpClientCredential.mockResolvedValue({
       saved: true
     });
@@ -625,6 +635,45 @@ describe('McpManagementPanel', () => {
     mcpManagementApi.importSettingsOfficialMcpBundle.mockImplementation(
       async () => mcpManagementApi.importSettingsMcpBundle()
     );
+  });
+
+  test('uses backend bundle defaults and exports the edited minimum host version', async () => {
+    // AC-001 and AC-002: backend default, user-controlled compatibility floor.
+    mcpManagementApi.exportSettingsMcpBundle.mockResolvedValue({
+      blob: new Blob(['bundle'], { type: 'application/zip' }),
+      filename: 'mcp-bundle.zip'
+    });
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:mcp-bundle')
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn()
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: /导出$/ }));
+    const dialog = await screen.findByRole('dialog', {
+      name: '导出 MCP 配置包'
+    });
+    const minimumHostVersion = within(dialog).getByLabelText(
+      'minimum_host_version'
+    );
+    await waitFor(() => expect(minimumHostVersion).toHaveValue('0.3.0'));
+
+    fireEvent.change(minimumHostVersion, { target: { value: '0.2.8' } });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /导\s*出/u })
+    );
+
+    await waitFor(() => {
+      expect(mcpManagementApi.exportSettingsMcpBundle).toHaveBeenCalledWith(
+        expect.objectContaining({ minimum_host_version: '0.2.8' }),
+        expect.any(String)
+      );
+    });
   });
 
   test('previews an MCP bundle, warns for older source and imports the remaining items', async () => {

@@ -19,7 +19,7 @@ use control_plane::{
     },
     mcp_management::McpManagementService,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
@@ -63,6 +63,13 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/mcp/bundles/export",
             console_post(
                 export_bundle,
+                ConsoleOperation("mcp.bundles.export".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/bundles/export-defaults",
+            console_get(
+                export_bundle_defaults,
                 ConsoleOperation("mcp.bundles.export".to_string()),
             ),
         )
@@ -169,6 +176,27 @@ struct ExportMcpBundleBody {
     bundle_version: String,
     locale: String,
     minimum_host_version: String,
+}
+
+#[derive(Debug, Serialize)]
+struct McpBundleExportDefaults {
+    minimum_host_version: String,
+    current_system_version: String,
+}
+
+async fn export_bundle_defaults(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<McpBundleExportDefaults>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let current_system_version = current_system_version();
+    Ok(Json(ApiSuccess::new(McpBundleExportDefaults {
+        minimum_host_version: current_system_version.clone(),
+        current_system_version,
+    })))
 }
 
 async fn export_bundle(

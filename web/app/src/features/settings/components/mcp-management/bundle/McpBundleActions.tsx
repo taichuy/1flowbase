@@ -17,12 +17,14 @@ import { useAuthStore } from '../../../../../state/auth-store';
 import { i18nText } from '../../../../../shared/i18n/text';
 import {
   exportSettingsMcpBundle,
+  fetchSettingsMcpBundleExportDefaults,
   fetchSettingsOfficialMcpBundles,
   importSettingsMcpBundle,
   importSettingsOfficialMcpBundle,
   previewSettingsMcpBundle,
   previewSettingsOfficialMcpBundle,
   settingsMcpCatalogQueryKey,
+  settingsMcpBundleExportDefaultsQueryKey,
   settingsOfficialMcpBundlesQueryKey,
   type ExportSettingsMcpBundleBody,
   type SettingsMcpBundleImportReport,
@@ -101,6 +103,11 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
     queryKey: settingsOfficialMcpBundlesQueryKey,
     queryFn: fetchSettingsOfficialMcpBundles,
     enabled: canManage && sourceOpen
+  });
+  const exportDefaults = useQuery({
+    queryKey: settingsMcpBundleExportDefaultsQueryKey,
+    queryFn: fetchSettingsMcpBundleExportDefaults,
+    enabled: canManage
   });
 
   if (!canManage) {
@@ -437,6 +444,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         )}
         okText={i18nText('settingsMcpManagement', 'auto.mcp_bundle_export')}
         defaultBundleId="1flowbase_zh_hans"
+        exportDefaults={exportDefaults.data}
         exporting={exporting}
         onCancel={() => setExportOpen(false)}
         onExport={handleExport}

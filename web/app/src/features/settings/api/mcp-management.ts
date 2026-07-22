@@ -17,6 +17,7 @@ import {
   exportConsoleMcpBundle,
   exportConsoleMcpCatalog,
   exportConsoleMcpInstanceBundle,
+  fetchConsoleMcpBundleExportDefaults,
   fetchConsoleOfficialMcpBundles,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpClientCredential,
@@ -43,6 +44,7 @@ import {
   type ConsoleMcpCatalog,
   type CopyConsoleMcpInstanceBody,
   type ConsoleMcpInterfaceCapability,
+  type ConsoleMcpBundleExportDefaults,
   type ConsoleOfficialMcpBundleBody,
   type ConsoleMcpToolDebugExecuteResponse,
   type ExecuteConsoleMcpProxyToolDebugBody,
@@ -74,6 +76,7 @@ export type SettingsMcpInterfaceCapability = ConsoleMcpInterfaceCapability;
 export type ExecuteSettingsMcpToolDebugBody = ExecuteConsoleMcpToolDebugBody;
 export type SettingsMcpToolDebugExecuteResponse =
   ConsoleMcpToolDebugExecuteResponse;
+export type SettingsMcpBundleExportDefaults = ConsoleMcpBundleExportDefaults;
 
 export const settingsMcpCatalogQueryKey = [
   'settings',
@@ -91,6 +94,12 @@ export const settingsOfficialMcpBundlesQueryKey = [
   'settings',
   'mcp-management',
   'official-bundles'
+] as const;
+
+export const settingsMcpBundleExportDefaultsQueryKey = [
+  'settings',
+  'mcp-management',
+  'bundle-export-defaults'
 ] as const;
 
 export const settingsMcpUpstreamConnectionsQueryKey = [
@@ -214,6 +223,10 @@ export function deleteSettingsMcpClientCredential(
 
 export function exportSettingsMcpCatalog() {
   return exportConsoleMcpCatalog();
+}
+
+export function fetchSettingsMcpBundleExportDefaults() {
+  return fetchConsoleMcpBundleExportDefaults();
 }
 
 export function exportSettingsMcpBundle(

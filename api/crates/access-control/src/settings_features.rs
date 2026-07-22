@@ -711,6 +711,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/mcp/bundles/official"),
                 ("POST", "/api/console/mcp/bundles/preview-official"),
                 ("POST", "/api/console/mcp/bundles/import-official"),
+                ("GET", "/api/console/mcp/bundles/export-defaults"),
                 ("POST", "/api/console/mcp/bundles/export"),
                 (
                     "POST",

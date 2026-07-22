@@ -1060,6 +1060,11 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "mcp.bundles.import"
             ),
             (
+                "GET",
+                "/api/console/mcp/bundles/export-defaults",
+                "mcp.bundles.export"
+            ),
+            (
                 "POST",
                 "/api/console/mcp/bundles/export",
                 "mcp.bundles.export"
