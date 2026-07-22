@@ -215,7 +215,12 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         "attachments" => !matches!(field_code, "title" | "extname" | "url"),
         "users" => !matches!(
             field_code,
-            "phone" | "avatar_url" | "preferred_locale" | "default_display_role"
+            "created_by"
+                | "updated_by"
+                | "phone"
+                | "avatar_url"
+                | "preferred_locale"
+                | "default_display_role"
         ),
         "roles" => !matches!(field_code, "workspace_id" | "system_kind"),
         "application_run_log_summaries" => !matches!(

@@ -15,7 +15,6 @@ import { LLM_CONTEXT_MESSAGES_JSON_SCHEMA } from '../output-contract/schema';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
   getStartInputFields,
-  getStartInputValueType,
   startInputTypes
 } from '../../../flow-editor/authoring/start-input-fields';
 

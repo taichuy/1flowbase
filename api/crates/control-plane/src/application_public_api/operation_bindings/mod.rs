@@ -521,7 +521,7 @@ fn compiled_llm_runtime_is_complete(runtime: &CompiledLlmRuntime) -> bool {
     ]
     .into_iter()
     .all(non_empty_trimmed);
-    let routes_are_complete = runtime.routing.as_ref().map_or(true, |routing| {
+    let routes_are_complete = runtime.routing.as_ref().is_none_or(|routing| {
         routing.queue_targets.iter().all(|target| {
             [
                 target.provider_instance_id.as_str(),

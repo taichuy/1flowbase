@@ -572,6 +572,8 @@ impl ProviderCountTokensInput {
         capabilities
     }
 
+    // Runtime errors intentionally keep the complete upstream diagnostics payload.
+    #[allow(clippy::result_large_err)]
     pub fn to_current_provider_wire_value(
         &self,
         declared_capabilities: &[String],
@@ -720,7 +722,7 @@ impl ProviderInvocationInput {
     ) -> Result<Value, PluginFrameworkError> {
         let invocation = self
             .prepared_current_provider_invocation()
-            .map_err(|message| PluginFrameworkError::invalid_provider_contract(message))?;
+            .map_err(PluginFrameworkError::invalid_provider_contract)?;
         let unsupported = undeclared_provider_capabilities(
             &invocation.required_capabilities,
             declared_capabilities,
@@ -741,6 +743,8 @@ impl ProviderInvocationInput {
             .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
     }
 
+    // Compact errors preserve the same typed upstream diagnostics contract.
+    #[allow(clippy::result_large_err)]
     pub fn to_current_provider_compact_wire_value(
         &self,
         declared_capabilities: &[String],

@@ -48,6 +48,9 @@ pub(super) fn answer_output_payload_with_error(
     output_payload
 }
 
+// The explicit arguments mirror the failure projection contract and keep provider diagnostics
+// separate from the recoverable user-facing message.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_failed_llm_execution(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,

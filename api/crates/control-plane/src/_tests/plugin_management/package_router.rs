@@ -37,7 +37,7 @@ runtime:
 
 #[test]
 fn router_detects_model_provider_runtime_extension() {
-    let raw = manifest_with_slot("model_provider", "1flowbase.provider/v1");
+    let raw = manifest_with_slot("model_provider", "1flowbase.provider/v2");
     let manifest = parse_plugin_manifest(&raw).expect("manifest should parse");
     assert_eq!(
         route_plugin_package(&manifest).expect("should route"),

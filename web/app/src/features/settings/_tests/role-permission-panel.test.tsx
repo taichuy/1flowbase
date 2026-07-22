@@ -494,7 +494,9 @@ describe('RolePermissionPanel', () => {
     expect(
       screen.getByRole('columnheader', { name: '后台设置' })
     ).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: '开放权限' })).toBeNull();
+    expect(
+      screen.queryByRole('columnheader', { name: '开放权限' })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '授权策略' })
     ).toBeInTheDocument();

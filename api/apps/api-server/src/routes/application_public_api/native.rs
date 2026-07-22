@@ -386,6 +386,10 @@ fn is_llm_tool_result_validation_error(message: &str) -> bool {
     .any(|prefix| message.starts_with(prefix))
 }
 
+#[allow(
+    clippy::result_large_err,
+    reason = "the Native route parser preserves the complete typed compatibility diagnostics"
+)]
 pub(crate) fn parse_native_run_request(
     bytes: Bytes,
 ) -> Result<TranslatedNativeRunRequest, NativeRunRequestParseError> {

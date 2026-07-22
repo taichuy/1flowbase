@@ -1,4 +1,8 @@
+import { setImmediate } from 'node:timers/promises';
+
 import {
+  // eslint-disable-next-line testing-library/no-manual-cleanup -- Explicit teardown drains React scheduler work before jsdom removes window.
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -6,7 +10,7 @@ import {
   within
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
@@ -148,6 +152,11 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
 };
 
 describe('FrontstageJsxStudioDrawer', () => {
+  afterEach(async () => {
+    cleanup();
+    await setImmediate();
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     monacoEditor.getSelection.mockReturnValue(null);
@@ -266,9 +275,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
-    await waitFor(() =>
-      expect(screen.getByText('接口代码已插入')).toBeInTheDocument()
-    );
+    expect(await screen.findByText('接口代码已插入')).toBeInTheDocument();
     expect(onSaveBlock).not.toHaveBeenCalled();
   });
 
@@ -509,7 +516,7 @@ async function main(ctx: unknown) {
     ).toHaveStyle({ flexWrap: 'wrap' });
     fireEvent.click(
       within(windowHeader as HTMLElement).getByRole('button', {
-        name: '注入上下文'
+        name: '上下文'
       })
     );
     expect(setDraft).toHaveBeenCalledWith(

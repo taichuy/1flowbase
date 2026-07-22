@@ -20,7 +20,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only

@@ -73,9 +73,6 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
-      esbuildOptions: {
-        define: reactDraggableBrowserDefines
-      },
       include: [
         '@lexical/react/LexicalComposer',
         '@lexical/react/LexicalComposerContext',
@@ -96,7 +93,10 @@ export default defineConfig(({ mode }) => {
         'remark-breaks',
         'remark-gfm',
         'vditor'
-      ]
+      ],
+      esbuildOptions: {
+        define: reactDraggableBrowserDefines
+      }
     },
     build: {
       chunkSizeWarningLimit: 3500,

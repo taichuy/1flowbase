@@ -124,7 +124,7 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
   const contractVersion = readManifestField(
     resolvedPluginPath,
     'contract_version',
-    '1flowbase.provider/v1'
+    '1flowbase.provider/v2'
   );
 
   if (!fs.existsSync(runtimeBinaryFile)) {

@@ -431,6 +431,8 @@ impl ProviderHost {
         self.count_tokens_operation(plugin_id, input)?.await
     }
 
+    // Provider errors intentionally preserve complete typed upstream diagnostics.
+    #[allow(clippy::result_large_err)]
     pub fn count_tokens_operation(
         &self,
         plugin_id: &str,
@@ -491,6 +493,8 @@ impl ProviderHost {
         self.compact_operation(plugin_id, input)?.await
     }
 
+    // Provider errors intentionally preserve complete typed upstream diagnostics.
+    #[allow(clippy::result_large_err)]
     pub fn compact_operation(
         &self,
         plugin_id: &str,
@@ -819,6 +823,8 @@ fn current_provider_wire_input(
     input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
+// Provider errors intentionally preserve complete typed upstream diagnostics.
+#[allow(clippy::result_large_err)]
 fn current_provider_compact_wire_input(
     loaded: &LoadedProviderPackage,
     input: &ProviderInvocationInput,
@@ -835,6 +841,8 @@ fn current_provider_compact_wire_input(
     input.to_current_provider_compact_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
+// Provider errors intentionally preserve complete typed upstream diagnostics.
+#[allow(clippy::result_large_err)]
 fn current_provider_count_tokens_wire_input(
     loaded: &LoadedProviderPackage,
     input: &ProviderCountTokensInput,

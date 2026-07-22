@@ -313,6 +313,11 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.view",
             ),
             (
+                "DELETE",
+                "/api/console/applications/:application_id/api-publication",
+                "applications.publish",
+            ),
+            (
                 "POST",
                 "/api/console/applications/:application_id/api-publications",
                 "applications.publish",

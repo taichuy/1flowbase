@@ -128,6 +128,16 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
     assert_eq!(user_account.field_kind, crate::ModelFieldKind::String);
     assert!(user_account.is_required);
     assert!(user_account.is_unique);
+    for field_code in ["created_by", "updated_by"] {
+        assert!(
+            !crate::builtin_data_model_contract("users")
+                .expect("users contract")
+                .field_contract(field_code)
+                .unwrap_or_else(|| panic!("users.{field_code} field contract"))
+                .is_required,
+            "users.{field_code} must allow system bootstrap principals without a user owner"
+        );
+    }
 
     let attachment_scope = crate::builtin_data_model_contract("attachments")
         .expect("attachments contract")

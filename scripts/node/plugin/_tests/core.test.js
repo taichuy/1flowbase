@@ -145,7 +145,7 @@ test('plugin init scaffolds rust provider source and executable manifest', async
   assert.match(manifest, /binding_targets:\n  - workspace/);
   assert.match(manifest, /selection_mode: assignment_then_select/);
   assert.match(manifest, /minimum_host_version: 0\.1\.0/);
-  assert.match(manifest, /contract_version: 1flowbase\.provider\/v1/);
+  assert.match(manifest, /contract_version: 1flowbase\.provider\/v2/);
   assert.match(manifest, /schema_version: 1flowbase\.plugin\.manifest\/v1/);
   assert.match(manifest, /protocol: stdio_json/);
   assert.match(manifest, /entry: bin\/acme_openai_compatible-provider/);
@@ -487,7 +487,7 @@ test('plugin package writes official signature metadata when signing inputs are 
   assert.equal(release.plugin_id, 'acme_openai_compatible');
   assert.equal(release.provider_code, 'acme_openai_compatible');
   assert.equal(release.version, '0.1.0');
-  assert.equal(release.contract_version, '1flowbase.provider/v1');
+  assert.equal(release.contract_version, '1flowbase.provider/v2');
   assert.equal(release.signature_algorithm, 'ed25519');
   assert.equal(release.signing_key_id, 'official-key-2026-04');
   assert.equal(release.issued_at, '2026-04-19T13:00:00Z');

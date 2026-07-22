@@ -43,6 +43,7 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
+  clearFrontstageRuntimeSessionCache: vi.fn(),
   useFrontstagePageCanvasRuntimeSessions: vi.fn()
 }));
 const blockCodeApi = vi.hoisted(() => ({

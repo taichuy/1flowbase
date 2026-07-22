@@ -21,9 +21,12 @@ function cssBlock(selector: string): string {
 
 describe('TSX Studio layout', () => {
   test('places the editor first and mirrors the resource workspace to the right', () => {
-    expect(cssBlock('\\.frontstage-jsx-studio__workspace')).toContain(
-      'grid-template-columns: minmax(0, 1fr) minmax(260px, 320px) 44px;'
+    const workspace = cssBlock('\\.frontstage-jsx-studio__workspace');
+    expect(workspace).toContain('minmax(0, 1fr) 8px');
+    expect(workspace).toContain(
+      'minmax(260px, var(--resource-panel-width, 320px))'
     );
+    expect(workspace).toContain('44px;');
     expect(cssBlock('\\.frontstage-jsx-studio__editor-panel')).toContain(
       'grid-column: 1;'
     );
@@ -34,13 +37,13 @@ describe('TSX Studio layout', () => {
       'grid-template-rows: minmax(320px, 1fr) auto;'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__resource-panel')).toContain(
-      'grid-column: 2;'
+      'grid-column: 3;'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__resource-panel')).toContain(
       'grid-row: 1;'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__rail')).toContain(
-      'grid-column: 3;'
+      'grid-column: 4;'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__rail')).toContain(
       'grid-row: 1;'

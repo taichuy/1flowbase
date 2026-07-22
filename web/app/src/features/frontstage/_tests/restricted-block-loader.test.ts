@@ -128,6 +128,7 @@ describe('restricted block loader core', () => {
         },
         props: { title: 'Override' },
         state: { selected: true },
+        inputs: {},
         contextSnapshot: {
           workspaceId: 'workspace-1',
           pageId: 'page-1'
@@ -147,9 +148,6 @@ describe('restricted block loader core', () => {
       },
       mediatorPolicy: {
         allowedEvents: [],
-        allowedActions: ['record.save'],
-        allowedQueries: ['records'],
-        allowedDataOperations: ['query'],
         maxEventChainDepth: 4
       }
     });

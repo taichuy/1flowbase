@@ -67,7 +67,7 @@ pub struct ResolvedCompactProviderRoute {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedPublishedRoute {
     ApplicationFlow { compiled_plan_id: Uuid },
-    Provider(ResolvedProviderRoute),
+    Provider(Box<ResolvedProviderRoute>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,12 +312,14 @@ where
             return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
         }
 
-        Ok(ResolvedPublishedRoute::Provider(ResolvedProviderRoute {
-            operation: ProviderWireOperation::Generate,
-            profile,
-            target_node_id: binding.target_node_id.clone(),
-            llm_runtime: runtime.clone(),
-        }))
+        Ok(ResolvedPublishedRoute::Provider(Box::new(
+            ResolvedProviderRoute {
+                operation: ProviderWireOperation::Generate,
+                profile,
+                target_node_id: binding.target_node_id.clone(),
+                llm_runtime: runtime.clone(),
+            },
+        )))
     }
 
     pub async fn resolve_count_tokens(
@@ -432,7 +434,7 @@ fn llm_runtime_is_complete(runtime: &CompiledLlmRuntime) -> bool {
     ]
     .into_iter()
     .all(non_empty_trimmed);
-    let routes_are_complete = runtime.routing.as_ref().map_or(true, |routing| {
+    let routes_are_complete = runtime.routing.as_ref().is_none_or(|routing| {
         routing.queue_targets.iter().all(|target| {
             [
                 target.provider_instance_id.as_str(),

@@ -916,25 +916,6 @@ function findTopLevelComma(source: string): number {
   return -1;
 }
 
-function readIdentifierAt(
-  source: string,
-  start: number
-): { value: string; end: number } | null {
-  if (!isIdentifierStart(source[start])) {
-    return null;
-  }
-
-  let index = start + 1;
-  while (index < source.length && isIdentifierPart(source[index])) {
-    index += 1;
-  }
-
-  return {
-    value: source.slice(start, index),
-    end: index
-  };
-}
-
 function readStringLiteral(
   source: string,
   start: number

@@ -97,7 +97,7 @@ pub(crate) struct RuntimeProfilesSnapshot {
 enum CachedRuntimeTargetObservation {
     Reachable {
         observed_at: OffsetDateTime,
-        profile: RuntimeProfile,
+        profile: Box<RuntimeProfile>,
     },
     Unreachable {
         observed_at: OffsetDateTime,
@@ -109,7 +109,7 @@ impl CachedRuntimeTargetObservation {
     fn reachable(profile: RuntimeProfile, observed_at: OffsetDateTime) -> Self {
         Self::Reachable {
             observed_at,
-            profile,
+            profile: Box::new(profile),
         }
     }
 
@@ -142,7 +142,7 @@ impl CachedRuntimeTargetObservation {
 
     fn into_profile(self) -> Option<RuntimeProfile> {
         match self {
-            Self::Reachable { profile, .. } => Some(profile),
+            Self::Reachable { profile, .. } => Some(*profile),
             Self::Unreachable { .. } => None,
         }
     }

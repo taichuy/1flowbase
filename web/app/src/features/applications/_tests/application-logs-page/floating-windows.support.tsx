@@ -70,7 +70,8 @@ export function sampleRunDetail(): ApplicationRunDetail {
       run_kind: 'published_api_run',
       status: 'succeeded',
       title: '公开 API 退款总结',
-      source: 'api_key',
+      execution_stage: 'published',
+      invocation_source: 'agent_flow_api',
       compatibility_mode: 'openai-responses-v1',
       subject: {
         kind: 'agent_flow',
@@ -78,10 +79,10 @@ export function sampleRunDetail(): ApplicationRunDetail {
         draft_id: 'draft-1',
         target_node_id: 'node-llm'
       },
-      actor: {
-        kind: 'user',
-        id: 'user-1',
-        display_name: 'root'
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
       },
       correlation: {
         compatibility_mode: 'openai-responses-v1'
@@ -200,7 +201,8 @@ export function sampleTraceTree() {
       run_kind: 'published_api_run',
       status: 'succeeded',
       title: '公开 API 退款总结',
-      source: 'api_key',
+      execution_stage: 'published',
+      invocation_source: 'agent_flow_api',
       compatibility_mode: 'openai-responses-v1',
       subject: {
         kind: 'agent_flow',
@@ -208,10 +210,10 @@ export function sampleTraceTree() {
         draft_id: 'draft-1',
         target_node_id: 'node-llm'
       },
-      actor: {
-        kind: 'user',
-        id: 'user-1',
-        display_name: 'root'
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
       },
       correlation: {
         compatibility_mode: 'openai-responses-v1'

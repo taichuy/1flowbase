@@ -485,7 +485,7 @@ export function FrontstagePageTabs({
         {children}
       </div>
       <Modal
-        title={i18nText('frontstage', 'design.create_tab')}
+        title={i18nText('frontstage', 'auto.create_page_tab')}
         open={isCreateModalOpen}
         okText={i18nText('frontstage', 'auto.create_page_tab')}
         cancelText={i18nText('frontstage', 'auto.cancel')}

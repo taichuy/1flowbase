@@ -67,7 +67,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only
@@ -580,7 +580,7 @@ pub(crate) fn build_signed_openai_upload_package(version: &str) -> SignedUploadP
         plugin_id: format!("openai_compatible@{}", version),
         provider_code: "openai_compatible",
         version,
-        contract_version: "1flowbase.provider/v1",
+        contract_version: "1flowbase.provider/v2",
         artifact_sha256: "sha256:fixture-artifact",
         payload_sha256,
         signature_algorithm: "ed25519",
@@ -772,7 +772,7 @@ capabilities:
             provider_code: provider_code.into(),
             plugin_id: format!("{provider_code}@{plugin_version}"),
             plugin_version: plugin_version.into(),
-            contract_version: "1flowbase.provider/v1".into(),
+            contract_version: "1flowbase.provider/v2".into(),
             protocol: "openai_compatible".into(),
             display_name: "Fixture Provider".into(),
             source_kind: "official_registry".into(),

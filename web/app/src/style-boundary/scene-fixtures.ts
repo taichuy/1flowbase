@@ -207,6 +207,13 @@ const styleBoundaryApplicationRunRecord = {
   application_id: 'app-1',
   scope_id: 'workspace-1',
   run_mode: 'debug_flow_run',
+  execution_stage: 'debug',
+  invocation_source: 'debug',
+  principal: {
+    kind: 'user',
+    id: 'user-1',
+    display_name: 'Captain Root'
+  },
   status: 'succeeded',
   target_node_id: null,
   title: 'Boundary run',
@@ -1116,6 +1123,13 @@ export function seedStyleBoundaryApplicationFetch() {
 
     if (commonResponse) {
       return commonResponse;
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
+    ) {
+      return createStyleBoundaryJsonResponse({ data: [], meta: null });
     }
 
     if (

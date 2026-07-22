@@ -118,7 +118,7 @@ fn reject_unknown_chat_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    for field in object.keys().filter(|field| {
+    if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
             "audio"
@@ -242,9 +242,9 @@ fn validate_chat_message_fields(
                 .with_report(report.clone()),
         );
     }
-    for field in object
+    if let Some(field) = object
         .keys()
-        .filter(|field| matches!(field.as_str(), "tool_calls" | "tool_call_id" | "name"))
+        .find(|field| matches!(field.as_str(), "tool_calls" | "tool_call_id" | "name"))
     {
         let path = format!("$.messages[{index}].{field}");
         report.record(
@@ -528,7 +528,7 @@ fn reject_unknown_response_fields(
         );
         return Err(OpenAiCompatError::unsupported("store").with_report(report.clone()));
     }
-    for field in object.keys().filter(|field| {
+    if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
             "previous_response_id"
@@ -1412,7 +1412,7 @@ fn responses_input_to_native_run_input(
         })
         .filter(|(_, item)| item.get("role").and_then(Value::as_str).unwrap_or("user") == "user")
         .map(|(index, _)| index)
-        .last();
+        .next_back();
     let Some(last_user_index) = last_user_index else {
         if is_v2_compaction {
             return Ok(ResponsesInputMapping {

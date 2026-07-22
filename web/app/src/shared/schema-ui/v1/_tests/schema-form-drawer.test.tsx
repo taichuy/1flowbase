@@ -154,7 +154,7 @@ describe('SchemaFormDrawer', () => {
     expect(await screen.findByText('保存失败')).toBeInTheDocument();
   });
 
-  test('confirms close when the form has unsaved changes', async () => {
+  test('confirms close when the form has unsaved changes', () => {
     const onCancel = vi.fn();
     antdMocks.modalConfirm.mockImplementation(({ onOk }: { onOk: () => void }) => {
       onOk();
@@ -171,12 +171,10 @@ describe('SchemaFormDrawer', () => {
       />
     );
 
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('标识'), {
-        target: { value: 'password-updated' }
-      });
-      fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+    fireEvent.change(screen.getByLabelText('标识'), {
+      target: { value: 'password-updated' }
     });
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
 
     expect(antdMocks.modalConfirm).toHaveBeenCalledWith(
       expect.objectContaining({

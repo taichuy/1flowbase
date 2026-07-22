@@ -153,7 +153,7 @@ describe('useFrontstagePageTreeMutations', () => {
       'page-1',
       'csrf-123'
     );
-    expect(invalidateQueriesSpy).toHaveBeenCalledTimes(6);
+    expect(invalidateQueriesSpy).toHaveBeenCalledTimes(8);
     expect(invalidateQueriesSpy).toHaveBeenLastCalledWith({
       queryKey: ['frontstage', 'workspace-1', 'page-tree'],
       refetchType: 'active'

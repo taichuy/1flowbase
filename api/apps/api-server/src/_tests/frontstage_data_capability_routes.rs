@@ -130,6 +130,10 @@ async fn create_published_model(
     model_id
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the integration-test helper mirrors the route identity and request fields explicitly"
+)]
 async fn dispatch(
     app: &axum::Router,
     cookie: &str,
@@ -189,6 +193,10 @@ async fn callable_detail(
     payload["data"].clone()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the integration-test helper mirrors the callable route identity explicitly"
+)]
 async fn dispatch_callable(
     app: &axum::Router,
     cookie: &str,

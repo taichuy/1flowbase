@@ -968,6 +968,7 @@ describe('useAgentFlowDebugSession streaming', () => {
           'node-start': {
             files: [],
             history: [],
+            max_output_tokens: null,
             model: '',
             query: '请总结退款政策',
             reasoning_effort: '',
@@ -1069,6 +1070,7 @@ describe('useAgentFlowDebugSession streaming', () => {
           'node-start': {
             files: [],
             history: [],
+            max_output_tokens: null,
             model: '',
             query: '',
             reasoning_effort: '',

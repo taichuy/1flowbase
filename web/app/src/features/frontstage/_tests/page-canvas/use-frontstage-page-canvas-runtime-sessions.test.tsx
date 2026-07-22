@@ -421,7 +421,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       () => createFakeRuntimeSession().session
     );
     const runtimeRunPlanState = createRunPlanState([createReadyItem()]);
-    const anonymous = renderHook(() =>
+    const { result: anonymousResult } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         actorId: null,
         actorWorkspaceId: null,
@@ -429,7 +429,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         runtimeSessionFactory
       })
     );
-    const mismatched = renderHook(() =>
+    const { result: mismatchedResult } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         actorId: 'actor-1',
         actorWorkspaceId: 'workspace-2',
@@ -439,8 +439,8 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     );
 
     await waitFor(() => {
-      expect(anonymous.result.current.entries).toEqual([]);
-      expect(mismatched.result.current.entries).toEqual([]);
+      expect(anonymousResult.current.entries).toEqual([]);
+      expect(mismatchedResult.current.entries).toEqual([]);
     });
     expect(runtimeSessionFactory).not.toHaveBeenCalled();
   });
@@ -974,7 +974,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         blockId: item.blockId
       })
     );
-    const firstRender = renderHook(() =>
+    const { unmount: unmountFirst } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState,
@@ -998,7 +998,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         })
       );
     });
-    firstRender.unmount();
+    unmountFirst();
     resetFrontstageRuntimeObservations();
 
     const baseline = Date.now();
@@ -1012,7 +1012,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     };
     const restoredEffectHandler: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect> =
       vi.fn(async () => ({ ok: true }));
-    const secondRender = renderHook(() =>
+    const { result: secondResult } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState,
@@ -1024,7 +1024,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
 
     try {
       await waitFor(() => {
-        expect(secondRender.result.current.entries[0]).toMatchObject({
+        expect(secondResult.current.entries[0]).toMatchObject({
           status: 'ready',
           snapshot: {
             view: { primitive: 'Text', props: { children: 'cached' } },
@@ -1035,7 +1035,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
           }
         });
       });
-      const restoredSnapshot = secondRender.result.current.entries[0];
+      const restoredSnapshot = secondResult.current.entries[0];
       expect(revalidationFactory).not.toHaveBeenCalled();
       expect(revalidation.session.run).not.toHaveBeenCalled();
       expect(restoredEffectHandler).not.toHaveBeenCalled();
@@ -1064,7 +1064,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
   test('excludes requestId and raw source from identity while using the current requestId', async () => {
     const firstItem = createReadyItem({ blockId: 'request-stable' });
     const first = createFakeRuntimeSession();
-    const firstRender = renderHook(() =>
+    const { unmount: unmountFirst } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState: createRunPlanState([firstItem]),
@@ -1082,7 +1082,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         })
       );
     });
-    firstRender.unmount();
+    unmountFirst();
 
     const changedRequestIdItem = createReadyItem({
       blockId: 'request-stable',
@@ -1096,7 +1096,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       })
     });
     const unexpectedFactory = vi.fn(() => createFakeRuntimeSession().session);
-    const secondRender = renderHook(() =>
+    const { result: secondResult } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState: createRunPlanState([changedRequestIdItem]),
@@ -1105,7 +1105,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     );
 
     await waitFor(() => {
-      expect(secondRender.result.current.entries[0]).toMatchObject({
+      expect(secondResult.current.entries[0]).toMatchObject({
         status: 'ready',
         snapshot: { requestId: 'request-id-after-remount' }
       });
@@ -1190,7 +1190,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
   test('manual retry evicts the block result and runs that block exactly once', async () => {
     const item = createReadyItem({ blockId: 'retry' });
     const first = createFakeRuntimeSession();
-    const firstRender = renderHook(() =>
+    const { unmount: unmountFirst } = renderHook(() =>
       useFrontstagePageCanvasRuntimeSessions({
         ...TEST_RUNTIME_ACTOR,
         runtimeRunPlanState: createRunPlanState([item]),
@@ -1208,7 +1208,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         })
       );
     });
-    firstRender.unmount();
+    unmountFirst();
 
     const retrySession = createFakeRuntimeSession();
     const runtimeSessionFactory = vi.fn(() => retrySession.session);

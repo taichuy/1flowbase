@@ -1083,7 +1083,7 @@ export function ApplicationMonitoringPage({
           <MonitoringTable
             columns={sourceColumns}
             dataSource={report.sources}
-            rowKey="source"
+            rowKey="invocation_source"
           />
         </MonitoringPanel>
         <MonitoringPanel title={i18nText("applications", "auto.authorized_account")}>

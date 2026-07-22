@@ -147,7 +147,6 @@ pub(super) fn validate_external_model_parameters(
         needs_model.then(|| extract_agent_model_catalog_from_start_node(document_snapshot));
     let model = if let Some(models) = models.as_ref() {
         let model_id = model
-            .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or(NativeRunValidationError::InvalidModelParameters("model"))?;

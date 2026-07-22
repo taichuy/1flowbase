@@ -232,7 +232,7 @@ function buildSourceOption(report: ApplicationRunMonitoringReport) {
           show: false
         },
         data: report.sources.map((item) => ({
-          name: sourceLabel(item.source),
+          name: sourceLabel(item.invocation_source),
           value: item.request_count
         }))
       }

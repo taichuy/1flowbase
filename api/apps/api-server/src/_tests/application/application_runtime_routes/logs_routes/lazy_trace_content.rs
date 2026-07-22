@@ -197,7 +197,6 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
                         "query": "请总结退款政策",
                         "title": "公开 API 退款总结",
                         "expand_id": "customer-42",
-                        "compatibility_mode": "native-v1",
                         "response_mode": "queued"
                     })
                     .to_string(),
@@ -254,13 +253,18 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         Some("root")
     );
     assert_eq!(
-        list_payload["data"]["items"][0]["source"].as_str(),
-        Some("public_api")
+        list_payload["data"]["items"][0]["execution_stage"].as_str(),
+        Some("published")
     );
     assert_eq!(
-        list_payload["data"]["items"][0]["compatibility_mode"].as_str(),
-        Some("native-v1")
+        list_payload["data"]["items"][0]["invocation_source"].as_str(),
+        Some("agent_flow_api")
     );
+    assert_eq!(
+        list_payload["data"]["items"][0]["principal"]["kind"].as_str(),
+        Some("application_api_key")
+    );
+    assert!(list_payload["data"]["items"][0]["compatibility_mode"].is_null());
     assert!(!list_payload["data"]["items"][0]
         .as_object()
         .unwrap()
@@ -302,13 +306,18 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         Some("root")
     );
     assert_eq!(
-        trace_tree_payload["data"]["run"]["source"].as_str(),
-        Some("public_api")
+        trace_tree_payload["data"]["run"]["execution_stage"].as_str(),
+        Some("published")
     );
     assert_eq!(
-        trace_tree_payload["data"]["run"]["compatibility_mode"].as_str(),
-        Some("native-v1")
+        trace_tree_payload["data"]["run"]["invocation_source"].as_str(),
+        Some("agent_flow_api")
     );
+    assert_eq!(
+        trace_tree_payload["data"]["run"]["principal"]["kind"].as_str(),
+        Some("application_api_key")
+    );
+    assert!(trace_tree_payload["data"]["run"]["compatibility_mode"].is_null());
     assert!(!trace_tree_payload["data"]["run"]
         .as_object()
         .unwrap()

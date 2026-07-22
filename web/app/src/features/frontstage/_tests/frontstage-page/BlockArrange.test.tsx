@@ -155,21 +155,6 @@ function createPageContentWithBlocks(
   });
 }
 
-function createPageContentWithBlockPayloads(
-  blocks: Array<Record<string, unknown>>
-): FrontstagePageContent {
-  return createPageContent({
-    schema: {
-      rootUid: 'root-1',
-      payload: { blocks }
-    },
-    root: {
-      uid: 'root-1',
-      payload: { blocks }
-    }
-  });
-}
-
 function createSavedPageContentFromInput(
   input: SaveFrontstageTabDocumentInput
 ): FrontstagePageContent {

@@ -1,7 +1,4 @@
-import type {
-  FrontstageArtifactCacheRecord,
-  FrontstageArtifactCacheStore
-} from './artifact-cache';
+import type { FrontstageArtifactCacheStore } from './artifact-cache';
 
 export const FRONTSTAGE_ARTIFACT_CACHE_DATABASE =
   '1flowbase-frontstage-compiled-artifacts';
