@@ -13,7 +13,7 @@ pub fn initial_active_node_ids(plan: &CompiledPlan) -> BTreeSet<String> {
             .filter(|node_id| {
                 plan.nodes
                     .get(*node_id)
-                    .map_or(true, |node| node.node_type != "compact_response")
+                    .is_none_or(|node| node.node_type != "compact_response")
             })
             .filter(|node_id| !mounted_llm_target_node_ids.contains(*node_id))
             .cloned()

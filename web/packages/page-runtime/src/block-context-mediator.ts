@@ -115,7 +115,7 @@ export function reduceBlockContextMediator(
     case 'event':
       return reduceEventEffect(state, normalizedEffect, policy, context);
     case 'interface':
-      return reduceInterfaceEffect(state, normalizedEffect, policy);
+      return reduceInterfaceEffect(state, normalizedEffect);
   }
 }
 
@@ -172,8 +172,7 @@ function reduceEventEffect(
 
 function reduceInterfaceEffect(
   state: BlockContextMediatorState,
-  effect: Extract<NormalizedEffect, { type: 'interface' }>,
-  _policy: BlockContextMediatorPolicy
+  effect: Extract<NormalizedEffect, { type: 'interface' }>
 ): BlockContextMediatorTransition {
   const payloadResult = normalizeOptionalPayload(effect.request, 'request');
   if (!payloadResult.ok) {

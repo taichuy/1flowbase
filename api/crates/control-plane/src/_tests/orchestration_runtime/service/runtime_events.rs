@@ -690,9 +690,8 @@ async fn answer_template_static_text_is_projected_as_answer_presentation_delta()
         .await
         .unwrap();
 
-    let presentation_text = service
-        .list_runtime_events(detail.flow_run.id, 0)
-        .await
+    let presentation_text = stream
+        .events()
         .into_iter()
         .filter(|event| event.event_type == "text_delta")
         .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
@@ -998,7 +997,7 @@ async fn provider_error_after_live_delta_drains_runtime_event_stream_forwarding(
 }
 
 #[tokio::test]
-async fn provider_error_after_live_delta_keeps_failure_out_of_answer_contract() {
+async fn provider_error_after_live_delta_does_not_project_failure_as_answer() {
     let service = OrchestrationRuntimeService::for_tests_with_live_events_then_error(vec![
         plugin_framework::provider_contract::ProviderStreamEvent::TextDelta {
             delta: "partial before error".to_string(),
@@ -1061,16 +1060,16 @@ async fn provider_error_after_live_delta_keeps_failure_out_of_answer_contract() 
             .count(),
         1
     );
-    assert!(durable_events.iter().all(|event| {
-        event.event_type != "flow_finished"
-            && event
-                .payload
-                .get("presentation")
-                .and_then(Value::as_object)
-                .and_then(|presentation| presentation.get("kind"))
-                .and_then(Value::as_str)
-                != Some("answer")
-    }));
+    assert!(durable_events
+        .iter()
+        .all(|event| event.event_type != "flow_finished"));
+    let presented_answer = durable_events
+        .iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| event.payload["presentation"]["kind"] == json!("answer"))
+        .filter_map(|event| event.payload["text"].as_str())
+        .collect::<String>();
+    assert_eq!(presented_answer, "partial before error");
 }
 
 #[tokio::test]

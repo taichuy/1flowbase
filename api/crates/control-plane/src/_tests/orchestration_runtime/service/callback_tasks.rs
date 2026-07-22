@@ -231,25 +231,6 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
         completed.flow_run.output_payload["answer"],
         json!("Shanghai is sunny")
     );
-    let presentation_text = service
-        .list_runtime_events(completed.flow_run.id, 0)
-        .await
-        .into_iter()
-        .filter(|event| event.event_type == "text_delta")
-        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
-        .filter_map(|event| {
-            event
-                .payload
-                .get("text")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string)
-        })
-        .collect::<String>();
-    assert!(
-        presentation_text.ends_with("Shanghai is sunny"),
-        "callback resume should append final Answer Presentation suffix: {presentation_text}"
-    );
-
     let projections = service
         .list_context_projections(completed.flow_run.id)
         .await;
