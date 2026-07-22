@@ -8,6 +8,7 @@ mod frontstage;
 mod host_infrastructure_config_repository_tests;
 mod identity;
 mod mcp_management_repository_tests;
+mod max_output_tokens_migration_tests;
 mod migration_smoke;
 mod model_definition_repository_tests;
 mod model_mapper_tests;
