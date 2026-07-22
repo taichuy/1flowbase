@@ -1,6 +1,6 @@
 import {
   DeleteOutlined,
-  DownloadOutlined,
+  UploadOutlined,
   EditOutlined,
   FileOutlined,
   FolderOpenOutlined,
@@ -1166,7 +1166,7 @@ export function McpInstancesTab({
         </Typography.Text>
         <Space>
           <Button
-            icon={<DownloadOutlined />}
+            icon={<UploadOutlined />}
             loading={exportingInstances}
             onClick={handleExportInstances}
           >
@@ -1497,10 +1497,17 @@ export function McpInstancesTab({
                           ) : null}
                           {!isInstance ? (
                             <Popconfirm
-                              title={i18nText(
-                                'settings',
-                                'auto.mcp_hard_delete_confirm'
-                              )}
+                              title={
+                                isGroup
+                                  ? i18nText(
+                                      'settingsMcpManagement',
+                                      'auto.mcp_group_delete_confirm'
+                                    )
+                                  : i18nText(
+                                      'settings',
+                                      'auto.mcp_hard_delete_confirm'
+                                    )
+                              }
                               onConfirm={() => {
                                 if (isGroup) {
                                   const path = parts.join(':');

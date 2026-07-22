@@ -1,6 +1,6 @@
 import {
   DeleteOutlined,
-  DownloadOutlined,
+  UploadOutlined,
   EditOutlined,
   LeftOutlined,
   PlusOutlined,
@@ -790,7 +790,7 @@ export function McpToolsTab({
             configuration={configuration}
           />
           <Button
-            icon={<DownloadOutlined />}
+            icon={<UploadOutlined />}
             onClick={handleExportCatalog}
             loading={exportingCatalog}
           >

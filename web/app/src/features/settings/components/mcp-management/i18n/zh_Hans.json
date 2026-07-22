@@ -54,6 +54,7 @@
     "clear_credential": "清除认证",
     "api_key_saved": "API Key 已加密保存",
     "saved_api_key_deleted": "已保存的 API Key 已删除",
+    "mcp_group_delete_confirm": "确认删除该分组？该分组、所有子分组及其在此实例中的 Tool 挂载都会被删除，全局 Tool 配置不受影响。",
     "common": "通用",
     "enter_api_key_to_generate_commands": "输入 API Key 后生成可直接执行的命令。",
     "command_preview": "命令预览",

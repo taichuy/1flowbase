@@ -1035,11 +1035,40 @@ impl McpManagementRepository for PgControlPlaneStore {
         map_group(row)
     }
 
-    async fn delete_mcp_group(&self, group_id: Uuid) -> Result<()> {
-        sqlx::query("delete from mcp_groups where id = $1")
-            .bind(group_id)
-            .execute(self.pool())
-            .await?;
+    async fn delete_mcp_group_subtree(&self, instance_record_id: Uuid, path: &str) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query(
+            r#"
+            delete from mcp_tool_bindings
+            where instance_record_id = $1
+              and (
+                group_path = $2
+                or starts_with(group_path, case when $2 = '/' then '/' else $2 || '/' end)
+              )
+            "#,
+        )
+        .bind(instance_record_id)
+        .bind(path)
+        .execute(&mut *transaction)
+        .await?;
+        let deleted_groups = sqlx::query(
+            r#"
+            delete from mcp_groups
+            where instance_record_id = $1
+              and (
+                path = $2
+                or starts_with(path, case when $2 = '/' then '/' else $2 || '/' end)
+              )
+            "#,
+        )
+        .bind(instance_record_id)
+        .bind(path)
+        .execute(&mut *transaction)
+        .await?;
+        if deleted_groups.rows_affected() == 0 {
+            return Err(ControlPlaneError::NotFound("mcp_group").into());
+        }
+        transaction.commit().await?;
         Ok(())
     }
 

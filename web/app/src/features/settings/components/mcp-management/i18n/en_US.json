@@ -54,6 +54,7 @@
     "clear_credential": "Clear credential",
     "api_key_saved": "API key encrypted and saved",
     "saved_api_key_deleted": "Saved API key deleted",
+    "mcp_group_delete_confirm": "Delete this group? The group, all of its subgroups, and their Tool bindings in this instance will be deleted. Global Tool configurations are not affected.",
     "common": "Common",
     "enter_api_key_to_generate_commands": "Enter an API key to generate ready-to-run commands.",
     "command_preview": "Command preview",

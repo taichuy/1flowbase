@@ -691,7 +691,9 @@ where
             .into_iter()
             .find(|group| group.path == path)
             .ok_or(ControlPlaneError::NotFound("mcp_group"))?;
-        self.repository.delete_mcp_group(group.id).await
+        self.repository
+            .delete_mcp_group_subtree(instance.id, &group.path)
+            .await
     }
 
     pub async fn move_group(&self, command: MoveMcpGroupCommand) -> Result<domain::McpGroupRecord> {

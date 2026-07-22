@@ -1,4 +1,4 @@
-import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -230,7 +230,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         >
           {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import_all')}
         </Button>
-        <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
+        <Button icon={<UploadOutlined />} onClick={() => setExportOpen(true)}>
           {i18nText('settingsMcpManagement', 'auto.mcp_bundle_export_all')}
         </Button>
       </Space>

@@ -477,6 +477,122 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
 }
 
 #[tokio::test]
+async fn mcp_group_delete_removes_instance_subtree_without_touching_similar_paths_or_other_instances(
+) {
+    let (store, _workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store);
+    let target_instance = service
+        .create_instance(CreateMcpInstanceCommand {
+            actor_user_id: actor.id,
+            instance_id: "workspace_ops".into(),
+            name: "Workspace Ops".into(),
+            description_short: None,
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/".into(),
+        })
+        .await
+        .unwrap();
+    let other_instance = service
+        .create_instance(CreateMcpInstanceCommand {
+            actor_user_id: actor.id,
+            instance_id: "other_ops".into(),
+            name: "Other Ops".into(),
+            description_short: None,
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/".into(),
+        })
+        .await
+        .unwrap();
+    let tool = service
+        .create_tool(CreateMcpToolCommand {
+            actor_user_id: actor.id,
+            tool_id: "runtime_profile".into(),
+            name: "Runtime Profile".into(),
+            short_description: "Read runtime profile".into(),
+            full_description: "Read the current runtime profile.".into(),
+            interface_entry: runtime_profile_interface(),
+            input_mapping: serde_json::json!({}),
+            output_mapping: serde_json::json!({}),
+            des_id: None,
+            status: domain::McpToolStatus::Enabled,
+        })
+        .await
+        .unwrap();
+
+    for (instance_id, path, display_name) in [
+        ("workspace_ops", "/github", "GitHub"),
+        ("workspace_ops", "/github/issues", "Issues"),
+        ("workspace_ops", "/github-actions", "GitHub Actions"),
+        ("other_ops", "/github", "Other GitHub"),
+    ] {
+        service
+            .upsert_group(UpsertMcpGroupCommand {
+                actor_user_id: actor.id,
+                instance_id: instance_id.into(),
+                path: path.into(),
+                display_name: display_name.into(),
+                description_short: None,
+                enabled: true,
+                sort_order: 1,
+            })
+            .await
+            .unwrap();
+    }
+
+    for (instance_id, group_path) in [
+        ("workspace_ops", "/github"),
+        ("workspace_ops", "/github/issues"),
+        ("workspace_ops", "/github-actions"),
+        ("other_ops", "/github"),
+    ] {
+        service
+            .create_tool_binding(CreateMcpToolBindingCommand {
+                actor_user_id: actor.id,
+                instance_id: instance_id.into(),
+                group_path: group_path.into(),
+                tool_id: tool.tool_id.clone(),
+                display_alias: None,
+                visible: true,
+                sort_order: 1,
+            })
+            .await
+            .unwrap();
+    }
+
+    service
+        .delete_group(actor.id, "workspace_ops", "/github")
+        .await
+        .unwrap();
+
+    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert!(catalog.groups.iter().all(|group| {
+        group.instance_record_id != target_instance.id
+            || (group.path != "/github" && !group.path.starts_with("/github/"))
+    }));
+    assert!(catalog.bindings.iter().all(|binding| {
+        binding.instance_record_id != target_instance.id
+            || (binding.group_path != "/github" && !binding.group_path.starts_with("/github/"))
+    }));
+    assert!(catalog.groups.iter().any(|group| {
+        group.instance_record_id == target_instance.id && group.path == "/github-actions"
+    }));
+    assert!(catalog.bindings.iter().any(|binding| {
+        binding.instance_record_id == target_instance.id && binding.group_path == "/github-actions"
+    }));
+    assert!(catalog
+        .groups
+        .iter()
+        .any(|group| { group.instance_record_id == other_instance.id && group.path == "/github" }));
+    assert!(catalog.bindings.iter().any(|binding| {
+        binding.instance_record_id == other_instance.id && binding.group_path == "/github"
+    }));
+    assert!(catalog
+        .tools
+        .iter()
+        .any(|candidate| candidate.id == tool.id));
+}
+
+#[tokio::test]
 async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
     let (store, _workspace, actor) = seed_store().await;
     let service = McpManagementService::new(store);

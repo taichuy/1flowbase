@@ -318,7 +318,11 @@ pub trait McpManagementRepository: Send + Sync {
         target_path: &str,
         sort_order: i32,
     ) -> anyhow::Result<domain::McpGroupRecord>;
-    async fn delete_mcp_group(&self, group_id: Uuid) -> anyhow::Result<()>;
+    async fn delete_mcp_group_subtree(
+        &self,
+        instance_record_id: Uuid,
+        path: &str,
+    ) -> anyhow::Result<()>;
 
     async fn list_mcp_tools(
         &self,
