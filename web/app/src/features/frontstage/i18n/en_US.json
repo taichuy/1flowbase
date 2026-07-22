@@ -184,7 +184,6 @@
     "order": "Order",
     "page": "Page",
     "page_action_menu": "Page operation menu",
-    "page_content_empty": "Page content is empty",
     "page_content_load_failed": "Page content failed to load",
     "page_content_loading": "Page content loading",
     "page_content_save_failed": "Failed to save page content, please try again later.",

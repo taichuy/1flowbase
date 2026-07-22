@@ -697,7 +697,9 @@ describe('FrontStagePage - design controls', () => {
     expect(
       within(tabContent).getByRole('button', { name: '创建区块' })
     ).toBeInTheDocument();
-    expect(within(tabContent).getByText('页面内容为空')).toBeInTheDocument();
+    expect(
+      within(tabContent).getByTestId('page-canvas-design-empty-state')
+    ).toBeEmptyDOMElement();
   });
 
   test('opens configuration and code in the same resizable JSX Studio', async () => {

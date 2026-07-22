@@ -589,16 +589,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         {renderPlan.isEmpty && isDesignMode ? (
           <div
             data-testid="page-canvas-design-empty-state"
-            style={{
-              minHeight: 28,
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <Typography.Text type="secondary">
-              {i18nText('frontstage', 'auto.page_content_empty')}
-            </Typography.Text>
-          </div>
+          />
         ) : renderPlan.isEmpty ? (
           <div
             style={{
@@ -611,11 +602,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           >
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={
-                <Typography.Text type="secondary">
-                  {i18nText('frontstage', 'auto.page_content_empty')}
-                </Typography.Text>
-              }
+              description={false}
             />
           </div>
         ) : (

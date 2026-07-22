@@ -363,7 +363,9 @@ describe('FrontStagePage block arrange actions', () => {
     expect(getSavedBlockIds(saveInput)).toEqual([]);
 
     await waitFor(() => {
-      expect(screen.getByText('页面内容为空')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('page-canvas-design-empty-state')
+      ).toBeEmptyDOMElement();
     });
   });
 

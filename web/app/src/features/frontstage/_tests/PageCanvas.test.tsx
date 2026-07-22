@@ -45,11 +45,11 @@ describe('PageCanvas', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('renders page title and empty content placeholder', () => {
-    render(<PageCanvas content={createPageContent()} />);
+  test('renders page title and an empty illustration', () => {
+    const { container } = render(<PageCanvas content={createPageContent()} />);
 
     expect(screen.getByText('Landing')).toBeInTheDocument();
-    expect(screen.getByText('页面内容为空')).toBeInTheDocument();
+    expect(container.querySelector('.ant-empty')).toBeInTheDocument();
   });
 
   test('#1300 renders a compact design empty state instead of a block-like Ant Empty surface', () => {
@@ -57,7 +57,9 @@ describe('PageCanvas', () => {
       <PageCanvas content={createPageContent()} isDesignMode />
     );
 
-    expect(screen.getByText('页面内容为空')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('page-canvas-design-empty-state')
+    ).toBeEmptyDOMElement();
     expect(container.querySelector('.ant-empty')).not.toBeInTheDocument();
     expect(
       container.querySelector('[style*="dashed"]')
