@@ -585,13 +585,6 @@ describe('applications runtime api', () => {
           status: 'succeeded',
           target_node_id: null,
           title: '退款总结',
-          execution_stage: 'published',
-          invocation_source: 'agent_flow_api',
-          principal: {
-            kind: 'application_api_key',
-            id: 'key-1',
-            display_name: null
-          },
           external_conversation_id: 'conversation-1',
           total_tokens: 120,
           input_tokens: 90,

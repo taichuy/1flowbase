@@ -714,6 +714,8 @@ fn strip_injected_path_parameters(schema: &mut Value, injected: &[&str]) {
 mod tests {
     use super::*;
 
+    type GrantMutation = Box<dyn Fn(&mut FrontstageCallableWriteGrant)>;
+
     fn grant() -> FrontstageCallableWriteGrant {
         FrontstageCallableWriteGrant {
             actor_user_id: Uuid::new_v4(),
@@ -735,7 +737,7 @@ mod tests {
         let expected = grant();
         assert!(grant_matches(&expected, &expected));
 
-        let mutations: Vec<Box<dyn Fn(&mut FrontstageCallableWriteGrant)>> = vec![
+        let mutations: Vec<GrantMutation> = vec![
             Box::new(|value| value.actor_user_id = Uuid::new_v4()),
             Box::new(|value| value.workspace_id = Uuid::new_v4()),
             Box::new(|value| value.page_id = Uuid::new_v4()),

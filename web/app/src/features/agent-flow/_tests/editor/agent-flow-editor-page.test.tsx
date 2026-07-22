@@ -244,6 +244,7 @@ beforeEach(() => {
     active: true,
     api_enabled: true,
     mapping_snapshot: apiMapping,
+    operation: null,
     public_url: '/api/agent/v1/runs',
     created_by: 'user-1',
     created_at: '2026-05-20T09:00:00Z'

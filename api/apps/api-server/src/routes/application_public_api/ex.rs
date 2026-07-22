@@ -283,32 +283,6 @@ fn workflow_extension_error(error: WorkflowExtensionRunError) -> NativeApiError 
     }
 }
 
-#[cfg(test)]
-mod error_mapping_tests {
-    use super::*;
-
-    #[test]
-    fn authorization_errors_use_credential_neutral_messages() {
-        let forbidden = workflow_extension_error(WorkflowExtensionRunError::Forbidden);
-        assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
-        assert_eq!(
-            forbidden.message,
-            "the current user cannot invoke the workflow extension API"
-        );
-    }
-
-    #[test]
-    fn internal_errors_are_stable_and_do_not_leak_repository_details() {
-        let response = workflow_extension_error(WorkflowExtensionRunError::Internal(
-            anyhow::anyhow!("database password was rejected"),
-        ));
-
-        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(response.code, "internal_error");
-        assert_eq!(response.message, "workflow extension service failed");
-    }
-}
-
 fn workflow_extension_auth_error(error: ApiError) -> NativeApiError {
     match error
         .0
@@ -344,4 +318,30 @@ fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Respo
         }),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod error_mapping_tests {
+    use super::*;
+
+    #[test]
+    fn authorization_errors_use_credential_neutral_messages() {
+        let forbidden = workflow_extension_error(WorkflowExtensionRunError::Forbidden);
+        assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            forbidden.message,
+            "the current user cannot invoke the workflow extension API"
+        );
+    }
+
+    #[test]
+    fn internal_errors_are_stable_and_do_not_leak_repository_details() {
+        let response = workflow_extension_error(WorkflowExtensionRunError::Internal(
+            anyhow::anyhow!("database password was rejected"),
+        ));
+
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.code, "internal_error");
+        assert_eq!(response.message, "workflow extension service failed");
+    }
 }
