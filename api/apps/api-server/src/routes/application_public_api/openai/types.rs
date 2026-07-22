@@ -26,14 +26,14 @@ pub struct OpenAiErrorObject {
 
 #[derive(Debug)]
 pub enum OpenAiRouteError {
-    Compat(OpenAiCompatError),
+    Compat(Box<OpenAiCompatError>),
     Native(native::NativeApiError),
     RequiredAction,
 }
 
 impl From<OpenAiCompatError> for OpenAiRouteError {
     fn from(error: OpenAiCompatError) -> Self {
-        Self::Compat(error)
+        Self::Compat(Box::new(error))
     }
 }
 

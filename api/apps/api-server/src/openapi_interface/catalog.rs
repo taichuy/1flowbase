@@ -317,9 +317,7 @@ fn append_body_descriptors(
 }
 
 fn response_contract(spec: &Value, operation: &Value) -> Option<(String, Value)> {
-    let Some(responses) = operation.get("responses").and_then(Value::as_object) else {
-        return None;
-    };
+    let responses = operation.get("responses").and_then(Value::as_object)?;
     let mut statuses = responses
         .keys()
         .filter(|status| status.starts_with('2'))

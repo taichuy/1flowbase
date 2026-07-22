@@ -59,14 +59,14 @@ pub struct AnthropicErrorObject {
 
 #[derive(Debug)]
 pub enum AnthropicRouteError {
-    Compat(AnthropicCompatError),
+    Compat(Box<AnthropicCompatError>),
     Native(native::NativeApiError),
     RequiredAction,
 }
 
 impl From<AnthropicCompatError> for AnthropicRouteError {
     fn from(error: AnthropicCompatError) -> Self {
-        Self::Compat(error)
+        Self::Compat(Box::new(error))
     }
 }
 

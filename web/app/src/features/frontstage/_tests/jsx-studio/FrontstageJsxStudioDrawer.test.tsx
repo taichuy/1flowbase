@@ -1,6 +1,7 @@
 import { setImmediate } from 'node:timers/promises';
 
 import {
+  // eslint-disable-next-line testing-library/no-manual-cleanup -- Explicit teardown drains React scheduler work before jsdom removes window.
   cleanup,
   fireEvent,
   render,

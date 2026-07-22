@@ -381,7 +381,6 @@ async fn create_response_for_endpoint(
                     ProviderCompactResult::CompletedOpaqueCompactionItem {
                         response_id,
                         compaction_item,
-                        encrypted_content: _,
                         ..
                     },
                 ) => {

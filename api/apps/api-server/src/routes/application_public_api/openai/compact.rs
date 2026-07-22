@@ -120,13 +120,13 @@ fn invalid_codex_turn_metadata(message: &'static str) -> OpenAiRouteError {
         Some(message),
         TranslationSafeRepresentation::Present,
     );
-    OpenAiRouteError::Compat(OpenAiCompatError {
+    OpenAiRouteError::Compat(Box::new(OpenAiCompatError {
         message: message.to_string(),
         error_type: "invalid_request_error".to_string(),
         param: Some(CODEX_TURN_METADATA_HEADER.to_string()),
         code: "invalid_request".to_string(),
         report,
-    })
+    }))
 }
 
 fn provider_compact_error(error: ProviderCompactError) -> native::NativeApiError {

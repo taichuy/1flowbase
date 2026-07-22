@@ -24,7 +24,7 @@ impl run_service::PublishedProviderManifestCapabilityRepository
         Ok(inner
             .published_generate_manifest_capabilities
             .as_ref()
-            .map_or(true, |declared_capabilities| {
+            .is_none_or(|declared_capabilities| {
                 required_semantic_capabilities.is_subset(declared_capabilities)
             }))
     }

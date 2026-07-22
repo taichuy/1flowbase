@@ -659,9 +659,7 @@ fn connection_command(
 fn parse_upstream_transport(value: &str) -> Result<domain::McpUpstreamTransport, ApiError> {
     match value {
         "streamable_http" => Ok(domain::McpUpstreamTransport::StreamableHttp),
-        _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into());
-        }
+        _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("transport").into()),
     }
 }
 
@@ -670,9 +668,7 @@ fn parse_upstream_auth_type(value: &str) -> Result<domain::McpUpstreamAuthType, 
         "none" => Ok(domain::McpUpstreamAuthType::None),
         "bearer" => Ok(domain::McpUpstreamAuthType::Bearer),
         "custom_header" => Ok(domain::McpUpstreamAuthType::CustomHeader),
-        _ => {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into());
-        }
+        _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("auth_type").into()),
     }
 }
 
