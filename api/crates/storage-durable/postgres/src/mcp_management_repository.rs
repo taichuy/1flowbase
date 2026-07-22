@@ -1037,7 +1037,7 @@ impl McpManagementRepository for PgControlPlaneStore {
 
     async fn delete_mcp_group_subtree(&self, instance_record_id: Uuid, path: &str) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
-        sqlx::query(
+        let deleted_bindings = sqlx::query(
             r#"
             delete from mcp_tool_bindings
             where instance_record_id = $1
@@ -1065,7 +1065,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(path)
         .execute(&mut *transaction)
         .await?;
-        if deleted_groups.rows_affected() == 0 {
+        if deleted_bindings.rows_affected() == 0 && deleted_groups.rows_affected() == 0 {
             return Err(ControlPlaneError::NotFound("mcp_group").into());
         }
         transaction.commit().await?;

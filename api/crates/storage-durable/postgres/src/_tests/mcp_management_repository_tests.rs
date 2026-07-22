@@ -477,7 +477,7 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
 }
 
 #[tokio::test]
-async fn mcp_group_delete_removes_instance_subtree_without_touching_similar_paths_or_other_instances(
+async fn mcp_group_delete_removes_binding_only_instance_subtree_without_touching_similar_paths_or_other_instances(
 ) {
     let (store, _workspace, actor) = seed_store().await;
     let service = McpManagementService::new(store);
@@ -520,7 +520,6 @@ async fn mcp_group_delete_removes_instance_subtree_without_touching_similar_path
         .unwrap();
 
     for (instance_id, path, display_name) in [
-        ("workspace_ops", "/github", "GitHub"),
         ("workspace_ops", "/github/issues", "Issues"),
         ("workspace_ops", "/github-actions", "GitHub Actions"),
         ("other_ops", "/github", "Other GitHub"),
@@ -558,6 +557,14 @@ async fn mcp_group_delete_removes_instance_subtree_without_touching_similar_path
             .await
             .unwrap();
     }
+
+    let before_delete = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert!(!before_delete.groups.iter().any(|group| {
+        group.instance_record_id == target_instance.id && group.path == "/github"
+    }));
+    assert!(before_delete.bindings.iter().any(|binding| {
+        binding.instance_record_id == target_instance.id && binding.group_path == "/github"
+    }));
 
     service
         .delete_group(actor.id, "workspace_ops", "/github")

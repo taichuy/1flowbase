@@ -684,15 +684,8 @@ where
             .get_mcp_instance(actor.current_workspace_id, instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        let group = self
-            .repository
-            .list_mcp_groups(&[instance.id])
-            .await?
-            .into_iter()
-            .find(|group| group.path == path)
-            .ok_or(ControlPlaneError::NotFound("mcp_group"))?;
         self.repository
-            .delete_mcp_group_subtree(instance.id, &group.path)
+            .delete_mcp_group_subtree(instance.id, path)
             .await
     }
 
