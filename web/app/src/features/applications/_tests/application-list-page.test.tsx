@@ -6,6 +6,7 @@ const applicationsApi = vi.hoisted(() => ({
   applicationCatalogQueryKey: ['applications', 'catalog'],
   fetchApplications: vi.fn(),
   fetchApplicationCatalog: vi.fn(),
+  fetchApplicationDetail: vi.fn(),
   createApplication: vi.fn(),
   createApplicationTag: vi.fn(),
   deleteApplication: vi.fn(),
@@ -15,7 +16,10 @@ const applicationsApi = vi.hoisted(() => ({
   updateApplication: vi.fn()
 }));
 
-vi.mock('../api/applications', () => applicationsApi);
+vi.mock('../api/applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/applications')>()),
+  ...applicationsApi
+}));
 
 import { AppProviders } from '../../../app/AppProviders';
 import { appI18n } from '../../../shared/i18n/app-i18n';
@@ -106,6 +110,48 @@ describe('ApplicationListPage', () => {
         tags: []
       }
     ]);
+    applicationsApi.fetchApplicationDetail.mockResolvedValue({
+      id: 'app-1',
+      application_type: 'agent_flow',
+      workflow_trigger_type: null,
+      name: '客服助手',
+      description: '处理客服',
+      icon: null,
+      icon_type: null,
+      icon_background: null,
+      created_by: 'user-1',
+      updated_at: '2026-04-16T12:00:00.000Z',
+      tags: [{ id: 'tag-1', name: '客服' }],
+      sections: {
+        orchestration: {
+          status: 'ready',
+          subject_kind: 'agent_flow',
+          subject_status: 'ready',
+          current_subject_id: 'flow-1',
+          current_draft_id: 'draft-1'
+        },
+        api: {
+          status: 'active',
+          credential_kind: 'application_api_key',
+          invoke_routing_mode: 'api_key_bound_application',
+          invoke_path_template: '/api/agent/v1/runs',
+          api_capability_status: 'enabled',
+          credentials_status: 'configured'
+        },
+        logs: {
+          status: 'ready',
+          runs_capability_status: 'enabled',
+          run_object_kind: 'application_run',
+          log_retention_status: 'enabled'
+        },
+        monitoring: {
+          status: 'planned',
+          metrics_capability_status: 'planned',
+          metrics_object_kind: 'application_metrics',
+          tracing_config_status: 'not_configured'
+        }
+      }
+    });
     applicationsApi.createApplication.mockResolvedValue({ id: 'app-3' });
     applicationsApi.createApplicationTag.mockResolvedValue({
       id: 'tag-2',
@@ -219,10 +265,15 @@ describe('ApplicationListPage', () => {
 
     const dialog = await screen.findByRole('dialog', undefined, { timeout: 10_000 });
     expect(within(dialog).getByText('编辑应用信息')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('应用名称'), {
+    const nameInput = await within(dialog).findByLabelText(
+      '名称',
+      {},
+      { timeout: 10_000 }
+    );
+    fireEvent.change(nameInput, {
       target: { value: '客服助手 Pro' }
     });
-    fireEvent.change(within(dialog).getByLabelText('应用简介'), {
+    fireEvent.change(within(dialog).getByLabelText('简介'), {
       target: { value: '升级后的客服描述' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: '保存修改' }));
