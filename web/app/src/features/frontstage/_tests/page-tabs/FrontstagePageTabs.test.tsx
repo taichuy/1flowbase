@@ -53,7 +53,7 @@ function authenticate() {
   });
 }
 
-function renderTabs(tabId = 'tab-1') {
+function mountTabs(tabId = 'tab-1') {
   const onNavigateTab = vi.fn();
   render(
     <AppProviders>
@@ -127,20 +127,20 @@ describe('FrontstagePageTabs', () => {
   });
 
   test('AC-005 restores the selected tab from the URL and navigates on tab change', async () => {
-    const utils = renderTabs('tab-2');
+    const onNavigateTab = mountTabs('tab-2');
 
     expect(await screen.findByRole('tab', { name: /详情/ })).toHaveAttribute(
       'aria-selected',
       'true'
     );
     fireEvent.click(screen.getByRole('tab', { name: /概览/ }));
-    expect(utils).toHaveBeenCalledWith(
+    expect(onNavigateTab).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'tab-1', route_segment: null })
     );
   });
 
   test('#1300 makes the active tab own and select its complete content container', async () => {
-    renderTabs('tab-2');
+    mountTabs('tab-2');
 
     expect(await screen.findByRole('tab', { name: /详情/ })).toHaveAttribute(
       'aria-selected',
@@ -154,7 +154,7 @@ describe('FrontstagePageTabs', () => {
   });
 
   test('#1300 reorders tabs from the compact drag handle and persists the affected ranks', async () => {
-    renderTabs('tab-2');
+    mountTabs('tab-2');
 
     const sourceTab = await screen.findByRole('tab', { name: /详情/ });
     const targetTab = screen.getByRole('tab', { name: /概览/ });
@@ -197,7 +197,7 @@ describe('FrontstagePageTabs', () => {
         document_root_uid: 'frontstage.tab.1.root'
       }
     ]);
-    renderTabs();
+    mountTabs();
 
     expect(
       await screen.findByRole('tab', { name: /概览/ })
@@ -360,7 +360,7 @@ describe('FrontstagePageTabs', () => {
           document_root_uid: 'frontstage.tab.2.root'
         }
       ]);
-    const onNavigateTab = renderTabs('tab-1');
+    const onNavigateTab = mountTabs('tab-1');
 
     await screen.findByRole('tab', { name: /概览/ });
     fireEvent.click(screen.getAllByRole('button', { name: '配置标签页' })[0]);
@@ -389,7 +389,7 @@ describe('FrontstagePageTabs', () => {
   });
 
   test('AC-002 wires UI mode tab create, rename, and delete actions through compact settings', async () => {
-    const utils = renderTabs('tab-2');
+    const onNavigateTab = mountTabs('tab-2');
 
     await screen.findByRole('tab', { name: /详情/ });
     fireEvent.click(screen.getByRole('button', { name: '新建标签页' }));
@@ -413,7 +413,7 @@ describe('FrontstagePageTabs', () => {
         'csrf-123'
       );
     });
-    expect(utils).toHaveBeenCalledWith(
+    expect(onNavigateTab).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'tab-3', route_segment: 'analysis' })
     );
 
@@ -456,7 +456,7 @@ describe('FrontstagePageTabs', () => {
         'csrf-123'
       );
     });
-    expect(utils).toHaveBeenCalledWith(
+    expect(onNavigateTab).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'tab-1', route_segment: null })
     );
   });

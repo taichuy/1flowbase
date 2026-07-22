@@ -223,9 +223,15 @@ describe('SystemRuntimePanel', () => {
     expect(
       within(environmentSection!).getByRole('combobox', { name: '运行目标' })
     ).toBeInTheDocument();
-    expect(within(environmentSection!).queryByText('当前语言')).toBeNull();
-    expect(within(environmentSection!).queryByText('回退语言')).toBeNull();
-    expect(within(environmentSection!).queryByText('支持语言')).toBeNull();
+    expect(
+      within(environmentSection!).queryByText('当前语言')
+    ).not.toBeInTheDocument();
+    expect(
+      within(environmentSection!).queryByText('回退语言')
+    ).not.toBeInTheDocument();
+    expect(
+      within(environmentSection!).queryByText('支持语言')
+    ).not.toBeInTheDocument();
     expect(
       within(environmentSection!).getByText('相关进程内存')
     ).toBeInTheDocument();

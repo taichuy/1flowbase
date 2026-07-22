@@ -194,8 +194,12 @@ function createUnavailableBlockContext(
       head: rejectUnavailable('ctx.api.head'),
       options: rejectUnavailable('ctx.api.options'),
       stream: () => ({
-        async *[Symbol.asyncIterator]() {
-          throw createUnavailableContextError('ctx.api.stream');
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => {
+              throw createUnavailableContextError('ctx.api.stream');
+            }
+          };
         }
       })
     },

@@ -702,16 +702,13 @@ describe('FrontStagePage - routing fallback', () => {
         />
       </AppProviders>
     );
+    const workspace = screen.getByTestId('frontstage-page-workspace');
 
     expect(
-      screen
-        .getByTestId('frontstage-page-workspace')
-        .querySelector('.ant-empty')
+      workspace.querySelector('.ant-empty')
     ).toBeInTheDocument();
     expect(
-      screen
-        .getByTestId('frontstage-page-workspace')
-        .querySelector('.frontstage-page-workspace__header')
+      workspace.querySelector('.frontstage-page-workspace__header')
     ).not.toBeInTheDocument();
     expect(screen.queryByText('分组 一级')).not.toBeInTheDocument();
     expect(onNavigatePage).not.toHaveBeenCalled();

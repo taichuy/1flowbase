@@ -84,7 +84,7 @@ fn reject_unknown_anthropic_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
-    for field in object.keys().filter(|field| {
+    if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
             "context_management"
@@ -548,9 +548,9 @@ fn reject_unknown_anthropic_content_block_fields(
                 .with_report(report.clone()),
         );
     }
-    for field in object
+    if let Some(field) = object
         .keys()
-        .filter(|field| unsupported_fields.contains(&field.as_str()))
+        .find(|field| unsupported_fields.contains(&field.as_str()))
     {
         let path = format!("{block_path}.{field}");
         report.record(

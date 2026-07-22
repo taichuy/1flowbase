@@ -497,32 +497,6 @@ function readCachedOutputValue(
   return { found: true, value: current };
 }
 
-function readPreviewInputValue(
-  inputPayload: Record<string, Record<string, unknown>>,
-  selector: string[]
-): { found: true; value: unknown } | { found: false } {
-  const [nodeId, ...path] = selector;
-
-  if (!nodeId || path.length === 0) {
-    return { found: false };
-  }
-
-  let current: unknown = inputPayload[nodeId];
-
-  for (const segment of path) {
-    if (
-      !isRecord(current) ||
-      !Object.prototype.hasOwnProperty.call(current, segment)
-    ) {
-      return { found: false };
-    }
-
-    current = current[segment];
-  }
-
-  return { found: true, value: current };
-}
-
 function buildNodePreviewVariableField({
   document,
   nodeId,
@@ -596,63 +570,6 @@ function buildMissingPreviewField(
     sourceOutput: findNodeOutput(node, outputKey),
     value: buildPreviewValue(node, outputKey)
   });
-}
-
-function hasMissingPreviewField(
-  fields: NodeDebugPreviewVariableField[],
-  nodeId: string,
-  outputKey: string
-) {
-  return fields.some(
-    (field) => field.nodeId === nodeId && field.key === outputKey
-  );
-}
-
-function resolvePreviewSelectorValue({
-  document,
-  variableCache,
-  inputPayload,
-  missingFields,
-  selector
-}: {
-  document: FlowAuthoringDocument;
-  variableCache: NodeDebugPreviewVariableCache;
-  inputPayload: Record<string, Record<string, unknown>>;
-  missingFields: NodeDebugPreviewVariableField[];
-  selector: string[];
-}): { found: true; value: unknown } | { found: false } {
-  const sourceNodeId = selector[0] ?? '';
-  const outputKey = selectorOutputKey(selector);
-  const sourceNode = document.graph.nodes.find(
-    (entry) => entry.id === sourceNodeId
-  );
-  const sourceOutput = findNodeOutputBySelector(document, sourceNode, selector);
-  const previewInputValue = readPreviewInputValue(inputPayload, selector);
-  const cachedOutput = previewInputValue.found
-    ? previewInputValue
-    : readCachedOutputValue(
-        variableCache[sourceNodeId],
-        sourceOutput,
-        outputKey
-      );
-  const value =
-    cachedOutput.found && hasPreviewVariableValue(cachedOutput.value)
-      ? cachedOutput.value
-      : canUseStartPreviewDefault(sourceNode, outputKey)
-        ? buildPreviewValue(sourceNode, outputKey)
-        : undefined;
-
-  if (value !== undefined) {
-    return { found: true, value };
-  }
-
-  if (!hasMissingPreviewField(missingFields, sourceNodeId, outputKey)) {
-    missingFields.push(
-      buildMissingPreviewField(document, sourceNodeId, outputKey)
-    );
-  }
-
-  return { found: false };
 }
 
 function isRequiredStartPreviewKey(node: FlowNodeDocument, outputKey: string) {

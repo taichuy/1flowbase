@@ -306,8 +306,16 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         Some("root")
     );
     assert_eq!(
-        trace_tree_payload["data"]["run"]["source"].as_str(),
-        Some("public_api")
+        trace_tree_payload["data"]["run"]["execution_stage"].as_str(),
+        Some("published")
+    );
+    assert_eq!(
+        trace_tree_payload["data"]["run"]["invocation_source"].as_str(),
+        Some("agent_flow_api")
+    );
+    assert_eq!(
+        trace_tree_payload["data"]["run"]["principal"]["kind"].as_str(),
+        Some("application_api_key")
     );
     assert!(trace_tree_payload["data"]["run"]["compatibility_mode"].is_null());
     assert!(!trace_tree_payload["data"]["run"]

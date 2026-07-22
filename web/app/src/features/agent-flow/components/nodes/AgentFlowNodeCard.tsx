@@ -312,9 +312,11 @@ export function AgentFlowNodeCard({
               return;
             }
 
-            handle.id
-              ? data.onInsertNode(data.nodeId, option, handle.id)
-              : data.onInsertNode(data.nodeId, option);
+            if (handle.id) {
+              data.onInsertNode(data.nodeId, option, handle.id);
+            } else {
+              data.onInsertNode(data.nodeId, option);
+            }
           }}
         >
           <Tooltip

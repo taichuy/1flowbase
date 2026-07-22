@@ -205,7 +205,7 @@ impl NativeExecutionModelParameters {
                     )
                 })?
             }
-            None => return Ok(Self::without_max_output_tokens(object.get("reasoning"))?),
+            None => return Self::without_max_output_tokens(object.get("reasoning")),
         };
         Ok(Self {
             max_output_tokens: Some(max_output_tokens),

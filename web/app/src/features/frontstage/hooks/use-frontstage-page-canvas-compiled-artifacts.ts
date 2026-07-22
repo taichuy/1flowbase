@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
-  FrontstageArtifactCacheIdentity,
   FrontstageArtifactCacheReadResult,
   FrontstageCompiledArtifactCache
 } from '../lib/runtime-cache';
@@ -29,11 +28,6 @@ export interface UseFrontstagePageCanvasCompiledArtifactsInput {
 export interface UseFrontstagePageCanvasCompiledArtifactsResult {
   sourceState: FrontstagePageCanvasRuntimeSourceState | null;
   loading: boolean;
-}
-
-interface ArtifactLookupCandidate {
-  key: string;
-  identity: FrontstageArtifactCacheIdentity;
 }
 
 export function useFrontstagePageCanvasCompiledArtifacts({

@@ -1,4 +1,7 @@
+import { setImmediate } from 'node:timers/promises';
+
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -6,7 +9,7 @@ import {
   within
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
@@ -148,6 +151,11 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
 };
 
 describe('FrontstageJsxStudioDrawer', () => {
+  afterEach(async () => {
+    cleanup();
+    await setImmediate();
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     monacoEditor.getSelection.mockReturnValue(null);
@@ -266,9 +274,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
-    await waitFor(() =>
-      expect(screen.getByText('接口代码已插入')).toBeInTheDocument()
-    );
+    expect(await screen.findByText('接口代码已插入')).toBeInTheDocument();
     expect(onSaveBlock).not.toHaveBeenCalled();
   });
 

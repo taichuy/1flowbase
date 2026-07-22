@@ -52,7 +52,7 @@ pub struct ApplicationFlowCompactCommand {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PublishedCompactDispatch {
     Transparent,
-    ApplicationFlow(CompactResponseIngress),
+    ApplicationFlow(Box<CompactResponseIngress>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -195,7 +195,7 @@ where
                         PublishedRouteResolutionError::OperationUnbound,
                     ));
                 };
-                self.local_summary_ingress(actor.workspace_id, command.request, route)
+                self.local_summary_ingress(actor.workspace_id, command.request, *route)
                     .await?
             }
             CompactionProfile::ResponsesCompact => {
@@ -219,7 +219,7 @@ where
                 .await?
             }
         };
-        Ok(PublishedCompactDispatch::ApplicationFlow(ingress))
+        Ok(PublishedCompactDispatch::ApplicationFlow(Box::new(ingress)))
     }
 
     async fn local_summary_ingress(
