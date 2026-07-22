@@ -2,9 +2,13 @@ import { useEffect, useRef } from 'react';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
 
-import { i18nText } from '../../../../shared/i18n/text';
-
-export function McpCommandMarkdownPreview({ content }: { content: string }) {
+export function McpCommandMarkdownPreview({
+  content,
+  ariaLabel
+}: {
+  content: string;
+  ariaLabel: string;
+}) {
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -28,10 +32,7 @@ export function McpCommandMarkdownPreview({ content }: { content: string }) {
   return (
     <div
       ref={previewRef}
-      aria-label={i18nText(
-        'settingsMcpManagement',
-        'auto.command_preview'
-      )}
+      aria-label={ariaLabel}
       className="mcp-client-command-preview vditor-reset"
       role="region"
     />

@@ -48,6 +48,7 @@ const MCP_SIMPLE_OPERATIONS: &[&str] = &[
     "mcp.groups.delete",
     "mcp.groups.move",
     "mcp.groups.upsert",
+    "mcp.instances.copy",
     "mcp.instances.create",
     "mcp.instances.delete",
     "mcp.instances.export",

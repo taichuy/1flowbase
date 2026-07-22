@@ -161,7 +161,7 @@ pub struct UpdateMcpInstanceDiscoveryPolicyInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct ImportMcpInstanceInput {
+pub struct CreateMcpInstanceGraphInput {
     pub instance: CreateMcpInstanceInput,
     pub groups: Vec<UpsertMcpGroupInput>,
     pub bindings: Vec<CreateMcpToolBindingInput>,
@@ -198,9 +198,9 @@ pub trait McpManagementRepository: Send + Sync {
         &self,
         input: &CreateMcpInstanceInput,
     ) -> anyhow::Result<domain::McpInstanceRecord>;
-    async fn import_mcp_instance_atomically(
+    async fn create_mcp_instance_graph_atomically(
         &self,
-        input: &ImportMcpInstanceInput,
+        input: &CreateMcpInstanceGraphInput,
     ) -> anyhow::Result<domain::McpInstanceRecord>;
     async fn update_mcp_instance(
         &self,

@@ -3,7 +3,8 @@ import {
   ExportOutlined,
   FileTextOutlined,
   GithubOutlined,
-  QuestionCircleOutlined
+  QuestionCircleOutlined,
+  SafetyCertificateOutlined
 } from '@ant-design/icons';
 import { fetchConsoleReleaseStatus } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
@@ -22,7 +23,13 @@ const HELP_LINKS = [
     key: 'docs',
     label: i18nText("appShell", "auto.documentation"),
     icon: <FileTextOutlined />,
-    href: 'https://docs.taichuy.com/'
+    href: 'https://1flowbase.taichuy.com/docs/'
+  },
+  {
+    key: 'license',
+    label: i18nText('appShell', 'auto.license_agreement'),
+    icon: <SafetyCertificateOutlined />,
+    href: 'https://1flowbase.taichuy.com/license/'
   }
 ] satisfies Array<{
   key: string;

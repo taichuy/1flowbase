@@ -686,7 +686,6 @@
     "mcp_third_party": "第三方MCP",
     "mcp_meta_config": "MCP 配置",
     "mcp_load_failed": "MCP 配置加载失败",
-    "mcp_instances_hint": "MCP 实例决定 mcp.list 可见目录；只有 enabled 实例会被发现。",
     "mcp_hard_delete_confirm": "确认硬删除？删除后后续调用会返回不存在。",
     "mcp_saved": "MCP 配置已保存",
     "mcp_deleted": "MCP 配置已删除",

@@ -1,4 +1,5 @@
 import {
+  CopyOutlined,
   DeleteOutlined,
   UploadOutlined,
   EditOutlined,
@@ -6,6 +7,7 @@ import {
   FolderOpenOutlined,
   FolderOutlined,
   LinkOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
@@ -15,6 +17,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
+  Dropdown,
   Flex,
   Form,
   Input,
@@ -50,16 +53,19 @@ import type {
 
 import {
   createSettingsMcpInstance,
+  copySettingsMcpInstance,
   createSettingsMcpToolBinding,
   deleteSettingsMcpGroup,
   deleteSettingsMcpInstance,
   deleteSettingsMcpToolBinding,
-  exportSettingsMcpInstanceDirectory,
+  exportSettingsMcpInstanceBundle,
   moveSettingsMcpGroup,
   settingsMcpCatalogQueryKey,
   updateSettingsMcpInstance,
   updateSettingsMcpToolBinding,
-  upsertSettingsMcpGroup
+  upsertSettingsMcpGroup,
+  type ExportSettingsMcpBundleBody,
+  type CopySettingsMcpInstanceBody
 } from '../../api/mcp-management';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -77,9 +83,12 @@ import {
   mcpInstancesReducer,
   type McpDirectoryEditorMode
 } from './mcp-management-state';
-import { downloadMcpExportPackage, statusColor } from './mcp-management-utils';
+import { statusColor } from './mcp-management-utils';
+import { McpBundleExportModal } from './bundle/McpBundleExportModal';
+import { downloadMcpBundle } from './bundle/mcp-bundle-download';
 
 type InstanceFormValues = SaveConsoleMcpInstanceBody;
+type CopyInstanceFormValues = CopySettingsMcpInstanceBody;
 type GroupFormValues = {
   instance_id: string;
   path: string;
@@ -130,6 +139,7 @@ export function McpInstancesTab({
   const csrfToken = useCsrfToken();
   const queryClient = useQueryClient();
   const [instanceForm] = Form.useForm<InstanceFormValues>();
+  const [copyInstanceForm] = Form.useForm<CopyInstanceFormValues>();
   const [groupForm] = Form.useForm<GroupFormValues>();
   const [bindingForm] = Form.useForm<BindingFormValues>();
 
@@ -162,6 +172,11 @@ export function McpInstancesTab({
     useState<ConsoleMcpInstance | null>(null);
   const [clientConfigurationInstance, setClientConfigurationInstance] =
     useState<ConsoleMcpInstance | null>(null);
+  const [copyingInstance, setCopyingInstance] =
+    useState<ConsoleMcpInstance | null>(null);
+  const [bundleExportInstance, setBundleExportInstance] =
+    useState<ConsoleMcpInstance | null>(null);
+  const [exportingInstanceBundle, setExportingInstanceBundle] = useState(false);
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
 
   const [instancesState, dispatchInstancesState] = useReducer(
@@ -175,7 +190,6 @@ export function McpInstancesTab({
     instanceModalOpen,
     directoryModalOpen,
     directoryEditorMode,
-    exportingInstances,
     requestedInstanceId,
     selectedDirectoryKey
   } = instancesState;
@@ -203,11 +217,6 @@ export function McpInstancesTab({
   const setDirectoryEditorMode = useCallback(
     (value: SetStateAction<McpDirectoryEditorMode>) =>
       dispatchInstancesState({ type: 'setDirectoryEditorMode', value }),
-    []
-  );
-  const setExportingInstances = useCallback(
-    (value: SetStateAction<boolean>) =>
-      dispatchInstancesState({ type: 'setExportingInstances', value }),
     []
   );
   const setRequestedInstanceId = useCallback(
@@ -252,6 +261,25 @@ export function McpInstancesTab({
       deleteSettingsMcpInstance(instanceId, csrfToken),
     onSuccess: async () => {
       message.success(i18nText('settings', 'auto.mcp_deleted'));
+      await queryClient.invalidateQueries({
+        queryKey: settingsMcpCatalogQueryKey
+      });
+    }
+  });
+  const copyInstanceMutation = useMutation({
+    mutationFn: ({
+      sourceInstanceId,
+      values
+    }: {
+      sourceInstanceId: string;
+      values: CopyInstanceFormValues;
+    }) => copySettingsMcpInstance(sourceInstanceId, values, csrfToken),
+    onSuccess: async () => {
+      message.success(
+        i18nText('settingsMcpManagement', 'auto.mcp_instance_copied')
+      );
+      setCopyingInstance(null);
+      copyInstanceForm.resetFields();
       await queryClient.invalidateQueries({
         queryKey: settingsMcpCatalogQueryKey
       });
@@ -358,16 +386,26 @@ export function McpInstancesTab({
       });
     }
   });
-  async function handleExportInstances() {
-    setExportingInstances(true);
+  async function handleExportInstanceBundle(
+    values: ExportSettingsMcpBundleBody
+  ) {
+    if (!bundleExportInstance) return;
+    setExportingInstanceBundle(true);
     try {
-      const exportPackage = await exportSettingsMcpInstanceDirectory();
-      downloadMcpExportPackage(exportPackage);
-      message.success(i18nText('settings', 'auto.mcp_export_ready'));
+      const response = await exportSettingsMcpInstanceBundle(
+        bundleExportInstance.instance_id,
+        values,
+        csrfToken
+      );
+      downloadMcpBundle(response.blob, response.filename);
+      setBundleExportInstance(null);
+      message.success(
+        i18nText('settingsMcpManagement', 'auto.mcp_bundle_export_ready')
+      );
     } catch (error) {
       message.error(error instanceof Error ? error.message : String(error));
     } finally {
-      setExportingInstances(false);
+      setExportingInstanceBundle(false);
     }
   }
 
@@ -912,20 +950,6 @@ export function McpInstancesTab({
             />
           </Tooltip>
           <Tooltip
-            title={i18nText('settingsMcpManagement', 'auto.discovery_policy')}
-          >
-            <Button
-              aria-label={i18nText(
-                'settingsMcpManagement',
-                'auto.discovery_policy'
-              )}
-              icon={<SearchOutlined />}
-              size="small"
-              disabled={!canManage}
-              onClick={() => setDiscoveryPolicyInstance(record)}
-            />
-          </Tooltip>
-          <Tooltip
             title={i18nText('settingsMcpManagement', 'auto.connect_client')}
           >
             <Button
@@ -938,18 +962,87 @@ export function McpInstancesTab({
               onClick={() => setClientConfigurationInstance(record)}
             />
           </Tooltip>
-          <Popconfirm
-            title={i18nText('settings', 'auto.mcp_hard_delete_confirm')}
-            disabled={!canManage}
-            onConfirm={() => deleteInstanceMutation.mutate(record.instance_id)}
+          <Tooltip
+            title={i18nText('settingsMcpManagement', 'auto.more_actions')}
           >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              size="small"
-              disabled={!canManage}
-            />
-          </Popconfirm>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'discovery_policy',
+                    icon: <SearchOutlined />,
+                    label: i18nText(
+                      'settingsMcpManagement',
+                      'auto.discovery_policy'
+                    ),
+                    disabled: !canManage
+                  },
+                  {
+                    key: 'copy',
+                    icon: <CopyOutlined />,
+                    label: i18nText(
+                      'settingsMcpManagement',
+                      'auto.copy_instance'
+                    ),
+                    disabled: !canManage
+                  },
+                  {
+                    key: 'export',
+                    icon: <UploadOutlined />,
+                    label: i18nText(
+                      'settingsMcpManagement',
+                      'auto.mcp_instance_export'
+                    ),
+                    disabled: !canManage
+                  },
+                  { type: 'divider' },
+                  {
+                    key: 'delete',
+                    icon: <DeleteOutlined />,
+                    label: i18nText('settings', 'auto.delete'),
+                    danger: true,
+                    disabled: !canManage
+                  }
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'discovery_policy') {
+                    setDiscoveryPolicyInstance(record);
+                    return;
+                  }
+                  if (key === 'export') {
+                    setBundleExportInstance(record);
+                    return;
+                  }
+                  if (key === 'copy') {
+                    copyInstanceForm.resetFields();
+                    setCopyingInstance(record);
+                    return;
+                  }
+                  if (key === 'delete') {
+                    Modal.confirm({
+                      title: i18nText(
+                        'settings',
+                        'auto.mcp_hard_delete_confirm'
+                      ),
+                      okButtonProps: { danger: true },
+                      onOk: () =>
+                        deleteInstanceMutation.mutateAsync(record.instance_id)
+                    });
+                  }
+                }
+              }}
+            >
+              <Button
+                aria-label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.more_actions'
+                )}
+                icon={<MoreOutlined />}
+                size="small"
+              />
+            </Dropdown>
+          </Tooltip>
         </Space>
       )
     }
@@ -1160,37 +1253,25 @@ export function McpInstancesTab({
 
   return (
     <Space direction="vertical" size="middle" className="mcp-management__stack">
-      <Flex justify="space-between" align="center">
-        <Typography.Text type="secondary">
-          {i18nText('settings', 'auto.mcp_instances_hint')}
-        </Typography.Text>
-        <Space>
-          <Button
-            icon={<UploadOutlined />}
-            loading={exportingInstances}
-            onClick={handleExportInstances}
-          >
-            {i18nText('settings', 'auto.export')}
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!canManage}
-            onClick={() => {
-              setEditingInstance(null);
-              instanceForm.setFieldsValue({
-                instance_id: '',
-                name: '',
-                description_short: null,
-                status: 'draft',
-                default_entry_path: '/'
-              });
-              setInstanceModalOpen(true);
-            }}
-          >
-            {i18nText('settings', 'auto.new')}
-          </Button>
-        </Space>
+      <Flex justify="flex-end" align="center">
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          disabled={!canManage}
+          onClick={() => {
+            setEditingInstance(null);
+            instanceForm.setFieldsValue({
+              instance_id: '',
+              name: '',
+              description_short: null,
+              status: 'draft',
+              default_entry_path: '/'
+            });
+            setInstanceModalOpen(true);
+          }}
+        >
+          {i18nText('settings', 'auto.new')}
+        </Button>
       </Flex>
       <Table
         rowKey="id"
@@ -1210,6 +1291,56 @@ export function McpInstancesTab({
       <McpClientConfigurationModal
         instance={clientConfigurationInstance}
         onClose={() => setClientConfigurationInstance(null)}
+      />
+      <Modal
+        open={Boolean(copyingInstance)}
+        title={i18nText('settingsMcpManagement', 'auto.copy_instance_title')}
+        okText={i18nText('settingsMcpManagement', 'auto.copy_instance_action')}
+        confirmLoading={copyInstanceMutation.isPending}
+        onCancel={() => {
+          setCopyingInstance(null);
+          copyInstanceForm.resetFields();
+        }}
+        onOk={() => copyInstanceForm.submit()}
+      >
+        <Form<CopyInstanceFormValues>
+          form={copyInstanceForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (!copyingInstance) return;
+            copyInstanceMutation.mutate({
+              sourceInstanceId: copyingInstance.instance_id,
+              values
+            });
+          }}
+        >
+          <Form.Item
+            name="instance_id"
+            label="instance_id"
+            rules={[{ required: true }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="name"
+            label={i18nText('settings', 'auto.instance_name')}
+            rules={[{ required: true }]}
+          >
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <McpBundleExportModal
+        open={Boolean(bundleExportInstance)}
+        title={i18nText(
+          'settingsMcpManagement',
+          'auto.mcp_instance_export_title'
+        )}
+        okText={i18nText('settingsMcpManagement', 'auto.mcp_instance_export')}
+        defaultBundleId={bundleExportInstance?.instance_id ?? ''}
+        exporting={exportingInstanceBundle}
+        onCancel={() => setBundleExportInstance(null)}
+        onExport={handleExportInstanceBundle}
       />
       {directoryModalOpen && selectedInstance ? (
         <FixedHeightModal
@@ -1534,8 +1665,7 @@ export function McpInstancesTab({
                   );
                 }}
                 icon={(nodeProps) => {
-                  const key =
-                    'key' in nodeProps ? nodeProps.key : undefined;
+                  const key = 'key' in nodeProps ? nodeProps.key : undefined;
                   if (!key) return null;
                   const [type] = String(key).split(':');
                   if (type === 'instance') {

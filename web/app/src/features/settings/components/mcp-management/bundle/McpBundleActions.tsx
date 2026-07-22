@@ -4,10 +4,7 @@ import {
   Alert,
   Button,
   Descriptions,
-  Form,
-  Input,
   Modal,
-  Select,
   Space,
   Table,
   Tag,
@@ -32,6 +29,8 @@ import {
   type SettingsMcpBundlePreview,
   type SettingsOfficialMcpBundleEntry
 } from '../../../api/mcp-management';
+import { McpBundleExportModal } from './McpBundleExportModal';
+import { downloadMcpBundle } from './mcp-bundle-download';
 
 type BundleReview = SettingsMcpBundlePreview | SettingsMcpBundleImportReport;
 
@@ -85,17 +84,6 @@ function resultColor(result: string) {
   return 'default';
 }
 
-function downloadBundle(blob: Blob, filename: string | null) {
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename ?? 'mcp-bundle.zip';
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.URL.revokeObjectURL(url);
-}
-
 export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
@@ -109,7 +97,6 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const [importing, setImporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportForm] = Form.useForm<ExportSettingsMcpBundleBody>();
   const officialBundles = useQuery({
     queryKey: settingsOfficialMcpBundlesQueryKey,
     queryFn: fetchSettingsOfficialMcpBundles,
@@ -184,7 +171,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
     setExporting(true);
     try {
       const response = await exportSettingsMcpBundle(values, csrfToken);
-      downloadBundle(response.blob, response.filename);
+      downloadMcpBundle(response.blob, response.filename);
       setExportOpen(false);
       message.success(
         i18nText('settingsMcpManagement', 'auto.mcp_bundle_export_ready')
@@ -228,10 +215,10 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
           loading={previewing}
           onClick={() => setSourceOpen(true)}
         >
-          {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import_all')}
+          {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import')}
         </Button>
         <Button icon={<UploadOutlined />} onClick={() => setExportOpen(true)}>
-          {i18nText('settingsMcpManagement', 'auto.mcp_bundle_export_all')}
+          {i18nText('settingsMcpManagement', 'auto.mcp_bundle_export')}
         </Button>
       </Space>
 
@@ -442,68 +429,18 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         ) : null}
       </Modal>
 
-      <Modal
+      <McpBundleExportModal
         open={exportOpen}
         title={i18nText(
           'settingsMcpManagement',
           'auto.mcp_bundle_export_title'
         )}
-        okText={i18nText('settingsMcpManagement', 'auto.mcp_bundle_export_all')}
-        confirmLoading={exporting}
+        okText={i18nText('settingsMcpManagement', 'auto.mcp_bundle_export')}
+        defaultBundleId="1flowbase_zh_hans"
+        exporting={exporting}
         onCancel={() => setExportOpen(false)}
-        onOk={() => exportForm.submit()}
-      >
-        <Form<ExportSettingsMcpBundleBody>
-          form={exportForm}
-          layout="vertical"
-          initialValues={{
-            organization: 'taichuy',
-            bundle_id: '1flowbase_zh_hans',
-            bundle_version: '1.0.0',
-            locale: 'zh_Hans',
-            minimum_host_version: '0.2.6'
-          }}
-          onFinish={(values) => void handleExport(values)}
-        >
-          <Form.Item
-            name="organization"
-            label="organization"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="bundle_id"
-            label="bundle_id"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="bundle_version"
-            label="bundle_version"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item name="locale" label="locale" rules={[{ required: true }]}>
-            <Select options={[{ value: 'zh_Hans' }, { value: 'en_US' }]} />
-          </Form.Item>
-          <Form.Item
-            name="minimum_host_version"
-            label="minimum_host_version"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Typography.Text type="secondary">
-            {i18nText(
-              'settingsMcpManagement',
-              'auto.mcp_bundle_system_version_recorded'
-            )}
-          </Typography.Text>
-        </Form>
-      </Modal>
+        onExport={handleExport}
+      />
     </>
   );
 }

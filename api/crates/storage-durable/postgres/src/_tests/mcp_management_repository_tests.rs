@@ -1,8 +1,10 @@
+use control_plane::mcp_bundle::ExportMcpInstanceBundleCommand;
 use control_plane::mcp_management::{
-    CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
-    McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
+    CopyMcpInstanceCommand, CreateMcpInstanceCommand, CreateMcpToolBindingCommand,
+    CreateMcpToolCommand, McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
     RecordMcpUpstreamDiscoveryCommand, RefreshMcpToolDescriptionCommand,
-    SaveMcpUpstreamConnectionCommand, SaveMcpUpstreamCredentialCommand,
+    SaveMcpClientCredentialCommand, SaveMcpUpstreamConnectionCommand,
+    SaveMcpUpstreamCredentialCommand, UpdateMcpInstanceDiscoveryPolicyCommand,
     UpdateMcpToolBindingCommand, UpsertMcpGroupCommand,
 };
 use control_plane::ports::{
@@ -16,6 +18,163 @@ use uuid::Uuid;
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
+}
+
+#[tokio::test]
+async fn mcp_instance_copy_reuses_tools_and_excludes_client_credentials() {
+    let (store, _workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store);
+    let source = service
+        .create_instance(CreateMcpInstanceCommand {
+            actor_user_id: actor.id,
+            instance_id: "source_ops".into(),
+            name: "Source Operations".into(),
+            description_short: Some("Copy this configuration".into()),
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/ops".into(),
+        })
+        .await
+        .unwrap();
+    let tool = service
+        .create_tool(CreateMcpToolCommand {
+            actor_user_id: actor.id,
+            tool_id: "runtime_profile_copy_source".into(),
+            name: "Runtime Profile".into(),
+            short_description: "Read runtime profile".into(),
+            full_description: "Read the current runtime profile.".into(),
+            interface_entry: runtime_profile_interface(),
+            input_mapping: serde_json::json!({}),
+            output_mapping: serde_json::json!({}),
+            des_id: None,
+            status: domain::McpToolStatus::Enabled,
+        })
+        .await
+        .unwrap();
+    service
+        .upsert_group(UpsertMcpGroupCommand {
+            actor_user_id: actor.id,
+            instance_id: source.instance_id.clone(),
+            path: "/ops".into(),
+            display_name: "Operations".into(),
+            description_short: Some("Operational tools".into()),
+            enabled: true,
+            sort_order: 7,
+        })
+        .await
+        .unwrap();
+    service
+        .create_tool_binding(CreateMcpToolBindingCommand {
+            actor_user_id: actor.id,
+            instance_id: source.instance_id.clone(),
+            group_path: "/ops".into(),
+            tool_id: tool.tool_id.clone(),
+            display_alias: Some("Runtime copy".into()),
+            visible: false,
+            sort_order: 11,
+        })
+        .await
+        .unwrap();
+    service
+        .update_instance_discovery_policy(UpdateMcpInstanceDiscoveryPolicyCommand {
+            actor_user_id: actor.id,
+            instance_id: source.instance_id.clone(),
+            list_default_limit: 17,
+            list_max_depth: 5,
+            list_regex_enabled: true,
+            list_regex_max_length: 64,
+            list_return_fields: serde_json::json!(["id", "name", "path"]),
+        })
+        .await
+        .unwrap();
+    service
+        .save_client_credential(SaveMcpClientCredentialCommand {
+            actor_user_id: actor.id,
+            instance_id: source.instance_id.clone(),
+            api_key: "source-secret".into(),
+            master_key: "test-master-key".into(),
+        })
+        .await
+        .unwrap();
+
+    let copied = service
+        .copy_instance(CopyMcpInstanceCommand {
+            actor_user_id: actor.id,
+            source_instance_id: source.instance_id.clone(),
+            instance_id: "copied_ops".into(),
+            name: "Copied Operations".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(copied.status, domain::McpInstanceStatus::Draft);
+    assert_eq!(
+        copied.description_short.as_deref(),
+        Some("Copy this configuration")
+    );
+    assert_eq!(copied.default_entry_path, "/ops");
+
+    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    let copied_groups = catalog
+        .groups
+        .iter()
+        .filter(|group| group.instance_record_id == copied.id)
+        .collect::<Vec<_>>();
+    assert_eq!(copied_groups.len(), 1);
+    assert_eq!(copied_groups[0].path, "/ops");
+    assert_eq!(copied_groups[0].sort_order, 7);
+    let copied_bindings = catalog
+        .bindings
+        .iter()
+        .filter(|binding| binding.instance_record_id == copied.id)
+        .collect::<Vec<_>>();
+    assert_eq!(copied_bindings.len(), 1);
+    assert_eq!(copied_bindings[0].tool_record_id, tool.id);
+    assert_eq!(
+        copied_bindings[0].display_alias.as_deref(),
+        Some("Runtime copy")
+    );
+    assert!(!copied_bindings[0].visible);
+    assert_eq!(copied_bindings[0].sort_order, 11);
+    let copied_policy = catalog
+        .discovery_policies
+        .iter()
+        .find(|policy| policy.instance_record_id == copied.id)
+        .unwrap();
+    assert_eq!(copied_policy.list_default_limit, 17);
+    assert_eq!(copied_policy.list_max_depth, 5);
+    assert!(copied_policy.list_regex_enabled);
+    assert_eq!(copied_policy.list_regex_max_length, 64);
+    assert_eq!(
+        service
+            .get_client_credential(actor.id, &source.instance_id, "test-master-key")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("source-secret")
+    );
+    assert!(service
+        .get_client_credential(actor.id, &copied.instance_id, "test-master-key")
+        .await
+        .unwrap()
+        .is_none());
+
+    let duplicate = service
+        .copy_instance(CopyMcpInstanceCommand {
+            actor_user_id: actor.id,
+            source_instance_id: source.instance_id,
+            instance_id: copied.instance_id.clone(),
+            name: "Duplicate Copy".into(),
+        })
+        .await;
+    assert!(duplicate.is_err());
+    let catalog_after_conflict = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert_eq!(
+        catalog_after_conflict
+            .instances
+            .iter()
+            .filter(|instance| instance.instance_id == copied.instance_id)
+            .count(),
+        1
+    );
 }
 
 async fn isolated_database_url() -> String {
@@ -202,6 +361,105 @@ async fn issue_1246_ac_005_ac_008_ac_009_upstream_secret_and_import_are_safe_and
         domain::McpToolExecutionTarget::McpProxy { upstream_connection_id, ref remote_tool_name, .. }
         if upstream_connection_id == connection.id && remote_tool_name == "weather.lookup"
     ));
+}
+
+#[tokio::test]
+async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_tools() {
+    let (store, _workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store);
+    let mut proxy_dependencies = Vec::new();
+
+    for (connection_name, remote_tool_name) in [
+        ("Selected MCP", "selected.lookup"),
+        ("Unrelated MCP", "unrelated.lookup"),
+    ] {
+        let connection = service
+            .save_upstream_connection(SaveMcpUpstreamConnectionCommand {
+                actor_user_id: actor.id,
+                connection_id: None,
+                name: connection_name.into(),
+                endpoint: format!(
+                    "https://{}.example.com/rpc",
+                    remote_tool_name.replace('.', "-")
+                ),
+                transport: domain::McpUpstreamTransport::StreamableHttp,
+                auth_type: domain::McpUpstreamAuthType::None,
+                custom_header_name: None,
+                status: domain::McpUpstreamConnectionStatus::Enabled,
+            })
+            .await
+            .unwrap();
+        service
+            .record_upstream_discovery(RecordMcpUpstreamDiscoveryCommand {
+                actor_user_id: actor.id,
+                connection_id: connection.id,
+                discovered_at: OffsetDateTime::now_utc(),
+                tools: vec![McpRemoteToolDefinition {
+                    remote_tool_name: remote_tool_name.into(),
+                    description: Some(remote_tool_name.into()),
+                    input_schema: serde_json::json!({"type": "object"}),
+                    output_schema: serde_json::json!({"type": "object"}),
+                    schema_hash: format!("{remote_tool_name}-schema"),
+                }],
+            })
+            .await
+            .unwrap();
+        let imported = service
+            .import_upstream_tools(actor.id, connection.id, &[remote_tool_name.to_string()])
+            .await
+            .unwrap();
+        proxy_dependencies.push((connection.id, imported[0].tool_id.clone()));
+    }
+
+    for (instance_id, (_, tool_id)) in [
+        ("selected_instance", &proxy_dependencies[0]),
+        ("unrelated_instance", &proxy_dependencies[1]),
+    ] {
+        service
+            .create_instance(CreateMcpInstanceCommand {
+                actor_user_id: actor.id,
+                instance_id: instance_id.into(),
+                name: instance_id.into(),
+                description_short: None,
+                status: domain::McpInstanceStatus::Enabled,
+                default_entry_path: "/".into(),
+            })
+            .await
+            .unwrap();
+        service
+            .create_tool_binding(CreateMcpToolBindingCommand {
+                actor_user_id: actor.id,
+                instance_id: instance_id.into(),
+                group_path: "/".into(),
+                tool_id: tool_id.clone(),
+                display_alias: None,
+                visible: true,
+                sort_order: 1,
+            })
+            .await
+            .unwrap();
+    }
+
+    let bundle = service
+        .export_instance_bundle(ExportMcpInstanceBundleCommand {
+            actor_user_id: actor.id,
+            instance_id: "selected_instance".into(),
+            organization: "taichuy".into(),
+            bundle_id: "selected_instance".into(),
+            bundle_version: "1.0.0".into(),
+            locale: "zh_Hans".into(),
+            minimum_host_version: "0.2.0".into(),
+            current_system_version: "0.2.6".into(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(bundle.instances.len(), 1);
+    assert_eq!(bundle.tools.len(), 1);
+    assert_eq!(bundle.connections.len(), 1);
+    assert_eq!(bundle.instances[0].instance_id, "selected_instance");
+    assert_eq!(bundle.tools[0].tool_id, proxy_dependencies[0].1);
+    assert_eq!(bundle.connections[0].connection_id, proxy_dependencies[0].0);
 }
 
 #[tokio::test]
@@ -800,12 +1058,6 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         )
         .await
         .is_err());
-
-    let directory_export = service.export_instance_directory(actor.id).await.unwrap();
-    assert_eq!(directory_export.instances.len(), 2);
-    assert_eq!(directory_export.bindings.len(), 5);
-    assert_eq!(directory_export.groups.len(), 2);
-    assert_eq!(directory_export.discovery_policies.len(), 2);
 
     let full_export = service.export_workspace_catalog(actor.id).await.unwrap();
     assert_eq!(full_export.tools.len(), 2);

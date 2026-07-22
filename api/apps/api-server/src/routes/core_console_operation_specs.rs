@@ -478,6 +478,12 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "console.operations.mcp.groups.upsert.description",
     ),
     settings(
+        "mcp.instances.copy",
+        "system.mcp-management",
+        "console.operations.mcp.instances.copy.label",
+        "console.operations.mcp.instances.copy.description",
+    ),
+    settings(
         "mcp.instances.create",
         "system.mcp-management",
         "console.operations.mcp.instances.create.label",

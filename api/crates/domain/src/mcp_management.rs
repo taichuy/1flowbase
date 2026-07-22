@@ -555,14 +555,6 @@ pub struct McpExportPackage {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct McpInstanceDirectoryExportPackage {
-    pub instances: Vec<McpInstanceRecord>,
-    pub groups: Vec<McpGroupRecord>,
-    pub bindings: Vec<McpToolBindingRecord>,
-    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyRecord>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpDescriptionCheckResult {
     pub accepted: bool,
     pub current_des_id: Option<String>,

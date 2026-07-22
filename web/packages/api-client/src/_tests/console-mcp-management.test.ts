@@ -7,6 +7,7 @@ import type {
 
 import {
   createConsoleMcpInstance,
+  copyConsoleMcpInstance,
   createConsoleMcpTool,
   createConsoleMcpToolBinding,
   deleteConsoleMcpGroup,
@@ -15,8 +16,8 @@ import {
   deleteConsoleMcpToolBinding,
   executeConsoleMcpToolDebug,
   exportConsoleMcpBundle,
+  exportConsoleMcpInstanceBundle,
   exportConsoleMcpCatalog,
-  exportConsoleMcpInstanceDirectory,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
@@ -86,11 +87,6 @@ describe('console-mcp-management client', () => {
       expected: { path: '/api/console/mcp/export' }
     },
     {
-      name: 'instance directory export package',
-      request: () => exportConsoleMcpInstanceDirectory(),
-      expected: { path: '/api/console/mcp/instances/export' }
-    },
-    {
       name: 'official MCP bundles',
       request: () => fetchConsoleOfficialMcpBundles(),
       expected: { path: '/api/console/mcp/bundles/official' }
@@ -125,6 +121,26 @@ describe('console-mcp-management client', () => {
       )
     ).resolves.toMatchObject({
       path: '/api/console/mcp/bundles/export',
+      method: 'POST',
+      csrfToken: 'csrf-123'
+    });
+  });
+
+  test('exports one MCP instance bundle as a blob', async () => {
+    await expect(
+      exportConsoleMcpInstanceBundle(
+        'workspace/ops',
+        {
+          organization: 'taichuy',
+          bundle_id: 'workspace_ops',
+          bundle_version: '1.0.0',
+          locale: 'zh_Hans',
+          minimum_host_version: '0.2.6'
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/mcp/instances/workspace%2Fops/bundles/export',
       method: 'POST',
       csrfToken: 'csrf-123'
     });
@@ -201,6 +217,20 @@ describe('console-mcp-management client', () => {
         ),
       expected: {
         path: '/api/console/mcp/instances',
+        method: 'POST',
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'instance copy',
+      request: () =>
+        copyConsoleMcpInstance(
+          'source/slash',
+          { instance_id: 'copied_ops', name: 'Copied Ops' },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/mcp/instances/source%2Fslash/copy',
         method: 'POST',
         csrfToken: 'csrf-123'
       }

@@ -146,6 +146,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "mcp.groups.delete",
             "mcp.groups.move",
             "mcp.groups.upsert",
+            "mcp.instances.copy",
             "mcp.instances.create",
             "mcp.instances.delete",
             "mcp.instances.export",

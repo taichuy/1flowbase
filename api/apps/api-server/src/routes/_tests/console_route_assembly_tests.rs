@@ -951,9 +951,9 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             ("GET", "/api/console/mcp/instances", "mcp.instances.view"),
             ("POST", "/api/console/mcp/instances", "mcp.instances.create"),
             (
-                "GET",
-                "/api/console/mcp/instances/export",
-                "mcp.instances.export"
+                "POST",
+                "/api/console/mcp/instances/:instance_id/copy",
+                "mcp.instances.copy"
             ),
             (
                 "PUT",
@@ -1063,6 +1063,11 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "POST",
                 "/api/console/mcp/bundles/export",
                 "mcp.bundles.export"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/instances/:instance_id/bundles/export",
+                "mcp.instances.export"
             ),
             (
                 "POST",

@@ -15,11 +15,11 @@ use axum::{
     Json, Router,
 };
 use control_plane::mcp_management::{
-    CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
-    McpManagementService, MoveMcpGroupCommand, RefreshMcpToolDescriptionCommand,
-    SaveMcpClientCredentialCommand, UpdateMcpInstanceDiscoveryPolicyCommand,
-    UpdateMcpProxyToolCommand, UpdateMcpToolBindingCommand, UpdateMcpToolCommand,
-    UpsertMcpGroupCommand,
+    CopyMcpInstanceCommand, CreateMcpInstanceCommand, CreateMcpToolBindingCommand,
+    CreateMcpToolCommand, McpManagementService, MoveMcpGroupCommand,
+    RefreshMcpToolDescriptionCommand, SaveMcpClientCredentialCommand,
+    UpdateMcpInstanceDiscoveryPolicyCommand, UpdateMcpProxyToolCommand,
+    UpdateMcpToolBindingCommand, UpdateMcpToolCommand, UpsertMcpGroupCommand,
 };
 use control_plane::{
     application_public_api::published_workflow_operation::build_published_workflow_operations,
@@ -248,14 +248,6 @@ pub struct McpExportPackageResponse {
     pub discovery_policies: Vec<McpInstanceDiscoveryPolicyResponse>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct McpInstanceDirectoryExportPackageResponse {
-    pub instances: Vec<McpInstanceResponse>,
-    pub groups: Vec<McpGroupResponse>,
-    pub bindings: Vec<McpToolBindingResponse>,
-    pub discovery_policies: Vec<McpInstanceDiscoveryPolicyResponse>,
-}
-
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMcpInstanceBody {
     pub instance_id: String,
@@ -263,6 +255,12 @@ pub struct CreateMcpInstanceBody {
     pub description_short: Option<String>,
     pub status: String,
     pub default_entry_path: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CopyMcpInstanceBody {
+    pub instance_id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -422,10 +420,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/mcp/instances/export",
-            console_get(
-                export_mcp_instance_directory,
-                ConsoleOperation("mcp.instances.export".to_string()),
+            "/mcp/instances/:instance_id/copy",
+            console_post(
+                copy_mcp_instance,
+                ConsoleOperation("mcp.instances.copy".to_string()),
             ),
         )
         .route(
@@ -687,20 +685,6 @@ pub async fn export_mcp_catalog(
     )?)))
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/instances/export", responses((status = 200, body = McpInstanceDirectoryExportPackageResponse)))]
-pub async fn export_mcp_instance_directory(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-) -> Result<Json<ApiSuccess<McpInstanceDirectoryExportPackageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let export = McpManagementService::new(state.store.clone())
-        .export_instance_directory(context.user.id)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        to_instance_directory_export_response(export)?,
-    )))
-}
-
 #[utoipa::path(get, path = "/api/console/mcp/instances", responses((status = 200, body = [McpInstanceResponse])))]
 pub async fn list_mcp_instances(
     State(state): State<Arc<ApiState>>,
@@ -729,6 +713,29 @@ pub async fn create_mcp_instance(
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
         .create_instance(to_instance_command(context.user.id, body)?)
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(to_instance_response(record))),
+    ))
+}
+
+#[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/copy", request_body = CopyMcpInstanceBody, responses((status = 201, body = McpInstanceResponse)))]
+pub async fn copy_mcp_instance(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(source_instance_id): Path<String>,
+    Json(body): Json<CopyMcpInstanceBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<McpInstanceResponse>>), ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let record = McpManagementService::new(state.store.clone())
+        .copy_instance(CopyMcpInstanceCommand {
+            actor_user_id: context.user.id,
+            source_instance_id,
+            instance_id: body.instance_id,
+            name: body.name,
+        })
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -1594,27 +1601,6 @@ fn to_export_response(
             .into_iter()
             .map(|record| to_tool_response(record, operations))
             .collect(),
-        bindings: export
-            .bindings
-            .into_iter()
-            .map(to_binding_response)
-            .collect(),
-        discovery_policies,
-    })
-}
-
-fn to_instance_directory_export_response(
-    export: domain::McpInstanceDirectoryExportPackage,
-) -> Result<McpInstanceDirectoryExportPackageResponse, ApiError> {
-    let discovery_policies =
-        discovery_policy_responses(&export.instances, export.discovery_policies)?;
-    Ok(McpInstanceDirectoryExportPackageResponse {
-        instances: export
-            .instances
-            .into_iter()
-            .map(to_instance_response)
-            .collect(),
-        groups: export.groups.into_iter().map(to_group_response).collect(),
         bindings: export
             .bindings
             .into_iter()

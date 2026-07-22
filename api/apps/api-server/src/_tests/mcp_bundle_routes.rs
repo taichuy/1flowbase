@@ -437,6 +437,129 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
 }
 
 #[tokio::test]
+async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_tools() {
+    // AC-003 through AC-005: instance export is scoped, portable, and leaves full export intact.
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    for tool_id in ["selected_runtime_profile", "unrelated_runtime_profile"] {
+        let response = post_json(
+            &app,
+            "/api/console/mcp/tools",
+            &cookie,
+            &csrf,
+            json!({
+                "tool_id": tool_id,
+                "des_id": null,
+                "name": tool_id,
+                "short_description": tool_id,
+                "full_description": tool_id,
+                "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
+                "parameter_schema": {},
+                "result_schema": {},
+                "input_mapping": {},
+                "output_mapping": {},
+                "permission_code": null,
+                "risk_level": "low",
+                "status": "enabled"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    for (instance_id, tool_id) in [
+        ("selected_instance", "selected_runtime_profile"),
+        ("unrelated_instance", "unrelated_runtime_profile"),
+    ] {
+        let instance = post_json(
+            &app,
+            "/api/console/mcp/instances",
+            &cookie,
+            &csrf,
+            json!({
+                "instance_id": instance_id,
+                "name": instance_id,
+                "description_short": null,
+                "status": "enabled",
+                "default_entry_path": "/"
+            }),
+        )
+        .await;
+        assert_eq!(instance.status(), StatusCode::CREATED);
+        let binding = post_json(
+            &app,
+            &format!("/api/console/mcp/instances/{instance_id}/tool-bindings"),
+            &cookie,
+            &csrf,
+            json!({
+                "group_path": "/",
+                "tool_id": tool_id,
+                "display_alias": null,
+                "visible": true,
+                "sort_order": 1
+            }),
+        )
+        .await;
+        assert_eq!(binding.status(), StatusCode::CREATED);
+    }
+
+    let export = post_json(
+        &app,
+        "/api/console/mcp/instances/selected_instance/bundles/export",
+        &cookie,
+        &csrf,
+        json!({
+            "organization": "taichuy",
+            "bundle_id": "selected_instance",
+            "bundle_version": "1.0.0",
+            "locale": "zh_Hans",
+            "minimum_host_version": "0.2.0"
+        }),
+    )
+    .await;
+    assert_eq!(export.status(), StatusCode::OK);
+    assert_eq!(export.headers()["content-type"], "application/zip");
+    assert!(export.headers()["content-disposition"]
+        .to_str()
+        .unwrap()
+        .contains("selected_instance"));
+    let bytes = to_bytes(export.into_body(), usize::MAX).await.unwrap();
+    let bundle_bytes = bytes.to_vec();
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let manifest: Value =
+        serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
+    let files = manifest["files"].as_array().unwrap();
+    let instance_paths = files
+        .iter()
+        .filter(|entry| entry["kind"] == json!("instance"))
+        .map(|entry| entry["path"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    let tool_paths = files
+        .iter()
+        .filter(|entry| entry["kind"] == json!("tool"))
+        .map(|entry| entry["path"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(instance_paths.len(), 1);
+    assert_eq!(tool_paths.len(), 1);
+    let instance: Value =
+        serde_json::from_reader(archive.by_name(&instance_paths[0]).unwrap()).unwrap();
+    let tool: Value = serde_json::from_reader(archive.by_name(&tool_paths[0]).unwrap()).unwrap();
+    assert_eq!(instance["instance_id"], json!("selected_instance"));
+    assert_eq!(tool["tool_id"], json!("selected_runtime_profile"));
+
+    let preview = post_bundle(
+        &app,
+        "/api/console/mcp/bundles/preview-upload",
+        &cookie,
+        &csrf,
+        &bundle_bytes,
+    )
+    .await;
+    assert_eq!(preview.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn mcp_bundle_official_catalog_and_preview_are_served_through_the_backend() {
     // AC-002 and AC-007: browser consumes the official source only through backend routes.
     let app = test_app().await;

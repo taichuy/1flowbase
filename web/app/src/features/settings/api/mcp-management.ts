@@ -1,5 +1,6 @@
 import {
   createConsoleMcpInstance,
+  copyConsoleMcpInstance,
   createConsoleMcpTool,
   createConsoleMcpToolBinding,
   createConsoleMcpUpstreamConnection,
@@ -15,7 +16,7 @@ import {
   executeConsoleMcpToolDebug,
   exportConsoleMcpBundle,
   exportConsoleMcpCatalog,
-  exportConsoleMcpInstanceDirectory,
+  exportConsoleMcpInstanceBundle,
   fetchConsoleOfficialMcpBundles,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpClientCredential,
@@ -40,6 +41,7 @@ import {
   updateConsoleMcpUpstreamConnection,
   upsertConsoleMcpGroup,
   type ConsoleMcpCatalog,
+  type CopyConsoleMcpInstanceBody,
   type ConsoleMcpInterfaceCapability,
   type ConsoleOfficialMcpBundleBody,
   type ConsoleMcpToolDebugExecuteResponse,
@@ -63,6 +65,7 @@ export type {
   ConsoleMcpBundlePreview as SettingsMcpBundlePreview,
   ExportConsoleMcpBundleBody as ExportSettingsMcpBundleBody,
   ConsoleOfficialMcpBundleCatalog as SettingsOfficialMcpBundleCatalog,
+  CopyConsoleMcpInstanceBody as CopySettingsMcpInstanceBody,
   ConsoleOfficialMcpBundleEntry as SettingsOfficialMcpBundleEntry
 } from '@1flowbase/api-client';
 
@@ -213,15 +216,19 @@ export function exportSettingsMcpCatalog() {
   return exportConsoleMcpCatalog();
 }
 
-export function exportSettingsMcpInstanceDirectory() {
-  return exportConsoleMcpInstanceDirectory();
-}
-
 export function exportSettingsMcpBundle(
   body: ExportConsoleMcpBundleBody,
   csrfToken: string
 ) {
   return exportConsoleMcpBundle(body, csrfToken);
+}
+
+export function exportSettingsMcpInstanceBundle(
+  instanceId: string,
+  body: ExportConsoleMcpBundleBody,
+  csrfToken: string
+) {
+  return exportConsoleMcpInstanceBundle(instanceId, body, csrfToken);
 }
 
 export function previewSettingsMcpBundle(file: File, csrfToken: string) {
@@ -263,6 +270,14 @@ export function updateSettingsMcpInstance(
   csrfToken: string
 ) {
   return updateConsoleMcpInstance(instanceId, body, csrfToken);
+}
+
+export function copySettingsMcpInstance(
+  sourceInstanceId: string,
+  body: CopyConsoleMcpInstanceBody,
+  csrfToken: string
+) {
+  return copyConsoleMcpInstance(sourceInstanceId, body, csrfToken);
 }
 
 export function deleteSettingsMcpInstance(

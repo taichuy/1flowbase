@@ -41,14 +41,11 @@ function quoteTomlString(value: string) {
   return JSON.stringify(value);
 }
 
-function buildCodexTomlHeaders(instanceName: string, apiKey: string) {
-  return (
-    '[mcp_servers.' +
-    quoteTomlString(instanceName) +
-    '.http_headers]\nAuthorization = ' +
-    quoteTomlString(`Bearer ${apiKey}`) +
-    '\n'
-  );
+function buildCodexTomlHeaderLines(instanceName: string, apiKey: string) {
+  return [
+    `[mcp_servers.${quoteTomlString(instanceName)}.http_headers]`,
+    `Authorization = ${quoteTomlString(`Bearer ${apiKey}`)}`
+  ];
 }
 
 function buildCodexCommands(
@@ -56,22 +53,47 @@ function buildCodexCommands(
   endpoint: string,
   apiKey: string
 ) {
-  const headers = buildCodexTomlHeaders(instanceName, apiKey);
+  const [headerSection, authorizationHeader] = buildCodexTomlHeaderLines(
+    instanceName,
+    apiKey
+  );
+  const cmdHeaderSection = `${quotePowerShell('[mcp_servers.')} + [char]34 + ${quotePowerShell(instanceName)} + [char]34 + ${quotePowerShell('.http_headers]')}`;
+  const cmdAuthorizationHeader = `${quotePowerShell('Authorization = ')} + [char]34 + ${quotePowerShell(`Bearer ${apiKey}`)} + [char]34`;
   return [
     {
       title: 'macOS / Linux Shell',
       language: 'bash',
-      command: `codex mcp remove ${quotePosix(instanceName)} >/dev/null 2>&1 || true; codex mcp add ${quotePosix(instanceName)} --url ${quotePosix(endpoint)} && printf %s ${quotePosix(`\n${headers}`)} >> ~/.codex/config.toml`
+      command: `codex mcp remove ${quotePosix(instanceName)} >/dev/null 2>&1 || true; codex mcp add ${quotePosix(instanceName)} --url ${quotePosix(endpoint)} && printf '%s\\n' '' ${quotePosix(headerSection)} ${quotePosix(authorizationHeader)} >> ~/.codex/config.toml`
     },
     {
       title: 'Windows PowerShell',
       language: 'powershell',
-      command: `codex mcp remove ${quotePowerShell(instanceName)} 2>$null; codex mcp add ${quotePowerShell(instanceName)} --url ${quotePowerShell(endpoint)}; Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value ${quotePowerShell(`\n${headers}`)}`
+      command: `codex mcp remove ${quotePowerShell(instanceName)} 2>$null; codex mcp add ${quotePowerShell(instanceName)} --url ${quotePowerShell(endpoint)}; Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value '', ${quotePowerShell(headerSection)}, ${quotePowerShell(authorizationHeader)}`
     },
     {
       title: 'Windows CMD',
       language: 'bat',
-      command: `codex mcp remove ${quoteWindowsCommand(instanceName)} >nul 2>&1 & codex mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} && powershell -NoProfile -Command "Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value ${quotePowerShell(`\n${headers}`)}"`
+      command: `codex mcp remove ${quoteWindowsCommand(instanceName)} >nul 2>&1 & codex mcp add ${quoteWindowsCommand(instanceName)} --url ${quoteWindowsCommand(endpoint)} && powershell -NoProfile -Command "Add-Content -Path (Join-Path $HOME '.codex\\config.toml') -Value '', (${cmdHeaderSection}), (${cmdAuthorizationHeader})"`
+    }
+  ];
+}
+
+function buildCodexRemoveCommands(instanceName: string) {
+  return [
+    {
+      title: 'macOS / Linux Shell',
+      language: 'bash',
+      command: `codex mcp remove ${quotePosix(instanceName)}`
+    },
+    {
+      title: 'Windows PowerShell',
+      language: 'powershell',
+      command: `codex mcp remove ${quotePowerShell(instanceName)}`
+    },
+    {
+      title: 'Windows CMD',
+      language: 'bat',
+      command: `codex mcp remove ${quoteWindowsCommand(instanceName)}`
     }
   ];
 }
@@ -96,6 +118,21 @@ function buildClaudeCodeCommands(
   ];
 }
 
+function buildClaudeCodeRemoveCommands(instanceName: string) {
+  return [
+    {
+      title: 'macOS / Linux Shell',
+      language: 'bash',
+      command: `claude mcp remove --scope user ${quotePosix(instanceName)}`
+    },
+    {
+      title: 'Windows PowerShell',
+      language: 'powershell',
+      command: `claude mcp remove --scope user ${quotePowerShell(instanceName)}`
+    }
+  ];
+}
+
 function buildOpenCodeCommands(
   instanceName: string,
   endpoint: string,
@@ -106,12 +143,12 @@ function buildOpenCodeCommands(
     {
       title: 'macOS / Linux Shell',
       language: 'bash',
-      command: `opencode mcp remove ${quotePosix(instanceName)} >/dev/null 2>&1 || true; ${addCommand}`
+      command: addCommand
     },
     {
       title: 'Windows PowerShell',
       language: 'powershell',
-      command: `opencode mcp remove ${quotePowerShell(instanceName)} 2>$null; ${addCommand}`
+      command: addCommand
     }
   ];
 }
@@ -196,37 +233,108 @@ export function McpClientConfigurationModal({
     [apiKey, endpoint]
   );
   const commandTabs = useMemo(() => {
-    if (!instance || !apiKey.trim()) {
+    if (!instance) {
       return null;
     }
 
+    const installEnabled = Boolean(apiKey.trim());
     return {
-      codex: buildCommandMarkdown(
-        buildCodexCommands(instance.instance_id, endpoint, apiKey)
-      ),
-      claudeCode: buildCommandMarkdown(
-        buildClaudeCodeCommands(instance.instance_id, endpoint, apiKey)
-      ),
-      openCode: buildCommandMarkdown(
-        buildOpenCodeCommands(instance.instance_id, endpoint, apiKey)
-      )
+      codex: {
+        install: installEnabled
+          ? buildCommandMarkdown(
+              buildCodexCommands(instance.instance_id, endpoint, apiKey)
+            )
+          : null,
+        remove: buildCommandMarkdown(
+          buildCodexRemoveCommands(instance.instance_id)
+        )
+      },
+      claudeCode: {
+        install: installEnabled
+          ? buildCommandMarkdown(
+              buildClaudeCodeCommands(instance.instance_id, endpoint, apiKey)
+            )
+          : null,
+        remove: buildCommandMarkdown(
+          buildClaudeCodeRemoveCommands(instance.instance_id)
+        )
+      },
+      openCode: {
+        install: installEnabled
+          ? buildCommandMarkdown(
+              buildOpenCodeCommands(instance.instance_id, endpoint, apiKey)
+            )
+          : null,
+        remove: null
+      }
     };
   }, [apiKey, endpoint, instance]);
   const closeModal = () => {
     setApiKey('');
     onClose();
   };
-  const renderAgentCommands = (content: string | undefined) =>
-    content ? (
-      <McpCommandMarkdownPreview content={content} />
-    ) : (
-      <Typography.Text type="secondary">
-        {i18nText(
-          'settingsMcpManagement',
-          'auto.enter_api_key_to_generate_commands'
+  const renderAgentCommands = (
+    commands:
+      | {
+          install: string | null;
+          remove: string | null;
+        }
+      | undefined
+  ) => (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+        <Typography.Title level={5} style={{ margin: 0 }}>
+          {i18nText(
+            'settingsMcpManagement',
+            'auto.install_update_commands'
+          )}
+        </Typography.Title>
+        {commands?.install ? (
+          <McpCommandMarkdownPreview
+            content={commands.install}
+            ariaLabel={i18nText(
+              'settingsMcpManagement',
+              'auto.install_update_command_preview'
+            )}
+          />
+        ) : (
+          <Typography.Text type="secondary">
+            {i18nText(
+              'settingsMcpManagement',
+              'auto.enter_api_key_to_generate_commands'
+            )}
+          </Typography.Text>
         )}
-      </Typography.Text>
-    );
+      </Space>
+      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+        <Typography.Title level={5} style={{ margin: 0 }}>
+          {i18nText('settingsMcpManagement', 'auto.remove_commands')}
+        </Typography.Title>
+        {commands?.remove ? (
+          <McpCommandMarkdownPreview
+            content={commands.remove}
+            ariaLabel={i18nText(
+              'settingsMcpManagement',
+              'auto.remove_command_preview'
+            )}
+          />
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            message={i18nText(
+              'settingsMcpManagement',
+              'auto.open_code_remove_unsupported'
+            )}
+            description={i18nText(
+              'settingsMcpManagement',
+              'auto.open_code_remove_configuration_path'
+            )}
+          />
+        )}
+      </Space>
+    </Space>
+  );
 
   return (
     <FixedHeightModal

@@ -232,6 +232,16 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "允许保存MCP 分组"
     ),
     text!(
+        "console.operations.mcp.instances.copy.label",
+        "Copy MCP instances",
+        "复制MCP 实例"
+    ),
+    text!(
+        "console.operations.mcp.instances.copy.description",
+        "Allow users to copy MCP instances",
+        "允许复制MCP 实例"
+    ),
+    text!(
         "console.operations.mcp.instances.create.label",
         "Create MCP instances",
         "创建MCP 实例"

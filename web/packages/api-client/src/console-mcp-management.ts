@@ -247,19 +247,17 @@ export interface ConsoleMcpExportPackage {
   discovery_policies: ConsoleMcpInstanceDiscoveryPolicy[];
 }
 
-export interface ConsoleMcpInstanceDirectoryExportPackage {
-  instances: ConsoleMcpInstance[];
-  groups: ConsoleMcpGroup[];
-  bindings: ConsoleMcpToolBinding[];
-  discovery_policies: ConsoleMcpInstanceDiscoveryPolicy[];
-}
-
 export interface SaveConsoleMcpInstanceBody {
   instance_id: string;
   name: string;
   description_short: string | null;
   status: string;
   default_entry_path: string;
+}
+
+export interface CopyConsoleMcpInstanceBody {
+  instance_id: string;
+  name: string;
 }
 
 export interface SaveConsoleMcpGroupBody {
@@ -512,13 +510,6 @@ export function exportConsoleMcpCatalog(baseUrl?: string) {
   });
 }
 
-export function exportConsoleMcpInstanceDirectory(baseUrl?: string) {
-  return apiFetch<ConsoleMcpInstanceDirectoryExportPackage>({
-    path: '/api/console/mcp/instances/export',
-    baseUrl
-  });
-}
-
 export function exportConsoleMcpBundle(
   body: ExportConsoleMcpBundleBody,
   csrfToken: string,
@@ -526,6 +517,21 @@ export function exportConsoleMcpBundle(
 ) {
   return apiFetchBlob({
     path: '/api/console/mcp/bundles/export',
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function exportConsoleMcpInstanceBundle(
+  instanceId: string,
+  body: ExportConsoleMcpBundleBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchBlob({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/bundles/export`,
     method: 'POST',
     body,
     csrfToken,
@@ -642,6 +648,21 @@ export function updateConsoleMcpInstance(
   return apiFetch<ConsoleMcpInstance>({
     path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}`,
     method: 'PUT',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function copyConsoleMcpInstance(
+  sourceInstanceId: string,
+  body: CopyConsoleMcpInstanceBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpInstance>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(sourceInstanceId)}/copy`,
+    method: 'POST',
     body,
     csrfToken,
     baseUrl

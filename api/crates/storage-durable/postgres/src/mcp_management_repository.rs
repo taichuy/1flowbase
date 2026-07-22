@@ -3,11 +3,12 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        AuthRepository, CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        CreateMcpUpstreamConnectionInput, ImportMcpInstanceInput, McpManagementRepository,
-        UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput, UpdateMcpToolBindingInput,
-        UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput,
-        UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
+        AuthRepository, CreateMcpInstanceGraphInput, CreateMcpInstanceInput,
+        CreateMcpToolBindingInput, CreateMcpToolInput, CreateMcpUpstreamConnectionInput,
+        McpManagementRepository, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
+        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput,
+        UpsertMcpClientCredentialInput, UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput,
+        UpsertMcpUpstreamToolSourceInput,
     },
 };
 use serde_json::json;
@@ -17,6 +18,15 @@ use crate::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
+
+fn map_mcp_instance_insert_error(error: sqlx::Error) -> anyhow::Error {
+    if let sqlx::Error::Database(database_error) = &error {
+        if database_error.constraint() == Some("mcp_instances_workspace_instance_id_idx") {
+            return ControlPlaneError::Conflict("mcp_instance_id").into();
+        }
+    }
+    error.into()
+}
 
 fn parse_instance_status(value: &str) -> Result<domain::McpInstanceStatus> {
     match value {
@@ -720,7 +730,8 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.default_entry_path)
         .bind(input.actor_user_id)
         .fetch_one(&mut *transaction)
-        .await?;
+        .await
+        .map_err(map_mcp_instance_insert_error)?;
 
         sqlx::query(
             r#"
@@ -744,9 +755,9 @@ impl McpManagementRepository for PgControlPlaneStore {
         map_instance(row)
     }
 
-    async fn import_mcp_instance_atomically(
+    async fn create_mcp_instance_graph_atomically(
         &self,
-        input: &ImportMcpInstanceInput,
+        input: &CreateMcpInstanceGraphInput,
     ) -> Result<domain::McpInstanceRecord> {
         let instance = &input.instance;
         let mut transaction = self.pool().begin().await?;
@@ -768,7 +779,8 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&instance.default_entry_path)
         .bind(instance.actor_user_id)
         .fetch_one(&mut *transaction)
-        .await?;
+        .await
+        .map_err(map_mcp_instance_insert_error)?;
 
         for group in &input.groups {
             sqlx::query(

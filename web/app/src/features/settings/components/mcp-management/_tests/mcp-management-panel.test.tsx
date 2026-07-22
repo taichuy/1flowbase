@@ -23,6 +23,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   ],
   createSettingsMcpUpstreamConnection: vi.fn(),
   createSettingsMcpInstance: vi.fn(),
+  copySettingsMcpInstance: vi.fn(),
   createSettingsMcpTool: vi.fn(),
   createSettingsMcpToolBinding: vi.fn(),
   deleteSettingsMcpClientCredential: vi.fn(),
@@ -40,8 +41,8 @@ const mcpManagementApi = vi.hoisted(() => ({
   importSettingsMcpBundle: vi.fn(),
   importSettingsOfficialMcpBundle: vi.fn(),
   exportSettingsMcpBundle: vi.fn(),
+  exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
-  exportSettingsMcpInstanceDirectory: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(
     async (): Promise<{ saved: boolean; api_key?: string }> => ({
       saved: false
@@ -660,7 +661,8 @@ describe('McpManagementPanel', () => {
   test('previews and imports an official MCP bundle through the backend', async () => {
     renderPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: /导入整套/ }));
+    expect(screen.getByRole('button', { name: /导出$/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /导入$/ }));
     const sourceDialog = await screen.findByRole('dialog', {
       name: '选择配置包来源'
     });
@@ -812,6 +814,114 @@ describe('McpManagementPanel', () => {
       directoryEditorButton.querySelector('.anticon-setting')
     ).toBeInTheDocument();
     expect(editButton.querySelector('.anticon-edit')).toBeInTheDocument();
+  });
+
+  test('keeps three primary instance actions and moves the rest into more actions', async () => {
+    mcpManagementApi.exportSettingsMcpInstanceBundle.mockResolvedValue({
+      blob: new Blob(['bundle'], { type: 'application/zip' }),
+      filename: 'mcp-instance-ops_mcp.zip'
+    });
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:mcp-instance')
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn()
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderPanelWithMountedTool();
+
+    const instancesPanel = screen.getByRole('tabpanel', {
+      name: 'MCP 实例'
+    });
+    expect(
+      within(instancesPanel).getByRole('button', { name: '编辑' })
+    ).toBeInTheDocument();
+    expect(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    ).toBeInTheDocument();
+    expect(
+      within(instancesPanel).getByRole('button', { name: '连接客户端' })
+    ).toBeInTheDocument();
+    expect(
+      within(instancesPanel).queryByRole('button', { name: '目录发现配置' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(instancesPanel).queryByRole('button', { name: '导出此实例' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '更多操作' })
+    );
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu).getByRole('menuitem', { name: /目录发现配置$/ })
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('menuitem', { name: /复制实例$/ })
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('menuitem', { name: /删除$/ })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /导出此实例$/ })
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: '导出 MCP 实例配置包'
+    });
+    expect(within(dialog).getByLabelText('bundle_id')).toHaveValue('ops_mcp');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '导出此实例' }));
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.exportSettingsMcpInstanceBundle
+      ).toHaveBeenCalledWith(
+        'ops_mcp',
+        expect.objectContaining({ bundle_id: 'ops_mcp' }),
+        expect.any(String)
+      );
+    });
+  });
+
+  test('copies an instance after requiring a new id and name', async () => {
+    mcpManagementApi.copySettingsMcpInstance.mockResolvedValue({
+      id: 'instance-copy-id',
+      instance_id: 'ops_mcp_copy',
+      name: 'Ops MCP Copy',
+      description_short: 'Mounted instance',
+      status: 'draft',
+      default_entry_path: '/ops'
+    });
+    renderPanelWithMountedTool();
+
+    const instancesPanel = screen.getByRole('tabpanel', {
+      name: 'MCP 实例'
+    });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '更多操作' })
+    );
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /复制实例$/ }));
+    const copyDialog = await screen.findByRole('dialog', {
+      name: '复制 MCP 实例'
+    });
+    fireEvent.change(within(copyDialog).getByLabelText('instance_id'), {
+      target: { value: 'ops_mcp_copy' }
+    });
+    fireEvent.change(within(copyDialog).getByLabelText('实例名称'), {
+      target: { value: 'Ops MCP Copy' }
+    });
+    fireEvent.click(
+      within(copyDialog).getByRole('button', { name: /复\s*制/ })
+    );
+    await waitFor(() => {
+      expect(mcpManagementApi.copySettingsMcpInstance).toHaveBeenCalledWith(
+        'ops_mcp',
+        { instance_id: 'ops_mcp_copy', name: 'Ops MCP Copy' },
+        expect.any(String)
+      );
+    });
   });
 
   test('hides the edit binding selector when there are no existing tool bindings', () => {
@@ -1667,11 +1777,9 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByText('parameter_schema')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
     fireEvent.change(
-      await within(dialog).findByLabelText(
-        'JSON Schema 内容',
-        undefined,
-        { timeout: 10000 }
-      ),
+      await within(dialog).findByLabelText('JSON Schema 内容', undefined, {
+        timeout: 10000
+      }),
       {
         target: {
           value: JSON.stringify({
@@ -1787,7 +1895,11 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
     fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录发现配置' })
+      within(instancesPanel).getByRole('button', { name: '更多操作' })
+    );
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /目录发现配置$/ })
     );
 
     const dialog = screen.getByRole('dialog', {
@@ -1924,52 +2036,90 @@ describe('McpManagementPanel', () => {
     const endpoint = `${window.location.origin}/api/mcp/ops_mcp`;
 
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Codex' }));
-    const codexPreview = within(dialog).getByRole('region', {
-      name: '命令预览'
+    const codexInstallPreview = within(dialog).getByRole('region', {
+      name: '安装 / 更新命令预览'
     });
-    expect(codexPreview).toHaveClass('mcp-client-command-preview');
-    expect(codexPreview).toHaveTextContent(endpoint);
-    expect(codexPreview).toHaveTextContent('test-secret-key');
-    expect(codexPreview).toHaveTextContent('~/.codex/config.toml');
-    expect(codexPreview).toHaveTextContent('http_headers');
-    expect(codexPreview).toHaveTextContent(
+    const codexRemovePreview = within(dialog).getByRole('region', {
+      name: '移除命令预览'
+    });
+    expect(codexInstallPreview).toHaveClass('mcp-client-command-preview');
+    expect(codexInstallPreview).toHaveTextContent(endpoint);
+    expect(codexInstallPreview).toHaveTextContent('test-secret-key');
+    expect(codexInstallPreview).toHaveTextContent('~/.codex/config.toml');
+    expect(codexInstallPreview).toHaveTextContent('http_headers');
+    expect(codexInstallPreview).toHaveTextContent(
       'Authorization = "Bearer test-secret-key"'
     );
-    expect(codexPreview).not.toHaveTextContent('FLOWBASE_MCP_API_KEY');
-    expect(codexPreview).not.toHaveTextContent('bearer-token-env-var');
+    expect(codexInstallPreview).not.toHaveTextContent('FLOWBASE_MCP_API_KEY');
+    expect(codexInstallPreview).not.toHaveTextContent('bearer-token-env-var');
+    expect(codexRemovePreview).toHaveTextContent(
+      "codex mcp remove 'ops_mcp'"
+    );
+    expect(codexRemovePreview).not.toHaveTextContent('test-secret-key');
     expect(vditorMock.preview).toHaveBeenCalledWith(
-      codexPreview,
+      codexInstallPreview,
       expect.stringContaining('### macOS / Linux Shell'),
       expect.objectContaining({ mode: 'light' })
     );
+    const codexInstallMarkdown = vditorMock.preview.mock.calls.find(
+      ([previewElement]) => previewElement === codexInstallPreview
+    )?.[1];
+    expect(codexInstallMarkdown).toMatch(/```bash\n[^\n]+\n```/);
+    expect(codexInstallMarkdown).toMatch(/```powershell\n[^\n]+\n```/);
+    expect(codexInstallMarkdown).toMatch(/```bat\n[^\n]+\n```/);
 
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Claude Code' }));
     const claudeCodePanel = within(dialog).getByRole('tabpanel', {
       name: 'Claude Code'
     });
     expect(
-      within(claudeCodePanel).getByRole('region', { name: '命令预览' })
+      within(claudeCodePanel).getByRole('region', {
+        name: '安装 / 更新命令预览'
+      })
     ).toHaveTextContent('claude mcp add --scope user');
     expect(
-      within(claudeCodePanel).getByRole('region', { name: '命令预览' })
+      within(claudeCodePanel).getByRole('region', {
+        name: '安装 / 更新命令预览'
+      })
     ).toHaveTextContent('Authorization: Bearer test-secret-key');
     expect(
-      within(claudeCodePanel).getByRole('region', { name: '命令预览' })
+      within(claudeCodePanel).getByRole('region', {
+        name: '安装 / 更新命令预览'
+      })
     ).not.toHaveTextContent('--env');
+    const claudeRemovePreview = within(claudeCodePanel).getByRole('region', {
+      name: '移除命令预览'
+    });
+    expect(claudeRemovePreview).toHaveTextContent(
+      "claude mcp remove --scope user 'ops_mcp'"
+    );
+    expect(claudeRemovePreview).not.toHaveTextContent('test-secret-key');
 
     fireEvent.click(within(dialog).getByRole('tab', { name: 'OpenCode' }));
     const openCodePanel = within(dialog).getByRole('tabpanel', {
       name: 'OpenCode'
     });
     expect(
-      within(openCodePanel).getByRole('region', { name: '命令预览' })
+      within(openCodePanel).getByRole('region', {
+        name: '安装 / 更新命令预览'
+      })
     ).toHaveTextContent('opencode mcp add');
     expect(
-      within(openCodePanel).getByRole('region', { name: '命令预览' })
+      within(openCodePanel).getByRole('region', {
+        name: '安装 / 更新命令预览'
+      })
     ).toHaveTextContent('Authorization=Bearer test-secret-key');
     expect(
-      within(openCodePanel).getByRole('region', { name: '命令预览' })
+      within(openCodePanel).getByRole('region', {
+        name: '安装 / 更新命令预览'
+      })
     ).not.toHaveTextContent('FLOWBASE_MCP_API_KEY');
+    expect(openCodePanel).not.toHaveTextContent('opencode mcp remove');
+    expect(
+      within(openCodePanel).getByText(
+        '当前 OpenCode CLI 不支持移除 MCP 配置，请从用户级配置文件中删除当前实例。'
+      )
+    ).toBeInTheDocument();
   });
 
   test('AC-005 AC-008 keeps Agent commands copyable but incomplete until an API key is entered', async () => {
@@ -1982,14 +2132,23 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).getByText('输入 API Key 后生成可直接执行的命令。')
     ).toBeInTheDocument();
-    expect(vditorMock.preview).not.toHaveBeenCalled();
+    expect(
+      within(dialog).queryByRole('region', { name: '安装 / 更新命令预览' })
+    ).not.toBeInTheDocument();
+    const removePreview = within(dialog).getByRole('region', {
+      name: '移除命令预览'
+    });
+    expect(removePreview).toHaveTextContent("codex mcp remove 'ops_mcp'");
+    expect(removePreview).not.toHaveTextContent('test-secret-key');
 
     fireEvent.change(within(dialog).getByLabelText('API Key'), {
       target: { value: 'test-secret-key' }
     });
     await waitFor(() => {
       expect(vditorMock.preview).toHaveBeenCalledWith(
-        expect.any(HTMLDivElement),
+        within(dialog).getByRole('region', {
+          name: '安装 / 更新命令预览'
+        }),
         expect.stringContaining('```bash'),
         expect.objectContaining({ mode: 'light' })
       );

@@ -18,8 +18,8 @@ pub use upstream_contract::{
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        CreateMcpUpstreamConnectionInput, McpManagementRepository,
+        CreateMcpInstanceGraphInput, CreateMcpInstanceInput, CreateMcpToolBindingInput,
+        CreateMcpToolInput, CreateMcpUpstreamConnectionInput, McpManagementRepository,
         UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput, UpdateMcpToolBindingInput,
         UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput,
         UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
@@ -33,6 +33,13 @@ pub struct CreateMcpInstanceCommand {
     pub description_short: Option<String>,
     pub status: domain::McpInstanceStatus,
     pub default_entry_path: String,
+}
+
+pub struct CopyMcpInstanceCommand {
+    pub actor_user_id: Uuid,
+    pub source_instance_id: String,
+    pub instance_id: String,
+    pub name: String,
 }
 
 pub struct UpsertMcpGroupCommand {
@@ -619,6 +626,82 @@ where
             .await
     }
 
+    pub async fn copy_instance(
+        &self,
+        command: CopyMcpInstanceCommand,
+    ) -> Result<domain::McpInstanceRecord> {
+        let actor = self.authorize_manage(command.actor_user_id).await?;
+        validate_identifier(&command.source_instance_id, "source_instance_id")?;
+        validate_identifier(&command.instance_id, "instance_id")?;
+        if command.name.trim().is_empty() {
+            return Err(ControlPlaneError::InvalidInput("name").into());
+        }
+        let source = self
+            .repository
+            .get_mcp_instance(actor.current_workspace_id, &command.source_instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
+        let source_groups = self.repository.list_mcp_groups(&[source.id]).await?;
+        let source_bindings = self.repository.list_mcp_tool_bindings(&[source.id]).await?;
+        let source_policy = self
+            .repository
+            .get_mcp_instance_discovery_policy(source.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("mcp_instance_discovery_policy"))?;
+        let copied_instance_id = Uuid::now_v7();
+
+        self.repository
+            .create_mcp_instance_graph_atomically(&CreateMcpInstanceGraphInput {
+                instance: CreateMcpInstanceInput {
+                    id: copied_instance_id,
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: actor.current_workspace_id,
+                    instance_id: command.instance_id,
+                    name: command.name,
+                    description_short: source.description_short,
+                    status: domain::McpInstanceStatus::Draft,
+                    default_entry_path: source.default_entry_path,
+                },
+                groups: source_groups
+                    .into_iter()
+                    .map(|group| UpsertMcpGroupInput {
+                        id: Uuid::now_v7(),
+                        actor_user_id: command.actor_user_id,
+                        instance_record_id: copied_instance_id,
+                        path: group.path,
+                        display_name: group.display_name,
+                        description_short: group.description_short,
+                        enabled: group.enabled,
+                        sort_order: group.sort_order,
+                    })
+                    .collect(),
+                bindings: source_bindings
+                    .into_iter()
+                    .map(|binding| CreateMcpToolBindingInput {
+                        id: Uuid::now_v7(),
+                        actor_user_id: command.actor_user_id,
+                        instance_record_id: copied_instance_id,
+                        tool_record_id: binding.tool_record_id,
+                        group_path: binding.group_path,
+                        display_alias: binding.display_alias,
+                        visible: binding.visible,
+                        sort_order: binding.sort_order,
+                    })
+                    .collect(),
+                discovery_policy: UpdateMcpInstanceDiscoveryPolicyInput {
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: actor.current_workspace_id,
+                    instance_record_id: copied_instance_id,
+                    list_default_limit: source_policy.list_default_limit,
+                    list_max_depth: source_policy.list_max_depth,
+                    list_regex_enabled: source_policy.list_regex_enabled,
+                    list_regex_max_length: source_policy.list_regex_max_length,
+                    list_return_fields: source_policy.list_return_fields,
+                },
+            })
+            .await
+    }
+
     pub async fn update_instance(
         &self,
         command: CreateMcpInstanceCommand,
@@ -1155,19 +1238,6 @@ where
             instances: snapshot.instances,
             groups: snapshot.groups,
             tools: snapshot.tools,
-            bindings: snapshot.bindings,
-            discovery_policies: snapshot.discovery_policies,
-        })
-    }
-
-    pub async fn export_instance_directory(
-        &self,
-        actor_user_id: Uuid,
-    ) -> Result<domain::McpInstanceDirectoryExportPackage> {
-        let snapshot = self.read_workspace_catalog(actor_user_id).await?;
-        Ok(domain::McpInstanceDirectoryExportPackage {
-            instances: snapshot.instances,
-            groups: snapshot.groups,
             bindings: snapshot.bindings,
             discovery_policies: snapshot.discovery_policies,
         })

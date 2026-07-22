@@ -799,27 +799,6 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         first_des_id
     );
 
-    let directory_export_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/console/mcp/instances/export")
-                .header("cookie", &root_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(directory_export_response.status(), StatusCode::OK);
-    let directory_export_payload = response_json(directory_export_response).await;
-    assert!(directory_export_payload["data"].get("tools").is_none());
-    assert!(directory_export_payload["data"]["groups"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|group| group["path"].as_str() == Some("/system")));
-
     let delete_group_response = app
         .clone()
         .oneshot(
@@ -1160,4 +1139,174 @@ async fn mcp_instance_discovery_policy_updates_validate_and_isolate_list_behavio
     assert_eq!(long_regex_response.status(), StatusCode::BAD_REQUEST);
     let long_regex_payload = response_json(long_regex_response).await;
     assert_eq!(long_regex_payload["code"].as_str(), Some("path_regex"));
+}
+
+#[tokio::test]
+async fn mcp_instance_copy_creates_a_draft_with_groups_and_discovery_policy_atomically() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create_source = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "instance_id": "source_ops",
+                        "name": "Source Operations",
+                        "description_short": "Copy this configuration",
+                        "status": "enabled",
+                        "default_entry_path": "/ops"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_source.status(), StatusCode::CREATED);
+
+    let create_group = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/source_ops/groups")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "path": "/ops",
+                        "display_name": "Operations",
+                        "description_short": "Operational tools",
+                        "enabled": true,
+                        "sort_order": 7
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_group.status(), StatusCode::OK);
+
+    let update_policy = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/mcp/instances/source_ops/discovery-policy")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "list_default_limit": 17,
+                        "list_max_depth": 5,
+                        "list_regex_enabled": true,
+                        "list_regex_max_length": 64,
+                        "list_return_fields": ["id", "name", "path"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_policy.status(), StatusCode::OK);
+
+    let copy_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/source_ops/copy")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "instance_id": "copied_ops",
+                        "name": "Copied Operations"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(copy_response.status(), StatusCode::CREATED);
+    let copied_payload = response_json(copy_response).await;
+    assert_eq!(copied_payload["data"]["instance_id"], "copied_ops");
+    assert_eq!(copied_payload["data"]["name"], "Copied Operations");
+    assert_eq!(copied_payload["data"]["status"], "draft");
+    assert_eq!(
+        copied_payload["data"]["description_short"],
+        "Copy this configuration"
+    );
+    assert_eq!(copied_payload["data"]["default_entry_path"], "/ops");
+
+    let duplicate_copy_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/source_ops/copy")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "instance_id": "copied_ops",
+                        "name": "Duplicate Copy"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(duplicate_copy_response.status(), StatusCode::CONFLICT);
+
+    let catalog_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/catalog")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog = response_json(catalog_response).await;
+    let copied_instance = catalog["data"]["instances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|instance| instance["instance_id"] == "copied_ops")
+        .unwrap();
+    let copied_record_id = copied_instance["id"].as_str().unwrap();
+    assert!(catalog["data"]["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|group| group["instance_record_id"] == copied_record_id && group["path"] == "/ops"));
+    let copied_policy = catalog["data"]["discovery_policies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|policy| policy["instance_record_id"] == copied_record_id)
+        .unwrap();
+    assert_eq!(copied_policy["list_default_limit"], 17);
+    assert_eq!(copied_policy["list_max_depth"], 5);
+    assert_eq!(copied_policy["list_regex_enabled"], true);
 }

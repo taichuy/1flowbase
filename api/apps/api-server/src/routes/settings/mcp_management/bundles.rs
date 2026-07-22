@@ -6,14 +6,17 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Multipart, State},
+    extract::{Multipart, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::Response,
     Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
-    mcp_bundle::{ExportMcpBundleCommand, ImportMcpBundleCommand, PreviewMcpBundleCommand},
+    mcp_bundle::{
+        ExportMcpBundleCommand, ExportMcpInstanceBundleCommand, ImportMcpBundleCommand,
+        PreviewMcpBundleCommand,
+    },
     mcp_management::McpManagementService,
 };
 use serde::Deserialize;
@@ -61,6 +64,13 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(
                 export_bundle,
                 ConsoleOperation("mcp.bundles.export".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/instances/:instance_id/bundles/export",
+            console_post(
+                export_instance_bundle,
+                ConsoleOperation("mcp.instances.export".to_string()),
             ),
         )
         .route(
@@ -179,6 +189,37 @@ async fn export_bundle(
             current_system_version: current_system_version(),
         })
         .await?;
+    bundle_archive_response(package, "mcp-bundle.zip").await
+}
+
+async fn export_instance_bundle(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(instance_id): Path<String>,
+    Json(body): Json<ExportMcpBundleBody>,
+) -> Result<Response, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let filename = format!("mcp-instance-{}.zip", safe_filename_segment(&instance_id));
+    let package = McpManagementService::new(state.store.clone())
+        .export_instance_bundle(ExportMcpInstanceBundleCommand {
+            actor_user_id: context.user.id,
+            instance_id,
+            organization: body.organization,
+            bundle_id: body.bundle_id,
+            bundle_version: body.bundle_version,
+            locale: body.locale,
+            minimum_host_version: body.minimum_host_version,
+            current_system_version: current_system_version(),
+        })
+        .await?;
+    bundle_archive_response(package, &filename).await
+}
+
+async fn bundle_archive_response(
+    package: domain::McpBundlePackage,
+    filename: &str,
+) -> Result<Response, ApiError> {
     let archive = tokio::task::spawn_blocking(move || build_bundle_archive(package))
         .await
         .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))??;
@@ -190,9 +231,23 @@ async fn export_bundle(
     );
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_static("attachment; filename=\"mcp-bundle.zip\""),
+        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+            .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_filename"))?,
     );
     Ok(response)
+}
+
+fn safe_filename_segment(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 async fn preview_uploaded_bundle(

@@ -12,8 +12,8 @@ use crate::{
         validate_positive, McpManagementService,
     },
     ports::{
-        CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
-        CreateMcpUpstreamConnectionInput, ImportMcpInstanceInput, McpManagementRepository,
+        CreateMcpInstanceGraphInput, CreateMcpInstanceInput, CreateMcpToolBindingInput,
+        CreateMcpToolInput, CreateMcpUpstreamConnectionInput, McpManagementRepository,
         UpdateMcpInstanceDiscoveryPolicyInput, UpsertMcpGroupInput,
         UpsertMcpUpstreamToolSourceInput,
     },
@@ -43,6 +43,32 @@ pub struct ExportMcpBundleCommand {
     pub current_system_version: String,
 }
 
+pub struct ExportMcpInstanceBundleCommand {
+    pub actor_user_id: Uuid,
+    pub instance_id: String,
+    pub organization: String,
+    pub bundle_id: String,
+    pub bundle_version: String,
+    pub locale: String,
+    pub minimum_host_version: String,
+    pub current_system_version: String,
+}
+
+struct McpBundleExportRequest {
+    actor_user_id: Uuid,
+    organization: String,
+    bundle_id: String,
+    bundle_version: String,
+    locale: String,
+    minimum_host_version: String,
+    current_system_version: String,
+}
+
+enum McpBundleExportScope {
+    Workspace,
+    Instance(String),
+}
+
 impl<R> McpManagementService<R>
 where
     R: McpManagementRepository,
@@ -56,20 +82,67 @@ where
         &self,
         command: ExportMcpBundleCommand,
     ) -> Result<domain::McpBundlePackage> {
-        validate_identifier(&command.organization, "organization")?;
-        validate_identifier(&command.bundle_id, "bundle_id")?;
-        Version::parse(&command.bundle_version)
+        self.export_bundle_for_scope(
+            McpBundleExportRequest {
+                actor_user_id: command.actor_user_id,
+                organization: command.organization,
+                bundle_id: command.bundle_id,
+                bundle_version: command.bundle_version,
+                locale: command.locale,
+                minimum_host_version: command.minimum_host_version,
+                current_system_version: command.current_system_version,
+            },
+            McpBundleExportScope::Workspace,
+        )
+        .await
+    }
+
+    pub async fn export_instance_bundle(
+        &self,
+        command: ExportMcpInstanceBundleCommand,
+    ) -> Result<domain::McpBundlePackage> {
+        self.export_bundle_for_scope(
+            McpBundleExportRequest {
+                actor_user_id: command.actor_user_id,
+                organization: command.organization,
+                bundle_id: command.bundle_id,
+                bundle_version: command.bundle_version,
+                locale: command.locale,
+                minimum_host_version: command.minimum_host_version,
+                current_system_version: command.current_system_version,
+            },
+            McpBundleExportScope::Instance(command.instance_id),
+        )
+        .await
+    }
+
+    async fn export_bundle_for_scope(
+        &self,
+        request: McpBundleExportRequest,
+        scope: McpBundleExportScope,
+    ) -> Result<domain::McpBundlePackage> {
+        validate_identifier(&request.organization, "organization")?;
+        validate_identifier(&request.bundle_id, "bundle_id")?;
+        Version::parse(&request.bundle_version)
             .map_err(|_| ControlPlaneError::InvalidInput("bundle_version"))?;
-        Version::parse(&command.minimum_host_version)
+        Version::parse(&request.minimum_host_version)
             .map_err(|_| ControlPlaneError::InvalidInput("minimum_host_version"))?;
-        if !matches!(command.locale.as_str(), "zh_Hans" | "en_US") {
+        if !matches!(request.locale.as_str(), "zh_Hans" | "en_US") {
             return Err(ControlPlaneError::InvalidInput("locale").into());
         }
-        let actor = self.authorize_manage(command.actor_user_id).await?;
-        let instances = self
-            .repository
-            .list_mcp_instances(actor.current_workspace_id)
-            .await?;
+        let actor = self.authorize_manage(request.actor_user_id).await?;
+        let instances = match &scope {
+            McpBundleExportScope::Workspace => {
+                self.repository
+                    .list_mcp_instances(actor.current_workspace_id)
+                    .await?
+            }
+            McpBundleExportScope::Instance(instance_id) => vec![self
+                .repository
+                .get_mcp_instance(actor.current_workspace_id, instance_id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("mcp_instance"))?],
+        };
         let instance_record_ids = instances
             .iter()
             .map(|instance| instance.id)
@@ -86,14 +159,34 @@ where
             .repository
             .list_mcp_instance_discovery_policies(&instance_record_ids)
             .await?;
-        let tools = self
+        let mut tools = self
             .repository
             .list_mcp_tools(actor.current_workspace_id)
             .await?;
-        let connections = self
+        if matches!(&scope, McpBundleExportScope::Instance(_)) {
+            let referenced_tool_ids = bindings
+                .iter()
+                .map(|binding| binding.tool_record_id)
+                .collect::<BTreeSet<_>>();
+            tools.retain(|tool| referenced_tool_ids.contains(&tool.id));
+        }
+        let referenced_connection_ids = tools
+            .iter()
+            .filter_map(|tool| match &tool.execution_target {
+                domain::McpToolExecutionTarget::McpProxy {
+                    upstream_connection_id,
+                    ..
+                } => Some(*upstream_connection_id),
+                domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let mut connections = self
             .repository
             .list_mcp_upstream_connections(actor.current_workspace_id)
             .await?;
+        if matches!(&scope, McpBundleExportScope::Instance(_)) {
+            connections.retain(|connection| referenced_connection_ids.contains(&connection.id));
+        }
 
         let portable_tools = tools
             .into_iter()
@@ -161,12 +254,12 @@ where
         Ok(domain::McpBundlePackage {
             manifest: domain::McpBundleManifest {
                 schema_version: domain::MCP_BUNDLE_SCHEMA_VERSION.into(),
-                organization: command.organization,
-                bundle_id: command.bundle_id,
-                bundle_version: command.bundle_version,
-                locale: command.locale,
-                minimum_host_version: command.minimum_host_version,
-                exported_from_system_version: command.current_system_version,
+                organization: request.organization,
+                bundle_id: request.bundle_id,
+                bundle_version: request.bundle_version,
+                locale: request.locale,
+                minimum_host_version: request.minimum_host_version,
+                exported_from_system_version: request.current_system_version,
                 exported_at,
                 files: Vec::new(),
             },
@@ -587,7 +680,7 @@ where
             .collect::<Result<Vec<_>>>()?;
         let policy = &bundle.discovery_policy;
         self.repository
-            .import_mcp_instance_atomically(&ImportMcpInstanceInput {
+            .create_mcp_instance_graph_atomically(&CreateMcpInstanceGraphInput {
                 instance: CreateMcpInstanceInput {
                     id: instance_record_id,
                     actor_user_id,

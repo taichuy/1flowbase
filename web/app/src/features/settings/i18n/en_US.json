@@ -686,7 +686,6 @@
     "mcp_third_party": "Third-party MCP",
     "mcp_meta_config": "MCP configuration",
     "mcp_load_failed": "Failed to load MCP configuration",
-    "mcp_instances_hint": "MCP instances decide what mcp.list can discover; only enabled instances are discoverable.",
     "mcp_hard_delete_confirm": "Confirm hard delete? Later calls will return not found.",
     "mcp_saved": "MCP configuration saved",
     "mcp_deleted": "MCP configuration deleted",

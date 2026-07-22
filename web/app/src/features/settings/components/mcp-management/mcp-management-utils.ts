@@ -1,7 +1,4 @@
-import type {
-  ConsoleMcpExportPackage,
-  ConsoleMcpInstanceDirectoryExportPackage
-} from '@1flowbase/api-client';
+import type { ConsoleMcpExportPackage } from '@1flowbase/api-client';
 
 export function parseJsonText(value: string, field: string) {
   try {
@@ -33,7 +30,7 @@ export function statusColor(status: string) {
 }
 
 export function downloadMcpExportPackage(
-  exportPackage: ConsoleMcpExportPackage | ConsoleMcpInstanceDirectoryExportPackage
+  exportPackage: ConsoleMcpExportPackage
 ) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return;

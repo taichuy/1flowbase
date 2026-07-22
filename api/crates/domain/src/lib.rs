@@ -87,9 +87,8 @@ pub use mcp_bundle::{
 };
 pub use mcp_management::{
     McpCallToolResult, McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage,
-    McpFieldMapping, McpGroupRecord, McpInstanceDirectoryExportPackage,
-    McpInstanceDiscoveryPolicyRecord, McpInstanceRecord, McpInstanceStatus,
-    McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpRiskLevel,
+    McpFieldMapping, McpGroupRecord, McpInstanceDiscoveryPolicyRecord, McpInstanceRecord,
+    McpInstanceStatus, McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpRiskLevel,
     McpToolAvailabilityStatus, McpToolBindingRecord, McpToolExecutionTarget, McpToolRecord,
     McpToolStatus, McpUpstreamAuthType, McpUpstreamConnectionRecord, McpUpstreamConnectionStatus,
     McpUpstreamSourceStatus, McpUpstreamToolSourceRecord, McpUpstreamTransport,
