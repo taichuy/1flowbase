@@ -27,6 +27,7 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
+  clearFrontstageRuntimeSessionCache: vi.fn(),
   useFrontstagePageCanvasRuntimeSessions: vi.fn()
 }));
 const dataCapabilitiesHook = vi.hoisted(() => ({
@@ -223,7 +224,9 @@ describe('FrontStagePage trial panel link', () => {
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
 
-    expect(within(studio).getByText('代码区块试运行')).toBeInTheDocument();
+    expect(
+      within(studio).getByRole('button', { name: /^运\s*行$/ })
+    ).toBeInTheDocument();
   }, 10000);
 
   test('closes the whole JSX Studio when exiting design mode', async () => {
@@ -236,7 +239,9 @@ describe('FrontStagePage trial panel link', () => {
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
 
-    expect(within(studio).getByText('代码区块试运行')).toBeInTheDocument();
+    expect(
+      within(studio).getByRole('button', { name: /^运\s*行$/ })
+    ).toBeInTheDocument();
 
     // Exit design mode — Drawer should close
     exitDesignMode();

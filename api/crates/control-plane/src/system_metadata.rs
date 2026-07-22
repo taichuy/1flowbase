@@ -61,7 +61,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
                 "创建人",
                 "created_by",
                 ModelFieldKind::String,
-                true,
+                false,
                 false,
             ),
             readonly_system_table_field(
@@ -69,7 +69,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
                 "更新人",
                 "updated_by",
                 ModelFieldKind::String,
-                true,
+                false,
                 false,
             ),
             readonly_system_table_field(

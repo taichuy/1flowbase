@@ -817,8 +817,8 @@ async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_
     assert_eq!(report.tokens_trend[0].input_cache_hit_tokens, 60);
     assert_eq!(report.protocols[0].protocol, "default");
     assert_eq!(report.protocols[1].protocol, "openai-responses-v1");
-    assert_eq!(report.sources[0].invocation_source, "debug");
-    assert_eq!(report.sources[1].invocation_source, "agent_flow_api");
+    assert_eq!(report.sources[0].invocation_source, "agent_flow_api");
+    assert_eq!(report.sources[1].invocation_source, "debug");
     assert_eq!(
         report.external_users[0].external_user.as_deref(),
         Some("customer-1")

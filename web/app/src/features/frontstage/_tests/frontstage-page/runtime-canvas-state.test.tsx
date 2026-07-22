@@ -33,6 +33,7 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
+  clearFrontstageRuntimeSessionCache: vi.fn(),
   useFrontstagePageCanvasRuntimeSessions: vi.fn()
 }));
 const blockCodeApi = vi.hoisted(() => ({
@@ -467,7 +468,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(
       await screen.findByTestId('block-slot-frontstage-js-block-1')
     ).toBeInTheDocument();
-    expect(screen.getByText('区块加载中...')).toBeInTheDocument();
+    expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
     expect(blockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
@@ -496,8 +497,10 @@ describe('FrontStagePage - runtime canvas state', () => {
       </AppProviders>
     );
 
-    // Catalog mismatch no longer shown as a tag — block renders loading placeholder
-    expect(await screen.findByText('区块加载中...')).toBeInTheDocument();
+    expect(
+      await screen.findByTestId('block-slot-frontstage-js-block-1')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
   });
 
   test('keeps the empty page tree free of placeholder content', () => {

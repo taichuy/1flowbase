@@ -112,9 +112,6 @@ describe('NodePickerPopover', () => {
     expect(screen.getByText('外部能力')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /LLM/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: /Knowledge Retrieval/i })
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole('menuitem', { name: /变量赋值/i })
     ).toBeInTheDocument();
     expect(

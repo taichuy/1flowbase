@@ -25,7 +25,8 @@ fn map_frontstage_placement_error(error: sqlx::Error) -> anyhow::Error {
         if database_error.constraint()
             == Some("frontstage_page_tabs_workspace_page_route_segment_uidx")
         {
-            return ControlPlaneError::Conflict("frontstage_page_tab_route_segment_conflict").into();
+            return ControlPlaneError::Conflict("frontstage_page_tab_route_segment_conflict")
+                .into();
         }
     }
     if let sqlx::Error::Database(database_error) = &error {
@@ -137,8 +138,8 @@ fn map_frontstage_page_row(row: &sqlx::postgres::PgRow) -> Result<domain::Fronts
     let content_presentation =
         domain::frontstage::FrontstagePageContentPresentation::from_db(&raw_content_presentation)
             .ok_or(ControlPlaneError::InvalidInput(
-                "frontstage_page_content_presentation",
-            ))?;
+            "frontstage_page_content_presentation",
+        ))?;
 
     Ok(domain::FrontstagePageRecord {
         id: row.get("id"),
@@ -490,7 +491,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(workspace_id)
         .bind(page_id)
         .bind(tab_reference)
-        .fetch_optional(self.pool()).await?;
+        .fetch_optional(self.pool())
+        .await?;
         row.map(|row| {
             Ok(domain::frontstage::FrontstagePageDetail {
                 page: map_frontstage_page_row(&row)?,
@@ -889,7 +891,12 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                     order by rank, id limit 1
                 )
                 "#,
-            ).bind(workspace_id).bind(page_id).bind(actor_user_id).execute(&mut *tx).await?;
+            )
+            .bind(workspace_id)
+            .bind(page_id)
+            .bind(actor_user_id)
+            .execute(&mut *tx)
+            .await?;
         }
         tx.commit().await?;
         Ok(())

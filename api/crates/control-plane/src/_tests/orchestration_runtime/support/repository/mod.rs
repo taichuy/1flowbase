@@ -152,7 +152,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             provider_code: "fixture_provider".to_string(),
             plugin_id: "fixture_provider@0.1.0".to_string(),
             plugin_version: "0.1.0".to_string(),
-            contract_version: "1flowbase.provider/v1".to_string(),
+            contract_version: "1flowbase.provider/v2".to_string(),
             protocol: "openai_compatible".to_string(),
             display_name: "Fixture Provider".to_string(),
             source_kind: "uploaded".to_string(),

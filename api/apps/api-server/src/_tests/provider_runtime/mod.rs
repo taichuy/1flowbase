@@ -80,7 +80,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: none
@@ -152,7 +152,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: none
@@ -229,7 +229,7 @@ binding_targets:
   - workspace
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v1
+contract_version: 1flowbase.provider/v2
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: none
@@ -390,7 +390,7 @@ fn fixture_installation(package: &TempProviderPackage) -> PluginInstallationReco
         provider_code: "fixture_provider".to_string(),
         plugin_id: "fixture_provider@0.1.0".to_string(),
         plugin_version: "0.1.0".to_string(),
-        contract_version: "1flowbase.provider/v1".to_string(),
+        contract_version: "1flowbase.provider/v2".to_string(),
         protocol: "openai_compatible".to_string(),
         display_name: "Fixture Provider".to_string(),
         source_kind: "uploaded".to_string(),

@@ -26,6 +26,14 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
         routes,
         BTreeSet::from([
             ("GET", "/api/console/frontstage/:workspace_id/data-capabilities"),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/interface-capabilities",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/interface-capabilities/:interface_id",
+            ),
             ("GET", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),
@@ -72,6 +80,14 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             (
                 "POST",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/write-grants",
             ),
             (
                 "GET",

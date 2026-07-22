@@ -261,7 +261,7 @@ async fn page_tab_ownership_migration_backfills_presentation_routes_and_document
         .run(&pool)
         .await
         .unwrap();
-    let (workspace_id, page_id, default_tab_id, analytics_tab_id, analytics_document) =
+    let (workspace_id, page_id, default_tab_id, analytics_tab_id, _analytics_document) =
         insert_pre_page_tab_ownership_documents(&pool, false).await;
 
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
@@ -296,11 +296,22 @@ async fn page_tab_ownership_migration_backfills_presentation_routes_and_document
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(document_payload, analytics_document);
+    assert_eq!(
+        document_payload,
+        json!({
+            "version": 1,
+            "blocks": [{
+                "id": "chart",
+                "codeRef": "chart-code",
+                "renderer_version": "v1"
+            }]
+        })
+    );
 }
 
 #[tokio::test]
-async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_partial_schema_change() {
+async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_partial_schema_change(
+) {
     let pool = connect(&isolated_database_url().await).await.unwrap();
     before_frontstage_page_tab_ownership_migrator()
         .run(&pool)
@@ -310,9 +321,9 @@ async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_pa
 
     let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
     assert!(
-        error
-            .to_string()
-            .contains("frontstage tab document migration rejected divergent schema and root blocks"),
+        error.to_string().contains(
+            "frontstage tab document migration rejected divergent schema and root blocks"
+        ),
         "unexpected migration error: {error}"
     );
     let content_presentation_exists: bool = sqlx::query_scalar(
@@ -794,10 +805,10 @@ async fn full_migrations_reject_page_to_group_with_owner_rows_and_allow_cascade_
     sqlx::query(
         "update frontstage_pages set kind = 'group', content_presentation = 'single' where id = $1",
     )
-        .bind(guarded_page_id)
-        .execute(&mut *kind_update)
-        .await
-        .unwrap();
+    .bind(guarded_page_id)
+    .execute(&mut *kind_update)
+    .await
+    .unwrap();
     commit_error_contains(kind_update, "frontstage_page_owner_rows_require_page_kind").await;
 
     let (deleted_page_id, _, _, _) =
@@ -947,10 +958,10 @@ async fn full_migrations_defer_page_owner_kind_checks_until_transaction_end() {
     sqlx::query(
         "update frontstage_pages set kind = 'group', content_presentation = 'single' where id = $1",
     )
-        .bind(converted_page_id)
-        .execute(&mut *conversion)
-        .await
-        .unwrap();
+    .bind(converted_page_id)
+    .execute(&mut *conversion)
+    .await
+    .unwrap();
     conversion.commit().await.unwrap();
 
     let converted_kind: String =

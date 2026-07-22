@@ -264,10 +264,7 @@ async fn llm_runtime_fails_before_provider_when_prompt_messages_are_empty() {
                 failure.error_payload["message"]
             );
             assert!(outcome.node_traces[1].output_payload.get("error").is_none());
-            assert_eq!(
-                outcome.variable_pool["node-llm"]["text"],
-                failure.error_payload["message"]
-            );
+            assert!(outcome.variable_pool.get("node-llm").is_none());
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }

@@ -60,6 +60,16 @@
     },
     {
       "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
+      "specifier": "./WorkflowExtensionApiPage",
+      "smokePaths": [
+        {
+          "path": "/applications/vite-lazy-deps-application/api",
+          "requiresFixture": true
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
       "specifier": "./ApplicationMonitoringPage",
       "smokePaths": [
         {

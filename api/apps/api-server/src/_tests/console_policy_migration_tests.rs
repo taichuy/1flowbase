@@ -524,7 +524,7 @@ async fn ac_010_ac_011_supported_release_schema_cohorts_rehearse_apply_finalize_
 }
 
 #[test]
-fn ac_010_live_core_crosswalk_disposes_each_of_175_operations() {
+fn ac_010_live_core_crosswalk_disposes_each_of_176_operations() {
     let settings = compile_core_settings_feature_registry()
         .expect("the Core settings feature registry must compile before migration planning");
     let registry = compile_core_console_operation_registry(&settings)
@@ -533,7 +533,7 @@ fn ac_010_live_core_crosswalk_disposes_each_of_175_operations() {
     let migration = compile_core_console_policy_migration_plan(registry.inventory())
         .expect("the audited Core crosswalk must compile against the live registry");
 
-    assert_eq!(migration.dispositions().len(), 175);
+    assert_eq!(migration.dispositions().len(), 176);
     assert!(migration
         .dispositions()
         .iter()

@@ -58,7 +58,6 @@
     "confirm_delete_group": "Are you sure you want to delete the group \"{{value1}}\"? The pages under this group will be deleted at the same time and cannot be restored.",
     "confirm_delete_node": "Confirm to delete {{value1}}\"{{value2}}\"?",
     "confirm_delete_this_block": "Are you sure you want to delete this block?",
-    "context": "Context",
     "context_keys": "Context keys",
     "context_snapshot": "Context snapshot",
     "context_update_failed": "Context update failed",
@@ -297,7 +296,6 @@
     "width": "Width"
   },
   "design": {
-    "create_tab": "Create tab",
     "configure_page": "Configure page",
     "configure_tab": "Configure tab",
     "delete_tab_confirm": "Delete this tab?",

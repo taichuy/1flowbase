@@ -1442,7 +1442,22 @@ where
         input: PersistFlowDebugOutcomeInput<'_>,
     ) -> Result<domain::FlowRunRecord> {
         let flow_run_id = input.flow_run.id;
+        let workspace_id = input.scope_id;
+        let compiled_plan = input.compiled_plan;
+        let variable_pool = &input.outcome.variable_pool;
         let persisted = persist_flow_debug_outcome(&self.repository, input).await?;
+        if persisted.flow_run.run_mode == domain::FlowRunMode::DebugFlowRun {
+            if let Some(compiled_plan) = compiled_plan {
+                let variable_cache = public_node_variable_cache(compiled_plan, variable_pool);
+                persist_debug_variable_cache_entries(
+                    &self.repository,
+                    workspace_id,
+                    &persisted.flow_run,
+                    &variable_cache,
+                )
+                .await?;
+            }
+        }
         if let Some(stream) = &self.runtime_event_stream {
             for event in &persisted.stream_events {
                 let mut stream_event = event.clone();

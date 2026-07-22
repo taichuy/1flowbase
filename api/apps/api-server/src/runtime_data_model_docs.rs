@@ -552,7 +552,7 @@ fn record_schema(model: &domain::ModelDefinitionRecord) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
     for field in &model.fields {
-        properties.insert(field.code.clone(), field_schema(field));
+        properties.insert(field.code.clone(), record_field_schema(field));
         if field.is_required {
             required.push(Value::String(field.code.clone()));
         }
@@ -563,6 +563,15 @@ fn record_schema(model: &domain::ModelDefinitionRecord) -> Value {
         "properties": properties,
         "required": required
     })
+}
+
+fn record_field_schema(field: &domain::ModelFieldRecord) -> Value {
+    let schema = field_schema(field);
+    if field.is_required {
+        schema
+    } else {
+        json!({ "anyOf": [schema, { "type": "null" }] })
+    }
 }
 
 fn record_write_schema(model: &domain::ModelDefinitionRecord, include_required: bool) -> Value {

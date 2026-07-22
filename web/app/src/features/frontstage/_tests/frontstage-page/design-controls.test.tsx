@@ -47,6 +47,7 @@ const dataCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageDataCapabilities: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
+  clearFrontstageRuntimeSessionCache: vi.fn(),
   useFrontstagePageCanvasRuntimeSessions: vi.fn()
 }));
 const blockCodeApi = vi.hoisted(() => ({

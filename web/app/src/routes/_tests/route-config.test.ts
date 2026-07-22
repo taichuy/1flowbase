@@ -33,7 +33,7 @@ describe('route truth layer', () => {
     expect(FRONTSTAGE_SLUG_PATH).toBe('/$slug');
     expect(FRONTSTAGE_SLUG_PAGE_PATH).toBe('/$slug/pages/$pageId');
     expect(FRONTSTAGE_SLUG_PAGE_TAB_PATH).toBe(
-      '/$slug/pages/$pageId/tabs/$tabId'
+      '/$slug/pages/$pageId/tabs/$tabRef'
     );
     expect(getSelectedRouteId('/frontstage/workspace-1')).toBe('home');
     expect(getSelectedRouteId('/frontstage/workspace-1/page-1')).toBe('home');

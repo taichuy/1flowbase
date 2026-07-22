@@ -872,16 +872,22 @@ mod tests {
     }
 
     #[test]
-    fn runtime_record_response_exposes_non_user_principals_without_creator_identity() {
-        for (run_mode, invocation_source, principal_kind) in [
-            ("workflow_http_run", "workflow_http", "user_api_key"),
-            ("workflow_schedule_run", "workflow_schedule", "scheduler"),
+    fn runtime_record_response_derives_principal_from_run_credentials() {
+        for (run_mode, invocation_source, principal_kind, keeps_creator) in [
+            ("workflow_http_run", "workflow_http", "user", true),
+            (
+                "workflow_schedule_run",
+                "workflow_schedule",
+                "scheduler",
+                false,
+            ),
         ] {
+            let creator_id = Uuid::now_v7();
             let record = runtime_record_response(
                 "application_run_log_summaries",
                 json!({
                     "run_mode": run_mode,
-                    "created_by": Uuid::now_v7().to_string(),
+                    "created_by": creator_id.to_string(),
                     "authorized_account": "publication creator"
                 }),
             );
@@ -889,8 +895,16 @@ mod tests {
             assert_eq!(record["execution_stage"], json!("published"));
             assert_eq!(record["invocation_source"], json!(invocation_source));
             assert_eq!(record["principal"]["kind"], json!(principal_kind));
-            assert_eq!(record["principal"]["id"], Value::Null);
-            assert_eq!(record["principal"]["display_name"], Value::Null);
+            if keeps_creator {
+                assert_eq!(record["principal"]["id"], json!(creator_id));
+                assert_eq!(
+                    record["principal"]["display_name"],
+                    json!("publication creator")
+                );
+            } else {
+                assert_eq!(record["principal"]["id"], Value::Null);
+                assert_eq!(record["principal"]["display_name"], Value::Null);
+            }
         }
     }
 }

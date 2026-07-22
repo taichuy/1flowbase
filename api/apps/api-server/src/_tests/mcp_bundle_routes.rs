@@ -182,7 +182,7 @@ async fn mcp_bundle_preview_reports_older_source_and_missing_interface_without_w
         payload["data"]["version_status"],
         json!("exported_from_older_system")
     );
-    assert_eq!(payload["data"]["current_system_version"], json!("0.2.6"));
+    assert_eq!(payload["data"]["current_system_version"], json!("0.3.0"));
     assert_eq!(payload["data"]["tools"][0]["result"], json!("unavailable"));
     assert_eq!(
         payload["data"]["tools"][0]["reason"],
@@ -389,7 +389,7 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
     let manifest: Value =
         serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
     assert_eq!(manifest["schema_version"], json!("1flowbase.mcp.bundle/v2"));
-    assert_eq!(manifest["exported_from_system_version"], json!("0.2.6"));
+    assert_eq!(manifest["exported_from_system_version"], json!("0.3.0"));
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
 
     let tool_path = manifest["files"]

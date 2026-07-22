@@ -172,7 +172,7 @@ describe('frontstage block templates', () => {
       request: {
         requestId: 'request-1',
         blockId: 'frontstage-js-block-1',
-        source,
+        program: { kind: 'source', source },
         inputs: {},
         props: {},
         state: {},
@@ -190,6 +190,12 @@ describe('frontstage block templates', () => {
     });
 
     expect(messages).toEqual([
+      {
+        direction: 'worker_to_host',
+        type: 'phase',
+        requestId: 'request-1',
+        phase: 'compiling'
+      },
       {
         direction: 'worker_to_host',
         type: 'completed',

@@ -509,7 +509,7 @@ async function main(ctx: unknown) {
     ).toHaveStyle({ flexWrap: 'wrap' });
     fireEvent.click(
       within(windowHeader as HTMLElement).getByRole('button', {
-        name: '注入上下文'
+        name: '上下文'
       })
     );
     expect(setDraft).toHaveBeenCalledWith(

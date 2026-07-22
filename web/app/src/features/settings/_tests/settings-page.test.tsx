@@ -1108,14 +1108,14 @@ describe('SettingsPage', () => {
     });
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
     fireEvent.mouseDown(resizeHandle, { clientX: 500 });
-    expect(document.body).toHaveClass('schema-form-drawer--resizing');
+    expect(document.body).toHaveClass('resizable-drawer--resizing');
     fireEvent.mouseMove(document, { clientX: 460 });
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
     fireEvent.mouseUp(document);
     await waitFor(() => {
       expect(resizeHandle).toHaveAttribute('aria-valuenow', '560');
     });
-    expect(document.body).not.toHaveClass('schema-form-drawer--resizing');
+    expect(document.body).not.toHaveClass('resizable-drawer--resizing');
     fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '600');
     fireEvent.keyDown(resizeHandle, { key: 'Home' });

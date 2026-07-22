@@ -58,7 +58,6 @@
     "confirm_delete_group": "确认删除分组“{{value1}}”吗？该分组下的页面会同时删除，且无法恢复。",
     "confirm_delete_node": "确认删除{{value1}}“{{value2}}”？",
     "confirm_delete_this_block": "确定删除此区块？",
-    "context": "上下文",
     "context_keys": "上下文 key",
     "context_snapshot": "上下文快照",
     "context_update_failed": "Context 更新失败",
@@ -297,7 +296,6 @@
     "width": "宽度"
   },
   "design": {
-    "create_tab": "新建标签页",
     "configure_page": "配置页面",
     "configure_tab": "配置标签页",
     "delete_tab_confirm": "确定删除该标签页？",

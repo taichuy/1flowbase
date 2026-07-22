@@ -650,8 +650,7 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         ensure_page_record(&page)?;
-        if page.content_presentation
-            != domain::frontstage::FrontstagePageContentPresentation::Tabs
+        if page.content_presentation != domain::frontstage::FrontstagePageContentPresentation::Tabs
         {
             return Err(ControlPlaneError::Conflict("frontstage_page_tabs_not_enabled").into());
         }

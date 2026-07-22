@@ -456,9 +456,11 @@ describe('frontstage page canvas runtime run plan model', () => {
       throw new Error('Expected a ready run plan.');
     }
     expect(item.runPlan.mediatorPolicy).toMatchObject({
-      allowedQueries: ['frontstage.data_model.record.list'],
-      allowedActions: ['frontstage.data_model.record.create']
+      allowedEvents: [],
+      maxEventChainDepth: 4
     });
+    expect(item.runPlan.mediatorPolicy).not.toHaveProperty('allowedQueries');
+    expect(item.runPlan.mediatorPolicy).not.toHaveProperty('allowedActions');
   });
 
   test('marks non-ready sources as source_not_ready without resolving runtime context', () => {
