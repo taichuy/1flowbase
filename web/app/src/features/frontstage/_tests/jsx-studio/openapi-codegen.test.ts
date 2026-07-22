@@ -60,6 +60,13 @@ describe('Frontstage callable OpenAPI codegen', () => {
   test('AC-020/021 derives a readable local alias without leaking the catalog identity', () => {
     const result = generateFrontstageInterfaceSource(operation);
 
+    expect(result.requiredImports).toEqual([
+      {
+        kind: 'type',
+        name: 'BlockContext',
+        moduleSource: '@1flowbase/block-sdk'
+      }
+    ]);
     expect(result.source).toContain('const listApplicationConversations = (');
     expect(result.source).not.toContain('019f56b6');
     expect(result.source).not.toContain('dataModel');

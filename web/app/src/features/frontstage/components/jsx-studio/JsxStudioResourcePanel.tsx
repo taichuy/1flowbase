@@ -19,8 +19,12 @@ import { useEffect, useState } from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
 import { fetchFrontstageInterfaceCapability } from '../../api/interface-capabilities';
 import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
-import type { FrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
+import type {
+  FrontstageJsxComponent,
+  FrontstageJsxEditorProjection
+} from '../../lib/jsx-studio/editor-projection';
 import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-codegen';
+import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 
@@ -51,7 +55,7 @@ export function JsxStudioResourcePanel({
   codeSource: string;
   pageBlocks: readonly FrontstageBlockInstance[];
   workspaceId: string;
-  onInsertCode: (source: string) => void;
+  onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
@@ -108,7 +112,7 @@ function InterfaceConnectorPanel({
 }: {
   codeSource: string;
   workspaceId: string;
-  onInsertCode: (source: string) => void;
+  onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
   const pageSize = 10;
   const [pendingInterfaceId, setPendingInterfaceId] = useState<string | null>(
@@ -155,9 +159,11 @@ function InterfaceConnectorPanel({
         workspaceId,
         interfaceId
       );
-      onInsertCode(
-        generateFrontstageInterfaceSource(operation, codeSource).source
+      const generated = generateFrontstageInterfaceSource(
+        operation,
+        codeSource
       );
+      onInsertCode({ kind: 'source', ...generated });
       setSelectedOperationId(undefined);
       void message.success(
         i18nText('frontstage', 'auto.interface_code_inserted')
@@ -298,7 +304,7 @@ function VariablesPanel({
 }: {
   block: FrontstageBlockInstance;
   pageBlocks: readonly FrontstageBlockInstance[];
-  onInsertCode: (source: string) => void;
+  onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }) {
   const [outputName, setOutputName] = useState('');
@@ -361,16 +367,19 @@ function VariablesPanel({
     setInputName('');
   };
   const variables = [
-    'ctx.currentUser',
-    'ctx.workspace',
-    'ctx.application',
-    'ctx.page',
-    ...ports.inputs.map((port) => `ctx.inputs.${port.name}`),
-    'ctx.params',
-    'ctx.props',
-    'ctx.state',
-    'ctx.theme',
-    'ctx.ui'
+    { label: 'ctx.currentUser', memberPath: 'currentUser' },
+    { label: 'ctx.workspace', memberPath: 'workspace' },
+    { label: 'ctx.application', memberPath: 'application' },
+    { label: 'ctx.page', memberPath: 'page' },
+    ...ports.inputs.map((port) => ({
+      label: `ctx.inputs.${port.name}`,
+      memberPath: `inputs.${port.name}`
+    })),
+    { label: 'ctx.params', memberPath: 'params' },
+    { label: 'ctx.props', memberPath: 'props' },
+    { label: 'ctx.state', memberPath: 'state' },
+    { label: 'ctx.theme', memberPath: 'theme' },
+    { label: 'ctx.ui', memberPath: 'ui' }
   ];
 
   return (
@@ -380,9 +389,17 @@ function VariablesPanel({
         description={i18nText('frontstage', 'auto.variables_description')}
       />
       {variables.map((variable) => (
-        <div className="frontstage-jsx-studio__insert-row" key={variable}>
-          <Typography.Text code>{variable}</Typography.Text>
-          <Button size="small" onClick={() => onInsertCode(variable)}>
+        <div className="frontstage-jsx-studio__insert-row" key={variable.label}>
+          <Typography.Text code>{variable.label}</Typography.Text>
+          <Button
+            size="small"
+            onClick={() =>
+              onInsertCode({
+                kind: 'context-reference',
+                memberPath: variable.memberPath
+              })
+            }
+          >
             {i18nText('frontstage', 'auto.insert_code')}
           </Button>
         </div>
@@ -500,8 +517,8 @@ function ComponentsPanel({
   components,
   onInsertCode
 }: {
-  components: readonly string[];
-  onInsertCode: (source: string) => void;
+  components: readonly FrontstageJsxComponent[];
+  onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
   return (
     <div className="frontstage-jsx-studio__resource-scroll">
@@ -516,11 +533,14 @@ function ComponentsPanel({
         />
       ) : (
         components.map((component) => (
-          <div className="frontstage-jsx-studio__insert-row" key={component}>
-            <Typography.Text code>{component}</Typography.Text>
+          <div
+            className="frontstage-jsx-studio__insert-row"
+            key={`${component.moduleSource}:${component.name}`}
+          >
+            <Typography.Text code>{component.name}</Typography.Text>
             <Button
               size="small"
-              onClick={() => onInsertCode(`<${component}></${component}>`)}
+              onClick={() => onInsertCode({ kind: 'component', ...component })}
             >
               {i18nText('frontstage', 'auto.insert_code')}
             </Button>

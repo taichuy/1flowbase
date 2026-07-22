@@ -1,7 +1,10 @@
 import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
 
+import type { FrontstageJsxRequiredImport } from './source-insertion';
+
 export interface FrontstageOpenApiCodegenResult {
   source: string;
+  requiredImports: FrontstageJsxRequiredImport[];
 }
 
 type JsonSchema = Record<string, unknown>;
@@ -153,7 +156,16 @@ export function generateFrontstageInterfaceSource(
     `  ${callSource};`
   ].join('\n');
 
-  return { source: callable };
+  return {
+    source: callable,
+    requiredImports: [
+      {
+        kind: 'type',
+        name: 'BlockContext',
+        moduleSource: '@1flowbase/block-sdk'
+      }
+    ]
+  };
 }
 
 function renderSchemaType(value: unknown, indent = 0): string {

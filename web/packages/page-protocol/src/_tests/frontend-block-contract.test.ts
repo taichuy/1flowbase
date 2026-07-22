@@ -40,6 +40,7 @@ describe('frontend block contract vocabulary', () => {
       allowedImports: ['@1flowbase/block-sdk'],
       monacoExtraLibs: [
         {
+          source: '@1flowbase/block-sdk',
           filePath: 'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
           content: 'export declare function defineBlock(): unknown;'
         }

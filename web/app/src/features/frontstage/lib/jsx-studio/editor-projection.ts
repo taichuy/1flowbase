@@ -1,9 +1,17 @@
-import type { FrontendBlockMonacoExtraLib } from '@1flowbase/page-protocol';
+import type {
+  FrontendBlockCodeModuleSource,
+  FrontendBlockMonacoExtraLib
+} from '@1flowbase/page-protocol';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
 
+export interface FrontstageJsxComponent {
+  name: string;
+  moduleSource: FrontendBlockCodeModuleSource;
+}
+
 export interface FrontstageJsxEditorProjection {
-  components: string[];
+  components: FrontstageJsxComponent[];
   contextComment: string;
   monacoExtraLibs: FrontendBlockMonacoExtraLib[];
 }
@@ -33,13 +41,24 @@ export function createFrontstageContextComment(): string {
 
 function collectCatalogComponents(
   extraLibs: readonly FrontendBlockMonacoExtraLib[]
-): string[] {
-  const names = new Set<string>();
+): FrontstageJsxComponent[] {
+  const components = new Map<string, FrontstageJsxComponent>();
   const pattern = /export\s+(?:declare\s+)?const\s+([A-Z][A-Za-z0-9_$]*)\b/g;
   for (const extraLib of extraLibs) {
     for (const match of extraLib.content.matchAll(pattern)) {
-      if (match[1]) names.add(match[1]);
+      if (match[1]) {
+        const component = {
+          name: match[1],
+          moduleSource: extraLib.source
+        };
+        components.set(
+          `${component.moduleSource}:${component.name}`,
+          component
+        );
+      }
     }
   }
-  return [...names].sort((left, right) => left.localeCompare(right));
+  return [...components.values()].sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
 }

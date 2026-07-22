@@ -64,6 +64,7 @@ export interface FrontendBlockCodeContribution {
 }
 
 export interface FrontendBlockMonacoExtraLib {
+  source: FrontendBlockCodeModuleSource;
   filePath: string;
   content: string;
 }
@@ -122,6 +123,7 @@ export function createFrontendBlockCodeCapabilities(
         : null,
     allowedImports: modules.map((codeModule) => codeModule.source),
     monacoExtraLibs: modules.map((codeModule) => ({
+      source: codeModule.source,
       filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
       content: codeModule.type_declarations
     })),
