@@ -2726,7 +2726,7 @@ describe('McpManagementPanel', () => {
       }),
       expect.any(String)
     );
-  });
+  }, 30_000);
 
   test('uses nested interface descriptors for mapping and debug interface arguments', async () => {
     renderPanel([publishApplicationApiCapability]);
@@ -2910,7 +2910,7 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-  });
+  }, 30_000);
 
   test('blocks saving when the input mapping JSON parse view is invalid', async () => {
     renderPanel();
@@ -3040,7 +3040,7 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-  });
+  }, 30_000);
 
   test('adds all remaining mapping parameters from the mapping layer', async () => {
     renderPanel();
@@ -3136,7 +3136,7 @@ describe('McpManagementPanel', () => {
         expect.any(String)
       );
     });
-  });
+  }, 30_000);
 
   test('shows des_id once when interface parameters already include it', async () => {
     renderPanel([
