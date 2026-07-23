@@ -14,16 +14,19 @@ fn write_script(name: &str, body: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("provider-stdio-v2-{name}-{nonce}"));
     fs::create_dir_all(&root).unwrap();
     let script = root.join("provider.sh");
-    fs::write(&script, body).unwrap();
+    let staging_script = root.join("provider.sh.tmp");
+    fs::write(&staging_script, body).unwrap();
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let mut permissions = fs::metadata(&script).unwrap().permissions();
+        let mut permissions = fs::metadata(&staging_script).unwrap().permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(&script, permissions).unwrap();
+        fs::set_permissions(&staging_script, permissions).unwrap();
     }
+
+    fs::rename(staging_script, &script).unwrap();
 
     script
 }
