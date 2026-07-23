@@ -139,6 +139,24 @@ async fn codex_responses_store_false_crosses_the_request_boundary() {
 }
 
 #[tokio::test]
+async fn codex_parallel_tool_calls_false_crosses_the_request_boundary() {
+    let app = test_app().await;
+    let token = setup_published_app(&app, "Codex Parallel Tool Calls False App").await;
+    let mut body = responses_body(false);
+    body["parallel_tool_calls"] = json!(false);
+
+    let response = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        body,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn d2_ac_007_openai_public_runs_persist_no_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Canonical Contract App").await;

@@ -524,7 +524,8 @@ async fn native_cancel_clears_pending_callback_required_action() {
 mod tests {
     use std::sync::Mutex;
 
-    use serde_json::json;
+    use anyhow::Result;
+    use serde_json::{json, Value};
 
     use super::*;
     use crate::application_public_api::{
@@ -532,7 +533,7 @@ mod tests {
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
         },
-        native::{ApplicationNativeRunService, CreateNativeRunCommand},
+        native::{ApplicationNativeRunService, CreateNativeRunCommand, NativeRunResult},
         publications::{ApplicationPublicationService, PublishApplicationCommand},
         ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
     };

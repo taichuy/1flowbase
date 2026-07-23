@@ -563,16 +563,11 @@ fn reject_unknown_response_fields(
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
     accept_responses_store_hint(object, report)?;
+    accept_responses_parallel_tool_calls_hint(object, report)?;
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
-            "parallel_tool_calls"
-                | "response_format"
-                | "text"
-                | "background"
-                | "include"
-                | "max_tool_calls"
-                | "truncation"
+            "response_format" | "text" | "background" | "include" | "max_tool_calls" | "truncation"
         )
     }) {
         let path = format!("$.{field}");
@@ -626,6 +621,51 @@ fn reject_unknown_response_fields(
         );
     }
     Ok(())
+}
+
+fn accept_responses_parallel_tool_calls_hint(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(value) = object.get("parallel_tool_calls") else {
+        return Ok(());
+    };
+    match value.as_bool() {
+        Some(false) => {
+            report.record(
+                "$.parallel_tool_calls",
+                None,
+                TranslationDecisionKind::Dropped,
+                Some("published models do not advertise parallel tool calls"),
+                TranslationSafeRepresentation::Present,
+            );
+            Ok(())
+        }
+        Some(true) => {
+            report.record(
+                "$.parallel_tool_calls",
+                None,
+                TranslationDecisionKind::Unsupported,
+                Some("Native execution cannot promise parallel tool calls"),
+                TranslationSafeRepresentation::Present,
+            );
+            Err(OpenAiCompatError::unsupported("parallel_tool_calls").with_report(report.clone()))
+        }
+        None => {
+            report.record(
+                "$.parallel_tool_calls",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("parallel_tool_calls must be a boolean"),
+                TranslationSafeRepresentation::Present,
+            );
+            Err(OpenAiCompatError::invalid(
+                "parallel_tool_calls",
+                "parallel_tool_calls must be a boolean",
+            )
+            .with_report(report.clone()))
+        }
+    }
 }
 
 fn accept_responses_store_hint(
@@ -2318,6 +2358,52 @@ mod tests {
         assert!(translated
             .report
             .has_decision("$.store", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn codex_parallel_tool_calls_false_matches_published_capability() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "parallel_tool_calls": false
+        }))
+        .expect("parallel_tool_calls=false matches the published model capability");
+
+        assert!(translated
+            .report
+            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn responses_parallel_tool_calls_true_remains_explicitly_unsupported() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "parallel_tool_calls": true
+        }))
+        .expect_err("Native execution cannot promise parallel tool calls");
+
+        assert_eq!(error.param.as_deref(), Some("parallel_tool_calls"));
+        assert!(error.report.has_decision(
+            "$.parallel_tool_calls",
+            TranslationDecisionKind::Unsupported
+        ));
+    }
+
+    #[test]
+    fn responses_parallel_tool_calls_requires_a_boolean() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "parallel_tool_calls": "false"
+        }))
+        .expect_err("parallel_tool_calls must retain its boolean wire type");
+
+        assert_eq!(error.param.as_deref(), Some("parallel_tool_calls"));
+        assert_eq!(error.code, "invalid_request");
+        assert!(error
+            .report
+            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Rejected));
     }
 
     #[test]
