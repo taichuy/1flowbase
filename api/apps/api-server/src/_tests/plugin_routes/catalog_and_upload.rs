@@ -249,6 +249,72 @@ async fn plugin_routes_install_upload_rejects_payload_above_route_limit() {
 }
 
 #[tokio::test]
+async fn model_provider_settings_install_upload_accepts_package_larger_than_default_body_limit() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let boundary = "----1flowbase-large-settings-plugin-boundary";
+    let package_bytes = build_signed_openai_upload_package_with_payload("0.2.2", 3 * 1024 * 1024);
+    assert!(package_bytes.len() > 2 * 1024 * 1024);
+    let body = build_upload_body(
+        boundary,
+        "openai_compatible-0.2.2.1flowbasepkg",
+        &package_bytes,
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/model-providers/plugins/install-upload")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn model_provider_settings_install_upload_rejects_payload_above_route_limit() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let boundary = "----1flowbase-oversize-settings-plugin-boundary";
+    let body = build_upload_body(
+        boundary,
+        "oversize.1flowbasepkg",
+        &vec![0_u8; 8 * 1024 * 1024],
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/model-providers/plugins/install-upload")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
 async fn plugin_routes_install_upload_persists_host_extension_as_pending_restart() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

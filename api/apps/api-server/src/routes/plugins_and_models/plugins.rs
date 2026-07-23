@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
+    body::{to_bytes, Body},
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap, Request, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     Json, Router,
 };
 use control_plane::plugin_management::{
@@ -351,7 +354,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/plugins/install-upload",
             console_post(
-                install_uploaded_plugin.layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES)),
+                install_uploaded_plugin
+                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES))
+                    .layer(middleware::from_fn(enforce_plugin_upload_limit)),
                 ConsoleOperation("plugins.install.upload".to_string()),
             ),
         )
@@ -440,7 +445,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/model-providers/plugins/install-upload",
             console_post(
                 settings_routes::install_uploaded_plugin
-                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES)),
+                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES))
+                    .layer(middleware::from_fn(enforce_plugin_upload_limit)),
                 ConsoleOperation("model_provider_plugins.install.upload".to_string()),
             ),
         )
@@ -563,6 +569,17 @@ fn to_compatibility_override(
         acknowledged_current_host_version: value.acknowledged_current_host_version,
         acknowledged_minimum_host_version: value.acknowledged_minimum_host_version,
     })
+}
+
+async fn enforce_plugin_upload_limit(request: Request<Body>, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    match to_bytes(body, MAX_PLUGIN_UPLOAD_BYTES).await {
+        Ok(bytes) => {
+            next.run(Request::from_parts(parts, Body::from(bytes)))
+                .await
+        }
+        Err(_) => StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+    }
 }
 
 async fn read_upload_file(multipart: &mut Multipart) -> Result<(String, Vec<u8>), ApiError> {
