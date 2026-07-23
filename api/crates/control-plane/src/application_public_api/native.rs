@@ -266,7 +266,7 @@ fn normalize_native_history_entry(
             if !value.is_string() {
                 return Err(NativeRequestTranslationError::rejected(
                     "history",
-                    &format!("history {field} must be text"),
+                    format!("history {field} must be text"),
                     &format!("{entry_path}.{field}"),
                     TranslationDecisionKind::Rejected,
                     "Native history text field must be text",
@@ -307,7 +307,7 @@ fn normalize_native_history_entry(
             if !value.is_array() {
                 return Err(NativeRequestTranslationError::rejected(
                     "history",
-                    &format!("history {field} must be an array"),
+                    format!("history {field} must be an array"),
                     &format!("{entry_path}.{field}"),
                     TranslationDecisionKind::Rejected,
                     "Native history array field must be an array",
