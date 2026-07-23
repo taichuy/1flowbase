@@ -248,14 +248,6 @@ test('publication source binds Generate for Responses, Chat Completions, and Ant
   const anthropicPublication = publications.find(
     (call) => call.pathname.includes('/anthropic-application-1/')
   );
-  const expectedGenerateBindings = {
-    generate: { target_node_id: 'node-llm' },
-    count_tokens: null,
-    compact: {
-      responses_compact: null,
-      responses_compaction_v2: null,
-    },
-  };
   const protocolPublications = [
     ['OpenAI Responses', openaiPublication],
     ['OpenAI Chat Completions', openaiPublication],
@@ -263,9 +255,24 @@ test('publication source binds Generate for Responses, Chat Completions, and Ant
   ];
   for (const [protocol, publication] of protocolPublications) {
     assert.ok(publication, `${protocol} publication write must exist`);
+    const draft = FakeOwnerClient.calls.find(
+      (call) => call.kind === 'write'
+        && call.pathname.startsWith(publication.pathname.replace('/api-publications', ''))
+        && call.pathname.endsWith('/orchestration/draft')
+    );
+    const generateTargetNodeId = draft.body.document.graph.nodes.find(
+      (node) => node.type === 'llm'
+    ).id;
     assert.deepEqual(
       publication.body.mapping.operation_bindings,
-      expectedGenerateBindings,
+      {
+        generate: { target_node_id: generateTargetNodeId },
+        count_tokens: null,
+        compact: {
+          responses_compact: null,
+          responses_compaction_v2: null,
+        },
+      },
       `${protocol} must publish the backend Generate operation target`
     );
   }

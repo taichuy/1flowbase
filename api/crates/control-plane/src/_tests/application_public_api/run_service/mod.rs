@@ -210,6 +210,7 @@ async fn save_start_model_catalog(
         {
             "id": "gpt-5.4",
             "name": "GPT-5.4",
+            "max_context_window": 128000,
             "max_output_tokens": 32000,
             "capabilities": {
                 "reasoning": true
