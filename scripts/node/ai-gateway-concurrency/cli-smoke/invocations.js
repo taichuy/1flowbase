@@ -64,13 +64,12 @@ function opencodeInvocation(executable, paths, target) {
   return {
     executable,
     cwd: paths.output,
+    terminateAfterSecondMarker: true,
     args: [
-      'run',
-      '--pure',
-      '--format', 'default',
-      '--dir', paths.output,
+      paths.output,
+      '--mini',
       '--model', `oneflowbase_gateway/${target.model}`,
-      FIXED_PROMPT,
+      '--prompt', FIXED_PROMPT,
     ],
   };
 }
@@ -81,6 +80,7 @@ function sanitizedInvocation(invocation) {
     cwd: invocation.cwd,
     args: [...invocation.args],
     settings_path: invocation.settingsPath ?? null,
+    termination: invocation.terminateAfterSecondMarker ? 'ctrl-c-after-second-marker' : null,
   };
 }
 

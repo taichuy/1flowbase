@@ -49,12 +49,12 @@ test('Claude invocation is bare, stateless, explicit-settings, stream-json, and 
   }
 });
 
-test('OpenCode invocation uses isolated JSON output and the compatible Chat model', () => {
+test('OpenCode invocation uses its real TUI so PTY output remains incremental', () => {
   const paths = { output: '/tmp/opencode-output' };
   const plan = opencodeInvocation('/bin/opencode', paths, { model: 'fixture-model' });
-  assert.deepEqual(plan.args.slice(0, 6), [
-    'run', '--pure', '--format', 'default', '--dir', '/tmp/opencode-output',
+  assert.deepEqual(plan.args.slice(0, 5), [
+    '/tmp/opencode-output', '--mini', '--model', 'oneflowbase_gateway/fixture-model', '--prompt',
   ]);
-  assert.equal(plan.args[plan.args.indexOf('--model') + 1], 'oneflowbase_gateway/fixture-model');
   assert.equal(plan.args.at(-1), FIXED_PROMPT);
+  assert.equal(plan.terminateAfterSecondMarker, true);
 });

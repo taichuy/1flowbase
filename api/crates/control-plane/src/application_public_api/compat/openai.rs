@@ -1057,6 +1057,16 @@ fn openai_reasoning(
     } else {
         let reasoning = match object.get("reasoning") {
             Some(Value::Object(reasoning)) => Some(reasoning),
+            Some(Value::Null) => {
+                report.record(
+                    "$.reasoning",
+                    None,
+                    TranslationDecisionKind::Dropped,
+                    Some("null reasoning is equivalent to an absent optional parameter"),
+                    TranslationSafeRepresentation::Absent,
+                );
+                None
+            }
             Some(_) => {
                 return Err(
                     OpenAiCompatError::invalid("reasoning", "reasoning must be an object")
@@ -2514,6 +2524,26 @@ mod tests {
         assert!(translated
             .report
             .has_decision("$.include", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn codex_null_reasoning_is_an_absent_optional_parameter() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "reasoning": null
+        }))
+        .expect("Codex null reasoning should be equivalent to an absent optional parameter");
+
+        assert!(translated
+            .report
+            .has_decision("$.reasoning", TranslationDecisionKind::Dropped));
+        assert!(translated
+            .request
+            .execution
+            .model_parameters
+            .reasoning
+            .is_none());
     }
 
     #[test]

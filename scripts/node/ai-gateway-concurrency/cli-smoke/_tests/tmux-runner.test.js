@@ -6,7 +6,12 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { executeTmuxInvocation, ptyMarkerTimeline, shellQuote } = require('../runner');
+const {
+  assertCompatibleResult,
+  executeTmuxInvocation,
+  ptyMarkerTimeline,
+  shellQuote,
+} = require('../runner');
 
 test('shell quoting preserves spaces, quotes, and shell metacharacters as one argument', () => {
   const value = "a b'c;$HOME";
@@ -21,6 +26,27 @@ test('advanced util-linux timing maps the two visible markers to distinct output
     'delta-1': 10,
     'delta-2': 260,
   });
+});
+
+test('advanced util-linux timing excludes the output-log header from child byte offsets', () => {
+  const header = 'Script started on 2026-07-23 22:00:00+08:00 [COMMAND="fixture"]\n';
+  const childOutput = 'prefix delta-1 middle delta-2 terminal';
+  const firstBytes = Buffer.byteLength('prefix delta-1');
+  const timing = `H 0.000000 START_TIME 0\nO 0.010000 ${firstBytes}\nO 0.250000 ${Buffer.byteLength(childOutput) - firstBytes}\n`;
+  assert.deepEqual(ptyMarkerTimeline(`${header}${childOutput}`, timing, ['delta-1', 'delta-2']), {
+    'delta-1': 10,
+    'delta-2': 260,
+  });
+});
+
+test('OpenCode TUI acceptance reads the sentinel from raw PTY output', () => {
+  const eventCount = assertCompatibleResult('opencode', {
+    timed_out: false,
+    exit_code: 0,
+    stdout: { text: '\u001b[32m1flowbase gateway sentinel ok\u001b[0m', overflow: false },
+    stderr: { text: '', overflow: false },
+  });
+  assert.equal(eventCount, 1);
 });
 
 test('tmux PTY runner records util-linux output and timing without using the user tmux server', async () => {

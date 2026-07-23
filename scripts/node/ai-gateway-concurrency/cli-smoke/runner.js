@@ -70,7 +70,8 @@ function shellQuote(value) {
 }
 
 function ptyMarkerTimeline(output, timing, markers) {
-  const outputBytes = Buffer.from(output);
+  const childOutput = output.replace(/^Script started on [^\r\n]*(?:\r?\n)/u, '');
+  const outputBytes = Buffer.from(childOutput);
   let cursor = 0;
   let elapsedMs = 0;
   let visible = '';
@@ -133,6 +134,7 @@ async function executeTmuxInvocation(
   const command = [invocation.executable, ...invocation.args].map(shellQuote).join(' ');
   let markerWatcher = null;
   let firstMarkerReleased = false;
+  let secondMarkerTerminationStarted = false;
   fs.writeFileSync(wrapperPath, [
     '#!/bin/sh',
     `${shellQuote(scriptExecutable)} -q -e -f -m advanced -O ${shellQuote(ptyPath)} -T ${shellQuote(timingPath)} -c ${shellQuote(command)}`,
@@ -148,13 +150,25 @@ async function executeTmuxInvocation(
   const startedNs = process.hrtime.bigint();
   let timedOut = false;
   try {
-    if (markers[0] && onFirstMarker) {
+    if (markers[0] || (markers[1] && invocation.terminateAfterSecondMarker)) {
       markerWatcher = fs.watch(root, () => {
-        if (firstMarkerReleased || !fs.existsSync(ptyPath)) return;
+        if (!fs.existsSync(ptyPath)) return;
         const visible = fs.readFileSync(ptyPath, 'utf8');
-        if (!visible.includes(markers[0])) return;
-        firstMarkerReleased = true;
-        Promise.resolve(onFirstMarker()).catch(() => {});
+        if (!firstMarkerReleased && markers[0] && visible.includes(markers[0])) {
+          firstMarkerReleased = true;
+          Promise.resolve(onFirstMarker?.()).catch(() => {});
+        }
+        if (secondMarkerTerminationStarted
+          || !invocation.terminateAfterSecondMarker
+          || !markers[1]
+          || !visible.includes(markers[1])) return;
+        secondMarkerTerminationStarted = true;
+        setTimeout(() => {
+          spawnResult(tmuxExecutable, ['-L', socket, 'send-keys', '-t', session, 'C-c'])
+            .then(() => new Promise((resolve) => setTimeout(resolve, 200)))
+            .then(() => spawnResult(tmuxExecutable, ['-L', socket, 'send-keys', '-t', session, 'C-c']))
+            .catch(() => {});
+        }, 500);
       });
     }
     await requireSuccess(tmuxExecutable, ['-L', socket, 'new-session', '-d', '-s', 'bootstrap']);
@@ -239,6 +253,12 @@ function assertCompatibleResult(client, result) {
   if (result.exit_code !== 0) throw new Error(`${client} sentinel exited with ${result.exit_code}`);
   if (result.stdout.overflow || result.stderr.overflow) {
     throw new Error(`${client} sentinel output exceeded 1 MiB`);
+  }
+  if (client === 'opencode') {
+    if (!result.stdout.text.includes(SENTINEL_RESPONSE)) {
+      throw new Error(`${client} sentinel response marker was not observed`);
+    }
+    return 1;
   }
   const events = parseJsonLines(result.stdout.text, client);
   const compatible = client === 'codex'

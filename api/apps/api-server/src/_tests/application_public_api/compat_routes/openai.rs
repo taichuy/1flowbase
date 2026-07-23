@@ -53,6 +53,7 @@ async fn codex_reasoning_include_crosses_the_request_boundary() {
         "session_id": "session-1",
         "thread_id": "thread-1"
     });
+    body["reasoning"] = Value::Null;
 
     let response = post_json(
         &app,
