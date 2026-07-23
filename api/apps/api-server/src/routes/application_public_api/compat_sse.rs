@@ -27,10 +27,9 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
+use crate::routes::application_public_api::tool_callback_ids::encode_anthropic_callback_tool_use_id;
 #[cfg(test)]
-use crate::routes::application_public_api::tool_callback_ids::{
-    encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
-};
+use crate::routes::application_public_api::tool_callback_ids::encode_openai_callback_tool_call_id;
 use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
@@ -51,7 +50,6 @@ mod protocol_mappers;
 mod tests;
 
 use event_forwarding::{is_answer_presentation_delta, send_compatible_runtime_event_stream};
-#[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
 use protocol_mappers::{
     terminal_answer_deltas_from_run_or_payload, AnthropicStreamMapper, OpenAiChatStreamMapper,
@@ -344,7 +342,10 @@ pub(crate) async fn start_anthropic_run_stream(
     .await
 }
 
-#[cfg(test)]
+pub(crate) fn completed_anthropic_stream(run: NativeRunResult, model: String) -> Response {
+    completed_compatible_stream(anthropic_completed_run_to_sse(&run, &model))
+}
+
 fn completed_compatible_stream(events: Vec<Result<Event, Infallible>>) -> Response {
     Sse::new(tokio_stream::iter(events))
         .keep_alive(

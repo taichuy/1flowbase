@@ -27,7 +27,7 @@ async fn c1_anthropic_count_tokens_never_falls_back_to_a_local_estimate() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_anthropic_count_tokens_rejects_context_management_without_creating_a_run() {
+async fn anthropic_count_tokens_accepts_context_management_before_operation_resolution() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Unsupported Context Management App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -44,14 +44,14 @@ async fn d2_ac_007_anthropic_count_tokens_rejects_context_management_without_cre
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["type"], json!("operation_unbound"));
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn d2_ac_007_anthropic_count_tokens_rejects_tools_before_any_public_invocation() {
+async fn anthropic_count_tokens_accepts_tools_before_operation_resolution() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Count Tokens Unsupported Tools App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -71,9 +71,9 @@ async fn d2_ac_007_anthropic_count_tokens_rejects_tools_before_any_public_invoca
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["type"], json!("operation_unbound"));
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

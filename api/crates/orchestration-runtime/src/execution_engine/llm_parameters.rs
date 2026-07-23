@@ -15,8 +15,10 @@ pub(super) struct ResolvedLlmModelParameters {
 }
 
 pub(super) fn resolve_model_parameters(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
+    resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
 ) -> Result<ResolvedLlmModelParameters, Value> {
     if let Some(field) = legacy_max_tokens_field(&node.config) {
@@ -29,6 +31,19 @@ pub(super) fn resolve_model_parameters(
     let mut parameters = build_configured_model_parameters(&node.config);
     if llm_follows_external_reasoning(&node.config) {
         apply_external_reasoning_parameters(&mut parameters, runtime, variable_pool);
+    }
+    if !parameters.contains_key("tool_choice") {
+        let external_tool_choice = resolved_inputs
+            .get("tool_choice")
+            .cloned()
+            .or_else(|| run_level_tool_choice(plan, variable_pool));
+        if let Some(tool_choice) = external_tool_choice.filter(|value| {
+            !value.is_null()
+                && !value.as_str().is_some_and(|value| value.trim().is_empty())
+                && !value.as_object().is_some_and(Map::is_empty)
+        }) {
+            parameters.insert("tool_choice".to_string(), tool_choice);
+        }
     }
 
     let configured_max_output_tokens = parameters.get("max_output_tokens").and_then(parameter_u64);

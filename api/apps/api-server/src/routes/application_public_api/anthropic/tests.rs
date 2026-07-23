@@ -95,6 +95,41 @@ fn anthropic_response_projects_native_tool_calls() {
 }
 
 #[test]
+fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
+    let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
+    let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
+    let request = json!({
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": encode_anthropic_callback_tool_use_id(first_callback, "toolu_first"),
+                    "content": "FIRST"
+                },
+                {
+                    "type": "tool_result",
+                    "tool_use_id": encode_anthropic_callback_tool_use_id(latest_callback, "toolu_latest"),
+                    "content": "LATEST"
+                }
+            ]
+        }]
+    });
+
+    let resume = anthropic_tool_resume_request(&request)
+        .expect("accumulated tool results should be valid")
+        .expect("the latest callback should resume");
+
+    assert_eq!(resume.callback_task_id, latest_callback);
+    assert_eq!(resume.tool_results.as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        resume.tool_results[0]["tool_call_id"],
+        json!("toolu_latest")
+    );
+    assert_eq!(resume.tool_results[0]["content"], json!("LATEST"));
+}
+
+#[test]
 fn anthropic_response_filters_internal_visible_llm_tool_calls() {
     let callback_task_id = Uuid::from_u128(0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd);
     let run = NativeRunResult {
@@ -329,31 +364,33 @@ fn d2_ac_004_anthropic_blocking_terminal_status_matrix() {
             Err(AnthropicRouteError::Native(_))
         ));
     }
-    assert!(matches!(
-        to_anthropic_response(
-            blocking_run(NativeRunStatus::Waiting),
-            "provider/model".into(),
-        ),
-        Err(AnthropicRouteError::RequiredAction)
-    ));
+    let callback_task_id = Uuid::from_u128(0xdddddddddddddddddddddddddddddddd);
+    let mut waiting = blocking_run(NativeRunStatus::Waiting);
+    waiting.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".to_string(),
+        payload: json!({
+            "callback_task_id": callback_task_id,
+            "callback_kind": "llm_tool_calls"
+        }),
+    });
+    waiting.tool_calls = Some(json!([{
+        "id": "toolu_lookup",
+        "name": "lookup",
+        "arguments": {"query": "order"}
+    }]));
+    let waiting = serde_json::to_value(
+        to_anthropic_response(waiting, "provider/model".into())
+            .expect("AC-003 waiting tool callbacks should project"),
+    )
+    .expect("Anthropic response serializes");
+    assert_eq!(waiting["stop_reason"], json!("tool_use"));
+    assert!(waiting["content"].as_array().is_some_and(|blocks| blocks
+        .iter()
+        .any(|block| block["type"] == json!("tool_use"))));
 }
 
 #[test]
-fn d2_ac_007_anthropic_tool_and_prompt_marker_controls_are_explicitly_unsupported() {
-    let tool_error =
-        control_plane::application_public_api::compat::anthropic::translate_messages_request(
-            json!({
-                "model": "1flowbase",
-                "messages": [{"role": "user", "content": "continue"}],
-                "tools": [{"name": "lookup", "input_schema": {"type": "object"}}]
-            }),
-        )
-        .expect_err("tools have no D2 canonical owner");
-    assert!(tool_error.report.has_decision(
-        "$.tools",
-        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported,
-    ));
-
+fn d2_ac_007_anthropic_prompt_marker_control_is_explicitly_unsupported() {
     let marker_error = control_plane::application_public_api::compat::anthropic::translate_messages_request(
         json!({
             "model": "1flowbase",

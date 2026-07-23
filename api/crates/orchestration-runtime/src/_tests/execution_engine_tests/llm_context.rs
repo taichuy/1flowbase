@@ -713,7 +713,8 @@ async fn llm_runtime_forwards_compatible_tools_and_tool_history_to_provider() {
                         },
                         "source": "openai_compatible"
                     }
-                ]
+                ],
+                "tool_choice": "auto"
             }
         }),
         &invoker,
@@ -727,6 +728,7 @@ async fn llm_runtime_forwards_compatible_tools_and_tool_history_to_provider() {
         .clone()
         .expect("provider input should be captured");
     assert_eq!(captured.tools[0]["function"]["name"], json!("lookup_order"));
+    assert_eq!(captured.model_parameters["tool_choice"], json!("auto"));
     assert_eq!(
         captured.tools[0]["function"]["parameters"]["properties"]["order_id"]["type"],
         json!("string")

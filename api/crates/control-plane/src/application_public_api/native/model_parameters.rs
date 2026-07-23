@@ -67,12 +67,23 @@ impl NativeExecution {
     }
 
     pub(crate) fn with_max_output_tokens(max_output_tokens: NonZeroU64) -> Self {
+        Self::with_model_parameters(Some(max_output_tokens), None)
+    }
+
+    pub(crate) fn with_model_parameters(
+        max_output_tokens: Option<NonZeroU64>,
+        reasoning: Option<NativeReasoningParameters>,
+    ) -> Self {
+        if max_output_tokens.is_none() && reasoning.is_none() {
+            return Self::default();
+        }
         Self {
             opaque: NativeObject::default(),
             idempotency_key: None,
-            model_parameters: Some(NativeExecutionModelParameters::with_max_output_tokens(
+            model_parameters: Some(NativeExecutionModelParameters {
                 max_output_tokens,
-            )),
+                reasoning,
+            }),
             execution_operation: NativeExecutionOperation::default(),
         }
     }
@@ -227,13 +238,6 @@ impl NativeExecutionModelParameters {
         })
     }
 
-    fn with_max_output_tokens(max_output_tokens: NonZeroU64) -> Self {
-        Self {
-            max_output_tokens: Some(max_output_tokens),
-            reasoning: None,
-        }
-    }
-
     pub(crate) fn max_output_tokens(&self) -> Option<u64> {
         self.max_output_tokens.map(NonZeroU64::get)
     }
@@ -276,6 +280,18 @@ pub struct NativeReasoningParameters {
 }
 
 impl NativeReasoningParameters {
+    pub(crate) fn with_enabled_budget_and_effort(
+        enabled: bool,
+        budget_tokens: Option<NonZeroU64>,
+        effort: Option<&str>,
+    ) -> Self {
+        Self {
+            enabled: Some(enabled),
+            effort: effort.and_then(NativeReasoningEffort::parse),
+            budget_tokens,
+        }
+    }
+
     fn from_value(value: &Value) -> Result<Self, NativeModelParameterParseError> {
         let object = value.as_object().ok_or_else(|| {
             NativeModelParameterParseError::present(

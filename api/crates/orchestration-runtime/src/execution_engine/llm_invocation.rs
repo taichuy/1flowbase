@@ -155,7 +155,8 @@ pub(super) fn build_provider_invocation(
         ("node_id".to_string(), node.node_id.clone()),
         ("node_alias".to_string(), node.alias.clone()),
     ]);
-    let model_parameters = resolve_model_parameters(node, runtime, variable_pool)?;
+    let model_parameters =
+        resolve_model_parameters(plan, node, runtime, resolved_inputs, variable_pool)?;
     let debug_context = LlmInvocationDebugContext::from_provider_context(
         context_policy,
         previous_response_id.clone(),

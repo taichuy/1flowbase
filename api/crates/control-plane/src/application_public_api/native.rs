@@ -169,20 +169,20 @@ fn normalize_native_history_entry(
         None,
         TranslationSafeRepresentation::Redacted,
     );
-    if object.contains_key("content_blocks") {
-        return Err(NativeRequestTranslationError::rejected(
-            "history",
-            "history content_blocks are not supported by the Native API",
-            &format!("{entry_path}.content_blocks"),
-            TranslationDecisionKind::Unsupported,
-            "Native history content blocks require capability routing",
-            TranslationSafeRepresentation::Redacted,
-            report.clone(),
-        ));
-    }
     let unknown_fields = object
         .keys()
-        .filter(|field| !matches!(field.as_str(), "role" | "content" | "content_blocks"))
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "role"
+                    | "content"
+                    | "name"
+                    | "tool_call_id"
+                    | "is_error"
+                    | "tool_calls"
+                    | "content_blocks"
+            )
+        })
         .collect::<Vec<_>>();
     if report.record_anonymous_unknown_fields(
         &entry_path,
@@ -214,7 +214,7 @@ fn normalize_native_history_entry(
             report.clone(),
         )
     })?;
-    if !matches!(role, "system" | "user" | "assistant") {
+    if !matches!(role, "system" | "user" | "assistant" | "tool") {
         return Err(NativeRequestTranslationError::rejected(
             "history",
             "unsupported Native history role",
@@ -258,7 +258,67 @@ fn normalize_native_history_entry(
         None,
         TranslationSafeRepresentation::Redacted,
     );
-    Ok(json!({ "role": role, "content": content }))
+    let mut normalized = Map::new();
+    normalized.insert("role".to_string(), Value::String(role.to_string()));
+    normalized.insert("content".to_string(), Value::String(content.to_string()));
+    for field in ["name", "tool_call_id"] {
+        if let Some(value) = object.get(field) {
+            if !value.is_string() {
+                return Err(NativeRequestTranslationError::rejected(
+                    "history",
+                    &format!("history {field} must be text"),
+                    &format!("{entry_path}.{field}"),
+                    TranslationDecisionKind::Rejected,
+                    "Native history text field must be text",
+                    TranslationSafeRepresentation::Present,
+                    report.clone(),
+                ));
+            }
+            normalized.insert(field.to_string(), value.clone());
+        }
+    }
+    if role == "tool" && !normalized.contains_key("tool_call_id") {
+        return Err(NativeRequestTranslationError::rejected(
+            "history",
+            "tool history requires tool_call_id",
+            &format!("{entry_path}.tool_call_id"),
+            TranslationDecisionKind::Rejected,
+            "Native tool history requires tool_call_id",
+            TranslationSafeRepresentation::Absent,
+            report.clone(),
+        ));
+    }
+    if let Some(value) = object.get("is_error") {
+        if !value.is_boolean() {
+            return Err(NativeRequestTranslationError::rejected(
+                "history",
+                "history is_error must be boolean",
+                &format!("{entry_path}.is_error"),
+                TranslationDecisionKind::Rejected,
+                "Native history is_error must be boolean",
+                TranslationSafeRepresentation::Present,
+                report.clone(),
+            ));
+        }
+        normalized.insert("is_error".to_string(), value.clone());
+    }
+    for field in ["tool_calls", "content_blocks"] {
+        if let Some(value) = object.get(field) {
+            if !value.is_array() {
+                return Err(NativeRequestTranslationError::rejected(
+                    "history",
+                    &format!("history {field} must be an array"),
+                    &format!("{entry_path}.{field}"),
+                    TranslationDecisionKind::Rejected,
+                    "Native history array field must be an array",
+                    TranslationSafeRepresentation::Present,
+                    report.clone(),
+                ));
+            }
+            normalized.insert(field.to_string(), value.clone());
+        }
+    }
+    Ok(Value::Object(normalized))
 }
 
 fn native_attachments(
@@ -681,6 +741,22 @@ impl NativeInputMapper {
             input.inputs_target.as_deref(),
             request.inputs.as_value(),
         )?;
+        if input.inputs_target.is_none() {
+            let (start_selector, _) = input.query_target.rsplit_once('.').ok_or_else(|| {
+                NativeInputMappingError::InvalidSelector {
+                    selector: input.query_target.clone(),
+                }
+            })?;
+            for field in ["tools", "tool_choice"] {
+                if let Some(value) = request.inputs.get(field) {
+                    write_selector(
+                        &mut node_input_payload,
+                        &format!("{start_selector}.{field}"),
+                        value.clone(),
+                    )?;
+                }
+            }
+        }
         let (system, history) = split_system_context_from_history(request)?;
         let native_model_prompt_context = NativeModelPromptContext {
             system: system.clone(),
@@ -763,17 +839,22 @@ fn split_system_context_from_history(
         let content = content_value
             .as_str()
             .ok_or(NativeInputMappingError::InvalidPromptContext)?;
-        if !matches!(role, "user" | "assistant") {
+        if !matches!(role, "user" | "assistant" | "tool") {
             return Err(NativeInputMappingError::InvalidPromptContext);
         }
         let mut normalized = Map::new();
         normalized.insert("role".to_string(), Value::String(role.to_owned()));
         normalized.insert("content".to_string(), Value::String(content.to_owned()));
-        if let Some(content_blocks) = message.get("content_blocks") {
-            if !content_blocks.is_array() {
-                return Err(NativeInputMappingError::InvalidPromptContext);
+        for field in [
+            "name",
+            "tool_call_id",
+            "is_error",
+            "tool_calls",
+            "content_blocks",
+        ] {
+            if let Some(value) = message.get(field) {
+                normalized.insert(field.to_string(), value.clone());
             }
-            normalized.insert("content_blocks".to_string(), content_blocks.clone());
         }
         history.push(Value::Object(normalized));
     }
@@ -1088,6 +1169,16 @@ where
 struct NativeHistoryEntry {
     role: String,
     content: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    tool_call_id: Option<String>,
+    #[serde(default)]
+    is_error: Option<bool>,
+    #[serde(default)]
+    tool_calls: Option<Vec<Value>>,
+    #[serde(default)]
+    content_blocks: Option<Vec<Value>>,
 }
 
 fn deserialize_native_history<'de, D>(deserializer: D) -> std::result::Result<Vec<Value>, D::Error>
@@ -1098,10 +1189,36 @@ where
     entries
         .into_iter()
         .map(|entry| {
-            if !matches!(entry.role.as_str(), "system" | "user" | "assistant") {
+            if !matches!(
+                entry.role.as_str(),
+                "system" | "user" | "assistant" | "tool"
+            ) {
                 return Err(de::Error::custom("unsupported Native history role"));
             }
-            Ok(json!({ "role": entry.role, "content": entry.content }))
+            if entry.role == "tool" && entry.tool_call_id.is_none() {
+                return Err(de::Error::custom(
+                    "Native tool history requires tool_call_id",
+                ));
+            }
+            let mut message = Map::new();
+            message.insert("role".to_string(), Value::String(entry.role));
+            message.insert("content".to_string(), Value::String(entry.content));
+            if let Some(name) = entry.name {
+                message.insert("name".to_string(), Value::String(name));
+            }
+            if let Some(tool_call_id) = entry.tool_call_id {
+                message.insert("tool_call_id".to_string(), Value::String(tool_call_id));
+            }
+            if let Some(is_error) = entry.is_error {
+                message.insert("is_error".to_string(), Value::Bool(is_error));
+            }
+            if let Some(tool_calls) = entry.tool_calls {
+                message.insert("tool_calls".to_string(), Value::Array(tool_calls));
+            }
+            if let Some(content_blocks) = entry.content_blocks {
+                message.insert("content_blocks".to_string(), Value::Array(content_blocks));
+            }
+            Ok(Value::Object(message))
         })
         .collect()
 }
@@ -1337,6 +1454,42 @@ mod tests {
         assert!(mapped.node_input_payload["node-start"]
             .get("compatibility")
             .is_none());
+    }
+
+    #[test]
+    fn mapper_places_native_tools_under_query_start_when_inputs_target_is_absent() {
+        let request: NativeRunRequest = serde_json::from_value(json!({
+            "query": "hello",
+            "inputs": {
+                "tools": [{"name": "read_file", "input_schema": {"type": "object"}}],
+                "tool_choice": "auto"
+            }
+        }))
+        .unwrap();
+        let mapping = ApplicationApiMappingConfig {
+            input: ApplicationApiMappingInput {
+                query_target: "node-start.query".into(),
+                model_target: None,
+                inputs_target: None,
+                history_target: Some("node-start.history".into()),
+                attachments_target: None,
+            },
+            output: ApplicationApiMappingOutput::default(),
+            extension: None,
+        };
+
+        let mapped = NativeInputMapper::map(&request, &mapping).unwrap();
+
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["tools"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["tool_choice"],
+            "auto"
+        );
     }
 
     #[test]

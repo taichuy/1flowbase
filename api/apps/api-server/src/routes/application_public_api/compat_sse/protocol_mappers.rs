@@ -1,6 +1,5 @@
 use super::event_forwarding::is_answer_presentation_delta;
 use super::*;
-#[cfg(test)]
 use crate::routes::application_public_api::llm_tool_visibility::external_llm_tool_call_values;
 
 pub(super) struct OpenAiChatStreamMapper {
@@ -781,7 +780,6 @@ pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Opt
     (!output.is_empty()).then_some(output)
 }
 
-#[cfg(test)]
 pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
     payload: &Value,
 ) -> Option<Vec<Value>> {
@@ -808,7 +806,6 @@ pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
     (!blocks.is_empty()).then_some(blocks)
 }
 
-#[cfg(test)]
 pub(super) fn anthropic_completed_run_to_sse(
     run: &NativeRunResult,
     model: &str,
@@ -835,7 +832,6 @@ pub(super) fn anthropic_completed_run_to_sse(
     events
 }
 
-#[cfg(test)]
 fn terminal_answer_delta_to_runtime_event(
     run: &NativeRunResult,
     sequence: i64,
@@ -862,7 +858,6 @@ fn terminal_answer_delta_to_runtime_event(
     RuntimeEventEnvelope::new(run.id, sequence, payload)
 }
 
-#[cfg(test)]
 fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
     let action = run.required_action.as_ref()?;
     Some(json!({
@@ -872,7 +867,6 @@ fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
     }))
 }
 
-#[cfg(test)]
 fn llm_tool_callback_task_id(payload: &Value) -> Option<uuid::Uuid> {
     if payload.get("callback_kind").and_then(Value::as_str) != Some("llm_tool_calls") {
         return None;
@@ -883,7 +877,6 @@ fn llm_tool_callback_task_id(payload: &Value) -> Option<uuid::Uuid> {
         .and_then(|value| uuid::Uuid::parse_str(value).ok())
 }
 
-#[cfg(test)]
 fn llm_tool_calls(payload: &Value) -> Option<Vec<&Value>> {
     let calls = payload
         .get("tool_calls")

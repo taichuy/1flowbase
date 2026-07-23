@@ -155,16 +155,15 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(body.contains("event: message_start"), "{body}");
-    assert!(body.contains("event: error"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("\"type\":\"tool_use\""), "{body}");
-    assert!(!body.contains("\"name\":\"Read\""), "{body}");
+    assert!(body.contains("\"type\":\"tool_use\""), "{body}");
+    assert!(body.contains("\"name\":\"Read\""), "{body}");
     assert!(
-        !body.contains("agent-flow-node-detail-icon-aligned.png"),
+        body.contains("agent-flow-node-detail-icon-aligned.png"),
         "{body}"
     );
-    assert!(!body.contains("\"stop_reason\":\"tool_use\""), "{body}");
+    assert!(body.contains("\"stop_reason\":\"tool_use\""), "{body}");
     assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
-    assert!(!body.contains("event: message_stop"), "{body}");
+    assert!(body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
     assert!(!body.contains("uploads/old.png"), "{body}");
 }

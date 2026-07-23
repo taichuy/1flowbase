@@ -2,7 +2,7 @@ use super::*;
 use crate::routes::application_public_api::tool_callback_ids::encode_anthropic_callback_tool_use_id;
 
 #[tokio::test]
-async fn d2_ac_007_anthropic_tool_result_is_rejected_before_run_creation() {
+async fn ac_004_anthropic_tool_result_routes_to_callback_resume_before_run_creation() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Unsupported Tool Result Route App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -32,9 +32,9 @@ async fn d2_ac_007_anthropic_tool_result_is_rejected_before_run_creation() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["type"], json!("callback_task"));
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

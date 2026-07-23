@@ -888,6 +888,22 @@ pub(super) fn run_level_provider_tools(
     Vec::new()
 }
 
+pub(super) fn run_level_tool_choice(
+    plan: &CompiledPlan,
+    variable_pool: &Map<String, Value>,
+) -> Option<Value> {
+    if let Some(tool_choice) = variable_pool.get("tool_choice") {
+        return Some(tool_choice.clone());
+    }
+    plan.topological_order.iter().find_map(|node_id| {
+        let node = plan.nodes.get(node_id)?;
+        if node.node_type != "start" {
+            return None;
+        }
+        variable_pool.get(node_id)?.get("tool_choice").cloned()
+    })
+}
+
 pub(super) fn provider_tool_payloads(tools: &[Value]) -> Vec<Value> {
     tools.iter().map(provider_tool_payload).collect()
 }

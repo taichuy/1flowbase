@@ -39,7 +39,7 @@ async fn anthropic_messages_accepts_last_user_multimodal_content() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_anthropic_messages_reject_tools_before_creating_a_run() {
+async fn ac_001_anthropic_messages_accept_tools_and_create_a_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Unsupported Tool Route App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -60,10 +60,21 @@ async fn d2_ac_007_anthropic_messages_reject_tools_before_creating_a_run() {
 
     let response = post_json(&app, "/v1/messages", ("x-api-key", token), body).await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(payload["type"], json!("message"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    let input_payload: Value = sqlx::query_scalar(
+        "select input_payload from flow_runs order by created_at desc, id desc limit 1",
+    )
+    .fetch_one(state.store.pool())
+    .await
+    .expect("Anthropic tool run should persist its Native input");
+    assert_eq!(
+        input_payload["node-start"]["tools"][0]["name"],
+        "lookup_order"
+    );
+    assert_eq!(input_payload["node-start"]["tool_choice"], "auto");
 }
 
 #[tokio::test]

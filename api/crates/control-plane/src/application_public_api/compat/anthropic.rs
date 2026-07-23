@@ -87,13 +87,8 @@ fn reject_unknown_anthropic_fields(
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
-            "context_management"
-                | "tools"
-                | "tool_choice"
-                | "container"
+            "container"
                 | "mcp_servers"
-                | "thinking"
-                | "output_config"
                 | "service_tier"
                 | "temperature"
                 | "top_k"
@@ -169,6 +164,31 @@ fn record_anthropic_system_decision(value: Option<&Value>, report: &mut Translat
         ),
     };
     report.record("$.system", Some("$.system"), kind, reason, effective_value);
+}
+
+fn record_anthropic_context_management_decision(
+    value: Option<&Value>,
+    report: &mut TranslationReport,
+) -> Result<(), AnthropicCompatError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if !value.is_object() {
+        return Err(reject_anthropic_nested_field(
+            report,
+            "$.context_management",
+            "context_management must be an object",
+            TranslationSafeRepresentation::Present,
+        ));
+    }
+    report.record(
+        "$.context_management",
+        None,
+        TranslationDecisionKind::Dropped,
+        Some("Native retains the complete supplied message history"),
+        TranslationSafeRepresentation::Present,
+    );
+    Ok(())
 }
 
 fn reject_legacy_anthropic_control(
@@ -267,7 +287,7 @@ fn validate_anthropic_message(
             AnthropicCompatError::invalid("message role is required").with_report(report.clone())
         );
     };
-    if !matches!(role, "user" | "assistant") {
+    if !matches!(role, "system" | "user" | "assistant") {
         report.record(
             &role_path,
             None,
@@ -276,7 +296,8 @@ fn validate_anthropic_message(
             TranslationSafeRepresentation::Present,
         );
         return Err(
-            AnthropicCompatError::invalid("unsupported message role").with_report(report.clone())
+            AnthropicCompatError::invalid(format!("unsupported message role: {role}"))
+                .with_report(report.clone()),
         );
     }
     report.record(
@@ -408,18 +429,48 @@ fn validate_anthropic_content_blocks(
                     report,
                 )?;
             }
-            "tool_result" | "tool_use" | "server_tool_use" | "computer_use" | "thinking"
-            | "redacted_thinking" => {
+            "tool_use" => {
+                validate_anthropic_tool_use_block(object, &block_path, report)?;
+                report.record(
+                    &path,
+                    Some("$.history[].tool_calls"),
+                    TranslationDecisionKind::Normalized,
+                    None,
+                    TranslationSafeRepresentation::Present,
+                );
+            }
+            "tool_result" => {
+                validate_anthropic_tool_result_block(object, &block_path, report)?;
+                report.record(
+                    &path,
+                    Some("$.history[]"),
+                    TranslationDecisionKind::Normalized,
+                    None,
+                    TranslationSafeRepresentation::Present,
+                );
+            }
+            "thinking" | "redacted_thinking" => {
+                validate_anthropic_reasoning_block(object, &block_path, block_type, report)?;
+                report.record(
+                    &path,
+                    Some("$.history[].content_blocks"),
+                    TranslationDecisionKind::Normalized,
+                    None,
+                    TranslationSafeRepresentation::Present,
+                );
+            }
+            "server_tool_use" | "computer_use" => {
                 report.record(
                     &path,
                     None,
                     TranslationDecisionKind::Unsupported,
-                    Some("tool and reasoning content has no current canonical owner"),
+                    Some("server-managed tool content has no current canonical owner"),
                     TranslationSafeRepresentation::Present,
                 );
-                return Err(
-                    AnthropicCompatError::unsupported("messages").with_report(report.clone())
-                );
+                return Err(AnthropicCompatError::unsupported(format!(
+                    "messages content block {block_type}"
+                ))
+                .with_report(report.clone()));
             }
             _ => {
                 report.record(
@@ -439,6 +490,179 @@ fn validate_anthropic_content_blocks(
                 );
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_anthropic_reasoning_block(
+    object: &Map<String, Value>,
+    block_path: &str,
+    block_type: &str,
+    report: &mut TranslationReport,
+) -> Result<(), AnthropicCompatError> {
+    let (allowed_fields, required_field, error_message): (&[&str], &str, &str) =
+        if block_type == "thinking" {
+            (
+                &["type", "thinking", "signature"],
+                "thinking",
+                "thinking block must contain text",
+            )
+        } else {
+            (
+                &["type", "data"],
+                "data",
+                "redacted_thinking block must contain data",
+            )
+        };
+    reject_unknown_anthropic_content_block_fields(object, block_path, allowed_fields, &[], report)?;
+    if !object.get(required_field).is_some_and(Value::is_string) {
+        return Err(reject_anthropic_nested_field(
+            report,
+            &format!("{block_path}.{required_field}"),
+            error_message,
+            if object.contains_key(required_field) {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+        ));
+    }
+    if object
+        .get("signature")
+        .is_some_and(|signature| !signature.is_string())
+    {
+        return Err(reject_anthropic_nested_field(
+            report,
+            &format!("{block_path}.signature"),
+            "thinking signature must be text",
+            TranslationSafeRepresentation::Present,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_anthropic_tool_use_block(
+    object: &Map<String, Value>,
+    block_path: &str,
+    report: &mut TranslationReport,
+) -> Result<(), AnthropicCompatError> {
+    if object.get("name").and_then(Value::as_str) == Some("computer") {
+        report.record(
+            &format!("{block_path}.type"),
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("computer tool use has no current Native owner"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(AnthropicCompatError::unsupported("computer_use").with_report(report.clone()));
+    }
+    reject_unknown_anthropic_content_block_fields(
+        object,
+        block_path,
+        &["type", "id", "name", "input", "cache_control"],
+        &[],
+        report,
+    )?;
+    for field in ["id", "name"] {
+        let path = format!("{block_path}.{field}");
+        if !object
+            .get(field)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            return Err(reject_anthropic_nested_field(
+                report,
+                &path,
+                if field == "id" {
+                    "tool_use id must be non-empty text"
+                } else {
+                    "tool_use name must be non-empty text"
+                },
+                if object.contains_key(field) {
+                    TranslationSafeRepresentation::Present
+                } else {
+                    TranslationSafeRepresentation::Absent
+                },
+            ));
+        }
+    }
+    if !object.get("input").is_some_and(Value::is_object) {
+        return Err(reject_anthropic_nested_field(
+            report,
+            &format!("{block_path}.input"),
+            "tool_use input must be an object",
+            if object.contains_key("input") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+        ));
+    }
+    if let Some(cache_control) = object.get("cache_control") {
+        validate_anthropic_cache_control(
+            cache_control,
+            &format!("{block_path}.cache_control"),
+            TranslationDecisionKind::Dropped,
+            None,
+            report,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_anthropic_tool_result_block(
+    object: &Map<String, Value>,
+    block_path: &str,
+    report: &mut TranslationReport,
+) -> Result<(), AnthropicCompatError> {
+    reject_unknown_anthropic_content_block_fields(
+        object,
+        block_path,
+        &[
+            "type",
+            "tool_use_id",
+            "content",
+            "is_error",
+            "cache_control",
+        ],
+        &[],
+        report,
+    )?;
+    let id_path = format!("{block_path}.tool_use_id");
+    if !object
+        .get("tool_use_id")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Err(reject_anthropic_nested_field(
+            report,
+            &id_path,
+            "tool_result tool_use_id must be non-empty text",
+            if object.contains_key("tool_use_id") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+        ));
+    }
+    if let Some(is_error) = object.get("is_error") {
+        if !is_error.is_boolean() {
+            return Err(reject_anthropic_nested_field(
+                report,
+                &format!("{block_path}.is_error"),
+                "tool_result is_error must be boolean",
+                TranslationSafeRepresentation::Present,
+            ));
+        }
+    }
+    if let Some(cache_control) = object.get("cache_control") {
+        validate_anthropic_cache_control(
+            cache_control,
+            &format!("{block_path}.cache_control"),
+            TranslationDecisionKind::Dropped,
+            None,
+            report,
+        )?;
     }
     Ok(())
 }
@@ -505,19 +729,19 @@ fn validate_anthropic_supported_content_block(
         validate_anthropic_cache_control(
             cache_control,
             &format!("{block_path}.cache_control"),
-            TranslationDecisionKind::Unsupported,
+            TranslationDecisionKind::Dropped,
             None,
             report,
         )?;
-        return Err(AnthropicCompatError::unsupported("messages").with_report(report.clone()));
+    } else {
+        report.record(
+            &format!("{block_path}.cache_control"),
+            None,
+            TranslationDecisionKind::Defaulted,
+            Some("no content-block cache control"),
+            TranslationSafeRepresentation::Defaulted,
+        );
     }
-    report.record(
-        &format!("{block_path}.cache_control"),
-        None,
-        TranslationDecisionKind::Defaulted,
-        Some("no content-block cache control"),
-        TranslationSafeRepresentation::Defaulted,
-    );
     Ok(())
 }
 
@@ -708,8 +932,15 @@ fn validate_anthropic_cache_control(
     target_path: Option<&str>,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
-    let unsupported_reason = (kind == TranslationDecisionKind::Unsupported)
-        .then_some("message content cache control has no current canonical owner");
+    let decision_reason = match kind {
+        TranslationDecisionKind::Unsupported => {
+            Some("message content cache control has no current canonical owner")
+        }
+        TranslationDecisionKind::Dropped => {
+            Some("cache hint is omitted while Native retains the content")
+        }
+        _ => None,
+    };
     let Some(cache_control) = value.as_object() else {
         return Err(reject_anthropic_nested_field(
             report,
@@ -722,7 +953,7 @@ fn validate_anthropic_cache_control(
         cache_path,
         target_path,
         kind,
-        unsupported_reason,
+        decision_reason,
         TranslationSafeRepresentation::Present,
     );
     let unknown_fields = cache_control
@@ -759,7 +990,7 @@ fn validate_anthropic_cache_control(
         &type_path,
         target_path,
         kind,
-        unsupported_reason,
+        decision_reason,
         TranslationSafeRepresentation::Present,
     );
     if let Some(ttl) = cache_control.get("ttl") {
@@ -776,7 +1007,7 @@ fn validate_anthropic_cache_control(
             &ttl_path,
             target_path,
             kind,
-            unsupported_reason,
+            decision_reason,
             TranslationSafeRepresentation::Present,
         );
     } else {
@@ -1303,6 +1534,563 @@ fn claude_code_session_id_from_identity(identity: &str) -> Option<String> {
         .map(|session_id| session_id.to_string())
 }
 
+fn anthropic_inputs(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<NativeObject, AnthropicCompatError> {
+    let mut inputs = Map::new();
+    if let Some(value) = object.get("tools") {
+        let tools = value.as_array().ok_or_else(|| {
+            reject_anthropic_nested_field(
+                report,
+                "$.tools",
+                "tools must be an array",
+                TranslationSafeRepresentation::Present,
+            )
+        })?;
+        let mut normalized = Vec::with_capacity(tools.len());
+        for (index, tool) in tools.iter().enumerate() {
+            normalized.push(normalize_anthropic_tool(tool, index, report)?);
+        }
+        report.record(
+            "$.tools",
+            Some("$.inputs.tools"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+        inputs.insert("tools".to_string(), Value::Array(normalized));
+    }
+    if let Some(value) = object.get("tool_choice") {
+        let normalized = normalize_anthropic_tool_choice(value, report)?;
+        report.record(
+            "$.tool_choice",
+            Some("$.inputs.tool_choice"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Present,
+        );
+        inputs.insert("tool_choice".to_string(), normalized);
+    }
+    Ok(NativeObject::from_map(inputs))
+}
+
+fn anthropic_reasoning(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<
+    Option<crate::application_public_api::native::NativeReasoningParameters>,
+    AnthropicCompatError,
+> {
+    let mut enabled = true;
+    let mut budget_tokens = None;
+    let mut has_reasoning = false;
+    if let Some(value) = object.get("thinking") {
+        let thinking = value.as_object().ok_or_else(|| {
+            reject_anthropic_nested_field(
+                report,
+                "$.thinking",
+                "thinking must be an object",
+                TranslationSafeRepresentation::Present,
+            )
+        })?;
+        let unknown_fields = thinking
+            .keys()
+            .filter(|field| !matches!(field.as_str(), "type" | "budget_tokens" | "display"))
+            .collect::<Vec<_>>();
+        let unknown_field_names = unknown_fields
+            .iter()
+            .map(|field| field.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        if report.record_anonymous_unknown_fields(
+            "$.thinking",
+            unknown_fields,
+            TranslationDecisionKind::Rejected,
+            "unknown Anthropic thinking field",
+            TranslationSafeRepresentation::Present,
+        ) > 0
+        {
+            return Err(AnthropicCompatError::invalid(format!(
+                "unknown Anthropic thinking field: {unknown_field_names}"
+            ))
+            .with_report(report.clone()));
+        }
+        let thinking_type = thinking
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                reject_anthropic_nested_field(
+                    report,
+                    "$.thinking.type",
+                    "thinking type must be text",
+                    if thinking.contains_key("type") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
+                )
+            })?;
+        enabled = match thinking_type {
+            "adaptive" | "enabled" => true,
+            "disabled" => false,
+            _ => {
+                return Err(reject_anthropic_nested_field(
+                    report,
+                    "$.thinking.type",
+                    "unknown Anthropic thinking type",
+                    TranslationSafeRepresentation::Present,
+                ));
+            }
+        };
+        budget_tokens = thinking
+            .get("budget_tokens")
+            .map(|value| {
+                value
+                    .as_u64()
+                    .and_then(std::num::NonZeroU64::new)
+                    .ok_or_else(|| {
+                        reject_anthropic_nested_field(
+                            report,
+                            "$.thinking.budget_tokens",
+                            "thinking budget_tokens must be a positive integer",
+                            TranslationSafeRepresentation::Present,
+                        )
+                    })
+            })
+            .transpose()?;
+        if let Some(display) = thinking.get("display") {
+            if !display.is_string() {
+                return Err(reject_anthropic_nested_field(
+                    report,
+                    "$.thinking.display",
+                    "thinking display must be text",
+                    TranslationSafeRepresentation::Present,
+                ));
+            }
+            report.record(
+                "$.thinking.display",
+                None,
+                TranslationDecisionKind::Dropped,
+                Some("Native reasoning visibility follows runtime event semantics"),
+                TranslationSafeRepresentation::Present,
+            );
+        }
+        report.record(
+            "$.thinking",
+            Some("$.execution.model_parameters.reasoning"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Present,
+        );
+        has_reasoning = true;
+    }
+
+    let mut effort = None;
+    if let Some(value) = object.get("output_config") {
+        let output_config = value.as_object().ok_or_else(|| {
+            reject_anthropic_nested_field(
+                report,
+                "$.output_config",
+                "output_config must be an object",
+                TranslationSafeRepresentation::Present,
+            )
+        })?;
+        let unknown_fields = output_config
+            .keys()
+            .filter(|field| !matches!(field.as_str(), "effort" | "format"))
+            .collect::<Vec<_>>();
+        if report.record_anonymous_unknown_fields(
+            "$.output_config",
+            unknown_fields,
+            TranslationDecisionKind::Rejected,
+            "unknown Anthropic output_config field",
+            TranslationSafeRepresentation::Present,
+        ) > 0
+        {
+            return Err(
+                AnthropicCompatError::invalid("unknown Anthropic output_config field")
+                    .with_report(report.clone()),
+            );
+        }
+        if output_config.contains_key("format") {
+            report.record(
+                "$.output_config.format",
+                None,
+                TranslationDecisionKind::Unsupported,
+                Some("structured output format has no current Native owner"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(
+                AnthropicCompatError::unsupported("output_config").with_report(report.clone())
+            );
+        }
+        if let Some(value) = output_config.get("effort") {
+            let value = value.as_str().ok_or_else(|| {
+                reject_anthropic_nested_field(
+                    report,
+                    "$.output_config.effort",
+                    "output_config effort must be text",
+                    TranslationSafeRepresentation::Present,
+                )
+            })?;
+            effort = Some(match value {
+                "minimal" | "low" | "medium" | "high" | "xhigh" => value.to_string(),
+                "max" => "xhigh".to_string(),
+                _ => {
+                    return Err(reject_anthropic_nested_field(
+                        report,
+                        "$.output_config.effort",
+                        "unknown Anthropic output effort",
+                        TranslationSafeRepresentation::Present,
+                    ));
+                }
+            });
+            report.record(
+                "$.output_config.effort",
+                Some("$.execution.model_parameters.reasoning.effort"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Present,
+            );
+            has_reasoning = true;
+        }
+        report.record(
+            "$.output_config",
+            effort
+                .as_ref()
+                .map(|_| "$.execution.model_parameters.reasoning"),
+            if effort.is_some() {
+                TranslationDecisionKind::Normalized
+            } else {
+                TranslationDecisionKind::Dropped
+            },
+            effort
+                .is_none()
+                .then_some("empty output_config has no Native effect"),
+            TranslationSafeRepresentation::Present,
+        );
+    }
+
+    if !has_reasoning {
+        return Ok(None);
+    }
+    Ok(Some(
+        crate::application_public_api::native::NativeReasoningParameters::with_enabled_budget_and_effort(
+            enabled,
+            budget_tokens,
+            effort.as_deref(),
+        ),
+    ))
+}
+
+fn normalize_anthropic_tool(
+    tool: &Value,
+    index: usize,
+    report: &mut TranslationReport,
+) -> Result<Value, AnthropicCompatError> {
+    let path = format!("$.tools[{index}]");
+    let object = tool.as_object().ok_or_else(|| {
+        reject_anthropic_nested_field(
+            report,
+            &path,
+            "tool definitions must be objects",
+            TranslationSafeRepresentation::Present,
+        )
+    })?;
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "name" | "description" | "input_schema" | "cache_control"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        &path,
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic tool field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            AnthropicCompatError::invalid("unknown Anthropic tool field")
+                .with_report(report.clone()),
+        );
+    }
+    let name = object
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            reject_anthropic_nested_field(
+                report,
+                &format!("{path}.name"),
+                "tool name must be non-empty text",
+                if object.contains_key("name") {
+                    TranslationSafeRepresentation::Present
+                } else {
+                    TranslationSafeRepresentation::Absent
+                },
+            )
+        })?;
+    let input_schema = object
+        .get("input_schema")
+        .filter(|value| value.is_object())
+        .cloned()
+        .ok_or_else(|| {
+            reject_anthropic_nested_field(
+                report,
+                &format!("{path}.input_schema"),
+                "tool input_schema must be an object",
+                if object.contains_key("input_schema") {
+                    TranslationSafeRepresentation::Present
+                } else {
+                    TranslationSafeRepresentation::Absent
+                },
+            )
+        })?;
+    let mut normalized = Map::new();
+    normalized.insert("name".to_string(), Value::String(name.to_string()));
+    normalized.insert(
+        "source".to_string(),
+        Value::String("anthropic_compatible".to_string()),
+    );
+    if let Some(description) = object.get("description").and_then(Value::as_str) {
+        normalized.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
+    }
+    normalized.insert("input_schema".to_string(), input_schema);
+    if object.contains_key("cache_control") {
+        report.record(
+            &format!("{path}.cache_control"),
+            None,
+            TranslationDecisionKind::Dropped,
+            Some("tool cache hints do not affect Native tool semantics"),
+            TranslationSafeRepresentation::Present,
+        );
+    }
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_anthropic_tool_choice(
+    value: &Value,
+    report: &mut TranslationReport,
+) -> Result<Value, AnthropicCompatError> {
+    let object = value.as_object().ok_or_else(|| {
+        reject_anthropic_nested_field(
+            report,
+            "$.tool_choice",
+            "tool_choice must be an object",
+            TranslationSafeRepresentation::Present,
+        )
+    })?;
+    let unknown_fields = object
+        .keys()
+        .filter(|field| {
+            !matches!(
+                field.as_str(),
+                "type" | "name" | "disable_parallel_tool_use"
+            )
+        })
+        .collect::<Vec<_>>();
+    if report.record_anonymous_unknown_fields(
+        "$.tool_choice",
+        unknown_fields,
+        TranslationDecisionKind::Rejected,
+        "unknown Anthropic tool_choice field",
+        TranslationSafeRepresentation::Present,
+    ) > 0
+    {
+        return Err(
+            AnthropicCompatError::invalid("unknown Anthropic tool_choice field")
+                .with_report(report.clone()),
+        );
+    }
+    if object
+        .get("disable_parallel_tool_use")
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        report.record(
+            "$.tool_choice.disable_parallel_tool_use",
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("Native tool choice does not yet constrain parallel calls"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(AnthropicCompatError::unsupported("tool_choice").with_report(report.clone()));
+    }
+    if object.contains_key("disable_parallel_tool_use") {
+        report.record(
+            "$.tool_choice.disable_parallel_tool_use",
+            None,
+            TranslationDecisionKind::Dropped,
+            Some("false preserves Native parallel tool defaults"),
+            TranslationSafeRepresentation::Present,
+        );
+    }
+    match object.get("type").and_then(Value::as_str) {
+        Some("auto") => Ok(json!("auto")),
+        Some("any") => Ok(json!("required")),
+        Some("none") => Ok(json!("none")),
+        Some("tool") => object
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|name| json!({ "name": name }))
+            .ok_or_else(|| {
+                reject_anthropic_nested_field(
+                    report,
+                    "$.tool_choice.name",
+                    "tool_choice name must be non-empty text",
+                    if object.contains_key("name") {
+                        TranslationSafeRepresentation::Present
+                    } else {
+                        TranslationSafeRepresentation::Absent
+                    },
+                )
+            }),
+        _ => Err(reject_anthropic_nested_field(
+            report,
+            "$.tool_choice.type",
+            "unknown Anthropic tool_choice type",
+            if object.contains_key("type") {
+                TranslationSafeRepresentation::Present
+            } else {
+                TranslationSafeRepresentation::Absent
+            },
+        )),
+    }
+}
+
+fn anthropic_history_entries(
+    role: &str,
+    content: &Value,
+) -> Result<Vec<Value>, AnthropicCompatError> {
+    let text = anthropic_history_text_content(content)?;
+    if role == "assistant" {
+        let mut message = json!({ "role": "assistant", "content": text });
+        let reasoning_blocks = anthropic_history_reasoning_blocks(content);
+        if !reasoning_blocks.is_empty() {
+            message["content_blocks"] = Value::Array(reasoning_blocks);
+        }
+        let tool_calls = anthropic_history_tool_calls(content);
+        if !tool_calls.is_empty() {
+            message["tool_calls"] = Value::Array(tool_calls);
+        }
+        return Ok(vec![message]);
+    }
+
+    let mut messages = anthropic_history_tool_results(content);
+    let media = query_media_content_blocks(content);
+    if !text.trim().is_empty() || media.is_some() || messages.is_empty() {
+        let mut message = json!({ "role": role, "content": text });
+        if let Some(media) = media {
+            message["content_blocks"] = media;
+        }
+        messages.push(message);
+    }
+    Ok(messages)
+}
+
+fn anthropic_history_reasoning_blocks(content: &Value) -> Vec<Value> {
+    let Some(blocks) = content.as_array() else {
+        return Vec::new();
+    };
+    if !blocks.iter().any(|block| {
+        matches!(
+            block.get("type").and_then(Value::as_str),
+            Some("thinking" | "redacted_thinking")
+        )
+    }) {
+        return Vec::new();
+    }
+    blocks
+        .iter()
+        .filter_map(|block| match block.get("type").and_then(Value::as_str) {
+            Some("text") => canonical_anthropic_text_block(block),
+            Some("thinking") => {
+                let mut reasoning = json!({
+                    "type": "reasoning",
+                    "text": block.get("thinking")?.as_str()?,
+                });
+                if let Some(signature) = block.get("signature").and_then(Value::as_str) {
+                    reasoning["signature"] = Value::String(signature.to_string());
+                }
+                Some(reasoning)
+            }
+            Some("redacted_thinking") => Some(json!({
+                "type": "reasoning_redacted",
+                "data": block.get("data")?.as_str()?,
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+fn anthropic_history_text_content(content: &Value) -> Result<String, AnthropicCompatError> {
+    if let Some(text) = content.as_str() {
+        return Ok(text.to_string());
+    }
+    let blocks = content
+        .as_array()
+        .ok_or_else(|| AnthropicCompatError::invalid("content must be text"))?;
+    Ok(blocks
+        .iter()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|block| block.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+fn anthropic_history_tool_calls(content: &Value) -> Vec<Value> {
+    content
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"))
+        .filter_map(|block| {
+            Some(json!({
+                "id": block.get("id")?.as_str()?,
+                "name": block.get("name")?.as_str()?,
+                "arguments": block.get("input").cloned().unwrap_or_else(|| json!({})),
+            }))
+        })
+        .collect()
+}
+
+fn anthropic_history_tool_results(content: &Value) -> Vec<Value> {
+    content
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
+        .filter_map(|block| {
+            let tool_call_id = block.get("tool_use_id")?.as_str()?;
+            let mut message = json!({
+                "role": "tool",
+                "content": anthropic_tool_result_text(block),
+                "tool_call_id": tool_call_id,
+            });
+            if let Some(is_error) = block.get("is_error").and_then(Value::as_bool) {
+                message["is_error"] = Value::Bool(is_error);
+            }
+            let content_blocks = anthropic_tool_result_content_blocks("tool", block);
+            if !content_blocks.is_empty() {
+                message["content_blocks"] = Value::Array(content_blocks);
+            }
+            Some(message)
+        })
+        .collect()
+}
+
 fn anthropic_text_content(content: &Value) -> Result<String, AnthropicCompatError> {
     if let Some(text) = content.as_str() {
         return Ok(text.to_string());
@@ -1442,33 +2230,6 @@ pub fn anthropic_content_is_tool_result_only(content: &Value) -> bool {
     has_tool_result
 }
 
-fn history_content_blocks(_role: &str, content: &Value) -> Option<Value> {
-    let blocks = content.as_array()?;
-    let has_media_blocks = blocks.iter().any(anthropic_history_block_has_media);
-    let mut mapped_blocks = Vec::new();
-    for block in blocks {
-        match block.get("type").and_then(Value::as_str) {
-            Some("thinking" | "redacted_thinking") => {}
-            Some("text") if has_media_blocks => {
-                if let Some(text_block) = canonical_anthropic_text_block(block) {
-                    mapped_blocks.push(text_block);
-                }
-            }
-            Some("text") => {}
-            Some("image" | "document") => {
-                if let Some(media_block) = canonical_anthropic_media_block(block) {
-                    mapped_blocks.push(media_block);
-                }
-            }
-            Some("tool_result") if has_media_blocks => {
-                mapped_blocks.extend(anthropic_tool_result_content_blocks(_role, block));
-            }
-            _ => {}
-        }
-    }
-    (!mapped_blocks.is_empty()).then_some(Value::Array(mapped_blocks))
-}
-
 fn query_media_content_blocks(content: &Value) -> Option<Value> {
     let blocks = content.as_array()?;
     let media_blocks = blocks
@@ -1510,17 +2271,6 @@ fn anthropic_tool_result_text(block: &Value) -> String {
         return content.to_string();
     }
     content.to_string()
-}
-
-fn anthropic_history_block_has_media(block: &Value) -> bool {
-    match block.get("type").and_then(Value::as_str) {
-        Some("image" | "document") => true,
-        Some("tool_result") => block
-            .get("content")
-            .and_then(Value::as_array)
-            .is_some_and(|blocks| blocks.iter().any(anthropic_content_block_is_media)),
-        _ => false,
-    }
 }
 
 fn anthropic_content_block_is_media(block: &Value) -> bool {
@@ -1606,8 +2356,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn d2_ac_007_tools_have_an_unsupported_receipt() {
-        let error = translate_messages_request(json!({
+    fn tools_have_a_native_translation_receipt() {
+        let translated = translate_messages_request(json!({
             "model": "claude-compatible",
             "messages": [
                 { "role": "user", "content": "say hello" }
@@ -1626,12 +2376,15 @@ mod tests {
             ],
             "tool_choice": { "type": "auto" }
         }))
-        .expect_err("tools have no D2 canonical owner");
+        .expect("tools have a Native owner");
 
-        assert_eq!(error.error_type, "unsupported_feature");
-        assert!(error
+        assert!(translated
             .report
-            .has_decision("$.tools", TranslationDecisionKind::Unsupported));
+            .has_decision("$.tools", TranslationDecisionKind::Normalized));
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"][0]["name"],
+            "read_file"
+        );
     }
 
     #[test]
@@ -1826,8 +2579,8 @@ mod tests {
     }
 
     #[test]
-    fn d2_ac_007_thinking_content_has_an_unsupported_receipt() {
-        let error = translate_messages_request(json!({
+    fn thinking_content_has_a_native_reasoning_receipt() {
+        let translated = translate_messages_request(json!({
             "model": "1flowbase",
             "messages": [
                 {
@@ -1849,18 +2602,21 @@ mod tests {
                 {"role": "user", "content": "继续"}
             ]
         }))
-        .expect_err("thinking content has no D2 canonical owner");
+        .expect("thinking content has a Native reasoning owner");
 
-        assert_eq!(error.error_type, "unsupported_feature");
-        assert!(error.report.has_decision(
+        assert_eq!(
+            translated.request.history[1]["content_blocks"][0],
+            json!({"type": "reasoning", "text": "private reasoning"})
+        );
+        assert!(translated.report.has_decision(
             "$.messages[1].content[0].type",
-            TranslationDecisionKind::Unsupported
+            TranslationDecisionKind::Normalized
         ));
     }
 
     #[test]
-    fn d2_ac_007_tool_result_history_has_an_unsupported_receipt() {
-        let error = translate_messages_request(json!({
+    fn tool_result_history_maps_to_native_tool_messages() {
+        let translated = translate_messages_request(json!({
             "model": "1flowbase",
             "messages": [
                 {"role": "user", "content": "describe image"},
@@ -1891,18 +2647,24 @@ mod tests {
                 {"role": "user", "content": "next question"}
             ]
         }))
-        .expect_err("tool result history has no D2 canonical owner");
+        .expect("tool result history has a Native owner");
 
-        assert_eq!(error.error_type, "unsupported_feature");
-        assert!(error.report.has_decision(
-            "$.messages[1].content[0].type",
-            TranslationDecisionKind::Unsupported
-        ));
+        assert_eq!(translated.request.history[1]["role"], "assistant");
+        assert_eq!(
+            translated.request.history[1]["tool_calls"][0]["id"],
+            "toolu_read"
+        );
+        assert_eq!(translated.request.history[2]["role"], "tool");
+        assert_eq!(translated.request.history[2]["tool_call_id"], "toolu_read");
+        assert_eq!(
+            translated.request.history[2]["content_blocks"][0]["type"],
+            "image"
+        );
     }
 
     #[test]
-    fn d2_ac_007_latest_tool_result_has_an_unsupported_receipt() {
-        let error = translate_messages_request(json!({
+    fn latest_tool_result_maps_to_native_query_for_callback_routing() {
+        let translated = translate_messages_request(json!({
             "model": "1flowbase",
             "messages": [
                 {
@@ -1924,12 +2686,16 @@ mod tests {
                 }
             ]
         }))
-        .expect_err("tool result continuation has no D2 canonical owner");
+        .expect("latest tool result has a Native representation");
 
-        assert_eq!(error.error_type, "unsupported_feature");
-        assert!(error.report.has_decision(
-            "$.messages[0].content[0].type",
-            TranslationDecisionKind::Unsupported
-        ));
+        assert_eq!(translated.request.history[0]["role"], "assistant");
+        assert_eq!(
+            translated.request.history[0]["tool_calls"][0]["id"],
+            "toolu_read"
+        );
+        assert_eq!(
+            translated.request.query,
+            "-rw-r--r-- 1 Lw 197121 17907 Jun 12 15:25 uploads/test-01.png"
+        );
     }
 }

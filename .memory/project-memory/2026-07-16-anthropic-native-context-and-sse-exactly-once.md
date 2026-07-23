@@ -11,7 +11,7 @@ keywords:
   - sse
   - exactly once
 created_at: 2026-07-16 12
-updated_at: 2026-07-17 17
+updated_at: 2026-07-23 09
 last_verified_at: 2026-07-17 13
 decision_policy: verify_before_decision
 status: delivered
@@ -70,3 +70,11 @@ AI 按用户要求修复 Claude Code 经 AionUI 调用 1flowbase 时的续聊上
 - LLM trace 记录 `effective_max_output_tokens` 与 `max_output_tokens_source`；Anthropic 插件把实际发送值写入 provider metadata，因此缺省 `4096` 也可复盘。
 - Anthropic provider 的可选 `max_tokens` 默认关闭，插件版本升级为 `0.1.19`；兼容 SSE 将 runtime `length` 映射为 Anthropic `stop_reason=max_tokens`。
 - Claude Code 客户端 meta 消息继续完整落库与展示，不隐藏、不清洗。
+
+## 2026-07-23 Claude Code Tool Callback Regression
+
+- 2026-07-18 的兼容层重构把 Anthropic `tools/tool_choice`、历史 `tool_use/tool_result` 与 `thinking` block 显式拒绝，导致 Claude Code 报 `tools is not supported`，并在后续轮次报 `thinking is not supported`。
+- 修复继续坚持 `Anthropic -> Native -> Provider -> Anthropic wire`：宿主把工具、reasoning、system 与回调历史规范化为 Native；Anthropic provider 只负责最终上游 wire 映射。
+- Claude Code 会在同一 user message 累积多个 callback task 的历史 `tool_result`；兼容入口按最后一个 callback group 恢复当前 pending callback，旧 group 只作为已消费历史，不再错误要求所有 block 属于同一 task。
+- 本地 Anthropic provider 升级为 `0.1.23`，5 个 Anthropic provider instance 已通过正式 Console API 切换到该安装版本。
+- 真实 tmux 验收：Claude Code v2.1.218 显示 `Thought for 5s, ran 3 shell commands`，最终只返回 `TOOL_OK`。定向回归为 control-plane Anthropic 62/62、api-server Anthropic/SSE 48/48、provider 24/24，Rust static warnings=0。

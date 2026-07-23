@@ -544,7 +544,7 @@ async fn d1_ac_007_native_sse_initial_and_durable_replay_keep_incomplete_distinc
 }
 
 #[tokio::test]
-async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_becomes_unsupported() {
+async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let callback_task_id = Uuid::from_u128(0x99999999999999999999999999999999);
@@ -686,10 +686,10 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_becomes_un
 
     assert_eq!(body.matches("event: message_start").count(), 1, "{body}");
     assert!(body.contains("prior node answer"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("lookup_next"), "{body}");
-    assert!(!body.contains("event: message_stop"), "{body}");
-    assert!(!body.contains("\"stop_reason\":\"tool_use\""), "{body}");
+    assert!(body.contains("lookup_next"), "{body}");
+    assert!(body.contains("event: message_stop"), "{body}");
+    assert!(body.contains("\"stop_reason\":\"tool_use\""), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
 }
 
 #[tokio::test]
@@ -1113,7 +1113,7 @@ async fn d2_ac_004_anthropic_cancelled_terminal_is_error_without_message_stop() 
 }
 
 #[tokio::test]
-async fn d2_ac_004_anthropic_waiting_terminal_is_adapter_unsupported_without_message_stop() {
+async fn ac_003_anthropic_waiting_callback_projects_tool_use_and_message_stop() {
     let mut run = native_run();
     run.status = NativeRunStatus::Waiting;
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
@@ -1131,7 +1131,7 @@ async fn d2_ac_004_anthropic_waiting_terminal_is_adapter_unsupported_without_mes
                 payload: json!({
                     "callback_kind": "llm_tool_calls",
                     "callback_task_id": Uuid::nil(),
-                    "tool_calls": [{"id": "must-not-project", "name": "lookup", "arguments": {}}]
+                    "tool_calls": [{"id": "toolu_lookup", "name": "lookup", "arguments": {"query": "order"}}]
                 }),
             },
         ),
@@ -1143,11 +1143,13 @@ async fn d2_ac_004_anthropic_waiting_terminal_is_adapter_unsupported_without_mes
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("event: error"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("must-not-project"), "{body}");
-    assert!(!body.contains("event: message_stop"), "{body}");
-    assert!(!body.contains("\"stop_reason\""), "{body}");
+    assert!(body.contains("event: content_block_start"), "{body}");
+    assert!(body.contains("\"type\":\"tool_use\""), "{body}");
+    assert!(body.contains("toolu_lookup"), "{body}");
+    assert!(body.contains("\"type\":\"input_json_delta\""), "{body}");
+    assert!(body.contains("\"stop_reason\":\"tool_use\""), "{body}");
+    assert!(body.contains("event: message_stop"), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
 }
 
 #[test]

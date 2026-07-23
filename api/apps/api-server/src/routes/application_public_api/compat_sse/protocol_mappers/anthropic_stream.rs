@@ -103,7 +103,10 @@ impl AnthropicStreamMapper {
                 self.terminal_stop_reason = AnthropicMessageStopReason::MaxTokens;
                 self.anthropic_terminal_events(initial_run, &envelope.payload)
             }
-            "waiting_callback" | "waiting_human" => required_action_not_supported_anthropic_sse(),
+            "waiting_callback" => self
+                .anthropic_tool_use_events(&envelope.payload, initial_run.usage.as_ref())
+                .unwrap_or_else(required_action_not_supported_anthropic_sse),
+            "waiting_human" => required_action_not_supported_anthropic_sse(),
             "flow_failed" => self.anthropic_failed_events(initial_run, &envelope.payload),
             "flow_cancelled" => self.anthropic_cancelled_events(),
             _ => Vec::new(),
@@ -221,7 +224,6 @@ impl AnthropicStreamMapper {
         events
     }
 
-    #[cfg(test)]
     pub(in crate::routes::application_public_api::compat_sse) fn anthropic_tool_use_events(
         &mut self,
         payload: &Value,

@@ -36,17 +36,16 @@ fn assert_anthropic_unsupported_feature(error: AnthropicCompatError) {
 }
 
 #[test]
-fn d2_ac_007_context_management_is_unsupported_before_native_run_creation() {
+fn context_management_retains_full_history_with_a_dropped_receipt() {
     let mut request = base_request();
     request["context_management"] = json!({"edits": []});
 
-    let error = translate_messages_request(request)
-        .expect_err("context management has no D2 canonical owner");
+    let translated = translate_messages_request(request)
+        .expect("context management is an optional context optimization");
 
-    assert_anthropic_unsupported_feature(error.clone());
-    assert!(error
+    assert!(translated
         .report
-        .has_decision("$.context_management", TranslationDecisionKind::Unsupported));
+        .has_decision("$.context_management", TranslationDecisionKind::Dropped));
 }
 
 #[test]
@@ -66,6 +65,23 @@ fn system_maps_to_native_system_context() {
             json!({"role": "user", "content": "Earlier question"}),
             json!({"role": "assistant", "content": "Earlier answer"})
         ]
+    );
+}
+
+#[test]
+fn system_message_role_maps_to_native_system_history() {
+    let mut request = base_request();
+    request["messages"] = json!([
+        {"role": "system", "content": "Use Claude Code tools carefully."},
+        {"role": "user", "content": "Continue"}
+    ]);
+
+    let native = map_messages_request(request).expect("system messages have a Native owner");
+
+    assert_eq!(native.history[0]["role"], "system");
+    assert_eq!(
+        native.history[0]["content"],
+        "Use Claude Code tools carefully."
     );
 }
 
@@ -136,6 +152,40 @@ fn ac_003_anthropic_max_tokens_maps_to_native_max_output_tokens() {
         serde_json::to_value(&native).unwrap()["execution"]["model_parameters"]
             ["max_output_tokens"],
         json!(512)
+    );
+}
+
+#[test]
+fn ac_005_anthropic_adaptive_thinking_maps_to_native_reasoning() {
+    let mut request = base_request();
+    request["thinking"] = json!({"type": "adaptive", "display": "omitted"});
+
+    let translated =
+        translate_messages_request(request).expect("adaptive thinking should map to Native");
+    let execution =
+        serde_json::to_value(translated.request.execution).expect("execution should serialize");
+
+    assert_eq!(
+        execution["model_parameters"]["reasoning"]["enabled"],
+        json!(true)
+    );
+    assert!(translated
+        .report
+        .has_decision("$.thinking.display", TranslationDecisionKind::Dropped));
+}
+
+#[test]
+fn ac_005_anthropic_output_effort_maps_to_native_reasoning() {
+    let mut request = base_request();
+    request["thinking"] = json!({"type": "adaptive"});
+    request["output_config"] = json!({"effort": "high"});
+
+    let native = map_messages_request(request).expect("output effort should map to Native");
+    let execution = serde_json::to_value(native.execution).expect("execution should serialize");
+
+    assert_eq!(
+        execution["model_parameters"]["reasoning"]["effort"],
+        json!("high")
     );
 }
 
@@ -264,7 +314,7 @@ fn one_m_model_suffix_maps_to_native_model_and_anthropic_beta() {
 }
 
 #[test]
-fn d2_ac_007_anthropic_tools_are_unsupported_with_a_translation_receipt() {
+fn ac_001_anthropic_tools_and_choice_map_to_native_inputs() {
     let mut request = base_request();
     request["tools"] = json!([
         {
@@ -273,23 +323,26 @@ fn d2_ac_007_anthropic_tools_are_unsupported_with_a_translation_receipt() {
             "input_schema": {"type": "object"}
         }
     ]);
-
-    assert_unsupported_feature(request, "$.tools");
-}
-
-#[test]
-fn d2_ac_007_anthropic_tool_choice_is_unsupported_with_a_translation_receipt() {
-    let mut request = base_request();
     request["tool_choice"] = json!({
         "type": "tool",
         "name": "lookup_order"
     });
 
-    assert_unsupported_feature(request, "$.tool_choice");
+    let native = map_messages_request(request).expect("Anthropic tools should map to Native");
+
+    assert_eq!(native.inputs.as_value()["tools"][0]["name"], "lookup_order");
+    assert_eq!(
+        native.inputs.as_value()["tools"][0]["source"],
+        "anthropic_compatible"
+    );
+    assert_eq!(
+        native.inputs.as_value()["tool_choice"],
+        json!({"name": "lookup_order"})
+    );
 }
 
 #[test]
-fn d2_ac_007_anthropic_tool_blocks_are_unsupported_with_a_translation_receipt() {
+fn ac_002_anthropic_tool_blocks_map_to_native_history() {
     let mut request = base_request();
     request["messages"] = json!([
         {"role": "user", "content": "Find order"},
@@ -310,13 +363,23 @@ fn d2_ac_007_anthropic_tool_blocks_are_unsupported_with_a_translation_receipt() 
                 {
                     "type": "tool_result",
                     "tool_use_id": "toolu_123",
-                    "content": "Order found"
+                    "content": "Order found",
+                    "cache_control": {"type": "ephemeral", "ttl": "5m"}
                 }
             ]
         }
     ]);
 
-    assert_unsupported_feature(request, "$.messages[1].content[0].type");
+    let native = map_messages_request(request).expect("tool history should map to Native");
+
+    assert_eq!(native.history[1]["role"], "assistant");
+    assert_eq!(native.history[1]["tool_calls"][0]["id"], "toolu_123");
+    assert_eq!(
+        native.history[1]["tool_calls"][0]["arguments"]["order_id"],
+        "order_123"
+    );
+    assert_eq!(native.query, "Order found");
+    assert_eq!(native.inputs.as_value(), json!({}));
 }
 
 #[test]
@@ -569,7 +632,7 @@ fn d2_ac_001_anthropic_cache_control_unknown_field_is_rejected_with_its_own_rece
 }
 
 #[test]
-fn d2_ac_001_anthropic_message_cache_control_is_unsupported_not_dropped() {
+fn anthropic_message_cache_control_is_dropped_while_content_is_retained() {
     let cases = [
         json!({
             "model": "claude-compatible",
@@ -615,28 +678,27 @@ fn d2_ac_001_anthropic_message_cache_control_is_unsupported_not_dropped() {
     ];
 
     for request in cases {
-        let error = translate_messages_request(request)
-            .expect_err("message cache control has no current Native owner");
+        let translated = translate_messages_request(request)
+            .expect("message cache control is an optional transport hint");
 
-        assert_anthropic_unsupported_feature(error.clone());
         for suffix in ["cache_control", "cache_control.type", "cache_control.ttl"] {
             let source_path = format!("$.messages[0].content[0].{suffix}");
-            let decisions = error
+            let decisions = translated
                 .report
                 .decisions
                 .iter()
                 .filter(|decision| decision.source_path == source_path)
                 .collect::<Vec<_>>();
             assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
-            assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
+            assert_eq!(decisions[0].kind, TranslationDecisionKind::Dropped);
         }
         assert!(
-            !error
+            translated
                 .report
                 .decisions
                 .iter()
                 .any(|decision| decision.kind == TranslationDecisionKind::Dropped),
-            "a capability-dependent ingress field must not be silently dropped"
+            "cache hints must be explicitly receipted as dropped"
         );
     }
 }
@@ -811,7 +873,7 @@ fn d2_ac_001_anthropic_marker_rejection_replaces_preliminary_decision_for_the_sa
 }
 
 #[test]
-fn d2_ac_007_mixed_tool_result_and_text_is_unsupported_with_a_translation_receipt() {
+fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
     let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
@@ -841,11 +903,18 @@ fn d2_ac_007_mixed_tool_result_and_text_is_unsupported_with_a_translation_receip
         ]
     });
 
-    assert_unsupported_feature(request, "$.messages[1].content[0].type");
+    let translated = translate_messages_request(request)
+        .expect("mixed tool result and visible text has a Native representation");
+    assert_eq!(translated.request.query, "帮我找找这个代码位置");
+    assert_eq!(translated.request.history[1]["role"], "assistant");
+    assert_eq!(
+        translated.request.history[1]["tool_calls"][0]["id"],
+        "toolu_read"
+    );
 }
 
 #[test]
-fn d2_ac_007_thinking_history_is_unsupported_with_a_translation_receipt() {
+fn ac_006_thinking_history_maps_to_native_reasoning_content_blocks() {
     let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
@@ -866,7 +935,21 @@ fn d2_ac_007_thinking_history_is_unsupported_with_a_translation_receipt() {
         ]
     });
 
-    assert_unsupported_feature(request, "$.messages[1].content[0].type");
+    let translated = translate_messages_request(request)
+        .expect("assistant thinking history has a Native reasoning owner");
+
+    assert_eq!(
+        translated.request.history[1]["content_blocks"][0],
+        json!({
+            "type": "reasoning",
+            "text": "internal reasoning",
+            "signature": ""
+        })
+    );
+    assert!(translated.report.has_decision(
+        "$.messages[1].content[0].type",
+        TranslationDecisionKind::Normalized,
+    ));
 }
 
 #[test]

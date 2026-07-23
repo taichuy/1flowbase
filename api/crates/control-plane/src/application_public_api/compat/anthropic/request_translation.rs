@@ -4,10 +4,11 @@ use plugin_framework::provider_contract::NativeModelRequestContext;
 use serde_json::{Map, Value};
 
 use super::{
-    anthropic_current_user_text_content, anthropic_max_output_tokens, anthropic_metadata,
-    anthropic_response_mode, anthropic_system_content_parts, anthropic_text_content,
-    history_content_blocks, metadata_conversation, normalize_anthropic_model_for_native,
-    query_media_content_blocks, record_anthropic_system_decision, reject_legacy_anthropic_control,
+    anthropic_current_user_text_content, anthropic_history_entries, anthropic_inputs,
+    anthropic_max_output_tokens, anthropic_metadata, anthropic_reasoning, anthropic_response_mode,
+    anthropic_system_content_parts, metadata_conversation, normalize_anthropic_model_for_native,
+    query_media_content_blocks, record_anthropic_context_management_decision,
+    record_anthropic_system_decision, reject_legacy_anthropic_control,
     reject_unknown_anthropic_fields, validate_anthropic_message, AnthropicCompatError,
 };
 use crate::application_public_api::client_protocol_envelope::anthropic_messages_envelope_with_beta;
@@ -25,6 +26,7 @@ pub fn translate_messages_request(
     let mut report = TranslationReport::new(TranslationProtocol::AnthropicMessages);
     let object = anthropic_request_object(&request, &mut report)?;
     reject_unknown_anthropic_fields(object, &mut report)?;
+    record_anthropic_context_management_decision(object.get("context_management"), &mut report)?;
     let model = required_anthropic_string(object, "model", &mut report)?;
     let (model, context_beta) = normalize_anthropic_model_for_native(&model);
     let messages = required_anthropic_array(object, "messages", &mut report)?;
@@ -93,17 +95,10 @@ pub fn translate_messages_request(
         if index == last_user_index {
             continue;
         }
-        let content = anthropic_text_content(content_value)
-            .map_err(|error| error.with_report(report.clone()))?;
-        let content_blocks = history_content_blocks(role, content_value);
-        if content.trim().is_empty() && content_blocks.is_none() {
-            continue;
-        }
-        let mut history_entry = serde_json::json!({ "role": role, "content": content });
-        if let Some(content_blocks) = content_blocks {
-            history_entry["content_blocks"] = content_blocks;
-        }
-        history.push(history_entry);
+        history.extend(
+            anthropic_history_entries(role, content_value)
+                .map_err(|error| error.with_report(report.clone()))?,
+        );
     }
     if let Some(content_blocks) = latest_user_media_blocks {
         history.push(serde_json::json!({
@@ -117,15 +112,15 @@ pub fn translate_messages_request(
     let conversation = metadata_conversation(&metadata);
     let native_metadata = NativeRequestMetadata::with_trace_id(metadata.trace_id.clone());
     let response_mode = anthropic_response_mode(object, &mut report)?;
-    let execution = anthropic_max_output_tokens(object, &mut report)?
-        .and_then(NonZeroU64::new)
-        .map(NativeExecution::with_max_output_tokens)
-        .unwrap_or_default();
+    let max_output_tokens =
+        anthropic_max_output_tokens(object, &mut report)?.and_then(NonZeroU64::new);
+    let reasoning = anthropic_reasoning(object, &mut report)?;
+    let execution = NativeExecution::with_model_parameters(max_output_tokens, reasoning);
     let mut request = NativeRunRequest {
         query,
         system: system_parts,
         model: Some(model),
-        inputs: NativeObject::default(),
+        inputs: anthropic_inputs(object, &mut report)?,
         history,
         attachments: Vec::new(),
         conversation,
