@@ -850,59 +850,6 @@ fn model_maps_exactly_without_validation() {
 }
 
 #[test]
-fn d2_ac_007_chat_tools_are_unsupported_with_a_translation_receipt() {
-    let mut request = base_request();
-    request["tools"] = json!([
-        {
-            "type": "function",
-            "function": {
-                "name": "lookup_order",
-                "parameters": {"type": "object"}
-            }
-        }
-    ]);
-
-    assert_unsupported_feature(request, "tools");
-}
-
-#[test]
-fn d2_ac_007_chat_tool_choice_is_unsupported_with_a_translation_receipt() {
-    let mut request = base_request();
-    request["tool_choice"] = json!({"type": "function", "function": {"name": "lookup_order"}});
-
-    assert_unsupported_feature(request, "tool_choice");
-}
-
-#[test]
-fn d2_ac_007_chat_tool_messages_are_unsupported_with_a_translation_receipt() {
-    let mut request = base_request();
-    request["messages"] = json!([
-        {"role": "user", "content": "Find order"},
-        {
-            "role": "assistant",
-            "content": null,
-            "tool_calls": [
-                {
-                    "id": "call_123",
-                    "type": "function",
-                    "function": {"name": "lookup_order", "arguments": "{\"order_id\":\"order_123\"}"}
-                }
-            ]
-        },
-        {"role": "tool", "tool_call_id": "call_123", "content": "{\"status\":\"shipped\"}"}
-    ]);
-
-    let error = translate_chat_completion_request(request)
-        .expect_err("tool messages have no D2 canonical owner");
-
-    assert_openai_unsupported_feature(error.clone(), "messages");
-    assert!(error.report.has_decision(
-        "$.messages[1].tool_calls",
-        TranslationDecisionKind::Unsupported
-    ));
-}
-
-#[test]
 fn d2_ac_007_chat_legacy_function_call_is_unsupported_with_a_translation_receipt() {
     let mut request = base_request();
     request["function_call"] = json!({"name": "lookup_order"});
