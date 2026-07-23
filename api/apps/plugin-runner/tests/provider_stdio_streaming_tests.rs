@@ -122,12 +122,12 @@ async fn provider_stdio_timeout_error_classifies_wall_clock_budget() {
         "wall-clock-timeout",
         r#"#!/usr/bin/env bash
 read _request
-sleep 0.05
+sleep 0.5
 printf '%s\n' '{"type":"result","result":{"final_content":"too-late","finish_reason":"stop"}}'
 "#,
     );
     let short_limits = PluginRuntimeLimits {
-        timeout_ms: Some(1),
+        timeout_ms: Some(100),
         invoke_timeout_ms: None,
         first_token_timeout_ms: None,
         stream_idle_timeout_ms: None,
@@ -160,7 +160,7 @@ async fn provider_stdio_timeout_error_classifies_first_token_budget() {
         "first-token-timeout",
         r#"#!/usr/bin/env bash
 read _request
-sleep 0.05
+sleep 0.5
 printf '%s\n' '{"type":"text_delta","delta":"late"}'
 printf '%s\n' '{"type":"result","result":{"final_content":"late","finish_reason":"stop"}}'
 "#,
@@ -168,7 +168,7 @@ printf '%s\n' '{"type":"result","result":{"final_content":"late","finish_reason"
     let short_limits = PluginRuntimeLimits {
         timeout_ms: Some(2_000),
         invoke_timeout_ms: None,
-        first_token_timeout_ms: Some(1),
+        first_token_timeout_ms: Some(100),
         stream_idle_timeout_ms: None,
         memory_bytes: None,
     };
@@ -199,7 +199,7 @@ async fn provider_stdio_timeout_error_classifies_stream_idle_budget() {
         r#"#!/usr/bin/env bash
 read _request
 printf '%s\n' '{"type":"text_delta","delta":"first"}'
-sleep 0.05
+sleep 0.5
 printf '%s\n' '{"type":"result","result":{"final_content":"first","finish_reason":"stop"}}'
 "#,
     );
@@ -207,7 +207,7 @@ printf '%s\n' '{"type":"result","result":{"final_content":"first","finish_reason
         timeout_ms: Some(2_000),
         invoke_timeout_ms: None,
         first_token_timeout_ms: None,
-        stream_idle_timeout_ms: Some(1),
+        stream_idle_timeout_ms: Some(100),
         memory_bytes: None,
     };
 
