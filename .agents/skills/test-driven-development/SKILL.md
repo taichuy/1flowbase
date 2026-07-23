@@ -47,7 +47,7 @@ description: Use when implementing 1flowbase features, bug fixes, refactors, bac
 6. 只有覆盖代码、fixture、expectation 或环境发生相关变化后才重跑同一命令。candidate 前第三次运行同一套件是 churn 信号：先批量收敛剩余变化或回到 `problem-framing`，不靠继续重跑寻找完成感。
 7. 按变更风险补必要回归：定向测试优先，只补当前任务结果和直接风险所需的类型、lint、build 或 smoke。
 8. workspace 级 cargo / pnpm build、clippy、full test、服务重启、`api-debug`，或超过 3 条重验证命令的收益和成本，必须在 `problem-framing` / 已确认计划 / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，交付说明标为 beta / CI / 全局门禁未验证；只有缺少该证据会让继续实现不安全或无法判断当前任务是否完成时，才暂停并说明原因。
-9. 同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器逻辑 CPU 的一半，不写死 `CARGO_BUILD_JOBS=1/4`。仓库包装命令会自动读取；直接运行定向 Cargo 时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。只有复现资源问题或本地配置明确限流时才降低。
+9. 同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器全部逻辑 CPU 编译和测试，不写死 `CARGO_BUILD_JOBS=1/4` 或 `--test-threads=1`。仓库包装命令会自动读取；直接运行定向 Cargo 时使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`。只有开发者主动复现资源问题并显式配置时才降低。
 
 ## Batch Acceptance Cycle
 

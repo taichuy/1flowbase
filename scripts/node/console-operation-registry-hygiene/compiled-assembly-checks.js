@@ -42,8 +42,6 @@ function buildCompiledAssemblyCommands({ repoRoot } = {}) {
       '-p',
       'api-server',
       target.filter,
-      '--',
-      '--test-threads=1',
     ],
     cwd: path.join(repoRoot, 'api'),
   }));

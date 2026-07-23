@@ -31,7 +31,7 @@
 - 同一目录文件接近 `15` 个时收纳子目录；单文件接近 `1500` 行时拆职责。
 
 ## Local Truths
-- 后端验证在同一 worktree 同时只运行一条 Cargo 命令；命令内部默认通过 `scripts/node/testing/verify-runtime.js cargo-jobs` 读取机器逻辑 CPU 的一半并行编译，不把 `CARGO_BUILD_JOBS=1/4` 写死进开发命令或仓库配置。
+- 后端验证在同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器全部逻辑 CPU 并行编译和测试，不把 `CARGO_BUILD_JOBS=1/4` 或 `--test-threads=1` 写死进开发命令或仓库配置。
 - `apps/api-server/src/routes` 是协议层：参数解析、上下文提取、调用 service / action、响应与错误映射、OpenAPI 暴露。
 - API DTO 字段名优先跟领域模型 / 持久化语义一致；不要为了前端展示创建新的语义别名字段。
 - `apps/api-server/src/middleware` 是请求链路约束层。

@@ -326,7 +326,17 @@ test('compiled checks run serial cargo targets and fail when a target fails or e
   assert.equal(result.status, 1);
   assert.equal(result.authoritative, true);
   assert.equal(calls.length, 2);
-  assert.match(calls[0].args.join(' '), /migrated_assembly_contains_every_console_router_owner_assembly/u);
-  assert.match(calls[1].args.join(' '), /console_route_assembly/u);
+  assert.deepEqual(calls[0].args, [
+    'test',
+    '-p',
+    'api-server',
+    'migrated_assembly_contains_every_console_router_owner_assembly',
+  ]);
+  assert.deepEqual(calls[1].args, [
+    'test',
+    '-p',
+    'api-server',
+    'console_route_assembly',
+  ]);
   assert.equal(calls[0].options.cwd, path.join('/repo-root', 'api'));
 });

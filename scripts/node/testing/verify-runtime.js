@@ -84,11 +84,10 @@ function resolveCargoDefaults(availableParallelism) {
     "availableParallelism",
     availableParallelism,
   );
-  const cargoJobs = Math.max(1, Math.floor(parallelism / 2));
 
   return {
-    cargoJobs: Math.min(cargoJobs, parallelism),
-    cargoTestThreads: 1,
+    cargoJobs: parallelism,
+    cargoTestThreads: parallelism,
   };
 }
 
@@ -97,11 +96,10 @@ function resolveFrontendDefaults(availableParallelism) {
     "availableParallelism",
     availableParallelism,
   );
-  const defaultWorkers = Math.max(1, Math.floor(parallelism / 2));
 
   return {
-    turboConcurrency: Math.min(defaultWorkers, parallelism),
-    vitestMaxWorkers: Math.min(defaultWorkers, parallelism, 4),
+    turboConcurrency: parallelism,
+    vitestMaxWorkers: parallelism,
   };
 }
 

@@ -34,7 +34,7 @@ test("parseCliArgs strips package-script passthrough separator after default fla
   );
 });
 
-test("buildVitestCommand uses the Vitest 4 worker limit option", () => {
+test("buildVitestCommand uses the runtime-configured worker option", () => {
   assert.deepEqual(
     buildVitestCommand({
       mode: "run",
