@@ -126,6 +126,14 @@ async function createPublishedApplication(client, provider, ordinal = 1) {
       files_selector: null,
       error_selector: null,
     },
+    operation_bindings: {
+      generate: { target_node_id: 'node-llm' },
+      count_tokens: null,
+      compact: {
+        responses_compact: null,
+        responses_compaction_v2: null,
+      },
+    },
   };
   const publication = await client.write(
     `/api/console/applications/${applicationId}/api-publications`,

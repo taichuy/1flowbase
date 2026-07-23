@@ -8,6 +8,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { createGatewayFixture } = require('..');
+const { createPublishedApplication } = require('../bootstrap');
 const { persistServiceLogs } = require('../service-logs');
 
 function fixtureFiles() {
@@ -222,6 +223,51 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
   } finally {
     await fixture?.close();
     fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('publication source binds Generate for Responses, Chat Completions, and Anthropic Messages', async () => {
+  FakeOwnerClient.calls = [];
+  const client = new FakeOwnerClient('http://127.0.0.1:41002');
+  const provider = (providerCode) => ({
+    provider_code: providerCode,
+    provider_instance_id: `${providerCode}-instance-1`,
+    model: 'gateway-fixture-model',
+  });
+
+  await createPublishedApplication(client, provider('openai'));
+  await createPublishedApplication(client, provider('anthropic'));
+
+  const publications = FakeOwnerClient.calls.filter(
+    (call) => call.kind === 'write' && call.pathname.endsWith('/api-publications')
+  );
+  assert.equal(publications.length, 2);
+  const openaiPublication = publications.find(
+    (call) => call.pathname.includes('/openai-application-1/')
+  );
+  const anthropicPublication = publications.find(
+    (call) => call.pathname.includes('/anthropic-application-1/')
+  );
+  const expectedGenerateBindings = {
+    generate: { target_node_id: 'node-llm' },
+    count_tokens: null,
+    compact: {
+      responses_compact: null,
+      responses_compaction_v2: null,
+    },
+  };
+  const protocolPublications = [
+    ['OpenAI Responses', openaiPublication],
+    ['OpenAI Chat Completions', openaiPublication],
+    ['Anthropic Messages', anthropicPublication],
+  ];
+  for (const [protocol, publication] of protocolPublications) {
+    assert.ok(publication, `${protocol} publication write must exist`);
+    assert.deepEqual(
+      publication.body.mapping.operation_bindings,
+      expectedGenerateBindings,
+      `${protocol} must publish the backend Generate operation target`
+    );
   }
 });
 
