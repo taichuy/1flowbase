@@ -287,7 +287,7 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
   });
 });
 
-test("loadVerifyRuntimeConfig ignores local config in CI environments", () => {
+test("loadVerifyRuntimeConfig uses full runner capacity and ignores local config in CI", () => {
   const repoRoot = createRepoRoot();
 
   fs.writeFileSync(
@@ -311,17 +311,17 @@ test("loadVerifyRuntimeConfig ignores local config in CI environments", () => {
   const config = loadVerifyRuntimeConfig({
     repoRoot,
     env: { CI: "true" },
-    availableParallelism: 8,
+    availableParallelism: 10,
   });
 
   assert.deepEqual(config, {
     backend: {
-      cargoJobs: 4,
-      cargoTestThreads: 1,
+      cargoJobs: 10,
+      cargoTestThreads: 10,
     },
     frontend: {
-      turboConcurrency: 4,
-      vitestMaxWorkers: 4,
+      turboConcurrency: 10,
+      vitestMaxWorkers: 10,
     },
     locks: {
       waitTimeoutMinutes: 30,
