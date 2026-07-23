@@ -157,13 +157,14 @@ async function executeTmuxInvocation(
         Promise.resolve(onFirstMarker()).catch(() => {});
       });
     }
-    await requireSuccess(tmuxExecutable, ['-L', socket, 'start-server']);
+    await requireSuccess(tmuxExecutable, ['-L', socket, 'new-session', '-d', '-s', 'bootstrap']);
     for (const [name, value] of Object.entries(env)) {
       await requireSuccess(tmuxExecutable, ['-L', socket, 'set-environment', '-g', name, value]);
     }
     await requireSuccess(tmuxExecutable, [
       '-L', socket, 'new-session', '-d', '-s', session, '-c', invocation.cwd, wrapperPath,
     ]);
+    await requireSuccess(tmuxExecutable, ['-L', socket, 'kill-session', '-t', 'bootstrap']);
     const wait = spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', doneSignal]);
     const timeout = new Promise((_, reject) => {
       setTimeout(() => {

@@ -1,17 +1,31 @@
 use super::*;
 
+pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
+    pub(super) state: Arc<ApiState>,
+    pub(super) initial_run: NativeRunResult,
+    pub(super) sse_projection: &'static str,
+    pub(super) from_sequence: Option<i64>,
+    pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    pub(super) subscription: control_plane::ports::RuntimeEventSubscription,
+    pub(super) sender: mpsc::Sender<Result<Event, Infallible>>,
+    pub(super) mapper: F,
+}
+
 pub(super) async fn send_subscribed_compatible_runtime_event_stream<F>(
-    state: Arc<ApiState>,
-    initial_run: NativeRunResult,
-    sse_projection: &'static str,
-    from_sequence: Option<i64>,
-    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
-    mut subscription: control_plane::ports::RuntimeEventSubscription,
-    sender: mpsc::Sender<Result<Event, Infallible>>,
-    mut mapper: F,
+    stream: SubscribedCompatibleRuntimeEventStream<F>,
 ) where
     F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>,
 {
+    let SubscribedCompatibleRuntimeEventStream {
+        state,
+        initial_run,
+        sse_projection,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        mut subscription,
+        sender,
+        mut mapper,
+    } = stream;
     let mut stats = CompatibleStreamStats::default();
     let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
     let mut last_forwarded_durable_sequence = durable_sequence_for_ignored_waiting_callback(
@@ -253,7 +267,7 @@ pub(super) async fn send_compatible_runtime_event_stream<F>(
         );
         return;
     };
-    send_subscribed_compatible_runtime_event_stream(
+    send_subscribed_compatible_runtime_event_stream(SubscribedCompatibleRuntimeEventStream {
         state,
         initial_run,
         sse_projection,
@@ -262,7 +276,7 @@ pub(super) async fn send_compatible_runtime_event_stream<F>(
         subscription,
         sender,
         mapper,
-    )
+    })
     .await;
 }
 

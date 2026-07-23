@@ -52,9 +52,11 @@ mod protocol_mappers;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+use event_forwarding::send_compatible_runtime_event_stream;
 use event_forwarding::{
     append_compatible_resume_terminal_event, is_answer_presentation_delta,
-    send_subscribed_compatible_runtime_event_stream,
+    send_subscribed_compatible_runtime_event_stream, SubscribedCompatibleRuntimeEventStream,
 };
 #[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
@@ -144,7 +146,7 @@ impl CompatibleRuntimeEventView {
 impl From<RuntimeEventEnvelope> for CompatibleRuntimeEventView {
     fn from(envelope: RuntimeEventEnvelope) -> Self {
         let answer_delta = is_answer_presentation_delta(&envelope)
-            .then(|| match envelope.event_type.as_str() {
+            .then_some(match envelope.event_type.as_str() {
                 "reasoning_delta" => Some(CompatibleAnswerDeltaKind::Reasoning),
                 "text_delta" => Some(CompatibleAnswerDeltaKind::Text),
                 _ => None,
@@ -593,14 +595,18 @@ async fn start_compatible_turn_stream(
     let (sender, receiver) = mpsc::channel(32);
     let execution_sender_guard = sender.clone();
     tokio::spawn(send_subscribed_compatible_runtime_event_stream(
-        state.clone(),
-        run.clone(),
-        sse_projection,
-        from_sequence,
-        ignored_waiting_callback_task_id,
-        subscription,
-        sender,
-        move |run, envelope| projection.runtime_event_to_sse(run, envelope),
+        SubscribedCompatibleRuntimeEventStream {
+            state: state.clone(),
+            initial_run: run.clone(),
+            sse_projection,
+            from_sequence,
+            ignored_waiting_callback_task_id,
+            subscription,
+            sender,
+            mapper: move |run: &NativeRunResult, envelope: RuntimeEventEnvelope| {
+                projection.runtime_event_to_sse(run, envelope)
+            },
+        },
     ));
 
     let background_state = state.clone();
