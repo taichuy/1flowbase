@@ -2,7 +2,7 @@ use super::*;
 use crate::routes::application_public_api::tool_callback_ids::encode_anthropic_callback_tool_use_id;
 
 #[tokio::test]
-async fn ac_004_anthropic_tool_result_routes_to_callback_resume_before_run_creation() {
+async fn ac_008_anthropic_orphan_tool_result_starts_a_new_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Unsupported Tool Result Route App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -20,6 +20,15 @@ async fn ac_004_anthropic_tool_result_routes_to_callback_resume_before_run_creat
             "max_tokens": 64,
             "messages": [
                 {
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_use",
+                        "id": tool_use_id.clone(),
+                        "name": "read_files",
+                        "input": {"path": "."}
+                    }]
+                },
+                {
                     "role": "user",
                     "content": [{
                         "type": "tool_result",
@@ -32,10 +41,10 @@ async fn ac_004_anthropic_tool_result_routes_to_callback_resume_before_run_creat
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("callback_task"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_ne!(payload["id"], Value::Null);
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]

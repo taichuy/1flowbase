@@ -148,7 +148,7 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
     while let Some(event) = receiver.recv().await {
         events.push(event);
     }
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();

@@ -108,6 +108,33 @@ async fn sse_body(
     String::from_utf8(body.to_vec()).expect("SSE response body should be UTF-8")
 }
 
+#[test]
+fn compatible_runtime_event_view_classifies_answer_and_terminal_semantics_once() {
+    let run = native_run();
+    let delta = CompatibleRuntimeEventView::from(RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "partial".to_string(),
+            0,
+            Some("node-llm"),
+            Some(Uuid::now_v7()),
+            Some("text"),
+        ),
+    ));
+    let terminal = CompatibleRuntimeEventView::from(RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        debug_stream_events::flow_finished(run.id, json!({})),
+    ));
+
+    assert_eq!(delta.answer_delta(), Some(CompatibleAnswerDeltaKind::Text));
+    assert_eq!(delta.terminal(), None);
+    assert_eq!(terminal.answer_delta(), None);
+    assert_eq!(terminal.terminal(), Some(CompatibleTerminalKind::Finished));
+}
+
 #[tokio::test]
 async fn d2_ac_008_native_eof_fallback_finalizes_running_winner_before_projection() {
     let (run, state) = running_run_with_closed_stream().await;
@@ -612,7 +639,7 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
     while let Some(event) = receiver.recv().await {
         events.push(event);
     }
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -707,7 +734,7 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
     while let Some(event) = receiver.recv().await {
         events.push(event);
     }
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -758,7 +785,7 @@ async fn openai_terminal_fallback_projects_structured_answer_segments() {
             debug_stream_events::flow_finished(run.id, json!({})),
         ),
     );
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -788,7 +815,7 @@ async fn anthropic_completed_stream_projects_thinking_and_visible_text() {
     let mut run = native_run();
     run.status = NativeRunStatus::Succeeded;
     run.answer = Some("<think>先分析</think>\n最终回答".to_string());
-    let response = completed_compatible_stream(anthropic_completed_run_to_sse(&run, "claude"));
+    let response = test_projected_events_response(anthropic_completed_run_to_sse(&run, "claude"));
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -812,7 +839,7 @@ async fn anthropic_completed_stream_uses_structured_answer_segments_for_thinking
         AnswerProjectionSegment::message("结构化回答"),
     ]);
 
-    let response = completed_compatible_stream(anthropic_completed_run_to_sse(&run, "claude"));
+    let response = test_projected_events_response(anthropic_completed_run_to_sse(&run, "claude"));
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -860,7 +887,7 @@ async fn anthropic_live_answer_reasoning_delta_projects_thinking_delta() {
         ),
     );
 
-    let response = completed_compatible_stream([reasoning_events, text_events].concat());
+    let response = test_projected_events_response([reasoning_events, text_events].concat());
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -925,7 +952,7 @@ async fn anthropic_terminal_answer_fallback_emits_text_before_stop() {
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -977,7 +1004,7 @@ async fn d2_ac_008_anthropic_failed_terminal_with_partial_output_remains_error()
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1010,7 +1037,7 @@ async fn d2_ac_008_anthropic_incomplete_terminal_uses_max_tokens_and_message_sto
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1033,7 +1060,7 @@ async fn d2_ac_004_anthropic_cancelled_terminal_is_error_without_message_stop() 
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1071,7 +1098,7 @@ async fn ac_003_anthropic_waiting_callback_projects_tool_use_and_message_stop() 
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1206,7 +1233,7 @@ async fn openai_chat_resume_terminal_answer_fallback_projects_thinking_delta() {
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1234,7 +1261,7 @@ async fn openai_responses_resume_terminal_answer_fallback_projects_thinking_delt
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1270,7 +1297,7 @@ async fn openai_response_completed_event_includes_usage() {
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1297,7 +1324,8 @@ async fn anthropic_completed_stream_includes_usage_for_claude_code_cost_and_cont
         ..Default::default()
     });
 
-    let response = completed_compatible_stream(anthropic_completed_run_to_sse(&run, "1flowbase"));
+    let response =
+        test_projected_events_response(anthropic_completed_run_to_sse(&run, "1flowbase"));
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -1335,7 +1363,7 @@ async fn openai_chat_terminal_answer_fallback_decodes_artifact_preview_answer() 
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();

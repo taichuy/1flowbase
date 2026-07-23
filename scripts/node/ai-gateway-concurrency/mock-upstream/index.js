@@ -125,7 +125,16 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function emitHttpStream({ response, request, scenario, stream, timeline, slowChunkDelayMs, cancelObservationMs }) {
+async function emitHttpStream({
+  response,
+  request,
+  scenario,
+  stream,
+  timeline,
+  slowChunkDelayMs,
+  cancelObservationMs,
+  barrier,
+}) {
   let disconnected = false;
   request.on('aborted', () => { disconnected = true; });
   response.on('close', () => { if (!response.writableEnded) disconnected = true; });
@@ -136,8 +145,19 @@ async function emitHttpStream({ response, request, scenario, stream, timeline, s
     return true;
   };
 
+  let visibleDeltaReleased = false;
   for (const chunk of stream.chunks) {
-    if (!write(chunk.event ?? chunk.type, chunk.data ?? chunk)) break;
+    const event = chunk.event ?? chunk.type;
+    if (!write(event, chunk.data ?? chunk)) break;
+    if (!visibleDeltaReleased && barrier.enabled && [
+      'content_block_delta',
+      'response.output_text.delta',
+    ].includes(event)) {
+      visibleDeltaReleased = true;
+      timeline.record('barrier_waiting', { protocolEvent: event });
+      await barrier.wait();
+      timeline.record('barrier_released', { protocolEvent: event });
+    }
     if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
   }
   if (scenario === SCENARIO.STREAM_INTERRUPTION) {
@@ -181,10 +201,29 @@ function createMockUpstream(options = {}) {
   const cancelObservationMs = options.cancelObservationMs ?? 250;
   const timeline = createTimeline();
   const sockets = new Set();
+  const barrierWaiters = new Set();
+  const barrier = {
+    enabled: options.barrierEnabled === true,
+    wait() {
+      return new Promise((resolve) => barrierWaiters.add(resolve));
+    },
+    release() {
+      const count = barrierWaiters.size;
+      for (const resolve of barrierWaiters) resolve();
+      barrierWaiters.clear();
+      return count;
+    },
+  };
 
   const server = http.createServer(async (request, response) => {
     try {
       const path = new URL(request.url, 'http://mock.invalid').pathname;
+      if (request.method === 'POST' && path === '/__control/barrier/release') {
+        const released = barrier.release();
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ released }));
+        return;
+      }
       if (request.method !== 'POST' || ![MOCK_ROUTE.RESPONSES, MOCK_ROUTE.ANTHROPIC_MESSAGES].includes(path)) {
         response.writeHead(404, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: { type: 'not_found', message: 'mock route not found' } }));
@@ -212,6 +251,7 @@ function createMockUpstream(options = {}) {
         timeline: requestTimeline,
         slowChunkDelayMs,
         cancelObservationMs,
+        barrier,
       });
     } catch (error) {
       if (!response.headersSent) response.writeHead(400, { 'content-type': 'application/json' });
@@ -307,6 +347,7 @@ function createMockUpstream(options = {}) {
       return {
         httpBaseUrl: `http://${host}:${address.port}`,
         websocketBaseUrl: `ws://${host}:${address.port}`,
+        barrierReleaseUrl: `http://${host}:${address.port}/__control/barrier/release`,
       };
     },
     async stop() {
@@ -315,6 +356,7 @@ function createMockUpstream(options = {}) {
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     },
     snapshot: timeline.snapshot,
+    releaseBarrier: () => barrier.release(),
   };
 }
 

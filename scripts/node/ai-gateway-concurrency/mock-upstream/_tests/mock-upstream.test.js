@@ -117,6 +117,36 @@ test('AC-002: Anthropic Messages SSE emits fixed content and one message_stop te
   });
 });
 
+test('Root #1440 AC-003: producer barrier releases chunk-2 only after chunk-1 is observable', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl, barrierReleaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'mock-model', stream: true, input: [] }),
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let visible = '';
+    while (!visible.includes('chunk-1')) {
+      const { done, value } = await reader.read();
+      assert.equal(done, false);
+      visible += decoder.decode(value, { stream: true });
+    }
+    await waitFor(() => upstream.snapshot().entries.find((entry) => entry.event === 'barrier_waiting'));
+    assert.doesNotMatch(visible, /chunk-2|response.completed/u);
+
+    const release = await fetch(barrierReleaseUrl, { method: 'POST' });
+    assert.equal(release.status, 200);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      visible += decoder.decode(value, { stream: true });
+    }
+    assert.match(visible, /chunk-2/u);
+    assert.match(visible, /response.completed/u);
+  }, { barrierEnabled: true });
+});
+
 test('AC-002: Responses WebSocket emits fixed nonce chunks and one completed terminal', async () => {
   await withMockUpstream(async ({ upstream, websocketBaseUrl }) => {
     const events = await new Promise((resolve, reject) => {

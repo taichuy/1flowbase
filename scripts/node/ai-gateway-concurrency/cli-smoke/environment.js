@@ -23,6 +23,9 @@ const CLEARED_CREDENTIALS = Object.freeze([
   'AWS_SECRET_ACCESS_KEY',
   'AWS_SESSION_TOKEN',
   'GOOGLE_APPLICATION_CREDENTIALS',
+  'OPENCODE_CONFIG',
+  'OPENCODE_CONFIG_CONTENT',
+  'OPENCODE_CONFIG_DIR',
 ]);
 
 function narrowEnvironment(parentEnv, temporaryHome) {
@@ -57,10 +60,45 @@ function claudeEnvironment(parentEnv, paths, gatewayBaseUrl, apiKey) {
   };
 }
 
+function opencodeEnvironment(parentEnv, paths, gatewayBaseUrl, target) {
+  const provider = 'oneflowbase_gateway';
+  return {
+    ...narrowEnvironment(parentEnv, paths.home),
+    OPENCODE_CONFIG_DIR: paths.config,
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      model: `${provider}/${target.model}`,
+      small_model: `${provider}/${target.model}`,
+      provider: {
+        [provider]: {
+          id: provider,
+          name: '1flowbase gateway sentinel',
+          env: [],
+          npm: '@ai-sdk/openai-compatible',
+          models: {
+            [target.model]: {
+              id: target.model,
+              name: target.model,
+              attachment: false,
+              reasoning: false,
+              temperature: false,
+              tool_call: true,
+              limit: { context: 100000, output: 10000 },
+              cost: { input: 0, output: 0 },
+            },
+          },
+          options: { apiKey: target.api_key, baseURL: `${gatewayBaseUrl}/v1` },
+        },
+      },
+    }),
+  };
+}
+
 function sanitizedEnvironment(env) {
   return Object.fromEntries(Object.keys(env).sort().map((name) => [
     name,
-    name.includes('KEY') || name.includes('TOKEN') || name.includes('CREDENTIAL')
+    name === 'OPENCODE_CONFIG_CONTENT'
+      ? '<isolated-config>'
+      : name.includes('KEY') || name.includes('TOKEN') || name.includes('CREDENTIAL')
       ? (env[name] ? '<ephemeral-application-key>' : '<cleared>')
       : env[name],
   ]));
@@ -72,5 +110,6 @@ module.exports = {
   claudeEnvironment,
   codexEnvironment,
   narrowEnvironment,
+  opencodeEnvironment,
   sanitizedEnvironment,
 };

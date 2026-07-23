@@ -54,7 +54,7 @@ async fn openai_responses_live_text_stream_wraps_deltas_in_output_items() {
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();

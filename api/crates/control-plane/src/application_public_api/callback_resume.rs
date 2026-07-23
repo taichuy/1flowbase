@@ -77,6 +77,17 @@ pub struct ResumePublishedCallbackResult {
     pub attempt: domain::FlowRunCallbackResumeAttemptRecord,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreparedPublishedCallbackResume {
+    pub initial_run: NativeRunResult,
+}
+
+struct PublishedCallbackResumeContext {
+    actor: super::api_keys::ApplicationApiKeyActor,
+    callback_task: domain::CallbackTaskRecord,
+    flow_run: domain::FlowRunRecord,
+}
+
 pub struct ApplicationPublishedCallbackResumeService<R, C> {
     repository: R,
     consumer: C,
@@ -107,42 +118,24 @@ where
         self
     }
 
+    pub async fn prepare_callback_resume(
+        &self,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<PreparedPublishedCallbackResume> {
+        let context = self.resolve_resume_context(command).await?;
+        let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
+        Ok(PreparedPublishedCallbackResume { initial_run })
+    }
+
     pub async fn resume_callback(
         &self,
         mut command: ResumePublishedCallbackCommand,
     ) -> Result<ResumePublishedCallbackResult> {
         command.response_payload = escape_json_nul_characters(command.response_payload);
-        let actor = self
-            .api_key_service()
-            .authenticate_bearer_token(&command.bearer_token)
-            .await
-            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
-        let callback_task_id = match command.target {
-            PublishedCallbackResumeTarget::FlowRun {
-                callback_task_id, ..
-            }
-            | PublishedCallbackResumeTarget::CallbackTask { callback_task_id } => callback_task_id,
-        };
-        let callback_task = self
-            .repository
-            .get_published_callback_task(callback_task_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("callback_task"))?;
-        if let PublishedCallbackResumeTarget::FlowRun { flow_run_id, .. } = command.target {
-            if callback_task.flow_run_id != flow_run_id {
-                return Err(ControlPlaneError::PermissionDenied("callback_task_flow_run").into());
-            }
-        }
-        let flow_run = self
-            .repository
-            .get_published_flow_run(callback_task.flow_run_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
-            return Err(
-                ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
-            );
-        }
+        let context = self.resolve_resume_context(&command).await?;
+        let actor = context.actor;
+        let callback_task = context.callback_task;
+        let flow_run = context.flow_run;
 
         if let Some(existing) = self
             .repository
@@ -291,6 +284,48 @@ where
         }
         let run = self.native_result_for_flow_run(&flow_run).await?;
         Ok(ResumePublishedCallbackResult { run, attempt })
+    }
+
+    async fn resolve_resume_context(
+        &self,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<PublishedCallbackResumeContext> {
+        let actor = self
+            .api_key_service()
+            .authenticate_bearer_token(&command.bearer_token)
+            .await
+            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
+        let callback_task_id = match &command.target {
+            PublishedCallbackResumeTarget::FlowRun {
+                callback_task_id, ..
+            }
+            | PublishedCallbackResumeTarget::CallbackTask { callback_task_id } => *callback_task_id,
+        };
+        let callback_task = self
+            .repository
+            .get_published_callback_task(callback_task_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("callback_task"))?;
+        if let PublishedCallbackResumeTarget::FlowRun { flow_run_id, .. } = &command.target {
+            if callback_task.flow_run_id != *flow_run_id {
+                return Err(ControlPlaneError::PermissionDenied("callback_task_flow_run").into());
+            }
+        }
+        let flow_run = self
+            .repository
+            .get_published_flow_run(callback_task.flow_run_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
+            return Err(
+                ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
+            );
+        }
+        Ok(PublishedCallbackResumeContext {
+            actor,
+            callback_task,
+            flow_run,
+        })
     }
 
     async fn native_result_for_flow_run(

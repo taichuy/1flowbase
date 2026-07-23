@@ -21,7 +21,7 @@ function manifestDigest(filePath) {
 
 function prepareEvidenceRoot(outputRoot) {
   fs.mkdirSync(outputRoot, { recursive: true });
-  for (const name of ['config-manifest.json', 'codex.json', 'claude.json']) {
+  for (const name of ['config-manifest.json', 'codex.json', 'claude.json', 'opencode.json']) {
     fs.rmSync(path.join(outputRoot, name), { force: true });
   }
   return outputRoot;
@@ -32,7 +32,7 @@ function writeConfigManifest(outputRoot, value) {
 }
 
 function writeClientEvidence(outputRoot, client, result, secrets) {
-  writeJson(path.join(outputRoot, `${client}.json`), {
+  const evidence = {
     schema_version: '1flowbase.ai-gateway-cli-smoke-evidence/v1',
     client,
     started_at: result.started_at,
@@ -47,7 +47,16 @@ function writeClientEvidence(outputRoot, client, result, secrets) {
     stderr_overflow: result.stderr.overflow,
     stdout: redact(result.stdout.text, secrets),
     stderr: redact(result.stderr.text, secrets),
-  });
+    pty_markers: result.pty?.markers ?? null,
+  };
+  writeJson(path.join(outputRoot, `${client}.json`), evidence);
+  if (result.pty) {
+    const clientRoot = path.join(outputRoot, client);
+    fs.mkdirSync(clientRoot, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(clientRoot, 'pty.log'), redact(result.stdout.text, secrets), { mode: 0o600 });
+    fs.writeFileSync(path.join(clientRoot, 'timing.log'), result.pty.timing, { mode: 0o600 });
+    writeJson(path.join(clientRoot, 'final.json'), evidence);
+  }
 }
 
 module.exports = {

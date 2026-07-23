@@ -30,6 +30,8 @@ function codexInvocation(executable, paths, gatewayBaseUrl, target) {
       '-c', `model_providers.${provider}.wire_api=${tomlString('responses')}`,
       '-c', `model_providers.${provider}.requires_openai_auth=false`,
       '-c', `model_providers.${provider}.supports_websockets=false`,
+      '-c', `model_providers.${provider}.request_max_retries=0`,
+      '-c', `model_providers.${provider}.stream_max_retries=0`,
       FIXED_PROMPT,
     ],
   };
@@ -48,10 +50,27 @@ function claudeInvocation(executable, paths, target) {
       '--no-session-persistence',
       '--settings', settingsPath,
       '--output-format', 'stream-json',
+      '--include-partial-messages',
+      '--verbose',
       '--model', target.model,
       '--tools', '',
       '--disable-slash-commands',
       '--no-chrome',
+    ],
+  };
+}
+
+function opencodeInvocation(executable, paths, target) {
+  return {
+    executable,
+    cwd: paths.output,
+    args: [
+      'run',
+      '--pure',
+      '--format', 'json',
+      '--dir', paths.output,
+      '--model', `oneflowbase_gateway/${target.model}`,
+      FIXED_PROMPT,
     ],
   };
 }
@@ -65,4 +84,10 @@ function sanitizedInvocation(invocation) {
   };
 }
 
-module.exports = { FIXED_PROMPT, claudeInvocation, codexInvocation, sanitizedInvocation };
+module.exports = {
+  FIXED_PROMPT,
+  claudeInvocation,
+  codexInvocation,
+  opencodeInvocation,
+  sanitizedInvocation,
+};

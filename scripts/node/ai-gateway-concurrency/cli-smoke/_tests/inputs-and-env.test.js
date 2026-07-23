@@ -6,7 +6,12 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { claudeEnvironment, codexEnvironment } = require('../environment');
+const {
+  claudeEnvironment,
+  codexEnvironment,
+  opencodeEnvironment,
+  sanitizedEnvironment,
+} = require('../environment');
 const { readReadyManifest } = require('../inputs');
 
 function writeManifest(root, gatewayBaseUrl = 'http://127.0.0.1:41002') {
@@ -57,7 +62,10 @@ test('narrow child environments exclude malicious parent canaries and inject onl
   const paths = { home: '/tmp/isolated-home', config: '/tmp/isolated-config' };
   const codex = codexEnvironment(parent, paths, 'ephemeral-openai-key');
   const claude = claudeEnvironment(parent, paths, 'http://127.0.0.1:41002', 'ephemeral-anthropic-key');
-  for (const env of [codex, claude]) {
+  const opencode = opencodeEnvironment(parent, paths, 'http://127.0.0.1:41002', {
+    model: 'fixture-model', api_key: 'ephemeral-openai-key',
+  });
+  for (const env of [codex, claude, opencode]) {
     assert.equal(env.HOME, paths.home);
     assert.equal(env.EVIL_PARENT_CANARY, undefined);
     assert.equal(env.ANTHROPIC_AUTH_TOKEN, '');
@@ -68,4 +76,8 @@ test('narrow child environments exclude malicious parent canaries and inject onl
   assert.equal(codex.ONEFLOWBASE_APPLICATION_API_KEY, 'ephemeral-openai-key');
   assert.equal(claude.ANTHROPIC_API_KEY, 'ephemeral-anthropic-key');
   assert.equal(claude.ANTHROPIC_BASE_URL, 'http://127.0.0.1:41002');
+  const opencodeConfig = JSON.parse(opencode.OPENCODE_CONFIG_CONTENT);
+  assert.equal(opencodeConfig.provider.oneflowbase_gateway.npm, '@ai-sdk/openai-compatible');
+  assert.equal(opencodeConfig.provider.oneflowbase_gateway.options.baseURL, 'http://127.0.0.1:41002/v1');
+  assert.equal(sanitizedEnvironment(opencode).OPENCODE_CONFIG_CONTENT, '<isolated-config>');
 });

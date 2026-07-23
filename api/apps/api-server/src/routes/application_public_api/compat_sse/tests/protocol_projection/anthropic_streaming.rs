@@ -71,7 +71,7 @@ async fn anthropic_waiting_internal_llm_tool_callback_is_explicitly_unsupported(
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -116,7 +116,7 @@ async fn anthropic_text_stream_follows_claude_messages_event_order() {
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -188,7 +188,7 @@ async fn d2_ac_004_anthropic_incomplete_uses_canonical_terminal_not_provider_fin
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -221,7 +221,7 @@ async fn anthropic_tool_use_wire_helper_serializes_input_json() {
             None,
         )
         .expect("LLM callback should map to Anthropic tool_use stream events");
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();

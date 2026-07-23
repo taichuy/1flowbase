@@ -50,6 +50,7 @@ function files() {
       readyManifest,
       codexExecutable: executable('codex'),
       claudeExecutable: executable('claude'),
+      opencodeExecutable: executable('opencode'),
     },
   };
 }
@@ -78,21 +79,25 @@ test('smoke writes sanitized evidence and removes both temporary client homes', 
             item: { type: 'agent_message', text: '1flowbase gateway sentinel ok sk-openai-secret' },
           });
         }
-        assert.equal(fs.existsSync(invocation.settingsPath), true);
-        return result({ type: 'result', result: '1flowbase gateway sentinel ok sk-anthropic-secret' });
+        if (path.basename(invocation.executable) === 'claude') {
+          assert.equal(fs.existsSync(invocation.settingsPath), true);
+          return result({ type: 'result', result: '1flowbase gateway sentinel ok sk-anthropic-secret' });
+        }
+        return result({ type: 'text', part: { text: '1flowbase gateway sentinel ok sk-openai-secret' } });
       },
     });
     assert.equal(summary.status, 'pass');
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
     for (const call of calls) assert.equal(fs.existsSync(path.dirname(call.invocation.cwd)), false);
 
-    const combined = ['config-manifest.json', 'codex.json', 'claude.json']
+    const combined = ['config-manifest.json', 'codex.json', 'claude.json', 'opencode.json']
       .map((name) => fs.readFileSync(path.join(fixture.outputRoot, name), 'utf8'))
       .join('\n');
     assert.doesNotMatch(combined, /sk-openai-secret|sk-anthropic-secret|parent-canary|real-openai-key/u);
     assert.match(combined, /<redacted-application-key>|<ephemeral-application-key>/u);
     assert.match(combined, /--ignore-user-config/u);
     assert.match(combined, /--bare/u);
+    assert.match(combined, /oneflowbase_gateway\/fixture-model/u);
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }

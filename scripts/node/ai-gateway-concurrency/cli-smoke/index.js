@@ -5,10 +5,20 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { manifestDigest, prepareEvidenceRoot, writeClientEvidence, writeConfigManifest } = require('./evidence');
-const { claudeEnvironment, codexEnvironment, sanitizedEnvironment } = require('./environment');
+const {
+  claudeEnvironment,
+  codexEnvironment,
+  opencodeEnvironment,
+  sanitizedEnvironment,
+} = require('./environment');
 const { normalizeInputs } = require('./inputs');
-const { claudeInvocation, codexInvocation, sanitizedInvocation } = require('./invocations');
-const { assertCompatibleResult, executeInvocation } = require('./runner');
+const {
+  claudeInvocation,
+  codexInvocation,
+  opencodeInvocation,
+  sanitizedInvocation,
+} = require('./invocations');
+const { assertCompatibleResult, executeInvocation, executeTmuxInvocation } = require('./runner');
 
 const DEFAULT_EVIDENCE_ROOT = path.resolve(
   __dirname,
@@ -31,11 +41,27 @@ function temporaryClientPaths(client) {
 
 async function runCliSmoke(rawOptions, dependencies = {}) {
   const inputs = normalizeInputs(rawOptions);
-  const outputRoot = prepareEvidenceRoot(dependencies.outputRoot || DEFAULT_EVIDENCE_ROOT);
-  const runChild = dependencies.executeInvocation || executeInvocation;
+  const runId = new Date().toISOString().replaceAll(/[:.]/gu, '-');
+  const defaultOutputRoot = rawOptions.tmuxTiming
+    ? path.resolve(__dirname, `../../../../tmp/test-governance/compatible-stream-e2e/${runId}`)
+    : DEFAULT_EVIDENCE_ROOT;
+  const outputRoot = prepareEvidenceRoot(dependencies.outputRoot || rawOptions.evidenceRoot || defaultOutputRoot);
+  const runChild = dependencies.executeInvocation || (rawOptions.tmuxTiming
+    ? (invocation, env, client) => executeTmuxInvocation(invocation, env, {
+      artifactDirectory: path.join(outputRoot, client),
+      markers: [rawOptions.firstMarker, rawOptions.secondMarker].filter(Boolean),
+      onFirstMarker: inputs.barrierReleaseUrl
+        ? async () => {
+          const response = await fetch(inputs.barrierReleaseUrl, { method: 'POST' });
+          if (!response.ok) throw new Error(`barrier release returned HTTP ${response.status}`);
+        }
+        : undefined,
+    })
+    : executeInvocation);
   const parentEnv = dependencies.parentEnv || process.env;
   const codexPaths = temporaryClientPaths('codex');
   const claudePaths = temporaryClientPaths('claude');
+  const opencodePaths = inputs.opencodeExecutable ? temporaryClientPaths('opencode') : null;
   const secrets = [inputs.manifest.openai.api_key, inputs.manifest.anthropic.api_key];
   try {
     const codexPlan = codexInvocation(
@@ -49,6 +75,9 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       claudePaths,
       inputs.manifest.anthropic
     );
+    const opencodePlan = inputs.opencodeExecutable
+      ? opencodeInvocation(inputs.opencodeExecutable, opencodePaths, inputs.manifest.openai)
+      : null;
     const codexEnv = codexEnvironment(parentEnv, codexPaths, inputs.manifest.openai.api_key);
     const claudeEnv = claudeEnvironment(
       parentEnv,
@@ -56,6 +85,14 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       inputs.manifest.gatewayBaseUrl,
       inputs.manifest.anthropic.api_key
     );
+    const opencodeEnv = opencodePlan
+      ? opencodeEnvironment(
+        parentEnv,
+        opencodePaths,
+        inputs.manifest.gatewayBaseUrl,
+        inputs.manifest.openai
+      )
+      : null;
     writeConfigManifest(outputRoot, {
       schema_version: '1flowbase.ai-gateway-cli-smoke-config/v1',
       ready_manifest: {
@@ -74,6 +111,12 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
           model: inputs.manifest.anthropic.model,
           api_key: '<ephemeral-application-key>',
         },
+        ...(opencodePlan ? {
+          opencode: {
+            invocation: sanitizedInvocation(opencodePlan),
+            environment: sanitizedEnvironment(opencodeEnv),
+          },
+        } : {}),
       },
       clients: {
         codex: { invocation: sanitizedInvocation(codexPlan), environment: sanitizedEnvironment(codexEnv) },
@@ -81,13 +124,23 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       },
     });
 
-    const codexResult = await runChild(codexPlan, codexEnv);
+    const codexResult = await runChild(codexPlan, codexEnv, 'codex');
     writeClientEvidence(outputRoot, 'codex', codexResult, secrets);
     const codexEventCount = assertCompatibleResult('codex', codexResult);
+    assertMarkerOrder('codex', codexResult, rawOptions);
 
-    const claudeResult = await runChild(claudePlan, claudeEnv);
+    const claudeResult = await runChild(claudePlan, claudeEnv, 'claude');
     writeClientEvidence(outputRoot, 'claude', claudeResult, secrets);
     const claudeEventCount = assertCompatibleResult('claude', claudeResult);
+    assertMarkerOrder('claude', claudeResult, rawOptions);
+
+    let opencodeEventCount = null;
+    if (opencodePlan) {
+      const opencodeResult = await runChild(opencodePlan, opencodeEnv, 'opencode');
+      writeClientEvidence(outputRoot, 'opencode', opencodeResult, secrets);
+      opencodeEventCount = assertCompatibleResult('opencode', opencodeResult);
+      assertMarkerOrder('opencode', opencodeResult, rawOptions);
+    }
 
     return {
       schema_version: '1flowbase.ai-gateway-cli-smoke-result/v1',
@@ -95,11 +148,26 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       evidence_root: outputRoot,
       codex_event_count: codexEventCount,
       claude_event_count: claudeEventCount,
+      opencode_event_count: opencodeEventCount,
     };
   } finally {
     fs.rmSync(codexPaths.root, { recursive: true, force: true });
     fs.rmSync(claudePaths.root, { recursive: true, force: true });
+    if (opencodePaths) fs.rmSync(opencodePaths.root, { recursive: true, force: true });
   }
+}
+
+function assertMarkerOrder(client, result, options) {
+  if (!options.firstMarker && !options.secondMarker) return;
+  if (!options.tmuxTiming || !options.firstMarker || !options.secondMarker) {
+    throw new Error('first and second markers require --tmux-timing together');
+  }
+  const first = result.pty?.markers?.[options.firstMarker];
+  const second = result.pty?.markers?.[options.secondMarker];
+  if (typeof first !== 'number' || typeof second !== 'number') {
+    throw new Error(`${client} PTY did not expose both streaming markers`);
+  }
+  if (second <= first) throw new Error(`${client} second streaming marker was not observed after the first`);
 }
 
 module.exports = { DEFAULT_EVIDENCE_ROOT, runCliSmoke, temporaryClientPaths };

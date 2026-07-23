@@ -155,7 +155,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_becomes_
     while let Some(event) = receiver.recv().await {
         events.push(event);
     }
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -229,7 +229,7 @@ async fn d2_ac_008_openai_chat_failed_terminal_with_partial_output_remains_error
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -284,7 +284,7 @@ async fn d2_ac_008_openai_responses_failed_terminal_with_partial_output_remains_
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -318,7 +318,7 @@ async fn d2_ac_008_openai_chat_incomplete_terminal_uses_length_and_done() {
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -348,7 +348,7 @@ async fn d2_ac_008_openai_responses_incomplete_terminal_uses_response_incomplete
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -372,7 +372,7 @@ async fn d2_ac_004_openai_chat_cancelled_terminal_is_error_without_done() {
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -395,7 +395,7 @@ async fn d2_ac_004_openai_responses_cancelled_terminal_is_failed_without_complet
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -426,7 +426,7 @@ async fn d2_ac_004_openai_waiting_terminal_is_adapter_unsupported_without_succes
     let mut chat =
         OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
     let chat_body = {
-        let response = completed_compatible_stream(
+        let response = test_projected_events_response(
             chat.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, 1, waiting.clone())),
         );
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -443,7 +443,7 @@ async fn d2_ac_004_openai_waiting_terminal_is_adapter_unsupported_without_succes
     assert!(!chat_body.contains("[DONE]"), "{chat_body}");
 
     let mut responses = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
-    let response = completed_compatible_stream(
+    let response = test_projected_events_response(
         responses.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, 1, waiting)),
     );
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)

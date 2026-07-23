@@ -1,6 +1,32 @@
 use super::*;
 use control_plane::ports::RuntimeEventCloseReason;
 
+#[tokio::test]
+async fn ac_002_compatible_turn_subscribes_before_execution_can_append() {
+    let runtime_events = Arc::new(SubscribeBeforeAppendRuntimeEventStream::new());
+    let (app, _) = test_app_with_runtime_event_stream(runtime_events.clone()).await;
+    let token = setup_published_app(&app, "Subscribe Before Execute Compatible App").await;
+
+    let response = post_json(
+        &app,
+        "/v1/chat/completions",
+        ("authorization", format!("Bearer {token}")),
+        openai_body(true),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    timeout(
+        Duration::from_secs(5),
+        to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("compatible stream should finish")
+    .unwrap();
+
+    assert!(runtime_events.append_observed());
+    assert!(!runtime_events.append_before_subscribe());
+}
+
 async fn wait_for_active_streaming_run(state: &ApiState) -> uuid::Uuid {
     timeout(Duration::from_secs(3), async {
         loop {
@@ -525,7 +551,7 @@ async fn compatible_streaming_routes_return_protocol_sse() {
 }
 
 #[tokio::test]
-async fn openai_chat_streaming_tool_continuation_resolves_callback_before_run_creation() {
+async fn ac_008_openai_chat_stale_tool_continuation_starts_a_new_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Streaming Tool Resume App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -568,12 +594,20 @@ async fn openai_chat_streaming_tool_continuation_resolves_callback_before_run_cr
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = timeout(
+        Duration::from_secs(5),
+        to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("stale Chat tool history should complete as a new streamed run")
+    .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]
-async fn openai_chat_nul_tool_continuation_resolves_callback_before_run_creation() {
+async fn ac_008_openai_chat_stale_nul_tool_continuation_starts_a_new_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Streaming NUL Tool Resume App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -616,16 +650,23 @@ async fn openai_chat_nul_tool_continuation_resolves_callback_before_run_creation
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = timeout(
+        Duration::from_secs(5),
+        to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("stale NUL tool history should complete as a new streamed run")
+    .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]
-async fn openai_responses_streaming_tool_continuation_resolves_callback_before_run_creation() {
+async fn ac_008_openai_responses_stale_tool_continuation_starts_a_new_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Streaming Tool Resume App").await;
     let before = flow_run_count(state.as_ref()).await;
-    let previous_response_id = "resp_33333333-3333-3333-3333-333333333333";
     let call_id = encode_openai_callback_tool_call_id(
         uuid::Uuid::from_u128(0x44444444444444444444444444444444),
         "call_inventory",
@@ -638,7 +679,6 @@ async fn openai_responses_streaming_tool_continuation_resolves_callback_before_r
         json!({
             "model": "provider/custom-model:latest",
             "stream": true,
-            "previous_response_id": previous_response_id,
             "input": [
                 {
                     "type": "function_call_output",
@@ -650,8 +690,16 @@ async fn openai_responses_streaming_tool_continuation_resolves_callback_before_r
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = timeout(
+        Duration::from_secs(5),
+        to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("stale Responses tool history should complete as a new streamed run")
+    .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("response.completed"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]

@@ -79,10 +79,6 @@ struct OpenAiToolResumeRequest {
     tool_results: Value,
 }
 
-struct OpenAiToolResumePlan {
-    initial_run: NativeRunResult,
-    command: ResumePublishedCallbackCommand,
-}
 #[utoipa::path(
     post,
     path = "/v1/chat/completions",
@@ -136,40 +132,44 @@ pub async fn create_chat_completion(
         .map(|_| "streaming".to_string());
     if let Some(resume) = openai_chat_tool_resume_request(&value)? {
         let callback_task_id = resume.callback_task_id;
-        if response_mode.as_deref() == Some("streaming") {
-            let plan = prepare_openai_tool_resume(
-                state.clone(),
-                &credential.token,
-                callback_task_id,
-                PublishedCallbackResumeSource::OpenAiChat,
-                resume.tool_results,
-            )
-            .await?;
-            let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
-                plan.initial_run.id,
-                callback_task_id,
-            );
-            return compat_sse::start_openai_chat_resume_stream(
-                state,
-                plan.initial_run,
-                model,
-                completion_id,
-                plan.command,
-            )
-            .await
-            .map_err(Into::into);
-        }
-        let run = resume_openai_tool_call(
-            state,
+        let command = openai_resume_command(
             &credential.token,
             callback_task_id,
             PublishedCallbackResumeSource::OpenAiChat,
             resume.tool_results,
-        )
-        .await?;
-        let completion_id =
-            compat_sse::openai_chat_completion_id_from_callback_task(run.id, callback_task_id);
-        return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
+            response_mode.clone(),
+        );
+        match compat_sse::prepare_compatible_resume(state.clone(), command).await {
+            Ok(plan) if response_mode.as_deref() == Some("streaming") => {
+                let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
+                    plan.initial_run.id,
+                    callback_task_id,
+                );
+                return compat_sse::start_openai_chat_resume_stream(
+                    state,
+                    plan.initial_run,
+                    model,
+                    completion_id,
+                    plan.command,
+                )
+                .await
+                .map_err(Into::into);
+            }
+            Ok(plan) => {
+                let run = execute_openai_tool_resume(state, plan.command).await?;
+                let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
+                    run.id,
+                    callback_task_id,
+                );
+                return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
+            }
+            Err(error)
+                if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
+            {
+                // Stale compatible tool markers are history and must start a fresh turn.
+            }
+            Err(error) => return Err(error.into()),
+        }
     }
     let translated = match translate_chat_completion_request(value) {
         Ok(translated) => translated,
@@ -353,45 +353,47 @@ async fn create_response_for_endpoint(
         .to_string();
     if endpoint == OpenAiResponsesEndpoint::Responses {
         if let Some(resume) = openai_responses_tool_resume_request(&value)? {
-            ensure_openai_responses_resume_matches_previous_response(
-                state.as_ref(),
-                previous_response_id.as_deref(),
-                resume.callback_task_id,
-            )
-            .await?;
-            if response_mode.as_deref() == Some("streaming") {
-                let plan = prepare_openai_tool_resume(
-                    state.clone(),
-                    &credential.token,
-                    resume.callback_task_id,
-                    PublishedCallbackResumeSource::OpenAiResponses,
-                    resume.tool_results,
-                )
-                .await?;
-                return compat_sse::start_openai_response_resume_stream(
-                    state,
-                    plan.initial_run,
-                    model,
-                    previous_response_id,
-                    plan.command,
-                )
-                .await
-                .map_err(Into::into);
-            }
-            let run = resume_openai_tool_call(
-                state,
+            let command = openai_resume_command(
                 &credential.token,
                 resume.callback_task_id,
                 PublishedCallbackResumeSource::OpenAiResponses,
                 resume.tool_results,
-            )
-            .await?;
-            return Ok(Json(to_openai_responses_response(
-                run,
-                model,
-                previous_response_id,
-            )?)
-            .into_response());
+                response_mode.clone(),
+            );
+            match compat_sse::prepare_compatible_resume(state.clone(), command).await {
+                Ok(plan) => {
+                    ensure_openai_responses_resume_matches_previous_response(
+                        state.as_ref(),
+                        previous_response_id.as_deref(),
+                        resume.callback_task_id,
+                    )
+                    .await?;
+                    if response_mode.as_deref() == Some("streaming") {
+                        return compat_sse::start_openai_response_resume_stream(
+                            state,
+                            plan.initial_run,
+                            model,
+                            previous_response_id,
+                            plan.command,
+                        )
+                        .await
+                        .map_err(Into::into);
+                    }
+                    let run = execute_openai_tool_resume(state, plan.command).await?;
+                    return Ok(Json(to_openai_responses_response(
+                        run,
+                        model,
+                        previous_response_id,
+                    )?)
+                    .into_response());
+                }
+                Err(error)
+                    if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
+                {
+                    // Stale compatible tool markers are translated as input to a new turn below.
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
     }
     let translated = match translate_response_request_with_context_and_previous(
@@ -537,7 +539,7 @@ async fn create_response_for_endpoint(
                                 "could not serialize OpenAI Compact response",
                             ))
                         })?;
-                        return compat_sse::completed_openai_response_stream(response)
+                        return compat_sse::openai_compact_sse_response(response)
                             .map_err(Into::into);
                     }
                     Ok(Json(response).into_response())
@@ -744,12 +746,9 @@ async fn create_native_run(
         .map_err(native::native_error)
 }
 
-async fn resume_openai_tool_call(
+async fn execute_openai_tool_resume(
     state: Arc<ApiState>,
-    bearer_token: &str,
-    callback_task_id: Uuid,
-    source: PublishedCallbackResumeSource,
-    tool_results: Value,
+    command: ResumePublishedCallbackCommand,
 ) -> Result<NativeRunResult, OpenAiRouteError> {
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
@@ -768,55 +767,26 @@ async fn resume_openai_tool_call(
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
             .with_last_used_cache(state.infrastructure.cache_store())
-            .resume_callback(ResumePublishedCallbackCommand {
-                bearer_token: bearer_token.to_string(),
-                target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
-                source,
-                response_payload: json!({ "tool_results": tool_results }),
-                response_mode: None,
-            })
+            .resume_callback(command)
             .await
             .map_err(native::service_error)?;
     Ok(result.run)
 }
 
-async fn prepare_openai_tool_resume(
-    state: Arc<ApiState>,
+fn openai_resume_command(
     bearer_token: &str,
     callback_task_id: Uuid,
     source: PublishedCallbackResumeSource,
     tool_results: Value,
-) -> Result<OpenAiToolResumePlan, OpenAiRouteError> {
-    let callback_task = state
-        .store
-        .get_published_callback_task(callback_task_id)
-        .await
-        .map_err(native::service_error)?
-        .ok_or_else(|| {
-            native::NativeApiError::new(
-                StatusCode::NOT_FOUND,
-                "callback_task",
-                "callback task was not found",
-            )
-        })?;
-    let initial_run = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .get_native_run(GetNativeRunCommand {
-            bearer_token: bearer_token.to_string(),
-            run_id: callback_task.flow_run_id,
-        })
-        .await
-        .map_err(native::native_error)?;
-    Ok(OpenAiToolResumePlan {
-        initial_run,
-        command: ResumePublishedCallbackCommand {
-            bearer_token: bearer_token.to_string(),
-            target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
-            source,
-            response_payload: json!({ "tool_results": tool_results }),
-            response_mode: Some("streaming".to_string()),
-        },
-    })
+    response_mode: Option<String>,
+) -> ResumePublishedCallbackCommand {
+    ResumePublishedCallbackCommand {
+        bearer_token: bearer_token.to_string(),
+        target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
+        source,
+        response_payload: json!({ "tool_results": tool_results }),
+        response_mode,
+    }
 }
 
 fn openai_chat_tool_resume_request(

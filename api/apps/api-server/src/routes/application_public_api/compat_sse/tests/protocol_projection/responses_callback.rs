@@ -34,7 +34,7 @@ async fn openai_responses_waiting_callback_is_explicitly_unsupported() {
         ),
     );
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -91,7 +91,7 @@ async fn openai_responses_waiting_internal_llm_tool_callback_is_explicitly_unsup
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();

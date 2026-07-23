@@ -1,6 +1,8 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -63,6 +65,155 @@ function executeInvocation(invocation, env, { spawnImpl = spawn, timeoutMs = DEF
   });
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
+
+function ptyMarkerTimeline(output, timing, markers) {
+  const outputBytes = Buffer.from(output);
+  let cursor = 0;
+  let elapsedMs = 0;
+  let visible = '';
+  const observed = Object.fromEntries(markers.map((marker) => [marker, null]));
+  for (const line of timing.split(/\r?\n/u)) {
+    const match = /^O\s+([0-9.]+)\s+(\d+)$/u.exec(line.trim());
+    if (!match) continue;
+    elapsedMs += Number(match[1]) * 1000;
+    const bytes = Number.parseInt(match[2], 10);
+    visible += outputBytes.subarray(cursor, cursor + bytes).toString('utf8');
+    cursor += bytes;
+    for (const marker of markers) {
+      if (observed[marker] === null && visible.includes(marker)) observed[marker] = elapsedMs;
+    }
+  }
+  return observed;
+}
+
+function spawnResult(executable, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options });
+    const stdout = boundedCollector(child.stdout);
+    const stderr = boundedCollector(child.stderr);
+    child.once('error', reject);
+    child.once('exit', (code, signal) => resolve({ code, signal, stdout: stdout(), stderr: stderr() }));
+  });
+}
+
+async function requireSuccess(executable, args, options) {
+  const result = await spawnResult(executable, args, options);
+  if (result.code !== 0) {
+    throw new Error(`${path.basename(executable)} exited with ${result.code}: ${result.stderr.text.trim()}`);
+  }
+  return result;
+}
+
+async function executeTmuxInvocation(
+  invocation,
+  env,
+  {
+    artifactDirectory,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    tmuxExecutable = 'tmux',
+    scriptExecutable = 'script',
+    markers = [],
+    onFirstMarker,
+  } = {}
+) {
+  if (!artifactDirectory) throw new Error('tmux invocation artifact directory is required');
+  fs.mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 });
+  const root = fs.mkdtempSync(path.join(artifactDirectory, '.tmux-'));
+  const ptyPath = path.join(root, 'pty.raw');
+  const timingPath = path.join(root, 'timing.raw');
+  const statusPath = path.join(root, 'status');
+  const wrapperPath = path.join(root, 'run.sh');
+  const socket = `oneflowbase-stream-${process.pid}-${path.basename(root)}`;
+  const session = 'compatible-stream';
+  const doneSignal = `${socket}-done`;
+  const releaseSignal = `${socket}-release`;
+  const command = [invocation.executable, ...invocation.args].map(shellQuote).join(' ');
+  let markerWatcher = null;
+  let firstMarkerReleased = false;
+  fs.writeFileSync(wrapperPath, [
+    '#!/bin/sh',
+    `${shellQuote(scriptExecutable)} -q -e -f -m advanced -O ${shellQuote(ptyPath)} -T ${shellQuote(timingPath)} -c ${shellQuote(command)} /dev/null`,
+    'status=$?',
+    `printf '%s\\n' "$status" > ${shellQuote(statusPath)}`,
+    `${shellQuote(tmuxExecutable)} -L ${shellQuote(socket)} wait-for -S ${shellQuote(doneSignal)}`,
+    `${shellQuote(tmuxExecutable)} -L ${shellQuote(socket)} wait-for ${shellQuote(releaseSignal)}`,
+    'exit "$status"',
+    '',
+  ].join('\n'), { mode: 0o700 });
+
+  const startedAt = new Date();
+  const startedNs = process.hrtime.bigint();
+  let timedOut = false;
+  try {
+    if (markers[0] && onFirstMarker) {
+      markerWatcher = fs.watch(root, () => {
+        if (firstMarkerReleased || !fs.existsSync(ptyPath)) return;
+        const visible = fs.readFileSync(ptyPath, 'utf8');
+        if (!visible.includes(markers[0])) return;
+        firstMarkerReleased = true;
+        Promise.resolve(onFirstMarker()).catch(() => {});
+      });
+    }
+    await requireSuccess(tmuxExecutable, ['-L', socket, 'start-server']);
+    for (const [name, value] of Object.entries(env)) {
+      await requireSuccess(tmuxExecutable, ['-L', socket, 'set-environment', '-g', name, value]);
+    }
+    await requireSuccess(tmuxExecutable, [
+      '-L', socket, 'new-session', '-d', '-s', session, '-c', invocation.cwd, wrapperPath,
+    ]);
+    const wait = spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', doneSignal]);
+    const timeout = new Promise((_, reject) => {
+      setTimeout(() => {
+        timedOut = true;
+        reject(new Error('tmux client timing invocation timed out'));
+      }, timeoutMs).unref();
+    });
+    await Promise.race([wait, timeout]);
+    const pane = await requireSuccess(tmuxExecutable, ['-L', socket, 'capture-pane', '-p', '-t', session]);
+    const stdoutText = fs.existsSync(ptyPath) ? fs.readFileSync(ptyPath, 'utf8') : pane.stdout.text;
+    const timingText = fs.existsSync(timingPath) ? fs.readFileSync(timingPath, 'utf8') : '';
+    const exitCode = fs.existsSync(statusPath)
+      ? Number.parseInt(fs.readFileSync(statusPath, 'utf8').trim(), 10)
+      : 1;
+    return {
+      started_at: startedAt.toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_ms: Number(process.hrtime.bigint() - startedNs) / 1e6,
+      exit_code: Number.isInteger(exitCode) ? exitCode : 1,
+      signal: null,
+      timed_out: false,
+      stdout: { text: stdoutText, bytes: Buffer.byteLength(stdoutText), overflow: false },
+      stderr: { text: pane.stderr.text, bytes: pane.stderr.bytes, overflow: pane.stderr.overflow },
+      pty: {
+        timing: timingText,
+        pane: pane.stdout.text,
+        markers: ptyMarkerTimeline(stdoutText, timingText, markers),
+      },
+    };
+  } catch (error) {
+    if (!timedOut) throw error;
+    return {
+      started_at: startedAt.toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_ms: Number(process.hrtime.bigint() - startedNs) / 1e6,
+      exit_code: null,
+      signal: 'SIGKILL',
+      timed_out: true,
+      stdout: { text: '', bytes: 0, overflow: false },
+      stderr: { text: error.message, bytes: Buffer.byteLength(error.message), overflow: false },
+      pty: { timing: '', pane: '' },
+    };
+  } finally {
+    markerWatcher?.close();
+    await spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', '-S', releaseSignal]).catch(() => {});
+    await spawnResult(tmuxExecutable, ['-L', socket, 'kill-server']).catch(() => {});
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 function parseJsonLines(text, client) {
   const lines = text.split(/\r?\n/u).filter((line) => line.trim() !== '');
   if (lines.length === 0) throw new Error(`${client} emitted no JSONL events`);
@@ -93,10 +244,20 @@ function assertCompatibleResult(client, result) {
     ? events.some((event) => event.type === 'item.completed'
       && event.item?.type === 'agent_message'
       && includesSentinel(event.item))
-    : events.some((event) => (event.type === 'assistant' || event.type === 'result')
-      && includesSentinel(event));
+    : client === 'claude'
+      ? events.some((event) => (event.type === 'assistant' || event.type === 'result')
+        && includesSentinel(event))
+      : events.some(includesSentinel);
   if (!compatible) throw new Error(`${client} sentinel response marker was not observed`);
   return events.length;
 }
 
-module.exports = { SENTINEL_RESPONSE, assertCompatibleResult, executeInvocation, parseJsonLines };
+module.exports = {
+  SENTINEL_RESPONSE,
+  assertCompatibleResult,
+  executeInvocation,
+  executeTmuxInvocation,
+  parseJsonLines,
+  ptyMarkerTimeline,
+  shellQuote,
+};

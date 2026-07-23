@@ -45,9 +45,62 @@ impl AnthropicStreamMapper {
     pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
-        envelope: RuntimeEventEnvelope,
+        event: impl Into<CompatibleRuntimeEventView>,
     ) -> Vec<Result<Event, Infallible>> {
-        let is_answer_presentation_delta = is_answer_presentation_delta(&envelope);
+        let event = event.into();
+        let envelope = event.envelope();
+        let visible_text = envelope
+            .text
+            .as_deref()
+            .is_some_and(|text| !text.is_empty());
+        match event.answer_delta() {
+            Some(CompatibleAnswerDeltaKind::Reasoning) if visible_text => {
+                self.emitted_reasoning_delta = true;
+                return self.anthropic_delta_events(
+                    "reasoning_delta",
+                    envelope.text.clone().unwrap_or_default(),
+                );
+            }
+            Some(CompatibleAnswerDeltaKind::Text) if visible_text => {
+                self.emitted_text_delta = true;
+                let mut events =
+                    self.ensure_anthropic_content_block(AnthropicContentBlockKind::Text);
+                let (event_name, payload) = anthropic_delta_payload(
+                    self.active_content_index(),
+                    "text_delta",
+                    envelope.text.clone().unwrap_or_default(),
+                )
+                .expect("text_delta should map to Anthropic text_delta");
+                events.push(event_json_sse(event_name, payload));
+                return events;
+            }
+            _ => {}
+        }
+        match event.terminal() {
+            Some(CompatibleTerminalKind::Finished) => {
+                self.terminal_stop_reason = AnthropicMessageStopReason::EndTurn;
+                return self.anthropic_terminal_events(initial_run, &envelope.payload);
+            }
+            Some(CompatibleTerminalKind::Incomplete) => {
+                self.terminal_stop_reason = AnthropicMessageStopReason::MaxTokens;
+                return self.anthropic_terminal_events(initial_run, &envelope.payload);
+            }
+            Some(CompatibleTerminalKind::WaitingCallback) => {
+                return self
+                    .anthropic_tool_use_events(&envelope.payload, initial_run.usage.as_ref())
+                    .unwrap_or_else(required_action_not_supported_anthropic_sse);
+            }
+            Some(CompatibleTerminalKind::WaitingHuman) => {
+                return required_action_not_supported_anthropic_sse();
+            }
+            Some(CompatibleTerminalKind::Failed) => {
+                return self.anthropic_failed_events(initial_run, &envelope.payload);
+            }
+            Some(CompatibleTerminalKind::Cancelled) => {
+                return self.anthropic_cancelled_events();
+            }
+            None => {}
+        }
         match envelope.event_type.as_str() {
             "flow_started" => vec![event_json_sse(
                 "message_start",
@@ -64,51 +117,8 @@ impl AnthropicStreamMapper {
                     }
                 }),
             )],
-            "reasoning_delta"
-                if is_answer_presentation_delta
-                    && envelope
-                        .text
-                        .as_deref()
-                        .is_some_and(|text| !text.is_empty()) =>
-            {
-                self.emitted_reasoning_delta = true;
-                self.anthropic_delta_events("reasoning_delta", envelope.text.unwrap_or_default())
-            }
-            "text_delta"
-                if is_answer_presentation_delta
-                    && envelope
-                        .text
-                        .as_deref()
-                        .is_some_and(|text| !text.is_empty()) =>
-            {
-                self.emitted_text_delta = true;
-                let mut events =
-                    self.ensure_anthropic_content_block(AnthropicContentBlockKind::Text);
-                let (event_name, payload) = anthropic_delta_payload(
-                    self.active_content_index(),
-                    "text_delta",
-                    envelope.text.unwrap_or_default(),
-                )
-                .expect("text_delta should map to Anthropic text_delta");
-                events.push(event_json_sse(event_name, payload));
-                events
-            }
             "text_delta" | "reasoning_delta" => Vec::new(),
             "finish" => Vec::new(),
-            "flow_finished" => {
-                self.terminal_stop_reason = AnthropicMessageStopReason::EndTurn;
-                self.anthropic_terminal_events(initial_run, &envelope.payload)
-            }
-            "flow_incomplete" => {
-                self.terminal_stop_reason = AnthropicMessageStopReason::MaxTokens;
-                self.anthropic_terminal_events(initial_run, &envelope.payload)
-            }
-            "waiting_callback" => self
-                .anthropic_tool_use_events(&envelope.payload, initial_run.usage.as_ref())
-                .unwrap_or_else(required_action_not_supported_anthropic_sse),
-            "waiting_human" => required_action_not_supported_anthropic_sse(),
-            "flow_failed" => self.anthropic_failed_events(initial_run, &envelope.payload),
-            "flow_cancelled" => self.anthropic_cancelled_events(),
             _ => Vec::new(),
         }
     }

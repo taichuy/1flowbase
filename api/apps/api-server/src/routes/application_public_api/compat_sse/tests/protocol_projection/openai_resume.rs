@@ -114,7 +114,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_returns_un
     while let Some(event) = receiver.recv().await {
         events.push(event);
     }
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -173,7 +173,7 @@ async fn openai_chat_waiting_internal_llm_tool_callback_is_explicitly_unsupporte
         ),
     ));
 
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -400,7 +400,7 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_unsupporte
     while let Some(event) = receiver.recv().await {
         events.push(event);
     }
-    let response = completed_compatible_stream(events);
+    let response = test_projected_events_response(events);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();

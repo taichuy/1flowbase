@@ -88,10 +88,17 @@ function readReadyManifest(filePath) {
 }
 
 function normalizeInputs(options) {
+  const barrierReleaseUrl = options.barrierReleaseUrl
+    ? loopbackUrl(options.barrierReleaseUrl, 'barrier release URL').href
+    : null;
   return {
     manifest: readReadyManifest(options.readyManifest),
     codexExecutable: requireFile(options.codexExecutable, 'codex executable', true),
     claudeExecutable: requireFile(options.claudeExecutable, 'claude executable', true),
+    opencodeExecutable: options.opencodeExecutable
+      ? requireFile(options.opencodeExecutable, 'opencode executable', true)
+      : null,
+    barrierReleaseUrl,
   };
 }
 

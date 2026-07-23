@@ -1,35 +1,18 @@
 use super::*;
 
-pub(super) async fn send_compatible_runtime_event_stream<F>(
+pub(super) async fn send_subscribed_compatible_runtime_event_stream<F>(
     state: Arc<ApiState>,
     initial_run: NativeRunResult,
     sse_projection: &'static str,
     from_sequence: Option<i64>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    mut subscription: control_plane::ports::RuntimeEventSubscription,
     sender: mpsc::Sender<Result<Event, Infallible>>,
     mut mapper: F,
 ) where
     F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>,
 {
     let mut stats = CompatibleStreamStats::default();
-    let stream = state.runtime_event_stream.clone();
-    let Ok(mut subscription) = stream.subscribe(initial_run.id, from_sequence).await else {
-        warn!(
-            flow_run_id = %initial_run.id,
-            application_id = %initial_run.application_id,
-            "failed to subscribe compatible public API runtime event stream"
-        );
-        log_compatible_sse_closed(
-            sse_projection,
-            &initial_run,
-            &stats,
-            "subscribe_failed",
-            "subscribe",
-            false,
-        );
-        return;
-    };
-
     let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
     let mut last_forwarded_durable_sequence = durable_sequence_for_ignored_waiting_callback(
         state.as_ref(),
@@ -247,6 +230,40 @@ pub(super) async fn send_compatible_runtime_event_stream<F>(
             );
         }
     }
+}
+
+#[cfg(test)]
+pub(super) async fn send_compatible_runtime_event_stream<F>(
+    state: Arc<ApiState>,
+    initial_run: NativeRunResult,
+    sse_projection: &'static str,
+    from_sequence: Option<i64>,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    sender: mpsc::Sender<Result<Event, Infallible>>,
+    mapper: F,
+) where
+    F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>,
+{
+    let stream = state.runtime_event_stream.clone();
+    let Ok(subscription) = stream.subscribe(initial_run.id, from_sequence).await else {
+        warn!(
+            flow_run_id = %initial_run.id,
+            application_id = %initial_run.application_id,
+            "failed to subscribe compatible public API runtime event stream"
+        );
+        return;
+    };
+    send_subscribed_compatible_runtime_event_stream(
+        state,
+        initial_run,
+        sse_projection,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        subscription,
+        sender,
+        mapper,
+    )
+    .await;
 }
 
 async fn durable_sequence_for_ignored_waiting_callback(
@@ -618,14 +635,14 @@ pub(super) async fn append_compatible_resume_terminal_event(
     let Some(event) = terminal_runtime_event_from_native_run(run) else {
         return;
     };
-    let close_reason = match run.status {
-        NativeRunStatus::Succeeded => control_plane::ports::RuntimeEventCloseReason::Finished,
-        NativeRunStatus::Incomplete => control_plane::ports::RuntimeEventCloseReason::Incomplete,
-        NativeRunStatus::Failed => control_plane::ports::RuntimeEventCloseReason::Failed,
-        NativeRunStatus::Cancelled => control_plane::ports::RuntimeEventCloseReason::Cancelled,
-        NativeRunStatus::Waiting => control_plane::ports::RuntimeEventCloseReason::WaitingCallback,
+    match run.status {
+        NativeRunStatus::Succeeded
+        | NativeRunStatus::Incomplete
+        | NativeRunStatus::Failed
+        | NativeRunStatus::Cancelled
+        | NativeRunStatus::Waiting => {}
         NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running => return,
-    };
+    }
     let payload = RuntimeEventPayload {
         event_type: event.event_type,
         source: event.source,
@@ -634,10 +651,9 @@ pub(super) async fn append_compatible_resume_terminal_event(
         trace_visible: event.trace_visible,
         payload: event.payload,
     };
-    let _ = state.runtime_event_stream.append(run.id, payload).await;
     let _ = state
         .runtime_event_stream
-        .close_run(run.id, close_reason)
+        .append_terminal_if_missing_and_close(run.id, payload)
         .await;
 }
 

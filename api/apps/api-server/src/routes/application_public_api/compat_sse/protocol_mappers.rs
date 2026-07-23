@@ -28,25 +28,24 @@ impl OpenAiChatStreamMapper {
     pub(super) fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
-        envelope: RuntimeEventEnvelope,
+        event: impl Into<CompatibleRuntimeEventView>,
     ) -> Vec<Result<Event, Infallible>> {
-        let is_answer_presentation_delta = is_answer_presentation_delta(&envelope);
-        match envelope.event_type.as_str() {
-            "reasoning_delta"
-                if is_answer_presentation_delta
-                    && envelope
-                        .text
-                        .as_deref()
-                        .is_some_and(|text| !text.is_empty()) =>
+        let event = event.into();
+        let envelope = event.envelope();
+        match event.answer_delta() {
+            Some(CompatibleAnswerDeltaKind::Reasoning)
+                if envelope
+                    .text
+                    .as_deref()
+                    .is_some_and(|text| !text.is_empty()) =>
             {
                 self.emitted_reasoning_delta = true;
             }
-            "text_delta"
-                if is_answer_presentation_delta
-                    && envelope
-                        .text
-                        .as_deref()
-                        .is_some_and(|text| !text.is_empty()) =>
+            Some(CompatibleAnswerDeltaKind::Text)
+                if envelope
+                    .text
+                    .as_deref()
+                    .is_some_and(|text| !text.is_empty()) =>
             {
                 self.emitted_text_delta = true;
             }
@@ -55,8 +54,8 @@ impl OpenAiChatStreamMapper {
 
         let terminal_deltas = if self.terminal_answer_fallback
             && matches!(
-                envelope.event_type.as_str(),
-                "flow_finished" | "flow_incomplete"
+                event.terminal(),
+                Some(CompatibleTerminalKind::Finished | CompatibleTerminalKind::Incomplete)
             ) {
             terminal_answer_deltas_from_run_or_payload(initial_run, &envelope.payload)
         } else {
@@ -99,7 +98,7 @@ impl OpenAiChatStreamMapper {
             initial_run,
             &self.model,
             &self.chat_completion_id,
-            envelope,
+            event.into_envelope(),
         ));
         events
     }
@@ -187,12 +186,13 @@ impl OpenAiResponseStreamMapper {
     pub(super) fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
-        envelope: RuntimeEventEnvelope,
+        event: impl Into<CompatibleRuntimeEventView>,
     ) -> Vec<Result<Event, Infallible>> {
-        let is_answer_presentation_delta = is_answer_presentation_delta(&envelope);
+        let event = event.into();
+        let envelope = event.envelope();
         let mut events = Vec::new();
-        match envelope.event_type.as_str() {
-            "reasoning_delta" if is_answer_presentation_delta => {
+        match event.answer_delta() {
+            Some(CompatibleAnswerDeltaKind::Reasoning) => {
                 self.open_output_item(
                     initial_run,
                     OpenAiResponseOutputItemKind::Reasoning,
@@ -203,7 +203,7 @@ impl OpenAiResponseStreamMapper {
                     self.emitted_reasoning_delta = true;
                 }
             }
-            "text_delta" if is_answer_presentation_delta => {
+            Some(CompatibleAnswerDeltaKind::Text) => {
                 self.open_output_item(
                     initial_run,
                     OpenAiResponseOutputItemKind::Message,
@@ -219,8 +219,8 @@ impl OpenAiResponseStreamMapper {
 
         let terminal_deltas = if self.terminal_answer_fallback
             && matches!(
-                envelope.event_type.as_str(),
-                "flow_finished" | "flow_incomplete"
+                event.terminal(),
+                Some(CompatibleTerminalKind::Finished | CompatibleTerminalKind::Incomplete)
             ) {
             terminal_answer_deltas_from_run_or_payload(initial_run, &envelope.payload)
         } else {
@@ -260,22 +260,14 @@ impl OpenAiResponseStreamMapper {
                 _ => {}
             }
         }
-        if matches!(
-            envelope.event_type.as_str(),
-            "flow_finished"
-                | "flow_incomplete"
-                | "flow_failed"
-                | "flow_cancelled"
-                | "waiting_callback"
-                | "waiting_human"
-        ) {
+        if event.terminal().is_some() {
             self.close_output_item(initial_run, &mut events);
         }
         events.extend(openai_response_runtime_event_to_sse(
             initial_run,
             &self.model,
             self.previous_response_id.as_deref(),
-            envelope,
+            event.into_envelope(),
         ));
         events
     }
@@ -806,6 +798,7 @@ pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
     (!blocks.is_empty()).then_some(blocks)
 }
 
+#[cfg(test)]
 pub(super) fn anthropic_completed_run_to_sse(
     run: &NativeRunResult,
     model: &str,
@@ -832,6 +825,7 @@ pub(super) fn anthropic_completed_run_to_sse(
     events
 }
 
+#[cfg(test)]
 fn terminal_answer_delta_to_runtime_event(
     run: &NativeRunResult,
     sequence: i64,
@@ -858,6 +852,7 @@ fn terminal_answer_delta_to_runtime_event(
     RuntimeEventEnvelope::new(run.id, sequence, payload)
 }
 
+#[cfg(test)]
 fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
     let action = run.required_action.as_ref()?;
     Some(json!({

@@ -23,7 +23,10 @@ use control_plane::ports::{
     RuntimeEventTrimPolicy,
 };
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use time::OffsetDateTime;
 use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
@@ -36,6 +39,100 @@ pub(super) struct DropTerminalRuntimeEventStream {
 
 pub(super) struct NeverCloseDropTerminalRuntimeEventStream {
     inner: DropTerminalRuntimeEventStream,
+}
+
+pub(super) struct SubscribeBeforeAppendRuntimeEventStream {
+    inner: LocalRuntimeEventStream,
+    subscribed: AtomicBool,
+    append_observed: AtomicBool,
+    append_before_subscribe: AtomicBool,
+}
+
+impl SubscribeBeforeAppendRuntimeEventStream {
+    pub(super) fn new() -> Self {
+        Self {
+            inner: LocalRuntimeEventStream::new(),
+            subscribed: AtomicBool::new(false),
+            append_observed: AtomicBool::new(false),
+            append_before_subscribe: AtomicBool::new(false),
+        }
+    }
+
+    pub(super) fn append_observed(&self) -> bool {
+        self.append_observed.load(Ordering::SeqCst)
+    }
+
+    pub(super) fn append_before_subscribe(&self) -> bool {
+        self.append_before_subscribe.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl RuntimeEventStream for SubscribeBeforeAppendRuntimeEventStream {
+    async fn open_run(
+        &self,
+        run_id: uuid::Uuid,
+        policy: RuntimeEventStreamPolicy,
+    ) -> anyhow::Result<()> {
+        self.inner.open_run(run_id, policy).await
+    }
+
+    async fn append(
+        &self,
+        run_id: uuid::Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<RuntimeEventEnvelope> {
+        self.append_observed.store(true, Ordering::SeqCst);
+        if !self.subscribed.load(Ordering::SeqCst) {
+            self.append_before_subscribe.store(true, Ordering::SeqCst);
+        }
+        self.inner.append(run_id, event).await
+    }
+
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: uuid::Uuid,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome> {
+        self.append_observed.store(true, Ordering::SeqCst);
+        if !self.subscribed.load(Ordering::SeqCst) {
+            self.append_before_subscribe.store(true, Ordering::SeqCst);
+        }
+        self.inner
+            .append_terminal_if_missing_and_close(run_id, event)
+            .await
+    }
+
+    async fn subscribe(
+        &self,
+        run_id: uuid::Uuid,
+        from_sequence: Option<i64>,
+    ) -> anyhow::Result<RuntimeEventSubscription> {
+        let subscription = self.inner.subscribe(run_id, from_sequence).await?;
+        self.subscribed.store(true, Ordering::SeqCst);
+        Ok(subscription)
+    }
+
+    async fn replay(
+        &self,
+        run_id: uuid::Uuid,
+        from_sequence: Option<i64>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<RuntimeEventEnvelope>> {
+        self.inner.replay(run_id, from_sequence, limit).await
+    }
+
+    async fn close_run(
+        &self,
+        run_id: uuid::Uuid,
+        reason: RuntimeEventCloseReason,
+    ) -> anyhow::Result<()> {
+        self.inner.close_run(run_id, reason).await
+    }
+
+    async fn trim(&self, run_id: uuid::Uuid, policy: RuntimeEventTrimPolicy) -> anyhow::Result<()> {
+        self.inner.trim(run_id, policy).await
+    }
 }
 
 impl DropTerminalRuntimeEventStream {
