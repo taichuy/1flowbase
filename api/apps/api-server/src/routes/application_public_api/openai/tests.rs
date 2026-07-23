@@ -60,17 +60,21 @@ fn d2_ac_001_openai_malformed_json_uses_the_endpoint_protocol_and_safe_receipt()
 
 #[test]
 fn openai_response_projects_native_tool_calls() {
+    let callback_task_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
     let run = NativeRunResult {
         id: Uuid::nil(),
         application_id: Uuid::nil(),
         api_key_id: Uuid::nil(),
         publication_version_id: Uuid::nil(),
-        status: NativeRunStatus::Succeeded,
+        status: NativeRunStatus::Waiting,
         node_input_payload: json!({}),
         metadata: json!({}),
         answer: None,
         answer_segments: None,
-        required_action: None,
+        required_action: Some(NativeRequiredAction {
+            action_type: "submit_tool_outputs".to_string(),
+            payload: json!({ "callback_task_id": callback_task_id, "callback_kind": "llm_tool_calls" }),
+        }),
         tool_calls: Some(json!([
             {
                 "id": "call_123",
@@ -89,7 +93,7 @@ fn openai_response_projects_native_tool_calls() {
             "provider/model".into(),
             "chatcmpl-test-tool-call".to_string(),
         )
-        .expect("succeeded run should project"),
+        .expect("waiting external tool call should project"),
     )
     .expect("openai response serializes");
 
@@ -149,7 +153,7 @@ fn openai_response_filters_internal_visible_llm_tool_calls() {
     .expect("openai chat response serializes");
     let responses_payload = serde_json::to_value(
         to_openai_responses_response(run, "provider/model".into(), None)
-            .expect("succeeded run should project"),
+            .expect("waiting external tool call should project"),
     )
     .expect("openai responses object serializes");
 
@@ -230,7 +234,7 @@ fn openai_responses_response_projects_native_tool_calls_with_encoded_call_id() {
         application_id: Uuid::nil(),
         api_key_id: Uuid::nil(),
         publication_version_id: Uuid::nil(),
-        status: NativeRunStatus::Succeeded,
+        status: NativeRunStatus::Waiting,
         node_input_payload: json!({}),
         metadata: json!({}),
         answer: Some("".to_string()),
@@ -253,7 +257,7 @@ fn openai_responses_response_projects_native_tool_calls_with_encoded_call_id() {
 
     let payload = serde_json::to_value(
         to_openai_responses_response(run, "provider/model".into(), Some("resp_previous".into()))
-            .expect("succeeded run should project"),
+            .expect("waiting external tool call should project"),
     )
     .expect("responses object serializes");
 
@@ -344,8 +348,8 @@ fn d2_ac_004_openai_blocking_terminal_status_matrix() {
 }
 
 #[test]
-fn d2_ac_007_openai_continuation_inputs_are_explicitly_unsupported() {
-    let chat_error =
+fn openai_continuation_inputs_are_translated_to_native() {
+    let chat =
         control_plane::application_public_api::compat::openai::translate_chat_completion_request(
             json!({
                 "model": "1flowbase",
@@ -353,21 +357,15 @@ fn d2_ac_007_openai_continuation_inputs_are_explicitly_unsupported() {
                 "tools": [{"type": "function", "function": {"name": "lookup"}}]
             }),
         )
-        .expect_err("tool continuation must not enter a Native run");
-    assert!(chat_error.report.has_decision(
-        "$.tools",
-        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported,
-    ));
+        .expect("tool definitions should enter a Native run");
+    assert_eq!(chat.request.inputs.as_value()["tools"][0]["name"], "lookup");
 
-    let responses_error =
+    let responses =
         control_plane::application_public_api::compat::openai::translate_response_request(json!({
             "model": "1flowbase",
             "input": "continue",
             "previous_response_id": "resp_11111111-1111-1111-1111-111111111111"
         }))
-        .expect_err("previous_response_id has no D2 canonical owner");
-    assert!(responses_error.report.has_decision(
-        "$.previous_response_id",
-        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported,
-    ));
+        .expect("previous_response_id should be resolved by the route");
+    assert_eq!(responses.request.query, "continue");
 }

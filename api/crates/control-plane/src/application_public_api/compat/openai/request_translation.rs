@@ -4,10 +4,11 @@ use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromp
 use serde_json::{Map, Value};
 
 use super::{
-    chat_max_output_tokens, classify_response_operation, openai_message_content,
-    reject_unknown_chat_fields, reject_unknown_response_fields, response_max_output_tokens,
-    response_stream_mode, responses_input_to_native_run_input, system_from_parts,
-    validate_chat_message_fields, validate_responses_input, OpenAiCompatError,
+    chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
+    openai_reasoning, reject_unknown_chat_fields, reject_unknown_response_fields,
+    response_max_output_tokens, response_stream_mode, responses_input_to_native_run_input,
+    responses_previous_history, system_from_parts, validate_chat_message_fields,
+    validate_responses_input, OpenAiCompatError, OpenAiPreviousResponseContext,
     OpenAiResponsesRequestContext,
 };
 use crate::application_public_api::native::{
@@ -76,13 +77,15 @@ pub fn translate_chat_completion_request(
         let content =
             openai_message_content(message).map_err(|error| error.with_report(report.clone()))?;
         let content_path = format!("$.messages[{index}].content");
-        report.record(
-            &content_path,
-            Some("$.query,$.history,$.system"),
-            TranslationDecisionKind::Normalized,
-            None,
-            TranslationSafeRepresentation::Redacted,
-        );
+        if !message.get("content").is_none_or(Value::is_null) {
+            report.record(
+                &content_path,
+                Some("$.query,$.history,$.system"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+        }
         if index == last_user_index {
             continue;
         }
@@ -95,6 +98,13 @@ pub fn translate_chat_completion_request(
         let mut history_entry = serde_json::json!({ "role": role, "content": content.text });
         if let Some(content_blocks) = content.content_blocks {
             history_entry["content_blocks"] = content_blocks;
+        }
+        if let Some(tool_calls) = message.get("tool_calls").filter(|value| value.is_array()) {
+            history_entry["tool_calls"] = super::openai_chat_history_tool_calls(tool_calls);
+        }
+        if let Some(tool_call_id) = message.get("tool_call_id").and_then(Value::as_str) {
+            history_entry["tool_call_id"] =
+                Value::String(super::openai_chat_history_tool_call_id(tool_call_id));
         }
         history.push(history_entry);
     }
@@ -158,6 +168,7 @@ pub fn translate_chat_completion_request(
     let metadata = openai_metadata(object, &mut report)?;
     let execution = native_execution(
         chat_max_output_tokens(object, &mut report)?,
+        openai_reasoning(object, true, &mut report)?,
         NativeExecutionOperation::Generate(
             crate::application_public_api::run_service::GenerateExecutionProfile::Standard,
         ),
@@ -169,7 +180,7 @@ pub fn translate_chat_completion_request(
             .into_iter()
             .collect(),
         model: Some(model),
-        inputs: NativeObject::default(),
+        inputs: openai_inputs(object, true, &mut report)?,
         history,
         attachments: Vec::new(),
         conversation,
@@ -198,6 +209,14 @@ pub fn translate_response_request_with_context(
     request: Value,
     context: OpenAiResponsesRequestContext,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
+    translate_response_request_with_context_and_previous(request, context, None)
+}
+
+pub fn translate_response_request_with_context_and_previous(
+    request: Value,
+    context: OpenAiResponsesRequestContext,
+    previous_response: Option<OpenAiPreviousResponseContext>,
+) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let object = openai_request_object(&request, &mut report)?;
     reject_unknown_response_fields(object, &mut report)?;
@@ -211,7 +230,8 @@ pub fn translate_response_request_with_context(
     let input_mapping = responses_input_to_native_run_input(input, is_v2_compaction)
         .map_err(|error| error.with_report(report.clone()))?;
     let query = input_mapping.query;
-    let history = input_mapping.history;
+    let mut history = responses_previous_history(previous_response.as_ref());
+    history.extend(input_mapping.history);
     let instructions = match object.get("instructions") {
         Some(Value::String(value)) if !value.trim().is_empty() => {
             report.record(
@@ -255,14 +275,37 @@ pub fn translate_response_request_with_context(
     );
 
     let response_mode = response_stream_mode(object, &mut report)?;
-    let conversation = openai_conversation(object, &mut report)?;
+    let mut conversation = openai_conversation(object, &mut report)?;
+    if conversation
+        .as_value()
+        .as_object()
+        .is_some_and(Map::is_empty)
+    {
+        if let Some(previous) = previous_response.as_ref() {
+            let mut inherited = Map::new();
+            if let Some(user) = previous.external_user.as_ref() {
+                inherited.insert("user".to_string(), Value::String(user.clone()));
+            }
+            if let Some(conversation_id) = previous.external_conversation_id.as_ref() {
+                inherited.insert(
+                    "conversation_id".to_string(),
+                    Value::String(conversation_id.clone()),
+                );
+            }
+            conversation = NativeObject::from_map(inherited);
+        }
+    }
     let metadata = openai_metadata(object, &mut report)?;
-    let execution = native_execution(response_max_output_tokens(object, &mut report)?, operation);
+    let execution = native_execution(
+        response_max_output_tokens(object, &mut report)?,
+        openai_reasoning(object, false, &mut report)?,
+        operation,
+    );
     let request = NativeRunRequest {
         query,
         system: system.map(NativePromptBlock::text).into_iter().collect(),
         model: Some(model),
-        inputs: NativeObject::default(),
+        inputs: openai_inputs(object, false, &mut report)?,
         history,
         attachments: Vec::new(),
         conversation,
@@ -507,12 +550,13 @@ fn openai_metadata(
 
 fn native_execution(
     max_output_tokens: Option<u64>,
+    reasoning: Option<crate::application_public_api::native::NativeReasoningParameters>,
     operation: NativeExecutionOperation,
 ) -> NativeExecution {
-    let mut execution = max_output_tokens
-        .and_then(NonZeroU64::new)
-        .map(NativeExecution::with_max_output_tokens)
-        .unwrap_or_default();
+    let mut execution = NativeExecution::with_model_parameters(
+        max_output_tokens.and_then(NonZeroU64::new),
+        reasoning,
+    );
     execution.set_execution_operation(operation);
     execution
 }

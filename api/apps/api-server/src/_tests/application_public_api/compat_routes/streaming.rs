@@ -525,7 +525,7 @@ async fn compatible_streaming_routes_return_protocol_sse() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_chat_streaming_tool_continuation_is_rejected_before_run_creation() {
+async fn openai_chat_streaming_tool_continuation_resolves_callback_before_run_creation() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Streaming Tool Resume App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -568,14 +568,12 @@ async fn d2_ac_007_openai_chat_streaming_tool_continuation_is_rejected_before_ru
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_chat_nul_tool_continuation_is_rejected_before_run_creation() {
+async fn openai_chat_nul_tool_continuation_resolves_callback_before_run_creation() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Streaming NUL Tool Resume App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -618,14 +616,12 @@ async fn d2_ac_007_openai_chat_nul_tool_continuation_is_rejected_before_run_crea
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_responses_streaming_tool_continuation_is_rejected_before_run_creation() {
+async fn openai_responses_streaming_tool_continuation_resolves_callback_before_run_creation() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Streaming Tool Resume App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -654,10 +650,7 @@ async fn d2_ac_007_openai_responses_streaming_tool_continuation_is_rejected_befo
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
-    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

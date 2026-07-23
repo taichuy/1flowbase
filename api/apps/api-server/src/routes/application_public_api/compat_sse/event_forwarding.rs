@@ -611,6 +611,36 @@ async fn send_compatible_sse_events(
     true
 }
 
+pub(super) async fn append_compatible_resume_terminal_event(
+    state: &ApiState,
+    run: &NativeRunResult,
+) {
+    let Some(event) = terminal_runtime_event_from_native_run(run) else {
+        return;
+    };
+    let close_reason = match run.status {
+        NativeRunStatus::Succeeded => control_plane::ports::RuntimeEventCloseReason::Finished,
+        NativeRunStatus::Incomplete => control_plane::ports::RuntimeEventCloseReason::Incomplete,
+        NativeRunStatus::Failed => control_plane::ports::RuntimeEventCloseReason::Failed,
+        NativeRunStatus::Cancelled => control_plane::ports::RuntimeEventCloseReason::Cancelled,
+        NativeRunStatus::Waiting => control_plane::ports::RuntimeEventCloseReason::WaitingCallback,
+        NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running => return,
+    };
+    let payload = RuntimeEventPayload {
+        event_type: event.event_type,
+        source: event.source,
+        durability: event.durability,
+        persist_required: event.persist_required,
+        trace_visible: event.trace_visible,
+        payload: event.payload,
+    };
+    let _ = state.runtime_event_stream.append(run.id, payload).await;
+    let _ = state
+        .runtime_event_stream
+        .close_run(run.id, close_reason)
+        .await;
+}
+
 struct CompatibleTerminalFallback<'a, F> {
     state: &'a ApiState,
     initial_run: &'a NativeRunResult,

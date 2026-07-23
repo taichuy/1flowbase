@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 extern crate self as api_server;
 
 pub mod app_state;

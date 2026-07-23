@@ -154,7 +154,7 @@ async fn openai_responses_accepts_root_endpoint_for_plain_base_url_clients() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_responses_rejects_previous_response_id_before_creating_a_run() {
+async fn openai_responses_resolves_previous_response_id_before_creating_a_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Unsupported Continuation App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -169,16 +169,12 @@ async fn d2_ac_007_openai_responses_rejects_previous_response_id_before_creating
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
-    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_responses_treats_malformed_previous_response_id_as_unsupported_before_lookup(
-) {
+async fn openai_responses_rejects_malformed_previous_response_id_before_lookup() {
     let app = test_app().await;
     let token = setup_published_app(&app, "OpenAI Responses Invalid Previous App").await;
     let mut body = responses_body(false);
@@ -195,11 +191,11 @@ async fn d2_ac_007_openai_responses_treats_malformed_previous_response_id_as_uns
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let payload = response_json(response).await;
     assert_eq!(payload["error"]["param"], json!("previous_response_id"));
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(payload["error"]["code"], json!("invalid_request"));
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_responses_rejects_previous_response_id_before_cross_key_lookup() {
+async fn openai_responses_rejects_missing_previous_response_before_creating_a_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Previous Consumer App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -213,15 +209,12 @@ async fn d2_ac_007_openai_responses_rejects_previous_response_id_before_cross_ke
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
-    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_responses_function_call_output_is_rejected_before_run_creation() {
+async fn openai_responses_function_call_output_resolves_callback_before_run_creation() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Callback Binding App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -247,10 +240,7 @@ async fn d2_ac_007_openai_responses_function_call_output_is_rejected_before_run_
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["param"], json!("input"));
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
@@ -429,7 +419,7 @@ async fn openai_models_accepts_full_chat_completions_base_url_alias() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_chat_rejects_tools_before_creating_a_run() {
+async fn openai_chat_accepts_tools_and_creates_a_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Unsupported Tool Route App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -445,8 +435,6 @@ async fn d2_ac_007_openai_chat_rejects_tools_before_creating_a_run() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }

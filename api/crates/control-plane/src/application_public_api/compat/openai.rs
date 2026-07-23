@@ -1,6 +1,8 @@
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
+use crate::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
+
 pub use crate::application_public_api::model_catalog::{
     extract_agent_model_catalog_from_start_node as extract_model_list_from_start_node,
     AgentModelDescriptor as OpenAiCompatibleModel,
@@ -85,7 +87,7 @@ use compaction::classify_response_operation;
 pub use compaction::{OpenAiResponsesEndpoint, OpenAiResponsesRequestContext};
 pub use request_translation::{
     translate_chat_completion_request, translate_response_request,
-    translate_response_request_with_context,
+    translate_response_request_with_context, translate_response_request_with_context_and_previous,
 };
 
 pub fn map_chat_completion_request(request: Value) -> Result<NativeRunRequest, OpenAiCompatError> {
@@ -123,12 +125,9 @@ fn reject_unknown_chat_fields(
             field.as_str(),
             "audio"
                 | "modalities"
-                | "tools"
-                | "tool_choice"
                 | "function_call"
                 | "parallel_tool_calls"
                 | "response_format"
-                | "reasoning_effort"
                 | "temperature"
                 | "top_p"
                 | "presence_penalty"
@@ -242,20 +241,6 @@ fn validate_chat_message_fields(
                 .with_report(report.clone()),
         );
     }
-    if let Some(field) = object
-        .keys()
-        .find(|field| matches!(field.as_str(), "tool_calls" | "tool_call_id" | "name"))
-    {
-        let path = format!("$.messages[{index}].{field}");
-        report.record(
-            &path,
-            None,
-            TranslationDecisionKind::Unsupported,
-            Some("tool and named-message semantics have no current canonical owner"),
-            TranslationSafeRepresentation::Present,
-        );
-        return Err(OpenAiCompatError::unsupported("messages").with_report(report.clone()));
-    }
     let role_path = format!("$.messages[{index}].role");
     let Some(role) = object.get("role").and_then(Value::as_str) else {
         report.record(
@@ -274,7 +259,7 @@ fn validate_chat_message_fields(
                 .with_report(report.clone()),
         );
     };
-    if !matches!(role, "system" | "developer" | "user" | "assistant") {
+    if !matches!(role, "system" | "developer" | "user" | "assistant" | "tool") {
         report.record(
             &role_path,
             None,
@@ -294,7 +279,7 @@ fn validate_chat_message_fields(
         None,
         TranslationSafeRepresentation::Present,
     );
-    if !object.contains_key("content") {
+    if !object.contains_key("content") && !object.contains_key("tool_calls") {
         let path = format!("$.messages[{index}].content");
         report.record(
             &path,
@@ -308,7 +293,17 @@ fn validate_chat_message_fields(
                 .with_report(report.clone()),
         );
     }
-    let content = object.get("content").expect("content exists");
+    if object.get("content").is_none_or(Value::is_null) && object.contains_key("tool_calls") {
+        report.record(
+            &format!("$.messages[{index}].content"),
+            Some("$.history"),
+            TranslationDecisionKind::Defaulted,
+            Some("assistant tool-call messages may omit text content"),
+            TranslationSafeRepresentation::Defaulted,
+        );
+        return Ok(());
+    }
+    let content = object.get("content").expect("validated content exists");
     if matches!(content, Value::String(_) | Value::Array(_)) {
         report.record(
             &format!("$.messages[{index}].content"),
@@ -531,13 +526,9 @@ fn reject_unknown_response_fields(
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
-            "previous_response_id"
-                | "tools"
-                | "tool_choice"
-                | "parallel_tool_calls"
+            "parallel_tool_calls"
                 | "response_format"
                 | "text"
-                | "reasoning"
                 | "background"
                 | "include"
                 | "max_tool_calls"
@@ -686,6 +677,173 @@ fn response_max_output_tokens(
     Ok(Some(max_output_tokens))
 }
 
+fn openai_inputs(
+    object: &Map<String, Value>,
+    chat_completions: bool,
+    report: &mut TranslationReport,
+) -> Result<crate::application_public_api::native::NativeObject, OpenAiCompatError> {
+    let mut inputs = Map::new();
+    if let Some(value) = object.get("tools") {
+        let tools = value.as_array().ok_or_else(|| {
+            OpenAiCompatError::invalid("tools", "tools must be an array")
+                .with_report(report.clone())
+        })?;
+        let mut normalized = Vec::with_capacity(tools.len());
+        for (index, tool) in tools.iter().enumerate() {
+            let tool = tool.as_object().ok_or_else(|| {
+                OpenAiCompatError::invalid("tools", "tool definitions must be objects")
+                    .with_report(report.clone())
+            })?;
+            let function = if chat_completions {
+                if tool.get("type").and_then(Value::as_str) != Some("function") {
+                    return Err(OpenAiCompatError::invalid(
+                        "tools",
+                        "only function tools are supported",
+                    )
+                    .with_report(report.clone()));
+                }
+                tool.get("function")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| {
+                        OpenAiCompatError::invalid("tools", "function tool payload is required")
+                            .with_report(report.clone())
+                    })?
+            } else {
+                tool
+            };
+            let name = function
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    OpenAiCompatError::invalid("tools", "tool name is required")
+                        .with_report(report.clone())
+                })?;
+            let input_schema = function
+                .get("parameters")
+                .cloned()
+                .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
+            let mut native_tool = json!({
+                "name": name,
+                "input_schema": input_schema,
+                "source": "client"
+            });
+            if let Some(description) = function.get("description").and_then(Value::as_str) {
+                native_tool["description"] = Value::String(description.to_string());
+            }
+            normalized.push(native_tool);
+            report.record(
+                &format!("$.tools[{index}]"),
+                Some("$.inputs.tools[]"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+        }
+        report.record(
+            "$.tools",
+            Some("$.inputs.tools"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+        inputs.insert("tools".to_string(), Value::Array(normalized));
+    }
+    if let Some(choice) = object.get("tool_choice") {
+        let normalized = match choice {
+            Value::String(choice) if matches!(choice.as_str(), "auto" | "none" | "required") => {
+                json!({ "type": choice })
+            }
+            Value::Object(choice) if chat_completions => {
+                let name = choice
+                    .get("function")
+                    .and_then(Value::as_object)
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        OpenAiCompatError::invalid("tool_choice", "tool_choice name is required")
+                            .with_report(report.clone())
+                    })?;
+                json!({ "type": "tool", "name": name })
+            }
+            Value::Object(choice) => {
+                let name = choice.get("name").and_then(Value::as_str).ok_or_else(|| {
+                    OpenAiCompatError::invalid("tool_choice", "tool_choice name is required")
+                        .with_report(report.clone())
+                })?;
+                json!({ "type": "tool", "name": name })
+            }
+            _ => {
+                return Err(
+                    OpenAiCompatError::invalid("tool_choice", "unsupported tool_choice")
+                        .with_report(report.clone()),
+                );
+            }
+        };
+        report.record(
+            "$.tool_choice",
+            Some("$.inputs.tool_choice"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Present,
+        );
+        inputs.insert("tool_choice".to_string(), normalized);
+    }
+    Ok(crate::application_public_api::native::NativeObject::from_map(inputs))
+}
+
+fn openai_reasoning(
+    object: &Map<String, Value>,
+    chat_completions: bool,
+    report: &mut TranslationReport,
+) -> Result<
+    Option<crate::application_public_api::native::NativeReasoningParameters>,
+    OpenAiCompatError,
+> {
+    let (path, effort) = if chat_completions {
+        ("$.reasoning_effort", object.get("reasoning_effort"))
+    } else {
+        let reasoning = match object.get("reasoning") {
+            Some(Value::Object(reasoning)) => Some(reasoning),
+            Some(_) => {
+                return Err(
+                    OpenAiCompatError::invalid("reasoning", "reasoning must be an object")
+                        .with_report(report.clone()),
+                );
+            }
+            None => None,
+        };
+        (
+            "$.reasoning.effort",
+            reasoning.and_then(|value| value.get("effort")),
+        )
+    };
+    let Some(effort) = effort else {
+        return Ok(None);
+    };
+    let effort = effort
+        .as_str()
+        .filter(|value| matches!(*value, "minimal" | "low" | "medium" | "high" | "xhigh"))
+        .ok_or_else(|| {
+            OpenAiCompatError::invalid("reasoning", "unsupported reasoning effort")
+                .with_report(report.clone())
+        })?;
+    report.record(
+        path,
+        Some("$.execution.model_parameters.reasoning.effort"),
+        TranslationDecisionKind::Exact,
+        None,
+        TranslationSafeRepresentation::Present,
+    );
+    Ok(Some(
+        crate::application_public_api::native::NativeReasoningParameters::with_enabled_budget_and_effort(
+            true,
+            None,
+            Some(effort),
+        ),
+    ))
+}
+
 fn validate_responses_input(
     input: &Value,
     is_v2_compaction: bool,
@@ -813,6 +971,48 @@ fn validate_responses_input_items(
             has_compaction_trigger = true;
             continue;
         }
+        if matches!(
+            item_type,
+            Some("function_call") | Some("function_call_output") | Some("reasoning")
+        ) {
+            let required_fields: &[&str] = match item_type {
+                Some("function_call") => &["call_id", "name", "arguments"],
+                Some("function_call_output") => &["call_id", "output"],
+                Some("reasoning") => &[],
+                _ => unreachable!(),
+            };
+            for field in required_fields {
+                if !object.contains_key(*field) {
+                    report.record(
+                        &format!("{item_path}.{field}"),
+                        None,
+                        TranslationDecisionKind::Rejected,
+                        Some("required Responses continuation field is missing"),
+                        TranslationSafeRepresentation::Absent,
+                    );
+                    return Err(OpenAiCompatError::invalid(
+                        "input",
+                        format!("{field} is required"),
+                    )
+                    .with_report(report.clone()));
+                }
+            }
+            report.record(
+                &item_path,
+                Some("$.history"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            report.record(
+                &type_path,
+                Some("$.history"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Present,
+            );
+            continue;
+        }
         report.record(
             &item_path,
             Some("$.query,$.history"),
@@ -821,13 +1021,7 @@ fn validate_responses_input_items(
             TranslationSafeRepresentation::Redacted,
         );
         if !matches!(item_type, None | Some("message")) {
-            let kind = if matches!(
-                item_type,
-                Some("function_call")
-                    | Some("function_call_output")
-                    | Some("reasoning")
-                    | Some("item_reference")
-            ) {
+            let kind = if matches!(item_type, Some("item_reference")) {
                 TranslationDecisionKind::Unsupported
             } else {
                 TranslationDecisionKind::Rejected
@@ -1427,11 +1621,58 @@ fn responses_input_to_native_run_input(
         ));
     };
 
-    let mut history = Vec::new();
+    let mut history: Vec<Value> = Vec::new();
     let mut system_parts = Vec::new();
     for (index, item) in items.iter().enumerate() {
         if is_v2_compaction && compaction::is_compaction_trigger_item(item) {
             continue;
+        }
+        match item.get("type").and_then(Value::as_str) {
+            Some("function_call") => {
+                let tool_call = json!({
+                    "id": item.get("call_id").and_then(Value::as_str).unwrap_or_default(),
+                    "name": item.get("name").and_then(Value::as_str).unwrap_or_default(),
+                    "arguments": item.get("arguments").map(parse_openai_tool_arguments).unwrap_or_else(|| json!({})),
+                });
+                if let Some(existing) = history.last_mut().filter(|entry| {
+                    entry.get("role").and_then(Value::as_str) == Some("assistant")
+                        && entry.get("tool_calls").is_some_and(Value::is_array)
+                }) {
+                    existing["tool_calls"]
+                        .as_array_mut()
+                        .expect("validated tool_calls array")
+                        .push(tool_call);
+                } else {
+                    history.push(json!({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [tool_call]
+                    }));
+                }
+                continue;
+            }
+            Some("function_call_output") => {
+                let content = match item.get("output") {
+                    Some(Value::String(output)) => output.clone(),
+                    Some(output) => output.to_string(),
+                    None => String::new(),
+                };
+                history.push(json!({
+                    "role": "tool",
+                    "content": content,
+                    "tool_call_id": item.get("call_id").and_then(Value::as_str).unwrap_or_default()
+                }));
+                continue;
+            }
+            Some("reasoning") => {
+                history.push(json!({
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning": item.clone()
+                }));
+                continue;
+            }
+            _ => {}
         }
         let message = responses_input_message(item)?;
         if index == last_user_index {
@@ -1470,6 +1711,55 @@ fn responses_input_to_native_run_input(
         "input",
         "user input is required",
     ))
+}
+
+fn openai_chat_history_tool_calls(tool_calls: &Value) -> Value {
+    Value::Array(
+        tool_calls
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|tool_call| {
+                let id = tool_call
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(openai_chat_history_tool_call_id)
+                    .unwrap_or_default();
+                let function = tool_call.get("function").and_then(Value::as_object);
+                let name = function
+                    .and_then(|value| value.get("name"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let arguments = function
+                    .and_then(|value| value.get("arguments"))
+                    .map(parse_openai_tool_arguments)
+                    .unwrap_or_else(|| json!({}));
+                json!({ "id": id, "name": name, "arguments": arguments })
+            })
+            .collect(),
+    )
+}
+
+fn openai_chat_history_tool_call_id(tool_call_id: &str) -> String {
+    decode_openai_callback_tool_call_id(tool_call_id)
+        .map(|(_, original_tool_call_id)| original_tool_call_id)
+        .unwrap_or_else(|| tool_call_id.to_string())
+}
+
+fn parse_openai_tool_arguments(arguments: &Value) -> Value {
+    match arguments {
+        Value::String(arguments) => {
+            serde_json::from_str(arguments).unwrap_or_else(|_| Value::String(arguments.clone()))
+        }
+        arguments => arguments.clone(),
+    }
+}
+
+fn responses_previous_history(previous: Option<&OpenAiPreviousResponseContext>) -> Vec<Value> {
+    previous
+        .and_then(|previous| previous.answer.as_ref())
+        .map(|answer| vec![json!({ "role": "assistant", "content": answer })])
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1718,8 +2008,8 @@ mod tests {
     }
 
     #[test]
-    fn d2_ac_007_chat_tools_have_an_unsupported_receipt() {
-        let error = translate_chat_completion_request(json!({
+    fn ac_001_chat_tools_map_to_native_inputs() {
+        let translated = translate_chat_completion_request(json!({
             "model": "deepseek-v4-flash",
             "messages": [
                 { "role": "user", "content": "say hello" }
@@ -1741,19 +2031,23 @@ mod tests {
             ],
             "tool_choice": "auto"
         }))
-        .expect_err("tools have no D2 canonical owner");
+        .expect("Chat tools should map to Native inputs");
 
-        assert_eq!(error.param.as_deref(), Some("tools"));
-        assert!(error
-            .report
-            .has_decision("$.tools", TranslationDecisionKind::Unsupported));
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"][0]["name"],
+            "read_file"
+        );
+        assert_eq!(
+            translated.request.inputs.as_value()["tool_choice"]["type"],
+            "auto"
+        );
     }
 
     #[test]
-    fn d2_ac_007_chat_callback_tool_ids_have_an_unsupported_receipt() {
+    fn ac_001_chat_callback_tool_history_maps_to_native() {
         let external_tool_call_id = "calltask_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_call_weather_lookup";
 
-        let error = translate_chat_completion_request(json!({
+        let translated = translate_chat_completion_request(json!({
             "model": "deepseek-v4-flash",
             "messages": [
                 { "role": "user", "content": "first question" },
@@ -1780,18 +2074,20 @@ mod tests {
                 { "role": "user", "content": "next question" }
             ]
         }))
-        .expect_err("callback tool semantics have no D2 canonical owner");
-
-        assert_eq!(error.param.as_deref(), Some("messages"));
-        assert!(error.report.has_decision(
-            "$.messages[1].tool_calls",
-            TranslationDecisionKind::Unsupported
-        ));
+        .expect("callback history should map to Native");
+        assert_eq!(
+            translated.request.history[1]["tool_calls"][0]["id"],
+            "call_weather_lookup"
+        );
+        assert_eq!(
+            translated.request.history[2]["tool_call_id"],
+            "call_weather_lookup"
+        );
     }
 
     #[test]
-    fn d2_ac_007_chat_unrecognized_tool_ids_have_an_unsupported_receipt() {
-        let error = translate_chat_completion_request(json!({
+    fn ac_001_chat_provider_native_tool_ids_are_preserved() {
+        let translated = translate_chat_completion_request(json!({
             "model": "deepseek-v4-flash",
             "messages": [
                 { "role": "user", "content": "first question" },
@@ -1817,13 +2113,15 @@ mod tests {
                 { "role": "user", "content": "next question" }
             ]
         }))
-        .expect_err("tool message semantics have no D2 canonical owner");
-
-        assert_eq!(error.param.as_deref(), Some("messages"));
-        assert!(error.report.has_decision(
-            "$.messages[1].tool_calls",
-            TranslationDecisionKind::Unsupported
-        ));
+        .expect("provider-native tool ids should be preserved");
+        assert_eq!(
+            translated.request.history[1]["tool_calls"][0]["id"],
+            "calltask_not-a-valid-callback"
+        );
+        assert_eq!(
+            translated.request.history[2]["tool_call_id"],
+            "provider_native_call"
+        );
     }
 
     #[test]
@@ -1865,8 +2163,8 @@ mod tests {
     }
 
     #[test]
-    fn d2_ac_007_responses_tools_have_an_unsupported_receipt() {
-        let error = translate_response_request(json!({
+    fn ac_002_responses_tools_map_to_native_inputs() {
+        let translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hi",
             "tools": [
@@ -1882,17 +2180,16 @@ mod tests {
                 }
             ]
         }))
-        .expect_err("Responses tools have no D2 canonical owner");
-
-        assert_eq!(error.param.as_deref(), Some("tools"));
-        assert!(error
-            .report
-            .has_decision("$.tools", TranslationDecisionKind::Unsupported));
+        .expect("Responses tools should map to Native inputs");
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"][0]["name"],
+            "shell"
+        );
     }
 
     #[test]
-    fn d2_ac_007_responses_function_calls_have_an_unsupported_receipt() {
-        let error = translate_response_request(json!({
+    fn ac_002_responses_function_calls_map_to_native_history() {
+        let translated = translate_response_request(json!({
                 "model": "1flowbase",
                 "input": [
                     {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "查代码"}]},
@@ -1903,17 +2200,20 @@ mod tests {
                     {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "继续"}]}
                 ]
             }))
-        .expect_err("Responses function calls have no D2 canonical owner");
-
-        assert_eq!(error.param.as_deref(), Some("input"));
-        assert!(error
-            .report
-            .has_decision("$.input[1].type", TranslationDecisionKind::Unsupported));
+        .expect("Responses function calls should map to Native history");
+        assert_eq!(
+            translated.request.history[1]["tool_calls"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(translated.request.history[2]["tool_call_id"], "call_a");
     }
 
     #[test]
-    fn d2_ac_007_responses_replay_items_have_an_unsupported_receipt() {
-        let error = translate_response_request(json!({
+    fn ac_003_responses_replay_items_preserve_reasoning_and_tools() {
+        let translated = translate_response_request(json!({
                 "model": "1flowbase",
                 "input": [
                     {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "看图"}]},
@@ -1924,27 +2224,18 @@ mod tests {
                     {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "继续找导航栏代码"}]}
                 ]
             }))
-        .expect_err("Responses replay items have no D2 canonical owner");
-
-        assert_eq!(error.param.as_deref(), Some("input"));
-        assert!(error
-            .report
-            .has_decision("$.input[1].type", TranslationDecisionKind::Unsupported));
+        .expect("Responses replay items should map to Native history");
+        assert_eq!(translated.request.history[1]["reasoning"]["id"], "rs_1");
     }
 
     #[test]
-    fn d2_ac_007_previous_response_id_has_an_unsupported_receipt() {
-        let error = translate_response_request(json!({
+    fn ac_002_previous_response_id_is_accepted_for_route_context_resolution() {
+        let translated = translate_response_request(json!({
             "model": "deepseek-v4-flash",
             "input": [{"role": "user", "content": [{"type": "input_text", "text": "Continue"}]}],
             "previous_response_id": "resp_11111111-1111-1111-1111-111111111111"
         }))
-        .expect_err("previous_response_id has no D2 canonical owner");
-
-        assert_eq!(error.param.as_deref(), Some("previous_response_id"));
-        assert!(error.report.has_decision(
-            "$.previous_response_id",
-            TranslationDecisionKind::Unsupported
-        ));
+        .expect("previous_response_id should be accepted");
+        assert_eq!(translated.request.query, "Continue");
     }
 }

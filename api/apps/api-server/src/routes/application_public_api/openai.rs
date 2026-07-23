@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-#[cfg(test)]
-use crate::routes::application_public_api::tool_callback_ids::decode_openai_callback_tool_call_id;
 use axum::{
     body::Bytes,
     extract::{Query, State},
@@ -11,24 +9,34 @@ use axum::{
 };
 use control_plane::application_public_api::{
     api_keys::ApplicationApiKeyService,
+    callback_resume::{
+        ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
+        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+    },
+    callback_tool_ids::decode_openai_callback_tool_call_id,
     client_protocol_envelope::{capture_client_protocol_envelope, ClientProtocolIngressPolicy},
     compat::openai::{
-        extract_model_list_from_start_node, response_id_from_run_id,
-        translate_chat_completion_request, translate_response_request_with_context,
-        OpenAiCompatError, OpenAiCompatibleModel, OpenAiResponsesEndpoint,
+        extract_model_list_from_start_node, response_id_from_run_id, run_id_from_response_id,
+        translate_chat_completion_request, translate_response_request_with_context_and_previous,
+        OpenAiCompatError, OpenAiCompatibleModel, OpenAiPreviousResponseContext,
+        OpenAiResponsesEndpoint,
     },
     native::{
-        ApplicationNativeRunService, CreateNativeRunCommand, NativeExecutionOperation,
-        NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
-        RemoteCompactionProfile,
+        ApplicationNativeRunService, CreateNativeRunCommand, GetNativeRunCommand,
+        NativeExecutionOperation, NativeRunRequest, NativeRunResult, NativeRunStatus,
+        NativeRunValidationError, RemoteCompactionProfile,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
-    run_service::{ApplicationPublishedCompactService, CompactCommand},
+    run_service::{
+        ApplicationPublishedCompactService, ApplicationPublishedRunControlRepository,
+        CompactCommand,
+    },
 };
+use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
@@ -38,6 +46,7 @@ use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
+    provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
         compat_sse, llm_tool_visibility::external_llm_tool_calls, native,
         tool_callback_ids::encode_openai_callback_tool_call_id,
@@ -63,6 +72,16 @@ pub use types::{
 struct OpenAiCredential {
     token: String,
     source: &'static str,
+}
+
+struct OpenAiToolResumeRequest {
+    callback_task_id: Uuid,
+    tool_results: Value,
+}
+
+struct OpenAiToolResumePlan {
+    initial_run: NativeRunResult,
+    command: ResumePublishedCallbackCommand,
 }
 #[utoipa::path(
     post,
@@ -105,6 +124,53 @@ pub async fn create_chat_completion(
             return Err(error);
         }
     };
+    let model = value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let response_mode = value
+        .get("stream")
+        .and_then(Value::as_bool)
+        .filter(|value| *value)
+        .map(|_| "streaming".to_string());
+    if let Some(resume) = openai_chat_tool_resume_request(&value)? {
+        let callback_task_id = resume.callback_task_id;
+        if response_mode.as_deref() == Some("streaming") {
+            let plan = prepare_openai_tool_resume(
+                state.clone(),
+                &credential.token,
+                callback_task_id,
+                PublishedCallbackResumeSource::OpenAiChat,
+                resume.tool_results,
+            )
+            .await?;
+            let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
+                plan.initial_run.id,
+                callback_task_id,
+            );
+            return compat_sse::start_openai_chat_resume_stream(
+                state,
+                plan.initial_run,
+                model,
+                completion_id,
+                plan.command,
+            )
+            .await
+            .map_err(Into::into);
+        }
+        let run = resume_openai_tool_call(
+            state,
+            &credential.token,
+            callback_task_id,
+            PublishedCallbackResumeSource::OpenAiChat,
+            resume.tool_results,
+        )
+        .await?;
+        let completion_id =
+            compat_sse::openai_chat_completion_id_from_callback_task(run.id, callback_task_id);
+        return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
+    }
     let translated = match translate_chat_completion_request(value) {
         Ok(translated) => translated,
         Err(error) => {
@@ -268,7 +334,71 @@ async fn create_response_for_endpoint(
             return Err(error);
         }
     };
-    let translated = match translate_response_request_with_context(value, request_context) {
+    let previous_response_id = optional_string_field(&value, "previous_response_id")?;
+    let previous_response = load_previous_response_context(
+        state.clone(),
+        &credential.token,
+        previous_response_id.as_deref(),
+    )
+    .await?;
+    let response_mode = value
+        .get("stream")
+        .and_then(Value::as_bool)
+        .filter(|value| *value)
+        .map(|_| "streaming".to_string());
+    let model = value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if endpoint == OpenAiResponsesEndpoint::Responses {
+        if let Some(resume) = openai_responses_tool_resume_request(&value)? {
+            ensure_openai_responses_resume_matches_previous_response(
+                state.as_ref(),
+                previous_response_id.as_deref(),
+                resume.callback_task_id,
+            )
+            .await?;
+            if response_mode.as_deref() == Some("streaming") {
+                let plan = prepare_openai_tool_resume(
+                    state.clone(),
+                    &credential.token,
+                    resume.callback_task_id,
+                    PublishedCallbackResumeSource::OpenAiResponses,
+                    resume.tool_results,
+                )
+                .await?;
+                return compat_sse::start_openai_response_resume_stream(
+                    state,
+                    plan.initial_run,
+                    model,
+                    previous_response_id,
+                    plan.command,
+                )
+                .await
+                .map_err(Into::into);
+            }
+            let run = resume_openai_tool_call(
+                state,
+                &credential.token,
+                resume.callback_task_id,
+                PublishedCallbackResumeSource::OpenAiResponses,
+                resume.tool_results,
+            )
+            .await?;
+            return Ok(Json(to_openai_responses_response(
+                run,
+                model,
+                previous_response_id,
+            )?)
+            .into_response());
+        }
+    }
+    let translated = match translate_response_request_with_context_and_previous(
+        value,
+        request_context,
+        previous_response,
+    ) {
         Ok(translated) => translated,
         Err(error) => {
             let route_error = OpenAiRouteError::from(error);
@@ -314,13 +444,23 @@ async fn create_response_for_endpoint(
             );
 
             if response_mode.as_deref() == Some("streaming") {
-                return compat_sse::start_openai_response_stream(state, run, model, None)
-                    .await
-                    .map_err(Into::into);
+                return compat_sse::start_openai_response_stream(
+                    state,
+                    run,
+                    model,
+                    previous_response_id,
+                )
+                .await
+                .map_err(Into::into);
             }
 
             let run = native::execute_blocking_native_run(state, credential.token, run).await?;
-            Ok(Json(to_openai_responses_response(run, model, None)?).into_response())
+            Ok(Json(to_openai_responses_response(
+                run,
+                model,
+                previous_response_id,
+            )?)
+            .into_response())
         }
         NativeExecutionOperation::Compact(remote_profile) => {
             let profile = match remote_profile {
@@ -604,14 +744,256 @@ async fn create_native_run(
         .map_err(native::native_error)
 }
 
+async fn resume_openai_tool_call(
+    state: Arc<ApiState>,
+    bearer_token: &str,
+    callback_task_id: Uuid,
+    source: PublishedCallbackResumeSource,
+    tool_results: Value,
+) -> Result<NativeRunResult, OpenAiRouteError> {
+    let runtime_service = OrchestrationRuntimeService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.runtime_engine.clone(),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store())
+    .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    let result =
+        ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
+            .with_last_used_cache(state.infrastructure.cache_store())
+            .resume_callback(ResumePublishedCallbackCommand {
+                bearer_token: bearer_token.to_string(),
+                target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
+                source,
+                response_payload: json!({ "tool_results": tool_results }),
+                response_mode: None,
+            })
+            .await
+            .map_err(native::service_error)?;
+    Ok(result.run)
+}
+
+async fn prepare_openai_tool_resume(
+    state: Arc<ApiState>,
+    bearer_token: &str,
+    callback_task_id: Uuid,
+    source: PublishedCallbackResumeSource,
+    tool_results: Value,
+) -> Result<OpenAiToolResumePlan, OpenAiRouteError> {
+    let callback_task = state
+        .store
+        .get_published_callback_task(callback_task_id)
+        .await
+        .map_err(native::service_error)?
+        .ok_or_else(|| {
+            native::NativeApiError::new(
+                StatusCode::NOT_FOUND,
+                "callback_task",
+                "callback task was not found",
+            )
+        })?;
+    let initial_run = ApplicationNativeRunService::new(state.store.clone())
+        .with_last_used_cache(state.infrastructure.cache_store())
+        .get_native_run(GetNativeRunCommand {
+            bearer_token: bearer_token.to_string(),
+            run_id: callback_task.flow_run_id,
+        })
+        .await
+        .map_err(native::native_error)?;
+    Ok(OpenAiToolResumePlan {
+        initial_run,
+        command: ResumePublishedCallbackCommand {
+            bearer_token: bearer_token.to_string(),
+            target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
+            source,
+            response_payload: json!({ "tool_results": tool_results }),
+            response_mode: Some("streaming".to_string()),
+        },
+    })
+}
+
+fn openai_chat_tool_resume_request(
+    request: &Value,
+) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
+    let Some(messages) = request.get("messages").and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    let mut trailing = messages
+        .iter()
+        .rev()
+        .take_while(|message| message.get("role").and_then(Value::as_str) == Some("tool"))
+        .collect::<Vec<_>>();
+    trailing.reverse();
+    decode_openai_tool_results(
+        trailing.into_iter().filter_map(|message| {
+            message
+                .get("tool_call_id")
+                .and_then(Value::as_str)
+                .map(|id| (id, openai_tool_message_content(message)))
+        }),
+        "messages",
+    )
+}
+
+fn openai_responses_tool_resume_request(
+    request: &Value,
+) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
+    let Some(items) = request.get("input").and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    let trailing = items
+        .iter()
+        .rev()
+        .take_while(|item| item.get("type").and_then(Value::as_str) == Some("function_call_output"))
+        .collect::<Vec<_>>();
+    decode_openai_tool_results(
+        trailing.into_iter().rev().filter_map(|item| {
+            item.get("call_id").and_then(Value::as_str).map(|id| {
+                let output = match item.get("output") {
+                    Some(Value::String(output)) => output.clone(),
+                    Some(output) => output.to_string(),
+                    None => String::new(),
+                };
+                (id, output)
+            })
+        }),
+        "input",
+    )
+}
+
+fn decode_openai_tool_results<'a>(
+    results: impl Iterator<Item = (&'a str, String)>,
+    param: &'static str,
+) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
+    let mut callback_task_id = None;
+    let mut tool_results = Vec::new();
+    for (external_id, content) in results {
+        let Some((task_id, original_id)) = decode_openai_callback_tool_call_id(external_id) else {
+            continue;
+        };
+        if callback_task_id.is_some_and(|existing| existing != task_id) {
+            return Err(openai_invalid_request(
+                param,
+                "tool results must belong to one callback task",
+            ));
+        }
+        callback_task_id = Some(task_id);
+        tool_results.push(json!({ "tool_call_id": original_id, "content": content }));
+    }
+    Ok(
+        callback_task_id.map(|callback_task_id| OpenAiToolResumeRequest {
+            callback_task_id,
+            tool_results: Value::Array(tool_results),
+        }),
+    )
+}
+
+fn openai_tool_message_content(message: &Value) -> String {
+    match message.get("content") {
+        Some(Value::String(content)) => content.clone(),
+        Some(Value::Null) | None => String::new(),
+        Some(content) => content.to_string(),
+    }
+}
+
+async fn ensure_openai_responses_resume_matches_previous_response(
+    state: &ApiState,
+    previous_response_id: Option<&str>,
+    callback_task_id: Uuid,
+) -> Result<(), OpenAiRouteError> {
+    let Some(response_id) = previous_response_id else {
+        return Ok(());
+    };
+    let previous_run_id = run_id_from_response_id(response_id)?;
+    let callback_task = state
+        .store
+        .get_published_callback_task(callback_task_id)
+        .await
+        .map_err(native::service_error)?
+        .ok_or_else(|| openai_invalid_request("input", "callback task was not found"))?;
+    if callback_task.flow_run_id != previous_run_id {
+        return Err(openai_invalid_request(
+            "previous_response_id",
+            "previous_response_id does not match function_call_output callback",
+        ));
+    }
+    Ok(())
+}
+
+async fn load_previous_response_context(
+    state: Arc<ApiState>,
+    bearer_token: &str,
+    previous_response_id: Option<&str>,
+) -> Result<Option<OpenAiPreviousResponseContext>, OpenAiRouteError> {
+    let Some(response_id) = previous_response_id else {
+        return Ok(None);
+    };
+    let run = ApplicationNativeRunService::new(state.store.clone())
+        .with_last_used_cache(state.infrastructure.cache_store())
+        .get_native_run(GetNativeRunCommand {
+            bearer_token: bearer_token.to_string(),
+            run_id: run_id_from_response_id(response_id)?,
+        })
+        .await
+        .map_err(native::native_error)?;
+    Ok(Some(OpenAiPreviousResponseContext {
+        response_id: response_id.to_string(),
+        external_user: string_value(&run.metadata, "external_user"),
+        external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
+        answer: run.answer,
+    }))
+}
+
+fn string_value(value: &Value, field: &str) -> Option<String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+fn optional_string_field(
+    value: &Value,
+    field: &'static str,
+) -> Result<Option<String>, OpenAiRouteError> {
+    match value.get(field) {
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => Err(openai_invalid_request(
+            field,
+            format!("{field} must be a string"),
+        )),
+        None => Ok(None),
+    }
+}
+
+fn openai_invalid_request(param: &'static str, message: impl Into<String>) -> OpenAiRouteError {
+    OpenAiCompatError {
+        message: message.into(),
+        error_type: "invalid_request_error".to_string(),
+        param: Some(param.to_string()),
+        code: "invalid_request".to_string(),
+        report: TranslationReport::new(TranslationProtocol::OpenAiResponses),
+    }
+    .into()
+}
+
 fn to_openai_response(
     run: NativeRunResult,
     model: String,
     completion_id: String,
 ) -> Result<OpenAiChatCompletionResponse, OpenAiRouteError> {
+    let callback_task_id = callback_task_id_from_required_action(&run);
+    let tool_calls = openai_tool_calls(run.tool_calls.as_ref(), callback_task_id);
     let finish_reason = match run.status {
         NativeRunStatus::Succeeded => "stop",
         NativeRunStatus::Incomplete => "length",
+        NativeRunStatus::Waiting if tool_calls.is_some() => "tool_calls",
         NativeRunStatus::Waiting => return Err(OpenAiRouteError::RequiredAction),
         NativeRunStatus::Created
         | NativeRunStatus::Queued
@@ -621,9 +1003,7 @@ fn to_openai_response(
             return Err(native::blocking_run_projection_error(&run).into())
         }
     };
-    let callback_task_id = callback_task_id_from_required_action(&run);
-    let tool_calls = openai_tool_calls(run.tool_calls.as_ref(), callback_task_id);
-    let finish_reason = if tool_calls.is_some() && run.status == NativeRunStatus::Succeeded {
+    let finish_reason = if tool_calls.is_some() {
         "tool_calls"
     } else {
         finish_reason
@@ -655,6 +1035,9 @@ fn to_openai_responses_response(
     model: String,
     previous_response_id: Option<String>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
+    let callback_task_id = callback_task_id_from_required_action(&run);
+    let function_call_items =
+        openai_response_function_call_items(run.tool_calls.as_ref(), callback_task_id);
     let (status, incomplete_details) = match run.status {
         NativeRunStatus::Succeeded => ("completed", None),
         NativeRunStatus::Incomplete => (
@@ -663,6 +1046,7 @@ fn to_openai_responses_response(
                 reason: "max_output_tokens",
             }),
         ),
+        NativeRunStatus::Waiting if function_call_items.is_some() => ("completed", None),
         NativeRunStatus::Waiting => return Err(OpenAiRouteError::RequiredAction),
         NativeRunStatus::Created
         | NativeRunStatus::Queued
@@ -672,9 +1056,6 @@ fn to_openai_responses_response(
             return Err(native::blocking_run_projection_error(&run).into())
         }
     };
-    let callback_task_id = callback_task_id_from_required_action(&run);
-    let function_call_items =
-        openai_response_function_call_items(run.tool_calls.as_ref(), callback_task_id);
     let output_text = if function_call_items.is_some() {
         String::new()
     } else {

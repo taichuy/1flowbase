@@ -66,10 +66,6 @@ impl NativeExecution {
         })
     }
 
-    pub(crate) fn with_max_output_tokens(max_output_tokens: NonZeroU64) -> Self {
-        Self::with_model_parameters(Some(max_output_tokens), None)
-    }
-
     pub(crate) fn with_model_parameters(
         max_output_tokens: Option<NonZeroU64>,
         reasoning: Option<NativeReasoningParameters>,
