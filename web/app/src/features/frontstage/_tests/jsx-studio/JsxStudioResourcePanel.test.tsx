@@ -1,10 +1,12 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
+import { message } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
@@ -123,6 +125,13 @@ function renderInterfacePanel({
   return { onInsertCode, onSaveBlock };
 }
 
+async function settleGlobalMessage(text: string) {
+  expect(await screen.findByText(text)).toBeInTheDocument();
+  await act(async () => {
+    message.destroy();
+  });
+}
+
 describe('TSX Studio interface connector', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -186,6 +195,7 @@ describe('TSX Studio interface connector', () => {
     fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
     await waitFor(() => expect(onInsertCode).toHaveBeenCalledTimes(1));
+    await settleGlobalMessage('接口代码已插入');
     expect(
       interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
     ).toHaveBeenCalledWith('workspace-1', 'get_frontstage_page_detail');
@@ -224,6 +234,7 @@ describe('TSX Studio interface connector', () => {
     fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
     await waitFor(() => expect(onInsertCode).toHaveBeenCalledTimes(1));
+    await settleGlobalMessage('接口代码已插入');
     const insertion = onInsertCode.mock.calls[0]?.[0];
     expect(insertion?.kind).toBe('source');
     const source = insertion?.kind === 'source' ? insertion.source : '';
@@ -295,6 +306,7 @@ describe('TSX Studio interface connector', () => {
         interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability
       ).toHaveBeenCalledTimes(1)
     );
+    await settleGlobalMessage('接口能力目录加载失败');
     expect(onSaveBlock).not.toHaveBeenCalled();
     expect(onInsertCode).not.toHaveBeenCalled();
   });
