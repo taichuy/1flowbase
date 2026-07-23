@@ -105,11 +105,7 @@ function resolveFrontendDefaults(availableParallelism) {
   };
 }
 
-function readLocalVerifyConfig(repoRoot, env = process.env) {
-  if (isCiEnvironment(env)) {
-    return undefined;
-  }
-
+function readLocalVerifyConfig(repoRoot) {
   const configPath = path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE);
 
   if (!fs.existsSync(configPath)) {
@@ -652,7 +648,23 @@ function loadVerifyRuntimeConfig({
     throw new Error("repoRoot must be a non-empty string");
   }
 
-  const config = readLocalVerifyConfig(repoRoot, env);
+  if (isCiEnvironment(env)) {
+    return resolveRuntimeConfig(
+      {
+        backend: {
+          cargoJobs: availableParallelism,
+          cargoTestThreads: availableParallelism,
+        },
+        frontend: {
+          turboConcurrency: availableParallelism,
+          vitestMaxWorkers: availableParallelism,
+        },
+      },
+      availableParallelism,
+    );
+  }
+
+  const config = readLocalVerifyConfig(repoRoot);
   if (config === undefined) {
     return resolveRuntimeConfig({}, availableParallelism);
   }

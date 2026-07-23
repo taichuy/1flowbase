@@ -7,11 +7,9 @@ const { spawnSync } = require('node:child_process');
 const { buildCommands, main, parseBackendCliArgs } = require('../../verify-backend.js');
 
 function getExpectedParallelism() {
-  const available = typeof os.availableParallelism === 'function'
+  return typeof os.availableParallelism === 'function'
     ? os.availableParallelism()
     : os.cpus().length;
-
-  return Math.max(1, Math.floor(available / 2));
 }
 
 test('verify-backend buildCommands uses independent cargo jobs and cargo test threads', () => {
@@ -321,7 +319,7 @@ test('main routes backend verification through the heavy managed gate', async ()
   }));
 });
 
-test('verify-backend limits cargo jobs to half of available CPU and serializes tests', async () => {
+test('verify-backend uses all available CPU for cargo jobs and tests in CI', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-verify-backend-'));
   const fakeBinDir = path.join(tempDir, 'bin');
   const logPath = path.join(tempDir, 'cargo.log');
@@ -364,11 +362,11 @@ test('verify-backend limits cargo jobs to half of available CPU and serializes t
 
   assert.equal(invocations.length, 8);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
-  assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=1`));
-  assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=1`));
-  assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models -- --test-threads=1`));
-  assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=1`));
-  assert.match(invocations[6], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=1`));
+  assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[6], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[7], new RegExp(`check --workspace --jobs ${expectedParallelism}`));
 
   const warningLogPath = path.join(warningOutputDir, 'verify-backend.warnings.log');
