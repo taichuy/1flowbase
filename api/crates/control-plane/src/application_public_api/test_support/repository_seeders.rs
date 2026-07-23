@@ -221,6 +221,19 @@ impl ApplicationPublicApiTestRepository {
             .collect()
     }
 
+    pub fn complete_callback_task_for_test(&self, callback_task_id: Uuid) {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let task = inner
+            .callback_tasks
+            .get_mut(&callback_task_id)
+            .expect("callback task fixture must exist");
+        task.status = domain::CallbackTaskStatus::Completed;
+        task.completed_at = Some(OffsetDateTime::now_utc());
+    }
+
     pub fn flow_run_count(&self) -> usize {
         self.inner
             .lock()

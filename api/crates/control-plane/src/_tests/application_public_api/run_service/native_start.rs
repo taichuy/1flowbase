@@ -322,7 +322,39 @@ async fn start_native_run_rejects_unsupported_reasoning_effort() {
 }
 
 #[tokio::test]
-async fn ac_004_start_native_run_rejects_max_output_tokens_over_model_limit() {
+async fn ac_004_start_native_run_accepts_request_cap_over_catalog_default_output() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Published Native Output App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    let request =
+        native_request_with_model_parameters("gpt-5.4", json!({ "max_output_tokens": 64000 }));
+
+    let result = service
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request,
+        })
+        .await
+        .expect("request cap above the catalog default output should pass through");
+
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
+        json!(64000)
+    );
+}
+
+#[tokio::test]
+async fn ac_004_start_native_run_rejects_max_output_tokens_over_context_limit() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Output App");
@@ -332,7 +364,7 @@ async fn ac_004_start_native_run_rejects_max_output_tokens_over_model_limit() {
     let service = ApplicationPublishedRunService::new(repository.clone());
 
     let mut request =
-        native_request_with_model_parameters("gpt-5.4", json!({ "max_output_tokens": 32001 }));
+        native_request_with_model_parameters("gpt-5.4", json!({ "max_output_tokens": 128001 }));
     request.conversation = serde_json::from_value(json!({
         "id": "catalog-over-limit-conversation",
         "user": "catalog-over-limit-user"

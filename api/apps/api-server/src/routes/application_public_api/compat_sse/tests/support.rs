@@ -57,6 +57,19 @@ impl ReplayBeforeFallbackRuntimeEventStream {
             live_senders: Mutex::new(Vec::new()),
         }
     }
+
+    pub(super) fn emit_live(&self, event: RuntimeEventEnvelope) {
+        self.live_senders
+            .lock()
+            .expect("live sender lock poisoned")
+            .retain(|sender| sender.send(event.clone()).is_ok());
+    }
+
+    pub(super) fn active_subscriber_count(&self) -> usize {
+        let mut senders = self.live_senders.lock().expect("live sender lock poisoned");
+        senders.retain(|sender| !sender.is_closed());
+        senders.len()
+    }
 }
 
 #[async_trait]

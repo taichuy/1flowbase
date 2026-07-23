@@ -158,11 +158,11 @@ pub(super) fn validate_external_model_parameters(
         None
     };
 
-    if let (Some(max_output_tokens), Some(model_limit)) = (
+    if let (Some(max_output_tokens), Some(context_limit)) = (
         max_output_tokens,
-        model.and_then(|model| model.max_output_tokens),
+        model.and_then(|model| model.max_context_window.or(model.context_window)),
     ) {
-        if max_output_tokens > model_limit {
+        if max_output_tokens > context_limit {
             return Err(NativeRunValidationError::InvalidModelParameters(
                 "execution.model_parameters.max_output_tokens",
             ));

@@ -520,3 +520,231 @@ async fn native_cancel_clears_pending_callback_required_action() {
         .expect("callback task should still be durable");
     assert_eq!(task.status, domain::CallbackTaskStatus::Cancelled);
 }
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::application_public_api::{
+        api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
+        mapping::{
+            ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
+        },
+        native::{ApplicationNativeRunService, CreateNativeRunCommand},
+        publications::{ApplicationPublicationService, PublishApplicationCommand},
+        ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
+    };
+
+    const ACTOR_USER_ID: Uuid = Uuid::from_u128(0x11111111111111111111111111111111);
+
+    #[derive(Clone, Default)]
+    struct CompletingCallbackConsumer {
+        repository: ApplicationPublicApiTestRepository,
+        calls: Arc<Mutex<Vec<CompletePublishedCallbackInput>>>,
+    }
+
+    impl CompletingCallbackConsumer {
+        fn call_count(&self) -> usize {
+            self.calls
+                .lock()
+                .expect("callback consumer observation lock poisoned")
+                .len()
+        }
+    }
+
+    #[async_trait]
+    impl ApplicationPublishedCallbackConsumer for CompletingCallbackConsumer {
+        async fn complete_published_callback(
+            &self,
+            input: CompletePublishedCallbackInput,
+        ) -> Result<domain::FlowRunRecord> {
+            self.calls
+                .lock()
+                .expect("callback consumer observation lock poisoned")
+                .push(input.clone());
+            let callback_task = self
+                .repository
+                .get_published_callback_task(input.callback_task_id)
+                .await?
+                .expect("callback task fixture should exist");
+            self.repository
+                .complete_callback_task_for_test(input.callback_task_id);
+            self.repository
+                .get_published_flow_run(callback_task.flow_run_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("published run fixture should exist"))
+        }
+    }
+
+    async fn callback_fixture() -> (
+        ApplicationPublicApiTestRepository,
+        CompletingCallbackConsumer,
+        String,
+        NativeRunResult,
+    ) {
+        let harness = ApplicationPublicApiTestHarness::new();
+        let application = harness.seed_application(ACTOR_USER_ID, "Callback Contract App");
+        let repository = harness.repository();
+        let token = ApplicationApiKeyService::new(repository.clone())
+            .create_api_key(CreateApplicationApiKeyCommand {
+                actor_user_id: ACTOR_USER_ID,
+                application_id: application.id,
+                name: "Callback contract key".to_string(),
+                expires_at: None,
+            })
+            .await
+            .expect("create callback contract API key")
+            .token;
+        ApplicationPublicationService::new(repository.clone())
+            .publish_active_version(PublishApplicationCommand {
+                actor_user_id: ACTOR_USER_ID,
+                application_id: application.id,
+                mapping: ApplicationApiMappingConfig {
+                    input: ApplicationApiMappingInput {
+                        query_target: "node-start.query".to_string(),
+                        model_target: None,
+                        inputs_target: None,
+                        history_target: None,
+                        attachments_target: None,
+                    },
+                    output: ApplicationApiMappingOutput::default(),
+                    extension: None,
+                },
+                api_enabled: true,
+            })
+            .await
+            .expect("publish callback contract application");
+        repository.configure_runnable_published_generate_route(application.id);
+        let run = ApplicationNativeRunService::new(repository.clone())
+            .create_native_run(CreateNativeRunCommand {
+                bearer_token: token.clone(),
+                request: serde_json::from_value(json!({ "query": "First" }))
+                    .expect("native request fixture should deserialize"),
+            })
+            .await
+            .expect("create callback contract run");
+        let consumer = CompletingCallbackConsumer {
+            repository: repository.clone(),
+            ..CompletingCallbackConsumer::default()
+        };
+        (repository, consumer, token, run)
+    }
+
+    fn resume_command(
+        token: &str,
+        run_id: Uuid,
+        callback_task_id: Uuid,
+        response_payload: Value,
+    ) -> ResumePublishedCallbackCommand {
+        ResumePublishedCallbackCommand {
+            bearer_token: token.to_string(),
+            target: PublishedCallbackResumeTarget::FlowRun {
+                flow_run_id: run_id,
+                callback_task_id,
+            },
+            source: PublishedCallbackResumeSource::NativeAgent,
+            response_payload,
+            response_mode: Some("blocking".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn ac_007_same_callback_payload_replays_without_a_second_consumer_call() {
+        let (repository, consumer, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_callback_task(run.id);
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+        let command = resume_command(&token, run.id, callback.id, json!({ "answer": "yes" }));
+
+        let first = service
+            .resume_callback(command.clone())
+            .await
+            .expect("first callback should complete");
+        let replay = service
+            .resume_callback(command)
+            .await
+            .expect("same callback payload should replay idempotently");
+
+        assert_eq!(consumer.call_count(), 1);
+        assert_eq!(replay.attempt.id, first.attempt.id);
+        assert_eq!(repository.callback_resume_attempts().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn ac_007_changed_callback_payload_is_a_conflict() {
+        let (repository, consumer, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_callback_task(run.id);
+        let service = ApplicationPublishedCallbackResumeService::new(repository, consumer.clone());
+        service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({ "answer": "yes" }),
+            ))
+            .await
+            .expect("first callback should complete");
+
+        let error = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({ "answer": "no" }),
+            ))
+            .await
+            .expect_err("changed callback payload must conflict");
+
+        assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::Conflict(
+                "callback_resume_payload_conflict"
+            ))
+        ));
+        assert_eq!(consumer.call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn ac_009_sequential_callbacks_have_distinct_attempts_and_terminals() {
+        let (repository, consumer, token, run) = callback_fixture().await;
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+        let first_callback = repository.seed_pending_callback_task(run.id);
+        let first = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                first_callback.id,
+                json!({ "step": 1 }),
+            ))
+            .await
+            .expect("first callback should complete");
+        let second_callback = repository.seed_pending_callback_task(run.id);
+        let second = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                second_callback.id,
+                json!({ "step": 2 }),
+            ))
+            .await
+            .expect("second callback should complete");
+
+        assert_eq!(consumer.call_count(), 2);
+        assert_ne!(first.attempt.id, second.attempt.id);
+        assert_ne!(
+            first.attempt.callback_task_id,
+            second.attempt.callback_task_id
+        );
+        assert_eq!(
+            repository
+                .run_event_types(run.id)
+                .iter()
+                .filter(|event| event.as_str() == "public_run_resume_succeeded")
+                .count(),
+            2
+        );
+    }
+}

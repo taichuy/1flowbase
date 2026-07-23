@@ -120,6 +120,7 @@ fn reject_unknown_chat_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
+    accept_chat_stream_options(object, report)?;
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
@@ -134,7 +135,6 @@ fn reject_unknown_chat_fields(
                 | "frequency_penalty"
                 | "seed"
                 | "stop"
-                | "stream_options"
         )
     }) {
         let path = format!("$.{field}");
@@ -190,6 +190,55 @@ fn reject_unknown_chat_fields(
                 .with_report(report.clone()),
         );
     }
+    Ok(())
+}
+
+fn accept_chat_stream_options(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(value) = object.get("stream_options") else {
+        return Ok(());
+    };
+    let Some(options) = value.as_object() else {
+        report.record(
+            "$.stream_options",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("stream_options must be an object"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::invalid(
+            "stream_options",
+            "stream_options must be an object",
+        )
+        .with_report(report.clone()));
+    };
+    if options.keys().any(|field| field != "include_usage")
+        || options
+            .get("include_usage")
+            .is_some_and(|value| !value.is_boolean())
+    {
+        report.record(
+            "$.stream_options",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("only boolean include_usage is supported in stream_options"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::invalid(
+            "stream_options",
+            "only boolean include_usage is supported in stream_options",
+        )
+        .with_report(report.clone()));
+    }
+    report.record(
+        "$.stream_options",
+        None,
+        TranslationDecisionKind::Dropped,
+        Some("compatible streams already project usage when available"),
+        TranslationSafeRepresentation::Present,
+    );
     Ok(())
 }
 
@@ -513,16 +562,7 @@ fn reject_unknown_response_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
-    if object.contains_key("store") {
-        report.record(
-            "$.store",
-            None,
-            TranslationDecisionKind::Unsupported,
-            Some("OpenAI server-side storage is not a Native run semantic"),
-            TranslationSafeRepresentation::Present,
-        );
-        return Err(OpenAiCompatError::unsupported("store").with_report(report.clone()));
-    }
+    accept_responses_store_hint(object, report)?;
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
@@ -586,6 +626,50 @@ fn reject_unknown_response_fields(
         );
     }
     Ok(())
+}
+
+fn accept_responses_store_hint(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(value) = object.get("store") else {
+        return Ok(());
+    };
+    match value.as_bool() {
+        Some(false) => {
+            report.record(
+                "$.store",
+                None,
+                TranslationDecisionKind::Dropped,
+                Some("store=false requests no OpenAI server-side storage"),
+                TranslationSafeRepresentation::Present,
+            );
+            Ok(())
+        }
+        Some(true) => {
+            report.record(
+                "$.store",
+                None,
+                TranslationDecisionKind::Unsupported,
+                Some("OpenAI server-side storage is not a Native run semantic"),
+                TranslationSafeRepresentation::Present,
+            );
+            Err(OpenAiCompatError::unsupported("store").with_report(report.clone()))
+        }
+        None => {
+            report.record(
+                "$.store",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("store must be a boolean"),
+                TranslationSafeRepresentation::Present,
+            );
+            Err(
+                OpenAiCompatError::invalid("store", "store must be a boolean")
+                    .with_report(report.clone()),
+            )
+        }
+    }
 }
 
 fn response_stream_mode(
@@ -891,6 +975,7 @@ fn validate_responses_input_items(
                 .with_report(report.clone()),
         );
     };
+    let reconstructable_tool_continuation = responses_end_with_reconstructable_tool_output(items)?;
     let mut has_user_message = false;
     let mut has_compaction_trigger = false;
     for (index, item) in items.iter().enumerate() {
@@ -1155,7 +1240,10 @@ fn validate_responses_input_items(
         }
         validate_responses_content_parts(content, index, report)?;
     }
-    if !has_user_message && !(is_v2_compaction && has_compaction_trigger) {
+    if !has_user_message
+        && !reconstructable_tool_continuation
+        && !(is_v2_compaction && has_compaction_trigger)
+    {
         report.record(
             "$.input",
             None,
@@ -1878,7 +1966,7 @@ fn openai_message_content(message: &Value) -> Result<OpenAiMappedContent, OpenAi
 fn openai_content(content: &Value) -> Result<OpenAiMappedContent, OpenAiCompatError> {
     if let Some(text) = content.as_str() {
         return Ok(OpenAiMappedContent {
-            text: text.to_string(),
+            text: escape_openai_json_nul_characters(text),
             content_blocks: None,
         });
     }
@@ -1896,7 +1984,8 @@ fn openai_content(content: &Value) -> Result<OpenAiMappedContent, OpenAiCompatEr
                     if !text.is_empty() {
                         text.push('\n');
                     }
-                    text.push_str(value);
+                    let value = escape_openai_json_nul_characters(value);
+                    text.push_str(&value);
                     blocks.push(json!({ "type": "text", "text": value }));
                 }
             }
@@ -1920,6 +2009,10 @@ fn openai_content(content: &Value) -> Result<OpenAiMappedContent, OpenAiCompatEr
         text,
         content_blocks: has_media_blocks.then_some(Value::Array(blocks)),
     })
+}
+
+fn escape_openai_json_nul_characters(text: &str) -> String {
+    text.replace('\0', "\\u0000")
 }
 
 fn openai_image_content_block(part: &Value) -> Option<Value> {
@@ -2211,6 +2304,62 @@ mod tests {
         assert_eq!(request.response_mode.as_deref(), Some("streaming"));
         assert_eq!(request.conversation["user"], json!("external-user-1"));
         assert_eq!(request.metadata.trace_id(), Some("trace-responses"));
+    }
+
+    #[test]
+    fn codex_store_false_is_a_dropped_no_storage_hint() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "store": false
+        }))
+        .expect("store=false should not require OpenAI server-side storage");
+
+        assert!(translated
+            .report
+            .has_decision("$.store", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn opencode_chat_stream_options_include_usage_is_a_dropped_hint() {
+        let translated = translate_chat_completion_request(json!({
+            "model": "1flowbase",
+            "stream": true,
+            "stream_options": { "include_usage": true },
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .expect("compatible streaming already projects usage when available");
+
+        assert!(translated
+            .report
+            .has_decision("$.stream_options", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn stale_chat_tool_output_escapes_nul_before_native_history() {
+        let translated = translate_chat_completion_request(json!({
+            "model": "1flowbase",
+            "messages": [
+                { "role": "user", "content": "run command" },
+                {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_shell",
+                        "type": "function",
+                        "function": { "name": "shell", "arguments": "{}" }
+                    }]
+                },
+                { "role": "tool", "tool_call_id": "call_shell", "content": "STDERR:\n\0after" },
+                { "role": "user", "content": "continue" }
+            ]
+        }))
+        .expect("NUL tool history should remain representable in PostgreSQL JSON");
+
+        assert_eq!(
+            translated.request.history[2]["content"],
+            json!("STDERR:\n\\u0000after")
+        );
     }
 
     #[test]

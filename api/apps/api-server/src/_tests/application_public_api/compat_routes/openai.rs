@@ -23,6 +23,24 @@ async fn openai_chat_completions_accepts_bearer_and_preserves_model() {
 }
 
 #[tokio::test]
+async fn opencode_chat_stream_options_cross_the_request_boundary() {
+    let app = test_app().await;
+    let token = setup_published_app(&app, "OpenCode Stream Options App").await;
+    let mut body = openai_body(true);
+    body["stream_options"] = json!({ "include_usage": true });
+
+    let response = post_json(
+        &app,
+        "/v1/chat/completions",
+        ("authorization", format!("Bearer {token}")),
+        body,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn openai_chat_completions_accepts_root_endpoint_for_plain_base_url_clients() {
     let app = test_app().await;
     let token = setup_published_app(&app, "OpenAI Plain Base URL Compatible Route App").await;
@@ -103,6 +121,24 @@ async fn openai_responses_accepts_blocking_text_input() {
 }
 
 #[tokio::test]
+async fn codex_responses_store_false_crosses_the_request_boundary() {
+    let app = test_app().await;
+    let token = setup_published_app(&app, "Codex Store False App").await;
+    let mut body = responses_body(false);
+    body["store"] = json!(false);
+
+    let response = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        body,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn d2_ac_007_openai_public_runs_persist_no_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Canonical Contract App").await;
@@ -169,7 +205,7 @@ async fn openai_responses_resolves_previous_response_id_before_creating_a_run() 
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
@@ -240,7 +276,10 @@ async fn openai_responses_function_call_output_resolves_callback_before_run_crea
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload = response_json(response).await;
+    assert_eq!(payload["error"]["code"], json!("invalid_request"));
+    assert_eq!(payload["error"]["param"], json!("input"));
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

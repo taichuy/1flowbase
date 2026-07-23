@@ -136,6 +136,76 @@ fn compatible_runtime_event_view_classifies_answer_and_terminal_semantics_once()
 }
 
 #[tokio::test]
+async fn ac_011_client_disconnect_bounds_projection_without_failing_the_durable_run() {
+    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
+    base_state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Running,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: None,
+        })
+        .await
+        .expect("seed an accepted durable run");
+
+    let runtime_event_stream = Arc::new(
+        ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(Vec::new(), Vec::new()),
+    );
+    let mut state = (*base_state).clone();
+    state.runtime_event_stream = runtime_event_stream.clone();
+    let state = Arc::new(state);
+    let (sender, receiver) = mpsc::channel(1);
+    drop(receiver);
+
+    let projection = tokio::spawn(send_compatible_runtime_event_stream(
+        state.clone(),
+        run.clone(),
+        OPENAI_CHAT_SSE_PROJECTION,
+        None,
+        None,
+        sender,
+        |_winner, _envelope| vec![Ok(axum::response::sse::Event::default().data("delta"))],
+    ));
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while runtime_event_stream.active_subscriber_count() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("projection should establish its runtime subscription");
+    runtime_event_stream.emit_live(RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::answer_text_delta(
+            "node-answer",
+            "delta".to_string(),
+            0,
+            Some("node-llm"),
+            Some(Uuid::now_v7()),
+            Some("text"),
+        ),
+    ));
+
+    tokio::time::timeout(Duration::from_secs(2), projection)
+        .await
+        .expect("client disconnect should bound the projection task")
+        .expect("projection task should not panic");
+    assert_eq!(runtime_event_stream.active_subscriber_count(), 0);
+    let durable = state
+        .store
+        .get_flow_run(run.application_id, run.id)
+        .await
+        .expect("read accepted durable run")
+        .expect("accepted durable run should remain present");
+    assert_eq!(durable.status, domain::FlowRunStatus::Running);
+    assert!(durable.error_payload.is_none());
+}
+
+#[tokio::test]
 async fn d2_ac_008_native_eof_fallback_finalizes_running_winner_before_projection() {
     let (run, state) = running_run_with_closed_stream().await;
     let (sender, mut receiver) = mpsc::channel(32);
