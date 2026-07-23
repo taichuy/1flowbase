@@ -564,10 +564,11 @@ fn reject_unknown_response_fields(
 ) -> Result<(), OpenAiCompatError> {
     accept_responses_store_hint(object, report)?;
     accept_responses_parallel_tool_calls_hint(object, report)?;
+    accept_responses_include_hint(object, report)?;
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
-            "response_format" | "text" | "background" | "include" | "max_tool_calls" | "truncation"
+            "response_format" | "text" | "background" | "max_tool_calls" | "truncation"
         )
     }) {
         let path = format!("$.{field}");
@@ -620,6 +621,63 @@ fn reject_unknown_response_fields(
                 .with_report(report.clone()),
         );
     }
+    Ok(())
+}
+
+fn accept_responses_include_hint(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(value) = object.get("include") else {
+        return Ok(());
+    };
+    let Some(items) = value.as_array() else {
+        report.record(
+            "$.include",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("include must be an array of strings"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(
+            OpenAiCompatError::invalid("include", "include must be an array of strings")
+                .with_report(report.clone()),
+        );
+    };
+    if items.iter().any(|item| !item.is_string()) {
+        report.record(
+            "$.include",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("include must be an array of strings"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(
+            OpenAiCompatError::invalid("include", "include must be an array of strings")
+                .with_report(report.clone()),
+        );
+    }
+    if items
+        .iter()
+        .filter_map(Value::as_str)
+        .any(|item| item != "reasoning.encrypted_content")
+    {
+        report.record(
+            "$.include",
+            None,
+            TranslationDecisionKind::Unsupported,
+            Some("only reasoning.encrypted_content is a recognized optional include hint"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::unsupported("include").with_report(report.clone()));
+    }
+    report.record(
+        "$.include",
+        None,
+        TranslationDecisionKind::Dropped,
+        Some("Native responses do not expose encrypted reasoning content"),
+        TranslationSafeRepresentation::Present,
+    );
     Ok(())
 }
 
@@ -2372,6 +2430,51 @@ mod tests {
         assert!(translated
             .report
             .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn codex_reasoning_encrypted_content_include_is_an_optional_hint() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "include": ["reasoning.encrypted_content"]
+        }))
+        .expect("Codex encrypted reasoning include is optional for Native responses");
+
+        assert!(translated
+            .report
+            .has_decision("$.include", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn responses_unknown_include_remains_explicitly_unsupported() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "include": ["message.output_text"]
+        }))
+        .expect_err("unknown include projections must not be silently dropped");
+
+        assert_eq!(error.param.as_deref(), Some("include"));
+        assert!(error
+            .report
+            .has_decision("$.include", TranslationDecisionKind::Unsupported));
+    }
+
+    #[test]
+    fn responses_include_requires_an_array_of_strings() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "include": "reasoning.encrypted_content"
+        }))
+        .expect_err("include must retain its array wire type");
+
+        assert_eq!(error.param.as_deref(), Some("include"));
+        assert_eq!(error.code, "invalid_request");
+        assert!(error
+            .report
+            .has_decision("$.include", TranslationDecisionKind::Rejected));
     }
 
     #[test]

@@ -41,6 +41,26 @@ async fn opencode_chat_stream_options_cross_the_request_boundary() {
 }
 
 #[tokio::test]
+async fn codex_reasoning_include_crosses_the_request_boundary() {
+    let app = test_app().await;
+    let token = setup_published_app(&app, "Codex Reasoning Include App").await;
+    let mut body = responses_body(false);
+    body["store"] = json!(false);
+    body["parallel_tool_calls"] = json!(false);
+    body["include"] = json!(["reasoning.encrypted_content"]);
+
+    let response = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        body,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn openai_chat_completions_accepts_root_endpoint_for_plain_base_url_clients() {
     let app = test_app().await;
     let token = setup_published_app(&app, "OpenAI Plain Base URL Compatible Route App").await;
