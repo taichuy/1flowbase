@@ -185,6 +185,7 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
       (call) => call.kind === 'write' && call.pathname.endsWith('/instances')
     );
     assert.equal(instanceWrite.body.config.base_url, `${files.options.upstreamBaseUrl}/v1`);
+    assert.equal(instanceWrite.body.included_in_main, true);
     assert.match(instanceWrite.body.config.api_key, /^fixture-(openai|anthropic)-token$/u);
     const draftWrite = FakeOwnerClient.calls.find(
       (call) => call.kind === 'write' && call.pathname.endsWith('/orchestration/draft')

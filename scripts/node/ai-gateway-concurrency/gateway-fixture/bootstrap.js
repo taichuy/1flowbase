@@ -46,7 +46,7 @@ async function createProviderInstance(client, installation, upstreamBaseUrl, mod
         supports_multimodal: false,
       }],
       enabled_model_ids: [model],
-      included_in_main: false,
+      included_in_main: true,
       preview_token: null,
       config,
     }
