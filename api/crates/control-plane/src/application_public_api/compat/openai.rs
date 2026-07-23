@@ -565,6 +565,7 @@ fn reject_unknown_response_fields(
     accept_responses_store_hint(object, report)?;
     accept_responses_parallel_tool_calls_hint(object, report)?;
     accept_responses_include_hint(object, report)?;
+    accept_responses_codex_metadata_hints(object, report)?;
     if let Some(field) = object.keys().find(|field| {
         matches!(
             field.as_str(),
@@ -603,6 +604,8 @@ fn reject_unknown_response_fields(
                     | "reasoning"
                     | "background"
                     | "include"
+                    | "prompt_cache_key"
+                    | "client_metadata"
                     | "max_tool_calls"
                     | "truncation"
             )
@@ -619,6 +622,73 @@ fn reject_unknown_response_fields(
         return Err(
             OpenAiCompatError::invalid("body", "unknown OpenAI Responses field")
                 .with_report(report.clone()),
+        );
+    }
+    Ok(())
+}
+
+fn accept_responses_codex_metadata_hints(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    if let Some(value) = object.get("prompt_cache_key") {
+        if !value.is_string() {
+            report.record(
+                "$.prompt_cache_key",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("prompt_cache_key must be text"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(OpenAiCompatError::invalid(
+                "prompt_cache_key",
+                "prompt_cache_key must be text",
+            )
+            .with_report(report.clone()));
+        }
+        report.record(
+            "$.prompt_cache_key",
+            None,
+            TranslationDecisionKind::Dropped,
+            Some("provider cache affinity has no Native run semantic"),
+            TranslationSafeRepresentation::Redacted,
+        );
+    }
+    if let Some(value) = object.get("client_metadata") {
+        let Some(metadata) = value.as_object() else {
+            report.record(
+                "$.client_metadata",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("client_metadata must be an object of text values"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(OpenAiCompatError::invalid(
+                "client_metadata",
+                "client_metadata must be an object of text values",
+            )
+            .with_report(report.clone()));
+        };
+        if metadata.values().any(|value| !value.is_string()) {
+            report.record(
+                "$.client_metadata",
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("client_metadata must be an object of text values"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(OpenAiCompatError::invalid(
+                "client_metadata",
+                "client_metadata must be an object of text values",
+            )
+            .with_report(report.clone()));
+        }
+        report.record(
+            "$.client_metadata",
+            None,
+            TranslationDecisionKind::Dropped,
+            Some("Codex diagnostic metadata has no Native run semantic"),
+            TranslationSafeRepresentation::Redacted,
         );
     }
     Ok(())
@@ -2444,6 +2514,44 @@ mod tests {
         assert!(translated
             .report
             .has_decision("$.include", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn codex_cache_and_client_metadata_are_typed_optional_hints() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hello",
+            "prompt_cache_key": "thread-1",
+            "client_metadata": {
+                "session_id": "session-1",
+                "thread_id": "thread-1"
+            }
+        }))
+        .expect("Codex cache and diagnostic metadata are optional Native hints");
+
+        assert!(translated
+            .report
+            .has_decision("$.prompt_cache_key", TranslationDecisionKind::Dropped));
+        assert!(translated
+            .report
+            .has_decision("$.client_metadata", TranslationDecisionKind::Dropped));
+    }
+
+    #[test]
+    fn codex_metadata_hints_retain_their_wire_types() {
+        for (field, value) in [
+            ("prompt_cache_key", json!(42)),
+            ("client_metadata", json!({"session_id": 42})),
+        ] {
+            let mut request = json!({"model": "1flowbase", "input": "hello"});
+            request[field] = value;
+            let error = translate_response_request(request)
+                .expect_err("Codex metadata hint wire types must remain explicit");
+            assert_eq!(error.param.as_deref(), Some(field));
+            assert!(error
+                .report
+                .has_decision(&format!("$.{field}"), TranslationDecisionKind::Rejected));
+        }
     }
 
     #[test]

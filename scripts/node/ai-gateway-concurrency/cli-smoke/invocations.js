@@ -67,7 +67,7 @@ function opencodeInvocation(executable, paths, target) {
     args: [
       'run',
       '--pure',
-      '--format', 'json',
+      '--format', 'default',
       '--dir', paths.output,
       '--model', `oneflowbase_gateway/${target.model}`,
       FIXED_PROMPT,

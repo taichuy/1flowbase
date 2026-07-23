@@ -48,6 +48,11 @@ async fn codex_reasoning_include_crosses_the_request_boundary() {
     body["store"] = json!(false);
     body["parallel_tool_calls"] = json!(false);
     body["include"] = json!(["reasoning.encrypted_content"]);
+    body["prompt_cache_key"] = json!("thread-1");
+    body["client_metadata"] = json!({
+        "session_id": "session-1",
+        "thread_id": "thread-1"
+    });
 
     let response = post_json(
         &app,
