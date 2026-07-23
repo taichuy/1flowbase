@@ -162,7 +162,6 @@ fn apply_memory_limit(command: &mut Command, memory_bytes: Option<u64>) -> Frame
 mod tests {
     use std::{
         fs,
-        os::unix::fs::PermissionsExt,
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -183,7 +182,9 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let root = std::env::temp_dir().join(format!("capability-stdio-timeout-{nonce}"));
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/test-fixtures")
+                .join(format!("capability-stdio-timeout-{nonce}"));
             fs::create_dir_all(&root).unwrap();
             Self { root }
         }
@@ -204,17 +205,9 @@ mod tests {
     }
 
     fn write_sleeping_runtime(temp: &TempRuntime) {
-        fs::write(
-            temp.script_path(),
-            format!(
-                "#!/usr/bin/env bash\nprintf '%s' $$ > '{}'\nsleep 5\n",
-                temp.pid_path().display()
-            ),
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(temp.script_path()).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(temp.script_path(), permissions).unwrap();
+        let fixture =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/_fixtures/timeout_runtime.sh");
+        fs::hard_link(fixture, temp.script_path()).unwrap();
     }
 
     fn process_exists(pid: i32) -> bool {
