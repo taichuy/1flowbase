@@ -23,7 +23,8 @@ impl TempDataSourcePackage {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("plugin-runner-data-source-tests-{nonce}"));
+        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("plugin-runner-data-source-tests-{nonce}"));
         fs::create_dir_all(&root).unwrap();
         Self { root }
     }
@@ -37,7 +38,14 @@ impl TempDataSourcePackage {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
         }
-        fs::write(path, content).unwrap();
+        if relative_path == "bin/fixture_data_source" {
+            let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/_fixtures/data_source/fixture_data_source.sh");
+            assert_eq!(fs::read_to_string(&fixture).unwrap(), content);
+            fs::hard_link(fixture, path).unwrap();
+        } else {
+            fs::write(path, content).unwrap();
+        }
     }
 }
 
