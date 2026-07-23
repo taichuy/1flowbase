@@ -386,22 +386,6 @@ fn is_llm_tool_result_validation_error(message: &str) -> bool {
     .any(|prefix| message.starts_with(prefix))
 }
 
-#[cfg(test)]
-mod callback_conflict_error_tests {
-    use super::*;
-
-    #[test]
-    fn ac_007_callback_payload_conflict_maps_to_http_409() {
-        let error = service_error(
-            control_plane::errors::ControlPlaneError::Conflict("callback_resume_payload_conflict")
-                .into(),
-        );
-
-        assert_eq!(error.status, StatusCode::CONFLICT);
-        assert_eq!(error.code, "callback_resume_payload_conflict");
-    }
-}
-
 #[allow(
     clippy::result_large_err,
     reason = "the Native route parser preserves the complete typed compatibility diagnostics"

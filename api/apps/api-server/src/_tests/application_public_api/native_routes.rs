@@ -2,7 +2,7 @@ use crate::_tests::{
     create_ready_provider_instance,
     support::{login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config},
 };
-use crate::routes::application_public_api::native::parse_native_run_request;
+use crate::routes::application_public_api::native::{parse_native_run_request, service_error};
 use std::collections::BTreeSet;
 
 use axum::{
@@ -33,6 +33,17 @@ use uuid::Uuid;
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+#[test]
+fn ac_007_callback_payload_conflict_maps_to_http_409() {
+    let error = service_error(
+        control_plane::errors::ControlPlaneError::Conflict("callback_resume_payload_conflict")
+            .into(),
+    );
+
+    assert_eq!(error.status, StatusCode::CONFLICT);
+    assert_eq!(error.code, "callback_resume_payload_conflict");
 }
 
 #[test]
