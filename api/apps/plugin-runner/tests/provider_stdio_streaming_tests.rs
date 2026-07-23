@@ -1,34 +1,11 @@
-use std::{
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::path::PathBuf;
 
 use plugin_framework::{provider_contract::ProviderStdioRequest, PluginRuntimeLimits};
 
-fn write_script(name: &str, body: &str) -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("provider-stdio-v2-{name}-{nonce}"));
-    fs::create_dir_all(&root).unwrap();
-    let script = root.join("provider.sh");
-    let staging_script = root.join("provider.sh.tmp");
-    fs::write(&staging_script, body).unwrap();
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mut permissions = fs::metadata(&staging_script).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&staging_script, permissions).unwrap();
-    }
-
-    fs::rename(staging_script, &script).unwrap();
-
-    script
+fn fixture_script(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/_fixtures/provider_stdio")
+        .join(name)
 }
 
 fn invoke_request() -> ProviderStdioRequest {
@@ -60,17 +37,7 @@ fn default_limits() -> PluginRuntimeLimits {
 
 #[tokio::test]
 async fn provider_stdio_v2_reads_ndjson_stream_until_result() {
-    let script = write_script(
-        "success",
-        r#"#!/usr/bin/env bash
-read _request
-printf '%s\n' '{"type":"text_delta","delta":"hel"}'
-printf '%s\n' '{"type":"text_delta","delta":"lo"}'
-printf '%s\n' '{"type":"usage_snapshot","usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}'
-printf '%s\n' '{"type":"finish","reason":"stop"}'
-printf '%s\n' '{"type":"result","result":{"final_content":"hello","usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"finish_reason":"stop"}}'
-"#,
-    );
+    let script = fixture_script("success.sh");
 
     let output = plugin_runner::stdio_runtime::call_executable_streaming(
         &script,
@@ -93,13 +60,7 @@ async fn provider_stdio_default_invocation_budget_is_300_seconds() {
         300_000
     );
 
-    let script = write_script(
-        "default-budget",
-        r#"#!/usr/bin/env bash
-read _request
-printf '%s\n' '{"type":"result","result":{"final_content":"within-default-budget","finish_reason":"stop"}}'
-"#,
-    );
+    let script = fixture_script("default_budget.sh");
 
     let output = plugin_runner::stdio_runtime::call_executable_streaming(
         &script,
@@ -119,13 +80,7 @@ printf '%s\n' '{"type":"result","result":{"final_content":"within-default-budget
 
 #[tokio::test]
 async fn provider_stdio_v2_rejects_bad_json_line() {
-    let script = write_script(
-        "bad-json",
-        r#"#!/usr/bin/env bash
-read _request
-printf '%s\n' '{not-json'
-"#,
-    );
+    let script = fixture_script("bad_json.sh");
 
     let error = plugin_runner::stdio_runtime::call_executable_streaming(
         &script,
@@ -142,18 +97,7 @@ printf '%s\n' '{not-json'
 
 #[tokio::test]
 async fn provider_worker_stdio_reuses_process_across_streaming_invocations() {
-    let script = write_script(
-        "worker-reuse",
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-count=0
-while IFS= read -r _request; do
-  count=$((count + 1))
-  printf '%s\n' "{\"type\":\"text_delta\",\"delta\":\"turn-${count}\"}"
-  printf '%s\n' "{\"type\":\"result\",\"result\":{\"final_content\":\"turn-${count}\",\"finish_reason\":\"stop\"}}"
-done
-"#,
-    );
+    let script = fixture_script("worker_reuse.sh");
     let mut worker = plugin_runner::stdio_runtime::ProviderWorker::new(script, limits());
 
     let first = worker
