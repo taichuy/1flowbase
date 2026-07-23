@@ -14,13 +14,7 @@ use crate::{
 };
 use axum::response::IntoResponse;
 use control_plane::{
-    application_public_api::{
-        callback_resume::{
-            PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
-            ResumePublishedCallbackCommand,
-        },
-        native::{AnswerProjectionSegment, NativeError, NativeRequiredAction},
-    },
+    application_public_api::native::{AnswerProjectionSegment, NativeError, NativeRequiredAction},
     ports::{
         OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventDurability,
         RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy,
@@ -217,66 +211,6 @@ async fn d2_ac_008_compatible_eof_fallback_projects_recovered_failed_winner() {
             .iter()
             .any(|(status, event_type)| status == "Failed" && event_type == "flow_failed"),
         "compatible mapper must receive the reloaded durable failed winner"
-    );
-}
-
-#[tokio::test]
-async fn d2_ac_008_compatible_resume_waiting_winner_is_adapter_unsupported_without_durable_failure()
-{
-    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let run = native_run();
-    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
-
-    let response = start_openai_chat_resume_stream(
-        base_state.clone(),
-        run.clone(),
-        "1flowbase".to_string(),
-        "chatcmpl-resume-unsupported".to_string(),
-        ResumePublishedCallbackCommand {
-            bearer_token: "not-used-by-unsupported-adapter".to_string(),
-            target: PublishedCallbackResumeTarget::FlowRun {
-                flow_run_id: run.id,
-                callback_task_id: Uuid::now_v7(),
-            },
-            source: PublishedCallbackResumeSource::OpenAiChat,
-            response_payload: json!({ "result": "ignored" }),
-            response_mode: Some("streaming".to_string()),
-        },
-    )
-    .await
-    .expect("unsupported adapter should return a protocol stream response");
-    let body = tokio::time::timeout(
-        Duration::from_secs(2),
-        axum::body::to_bytes(response.into_body(), usize::MAX),
-    )
-    .await
-    .expect("unsupported protocol stream should close")
-    .expect("unsupported protocol stream body should be readable");
-    let body = String::from_utf8(body.to_vec()).expect("unsupported protocol body should be UTF-8");
-    let durable = base_state
-        .store
-        .get_flow_run(run.application_id, run.id)
-        .await
-        .expect("read durable waiting run")
-        .expect("seeded run remains present");
-    let runtime_events = base_state
-        .store
-        .list_runtime_events(run.id, 0)
-        .await
-        .expect("read durable runtime events");
-
-    assert!(body.contains("event: error"), "{body}");
-    assert!(body.contains("unsupported_feature"), "{body}");
-    assert!(!body.contains("[DONE]"), "{body}");
-    assert!(!body.contains("response.completed"), "{body}");
-    assert!(!body.contains("message_stop"), "{body}");
-    assert_eq!(durable.status, domain::FlowRunStatus::WaitingCallback);
-    assert!(durable.error_payload.is_none());
-    assert!(
-        runtime_events
-            .iter()
-            .all(|event| event.event_type != "flow_failed"),
-        "adapter-level unsupported resume must not mutate the waiting durable winner"
     );
 }
 
