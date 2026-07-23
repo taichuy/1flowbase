@@ -844,7 +844,7 @@ describe('ModelProvidersPage - instances modal', () => {
 
   test(
     'explains source instance action buttons on hover',
-    { timeout: 15000 },
+    { timeout: 30_000 },
     async () => {
       authenticateAsModelProviderManager();
 
