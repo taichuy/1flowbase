@@ -709,3 +709,87 @@ fn apply_memory_limit(command: &mut Command, memory_bytes: Option<u64>) -> Frame
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_expired_timeout_contract(
+        timeout_state: ProviderStreamTimeoutState,
+        limits: PluginRuntimeLimits,
+        expected_kind: ProviderTimeoutKind,
+        expected_timeout_ms: u64,
+    ) {
+        let (duration, timeout_kind, timeout_ms) = timeout_state.next_read_timeout(&limits);
+        assert!(duration.is_zero());
+        assert_eq!(timeout_kind, expected_kind);
+        assert_eq!(timeout_ms, expected_timeout_ms);
+
+        let error = provider_timeout_error(timeout_kind, timeout_ms);
+        let PluginFrameworkError::RuntimeContract { error } = error else {
+            panic!("expected provider runtime contract error, got {error:?}");
+        };
+        assert!(error.message.contains("provider runtime timed out"));
+        let expected_summary = format!(
+            "timeout_kind={};timeout_ms={timeout_ms}",
+            timeout_kind.as_str()
+        );
+        assert_eq!(
+            error.provider_summary.as_deref(),
+            Some(expected_summary.as_str())
+        );
+    }
+
+    #[test]
+    fn expired_wall_clock_budget_produces_wall_clock_contract_error() {
+        assert_expired_timeout_contract(
+            ProviderStreamTimeoutState {
+                started_at: Instant::now() - Duration::from_millis(200),
+                first_token_seen: false,
+                last_stream_event_at: None,
+            },
+            PluginRuntimeLimits {
+                timeout_ms: Some(100),
+                ..Default::default()
+            },
+            ProviderTimeoutKind::WallClock,
+            100,
+        );
+    }
+
+    #[test]
+    fn expired_first_token_budget_produces_first_token_contract_error() {
+        assert_expired_timeout_contract(
+            ProviderStreamTimeoutState {
+                started_at: Instant::now() - Duration::from_millis(200),
+                first_token_seen: false,
+                last_stream_event_at: None,
+            },
+            PluginRuntimeLimits {
+                timeout_ms: Some(2_000),
+                first_token_timeout_ms: Some(100),
+                ..Default::default()
+            },
+            ProviderTimeoutKind::FirstToken,
+            100,
+        );
+    }
+
+    #[test]
+    fn expired_stream_idle_budget_produces_stream_idle_contract_error() {
+        assert_expired_timeout_contract(
+            ProviderStreamTimeoutState {
+                started_at: Instant::now() - Duration::from_millis(200),
+                first_token_seen: true,
+                last_stream_event_at: Some(Instant::now() - Duration::from_millis(200)),
+            },
+            PluginRuntimeLimits {
+                timeout_ms: Some(2_000),
+                stream_idle_timeout_ms: Some(100),
+                ..Default::default()
+            },
+            ProviderTimeoutKind::StreamIdle,
+            100,
+        );
+    }
+}
