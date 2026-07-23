@@ -240,7 +240,8 @@ mod tests {
             input: json!({}),
         };
         let limits = PluginRuntimeLimits {
-            timeout_ms: Some(50),
+            // Leave enough time for a loaded CI runner to schedule the shell and write its PID.
+            timeout_ms: Some(1_000),
             ..Default::default()
         };
 
