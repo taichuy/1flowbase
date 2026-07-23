@@ -30,12 +30,12 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
 
   assert.deepEqual(config, {
     backend: {
-      cargoJobs: 4,
-      cargoTestThreads: 1,
+      cargoJobs: 8,
+      cargoTestThreads: 8,
     },
     frontend: {
-      turboConcurrency: 4,
-      vitestMaxWorkers: 4,
+      turboConcurrency: 8,
+      vitestMaxWorkers: 8,
     },
     locks: {
       waitTimeoutMinutes: 30,
@@ -45,7 +45,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
   });
 });
 
-test("frontend vitest defaults cap coverage concurrency on large machines", () => {
+test("frontend defaults use all available parallelism on large machines", () => {
   const repoRoot = createRepoRoot();
 
   const config = loadVerifyRuntimeConfig({
@@ -54,11 +54,11 @@ test("frontend vitest defaults cap coverage concurrency on large machines", () =
     availableParallelism: 16,
   });
 
-  assert.equal(config.frontend.vitestMaxWorkers, 4);
-  assert.equal(config.frontend.turboConcurrency, 8);
+  assert.equal(config.frontend.vitestMaxWorkers, 16);
+  assert.equal(config.frontend.turboConcurrency, 16);
 });
 
-test("cargo-jobs prints half of the machine parallelism by default", () => {
+test("cargo-jobs prints all machine parallelism by default", () => {
   const repoRoot = createRepoRoot();
   let stdout = "";
 
@@ -72,7 +72,7 @@ test("cargo-jobs prints half of the machine parallelism by default", () => {
   });
 
   assert.equal(status, 0);
-  assert.equal(stdout, "5\n");
+  assert.equal(stdout, "10\n");
 });
 
 test("loadVerifyRuntimeConfig applies local overrides when config file exists", () => {
@@ -273,10 +273,10 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
   assert.deepEqual(config, {
     backend: {
       cargoJobs: 3,
-      cargoTestThreads: 1,
+      cargoTestThreads: 8,
     },
     frontend: {
-      turboConcurrency: 4,
+      turboConcurrency: 8,
       vitestMaxWorkers: 2,
     },
     locks: {
