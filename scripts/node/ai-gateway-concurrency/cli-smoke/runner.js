@@ -135,7 +135,7 @@ async function executeTmuxInvocation(
   let firstMarkerReleased = false;
   fs.writeFileSync(wrapperPath, [
     '#!/bin/sh',
-    `${shellQuote(scriptExecutable)} -q -e -f -m advanced -O ${shellQuote(ptyPath)} -T ${shellQuote(timingPath)} -c ${shellQuote(command)} /dev/null`,
+    `${shellQuote(scriptExecutable)} -q -e -f -m advanced -O ${shellQuote(ptyPath)} -T ${shellQuote(timingPath)} -c ${shellQuote(command)}`,
     'status=$?',
     `printf '%s\\n' "$status" > ${shellQuote(statusPath)}`,
     `${shellQuote(tmuxExecutable)} -L ${shellQuote(socket)} wait-for -S ${shellQuote(doneSignal)}`,

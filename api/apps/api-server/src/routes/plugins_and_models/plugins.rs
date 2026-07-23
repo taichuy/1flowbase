@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
+    handler::Handler,
     http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     Json, Router,
 };
@@ -41,6 +42,7 @@ use crate::{
 
 const DEFAULT_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 20;
 const MAX_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 50;
+const MAX_PLUGIN_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct InstallPluginBody {
@@ -349,7 +351,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/plugins/install-upload",
             console_post(
-                install_uploaded_plugin,
+                install_uploaded_plugin.layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES)),
                 ConsoleOperation("plugins.install.upload".to_string()),
             ),
         )
@@ -437,7 +439,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/settings/model-providers/plugins/install-upload",
             console_post(
-                settings_routes::install_uploaded_plugin,
+                settings_routes::install_uploaded_plugin
+                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES)),
                 ConsoleOperation("model_provider_plugins.install.upload".to_string()),
             ),
         )

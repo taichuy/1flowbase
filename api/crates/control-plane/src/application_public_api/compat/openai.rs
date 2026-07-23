@@ -1597,17 +1597,27 @@ fn responses_input_to_native_run_input(
     let items = input
         .as_array()
         .ok_or_else(|| OpenAiCompatError::invalid("input", "input must be text or messages"))?;
-    let last_user_index = items
-        .iter()
-        .enumerate()
-        .filter_map(|(index, item)| {
-            (!is_v2_compaction || !compaction::is_compaction_trigger_item(item))
-                .then_some((index, item))
-        })
-        .filter(|(_, item)| item.get("role").and_then(Value::as_str).unwrap_or("user") == "user")
-        .map(|(index, _)| index)
-        .next_back();
-    let Some(last_user_index) = last_user_index else {
+    let reconstructable_tool_continuation = responses_end_with_reconstructable_tool_output(items)?;
+    let last_user_index = if reconstructable_tool_continuation {
+        None
+    } else {
+        items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                (!is_v2_compaction || !compaction::is_compaction_trigger_item(item))
+                    .then_some((index, item))
+            })
+            .filter(|(_, item)| {
+                matches!(
+                    item.get("type").and_then(Value::as_str),
+                    None | Some("message")
+                ) && item.get("role").and_then(Value::as_str).unwrap_or("user") == "user"
+            })
+            .map(|(index, _)| index)
+            .next_back()
+    };
+    if last_user_index.is_none() && !reconstructable_tool_continuation {
         if is_v2_compaction {
             return Ok(ResponsesInputMapping {
                 query: String::new(),
@@ -1619,7 +1629,7 @@ fn responses_input_to_native_run_input(
             "input",
             "user input is required",
         ));
-    };
+    }
 
     let mut history: Vec<Value> = Vec::new();
     let mut system_parts = Vec::new();
@@ -1675,7 +1685,7 @@ fn responses_input_to_native_run_input(
             _ => {}
         }
         let message = responses_input_message(item)?;
-        if index == last_user_index {
+        if Some(index) == last_user_index {
             if let Some(content_blocks) = message.content_blocks {
                 history.push(serde_json::json!({
                     "role": message.role,
@@ -1707,10 +1717,51 @@ fn responses_input_to_native_run_input(
         history.push(history_entry);
     }
 
+    if reconstructable_tool_continuation {
+        return Ok(ResponsesInputMapping {
+            query: String::new(),
+            history,
+            system_parts,
+        });
+    }
+
     Err(OpenAiCompatError::invalid(
         "input",
         "user input is required",
     ))
+}
+
+fn responses_end_with_reconstructable_tool_output(
+    items: &[Value],
+) -> Result<bool, OpenAiCompatError> {
+    if items
+        .last()
+        .and_then(|item| item.get("type"))
+        .and_then(Value::as_str)
+        != Some("function_call_output")
+    {
+        return Ok(false);
+    }
+    let call_ids = items
+        .iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("function_call"))
+        .filter_map(|item| item.get("call_id").and_then(Value::as_str))
+        .collect::<std::collections::HashSet<_>>();
+    let outputs_are_paired = items
+        .iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("function_call_output"))
+        .all(|item| {
+            item.get("call_id")
+                .and_then(Value::as_str)
+                .is_some_and(|call_id| call_ids.contains(call_id))
+        });
+    if call_ids.is_empty() || !outputs_are_paired {
+        return Err(OpenAiCompatError::invalid(
+            "input",
+            "function_call_output requires a matching function_call",
+        ));
+    }
+    Ok(true)
 }
 
 fn openai_chat_history_tool_calls(tool_calls: &Value) -> Value {
@@ -2209,6 +2260,43 @@ mod tests {
             2
         );
         assert_eq!(translated.request.history[2]["tool_call_id"], "call_a");
+    }
+
+    #[test]
+    fn ac_008_responses_reconstructable_tool_output_can_start_a_new_turn() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": [
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "查库存"}]},
+                {"type": "function_call", "call_id": "call_inventory", "name": "lookup", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "call_inventory", "output": "7"}
+            ]
+        }))
+        .expect("paired Responses tool history should start a new turn without invented input");
+
+        assert_eq!(translated.request.query, "");
+        assert_eq!(
+            translated.request.history[1]["tool_calls"][0]["id"],
+            "call_inventory"
+        );
+        assert_eq!(
+            translated.request.history[2]["tool_call_id"],
+            "call_inventory"
+        );
+    }
+
+    #[test]
+    fn ac_008_responses_orphan_tool_output_is_rejected() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": [
+                {"type": "function_call_output", "call_id": "call_orphan", "output": "7"}
+            ]
+        }))
+        .expect_err("orphan Responses tool output must not invent a function call");
+
+        assert_eq!(error.code, "invalid_request");
+        assert!(error.message.contains("matching function_call"));
     }
 
     #[test]

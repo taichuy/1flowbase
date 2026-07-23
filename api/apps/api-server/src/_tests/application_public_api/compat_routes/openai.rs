@@ -169,7 +169,7 @@ async fn openai_responses_resolves_previous_response_id_before_creating_a_run() 
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

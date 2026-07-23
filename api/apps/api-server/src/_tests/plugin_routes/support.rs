@@ -304,11 +304,30 @@ runtime:
 }
 
 pub(super) fn build_signed_openai_upload_package(version: &str) -> Vec<u8> {
+    build_signed_openai_upload_package_with_payload(version, 0)
+}
+
+pub(super) fn build_signed_openai_upload_package_with_payload(
+    version: &str,
+    payload_bytes: usize,
+) -> Vec<u8> {
     let package_root = std::env::temp_dir().join(format!(
         "plugin-route-upload-openai-{}",
         uuid::Uuid::now_v7()
     ));
     create_openai_compatible_package(&package_root, version);
+    if payload_bytes > 0 {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let payload = (0..payload_bytes)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                (state >> 32) as u8
+            })
+            .collect::<Vec<_>>();
+        fs::write(package_root.join("bin/upload-limit-fixture.bin"), payload).unwrap();
+    }
 
     let payload_sha256 = sha256_directory_tree(&package_root);
     let signing_key = SigningKey::from_bytes(&[7u8; 32]);

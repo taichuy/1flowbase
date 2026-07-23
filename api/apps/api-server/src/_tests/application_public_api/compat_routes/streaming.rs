@@ -681,6 +681,17 @@ async fn ac_008_openai_responses_stale_tool_continuation_starts_a_new_run() {
             "stream": true,
             "input": [
                 {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Find inventory"}]
+                },
+                {
+                    "type": "function_call",
+                    "call_id": call_id.clone(),
+                    "name": "lookup_inventory",
+                    "arguments": "{\"sku\":\"sku_123\"}"
+                },
+                {
                     "type": "function_call_output",
                     "call_id": call_id,
                     "output": {"stock": 7}
@@ -700,6 +711,31 @@ async fn ac_008_openai_responses_stale_tool_continuation_starts_a_new_run() {
     .unwrap();
     assert!(String::from_utf8_lossy(&body).contains("response.completed"));
     assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+}
+
+#[tokio::test]
+async fn ac_008_openai_responses_orphan_tool_output_is_rejected_without_a_new_run() {
+    let (app, state) = test_app_with_state().await;
+    let token = setup_published_app(&app, "OpenAI Responses Orphan Tool Output App").await;
+    let before = flow_run_count(state.as_ref()).await;
+
+    let response = post_json(
+        &app,
+        "/v1/responses",
+        ("authorization", format!("Bearer {token}")),
+        json!({
+            "model": "provider/custom-model:latest",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": encode_openai_callback_tool_call_id(uuid::Uuid::now_v7(), "call_orphan"),
+                "output": {"stock": 7}
+            }]
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]

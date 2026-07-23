@@ -9,8 +9,9 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 use super::support::{
-    build_signed_openai_upload_package, build_upload_body, create_host_extension_package,
-    create_member, create_role, pack_tar_gz, replace_member_roles, replace_role_permissions,
+    build_signed_openai_upload_package, build_signed_openai_upload_package_with_payload,
+    build_upload_body, create_host_extension_package, create_member, create_role, pack_tar_gz,
+    replace_member_roles, replace_role_permissions,
 };
 
 #[tokio::test]
@@ -179,6 +180,72 @@ async fn plugin_routes_install_upload_accepts_multipart_package() {
         payload["data"]["installation"]["signature_status"],
         "verified"
     );
+}
+
+#[tokio::test]
+async fn plugin_routes_install_upload_accepts_official_package_larger_than_default_body_limit() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let boundary = "----1flowbase-large-plugin-boundary";
+    let package_bytes = build_signed_openai_upload_package_with_payload("0.2.1", 3 * 1024 * 1024);
+    assert!(package_bytes.len() > 2 * 1024 * 1024);
+    let body = build_upload_body(
+        boundary,
+        "openai_compatible-0.2.1.1flowbasepkg",
+        &package_bytes,
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/plugins/install-upload")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn plugin_routes_install_upload_rejects_payload_above_route_limit() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let boundary = "----1flowbase-oversize-plugin-boundary";
+    let body = build_upload_body(
+        boundary,
+        "oversize.1flowbasepkg",
+        &vec![0_u8; 8 * 1024 * 1024],
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/plugins/install-upload")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 #[tokio::test]
