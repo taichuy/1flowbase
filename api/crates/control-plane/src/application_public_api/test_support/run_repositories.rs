@@ -260,6 +260,36 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
             .cloned())
     }
 
+    async fn find_published_flow_run_by_provider_response_id(
+        &self,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Option<domain::FlowRunRecord>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let flow_run_id = inner
+            .node_runs
+            .values()
+            .find(|node_run| {
+                node_run.output_payload["response_id"].as_str() == Some(provider_response_id)
+            })
+            .map(|node_run| node_run.flow_run_id);
+        Ok(flow_run_id.and_then(|flow_run_id| {
+            inner
+                .flow_runs
+                .get(&flow_run_id)
+                .filter(|flow_run| {
+                    flow_run.application_id == application_id
+                        && flow_run.api_key_id == Some(api_key_id)
+                        && flow_run.run_mode == domain::FlowRunMode::PublishedApiRun
+                })
+                .cloned()
+        }))
+    }
+
     async fn cancel_published_flow_run(
         &self,
         input: &run_service::CancelPublishedFlowRunInput,

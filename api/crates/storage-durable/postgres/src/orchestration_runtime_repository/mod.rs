@@ -842,6 +842,62 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         row.map(map_flow_run_record).transpose()
     }
 
+    async fn find_published_flow_run_by_provider_response_id(
+        &self,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Option<domain::FlowRunRecord>> {
+        let row = sqlx::query(
+            r#"
+            select
+                flow_runs.id,
+                flow_runs.application_id,
+                flow_runs.flow_id,
+                flow_runs.flow_draft_id,
+                flow_runs.compiled_plan_id,
+                flow_runs.debug_session_id,
+                flow_runs.flow_schema_version,
+                flow_runs.document_hash,
+                flow_runs.run_mode,
+                flow_runs.target_node_id,
+                flow_runs.title,
+                flow_runs.status,
+                flow_runs.input_payload,
+                flow_runs.output_payload,
+                flow_runs.error_payload,
+                flow_runs.created_by,
+                null::text as authorized_account,
+                flow_runs.api_key_id,
+                flow_runs.publication_version_id,
+                flow_runs.external_user,
+                flow_runs.external_conversation_id,
+                flow_runs.external_trace_id,
+                flow_runs.compatibility_mode,
+                flow_runs.idempotency_key,
+                flow_runs.started_at,
+                flow_runs.finished_at,
+                flow_runs.created_at,
+                flow_runs.updated_at
+            from flow_runs
+            join node_runs on node_runs.flow_run_id = flow_runs.id
+            where flow_runs.application_id = $1
+              and flow_runs.api_key_id = $2
+              and flow_runs.run_mode = 'published_api_run'
+              and node_runs.output_payload ->> 'response_id' = $3
+            order by node_runs.finished_at desc nulls last, node_runs.id desc
+            limit 1
+            "#,
+        )
+        .bind(application_id)
+        .bind(api_key_id)
+        .bind(provider_response_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(map_flow_run_record).transpose()
+    }
+
     async fn cancel_published_flow_run(
         &self,
         input: &CancelPublishedFlowRunInput,

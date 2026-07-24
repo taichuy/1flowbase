@@ -58,11 +58,32 @@ function vectorBodies(observers, secretCanary) {
           { type: 'mcp_list_tools', id: 'mcp_list_1', server_label: 'fixture_mcp', tools: [] },
           { type: 'mcp_call', id: 'mcp_call_1', server_label: 'fixture_mcp', name: 'lookup', arguments: '{}' },
           { type: 'mcp_approval_request', id: 'mcp_approval_1', server_label: 'fixture_mcp', name: 'lookup', arguments: '{}' },
-          { type: 'mcp_approval_response', approval_request_id: 'mcp_approval_1', approve: true },
         ],
       },
     },
   ];
+}
+
+function mcpApprovalContinuation(capture) {
+  const payloads = capture.split(/\r?\n/u)
+    .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+    .map((line) => JSON.parse(line.slice(6)));
+  const responseId = payloads
+    .filter((payload) => payload.type === 'response.created')
+    .map((payload) => payload.response?.id)
+    .find((id) => typeof id === 'string' && id.trim().length > 0);
+  const approvalRequestId = payloads.flatMap((payload) => [
+    payload.item,
+    ...(Array.isArray(payload.response?.output) ? payload.response.output : []),
+  ]).find((item) => item?.type === 'mcp_approval_request')?.id;
+  if (!responseId) throw new Error('WireAudit MCP start omitted provider response id');
+  if (!approvalRequestId) throw new Error('WireAudit MCP start omitted approval request id');
+  return {
+    previous_response_id: responseId,
+    input: [{
+      type: 'mcp_approval_response', approval_request_id: approvalRequestId, approve: true,
+    }],
+  };
 }
 
 async function snapshot(url, fetchImpl) {
@@ -91,6 +112,26 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
     });
     if (!response.ok) throw new Error(`WireAudit ${vector.name} returned HTTP ${response.status}`);
     vector.capture = await response.text();
+    if (vector.name === 'mcp-list-call-approval') {
+      const continuation = mcpApprovalContinuation(vector.capture);
+      const approvalResponse = await fetchImpl(`${inputs.manifest.gatewayBaseUrl}/v1/responses`, {
+        method: 'POST',
+        headers: {
+          accept: 'text/event-stream',
+          authorization: `Bearer ${inputs.manifest.openai.api_key}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: inputs.manifest.openai.model,
+          stream: true,
+          ...continuation,
+        }),
+      });
+      if (!approvalResponse.ok) {
+        throw new Error(`WireAudit mcp-approval-continuation returned HTTP ${approvalResponse.status}`);
+      }
+      vector.capture += `\n${await approvalResponse.text()}`;
+    }
   }
   const after = await snapshot(controlled.snapshotUrl, fetchImpl);
   const cursor = before.entries.at(-1)?.sequence ?? 0;

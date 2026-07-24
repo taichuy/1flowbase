@@ -65,6 +65,32 @@ impl ApplicationPublicApiTestRepository {
             .cloned()
     }
 
+    pub fn seed_provider_response_id(&self, flow_run_id: Uuid, provider_response_id: &str) {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let node_run_id = Uuid::now_v7();
+        inner.node_runs.insert(
+            node_run_id,
+            domain::NodeRunRecord {
+                id: node_run_id,
+                flow_run_id,
+                node_id: "node-llm".to_string(),
+                node_type: "llm".to_string(),
+                node_alias: "LLM".to_string(),
+                status: domain::NodeRunStatus::Succeeded,
+                input_payload: serde_json::json!({}),
+                output_payload: serde_json::json!({ "response_id": provider_response_id }),
+                error_payload: None,
+                metrics_payload: serde_json::json!({}),
+                debug_payload: serde_json::json!({}),
+                started_at: OffsetDateTime::now_utc(),
+                finished_at: Some(OffsetDateTime::now_utc()),
+            },
+        );
+    }
+
     pub fn clear_native_run_results(&self) {
         self.inner
             .lock()

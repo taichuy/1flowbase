@@ -5,8 +5,8 @@ use control_plane::application_public_api::{
     },
     native::{
         translate_native_run_request, ApplicationNativeRunService, CancelNativeRunCommand,
-        CreateNativeRunCommand, GetNativeRunCommand, NativeRunRequest, NativeRunStatus,
-        NativeRunValidationError,
+        CreateNativeRunCommand, GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand,
+        NativeRunRequest, NativeRunStatus, NativeRunValidationError,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
@@ -879,6 +879,50 @@ async fn native_run_read_loads_durable_published_flow_run_without_test_only_resu
         loaded.node_input_payload["node-start"]["query"],
         json!("Summarize the incident")
     );
+}
+
+#[tokio::test]
+async fn native_run_read_resolves_provider_response_id_within_api_key_scope() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_application(actor_user_id(), "Provider Continuation App");
+    let other_application = harness.seed_application(other_user_id(), "Other Continuation App");
+    let token = issue_application_key(&harness, application.id, actor_user_id()).await;
+    let other_token = issue_application_key(&harness, other_application.id, other_user_id()).await;
+    publish_runnable_application(
+        &harness,
+        application.id,
+        mapping_without_model_target(),
+        actor_user_id(),
+    )
+    .await;
+    let repository = harness.repository();
+    let service = ApplicationNativeRunService::new(repository.clone());
+    let created = service
+        .create_native_run(CreateNativeRunCommand {
+            bearer_token: token.clone(),
+            request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
+        })
+        .await
+        .unwrap();
+    repository.seed_provider_response_id(created.id, "resp_provider_owned");
+
+    let loaded = service
+        .get_native_run_by_provider_response_id(GetNativeRunByProviderResponseIdCommand {
+            bearer_token: token,
+            provider_response_id: "resp_provider_owned".to_string(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(loaded.id, created.id);
+
+    let error = service
+        .get_native_run_by_provider_response_id(GetNativeRunByProviderResponseIdCommand {
+            bearer_token: other_token,
+            provider_response_id: "resp_provider_owned".to_string(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error, NativeRunValidationError::NotFound);
 }
 
 #[tokio::test]

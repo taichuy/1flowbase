@@ -167,6 +167,7 @@ function wireAuditVectorFromBody(body) {
     ...(Array.isArray(body.input) ? body.input : []),
   ];
   const kinds = new Set(values.map((item) => item?.type).filter(Boolean));
+  if (kinds.has('mcp_approval_response')) return 'mcp-approval-continuation';
   if (kinds.has('mcp')) return 'mcp-list-call-approval';
   if (['file_search', 'programmatic_tool_calling', 'shell'].some((kind) => kinds.has(kind))) {
     return 'hosted-tools';

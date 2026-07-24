@@ -895,6 +895,12 @@ pub struct GetNativeRunCommand {
 }
 
 #[derive(Debug, Clone)]
+pub struct GetNativeRunByProviderResponseIdCommand {
+    pub bearer_token: String,
+    pub provider_response_id: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct CancelNativeRunCommand {
     pub bearer_token: String,
     pub run_id: Uuid,
@@ -993,11 +999,47 @@ where
             return Err(NativeRunValidationError::Forbidden);
         }
 
+        self.project_published_native_run(actor.application_id, flow_run)
+            .await
+    }
+
+    pub async fn get_native_run_by_provider_response_id(
+        &self,
+        command: GetNativeRunByProviderResponseIdCommand,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        let actor = self
+            .api_key_service()
+            .authenticate_bearer_token(&command.bearer_token)
+            .await
+            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+        let provider_response_id = command.provider_response_id.trim();
+        if provider_response_id.is_empty() {
+            return Err(NativeRunValidationError::NotFound);
+        }
+        let flow_run = self
+            .repository
+            .find_published_flow_run_by_provider_response_id(
+                actor.application_id,
+                actor.api_key_id,
+                provider_response_id,
+            )
+            .await
+            .map_err(|_| NativeRunValidationError::NotFound)?
+            .ok_or(NativeRunValidationError::NotFound)?;
+        self.project_published_native_run(actor.application_id, flow_run)
+            .await
+    }
+
+    async fn project_published_native_run(
+        &self,
+        application_id: Uuid,
+        flow_run: domain::FlowRunRecord,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let metadata = durable_metadata_from_flow_run(&flow_run);
         let initial_run = super::run_service::native_result_from_flow_run(&flow_run, metadata);
         if let Some(stream_state) = self
             .repository
-            .get_published_run_stream_state(actor.application_id, flow_run.id)
+            .get_published_run_stream_state(application_id, flow_run.id)
             .await
             .map_err(|_| NativeRunValidationError::NotFound)?
         {

@@ -83,6 +83,13 @@ pub trait ApplicationPublishedRunControlRepository: Send + Sync {
         flow_run_id: Uuid,
     ) -> Result<Option<domain::FlowRunRecord>>;
 
+    async fn find_published_flow_run_by_provider_response_id(
+        &self,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Option<domain::FlowRunRecord>>;
+
     async fn cancel_published_flow_run(
         &self,
         input: &CancelPublishedFlowRunInput,

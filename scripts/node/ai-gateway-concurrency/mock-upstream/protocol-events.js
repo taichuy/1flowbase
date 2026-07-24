@@ -209,7 +209,8 @@ function responsesWireEvents(nonce, vector) {
     'tool-search-additional-tools': ['tool_search_call'],
     'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
     'hosted-tools': ['file_search_call', 'program', 'shell_call'],
-    'mcp-list-call-approval': ['mcp_list_tools', 'mcp_call', 'mcp_approval_request', 'mcp_approval_response'],
+    'mcp-list-call-approval': ['mcp_list_tools', 'mcp_call', 'mcp_approval_request'],
+    'mcp-approval-continuation': ['mcp_approval_response'],
   }[vector] ?? ['future_gateway_drift'];
   const output = types.map((type, index) => ({
     id: `wire_${index}_${nonce}`, type, status: 'completed',

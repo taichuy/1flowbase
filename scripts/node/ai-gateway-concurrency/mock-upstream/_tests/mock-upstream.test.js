@@ -47,6 +47,10 @@ test('wire audit vector is inferred from the public Responses body', () => {
     tools: [{ type: 'file_search' }, { type: 'programmatic_tool_calling' }],
   }), 'hosted-tools');
   assert.equal(wireAuditVectorFromBody({ tools: [{ type: 'mcp' }] }), 'mcp-list-call-approval');
+  assert.equal(wireAuditVectorFromBody({
+    previous_response_id: 'resp_previous',
+    input: [{ type: 'mcp_approval_response', approval_request_id: 'approval_1', approve: true }],
+  }), 'mcp-approval-continuation');
   assert.equal(wireAuditVectorFromBody({ input: 'ordinary request' }), null);
 });
 

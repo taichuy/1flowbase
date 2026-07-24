@@ -22,9 +22,10 @@ use control_plane::application_public_api::{
         OpenAiResponsesEndpoint,
     },
     native::{
-        ApplicationNativeRunService, CreateNativeRunCommand, GetNativeRunCommand,
-        NativeExecutionOperation, NativeRunRequest, NativeRunResult, NativeRunStatus,
-        NativeRunValidationError, RemoteCompactionProfile,
+        ApplicationNativeRunService, CreateNativeRunCommand,
+        GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeExecutionOperation,
+        NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
+        RemoteCompactionProfile,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -941,14 +942,34 @@ async fn load_previous_response_context(
     let Some(response_id) = previous_response_id else {
         return Ok(None);
     };
-    let run = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .get_native_run(GetNativeRunCommand {
-            bearer_token: bearer_token.to_string(),
-            run_id: run_id_from_response_id(response_id)?,
-        })
-        .await
-        .map_err(native::native_error)?;
+    let service = ApplicationNativeRunService::new(state.store.clone())
+        .with_last_used_cache(state.infrastructure.cache_store());
+    let run = match run_id_from_response_id(response_id) {
+        Ok(run_id) => match service
+            .get_native_run(GetNativeRunCommand {
+                bearer_token: bearer_token.to_string(),
+                run_id,
+            })
+            .await
+        {
+            Ok(run) => run,
+            Err(NativeRunValidationError::NotFound) => service
+                .get_native_run_by_provider_response_id(GetNativeRunByProviderResponseIdCommand {
+                    bearer_token: bearer_token.to_string(),
+                    provider_response_id: response_id.to_string(),
+                })
+                .await
+                .map_err(native::native_error)?,
+            Err(error) => return Err(native::native_error(error).into()),
+        },
+        Err(_) => service
+            .get_native_run_by_provider_response_id(GetNativeRunByProviderResponseIdCommand {
+                bearer_token: bearer_token.to_string(),
+                provider_response_id: response_id.to_string(),
+            })
+            .await
+            .map_err(native::native_error)?,
+    };
     Ok(Some(OpenAiPreviousResponseContext {
         response_id: response_id.to_string(),
         external_user: string_value(&run.metadata, "external_user"),
