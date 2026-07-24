@@ -51,10 +51,11 @@ test('OpenCode TUI acceptance reads the sentinel from raw PTY output', () => {
 
 test('tmux PTY runner records util-linux output and timing without using the user tmux server', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'compatible-stream-tmux-'));
+  let firstMarkerObserved = false;
   try {
     const result = await executeTmuxInvocation({
       executable: '/usr/bin/printf',
-      args: ['%s\n', '{"type":"result","result":"1flowbase gateway sentinel ok"}'],
+      args: ['%s\n', '{"type":"result","result":"marker-1 marker-2 1flowbase gateway sentinel ok"}'],
       cwd: root,
     }, {
       PATH: process.env.PATH,
@@ -62,12 +63,22 @@ test('tmux PTY runner records util-linux output and timing without using the use
     }, {
       artifactDirectory: root,
       timeoutMs: 10_000,
+      markers: ['marker-1', 'marker-2'],
+      onFirstMarker: () => { firstMarkerObserved = true; },
     });
 
     assert.equal(result.exit_code, 0);
     assert.equal(result.timed_out, false);
+    assert.equal(firstMarkerObserved, true);
     assert.match(result.stdout.text, /1flowbase gateway sentinel ok/u);
     assert.match(result.pty.timing, /(^|\n)O\s/u);
+    assert.equal(result.pty.observation, 'util-linux-script-raw-pty');
+    const marker = fs.readFileSync(result.pty.timeline_path, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .find((event) => event.event === 'marker_1');
+    assert.equal(marker.source, 'util-linux-script-raw-pty');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

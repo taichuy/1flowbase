@@ -141,7 +141,7 @@ async function executeTmuxInvocation(
   const releaseSignal = `${socket}-release`;
   const startSignal = `${socket}-start`;
   const command = [invocation.executable, ...invocation.args].map(shellQuote).join(' ');
-  let markerWatcher = null;
+  let rawPtyWatcher = null;
   let firstMarkerReleased = false;
   let secondMarkerTerminationStarted = false;
   let barrierReleasePromise = null;
@@ -167,27 +167,22 @@ async function executeTmuxInvocation(
   try {
     producerBefore = await readProducerSnapshot?.();
     if (markers[0] || markers[1] || clientResultMarker) {
-      markerWatcher = fs.watch(artifactDirectory, () => {
-        if (!fs.existsSync(timelinePath)) return;
-        let outputEvents;
+      rawPtyWatcher = fs.watch(root, () => {
+        if (!fs.existsSync(ptyPath)) return;
+        let visible;
         try {
-          outputEvents = readTimeline(timelinePath).filter((event) => event.event === 'tmux_output');
+          const size = fs.statSync(ptyPath).size;
+          if (size > MAX_OUTPUT_BYTES) return;
+          visible = fs.readFileSync(ptyPath, 'utf8');
         } catch {
           return;
         }
-        const visible = outputEvents.map((event) => event.text).join('');
         const recordMarker = (marker, event) => {
           const streamOffset = marker ? visible.indexOf(marker) : -1;
           if (streamOffset === -1 || observedMarkers.has(event)) return false;
-          let bytes = 0;
-          const outputEvent = outputEvents.find((entry) => {
-            bytes += entry.text.length;
-            return streamOffset < bytes;
-          });
           observedMarkers.add(event);
           appendTimelineEvent(timelinePath, event, {
-            source: 'client-pty', marker, stream_offset: streamOffset,
-            monotonic_ns: outputEvent.monotonic_ns,
+            source: 'util-linux-script-raw-pty', marker, stream_offset: streamOffset,
           });
           return true;
         };
@@ -254,7 +249,8 @@ async function executeTmuxInvocation(
       .filter((event) => event.event === 'tmux_output')
       .map((event) => event.text)
       .join('');
-    const stdoutText = pipeText || (fs.existsSync(ptyPath) ? fs.readFileSync(ptyPath, 'utf8') : pane.stdout.text);
+    const rawPtyText = fs.existsSync(ptyPath) ? fs.readFileSync(ptyPath, 'utf8') : '';
+    const stdoutText = pipeText || rawPtyText || pane.stdout.text;
     const timingText = fs.existsSync(timingPath) ? fs.readFileSync(timingPath, 'utf8') : '';
     const exitCode = fs.existsSync(statusPath)
       ? Number.parseInt(fs.readFileSync(statusPath, 'utf8').trim(), 10)
@@ -285,8 +281,8 @@ async function executeTmuxInvocation(
       pty: {
         timing: timingText,
         pane: pane.stdout.text,
-        markers: ptyMarkerTimeline(stdoutText, timingText, markers),
-        observation: 'tmux-pipe-pane',
+        markers: ptyMarkerTimeline(rawPtyText || stdoutText, timingText, markers),
+        observation: 'util-linux-script-raw-pty',
         timeline_path: timelinePath,
         timeline_events: timeline.length,
         observer_counters: producerAfter?.counters ?? null,
@@ -303,10 +299,10 @@ async function executeTmuxInvocation(
       timed_out: true,
       stdout: { text: '', bytes: 0, overflow: false },
       stderr: { text: error.message, bytes: Buffer.byteLength(error.message), overflow: false },
-      pty: { timing: '', pane: '', observation: 'tmux-pipe-pane', timeline_path: timelinePath },
+      pty: { timing: '', pane: '', observation: 'util-linux-script-raw-pty', timeline_path: timelinePath },
     };
   } finally {
-    markerWatcher?.close();
+    rawPtyWatcher?.close();
     await spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', '-S', releaseSignal]).catch(() => {});
     await spawnResult(tmuxExecutable, ['-L', socket, 'kill-server']).catch(() => {});
     fs.rmSync(root, { recursive: true, force: true });
