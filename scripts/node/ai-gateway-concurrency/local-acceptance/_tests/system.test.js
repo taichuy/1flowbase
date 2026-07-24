@@ -1,0 +1,52 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const test = require('node:test');
+
+const { requireRepositoryState, requireSourceObject } = require('../system');
+
+function git(root, ...args) {
+  return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
+}
+
+function repositoryFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-acceptance-git-'));
+  git(root, 'init');
+  git(root, 'config', 'user.email', 'qa@example.invalid');
+  git(root, 'config', 'user.name', 'QA Fixture');
+  fs.writeFileSync(path.join(root, 'tracked.txt'), 'fixed\n');
+  git(root, 'add', 'tracked.txt');
+  git(root, 'commit', '-m', 'fixture');
+  return root;
+}
+
+test('AC-028 controlled negative: dirty project worktrees fail closed', () => {
+  const root = repositoryFixture();
+  try {
+    const revision = git(root, 'rev-parse', 'HEAD');
+    assert.equal(requireRepositoryState('fixture', { path: root, revision }).revision, revision);
+    fs.appendFileSync(path.join(root, 'tracked.txt'), 'dirty\n');
+    assert.throws(
+      () => requireRepositoryState('fixture', { path: root, revision }),
+      /must be clean/u,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('AC-028 controlled negative: missing local source objects fail before detached worktree creation', () => {
+  const root = repositoryFixture();
+  try {
+    assert.throws(
+      () => requireSourceObject('fixture', { repository: root, revision: 'f'.repeat(40) }),
+      /local source object check failed/u,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
