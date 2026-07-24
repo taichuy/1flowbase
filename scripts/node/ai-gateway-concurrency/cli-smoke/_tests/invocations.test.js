@@ -61,14 +61,18 @@ test('Claude text/tool turns are isolated and only the tool turn enables client-
   }
 });
 
-test('OpenCode invocation uses its real TUI so PTY output remains incremental', () => {
+test('AC-003/014: OpenCode invocation uses the headless raw event stream inside tmux', () => {
   const paths = { output: '/tmp/opencode-output' };
   const plan = opencodeInvocation('/bin/opencode', paths, { model: 'fixture-model' });
-  assert.deepEqual(plan.args.slice(0, 5), [
-    '/tmp/opencode-output', '--mini', '--model', 'oneflowbase_gateway/fixture-model', '--prompt',
+  assert.equal(plan.executable, process.execPath);
+  assert.equal(path.basename(plan.args[0]), 'opencode-headless-client.js');
+  assert.deepEqual(plan.args.slice(1, 9), [
+    '--opencode', '/bin/opencode', '--directory', '/tmp/opencode-output',
+    '--model', 'oneflowbase_gateway/fixture-model', '--prompt', TEXT_PROMPT,
   ]);
   assert.equal(plan.args.at(-1), TEXT_PROMPT);
-  assert.equal(plan.terminateAfterSecondMarker, true);
+  assert.equal(plan.terminateAfterSecondMarker, undefined);
+  assert.equal(plan.clientSurface, 'headless-raw-event-stream');
 });
 
 test('Codex and OpenCode tool turns carry the deterministic local vector path', () => {

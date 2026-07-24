@@ -74,13 +74,15 @@ function claudeInvocation(executable, paths, target, turn = 'text') {
 }
 
 function opencodeInvocation(executable, paths, target, turn = 'text') {
+  const adapter = path.join(__dirname, 'opencode-headless-client.js');
   return {
-    executable,
+    executable: process.execPath,
     cwd: paths.output,
-    terminateAfterSecondMarker: true,
+    clientSurface: 'headless-raw-event-stream',
     args: [
-      paths.output,
-      '--mini',
+      adapter,
+      '--opencode', executable,
+      '--directory', paths.output,
       '--model', `oneflowbase_gateway/${target.model}`,
       '--prompt', promptForTurn(turn, paths),
     ],
@@ -93,6 +95,7 @@ function sanitizedInvocation(invocation) {
     cwd: invocation.cwd,
     args: [...invocation.args],
     settings_path: invocation.settingsPath ?? null,
+    client_surface: invocation.clientSurface ?? null,
     termination: invocation.terminateAfterSecondMarker ? 'ctrl-c-after-second-marker' : null,
   };
 }
