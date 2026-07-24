@@ -8,8 +8,8 @@ use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 
 pub use contracts::{
-    CacheStore, ClaimedTask, DistributedLock, EventBus, RateLimitDecision, RateLimitStore,
-    ProviderTransportStore, RuntimeEventStream, TaskQueue,
+    CacheStore, ClaimedTask, DistributedLock, EventBus, ProviderTransportStore, RateLimitDecision,
+    RateLimitStore, RuntimeEventStream, TaskQueue,
 };
 pub use local::{
     build_local_host_infrastructure, build_local_host_infrastructure_from_host_extensions,
@@ -103,8 +103,14 @@ impl HostInfrastructureRegistry {
         self.provider_transport_store = Some(provider_transport_store);
     }
 
-    pub fn provider_transport_store(&self) -> Option<Arc<dyn ProviderTransportStore>> {
+    pub fn registered_provider_transport_store(&self) -> Option<Arc<dyn ProviderTransportStore>> {
         self.provider_transport_store.clone()
+    }
+
+    pub fn provider_transport_store(&self) -> Arc<dyn ProviderTransportStore> {
+        self.provider_transport_store
+            .clone()
+            .expect("provider-transport-store provider must be registered before use")
     }
 
     pub fn set_distributed_lock(&mut self, distributed_lock: Arc<dyn DistributedLock>) {

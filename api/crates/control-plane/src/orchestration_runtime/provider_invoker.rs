@@ -20,6 +20,25 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
+        if input.required_capabilities.contains(
+            &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+        ) {
+            let payload = self
+                .provider_transport_payload
+                .as_ref()
+                .ok_or_else(|| anyhow!("ephemeral_transport_missing"))?;
+            let protocol = match payload.protocol() {
+                crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
+            };
+            input.native_transport = Some(
+                plugin_framework::provider_contract::ProviderNativeTransport {
+                    protocol: protocol.to_string(),
+                    wire_body: payload.wire_body().clone(),
+                    digest: payload.digest().to_string(),
+                    size_bytes: payload.size_bytes() as u64,
+                },
+            );
+        }
         let provider_resolve_started = std::time::Instant::now();
         let instance = self.resolve_llm_instance(runtime).await?;
         tracing::debug!(
@@ -510,6 +529,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
+            provider_transport_payload: self.provider_transport_payload.clone(),
         }
     }
 
@@ -528,6 +548,15 @@ where
     ) -> Self {
         let mut invoker = self.clone();
         invoker.answer_presentation = Some(answer_presentation);
+        invoker
+    }
+
+    pub(super) fn with_provider_transport_payload(
+        &self,
+        provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
+    ) -> Self {
+        let mut invoker = self.clone();
+        invoker.provider_transport_payload = provider_transport_payload;
         invoker
     }
 

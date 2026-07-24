@@ -1,6 +1,8 @@
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
+use crate::ports::ProviderTransportPayload;
+
 use crate::application_public_api::protocol_translation::{
     anonymous_unknown_source_paths, TranslationSafeRepresentation,
 };
@@ -14,6 +16,15 @@ const METADATA_PATH: &str = "$.metadata";
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
     responses_transport_requirement: ResponsesTransportRequirement,
+    provider_transport_payload: Option<ProviderTransportPayload>,
+    provider_transport_summary: Option<ProviderTransportSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProviderTransportSummary {
+    protocol: &'static str,
+    digest: String,
+    size_bytes: usize,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -48,6 +59,8 @@ impl NativeRequestMetadata {
         Ok(Self {
             trace_id,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
+            provider_transport_payload: None,
+            provider_transport_summary: None,
         })
     }
 
@@ -55,6 +68,8 @@ impl NativeRequestMetadata {
         Self {
             trace_id,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
+            provider_transport_payload: None,
+            provider_transport_summary: None,
         }
     }
 
@@ -71,6 +86,32 @@ impl NativeRequestMetadata {
 
     pub(crate) fn responses_transport_requirement(&self) -> ResponsesTransportRequirement {
         self.responses_transport_requirement
+    }
+
+    pub(crate) fn set_provider_transport_payload(&mut self, payload: ProviderTransportPayload) {
+        self.provider_transport_summary = Some(ProviderTransportSummary {
+            protocol: match payload.protocol() {
+                crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
+            },
+            digest: payload.digest().to_string(),
+            size_bytes: payload.size_bytes(),
+        });
+        self.provider_transport_payload = Some(payload);
+    }
+
+    pub fn take_provider_transport_payload(&mut self) -> Option<ProviderTransportPayload> {
+        self.provider_transport_payload.take()
+    }
+
+    pub(crate) fn provider_transport_summary_value(&self) -> Option<Value> {
+        self.provider_transport_summary.as_ref().map(|summary| {
+            serde_json::json!({
+                "protocol": summary.protocol,
+                "digest": summary.digest,
+                "size_bytes": summary.size_bytes,
+                "storage": "ephemeral",
+            })
+        })
     }
 
     pub fn as_value(&self) -> Value {

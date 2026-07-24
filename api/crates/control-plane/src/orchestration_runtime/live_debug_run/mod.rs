@@ -3,6 +3,8 @@ mod preparation;
 mod run_detail;
 mod runtime_events;
 
+pub(super) use continuation::continue_flow_debug_run_with_provider_transport;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Result;

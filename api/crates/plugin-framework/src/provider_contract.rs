@@ -471,6 +471,25 @@ pub struct ClientProtocolEnvelope {
     pub headers: BTreeMap<String, String>,
 }
 
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProviderNativeTransport {
+    pub protocol: String,
+    pub wire_body: Value,
+    pub digest: String,
+    pub size_bytes: u64,
+}
+
+impl std::fmt::Debug for ProviderNativeTransport {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProviderNativeTransport")
+            .field("protocol", &self.protocol)
+            .field("digest", &self.digest)
+            .field("size_bytes", &self.size_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderInvocationInput {
@@ -504,6 +523,8 @@ pub struct ProviderInvocationInput {
     pub model_parameters: BTreeMap<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_transport: Option<ProviderNativeTransport>,
     #[serde(default)]
     pub trace_context: BTreeMap<String, String>,
     #[serde(default)]
@@ -689,6 +710,7 @@ pub struct ProviderWireAudit {
     pub has_request_context: bool,
     pub has_response_format: bool,
     pub has_client_protocol_envelope: bool,
+    pub has_native_transport: bool,
     pub required_capabilities: BTreeSet<ProviderInvocationCapability>,
 }
 
@@ -808,6 +830,7 @@ impl ProviderInvocationInput {
             has_request_context: !self.request_context.is_empty(),
             has_response_format: self.response_format.is_some(),
             has_client_protocol_envelope: self.client_protocol_envelope.is_some(),
+            has_native_transport: self.native_transport.is_some(),
             required_capabilities,
         }
     }

@@ -5,10 +5,11 @@ use serde_json::{Map, Value};
 
 use super::{
     chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
-    openai_reasoning, reject_unknown_chat_fields, reject_unknown_response_fields,
-    response_max_output_tokens, response_stream_mode, responses_input_to_native_run_input,
+    openai_reasoning, reject_unknown_chat_fields, response_max_output_tokens, response_stream_mode,
+    responses_input_to_native_run_input, responses_native_input_to_run_input,
     responses_previous_history, responses_transport_requirement, system_from_parts,
-    validate_chat_message_fields, validate_responses_input, OpenAiCompatError,
+    validate_chat_message_fields, validate_native_responses_input,
+    validate_response_transport_fields, validate_responses_input, OpenAiCompatError,
     OpenAiPreviousResponseContext, OpenAiResponsesRequestContext,
 };
 use crate::application_public_api::native::{
@@ -19,6 +20,7 @@ use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
     TranslationSafeRepresentation,
 };
+use crate::ports::ProviderTransportPayload;
 
 pub fn translate_chat_completion_request(
     request: Value,
@@ -180,7 +182,11 @@ pub fn translate_chat_completion_request(
             .into_iter()
             .collect(),
         model: Some(model),
-        inputs: openai_inputs(object, true, &mut report)?,
+        inputs: openai_inputs(
+            object,
+            super::OpenAiToolMapping::ChatCompletions,
+            &mut report,
+        )?,
         history,
         attachments: Vec::new(),
         conversation,
@@ -219,16 +225,25 @@ pub fn translate_response_request_with_context_and_previous(
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let object = openai_request_object(&request, &mut report)?;
-    reject_unknown_response_fields(object, &mut report)?;
+    let transport_requirement = responses_transport_requirement(object);
+    validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
     let operation = classify_response_operation(object, &context, &mut report)?;
     let is_v2_compaction = operation
         .compaction_intent()
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
-    validate_responses_input(input, is_v2_compaction, &mut report)?;
-    let input_mapping = responses_input_to_native_run_input(input, is_v2_compaction)
-        .map_err(|error| error.with_report(report.clone()))?;
+    let uses_native_transport = transport_requirement
+        == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+        && operation.compaction_intent().is_none();
+    let input_mapping = if uses_native_transport {
+        validate_native_responses_input(input, &mut report)?;
+        responses_native_input_to_run_input(input)
+    } else {
+        validate_responses_input(input, is_v2_compaction, &mut report)?;
+        responses_input_to_native_run_input(input, is_v2_compaction)
+            .map_err(|error| error.with_report(report.clone()))?
+    };
     let query = input_mapping.query;
     let mut history = responses_previous_history(previous_response.as_ref());
     history.extend(input_mapping.history);
@@ -296,7 +311,12 @@ pub fn translate_response_request_with_context_and_previous(
         }
     }
     let mut metadata = openai_metadata(object, &mut report)?;
-    metadata.set_responses_transport_requirement(responses_transport_requirement(object));
+    metadata.set_responses_transport_requirement(transport_requirement);
+    if uses_native_transport {
+        let payload = ProviderTransportPayload::openai_responses(request.clone())
+            .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
+        metadata.set_provider_transport_payload(payload);
+    }
     let execution = native_execution(
         response_max_output_tokens(object, &mut report)?,
         openai_reasoning(object, false, &mut report)?,
@@ -306,7 +326,18 @@ pub fn translate_response_request_with_context_and_previous(
         query,
         system: system.map(NativePromptBlock::text).into_iter().collect(),
         model: Some(model),
-        inputs: openai_inputs(object, false, &mut report)?,
+        inputs: openai_inputs(
+            object,
+            match transport_requirement {
+                crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible => {
+                    super::OpenAiToolMapping::ResponsesSemantic
+                }
+                crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough => {
+                    super::OpenAiToolMapping::ResponsesNative
+                }
+            },
+            &mut report,
+        )?,
         history,
         attachments: Vec::new(),
         conversation,

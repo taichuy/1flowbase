@@ -9,9 +9,10 @@ use plugin_framework::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
         ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
+        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -511,6 +512,38 @@ fn ac_005_wire_audit_is_bounded_and_excludes_raw_or_sensitive_values() {
     assert!(!encoded.contains(RAW_CANARY));
     assert!(!encoded.contains("api_key"));
     assert!(!encoded.contains("raw_body"));
+}
+
+#[test]
+fn d4_ac_016_native_transport_serializes_for_provider_but_debug_stays_redacted() {
+    const SECRET: &str = "Bearer native-transport-secret";
+    let input = ProviderInvocationInput {
+        native_transport: Some(ProviderNativeTransport {
+            protocol: "openai_responses".to_string(),
+            wire_body: json!({
+                "tools": [{"type": "mcp", "authorization": SECRET}],
+                "future_extension": {"preserve": true}
+            }),
+            digest: "sha256:test".to_string(),
+            size_bytes: 128,
+        }),
+        ..ProviderInvocationInput::default()
+    };
+
+    let wire = serde_json::to_value(&input).expect("provider invocation should serialize");
+    assert_eq!(
+        wire["native_transport"]["wire_body"]["future_extension"]["preserve"],
+        true
+    );
+    assert_eq!(
+        wire["native_transport"]["wire_body"]["tools"][0]["authorization"],
+        SECRET
+    );
+    assert!(input.wire_audit().has_native_transport);
+    assert!(!format!("{input:?}").contains(SECRET));
+    assert!(!serde_json::to_string(&input.wire_audit())
+        .expect("wire audit should serialize")
+        .contains(SECRET));
 }
 
 #[test]

@@ -37,6 +37,7 @@ use control_plane::application_public_api::{
     },
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
+use control_plane::ports::ProviderTransportSlotId;
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
@@ -415,6 +416,7 @@ async fn create_response_for_endpoint(
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
     request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
+    let provider_transport_payload = request.metadata.take_provider_transport_payload();
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
     match request.execution.execution_operation().clone() {
@@ -434,6 +436,33 @@ async fn create_response_for_endpoint(
                     }
                 };
 
+            let provider_transport_slot = if matches!(
+                run.status,
+                NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running
+            ) {
+                provider_transport_payload.map(|payload| {
+                    let slot = ProviderTransportSlotId::for_flow_run(run.id);
+                    let store = state.infrastructure.provider_transport_store();
+                    (slot, store, payload)
+                })
+            } else {
+                None
+            };
+            let provider_transport_slot = match provider_transport_slot {
+                Some((slot, store, payload)) => {
+                    if let Err(error) = store.put(slot, payload).await {
+                        warn!(
+                            route,
+                            flow_run_id = %run.id,
+                            error = %error,
+                            "openai responses provider transport staging failed"
+                        );
+                    }
+                    Some(slot)
+                }
+                None => None,
+            };
+
             info!(
                 route,
                 auth_source = credential.source,
@@ -451,12 +480,19 @@ async fn create_response_for_endpoint(
                     run,
                     model,
                     previous_response_id,
+                    provider_transport_slot,
                 )
                 .await
                 .map_err(Into::into);
             }
 
-            let run = native::execute_blocking_native_run(state, credential.token, run).await?;
+            let run = native::execute_blocking_native_run_with_provider_transport(
+                state,
+                credential.token,
+                run,
+                provider_transport_slot,
+            )
+            .await?;
             Ok(Json(to_openai_responses_response(
                 run,
                 model,

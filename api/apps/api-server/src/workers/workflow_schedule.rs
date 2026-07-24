@@ -100,6 +100,7 @@ pub async fn consume_one_workflow_schedule_run(
         runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
             application_id: task_payload.application_id,
             flow_run_id: task_payload.flow_run_id,
+            provider_transport_slot: None,
         }),
     )
     .await;

@@ -23,7 +23,7 @@ pub enum ProviderTransportProtocol {
     OpenAiResponses,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProviderTransportPayload {
     protocol: ProviderTransportProtocol,
     wire_body: Value,
@@ -38,7 +38,9 @@ impl ProviderTransportPayload {
             "provider_transport_payload_must_be_object"
         );
         let encoded = serde_json::to_vec(&wire_body)?;
-        let digest = format!("sha256:{:x}", Sha256::digest(&encoded));
+        let mut canonical = Vec::new();
+        write_canonical_json(&wire_body, &mut canonical)?;
+        let digest = format!("sha256:{:x}", Sha256::digest(&canonical));
         Ok(Self {
             protocol: ProviderTransportProtocol::OpenAiResponses,
             wire_body,
@@ -65,6 +67,38 @@ impl ProviderTransportPayload {
 
     pub const fn size_bytes(&self) -> usize {
         self.size_bytes
+    }
+}
+
+fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {
+    match value {
+        Value::Object(object) => {
+            out.push(b'{');
+            let mut keys = object.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            for (index, key) in keys.into_iter().enumerate() {
+                if index > 0 {
+                    out.push(b',');
+                }
+                serde_json::to_writer(&mut *out, key)?;
+                out.push(b':');
+                write_canonical_json(&object[key], out)?;
+            }
+            out.push(b'}');
+            Ok(())
+        }
+        Value::Array(values) => {
+            out.push(b'[');
+            for (index, item) in values.iter().enumerate() {
+                if index > 0 {
+                    out.push(b',');
+                }
+                write_canonical_json(item, out)?;
+            }
+            out.push(b']');
+            Ok(())
+        }
+        _ => serde_json::to_writer(out, value),
     }
 }
 

@@ -20,7 +20,7 @@ fn local_infra_host_provides_required_defaults() {
     );
     assert!(registry.session_store().is_some());
     assert!(registry.registered_cache_store().is_some());
-    assert!(registry.provider_transport_store().is_some());
+    assert!(registry.registered_provider_transport_store().is_some());
     assert!(registry.registered_distributed_lock().is_some());
     assert!(registry.registered_event_bus().is_some());
     assert!(registry.registered_task_queue().is_some());
@@ -70,7 +70,7 @@ fn empty_infra_registry_reports_contracts_as_unregistered() {
 
     assert!(registry.session_store().is_none());
     assert!(registry.registered_cache_store().is_none());
-    assert!(registry.provider_transport_store().is_none());
+    assert!(registry.registered_provider_transport_store().is_none());
     assert!(registry.registered_distributed_lock().is_none());
     assert!(registry.registered_event_bus().is_none());
     assert!(registry.registered_task_queue().is_none());

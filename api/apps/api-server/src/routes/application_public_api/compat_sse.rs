@@ -416,6 +416,7 @@ pub(crate) async fn start_openai_run_stream(
         state,
         run,
         CompatibleTurnAction::Start,
+        None,
         CompatibleProtocolProjection::OpenAiChat(mapper),
     )
     .await
@@ -426,12 +427,14 @@ pub(crate) async fn start_openai_response_stream(
     run: NativeRunResult,
     model: String,
     previous_response_id: Option<String>,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
 ) -> Result<Response, NativeApiError> {
     let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id, true);
     start_compatible_turn_stream(
         state,
         run,
         CompatibleTurnAction::Start,
+        provider_transport_slot,
         CompatibleProtocolProjection::OpenAiResponses(mapper),
     )
     .await
@@ -478,6 +481,7 @@ pub(crate) async fn start_openai_chat_resume_stream(
         state,
         run,
         CompatibleTurnAction::Resume(command),
+        None,
         CompatibleProtocolProjection::OpenAiChat(mapper),
     )
     .await
@@ -495,6 +499,7 @@ pub(crate) async fn start_openai_response_resume_stream(
         state,
         run,
         CompatibleTurnAction::Resume(command),
+        None,
         CompatibleProtocolProjection::OpenAiResponses(mapper),
     )
     .await
@@ -510,6 +515,7 @@ pub(crate) async fn start_anthropic_run_stream(
         state,
         run,
         CompatibleTurnAction::Start,
+        None,
         CompatibleProtocolProjection::AnthropicMessages(mapper),
     )
     .await
@@ -525,6 +531,7 @@ pub(crate) async fn start_anthropic_resume_stream(
         state,
         run,
         CompatibleTurnAction::Resume(command),
+        None,
         CompatibleProtocolProjection::AnthropicMessages(AnthropicStreamMapper::new(model)),
     )
     .await
@@ -545,6 +552,7 @@ async fn start_compatible_turn_stream(
     state: Arc<ApiState>,
     run: NativeRunResult,
     action: CompatibleTurnAction,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
     mut projection: CompatibleProtocolProjection,
 ) -> Result<Response, NativeApiError> {
     let sse_projection = projection.name();
@@ -626,6 +634,7 @@ async fn start_compatible_turn_stream(
         .with_file_storage_registry(background_state.file_storage_registry.clone())
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
+        .with_provider_transport_store(background_state.infrastructure.provider_transport_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         match action {
             CompatibleTurnAction::Start => {
@@ -633,6 +642,7 @@ async fn start_compatible_turn_stream(
                     .start_published_flow_run(StartPublishedFlowRunCommand {
                         application_id: background_run.application_id,
                         flow_run_id: background_run.id,
+                        provider_transport_slot,
                     })
                     .await
                 {

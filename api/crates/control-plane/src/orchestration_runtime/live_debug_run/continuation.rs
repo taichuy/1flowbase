@@ -44,7 +44,43 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    continue_flow_debug_run_with_optional_live_provider_events(service, command, None, None).await
+    continue_flow_debug_run_with_optional_live_provider_events(service, command, None, None, None)
+        .await
+}
+
+pub(in crate::orchestration_runtime) async fn continue_flow_debug_run_with_provider_transport<
+    R,
+    H,
+>(
+    service: &OrchestrationRuntimeService<R, H>,
+    command: ContinueFlowDebugRunCommand,
+    provider_transport_payload: crate::ports::ProviderTransportPayload,
+) -> Result<domain::ApplicationRunDetail>
+where
+    R: crate::ports::ApplicationRepository
+        + crate::ports::FileManagementRepository
+        + crate::ports::FlowRepository
+        + OrchestrationRuntimeRepository
+        + crate::ports::ModelDefinitionRepository
+        + crate::ports::ModelProviderRepository
+        + crate::ports::NodeContributionRepository
+        + crate::ports::PluginRepository
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    H: crate::ports::ProviderRuntimePort
+        + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
+        + Clone,
+{
+    continue_flow_debug_run_with_optional_live_provider_events(
+        service,
+        command,
+        None,
+        None,
+        Some(provider_transport_payload),
+    )
+    .await
 }
 
 pub(super) async fn continue_flow_debug_run_with_compact_ingress<R, H>(
@@ -74,6 +110,7 @@ where
         command,
         None,
         Some(ingress),
+        None,
     )
     .await
 }
@@ -105,6 +142,7 @@ where
         command,
         Some(live_provider_events),
         None,
+        None,
     )
     .await
 }
@@ -114,6 +152,7 @@ async fn continue_flow_debug_run_with_optional_live_provider_events<R, H>(
     command: ContinueFlowDebugRunCommand,
     live_provider_events: Option<LiveProviderStreamEventSender>,
     compact_response_ingress: Option<CompactResponseIngress>,
+    provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -137,6 +176,7 @@ where
         &command,
         live_provider_events,
         compact_response_ingress,
+        provider_transport_payload,
     )
     .await;
 

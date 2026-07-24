@@ -166,7 +166,7 @@ where
         Ok(winner)
     }
 
-    async fn ensure_durable_terminal_projection(
+    pub(super) async fn ensure_durable_terminal_projection(
         &self,
         flow_run: &domain::FlowRunRecord,
     ) -> Result<()> {

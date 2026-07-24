@@ -53,6 +53,7 @@ mod llm_observability_refs;
 mod payloads;
 mod persistence;
 mod provider_invoker;
+mod provider_transport;
 mod runtime_event_persister;
 pub mod scheduler_admission;
 mod stream_terminal_recovery;
@@ -117,6 +118,7 @@ pub struct ContinueFlowDebugRunCommand {
 pub struct StartPublishedFlowRunCommand {
     pub application_id: Uuid,
     pub flow_run_id: Uuid,
+    pub provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
 }
 
 /// Starts a published application-flow Compact branch with the already
@@ -284,6 +286,7 @@ struct RuntimeProviderInvoker<R, H> {
     flow_execution_context: Option<Arc<RuntimeFlowExecutionContext>>,
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
+    provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
 }
 
 struct RuntimeFlowExecutionContext {
@@ -331,6 +334,7 @@ pub struct OrchestrationRuntimeService<R, H> {
     provider_secret_master_key: String,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
+    provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     api_node_id: Option<String>,
     provider_install_root: Option<PathBuf>,
 }
@@ -370,6 +374,7 @@ where
             provider_secret_master_key: provider_secret_master_key.into(),
             runtime_event_stream: None,
             provider_request_log_queue: None,
+            provider_transport_store: None,
             api_node_id: None,
             provider_install_root: None,
         }
@@ -406,6 +411,14 @@ where
 
     pub fn with_provider_request_log_queue(mut self, queue: Arc<dyn TaskQueue>) -> Self {
         self.provider_request_log_queue = Some(queue);
+        self
+    }
+
+    pub fn with_provider_transport_store(
+        mut self,
+        store: Arc<dyn crate::ports::ProviderTransportStore>,
+    ) -> Self {
+        self.provider_transport_store = Some(store);
         self
     }
 
@@ -460,6 +473,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: None,
             answer_presentation: None,
+            provider_transport_payload: None,
         }
     }
 
@@ -482,6 +496,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: None,
             answer_presentation: None,
+            provider_transport_payload: None,
         }
     }
 
@@ -836,8 +851,13 @@ where
     where
         R: crate::ports::FileManagementRepository,
     {
-        self.start_published_flow_run_inner(command.application_id, command.flow_run_id, None)
-            .await
+        self.start_published_flow_run_inner(
+            command.application_id,
+            command.flow_run_id,
+            command.provider_transport_slot,
+            None,
+        )
+        .await
     }
 
     pub async fn start_published_compact_flow_run(
@@ -850,6 +870,7 @@ where
         self.start_published_flow_run_inner(
             command.application_id,
             command.flow_run_id,
+            None,
             Some(command.ingress),
         )
         .await
@@ -859,6 +880,7 @@ where
         &self,
         application_id: Uuid,
         flow_run_id: Uuid,
+        provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
         compact_response_ingress: Option<
             orchestration_runtime::execution_state::CompactResponseIngress,
         >,
@@ -879,6 +901,9 @@ where
         ) {
             return Err(ControlPlaneError::InvalidInput("run_mode").into());
         }
+        let provider_transport_payload = self
+            .resolve_provider_transport_payload(&flow_run, provider_transport_slot)
+            .await?;
         let actor = ApplicationRepository::load_actor_context_for_user(
             &self.repository,
             flow_run.created_by,
@@ -962,8 +987,16 @@ where
             flow_run_id: running.id,
             workspace_id: application.workspace_id,
         };
-        let result = match compact_response_ingress {
-            Some(ingress) => {
+        let result = match (provider_transport_payload, compact_response_ingress) {
+            (Some(payload), None) => {
+                live_debug_run::continue_flow_debug_run_with_provider_transport(
+                    self,
+                    continuation,
+                    payload,
+                )
+                .await
+            }
+            (None, Some(ingress)) => {
                 live_debug_run::continue_flow_debug_run_with_compact_ingress(
                     self,
                     continuation,
@@ -971,7 +1004,10 @@ where
                 )
                 .await
             }
-            None => self.continue_flow_debug_run(continuation).await,
+            (None, None) => self.continue_flow_debug_run(continuation).await,
+            (Some(_), Some(_)) => Err(anyhow!(
+                "provider transport payload cannot be combined with compact ingress"
+            )),
         };
         let detail = match result {
             Ok(detail) => detail,

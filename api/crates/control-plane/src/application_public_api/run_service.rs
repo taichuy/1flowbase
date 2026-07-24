@@ -75,6 +75,7 @@ pub(crate) use run_input::{
 
 const APPLICATION_PUBLIC_CONVERSATION_HISTORY_LIMIT: i64 = 50;
 const PUBLIC_RUN_IDEMPOTENCY_FINGERPRINT: &str = "public_run_idempotency_fingerprint";
+const PUBLIC_PROVIDER_TRANSPORT_SUMMARY: &str = "public_provider_transport";
 const PUBLISHED_RUN_CANCELLED_ERROR_CODE: &str = "cancelled";
 const PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE: &str = "published run cancelled";
 
@@ -180,6 +181,7 @@ where
             .as_ref()
             .map(|_| public_run_idempotency_fingerprint(&client_request))
             .transpose()?;
+        let provider_transport_summary = client_request.metadata.provider_transport_summary_value();
         let request = self
             .bind_conversation(actor.application_id, actor.api_key_id, client_request)
             .await?;
@@ -245,6 +247,8 @@ where
             input_payload,
             idempotency_fingerprint.as_deref(),
         );
+        let input_payload =
+            with_public_provider_transport_summary(input_payload, provider_transport_summary);
         let created = self
             .repository
             .create_published_flow_run(&CreateFlowRunInput {
@@ -555,12 +559,35 @@ fn public_run_idempotency_fingerprint(
             "execution".to_string(),
             request.execution.fingerprint_value(),
         );
+        if let Some(summary) = request.metadata.provider_transport_summary_value() {
+            object.insert("provider_transport".to_string(), summary);
+        }
     }
     let mut canonical = Vec::new();
     write_canonical_json(&value, &mut canonical)
         .map_err(|_| NativeRunValidationError::InvalidMapping)?;
     let hash = Sha256::digest(canonical);
     Ok(format!("sha256:{}", hex_lower(&hash)))
+}
+
+fn with_public_provider_transport_summary(
+    mut input_payload: Value,
+    summary: Option<Value>,
+) -> Value {
+    let Some(summary) = summary else {
+        return input_payload;
+    };
+    let payload = input_payload
+        .as_object_mut()
+        .expect("frozen run input payload");
+    let sys = payload.entry("sys").or_insert_with(|| json!({}));
+    if !sys.is_object() {
+        *sys = json!({});
+    }
+    sys.as_object_mut()
+        .expect("sys payload")
+        .insert(PUBLIC_PROVIDER_TRANSPORT_SUMMARY.to_string(), summary);
+    input_payload
 }
 
 fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {

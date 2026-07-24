@@ -293,6 +293,7 @@ async fn orchestration_runtime_resolve_llm_instance_keeps_invalid_uuid_as_source
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -322,6 +323,7 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -362,6 +364,7 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -396,6 +399,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_provider_code_mismat
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -433,6 +437,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_instance_not_in_main
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -474,6 +479,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unassigned_installat
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -519,6 +525,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -564,6 +571,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unavailable_installa
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -600,6 +608,7 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let resolved = invoker
@@ -649,6 +658,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
 
     let error = invoker
@@ -687,6 +697,7 @@ async fn orchestration_runtime_textualizes_user_media_when_selected_model_is_not
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),
@@ -752,6 +763,7 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),
@@ -858,6 +870,7 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        provider_transport_payload: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),

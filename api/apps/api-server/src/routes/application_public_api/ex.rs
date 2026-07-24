@@ -158,6 +158,7 @@ fn spawn_workflow_extension_execution(
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
                 application_id,
                 flow_run_id,
+                provider_transport_slot: None,
             }),
         )
         .await

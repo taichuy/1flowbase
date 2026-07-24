@@ -461,6 +461,15 @@ pub(crate) async fn execute_blocking_native_run(
     bearer_token: String,
     run: NativeRunResult,
 ) -> Result<NativeRunResult, NativeApiError> {
+    execute_blocking_native_run_with_provider_transport(state, bearer_token, run, None).await
+}
+
+pub(crate) async fn execute_blocking_native_run_with_provider_transport(
+    state: Arc<ApiState>,
+    bearer_token: String,
+    run: NativeRunResult,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+) -> Result<NativeRunResult, NativeApiError> {
     let _execution_activity = state.runtime_activity.start(
         run.application_id,
         ApplicationActivityKind::ApplicationExecution,
@@ -477,12 +486,14 @@ pub(crate) async fn execute_blocking_native_run(
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue());
+    .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store());
     let execution_result = scope_application_activity(
         run.application_id,
         runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
             application_id: run.application_id,
             flow_run_id: run.id,
+            provider_transport_slot,
         }),
     )
     .await;
@@ -673,6 +684,7 @@ async fn start_native_run_stream(
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
                 application_id: background_run.application_id,
                 flow_run_id: background_run.id,
+                provider_transport_slot: None,
             }),
         )
         .await

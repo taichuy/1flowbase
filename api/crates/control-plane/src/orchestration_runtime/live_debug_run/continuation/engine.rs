@@ -16,6 +16,7 @@ pub(super) async fn continue_flow_debug_run_inner<R, H>(
     compact_response_ingress: Option<
         orchestration_runtime::execution_state::CompactResponseIngress,
     >,
+    provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::ApplicationRepository
@@ -108,7 +109,8 @@ where
         None => service.runtime_invoker(application.workspace_id),
     }
     .for_flow_run(flow_run.id)
-    .with_flow_execution_context(flow_execution_context);
+    .with_flow_execution_context(flow_execution_context)
+    .with_provider_transport_payload(provider_transport_payload);
     let answer_presentation =
         crate::orchestration_runtime::answer_presentation::AnswerPresentationCursor::from_plan(
             &compiled_plan,

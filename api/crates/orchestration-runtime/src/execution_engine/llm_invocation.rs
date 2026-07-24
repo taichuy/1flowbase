@@ -197,6 +197,7 @@ pub(super) fn build_provider_invocation(
         response_format: build_response_format(&node.config),
         model_parameters: model_parameters.values,
         client_protocol_envelope: runtime_context.client_protocol_envelope.clone(),
+        native_transport: None,
         trace_context,
         run_context,
     };

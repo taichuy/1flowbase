@@ -19,6 +19,20 @@ fn responses_payload() -> ProviderTransportPayload {
     .expect("fixture payload must be valid")
 }
 
+#[test]
+fn d4_ac_027_provider_transport_digest_is_canonical_across_object_key_order() {
+    let left = ProviderTransportPayload::openai_responses(
+        serde_json::from_str(r#"{"model":"gpt-test","input":"hi"}"#).unwrap(),
+    )
+    .unwrap();
+    let right = ProviderTransportPayload::openai_responses(
+        serde_json::from_str(r#"{"input":"hi","model":"gpt-test"}"#).unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(left.digest(), right.digest());
+}
+
 #[tokio::test]
 async fn d4_ac_016_provider_transport_store_round_trips_opaque_wire_payload() {
     let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);

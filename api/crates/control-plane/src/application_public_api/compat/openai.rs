@@ -558,30 +558,78 @@ fn chat_max_output_tokens(
     Ok(Some(max_output_tokens))
 }
 
-fn reject_unknown_response_fields(
+fn validate_response_transport_fields(
     object: &Map<String, Value>,
+    transport_requirement: crate::application_public_api::native::ResponsesTransportRequirement,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
+    if transport_requirement
+        == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+    {
+        for field in [
+            "store",
+            "parallel_tool_calls",
+            "include",
+            "prompt_cache_key",
+            "client_metadata",
+            "response_format",
+            "text",
+            "background",
+            "max_tool_calls",
+            "truncation",
+        ] {
+            if object.contains_key(field) {
+                report.record(
+                    &format!("$.{field}"),
+                    None,
+                    TranslationDecisionKind::Exact,
+                    Some("preserved only in native Responses provider transport"),
+                    TranslationSafeRepresentation::Redacted,
+                );
+            }
+        }
+        let unknown_fields = object
+            .keys()
+            .filter(|field| {
+                !matches!(
+                    field.as_str(),
+                    "model"
+                        | "input"
+                        | "instructions"
+                        | "stream"
+                        | "user"
+                        | "metadata"
+                        | "max_output_tokens"
+                        | "store"
+                        | "previous_response_id"
+                        | "tools"
+                        | "tool_choice"
+                        | "parallel_tool_calls"
+                        | "response_format"
+                        | "text"
+                        | "reasoning"
+                        | "background"
+                        | "include"
+                        | "prompt_cache_key"
+                        | "client_metadata"
+                        | "max_tool_calls"
+                        | "truncation"
+                )
+            })
+            .collect::<Vec<_>>();
+        report.record_anonymous_unknown_fields(
+            "$",
+            unknown_fields,
+            TranslationDecisionKind::Exact,
+            "preserved only in native Responses provider transport",
+            TranslationSafeRepresentation::Redacted,
+        );
+        return Ok(());
+    }
     accept_responses_store_hint(object, report)?;
     accept_responses_parallel_tool_calls_hint(object, report)?;
     accept_responses_include_hint(object, report)?;
     accept_responses_codex_metadata_hints(object, report)?;
-    if let Some(field) = object.keys().find(|field| {
-        matches!(
-            field.as_str(),
-            "response_format" | "text" | "background" | "max_tool_calls" | "truncation"
-        )
-    }) {
-        let path = format!("$.{field}");
-        report.record(
-            &path,
-            None,
-            TranslationDecisionKind::Unsupported,
-            Some("this field has no current canonical owner"),
-            TranslationSafeRepresentation::Present,
-        );
-        return Err(OpenAiCompatError::unsupported(field).with_report(report.clone()));
-    }
     let unknown_fields = object
         .keys()
         .filter(|field| {
@@ -611,19 +659,13 @@ fn reject_unknown_response_fields(
             )
         })
         .collect::<Vec<_>>();
-    if report.record_anonymous_unknown_fields(
+    report.record_anonymous_unknown_fields(
         "$",
         unknown_fields,
-        TranslationDecisionKind::Rejected,
-        "unknown OpenAI Responses field",
-        TranslationSafeRepresentation::Present,
-    ) > 0
-    {
-        return Err(
-            OpenAiCompatError::invalid("body", "unknown OpenAI Responses field")
-                .with_report(report.clone()),
-        );
-    }
+        TranslationDecisionKind::Exact,
+        "preserved only in native Responses provider transport",
+        TranslationSafeRepresentation::Redacted,
+    );
     Ok(())
 }
 
@@ -663,11 +705,15 @@ fn responses_transport_requirement(
     let has_native_only_input = object
         .get("input")
         .is_some_and(responses_input_requires_native_passthrough);
+    let has_native_only_execution_hint = object.get("store").and_then(Value::as_bool) == Some(true)
+        || object.get("parallel_tool_calls").and_then(Value::as_bool) == Some(true)
+        || object.get("include").is_some();
 
     if has_native_only_top_level_extension
         || has_native_only_tools
         || has_native_only_tool_choice
         || has_native_only_input
+        || has_native_only_execution_hint
     {
         ResponsesTransportRequirement::NativePassthrough
     } else {
@@ -1077,9 +1123,16 @@ fn response_max_output_tokens(
     Ok(Some(max_output_tokens))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenAiToolMapping {
+    ChatCompletions,
+    ResponsesSemantic,
+    ResponsesNative,
+}
+
 fn openai_inputs(
     object: &Map<String, Value>,
-    chat_completions: bool,
+    tool_mapping: OpenAiToolMapping,
     report: &mut TranslationReport,
 ) -> Result<crate::application_public_api::native::NativeObject, OpenAiCompatError> {
     let mut inputs = Map::new();
@@ -1094,7 +1147,17 @@ fn openai_inputs(
                 OpenAiCompatError::invalid("tools", "tool definitions must be objects")
                     .with_report(report.clone())
             })?;
-            let function = if chat_completions {
+            if tool_mapping == OpenAiToolMapping::ResponsesNative {
+                report.record(
+                    &format!("$.tools[{index}]"),
+                    None,
+                    TranslationDecisionKind::Exact,
+                    Some("preserved only in native Responses provider transport"),
+                    TranslationSafeRepresentation::Redacted,
+                );
+                continue;
+            }
+            let function = if tool_mapping == OpenAiToolMapping::ChatCompletions {
                 if tool.get("type").and_then(Value::as_str) != Some("function") {
                     return Err(OpenAiCompatError::invalid(
                         "tools",
@@ -1140,21 +1203,41 @@ fn openai_inputs(
                 TranslationSafeRepresentation::Redacted,
             );
         }
-        report.record(
-            "$.tools",
-            Some("$.inputs.tools"),
-            TranslationDecisionKind::Normalized,
-            None,
-            TranslationSafeRepresentation::Redacted,
-        );
-        inputs.insert("tools".to_string(), Value::Array(normalized));
+        if tool_mapping == OpenAiToolMapping::ResponsesNative {
+            report.record(
+                "$.tools",
+                None,
+                TranslationDecisionKind::Exact,
+                Some("preserved only in native Responses provider transport"),
+                TranslationSafeRepresentation::Redacted,
+            );
+        } else {
+            report.record(
+                "$.tools",
+                Some("$.inputs.tools"),
+                TranslationDecisionKind::Normalized,
+                None,
+                TranslationSafeRepresentation::Redacted,
+            );
+            inputs.insert("tools".to_string(), Value::Array(normalized));
+        }
     }
     if let Some(choice) = object.get("tool_choice") {
+        if tool_mapping == OpenAiToolMapping::ResponsesNative {
+            report.record(
+                "$.tool_choice",
+                None,
+                TranslationDecisionKind::Exact,
+                Some("preserved only in native Responses provider transport"),
+                TranslationSafeRepresentation::Redacted,
+            );
+            return Ok(crate::application_public_api::native::NativeObject::from_map(inputs));
+        }
         let normalized = match choice {
             Value::String(choice) if matches!(choice.as_str(), "auto" | "none" | "required") => {
                 json!({ "type": choice })
             }
-            Value::Object(choice) if chat_completions => {
+            Value::Object(choice) if tool_mapping == OpenAiToolMapping::ChatCompletions => {
                 let name = choice
                     .get("function")
                     .and_then(Value::as_object)
@@ -1271,6 +1354,54 @@ fn validate_responses_input(
         }
         error.with_report(report.clone())
     })
+}
+
+fn validate_native_responses_input(
+    input: &Value,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    if input.is_string() {
+        report.record(
+            "$.input",
+            Some("$.query"),
+            TranslationDecisionKind::Normalized,
+            None,
+            TranslationSafeRepresentation::Redacted,
+        );
+        return Ok(());
+    }
+    let items = input.as_array().ok_or_else(|| {
+        OpenAiCompatError::invalid("input", "input must be text or an array")
+            .with_report(report.clone())
+    })?;
+    for (index, item) in items.iter().enumerate() {
+        let item_path = format!("$.input[{index}]");
+        let object = item.as_object().ok_or_else(|| {
+            OpenAiCompatError::invalid("input", "input items must be objects")
+                .with_report(report.clone())
+        })?;
+        if object.get("type").is_some_and(|value| !value.is_string()) {
+            return Err(
+                OpenAiCompatError::invalid("input", "input item type must be text")
+                    .with_report(report.clone()),
+            );
+        }
+        report.record(
+            &item_path,
+            None,
+            TranslationDecisionKind::Exact,
+            Some("preserved only in native Responses provider transport"),
+            TranslationSafeRepresentation::Redacted,
+        );
+    }
+    report.record(
+        "$.input",
+        None,
+        TranslationDecisionKind::Exact,
+        Some("preserved only in native Responses provider transport"),
+        TranslationSafeRepresentation::Redacted,
+    );
+    Ok(())
 }
 
 fn validate_responses_input_items(
@@ -2145,6 +2276,55 @@ fn responses_input_to_native_run_input(
     ))
 }
 
+fn responses_native_input_to_run_input(input: &Value) -> ResponsesInputMapping {
+    if let Some(text) = input.as_str() {
+        return ResponsesInputMapping {
+            query: text.to_string(),
+            history: Vec::new(),
+            system_parts: Vec::new(),
+        };
+    }
+    let mut messages = input
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| {
+            matches!(
+                item.get("type").and_then(Value::as_str),
+                None | Some("message")
+            )
+        })
+        .filter_map(|item| responses_input_message(item).ok())
+        .collect::<Vec<_>>();
+    let last_user_index = messages.iter().rposition(|message| message.role == "user");
+    let query = last_user_index
+        .map(|index| messages.remove(index).content)
+        .unwrap_or_default();
+    let mut history = Vec::new();
+    let mut system_parts = Vec::new();
+    for message in messages {
+        if matches!(message.role.as_str(), "system" | "developer") {
+            if !message.content.trim().is_empty() {
+                system_parts.push(message.content);
+            }
+            continue;
+        }
+        let mut entry = json!({
+            "role": message.role,
+            "content": message.content,
+        });
+        if let Some(content_blocks) = message.content_blocks {
+            entry["content_blocks"] = content_blocks;
+        }
+        history.push(entry);
+    }
+    ResponsesInputMapping {
+        query,
+        history,
+        system_parts,
+    }
+}
+
 fn responses_end_with_reconstructable_tool_output(
     items: &[Value],
 ) -> Result<bool, OpenAiCompatError> {
@@ -2689,8 +2869,8 @@ mod tests {
         assert!(translated
             .request
             .execution
-            .model_parameters
-            .reasoning
+            .model_parameters()
+            .and_then(|parameters| parameters.reasoning())
             .is_none());
     }
 
@@ -2888,6 +3068,21 @@ mod tests {
                 "input": "hi",
                 "future_responses_extension": {"opaque": true}
             }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "parallel_tool_calls": true
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "store": true
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "include": ["reasoning.encrypted_content"]
+            }),
         ] {
             assert_eq!(
                 responses_transport_requirement(
@@ -2896,6 +3091,66 @@ mod tests {
                 crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
             );
         }
+    }
+
+    #[test]
+    fn d4_ac_016_native_responses_translation_retains_real_wire_payload_only_in_sidecar() {
+        const SECRET: &str = "Bearer transport-secret-canary";
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hi",
+            "tools": [{
+                "type": "mcp",
+                "server_url": "https://mcp.example.test",
+                "authorization": SECRET
+            }],
+            "future_responses_extension": {"opaque": true}
+        }))
+        .expect("native Responses request should retain its provider wire body");
+
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("native request should carry an ephemeral transport sidecar");
+        let summary = translated
+            .request
+            .metadata
+            .provider_transport_summary_value()
+            .expect("durable metadata should retain only a transport summary");
+        assert_eq!(summary["protocol"], "openai_responses");
+        assert_eq!(summary["storage"], "ephemeral");
+        assert!(summary["digest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:")));
+        assert!(!summary.to_string().contains(SECRET));
+        assert_eq!(
+            payload.wire_body()["future_responses_extension"]["opaque"],
+            true
+        );
+        assert_eq!(payload.wire_body()["tools"][0]["authorization"], SECRET);
+        assert!(!format!("{payload:?}").contains(SECRET));
+        assert!(!serde_json::to_string(&translated.request)
+            .expect("Native request should serialize")
+            .contains(SECRET));
+    }
+
+    #[test]
+    fn d4_ac_016_native_responses_keeps_opaque_input_item_without_fabricating_history() {
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": [{"type": "item_reference", "id": "item_1"}]
+        }))
+        .expect("native Responses input item should bypass semantic reconstruction");
+
+        assert!(translated.request.query.is_empty());
+        assert!(translated.request.history.is_empty());
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("opaque input should remain in ephemeral transport");
+        assert_eq!(payload.wire_body()["input"][0]["id"], "item_1");
     }
 
     #[test]
