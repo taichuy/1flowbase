@@ -5,8 +5,8 @@ use orchestration_runtime::execution_state::{
     ExecutionStopReason, FlowDebugExecutionOutcome, NodeExecutionTrace,
 };
 use plugin_framework::provider_contract::{
-    ProviderFinishReason, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
-    ProviderStreamEvent, ProviderToolCall,
+    ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationResult, ProviderMessage,
+    ProviderMessageRole, ProviderStreamEvent, ProviderToolCall,
 };
 use serde_json::Map;
 
@@ -819,6 +819,65 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
     assert!(!captured[0].messages[0]
         .content
         .contains("message_media_unsupported"));
+}
+
+#[tokio::test]
+async fn native_provider_transport_payload_restores_the_ephemeral_invocation_capability() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    let (runtime_port, captured_inputs) =
+        test_support::InMemoryProviderRuntime::with_invocation_capture();
+    let invoker = RuntimeProviderInvoker {
+        repository,
+        runtime: runtime_port,
+        workspace_id: Uuid::nil(),
+        provider_secret_master_key: "test-master-key".to_string(),
+        live_provider_events: None,
+        runtime_event_stream: None,
+        flow_run_id: None,
+        active_node_id: None,
+        active_node_run_id: None,
+        api_node_id: None,
+        provider_install_root: None,
+        flow_execution_context: None,
+        answer_presentation: None,
+        provider_transport_payload: Some(
+            crate::ports::ProviderTransportPayload::openai_responses(json!({
+                "model": "gpt-5.4-mini",
+                "input": "native transport"
+            }))
+            .unwrap(),
+        ),
+    };
+    let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
+    let input = ProviderInvocationInput {
+        provider_instance_id: provider_instance_id.to_string(),
+        provider_code: "fixture_provider".to_string(),
+        protocol: "openai_compatible".to_string(),
+        model: "gpt-5.4-mini".to_string(),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "native transport".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(&invoker, &runtime, input)
+        .await
+        .expect("ephemeral native transport should reach the provider invocation");
+
+    let captured = captured_inputs
+        .lock()
+        .expect("captured provider inputs should be readable");
+    assert!(captured[0].native_transport.is_some());
+    assert!(captured[0]
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::ResponsesNativePassthrough));
 }
 
 #[tokio::test]

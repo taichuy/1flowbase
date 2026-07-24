@@ -20,13 +20,12 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
-        if input.required_capabilities.contains(
-            &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
-        ) {
-            let payload = self
-                .provider_transport_payload
-                .as_ref()
-                .ok_or_else(|| anyhow!("ephemeral_transport_missing"))?;
+        let native_transport_capability =
+            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
+        if let Some(payload) = self.provider_transport_payload.as_ref() {
+            input
+                .required_capabilities
+                .insert(native_transport_capability.clone());
             let protocol = match payload.protocol() {
                 crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
             };
@@ -38,6 +37,11 @@ where
                     size_bytes: payload.size_bytes() as u64,
                 },
             );
+        } else if input
+            .required_capabilities
+            .contains(&native_transport_capability)
+        {
+            return Err(anyhow!("ephemeral_transport_missing"));
         }
         let provider_resolve_started = std::time::Instant::now();
         let instance = self.resolve_llm_instance(runtime).await?;
