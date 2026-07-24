@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 认证器协议驱动的公开认证区块与自行注册
-summary: 用户确认代码区块是认证器公开 UI 的唯一真值，Core 登录页只做实例选择与共享 Block 宿主；后端认证器配置决定注册等动作是否允许。Single Issue #1444 已建立并处于 phase:discussion，尚未授权实现。
+summary: 用户确认代码区块是认证器公开 UI 的唯一真值，Core 登录页只做实例选择与共享 Block 宿主；#1444 已进入实现，认证中心完整共享 Studio、公开 API 连接器过滤和动态 Auth Block 上下文变量已合入 beta。
 keywords:
   - auth center
   - authenticator
@@ -15,10 +15,10 @@ match_when:
   - 调整认证器 public projection、HostExtension Auth Provider contract 或注册接口
   - 讨论登录页应由 Core、Schema UI 还是代码区块拥有
 created_at: 2026-07-24 00
-updated_at: 2026-07-24 00
-last_verified_at: 2026-07-24 00
+updated_at: 2026-07-24 18
+last_verified_at: 2026-07-24 18
 decision_policy: verify_before_decision
-status: phase_discussion
+status: phase_implementation
 source_issue: "#1444"
 related_issues:
   - "#1154"
@@ -59,7 +59,7 @@ scope:
 
 ## 当前线上状态
 
-- Single Issue：[#1444](https://github.com/taichuy/1flowbase/issues/1444)。
-- 标签：`plan:single`、`grade:g4`、`phase:discussion`，并覆盖 backend/frontend/API/settings/schema-ui/runtime/security/migration。
-- Issue 内有 AC-001～AC-011、Domain Matrix、注册禁用负向测试、历史回填、rollback 和插件升级不覆盖证据要求。
-- 用户本轮只授权创建线上 Issue。下一次若要实现，先确认 #1444 正文与自行注册 provisioning policy，并将阶段推进到 `phase:ready`。
+- Single Issue：[#1444](https://github.com/taichuy/1flowbase/issues/1444)，阶段为 implementation。
+- 认证中心完整共享 Studio、`/api/public/*` 连接器后端过滤及动态 `context_variables` 已依次合入 `beta`。
+- 动态上下文变量交付提交：implementation `e221ec48d`，beta merge `4e0d4ace8`；AC-017～AC-021 证据见 Issue comment `5069033332`。
+- Auth Provider 公开变量 schema 从既有 `config_schema + public_variable_keys` 派生；前端直接消费 `label / member_path / schema`，不维护 Auth 专用变量常量。
