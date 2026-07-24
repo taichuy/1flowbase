@@ -755,6 +755,7 @@ export function SettingsAuthCenterSection() {
           authenticatorId={selectedUiAuthenticator.id}
           authenticatorTitle={selectedUiAuthenticator.title}
           authType={selectedUiAuthenticator.auth_type}
+          contextVariables={selectedUiAuthenticator.context_variables}
           description={
             typeof selectedUiAuthenticator.config_values.description ===
             'string'

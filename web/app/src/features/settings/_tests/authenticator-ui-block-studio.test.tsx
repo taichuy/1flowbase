@@ -91,6 +91,13 @@ describe('AuthenticatorUiBlockStudio', () => {
         authenticatorId="password-local"
         authenticatorTitle="Password"
         authType="password_local"
+        contextVariables={[
+          {
+            label: 'ctx.inputs.authenticator_id',
+            member_path: 'inputs.authenticator_id',
+            schema: { type: 'string' }
+          }
+        ]}
         description={null}
         enabled
         errorMessage={null}

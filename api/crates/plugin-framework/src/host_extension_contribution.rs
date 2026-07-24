@@ -392,6 +392,7 @@ fn validate_auth_provider_contributions(
             "auth_providers[].default_public_ui_block",
         )?;
         let mut config_keys = BTreeSet::new();
+        let mut config_field_types = BTreeMap::new();
         for field in &provider.config_schema {
             validate_non_empty(&field.key, "auth_providers[].config_schema[].key")?;
             validate_non_empty(&field.label, "auth_providers[].config_schema[].label")?;
@@ -414,6 +415,7 @@ fn validate_auth_provider_contributions(
                     "auth_providers[].config_schema[].key must be unique",
                 ));
             }
+            config_field_types.insert(field.key.as_str(), field.field_type.as_str());
         }
         let mut public_variable_keys = BTreeSet::new();
         for key in &provider.public_variable_keys {
@@ -426,6 +428,14 @@ fn validate_auth_provider_contributions(
             if !config_keys.contains(key.as_str()) {
                 return Err(PluginFrameworkError::invalid_provider_package(
                     "auth_providers[].public_variable_keys[] must reference config_schema[].key",
+                ));
+            }
+            if config_field_types
+                .get(key.as_str())
+                .is_some_and(|field_type| matches!(*field_type, "secret" | "password"))
+            {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].public_variable_keys[] cannot reference a secret field",
                 ));
             }
         }

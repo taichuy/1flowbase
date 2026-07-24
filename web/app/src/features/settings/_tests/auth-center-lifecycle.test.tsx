@@ -91,6 +91,28 @@ const baseOverview = {
       is_builtin: true,
       sort_order: 0,
       interface_path_prefixes: ['/api/public/'],
+      context_variables: [
+        {
+          label: 'ctx.inputs.authenticator_id',
+          member_path: 'inputs.authenticator_id',
+          schema: { type: 'string', format: 'uuid' }
+        },
+        {
+          label: 'ctx.inputs.public_variables.self_registration_enabled',
+          member_path: 'inputs.public_variables.self_registration_enabled',
+          schema: { type: 'boolean' }
+        },
+        {
+          label: 'ctx.inputs.auth_event',
+          member_path: 'inputs.auth_event',
+          schema: { type: 'object' }
+        },
+        {
+          label: 'ctx.api',
+          member_path: 'api',
+          schema: { type: 'object' }
+        }
+      ],
       config_schema: [
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },
         { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
@@ -114,6 +136,7 @@ const baseOverview = {
       is_builtin: false,
       sort_order: 10,
       interface_path_prefixes: ['/api/public/'],
+      context_variables: [],
       config_schema: [
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },
         { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
@@ -339,6 +362,12 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       'workspace-1',
       expect.objectContaining({ path_prefixes: ['/api/public/'] })
     );
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '变量' }));
+    expect(
+      within(uiDialog).getByText(
+        'ctx.inputs.public_variables.self_registration_enabled'
+      )
+    ).toBeInTheDocument();
     fireEvent.click(within(uiDialog).getByRole('button', { name: '代码' }));
     const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });
     expect(blockEditor).toHaveValue('original password block');

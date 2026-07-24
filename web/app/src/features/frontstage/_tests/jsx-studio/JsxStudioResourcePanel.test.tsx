@@ -372,6 +372,39 @@ describe('TSX Studio insertion descriptors', () => {
     });
   });
 
+  test('renders and inserts backend-registered nested context variables', () => {
+    const onInsertCode = createInsertCodeMock();
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        contextVariables={[
+          {
+            label: 'ctx.inputs.public_variables.issuer',
+            member_path: 'inputs.public_variables.issuer',
+            schema: { type: 'string' }
+          }
+        ]}
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={projection}
+        section="variables"
+        onInsertCode={onInsertCode}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    const row = screen
+      .getByText('ctx.inputs.public_variables.issuer')
+      .closest('div');
+    fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
+
+    expect(onInsertCode).toHaveBeenCalledWith({
+      kind: 'context-reference',
+      memberPath: 'inputs.public_variables.issuer'
+    });
+  });
+
   test('AC-002 carries the catalog module source with a component insertion', () => {
     const onInsertCode = createInsertCodeMock();
     render(
