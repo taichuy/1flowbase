@@ -235,6 +235,20 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
 }
 
 #[test]
+fn d4_ac_002_native_responses_passthrough_has_one_manifest_capability_name() {
+    let capability = ProviderInvocationCapability::ResponsesNativePassthrough;
+
+    assert_eq!(
+        capability.manifest_capability_name(),
+        "responses.native_passthrough"
+    );
+    assert_eq!(
+        serde_json::to_value(capability).unwrap(),
+        json!("responses.native_passthrough")
+    );
+}
+
+#[test]
 fn ac_002_current_provider_fails_closed_when_required_capability_is_missing() {
     let input = ProviderInvocationInput {
         system: vec![NativePromptBlock::Text {

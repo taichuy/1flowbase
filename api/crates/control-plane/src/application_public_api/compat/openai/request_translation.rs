@@ -7,9 +7,9 @@ use super::{
     chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
     openai_reasoning, reject_unknown_chat_fields, reject_unknown_response_fields,
     response_max_output_tokens, response_stream_mode, responses_input_to_native_run_input,
-    responses_previous_history, system_from_parts, validate_chat_message_fields,
-    validate_responses_input, OpenAiCompatError, OpenAiPreviousResponseContext,
-    OpenAiResponsesRequestContext,
+    responses_previous_history, responses_transport_requirement, system_from_parts,
+    validate_chat_message_fields, validate_responses_input, OpenAiCompatError,
+    OpenAiPreviousResponseContext, OpenAiResponsesRequestContext,
 };
 use crate::application_public_api::native::{
     CompactionProfile, NativeExecution, NativeExecutionOperation, NativeObject,
@@ -295,7 +295,8 @@ pub fn translate_response_request_with_context_and_previous(
             conversation = NativeObject::from_map(inherited);
         }
     }
-    let metadata = openai_metadata(object, &mut report)?;
+    let mut metadata = openai_metadata(object, &mut report)?;
+    metadata.set_responses_transport_requirement(responses_transport_requirement(object));
     let execution = native_execution(
         response_max_output_tokens(object, &mut report)?,
         openai_reasoning(object, false, &mut report)?,

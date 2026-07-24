@@ -2,6 +2,7 @@ use super::*;
 use control_plane::application_public_api::{
     compat::anthropic::translate_messages_request, protocol_translation::TranslationDecisionKind,
 };
+use std::collections::BTreeSet;
 
 #[tokio::test]
 async fn start_native_run_creates_published_api_flow_run_from_frozen_publication() {
@@ -62,6 +63,11 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
         })
     );
     assert_eq!(result.metadata["model"], json!("public-model/pass-through"));
+    // D4-AC-002: the semantic subset remains admitted without native passthrough capability.
+    assert_eq!(
+        repository.published_generate_capability_requirements(),
+        vec![BTreeSet::new()]
+    );
 }
 
 #[tokio::test]

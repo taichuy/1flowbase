@@ -44,6 +44,7 @@ pub use compaction::{
     RemoteCompactionProfile,
 };
 pub use metadata::NativeRequestMetadata;
+pub(crate) use metadata::ResponsesTransportRequirement;
 pub use model_parameters::{
     NativeExecution, NativeExecutionModelParameters, NativeReasoningParameters,
 };

@@ -16,6 +16,7 @@ pub const PROVIDER_COUNT_TOKENS_CAPABILITY: &str = "count_tokens";
 pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.responses_compact";
 pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
     "compact.responses_compaction_v2";
+pub const PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY: &str = "responses.native_passthrough";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -397,6 +398,8 @@ pub enum ProviderInvocationCapability {
     CompactResponsesCompact,
     #[serde(rename = "compact.responses_compaction_v2")]
     CompactResponsesCompactionV2,
+    #[serde(rename = "responses.native_passthrough")]
+    ResponsesNativePassthrough,
     SystemPromptBlocks,
     SystemPromptCacheControl,
     EndUserReference,
@@ -411,6 +414,7 @@ impl ProviderInvocationCapability {
             Self::CompactResponsesCompactionV2 => {
                 PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
             }
+            Self::ResponsesNativePassthrough => PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
             Self::SystemPromptBlocks => "system_prompt_blocks",
             Self::SystemPromptCacheControl => "system_prompt_cache_control",
             Self::EndUserReference => "end_user_reference",

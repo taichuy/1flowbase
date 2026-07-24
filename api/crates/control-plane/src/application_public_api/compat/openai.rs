@@ -627,6 +627,154 @@ fn reject_unknown_response_fields(
     Ok(())
 }
 
+fn responses_transport_requirement(
+    object: &Map<String, Value>,
+) -> crate::application_public_api::native::ResponsesTransportRequirement {
+    use crate::application_public_api::native::ResponsesTransportRequirement;
+
+    let has_native_only_top_level_extension = object.keys().any(|field| {
+        !matches!(
+            field.as_str(),
+            "model"
+                | "input"
+                | "instructions"
+                | "stream"
+                | "user"
+                | "metadata"
+                | "max_output_tokens"
+                | "store"
+                | "previous_response_id"
+                | "tools"
+                | "tool_choice"
+                | "parallel_tool_calls"
+                | "reasoning"
+                | "include"
+                | "prompt_cache_key"
+                | "client_metadata"
+        )
+    });
+    let has_native_only_tools = object
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| tools.iter().any(responses_tool_requires_native_passthrough));
+    let has_native_only_tool_choice = object
+        .get("tool_choice")
+        .is_some_and(responses_tool_choice_requires_native_passthrough);
+    let has_native_only_input = object
+        .get("input")
+        .is_some_and(responses_input_requires_native_passthrough);
+
+    if has_native_only_top_level_extension
+        || has_native_only_tools
+        || has_native_only_tool_choice
+        || has_native_only_input
+    {
+        ResponsesTransportRequirement::NativePassthrough
+    } else {
+        ResponsesTransportRequirement::SemanticCompatible
+    }
+}
+
+fn responses_tool_requires_native_passthrough(tool: &Value) -> bool {
+    let Some(tool) = tool.as_object() else {
+        return false;
+    };
+    tool.get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| kind != "function")
+        || !tool
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.trim().is_empty())
+        || tool.keys().any(|field| {
+            !matches!(
+                field.as_str(),
+                "type" | "name" | "description" | "parameters" | "strict"
+            )
+        })
+        || tool.get("strict").and_then(Value::as_bool) == Some(true)
+}
+
+fn responses_tool_choice_requires_native_passthrough(choice: &Value) -> bool {
+    match choice {
+        Value::String(choice) => !matches!(choice.as_str(), "auto" | "none" | "required"),
+        Value::Object(choice) => {
+            choice
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind != "function")
+                || !choice
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|name| !name.trim().is_empty())
+                || choice
+                    .keys()
+                    .any(|field| !matches!(field.as_str(), "type" | "name"))
+        }
+        _ => false,
+    }
+}
+
+fn responses_input_requires_native_passthrough(input: &Value) -> bool {
+    input.as_array().is_some_and(|items| {
+        items
+            .iter()
+            .any(responses_input_item_requires_native_passthrough)
+    })
+}
+
+fn responses_input_item_requires_native_passthrough(item: &Value) -> bool {
+    let Some(item) = item.as_object() else {
+        return false;
+    };
+    match item.get("type").and_then(Value::as_str) {
+        None | Some("message") => {
+            item.keys()
+                .any(|field| !matches!(field.as_str(), "type" | "role" | "content"))
+                || item
+                    .get("content")
+                    .is_some_and(responses_content_requires_native_passthrough)
+        }
+        Some("function_call") => item
+            .keys()
+            .any(|field| !matches!(field.as_str(), "type" | "call_id" | "name" | "arguments")),
+        Some("function_call_output") => item
+            .keys()
+            .any(|field| !matches!(field.as_str(), "type" | "call_id" | "output")),
+        Some("reasoning") => item.keys().any(|field| {
+            !matches!(
+                field.as_str(),
+                "type" | "summary" | "content" | "encrypted_content"
+            )
+        }),
+        Some("compaction_trigger") => item.keys().any(|field| field != "type"),
+        Some(_) => true,
+    }
+}
+
+fn responses_content_requires_native_passthrough(content: &Value) -> bool {
+    content.as_array().is_some_and(|parts| {
+        parts.iter().any(|part| {
+            let Some(part) = part.as_object() else {
+                return false;
+            };
+            match part.get("type").and_then(Value::as_str) {
+                Some("text" | "input_text" | "output_text") => part
+                    .keys()
+                    .any(|field| !matches!(field.as_str(), "type" | "text")),
+                Some("image_url") => part
+                    .keys()
+                    .any(|field| !matches!(field.as_str(), "type" | "image_url")),
+                Some("input_image") => part
+                    .keys()
+                    .any(|field| !matches!(field.as_str(), "type" | "image_url" | "detail")),
+                Some(_) => true,
+                None => false,
+            }
+        })
+    })
+}
+
 fn accept_responses_codex_metadata_hints(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
@@ -2712,6 +2860,42 @@ mod tests {
             translated.request.inputs.as_value()["tools"][0]["name"],
             "shell"
         );
+        assert_eq!(
+            translated.request.metadata.responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        );
+    }
+
+    #[test]
+    fn d4_ac_001_responses_classifier_marks_opaque_tools_choices_items_and_extensions_native() {
+        for request in [
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "tools": [{"type": "web_search_preview"}]
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "tool_choice": {"type": "hosted_tool", "name": "search"}
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": [{"type": "item_reference", "id": "item_1"}]
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "future_responses_extension": {"opaque": true}
+            }),
+        ] {
+            assert_eq!(
+                responses_transport_requirement(
+                    request.as_object().expect("fixture is a Responses object")
+                ),
+                crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+            );
+        }
     }
 
     #[test]

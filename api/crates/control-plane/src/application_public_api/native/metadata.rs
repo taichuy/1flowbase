@@ -7,12 +7,20 @@ use crate::application_public_api::protocol_translation::{
 
 const METADATA_PATH: &str = "$.metadata";
 
-/// The Native request metadata has one durable owner: the external trace id.
-/// Keeping this type closed prevents opaque wire metadata from becoming a
-/// second request, fingerprint, or response truth.
+/// Public and durable Native request metadata has one owner: the external trace id.
+/// The closed type also carries non-durable adapter admission state, which is
+/// intentionally absent from its wire and durable representations.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
+    responses_transport_requirement: ResponsesTransportRequirement,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ResponsesTransportRequirement {
+    #[default]
+    SemanticCompatible,
+    NativePassthrough,
 }
 
 impl NativeRequestMetadata {
@@ -37,15 +45,32 @@ impl NativeRequestMetadata {
             ),
             None => None,
         };
-        Ok(Self { trace_id })
+        Ok(Self {
+            trace_id,
+            responses_transport_requirement: ResponsesTransportRequirement::default(),
+        })
     }
 
     pub fn with_trace_id(trace_id: Option<String>) -> Self {
-        Self { trace_id }
+        Self {
+            trace_id,
+            responses_transport_requirement: ResponsesTransportRequirement::default(),
+        }
     }
 
     pub fn trace_id(&self) -> Option<&str> {
         self.trace_id.as_deref()
+    }
+
+    pub(crate) fn set_responses_transport_requirement(
+        &mut self,
+        requirement: ResponsesTransportRequirement,
+    ) {
+        self.responses_transport_requirement = requirement;
+    }
+
+    pub(crate) fn responses_transport_requirement(&self) -> ResponsesTransportRequirement {
+        self.responses_transport_requirement
     }
 
     pub fn as_value(&self) -> Value {
@@ -114,5 +139,40 @@ impl NativeRequestMetadataParseError {
 impl std::fmt::Display for NativeRequestMetadataParseError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn d4_ac_007_transport_requirement_is_transient_and_not_user_settable() {
+        let mut metadata = NativeRequestMetadata::with_trace_id(Some("trace-1".to_string()));
+        metadata
+            .set_responses_transport_requirement(ResponsesTransportRequirement::NativePassthrough);
+
+        assert_eq!(
+            serde_json::to_value(&metadata).unwrap(),
+            json!({"trace_id": "trace-1"})
+        );
+        assert_eq!(
+            serde_json::from_value::<NativeRequestMetadata>(json!({
+                "trace_id": "trace-1",
+                "responses_transport_requirement": "native_passthrough"
+            }))
+            .unwrap_err()
+            .to_string(),
+            "unknown Native metadata field"
+        );
+
+        let decoded: NativeRequestMetadata = serde_json::from_value(json!({"trace_id": "trace-1"}))
+            .expect("public metadata should retain its closed trace-only shape");
+        assert_eq!(
+            decoded.responses_transport_requirement(),
+            ResponsesTransportRequirement::SemanticCompatible
+        );
     }
 }

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use plugin_framework::provider_contract::semantic_required_capabilities;
+use plugin_framework::provider_contract::{
+    semantic_required_capabilities, ProviderInvocationCapability,
+};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -15,7 +17,7 @@ use super::{
     },
     native::{
         CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
-        NativeRunValidationError,
+        NativeRunValidationError, ResponsesTransportRequirement,
     },
     publications::ApplicationPublicationVersionRecord,
 };
@@ -157,8 +159,14 @@ where
             .execution_operation()
             .generate_profile()
             .unwrap_or(GenerateExecutionProfile::Standard);
-        let required_semantic_capabilities =
+        let mut required_provider_capabilities =
             semantic_required_capabilities(&client_request.system, &client_request.request_context);
+        if client_request.metadata.responses_transport_requirement()
+            == ResponsesTransportRequirement::NativePassthrough
+        {
+            required_provider_capabilities
+                .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
+        }
         let external_model_parameters = validate_external_model_parameters(
             client_request.execution.model_parameters(),
             client_request.model.as_deref(),
@@ -189,7 +197,7 @@ where
                 &compiled_plan,
                 route_dispatch,
                 generate_profile,
-                &required_semantic_capabilities,
+                &required_provider_capabilities,
             )
             .await
             .map_err(NativeRunValidationError::RouteUnavailable)?;

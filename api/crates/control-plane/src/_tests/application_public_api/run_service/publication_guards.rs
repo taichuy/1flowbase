@@ -87,6 +87,89 @@ async fn generate_end_user_reference_capability_mismatch_fails_closed_without_ru
     );
 }
 
+/// D4-AC-002: opaque Responses input cannot create a run unless every reachable target opts in.
+#[tokio::test]
+async fn d4_ac_002_native_responses_passthrough_requirement_fails_before_run_creation() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Responses Admission App");
+    let token = issue_key(&harness, application.id).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    repository.configure_published_generate_route(
+        application.id,
+        "node-frozen-llm",
+        published_llm_runtime(),
+    );
+    repository.set_published_generate_manifest_capabilities(BTreeSet::new());
+    let mut request = native_request("blocking", None);
+    request.metadata.set_responses_transport_requirement(
+        control_plane::application_public_api::native::ResponsesTransportRequirement::NativePassthrough,
+    );
+
+    let error = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request,
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        NativeRunValidationError::RouteUnavailable(
+            PublishedRouteResolutionError::ProviderCapabilityMismatch
+        )
+    );
+    assert_eq!(repository.flow_run_count(), 0);
+    assert_eq!(
+        repository.published_generate_capability_requirements(),
+        vec![BTreeSet::from([
+            ProviderInvocationCapability::ResponsesNativePassthrough
+        ])]
+    );
+}
+
+/// D4-AC-002: the existing all-target manifest check admits a fully capable provider route.
+#[tokio::test]
+async fn d4_ac_002_native_responses_passthrough_all_targets_capable_is_admitted() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Responses Native Route App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    repository.set_published_generate_manifest_capabilities(BTreeSet::from([
+        ProviderInvocationCapability::ResponsesNativePassthrough,
+    ]));
+    let mut request = native_request("blocking", None);
+    request.metadata.set_responses_transport_requirement(
+        control_plane::application_public_api::native::ResponsesTransportRequirement::NativePassthrough,
+    );
+
+    ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request,
+        })
+        .await
+        .expect("all reachable targets declare native Responses passthrough");
+
+    assert_eq!(repository.flow_run_count(), 1);
+    assert_eq!(
+        repository.published_generate_capability_requirements(),
+        vec![BTreeSet::from([
+            ProviderInvocationCapability::ResponsesNativePassthrough
+        ])]
+    );
+}
+
 /// Root #1366 AC-003 / AC-006: both Generate profiles use the frozen target and fail closed.
 #[tokio::test]
 async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_mismatch() {
@@ -730,6 +813,52 @@ async fn explicit_application_flow_dispatch_returns_the_frozen_compiled_plan() {
             compiled_plan_id: publication.compiled_plan_id,
         }
     );
+    assert_eq!(repository.published_generate_capability_checks(), 0);
+}
+
+/// D4-AC-002: application-flow dispatch is semantic-only and rejects opaque Responses pre-run.
+#[tokio::test]
+async fn d4_ac_002_application_flow_rejects_native_responses_passthrough_requirement() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Semantic Application Flow App");
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let publication = repository
+        .load_active_application_publication(application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let compiled_plan = repository
+        .get_application_compiled_plan(publication.compiled_plan_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let error = PublishedRouteResolver::new(&repository)
+        .resolve_generate(
+            application.workspace_id,
+            &publication,
+            &compiled_plan,
+            PublishedRouteDispatch::ApplicationFlow,
+            GenerateExecutionProfile::Standard,
+            &BTreeSet::from([ProviderInvocationCapability::ResponsesNativePassthrough]),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        PublishedRouteResolutionError::ProviderCapabilityMismatch
+    );
+    assert_eq!(repository.flow_run_count(), 0);
     assert_eq!(repository.published_generate_capability_checks(), 0);
 }
 

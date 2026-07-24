@@ -102,7 +102,7 @@ pub trait PublishedProviderManifestCapabilityRepository: Send + Sync {
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
         profile: GenerateExecutionProfile,
-        required_semantic_capabilities: &BTreeSet<ProviderInvocationCapability>,
+        required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool>;
     async fn supports_published_count_tokens(
         &self,
@@ -133,15 +133,10 @@ where
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
         _profile: GenerateExecutionProfile,
-        required_semantic_capabilities: &BTreeSet<ProviderInvocationCapability>,
+        required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool> {
-        supports_published_manifest_capabilities(
-            self,
-            workspace_id,
-            runtime,
-            required_semantic_capabilities,
-        )
-        .await
+        supports_published_manifest_capabilities(self, workspace_id, runtime, required_capabilities)
+            .await
     }
 
     async fn supports_published_count_tokens(
@@ -267,12 +262,17 @@ where
         compiled_plan_record: &domain::CompiledPlanRecord,
         dispatch: PublishedRouteDispatch,
         profile: GenerateExecutionProfile,
-        required_semantic_capabilities: &BTreeSet<ProviderInvocationCapability>,
+        required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> std::result::Result<ResolvedPublishedRoute, PublishedRouteResolutionError> {
         if compiled_plan_record.id != publication.compiled_plan_id {
             return Err(PublishedRouteResolutionError::CompiledPlanMismatch);
         }
         if dispatch == PublishedRouteDispatch::ApplicationFlow {
+            if required_capabilities
+                .contains(&ProviderInvocationCapability::ResponsesNativePassthrough)
+            {
+                return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
+            }
             return Ok(ResolvedPublishedRoute::ApplicationFlow {
                 compiled_plan_id: compiled_plan_record.id,
             });
@@ -300,12 +300,7 @@ where
             .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
         let supported = self
             .repository
-            .supports_published_generate(
-                workspace_id,
-                runtime,
-                profile,
-                required_semantic_capabilities,
-            )
+            .supports_published_generate(workspace_id, runtime, profile, required_capabilities)
             .await
             .unwrap_or(false);
         if !supported {
