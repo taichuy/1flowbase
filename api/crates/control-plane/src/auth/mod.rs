@@ -183,7 +183,14 @@ pub struct AuthenticatorProviderDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AuthenticatorContextVariableGroup {
+    Configuration,
+    Runtime,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AuthenticatorContextVariableDefinition {
+    pub group: AuthenticatorContextVariableGroup,
     pub label: String,
     pub member_path: String,
     pub schema: serde_json::Value,
@@ -272,7 +279,7 @@ impl AuthenticatorRegistry {
         authenticator: &domain::AuthenticatorRecord,
     ) -> Option<serde_json::Map<String, serde_json::Value>> {
         let definition = self.definition(&authenticator.auth_type);
-        let variables = if let Some(provider) = self.provider(&authenticator.auth_type) {
+        let provider_variables = if let Some(provider) = self.provider(&authenticator.auth_type) {
             provider.public_variables(authenticator)
         } else {
             let definition = definition?;
@@ -291,30 +298,28 @@ impl AuthenticatorRegistry {
                 })
                 .collect()
         };
+        let mut variables = public_ui::authenticator_host_public_variables(authenticator);
         let Some(definition) = definition else {
+            variables.extend(provider_variables);
             return Some(variables);
         };
         let properties = definition
             .public_variables_schema
             .get("properties")
             .and_then(serde_json::Value::as_object);
-        Some(
-            variables
-                .into_iter()
-                .filter(|(key, value)| {
-                    properties
-                        .and_then(|schemas| schemas.get(key))
-                        .is_some_and(|schema| json_value_matches_schema_type(value, schema))
-                })
-                .collect(),
-        )
+        variables.extend(provider_variables.into_iter().filter(|(key, value)| {
+            properties
+                .and_then(|schemas| schemas.get(key))
+                .is_some_and(|schema| json_value_matches_schema_type(value, schema))
+        }));
+        Some(variables)
     }
 
     pub fn context_variables(
         &self,
         auth_type: &str,
     ) -> Vec<AuthenticatorContextVariableDefinition> {
-        let public_variables_schema = self
+        let provider_public_variables_schema = self
             .definition(auth_type)
             .map(|definition| definition.public_variables_schema.clone())
             .unwrap_or_else(|| {
@@ -324,20 +329,32 @@ impl AuthenticatorRegistry {
                     "properties": {}
                 })
             });
-        let mut variables = vec![
-            AuthenticatorContextVariableDefinition {
-                label: "Authenticator ID".to_string(),
-                member_path: "inputs.authenticator_id".to_string(),
-                schema: serde_json::json!({ "type": "string", "format": "uuid" }),
-            },
-            AuthenticatorContextVariableDefinition {
-                label: "Public variables".to_string(),
-                member_path: "inputs.public_variables".to_string(),
-                schema: public_variables_schema.clone(),
-            },
-        ];
+        let host_variable_keys = ["title", "description", "enabled"];
+        let host_public_variables_schema = public_variables_schema(
+            &public_ui::auth_common_config_form_schema(),
+            &host_variable_keys.map(str::to_string),
+        );
+        let mut variables = host_variable_keys
+            .iter()
+            .filter_map(|key| {
+                host_public_variables_schema
+                    .get("properties")
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|properties| properties.get(*key))
+                    .map(|schema| AuthenticatorContextVariableDefinition {
+                        group: AuthenticatorContextVariableGroup::Configuration,
+                        label: schema
+                            .get("title")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(key)
+                            .to_string(),
+                        member_path: format!("inputs.public_variables.{key}"),
+                        schema: schema.clone(),
+                    })
+            })
+            .collect::<Vec<_>>();
         if let Some(definition) = self.definition(auth_type) {
-            if let Some(properties) = public_variables_schema
+            if let Some(properties) = provider_public_variables_schema
                 .get("properties")
                 .and_then(serde_json::Value::as_object)
             {
@@ -345,6 +362,7 @@ impl AuthenticatorRegistry {
                     properties
                         .get(key)
                         .map(|schema| AuthenticatorContextVariableDefinition {
+                            group: AuthenticatorContextVariableGroup::Configuration,
                             label: schema
                                 .get("title")
                                 .and_then(serde_json::Value::as_str)
@@ -358,6 +376,13 @@ impl AuthenticatorRegistry {
         }
         variables.extend([
             AuthenticatorContextVariableDefinition {
+                group: AuthenticatorContextVariableGroup::Runtime,
+                label: "Authenticator ID".to_string(),
+                member_path: "inputs.authenticator_id".to_string(),
+                schema: serde_json::json!({ "type": "string", "format": "uuid" }),
+            },
+            AuthenticatorContextVariableDefinition {
+                group: AuthenticatorContextVariableGroup::Runtime,
                 label: "Authentication event".to_string(),
                 member_path: "inputs.auth_event".to_string(),
                 schema: serde_json::json!({
@@ -371,6 +396,7 @@ impl AuthenticatorRegistry {
                 }),
             },
             AuthenticatorContextVariableDefinition {
+                group: AuthenticatorContextVariableGroup::Runtime,
                 label: "API".to_string(),
                 member_path: "api".to_string(),
                 schema: serde_json::json!({ "type": "object" }),

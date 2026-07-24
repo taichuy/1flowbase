@@ -170,6 +170,29 @@ pub fn password_local_public_variables(options: &Value) -> Map<String, Value> {
     )])
 }
 
+pub fn authenticator_host_public_variables(
+    authenticator: &domain::AuthenticatorRecord,
+) -> Map<String, Value> {
+    let mut variables = Map::from_iter([
+        (
+            "title".to_string(),
+            Value::String(authenticator.title.clone()),
+        ),
+        ("enabled".to_string(), Value::Bool(authenticator.enabled)),
+    ]);
+    if let Some(description) = authenticator
+        .options
+        .get("description")
+        .and_then(Value::as_str)
+    {
+        variables.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
+    }
+    variables
+}
+
 pub fn password_local_self_registration_enabled(options: &Value) -> bool {
     options
         .get("extension_config")

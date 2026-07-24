@@ -37,6 +37,7 @@ export type FrontstageJsxStudioSection =
   | 'run';
 
 export interface JsxStudioContextVariable {
+  group?: 'configuration' | 'runtime';
   label: string;
   member_path: string;
   schema: Record<string, unknown>;
@@ -408,7 +409,7 @@ function VariablesPanel({
   }
 
   const usesRegisteredContext = contextVariables !== undefined;
-  const variables = contextVariables ?? [
+  const variables: readonly JsxStudioContextVariable[] = contextVariables ?? [
     {
       label: i18nText('frontstage', 'auto.current_user'),
       member_path: 'currentUser',
@@ -461,7 +462,9 @@ function VariablesPanel({
     }
   ];
 
-  const variablesTable = (
+  const renderVariablesTable = (
+    tableVariables: readonly JsxStudioContextVariable[]
+  ) => (
     <Table<JsxStudioContextVariable>
       className="frontstage-jsx-studio__variables-table"
       columns={[
@@ -503,7 +506,7 @@ function VariablesPanel({
           )
         }
       ]}
-      dataSource={variables}
+      dataSource={tableVariables}
       pagination={false}
       rowKey="member_path"
       size="small"
@@ -511,13 +514,55 @@ function VariablesPanel({
   );
 
   if (usesRegisteredContext) {
+    const hasCompleteGroups = variables.every((variable) => variable.group);
+    if (!hasCompleteGroups) {
+      return (
+        <div className="frontstage-jsx-studio__resource-scroll">
+          <ResourceHeading
+            title={i18nText('frontstage', 'auto.variables')}
+            description={i18nText('frontstage', 'auto.variables_description')}
+          />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={i18nText(
+              'frontstage',
+              'auto.variables_context_unavailable'
+            )}
+          />
+        </div>
+      );
+    }
+    const groups = [
+      {
+        key: 'configuration' as const,
+        label: i18nText('frontstage', 'auto.configuration_variables')
+      },
+      {
+        key: 'runtime' as const,
+        label: i18nText('frontstage', 'auto.runtime_context')
+      }
+    ];
     return (
       <div className="frontstage-jsx-studio__resource-scroll">
         <ResourceHeading
           title={i18nText('frontstage', 'auto.variables')}
           description={i18nText('frontstage', 'auto.variables_description')}
         />
-        {variablesTable}
+        {groups.map((group) => {
+          const groupVariables = variables.filter(
+            (variable) => variable.group === group.key
+          );
+          return groupVariables.length > 0 ? (
+            <section
+              aria-label={group.label}
+              className="frontstage-jsx-studio__resource-section"
+              key={group.key}
+            >
+              <Typography.Text strong>{group.label}</Typography.Text>
+              {renderVariablesTable(groupVariables)}
+            </section>
+          ) : null;
+        })}
       </div>
     );
   }
@@ -528,7 +573,7 @@ function VariablesPanel({
         title={i18nText('frontstage', 'auto.variables')}
         description={i18nText('frontstage', 'auto.variables_description')}
       />
-      {variablesTable}
+      {renderVariablesTable(variables)}
       <Divider />
       <Typography.Text strong>
         {i18nText('frontstage', 'auto.output_ports')}

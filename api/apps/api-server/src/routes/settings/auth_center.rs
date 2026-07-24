@@ -41,7 +41,15 @@ pub struct AuthCenterConfigFieldResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthCenterContextVariableGroupResponse {
+    Configuration,
+    Runtime,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AuthCenterContextVariableResponse {
+    pub group: AuthCenterContextVariableGroupResponse,
     pub label: String,
     pub member_path: String,
     #[schema(value_type = Object)]
@@ -268,6 +276,14 @@ fn to_auth_center_authenticator_response(
         .context_variables(&authenticator.auth_type)
         .into_iter()
         .map(|variable| AuthCenterContextVariableResponse {
+            group: match variable.group {
+                control_plane::auth::AuthenticatorContextVariableGroup::Configuration => {
+                    AuthCenterContextVariableGroupResponse::Configuration
+                }
+                control_plane::auth::AuthenticatorContextVariableGroup::Runtime => {
+                    AuthCenterContextVariableGroupResponse::Runtime
+                }
+            },
             label: variable.label,
             member_path: variable.member_path,
             schema: variable.schema,

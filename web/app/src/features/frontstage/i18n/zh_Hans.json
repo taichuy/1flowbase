@@ -278,6 +278,8 @@
     "variables": "变量",
     "variables_description": "这些 ctx 变量由受控运行时注入，可直接插入当前 JSX。",
     "variables_context_unavailable": "变量上下文不可用",
+    "configuration_variables": "配置变量",
+    "runtime_context": "运行时上下文",
     "variable_label": "标签",
     "operation": "操作",
     "workspace": "工作区",

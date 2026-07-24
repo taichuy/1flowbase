@@ -93,21 +93,43 @@ const baseOverview = {
       interface_path_prefixes: ['/api/public/'],
       context_variables: [
         {
-          label: 'Authenticator ID',
-          member_path: 'inputs.authenticator_id',
-          schema: { type: 'string', format: 'uuid' }
+          group: 'configuration',
+          label: 'Authenticator title',
+          member_path: 'inputs.public_variables.title',
+          schema: { type: 'string' }
         },
         {
+          group: 'configuration',
+          label: 'Description',
+          member_path: 'inputs.public_variables.description',
+          schema: { type: 'string' }
+        },
+        {
+          group: 'configuration',
+          label: 'Enabled',
+          member_path: 'inputs.public_variables.enabled',
+          schema: { type: 'boolean' }
+        },
+        {
+          group: 'configuration',
           label: 'Allow self registration',
           member_path: 'inputs.public_variables.self_registration_enabled',
           schema: { type: 'boolean' }
         },
         {
+          group: 'runtime',
+          label: 'Authenticator ID',
+          member_path: 'inputs.authenticator_id',
+          schema: { type: 'string', format: 'uuid' }
+        },
+        {
+          group: 'runtime',
           label: 'Authentication event',
           member_path: 'inputs.auth_event',
           schema: { type: 'object' }
         },
         {
+          group: 'runtime',
           label: 'API',
           member_path: 'api',
           schema: { type: 'object' }

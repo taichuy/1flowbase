@@ -380,9 +380,16 @@ describe('TSX Studio insertion descriptors', () => {
         codeSource=""
         contextVariables={[
           {
+            group: 'configuration',
             label: 'Issuer',
             member_path: 'inputs.public_variables.issuer',
             schema: { type: 'string' }
+          },
+          {
+            group: 'runtime',
+            label: 'API',
+            member_path: 'api',
+            schema: { type: 'object' }
           }
         ]}
         pageBlocks={[block]}
@@ -394,9 +401,17 @@ describe('TSX Studio insertion descriptors', () => {
       />
     );
 
-    expect(screen.getByRole('columnheader', { name: '标签' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '变量' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '操作' })).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader', { name: '标签' })).toHaveLength(2);
+    expect(screen.getAllByRole('columnheader', { name: '变量' })).toHaveLength(2);
+    expect(screen.getAllByRole('columnheader', { name: '操作' })).toHaveLength(2);
+    const configurationGroup = screen.getByRole('region', {
+      name: '配置变量'
+    });
+    const runtimeGroup = screen.getByRole('region', {
+      name: '运行时上下文'
+    });
+    expect(within(configurationGroup).getByText('Issuer')).toBeInTheDocument();
+    expect(within(runtimeGroup).getByText('API')).toBeInTheDocument();
     const row = screen.getByText('Issuer').closest('tr');
     expect(
       within(row!).getByText('ctx.inputs.public_variables.issuer')

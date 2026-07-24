@@ -292,6 +292,8 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
     assert_eq!(
         registry.public_variables(&record).unwrap(),
         serde_json::from_value(serde_json::json!({
+            "title": "Fixture QR",
+            "enabled": true,
             "issuer": "https://issuer.example.test"
         }))
         .unwrap()
