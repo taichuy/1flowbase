@@ -93,22 +93,22 @@ const baseOverview = {
       interface_path_prefixes: ['/api/public/'],
       context_variables: [
         {
-          label: 'ctx.inputs.authenticator_id',
+          label: 'Authenticator ID',
           member_path: 'inputs.authenticator_id',
           schema: { type: 'string', format: 'uuid' }
         },
         {
-          label: 'ctx.inputs.public_variables.self_registration_enabled',
+          label: 'Allow self registration',
           member_path: 'inputs.public_variables.self_registration_enabled',
           schema: { type: 'boolean' }
         },
         {
-          label: 'ctx.inputs.auth_event',
+          label: 'Authentication event',
           member_path: 'inputs.auth_event',
           schema: { type: 'object' }
         },
         {
-          label: 'ctx.api',
+          label: 'API',
           member_path: 'api',
           schema: { type: 'object' }
         }
@@ -367,6 +367,9 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       within(uiDialog).getByText(
         'ctx.inputs.public_variables.self_registration_enabled'
       )
+    ).toBeInTheDocument();
+    expect(
+      within(uiDialog).getByText('Allow self registration')
     ).toBeInTheDocument();
     fireEvent.click(within(uiDialog).getByRole('button', { name: '代码' }));
     const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });

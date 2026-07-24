@@ -274,6 +274,12 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
             }
         })
     );
+    assert!(registry
+        .context_variables("fixture-auth.qr")
+        .iter()
+        .any(|variable| {
+            variable.label == "Issuer" && variable.member_path == "inputs.public_variables.issuer"
+        }));
     let record = AuthenticatorRecord {
         options: serde_json::json!({
             "extension_config": {

@@ -25,7 +25,7 @@ export interface AuthenticatorUiBlockStudioProps {
   description: string | null;
   enabled: boolean;
   errorMessage: string | null;
-  contextVariables: readonly JsxStudioContextVariable[];
+  contextVariables?: readonly JsxStudioContextVariable[];
   interfacePathPrefixes: readonly string[];
   open: boolean;
   readOnly: boolean;
@@ -163,7 +163,7 @@ export function AuthenticatorUiBlockStudio({
         <JsxStudioResourcePanel
           block={authoringBlock}
           codeSource={draft}
-          contextVariables={contextVariables}
+          contextVariables={contextVariables ?? null}
           interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}

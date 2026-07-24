@@ -363,7 +363,7 @@ describe('TSX Studio insertion descriptors', () => {
       />
     );
 
-    const row = screen.getByText('ctx.currentUser').closest('div');
+    const row = screen.getByText('ctx.currentUser').closest('tr');
     fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
 
     expect(onInsertCode).toHaveBeenCalledWith({
@@ -372,7 +372,7 @@ describe('TSX Studio insertion descriptors', () => {
     });
   });
 
-  test('renders and inserts backend-registered nested context variables', () => {
+  test('AC-022 and AC-023 render registered variables as label, reference, and insert columns', () => {
     const onInsertCode = createInsertCodeMock();
     render(
       <JsxStudioResourcePanel
@@ -380,7 +380,7 @@ describe('TSX Studio insertion descriptors', () => {
         codeSource=""
         contextVariables={[
           {
-            label: 'ctx.inputs.public_variables.issuer',
+            label: 'Issuer',
             member_path: 'inputs.public_variables.issuer',
             schema: { type: 'string' }
           }
@@ -394,15 +394,38 @@ describe('TSX Studio insertion descriptors', () => {
       />
     );
 
-    const row = screen
-      .getByText('ctx.inputs.public_variables.issuer')
-      .closest('div');
+    expect(screen.getByRole('columnheader', { name: '标签' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '变量' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '操作' })).toBeInTheDocument();
+    const row = screen.getByText('Issuer').closest('tr');
+    expect(
+      within(row!).getByText('ctx.inputs.public_variables.issuer')
+    ).toBeInTheDocument();
     fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
 
     expect(onInsertCode).toHaveBeenCalledWith({
       kind: 'context-reference',
       memberPath: 'inputs.public_variables.issuer'
     });
+  });
+
+  test('AC-024 renders an unavailable state instead of Frontstage defaults', () => {
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        contextVariables={null}
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={projection}
+        section="variables"
+        onInsertCode={createInsertCodeMock()}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    expect(screen.getByText('变量上下文不可用')).toBeInTheDocument();
+    expect(screen.queryByText('ctx.currentUser')).not.toBeInTheDocument();
   });
 
   test('AC-002 carries the catalog module source with a component insertion', () => {
