@@ -30,9 +30,9 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
-use crate::routes::application_public_api::tool_callback_ids::encode_anthropic_callback_tool_use_id;
-#[cfg(test)]
-use crate::routes::application_public_api::tool_callback_ids::encode_openai_callback_tool_call_id;
+use crate::routes::application_public_api::tool_callback_ids::{
+    encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
+};
 use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,

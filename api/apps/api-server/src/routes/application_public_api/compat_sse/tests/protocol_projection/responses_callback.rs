@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_responses_waiting_callback_is_explicitly_unsupported() {
+async fn openai_responses_waiting_callback_projects_client_function_call() {
     let run = native_run();
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
     let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, false);
@@ -40,11 +40,26 @@ async fn openai_responses_waiting_callback_is_explicitly_unsupported() {
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("event: response.failed"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("lookup_inventory"), "{body}");
-    assert!(!body.contains("\"type\":\"function_call\""), "{body}");
-    assert!(!body.contains("event: response.completed"), "{body}");
+    let added_index = body
+        .find("event: response.output_item.added")
+        .unwrap_or_else(|| panic!("Responses function_call must emit output_item.added: {body}"));
+    let done_index = body
+        .find("event: response.output_item.done")
+        .unwrap_or_else(|| panic!("Responses function_call must emit output_item.done: {body}"));
+    let completed_index = body
+        .find("event: response.completed")
+        .unwrap_or_else(|| panic!("Responses function_call must complete the response: {body}"));
+    assert!(
+        added_index < done_index && done_index < completed_index,
+        "{body}"
+    );
+    assert!(body.contains("\"type\":\"function_call\""), "{body}");
+    assert!(body.contains("\"name\":\"lookup_inventory\""), "{body}");
+    assert!(
+        body.contains("\"arguments\":\"{\\\"sku\\\":\\\"sku_123\\\"}\""),
+        "{body}"
+    );
+    assert!(!body.contains("required_action_not_supported"), "{body}");
 }
 
 #[tokio::test]

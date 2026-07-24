@@ -535,7 +535,18 @@ fn openai_response_runtime_event_to_sse(
                 }
             }),
         )],
-        "waiting_callback" | "waiting_human" => required_action_not_supported_openai_response_sse(
+        "waiting_callback" => {
+            if let Some(items) = openai_response_function_call_output_items(&envelope.payload) {
+                openai_response_function_call_sse(initial_run, model, previous_response_id, items)
+            } else {
+                required_action_not_supported_openai_response_sse(
+                    initial_run,
+                    model,
+                    previous_response_id,
+                )
+            }
+        }
+        "waiting_human" => required_action_not_supported_openai_response_sse(
             initial_run,
             model,
             previous_response_id,
@@ -782,7 +793,6 @@ fn anthropic_cache_read_input_tokens(usage: &NativeUsage) -> u64 {
         .unwrap_or_default()
 }
 
-#[cfg(test)]
 pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
     let callback_task_id = llm_tool_callback_task_id(payload)?;
     let calls = llm_tool_calls(payload)?;
@@ -807,6 +817,61 @@ pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Opt
         })
         .collect::<Vec<_>>();
     (!output.is_empty()).then_some(output)
+}
+
+fn openai_response_function_call_sse(
+    initial_run: &NativeRunResult,
+    model: &str,
+    previous_response_id: Option<&str>,
+    output: Vec<Value>,
+) -> Vec<Result<Event, Infallible>> {
+    let mut events = Vec::with_capacity(output.len() * 2 + 1);
+    for (index, item) in output.iter().enumerate() {
+        events.push(event_json_sse(
+            "response.output_item.added",
+            json!({
+                "type": "response.output_item.added",
+                "response_id": response_id_from_run_id(initial_run.id),
+                "output_index": index,
+                "item": item
+            }),
+        ));
+        events.push(event_json_sse(
+            "response.output_item.done",
+            json!({
+                "type": "response.output_item.done",
+                "response_id": response_id_from_run_id(initial_run.id),
+                "output_index": index,
+                "item": item
+            }),
+        ));
+    }
+    events.push(event_json_sse(
+        "response.completed",
+        json!({
+            "type": "response.completed",
+            "response": openai_response_stream_snapshot_with_output(
+                initial_run,
+                model,
+                previous_response_id,
+                output
+            )
+        }),
+    ));
+    events
+}
+
+fn openai_response_stream_snapshot_with_output(
+    initial_run: &NativeRunResult,
+    model: &str,
+    previous_response_id: Option<&str>,
+    output: Vec<Value>,
+) -> Value {
+    let mut response =
+        openai_response_stream_snapshot(initial_run, model, previous_response_id, "completed");
+    response["output"] = Value::Array(output);
+    response["usage"] = openai_responses_usage_payload(initial_run.usage.as_ref());
+    response
 }
 
 pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
@@ -930,7 +995,6 @@ fn llm_tool_calls(payload: &Value) -> Option<Vec<&Value>> {
     external_llm_tool_call_values(calls)
 }
 
-#[cfg(test)]
 fn tool_call_arguments_string(arguments: Value) -> String {
     match arguments {
         Value::String(value) => value,
