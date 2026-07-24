@@ -18,8 +18,9 @@ test('source-built provenance fixes source SHA, lock/toolchain digests, command,
   try {
     const executable = path.join(root, 'codex');
     fs.writeFileSync(executable, 'fixed binary fixture');
-    fs.writeFileSync(path.join(root, 'Cargo.lock'), 'fixed lock fixture');
-    fs.writeFileSync(path.join(root, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.88"\n');
+    fs.mkdirSync(path.join(root, 'codex-rs'));
+    fs.writeFileSync(path.join(root, 'codex-rs', 'Cargo.lock'), 'fixed lock fixture');
+    fs.writeFileSync(path.join(root, 'codex-rs', 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.88"\n');
     const cleanGit = (_cwd, args) => args[0] === 'rev-parse'
       ? FIXED_SOURCE_SHA.codex
       : args[0] === 'remote' ? 'https://github.com/openai/codex.git' : '';
@@ -32,7 +33,7 @@ test('source-built provenance fixes source SHA, lock/toolchain digests, command,
     assert.equal(value.source.dirty, false);
     assert.equal(value.provenance_claim, 'source-built-from-fixed-git-commit');
     assert.deepEqual(value.toolchain_and_lockfiles.map((entry) => entry.name), [
-      'rust-toolchain.toml', 'Cargo.lock',
+      'codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock',
     ]);
     assert.match(value.executable.sha256, /^[a-f0-9]{64}$/u);
     assert.throws(() => sourceBuiltProvenance('codex', executable, {

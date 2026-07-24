@@ -12,7 +12,7 @@ const FIXED_SOURCE_SHA = Object.freeze({
 const PROVENANCE_SCHEMA = '1flowbase.ai-gateway-client-provenance/v1';
 
 const SOURCE_FILES = Object.freeze({
-  codex: ['rust-toolchain.toml', 'rust-toolchain', 'Cargo.lock'],
+  codex: ['codex-rs/rust-toolchain.toml', 'codex-rs/rust-toolchain', 'codex-rs/Cargo.lock'],
   opencode: ['package.json', 'bun.lock', 'bun.lockb', 'pnpm-lock.yaml'],
 });
 
@@ -44,7 +44,7 @@ function identifiedFiles(root, candidates) {
   });
 }
 
-function sourceBuiltProvenance(client, executable, input, dependencies = {}) {
+function inspectSourceProvenance(client, input, dependencies = {}) {
   const runGit = dependencies.git || git;
   const expectedSha = FIXED_SOURCE_SHA[client];
   const actualSha = runGit(input.sourceRoot, ['rev-parse', 'HEAD']);
@@ -77,7 +77,6 @@ function sourceBuiltProvenance(client, executable, input, dependencies = {}) {
   return {
     schema_version: PROVENANCE_SCHEMA,
     client_kind: client,
-    provenance_claim: 'source-built-from-fixed-git-commit',
     source: {
       kind: 'git-worktree',
       path: input.sourceRoot,
@@ -89,6 +88,13 @@ function sourceBuiltProvenance(client, executable, input, dependencies = {}) {
       detached: true,
     },
     toolchain_and_lockfiles: identified,
+  };
+}
+
+function sourceBuiltProvenance(client, executable, input, dependencies = {}) {
+  return {
+    ...inspectSourceProvenance(client, input, dependencies),
+    provenance_claim: 'source-built-from-fixed-git-commit',
     build_command: commandIdentity(input.buildCommand),
     executable: { path: executable, sha256: sha256File(executable) },
   };
@@ -142,6 +148,7 @@ module.exports = {
   PROVENANCE_SCHEMA,
   collectClientProvenance,
   commandIdentity,
+  inspectSourceProvenance,
   pinnedClaudeProvenance,
   sha256File,
   sourceBuiltProvenance,
