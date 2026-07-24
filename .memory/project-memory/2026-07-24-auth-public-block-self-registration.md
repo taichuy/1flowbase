@@ -59,7 +59,7 @@ scope:
 
 ## 当前线上状态
 
-- Single Issue：[#1444](https://github.com/taichuy/1flowbase/issues/1444)，阶段为 implementation。
+- Single Issue：[#1444](https://github.com/taichuy/1flowbase/issues/1444)，阶段为 user acceptance。
 - 认证中心完整共享 Studio、`/api/public/*` 连接器后端过滤及动态 `context_variables` 已依次合入 `beta`。
 - 动态上下文变量交付提交：implementation `e221ec48d`，beta merge `4e0d4ace8`；AC-017～AC-021 证据见 Issue comment `5069033332`。
 - Auth Provider 公开变量 schema 从既有 `config_schema + public_variable_keys` 派生；前端直接消费 `label / member_path / schema`，不维护 Auth 专用变量常量。
@@ -67,4 +67,5 @@ scope:
 - Auth 配置变量与运行时上下文由后端 `group` 字段分组；Host 安全投影 `title / description / enabled`，Provider 继续只投影 `public_variable_keys`，不公开 `public_ui_block`、未知字段或 secret。交付提交：implementation `42a84d16d`，beta merge `bc944e00a`。
 - Auth Center authoring DTO 直接返回 registry 安全投影的 `public_variables`；认证中心运行当前未保存草稿时复用共享 Trial UI，并以同一 `authenticator_id / public_variables / auth_event` contract 重跑 action。真实写接口调用先确认，取消或 session revoke 后不发出请求；越界路径继续由 canonical public Auth transport 拒绝。交付提交：implementation `7e7d0c879`，beta merge `d1600be24`。
 - Auth Studio 的运行预览使用共享 `JsBlockTrialPanel` 的 `direct-preview` presentation，右侧只展示实际 Block 渲染结果，Frontstage 继续使用完整 `debugger` presentation；初版草稿防抖刷新语义已被下一条保存真值语义取代。初版交付提交：implementation `6e9050cf4`，beta merge `3cdb76259`。
-- Auth Studio 预览刷新语义随后收敛为后端保存真值：打开时运行已保存 `source`，滚动、选择和修改本地 `draft` 不重建 session；仅保存成功导致 source revision 变化后刷新，保存失败保留旧预览，Block action 仍可携带 `auth_event` 重跑。交付提交：implementation `8dff95011`，beta merge `a74058c47`。
+- Auth Studio 预览刷新语义曾收敛为保存真值、仅保存后刷新；该交互语义已被下一条“运行 / 保存解耦”取代。阶段交付提交：implementation `8dff95011`，beta merge `a74058c47`。
+- 共享 Studio 顶部提供独立“运行”命令：点击时冻结当前未保存草稿、切换到预览并通过显式 revision 运行；继续编辑不自动重跑。“保存”只持久化，不切换或运行；预览轨道只负责查看最近结果。Auth 使用 `direct-preview`，Frontstage 继续使用既有 `debugger` runtime。交付提交：implementation `496e47c30`，beta merge `df6be02b3`。
