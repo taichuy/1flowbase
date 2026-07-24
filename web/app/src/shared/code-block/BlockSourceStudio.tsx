@@ -216,7 +216,7 @@ function BlockSourceStudioWindow({
               type="primary"
               onClick={onSave}
             >
-              {i18nText('frontstage', 'auto.save_code')}
+              {i18nText('frontstage', 'auto.save')}
             </Button>
           </>
         )}
