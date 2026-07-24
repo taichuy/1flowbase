@@ -519,6 +519,24 @@ async function main(ctx: unknown) {
     expect(
       windowHeader?.querySelector('.frontstage-jsx-studio__window-actions')
     ).toHaveStyle({ flexWrap: 'wrap' });
+    const headerButtons = within(windowHeader as HTMLElement).getAllByRole(
+      'button'
+    );
+    expect(
+      headerButtons.slice(0, 4).map((button) =>
+        button.textContent?.replace(/\s+/gu, '')
+      )
+    ).toEqual(['上下文', '重置', '保存', '运行']);
+    expect(
+      within(windowHeader as HTMLElement).getByRole('button', {
+        name: /^运\s*行$/
+      })
+    ).toHaveClass('ant-btn-primary');
+    expect(
+      within(windowHeader as HTMLElement).getByRole('button', {
+        name: /保\s*存/
+      })
+    ).not.toHaveClass('ant-btn-primary');
     fireEvent.click(
       within(windowHeader as HTMLElement).getByRole('button', {
         name: '上下文'

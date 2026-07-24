@@ -219,21 +219,21 @@ function BlockSourceStudioWindow({
               {i18nText('frontstage', 'auto.reset')}
             </Button>
             <Button
+              disabled={!dirty || loading || readOnly || saving}
+              loading={saving}
+              onClick={onSave}
+            >
+              {i18nText('frontstage', 'auto.save')}
+            </Button>
+            <Button
               disabled={loading || saving}
+              type="primary"
               onClick={() => {
                 onRun(source);
                 setActiveSection('run');
               }}
             >
               {i18nText('frontstage', 'auto.run')}
-            </Button>
-            <Button
-              disabled={!dirty || loading || readOnly || saving}
-              loading={saving}
-              type="primary"
-              onClick={onSave}
-            >
-              {i18nText('frontstage', 'auto.save')}
             </Button>
           </>
         )}
