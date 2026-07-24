@@ -49,12 +49,19 @@ function inspectSourceProvenance(client, input, dependencies = {}) {
   const expectedSha = FIXED_SOURCE_SHA[client];
   const actualSha = runGit(input.sourceRoot, ['rev-parse', 'HEAD']);
   const dirty = runGit(input.sourceRoot, ['status', '--porcelain', '--untracked-files=all']) !== '';
-  const remoteUrl = runGit(input.sourceRoot, ['remote', 'get-url', 'origin']);
   const canonicalIdentity = (value) => value
     .replace(/^github:/u, '')
     .replace(/^https:\/\/github\.com\//u, '')
     .replace(/^git@github\.com:/u, '')
     .replace(/\.git$/u, '');
+  const remotes = runGit(input.sourceRoot, ['remote'])
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map((name) => ({ name, url: runGit(input.sourceRoot, ['remote', 'get-url', name]) }))
+    .sort((left, right) => Number(right.name === 'origin') - Number(left.name === 'origin'));
+  const sourceRemote = remotes.find(
+    (remote) => canonicalIdentity(remote.url) === canonicalIdentity(input.sourceIdentity),
+  );
   let branchRef = null;
   try {
     branchRef = runGit(input.sourceRoot, ['symbolic-ref', '--quiet', 'HEAD']);
@@ -66,8 +73,8 @@ function inspectSourceProvenance(client, input, dependencies = {}) {
   }
   if (dirty) throw new Error(`${client} source worktree must be clean for provenance`);
   if (branchRef) throw new Error(`${client} source worktree must use a detached HEAD for provenance`);
-  if (canonicalIdentity(remoteUrl) !== canonicalIdentity(input.sourceIdentity)) {
-    throw new Error(`${client} source identity does not match origin remote`);
+  if (!sourceRemote) {
+    throw new Error(`${client} source identity does not match any configured remote`);
   }
   const identified = identifiedFiles(input.sourceRoot, SOURCE_FILES[client]);
   if (!identified.some((entry) => entry.kind === 'lockfile')
@@ -81,7 +88,8 @@ function inspectSourceProvenance(client, input, dependencies = {}) {
       kind: 'git-worktree',
       path: input.sourceRoot,
       identity: input.sourceIdentity,
-      observed_remote: remoteUrl,
+      observed_remote_name: sourceRemote.name,
+      observed_remote: sourceRemote.url,
       fixed_revision: expectedSha,
       observed_revision: actualSha,
       dirty: false,

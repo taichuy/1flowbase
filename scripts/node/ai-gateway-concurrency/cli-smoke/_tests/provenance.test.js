@@ -23,7 +23,9 @@ test('source-built provenance fixes source SHA, lock/toolchain digests, command,
     fs.writeFileSync(path.join(root, 'codex-rs', 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.88"\n');
     const cleanGit = (_cwd, args) => args[0] === 'rev-parse'
       ? FIXED_SOURCE_SHA.codex
-      : args[0] === 'remote' ? 'https://github.com/openai/codex.git' : '';
+      : args.length === 1 && args[0] === 'remote'
+        ? 'origin'
+        : args[0] === 'remote' ? 'https://github.com/openai/codex.git' : '';
     const value = sourceBuiltProvenance('codex', executable, {
       sourceRoot: root,
       sourceIdentity: 'github:openai/codex',
@@ -36,6 +38,30 @@ test('source-built provenance fixes source SHA, lock/toolchain digests, command,
       'codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock',
     ]);
     assert.match(value.executable.sha256, /^[a-f0-9]{64}$/u);
+    const upstreamOnly = sourceBuiltProvenance('codex', executable, {
+      sourceRoot: root,
+      sourceIdentity: 'github:openai/codex',
+      buildCommand: 'cargo build --release --locked',
+    }, { git: (_cwd, args) => {
+      if (args[0] === 'rev-parse') return FIXED_SOURCE_SHA.codex;
+      if (args[0] === 'status' || args[0] === 'symbolic-ref') return '';
+      if (args.length === 1 && args[0] === 'remote') return 'upstream';
+      if (args.join(' ') === 'remote get-url upstream') return 'https://github.com/openai/codex.git';
+      throw new Error(`unexpected git args: ${args.join(' ')}`);
+    } });
+    assert.equal(upstreamOnly.source.observed_remote_name, 'upstream');
+    assert.equal(upstreamOnly.source.observed_remote, 'https://github.com/openai/codex.git');
+    assert.throws(() => sourceBuiltProvenance('codex', executable, {
+      sourceRoot: root,
+      sourceIdentity: 'github:openai/codex',
+      buildCommand: 'cargo build --release --locked',
+    }, { git: (_cwd, args) => {
+      if (args[0] === 'rev-parse') return FIXED_SOURCE_SHA.codex;
+      if (args[0] === 'status' || args[0] === 'symbolic-ref') return '';
+      if (args.length === 1 && args[0] === 'remote') return 'upstream';
+      if (args.join(' ') === 'remote get-url upstream') return 'https://github.com/example/fork.git';
+      throw new Error(`unexpected git args: ${args.join(' ')}`);
+    } }), /source identity does not match any configured remote/u);
     assert.throws(() => sourceBuiltProvenance('codex', executable, {
       sourceRoot: root, sourceIdentity: 'github:openai/codex',
       buildCommand: 'cargo build --release --locked',
