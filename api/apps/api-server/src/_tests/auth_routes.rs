@@ -462,7 +462,9 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
     let unsupported_oidc_id = Uuid::now_v7();
     sqlx::query(
         r#"
-        insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
+        insert into authenticators (
+          id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options
+        )
         values
           (
             $1,
@@ -471,9 +473,13 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
             true,
             false,
             0,
+            'export default { main } satisfies BlockModule;',
             '{
               "description": "Staff login",
-              "extension_config": {"secret": "do-not-leak"},
+              "extension_config": {
+                "secret": "do-not-leak",
+                "self_registration_enabled": true
+              },
               "config_form_schema": [{"key": "secret", "type": "string"}],
               "public_options": {"identifier_label": "Staff account"}
             }'::jsonb
@@ -485,6 +491,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
             false,
             false,
             20,
+            'disabled block',
             '{"description": "Disabled login"}'::jsonb
           ),
           (
@@ -494,6 +501,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
             true,
             false,
             30,
+            'unsupported block',
             '{"description": "Unsupported login"}'::jsonb
           )
         "#,
@@ -541,19 +549,278 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
     assert_eq!(staff["title"], json!("Staff Password"));
     assert_eq!(staff["description"], json!("Staff login"));
     assert_eq!(staff["sort_order"], json!(0));
-    assert_eq!(staff["flow"], json!("password"));
-    assert_eq!(staff["sign_in_path"], json!("/api/public/auth/sign-in"));
     assert_eq!(
-        staff["public_options"],
-        json!({ "identifier_label": "Staff account" })
+        staff["public_ui_block"],
+        json!("export default { main } satisfies BlockModule;")
+    );
+    assert_eq!(
+        staff["public_variables"],
+        json!({ "self_registration_enabled": true })
     );
     assert!(staff.get("options").is_none());
     assert!(staff.get("config_schema").is_none());
     assert!(staff.get("config_values").is_none());
     assert!(staff.get("extension_config").is_none());
+    assert!(staff.get("public_options").is_none());
     assert!(!serde_json::to_string(staff)
         .unwrap()
         .contains("do-not-leak"));
+}
+
+#[tokio::test]
+async fn public_auth_sign_up_rejects_when_registration_is_disabled_without_writes() {
+    // Issue #1444 AC-007: browser-visible state is never the authorization truth.
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/sign-up")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                        "account": "disabled-signup",
+                        "email": "disabled-signup@example.com",
+                        "password": "change-me"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(payload["code"], json!("self_registration_disabled"));
+    let user_count: i64 =
+        sqlx::query_scalar("select count(*) from users where account = 'disabled-signup'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(user_count, 0);
+}
+
+#[tokio::test]
+async fn public_auth_sign_up_creates_default_member_identity_and_session() {
+    // Issue #1444 AC-008: workspace/role come from backend provisioning, never the request.
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    sqlx::query(
+        r#"
+        update authenticators
+        set options = jsonb_set(
+          options,
+          '{extension_config,self_registration_enabled}',
+          'true'::jsonb,
+          true
+        )
+        where id = $1
+        "#,
+    )
+    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/sign-up")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                        "account": "self-registered",
+                        "email": "self-registered@example.com",
+                        "password": "change-me"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("set-cookie").is_some());
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(payload["data"]["csrf_token"].is_string());
+    assert_eq!(payload["data"]["effective_display_role"], json!("member"));
+
+    let provisioned: (String, String, String) = sqlx::query_as(
+        r#"
+        select i.subject_value, r.code, wm.workspace_id::text
+        from users u
+        join user_auth_identities i on i.user_id = u.id
+        join user_role_bindings urb on urb.user_id = u.id
+        join roles r on r.id = urb.role_id
+        join workspace_memberships wm on wm.user_id = u.id
+        where u.account = 'self-registered'
+          and i.authenticator_id = $1
+          and i.subject_type = 'account'
+        "#,
+    )
+    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(provisioned.0, "self-registered");
+    assert_eq!(provisioned.1, "member");
+    assert_eq!(
+        payload["data"]["current_workspace_id"],
+        json!(provisioned.2)
+    );
+    let audit_count: i64 = sqlx::query_scalar(
+        "select count(*) from audit_logs where event_code = 'member.self_registered'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audit_count, 1);
+}
+
+#[tokio::test]
+async fn public_auth_sign_up_rejects_duplicate_identity_and_privilege_fields() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    sqlx::query(
+        r#"
+        update authenticators
+        set options = jsonb_set(
+          options,
+          '{extension_config,self_registration_enabled}',
+          'true'::jsonb,
+          true
+        )
+        where id = $1
+        "#,
+    )
+    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let valid_body = json!({
+        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "account": "duplicate-self-registration",
+        "email": "duplicate-self-registration@example.com",
+        "password": "change-me"
+    });
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/sign-up")
+                .header("content-type", "application/json")
+                .body(Body::from(valid_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let duplicate = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/sign-up")
+                .header("content-type", "application/json")
+                .body(Body::from(valid_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(duplicate.status(), StatusCode::CONFLICT);
+    let duplicate_payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(duplicate.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert_eq!(
+        duplicate_payload["code"],
+        json!("self_registration_identity_exists")
+    );
+
+    let privilege_injection = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/auth/sign-up")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                        "account": "privilege-injection",
+                        "email": "privilege-injection@example.com",
+                        "password": "change-me",
+                        "role": "root",
+                        "workspace_id": Uuid::nil(),
+                        "owner": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        privilege_injection.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let injected_user_count: i64 =
+        sqlx::query_scalar("select count(*) from users where account = 'privilege-injection'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(injected_user_count, 0);
+}
+
+#[tokio::test]
+async fn public_auth_login_instances_projects_public_ui_block_and_registration_variable() {
+    // Issue #1444 AC-003/AC-006/AC-009: the authenticator-owned Block and
+    // server-derived public variables replace the Core-owned password form.
+    let app = test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/public/auth/login-instances")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let instances = payload["data"]["login_instances"].as_array().unwrap();
+    let password_local = instances
+        .iter()
+        .find(|instance| instance["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .expect("password-local should be publicly discoverable");
+
+    assert!(password_local["public_ui_block"]
+        .as_str()
+        .is_some_and(|source| source.contains("satisfies BlockModule")));
+    assert_eq!(
+        password_local["public_variables"],
+        json!({ "self_registration_enabled": false })
+    );
+    assert!(password_local.get("flow").is_none());
+    assert!(password_local.get("sign_in_path").is_none());
+    assert!(password_local.get("public_options").is_none());
 }
 
 #[tokio::test]

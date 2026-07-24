@@ -10,7 +10,29 @@ pub(crate) async fn insert_password_local_identities(
     phone: Option<&str>,
     actor_user_id: Option<Uuid>,
 ) -> Result<()> {
-    for claim in domain::password_local_identity_claims(account, email, phone) {
+    insert_password_identities_for_authenticator(
+        tx,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        user_id,
+        account,
+        email,
+        phone,
+        actor_user_id,
+    )
+    .await
+}
+
+pub(crate) async fn insert_password_identities_for_authenticator(
+    tx: &mut Transaction<'_, Postgres>,
+    authenticator_id: Uuid,
+    user_id: Uuid,
+    account: &str,
+    email: &str,
+    phone: Option<&str>,
+    actor_user_id: Option<Uuid>,
+) -> Result<()> {
+    for mut claim in domain::password_local_identity_claims(account, email, phone) {
+        claim.authenticator_id = authenticator_id;
         sqlx::query(
             r#"
             insert into user_auth_identities (

@@ -49,6 +49,7 @@ async fn seeded_store() -> (
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: json!({}),
         })
         .await

@@ -44,6 +44,7 @@ async fn seed_store() -> (PgControlPlaneStore, domain::UserRecord, Uuid) {
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: serde_json::json!({}),
         })
         .await

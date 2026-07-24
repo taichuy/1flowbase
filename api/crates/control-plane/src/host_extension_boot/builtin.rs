@@ -23,34 +23,43 @@ pub fn register_builtin_host_extension_contributions(
                 contribution.version
             );
         }
-        registry.register(RegisteredHostExtension {
-            extension_id: contribution.extension_id.clone(),
-            bootstrap_phase: contribution.bootstrap_phase,
-            provides_contracts: vec![],
-            overrides_contracts: vec![],
-            registers_slots: vec![],
-            registers_storage: vec![],
-            infrastructure_providers: contribution.infrastructure_providers.clone(),
-            owned_resources: contribution.owned_resources.clone(),
-            extends_resources: contribution.extends_resources.clone(),
-            routes: contribution
-                .routes
-                .iter()
-                .map(|route| route.route_id.clone())
-                .collect(),
-            workers: contribution
-                .workers
-                .iter()
-                .map(|worker| worker.worker_id.clone())
-                .collect(),
-            migrations: contribution
-                .migrations
-                .iter()
-                .map(|migration| migration.id.clone())
-                .collect(),
-        })?;
+        register_host_extension_contribution(&mut registry, contribution)?;
     }
     Ok(registry)
+}
+
+pub fn register_host_extension_contribution(
+    registry: &mut HostExtensionRegistry,
+    contribution: &HostExtensionContributionManifest,
+) -> anyhow::Result<()> {
+    registry.register(RegisteredHostExtension {
+        extension_id: contribution.extension_id.clone(),
+        bootstrap_phase: contribution.bootstrap_phase,
+        provides_contracts: vec![],
+        overrides_contracts: vec![],
+        registers_slots: vec![],
+        registers_storage: vec![],
+        infrastructure_providers: contribution.infrastructure_providers.clone(),
+        auth_providers: contribution.auth_providers.clone(),
+        owned_resources: contribution.owned_resources.clone(),
+        extends_resources: contribution.extends_resources.clone(),
+        routes: contribution
+            .routes
+            .iter()
+            .map(|route| route.route_id.clone())
+            .collect(),
+        workers: contribution
+            .workers
+            .iter()
+            .map(|worker| worker.worker_id.clone())
+            .collect(),
+        migrations: contribution
+            .migrations
+            .iter()
+            .map(|migration| migration.id.clone())
+            .collect(),
+    })?;
+    Ok(())
 }
 
 pub fn register_builtin_host_extensions(
@@ -70,6 +79,7 @@ pub fn register_builtin_host_extensions(
                 .map(|entry| (entry.kind.clone(), entry.implementation.clone()))
                 .collect(),
             infrastructure_providers: vec![],
+            auth_providers: vec![],
             owned_resources: vec![],
             extends_resources: vec![],
             routes: vec![],

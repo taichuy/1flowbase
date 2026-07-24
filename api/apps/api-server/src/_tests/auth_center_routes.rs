@@ -25,6 +25,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
             enabled: false,
             is_builtin: false,
             sort_order: 0,
+            public_ui_block: "export default { main } satisfies BlockModule;".to_string(),
             options: json!({
                 "description": "Corporate OIDC",
                 "config_form_schema": [
@@ -88,7 +89,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["config_values"]["enabled"], json!(true));
     assert_eq!(
         password_local["config_values"]["extension_config"],
-        json!({})
+        json!({ "self_registration_enabled": false })
     );
     assert!(password_local.get("options").is_none());
     assert!(password_local.get("description").is_none());
@@ -119,20 +120,16 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert!(oidc["config_values"].get("name").is_none());
     assert_eq!(oidc["config_values"]["title"], json!("OIDC"));
     assert_eq!(oidc["config_values"]["enabled"], json!(false));
-    assert_eq!(
-        oidc["config_schema"],
-        json!([
-            {
-                "key": "issuer_url",
-                "label": "Issuer URL",
-                "type": "string",
-                "control": "url",
-                "read_only": false,
-                "required": true,
-                "pattern": "^https://"
-            }
-        ])
-    );
+    assert!(oidc["config_schema"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "issuer_url" && field["pattern"] == "^https://"));
+    assert!(oidc["config_schema"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "public_ui_block" && field["required"] == true));
     assert_eq!(
         oidc["config_values"]["extension_config"],
         json!({
@@ -185,6 +182,38 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         created["data"]["config_values"]["description"],
         json!("Staff-only password login")
     );
+    assert!(created["data"]["config_values"]["public_ui_block"]
+        .as_str()
+        .is_some_and(|source| source.contains("satisfies BlockModule")));
+
+    let custom_block = "export default { main: customMain } satisfies BlockModule;";
+    let update = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/auth-center/authenticators/{staff_password_id}/config"
+                ))
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "title": "Staff Password",
+                        "enabled": true,
+                        "description": "Staff-only password login",
+                        "self_registration_enabled": false,
+                        "public_ui_block": custom_block,
+                        "extension_config": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update.status(), StatusCode::OK);
 
     let copy = app
         .clone()
@@ -220,6 +249,10 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
     assert_eq!(
         copied["data"]["config_values"]["description"],
         json!("Staff-only password login")
+    );
+    assert_eq!(
+        copied["data"]["config_values"]["public_ui_block"],
+        json!(custom_block)
     );
 
     let reorder = app
@@ -614,6 +647,7 @@ async fn console_auth_center_enable_authenticator_requires_user_manage_permissio
             enabled: false,
             is_builtin: false,
             sort_order: 10,
+            public_ui_block: "export default { main } satisfies BlockModule;".to_string(),
             options: json!({}),
         })
         .await
@@ -673,6 +707,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
             enabled: false,
             is_builtin: false,
             sort_order: 10,
+            public_ui_block: "export default { main } satisfies BlockModule;".to_string(),
             options: json!({
                 "description": "Corporate OIDC",
                 "config_form_schema": [
@@ -711,7 +746,9 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
                     json!({
                         "title": "OIDC Login",
                         "enabled": true,
-                        "description": "Updated corporate OIDC"
+                        "description": "Updated corporate OIDC",
+                        "self_registration_enabled": false,
+                        "public_ui_block": "export default { main: customMain } satisfies BlockModule;"
                     })
                     .to_string(),
                 ))
@@ -731,23 +768,23 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
     assert_eq!(authenticator["config_values"]["title"], json!("OIDC Login"));
     assert_eq!(authenticator["config_values"]["enabled"], json!(true));
     assert_eq!(
+        authenticator["config_values"]["public_ui_block"],
+        json!("export default { main: customMain } satisfies BlockModule;")
+    );
+    assert_eq!(
         authenticator["config_values"]["description"],
         json!("Updated corporate OIDC")
     );
-    assert_eq!(
-        authenticator["config_schema"],
-        json!([
-            {
-                "key": "issuer_url",
-                "label": "Issuer URL",
-                "type": "string",
-                "control": "url",
-                "read_only": false,
-                "required": true,
-                "pattern": "^https://"
-            }
-        ])
-    );
+    assert!(authenticator["config_schema"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "issuer_url" && field["pattern"] == "^https://"));
+    assert!(authenticator["config_schema"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "public_ui_block" && field["required"] == true));
     assert_eq!(
         authenticator["config_values"]["extension_config"],
         json!({
@@ -764,6 +801,10 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
         .unwrap();
     assert_eq!(saved.title, "OIDC Login");
     assert!(saved.enabled);
+    assert_eq!(
+        saved.public_ui_block,
+        "export default { main: customMain } satisfies BlockModule;"
+    );
     assert_eq!(
         saved.options["description"],
         json!("Updated corporate OIDC")
@@ -800,7 +841,9 @@ async fn console_auth_center_update_config_rejects_blank_title() {
                     json!({
                         "title": "   ",
                         "enabled": true,
-                        "description": "Local password authentication"
+                        "description": "Local password authentication",
+                        "self_registration_enabled": false,
+                        "public_ui_block": "export default { main } satisfies BlockModule;"
                     })
                     .to_string(),
                 ))
@@ -821,7 +864,9 @@ async fn console_auth_center_update_config_requires_session_csrf_and_manage_perm
     let body = json!({
         "title": "Password",
         "enabled": true,
-        "description": "Local password authentication"
+        "description": "Local password authentication",
+        "self_registration_enabled": false,
+        "public_ui_block": "export default { main } satisfies BlockModule;"
     })
     .to_string();
 

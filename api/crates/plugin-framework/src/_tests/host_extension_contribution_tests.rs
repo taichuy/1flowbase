@@ -114,6 +114,61 @@ fn rejects_host_extension_console_operation_outside_extension_namespace() {
 }
 
 #[test]
+fn host_extension_auth_provider_contributes_default_block_and_public_routes() {
+    // Issue #1444 AC-001: a backend-only HostExtension must carry everything
+    // the generic Auth host needs without shipping new Core frontend code.
+    let raw = host_extension_manifest_with(
+        r#"
+auth_providers:
+  - auth_type: file-security.qr
+    display_name: QR authentication
+    config_schema:
+      - key: issuer
+        label: Issuer
+        type: string
+    default_public_ui_block: |
+      export default { main } satisfies BlockModule;
+    public_variable_keys:
+      - issuer
+    public_route_ids:
+      - file-security.qr.start
+routes:
+  - route_id: file-security.qr.start
+    method: POST
+    path: /api/public/auth/file-security/qr/start
+    action:
+      resource: file-security.qr
+      action: start
+workers: []
+migrations: []
+"#,
+    );
+
+    let manifest = parse_host_extension_contribution_manifest(&raw)
+        .expect("auth provider contribution should parse");
+
+    assert_eq!(manifest.auth_providers.len(), 1);
+    assert_eq!(manifest.auth_providers[0].auth_type, "file-security.qr");
+    assert!(manifest.auth_providers[0]
+        .default_public_ui_block
+        .contains("satisfies BlockModule"));
+    assert_eq!(
+        manifest.auth_providers[0].public_variable_keys,
+        vec!["issuer"]
+    );
+    assert_eq!(
+        manifest.auth_providers[0].public_route_ids,
+        vec!["file-security.qr.start"]
+    );
+
+    let reserved_key = raw.replacen("key: issuer", "key: title", 1);
+    let error = parse_host_extension_contribution_manifest(&reserved_key).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("conflicts with a core authenticator field"));
+}
+
+#[test]
 fn rejects_host_extension_console_owner_and_version_mismatch() {
     let owner_mismatch = host_extension_console_manifest()
         .replace("owner_id: file-security", "owner_id: other-extension");

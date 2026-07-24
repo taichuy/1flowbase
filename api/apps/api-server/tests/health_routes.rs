@@ -215,6 +215,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
             store,
+            authenticator_registry: std::sync::Arc::new(
+                control_plane::auth::AuthenticatorRegistry::new(),
+            ),
             settings_feature_registry,
             console_operation_registry,
             infrastructure,

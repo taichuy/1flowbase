@@ -378,6 +378,7 @@ export function HeroAnimation() {
 
   return (
     <div
+      className="auth-sign-in-hero"
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
