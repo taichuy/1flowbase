@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn application_run_log_list_uses_summary_projection_without_raw_payload() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -66,7 +66,7 @@ async fn application_run_log_list_uses_summary_projection_without_raw_payload() 
 
 #[tokio::test]
 async fn application_run_detail_returns_raw_payload_only_for_matching_application_scope() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -205,7 +205,7 @@ async fn application_run_detail_returns_raw_payload_only_for_matching_applicatio
 
 #[tokio::test]
 async fn terminal_flow_run_writes_static_application_run_log_summary() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -333,7 +333,7 @@ async fn terminal_flow_run_writes_static_application_run_log_summary() {
 
 #[tokio::test]
 async fn application_run_detail_stitches_prior_conversation_tool_trace() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -664,7 +664,7 @@ async fn application_run_detail_stitches_prior_conversation_tool_trace() {
 
 #[tokio::test]
 async fn application_run_detail_hides_failed_imported_stitched_sources_and_boundaries() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -790,7 +790,7 @@ async fn application_run_detail_hides_failed_imported_stitched_sources_and_bound
 
 #[tokio::test]
 async fn application_run_trace_projection_watermark_hides_failed_imported_stitched_sources() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

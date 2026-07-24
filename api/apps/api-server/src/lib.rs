@@ -384,6 +384,8 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
 
     let state = Arc::new(ApiState {
+        #[cfg(test)]
+        test_database: None,
         store,
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),

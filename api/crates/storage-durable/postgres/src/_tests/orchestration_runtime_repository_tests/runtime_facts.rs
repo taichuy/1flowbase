@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn latest_node_run_returns_most_recent_run_for_node() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -34,7 +34,7 @@ async fn latest_node_run_returns_most_recent_run_for_node() {
 
 #[tokio::test]
 async fn runtime_fact_spine_preserves_span_sequence_and_trust_level() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -111,7 +111,7 @@ async fn runtime_fact_spine_preserves_span_sequence_and_trust_level() {
 #[tokio::test]
 async fn orchestration_runtime_repository_persists_model_failover_attempt_and_input_cache_usage_ledger(
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -249,7 +249,7 @@ async fn orchestration_runtime_repository_persists_model_failover_attempt_and_in
 
 #[tokio::test]
 async fn credit_ledger_idempotency_prevents_double_debit() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Billing").await;
@@ -317,7 +317,7 @@ async fn credit_ledger_idempotency_prevents_double_debit() {
 
 #[tokio::test]
 async fn audit_hash_chain_links_runtime_facts() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

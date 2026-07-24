@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::BTreeSet};
 
 use sqlx::{migrate::Migrator, PgPool};
-use storage_postgres::{connect, PgControlPlaneStore};
+use storage_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 
 const MIGRATION_VERSION: i64 = 20260713160000;
@@ -113,14 +113,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 fn before_settings_feature_grant_migrator() -> Migrator {
@@ -136,7 +132,7 @@ fn before_settings_feature_grant_migrator() -> Migrator {
 }
 
 async fn historical_pool() -> PgPool {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_settings_feature_grant_migrator()
         .run(&pool)
         .await
@@ -157,7 +153,7 @@ fn before_explicit_settings_feature_migrator() -> Migrator {
 }
 
 async fn explicit_settings_historical_pool() -> PgPool {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_explicit_settings_feature_migrator()
         .run(&pool)
         .await
@@ -178,7 +174,7 @@ fn before_files_settings_feature_migrator() -> Migrator {
 }
 
 async fn files_settings_historical_pool() -> PgPool {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_files_settings_feature_migrator()
         .run(&pool)
         .await
@@ -199,7 +195,7 @@ fn before_data_models_settings_feature_migrator() -> Migrator {
 }
 
 async fn data_models_settings_historical_pool() -> PgPool {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_data_models_settings_feature_migrator()
         .run(&pool)
         .await
@@ -220,7 +216,7 @@ fn before_model_providers_settings_feature_migrator() -> Migrator {
 }
 
 async fn model_providers_settings_historical_pool() -> PgPool {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_model_providers_settings_feature_migrator()
         .run(&pool)
         .await
@@ -241,7 +237,7 @@ fn before_final_settings_feature_migrator() -> Migrator {
 }
 
 async fn final_settings_historical_pool() -> PgPool {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_final_settings_feature_migrator()
         .run(&pool)
         .await

@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn trace_projection_repository_queries_root_children_content_and_status() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -271,7 +271,7 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
 
 #[tokio::test]
 async fn trace_projection_repository_paginates_children_by_stable_order() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -423,7 +423,7 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
 
 #[tokio::test]
 async fn trace_projection_failed_status_preserves_diagnostics() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

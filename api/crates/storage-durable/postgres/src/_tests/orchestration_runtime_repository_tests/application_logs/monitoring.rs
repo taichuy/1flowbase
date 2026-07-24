@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn monitoring_source_breakdown_uses_four_explicit_run_modes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -76,7 +76,7 @@ async fn monitoring_source_breakdown_uses_four_explicit_run_modes() {
 
 #[tokio::test]
 async fn conversation_message_history_ignores_legacy_claude_code_control_runs() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -247,7 +247,7 @@ async fn conversation_message_history_ignores_legacy_claude_code_control_runs() 
 
 #[tokio::test]
 async fn terminal_published_run_without_external_conversation_projects_run_messages() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -339,7 +339,7 @@ async fn terminal_published_run_without_external_conversation_projects_run_messa
 
 #[tokio::test]
 async fn failed_flow_run_log_summary_keeps_recorded_usage_ledger_tokens() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -466,7 +466,7 @@ async fn failed_flow_run_log_summary_keeps_recorded_usage_ledger_tokens() {
 
 #[tokio::test]
 async fn application_run_logs_and_monitoring_read_static_summaries_only() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -536,7 +536,7 @@ async fn application_run_logs_and_monitoring_read_static_summaries_only() {
 
 #[tokio::test]
 async fn application_run_monitoring_compares_tokens_with_previous_window() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -589,7 +589,7 @@ async fn application_run_monitoring_compares_tokens_with_previous_window() {
 
 #[tokio::test]
 async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_started_at() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

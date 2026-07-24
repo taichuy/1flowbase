@@ -5,7 +5,7 @@ use control_plane::application_public_api::run_service::{
 
 #[tokio::test]
 async fn orchestration_runtime_repository_round_trips_canonical_published_public_run_metadata() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -107,7 +107,7 @@ async fn orchestration_runtime_repository_round_trips_canonical_published_public
 
 #[tokio::test]
 async fn workflow_schedule_run_create_or_get_is_atomic_across_concurrent_callers() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -182,7 +182,7 @@ async fn workflow_schedule_run_create_or_get_is_atomic_across_concurrent_callers
 
 #[tokio::test]
 async fn published_run_stream_state_projects_status_usage_and_latest_pending_callback() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -297,7 +297,7 @@ async fn published_run_stream_state_projects_status_usage_and_latest_pending_cal
 
 #[tokio::test]
 async fn data_model_side_effect_receipts_upsert_and_get_by_workspace_key() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

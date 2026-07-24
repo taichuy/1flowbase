@@ -40,7 +40,7 @@ async fn seed_file_storage(
 
 #[tokio::test]
 async fn runtime_debug_artifacts_are_scoped_and_payload_previews_are_persisted() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

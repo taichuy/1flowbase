@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn runtime_record_repository_scopes_dynamic_rows_without_workspace_row() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let default_scope_id = domain::DEFAULT_SCOPE_ID;
@@ -190,7 +190,7 @@ async fn runtime_record_repository_scopes_dynamic_rows_without_workspace_row() {
 
 #[tokio::test]
 async fn runtime_record_repository_uses_default_scope_id_without_workspace_row() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let future_scope_id = Uuid::now_v7();

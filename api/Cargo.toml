@@ -14,7 +14,8 @@ members = [
   "crates/storage-durable",
   "crates/storage-ephemeral",
   "crates/storage-object",
-  "crates/observability"
+  "crates/observability",
+  "crates/postgres-test-support"
 ]
 resolver = "2"
 

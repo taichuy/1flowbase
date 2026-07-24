@@ -10,10 +10,8 @@ use control_plane::mcp_management::{
 use control_plane::ports::{
     CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository, RoleRepository,
 };
-use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -177,15 +175,10 @@ async fn mcp_instance_copy_reuses_tools_and_excludes_client_credentials() {
     );
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn seed_store() -> (
@@ -193,7 +186,7 @@ async fn seed_store() -> (
     domain::WorkspaceRecord,
     domain::UserRecord,
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 

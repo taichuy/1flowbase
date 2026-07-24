@@ -1,4 +1,4 @@
-use std::{borrow::Cow, time::Duration};
+use std::borrow::Cow;
 
 use api_server::{
     app_from_config, config::ApiConfig,
@@ -7,7 +7,7 @@ use api_server::{
 use control_plane::ports::{
     RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRepository,
 };
-use sqlx::{migrate::Migrator, postgres::PgPoolOptions, PgPool};
+use sqlx::migrate::Migrator;
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -15,21 +15,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let base_url = base_database_url();
-    let admin_pool = PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(Duration::from_secs(30))
-        .connect(&base_url)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .expect("the PostgreSQL test server must be reachable");
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema {schema}"))
-        .execute(&admin_pool)
-        .await
-        .expect("the isolated schema must be created");
-    admin_pool.close().await;
-    format!("{base_url}?options=-csearch_path%3D{schema}")
+        .expect("the isolated schema must be created")
 }
 
 fn test_config(database_url: &str) -> ApiConfig {
@@ -46,8 +35,10 @@ fn test_config(database_url: &str) -> ApiConfig {
 
 #[tokio::test]
 async fn ac_011_runtime_rejects_legacy_console_policy_marker_for_existing_roles() {
-    let database_url = isolated_database_url().await;
-    let pool = PgPool::connect(&database_url)
+    let database = isolated_database().await;
+    let database_url = database.database_url().to_owned();
+    let pool = database
+        .connect()
         .await
         .expect("the isolated PostgreSQL schema must be reachable");
     let migrations = sqlx::migrate!("../../crates/storage-durable/postgres/migrations");
@@ -116,8 +107,9 @@ async fn ac_011_runtime_rejects_legacy_console_policy_marker_for_existing_roles(
 
 #[tokio::test]
 async fn ac_011_fresh_install_starts_on_console_policy_without_a_migration_run() {
-    let database_url = isolated_database_url().await;
-    let pool = PgPool::connect(&database_url)
+    let database = isolated_database().await;
+    let pool = database
+        .connect()
         .await
         .expect("the isolated PostgreSQL schema must be reachable");
     sqlx::migrate!("../../crates/storage-durable/postgres/migrations")

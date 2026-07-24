@@ -1,6 +1,6 @@
 import { CheckOutlined, CopyOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { App, Button, Tag, Tooltip } from 'antd';
+import { App, Button, Tooltip } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentFlowDebugConsole } from '../../../agent-flow/components/debug-console/AgentFlowDebugConsole';
@@ -14,7 +14,6 @@ import { useClipboardCopy } from '../../../../shared/ui/clipboard/use-clipboard-
 import {
   applicationRunConversationMessagesQueryKey,
   fetchApplicationRunConversationMessages,
-  type ApplicationRunSummary,
   type ApplicationRunConversationMessage,
   type ApplicationRunConversationMessagesPage
 } from '../../api/runtime';
@@ -112,33 +111,7 @@ const runConversationContext: AgentFlowRunContext = {
   fields: []
 };
 
-function invocationSourceText(source: ApplicationRunSummary['invocation_source']) {
-  switch (source) {
-    case 'agent_flow_api':
-      return i18nText('applications', 'auto.invocation_source_agent_flow_api');
-    case 'workflow_http':
-      return i18nText('applications', 'auto.invocation_source_workflow_http');
-    case 'workflow_schedule':
-      return i18nText('applications', 'auto.invocation_source_workflow_schedule');
-    case 'debug':
-      return i18nText('applications', 'auto.invocation_source_debug');
-  }
-}
-
-function principalText(principal: ApplicationRunSummary['principal']) {
-  switch (principal.kind) {
-    case 'user':
-      return i18nText('applications', 'auto.principal_user');
-    case 'application_api_key':
-      return i18nText('applications', 'auto.principal_application_api_key');
-    case 'user_api_key':
-      return i18nText('applications', 'auto.principal_user_api_key');
-    case 'scheduler':
-      return i18nText('applications', 'auto.principal_scheduler');
-  }
-}
-
-function RunIdSubtitle({ run, runId }: { run: ApplicationRunSummary | null; runId: string }) {
+function RunIdSubtitle({ runId }: { runId: string }) {
   const { message } = App.useApp();
   const { copied, copy } = useClipboardCopy();
 
@@ -154,20 +127,6 @@ function RunIdSubtitle({ run, runId }: { run: ApplicationRunSummary | null; runI
   return (
     <span className="application-run-detail__run-id">
       <span className="application-run-detail__run-id-value">{runId}</span>
-      {run ? (
-        <>
-          <Tag>{run.execution_stage === 'published'
-              ? i18nText('applications', 'auto.publication_published')
-            : i18nText('applications', 'auto.execution_stage_debug')}</Tag>
-          <Tag>{invocationSourceText(run.invocation_source)}</Tag>
-          <Tag>
-            {principalText(run.principal)}
-            {(run.principal.display_name ?? run.principal.id)
-              ? ` · ${run.principal.display_name ?? run.principal.id}`
-              : ''}
-          </Tag>
-        </>
-      ) : null}
       <Tooltip title={i18nText('applications', 'auto.copy_id')}>
         <Button
           aria-label={i18nText('applications', 'auto.copy_run_id')}
@@ -347,7 +306,6 @@ function RunConversation({
   onClose,
   onOpenMessageLog,
   onOpenResumeTimeline,
-  run,
   runId
 }: {
   applicationId: string;
@@ -355,7 +313,6 @@ function RunConversation({
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string;
-  run: ApplicationRunSummary | null;
 }) {
   const [previousConversationPages, setPreviousConversationPages] = useState<
     ApplicationRunConversationMessagesPage[]
@@ -457,7 +414,7 @@ function RunConversation({
         showComposer
         status={conversationSessionStatus(conversationPage)}
         stopping={false}
-        subtitle={<RunIdSubtitle run={run} runId={runId} />}
+        subtitle={<RunIdSubtitle runId={runId} />}
         title={i18nText('applications', 'auto.run_details')}
         onChangeRunContextValue={() => {}}
         onClearSession={() => {}}
@@ -481,7 +438,6 @@ export function ApplicationRunDetailPanel({
   onClose,
   onOpenMessageLog,
   onOpenResumeTimeline,
-  run = null,
   runId
 }: {
   applicationId: string;
@@ -489,7 +445,6 @@ export function ApplicationRunDetailPanel({
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string | null;
-  run?: ApplicationRunSummary | null;
 }) {
   if (!runId) {
     return null;
@@ -508,7 +463,6 @@ export function ApplicationRunDetailPanel({
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}
             onOpenResumeTimeline={onOpenResumeTimeline}
-            run={run}
             runId={runId}
           />
         </div>

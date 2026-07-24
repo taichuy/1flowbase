@@ -206,6 +206,8 @@ fn validate_linked_host_console_route_assembly(
 
 #[derive(Clone)]
 pub struct ApiState {
+    #[cfg(test)]
+    pub(crate) test_database: Option<Arc<postgres_test_support::PostgresTestSchema>>,
     pub store: MainDurableStore,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
     pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,

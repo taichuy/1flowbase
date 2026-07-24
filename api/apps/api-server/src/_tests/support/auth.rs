@@ -9,7 +9,7 @@ use super::plugins::{
 use super::*;
 use axum::response::Response;
 use control_plane::ports::{FileManagementRepository, SessionStore};
-use sqlx::postgres::PgPoolOptions;
+use postgres_test_support::PostgresTestSchema;
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -75,21 +75,8 @@ pub(crate) fn test_config() -> ApiConfig {
     default_test_config()
 }
 
-async fn isolated_database_url(base_url: &str) -> String {
-    let admin_pool = PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(Duration::from_secs(30))
-        .connect(base_url)
-        .await
-        .unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
-        .await
-        .unwrap();
-    admin_pool.close().await;
-
-    format!("{base_url}?options=-csearch_path%3D{schema}")
+async fn isolated_database(base_url: &str) -> PostgresTestSchema {
+    PostgresTestSchema::create(base_url).await.unwrap()
 }
 
 async fn test_state_with_runtime_profile_state(
@@ -98,7 +85,8 @@ async fn test_state_with_runtime_profile_state(
     plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
 ) -> (Arc<ApiState>, String) {
     let mut config = default_test_config();
-    config.database_url = isolated_database_url(&config.database_url).await;
+    let database = isolated_database(&config.database_url).await;
+    config.database_url = database.database_url().to_owned();
     config.business_file_local_root = std::env::temp_dir()
         .join(format!("api-business-files-{}", Uuid::now_v7()))
         .display()
@@ -240,6 +228,7 @@ async fn test_state_with_runtime_profile_state(
 
     (
         Arc::new(ApiState {
+            test_database: Some(Arc::new(database)),
             store,
             settings_feature_registry,
             console_operation_registry,
