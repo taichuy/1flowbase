@@ -44,7 +44,7 @@ import {
   type SettingsAuthCenterOverview
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import { AuthenticatorUiBlockDrawer } from '../../components/auth-center/AuthenticatorUiBlockDrawer';
+import { AuthenticatorUiBlockStudio } from '../../components/auth-center/AuthenticatorUiBlockStudio';
 
 import './auth-center-panel.css';
 
@@ -751,9 +751,8 @@ export function SettingsAuthCenterSection() {
         }}
       />
       {selectedUiAuthenticator ? (
-        <AuthenticatorUiBlockDrawer
+        <AuthenticatorUiBlockStudio
           authenticatorId={selectedUiAuthenticator.id}
-          authenticatorTitle={selectedUiAuthenticator.title}
           errorMessage={
             configMutation.isError
               ? i18nText(

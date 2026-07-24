@@ -292,12 +292,24 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     });
     fireEvent.click(within(passwordRow).getByRole('button', { name: 'UI' }));
     const uiDialog = await screen.findByRole('dialog', {
-      name: 'Password 公开认证 UI'
+      name: 'TSX 编辑器'
     });
+    expect(uiDialog).toHaveClass('frontstage-jsx-studio--window');
+    expect(uiDialog.closest('.ant-drawer')).toBeNull();
+    expect(
+      within(uiDialog).getByRole('button', { name: /重\s*置/ })
+    ).toBeDisabled();
+    expect(
+      within(uiDialog).getByRole('button', { name: '最大化窗口' })
+    ).toBeEnabled();
+    expect(within(uiDialog).getByRole('button', { name: '关闭' })).toBeEnabled();
     const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });
     expect(blockEditor).toHaveValue('original password block');
     fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
-    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+    expect(
+      within(uiDialog).getByRole('button', { name: /重\s*置/ })
+    ).toBeEnabled();
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '保存代码' }));
 
     await waitFor(() => expect(
       authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
