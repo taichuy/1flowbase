@@ -139,7 +139,6 @@ async function executeTmuxInvocation(
   const session = 'compatible-stream';
   const doneSignal = `${socket}-done`;
   const releaseSignal = `${socket}-release`;
-  const startSignal = `${socket}-start`;
   const command = [invocation.executable, ...invocation.args].map(shellQuote).join(' ');
   let rawPtyWatcher = null;
   let firstMarkerReleased = false;
@@ -150,7 +149,6 @@ async function executeTmuxInvocation(
   fs.writeFileSync(secretsPath, JSON.stringify(secrets), { mode: 0o600 });
   fs.writeFileSync(wrapperPath, [
     '#!/bin/sh',
-    `${shellQuote(tmuxExecutable)} -L ${shellQuote(socket)} wait-for ${shellQuote(startSignal)}`,
     `${shellQuote(scriptExecutable)} -q -e -f -m advanced -O ${shellQuote(ptyPath)} -T ${shellQuote(timingPath)} -c ${shellQuote(command)}`,
     'status=$?',
     `printf '%s\\n' "$status" > ${shellQuote(statusPath)}`,
@@ -218,7 +216,7 @@ async function executeTmuxInvocation(
       await requireSuccess(tmuxExecutable, ['-L', socket, 'set-environment', '-g', name, value]);
     }
     await requireSuccess(tmuxExecutable, [
-      '-L', socket, 'new-session', '-d', '-s', session, '-c', invocation.cwd, wrapperPath,
+      '-L', socket, 'new-session', '-d', '-s', session, '-c', invocation.cwd,
     ]);
     const pipeCommand = [process.execPath, pipeCapturePath, timelinePath, secretsPath, pipeDonePath]
       .map(shellQuote).join(' ');
@@ -228,7 +226,9 @@ async function executeTmuxInvocation(
       tool_execution_owner: 'client',
       gateway_role: 'transport-only',
     });
-    await requireSuccess(tmuxExecutable, ['-L', socket, 'wait-for', '-S', startSignal]);
+    await requireSuccess(tmuxExecutable, [
+      '-L', socket, 'respawn-pane', '-k', '-t', session, '-c', invocation.cwd, wrapperPath,
+    ]);
     await requireSuccess(tmuxExecutable, ['-L', socket, 'kill-session', '-t', 'bootstrap']);
     const wait = spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', doneSignal]);
     const timeout = new Promise((_, reject) => {
