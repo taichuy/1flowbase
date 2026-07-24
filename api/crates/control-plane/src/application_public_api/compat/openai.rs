@@ -3348,8 +3348,8 @@ mod tests {
     }
 
     #[test]
-    fn ac_003_responses_replay_items_preserve_reasoning_and_tools() {
-        let translated = translate_response_request(json!({
+    fn ac_003_native_responses_replay_preserves_opaque_item_identity_without_semantic_history() {
+        let mut translated = translate_response_request(json!({
                 "model": "1flowbase",
                 "input": [
                     {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "看图"}]},
@@ -3360,8 +3360,20 @@ mod tests {
                     {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "继续找导航栏代码"}]}
                 ]
             }))
-        .expect("Responses replay items should map to Native history");
-        assert_eq!(translated.request.history[1]["reasoning"]["id"], "rs_1");
+        .expect("opaque Responses replay items should use native provider transport");
+
+        assert!(translated
+            .request
+            .history
+            .iter()
+            .all(|item| item.get("reasoning").is_none()));
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("opaque replay identity should remain in ephemeral provider transport");
+        assert_eq!(payload.wire_body()["input"][1]["id"], "rs_1");
+        assert_eq!(payload.wire_body()["input"][3]["id"], "fc_1");
     }
 
     #[test]

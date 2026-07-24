@@ -237,8 +237,8 @@ pub fn translate_response_request_with_context_and_previous(
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
         && operation.compaction_intent().is_none();
     let input_mapping = if uses_native_transport {
-        validate_native_responses_input(input, &mut report)?;
         validate_native_mcp_approval_continuation(input, previous_response.as_ref(), &mut report)?;
+        validate_native_responses_input(input, &mut report)?;
         responses_native_input_to_run_input(input)
     } else {
         validate_responses_input(input, is_v2_compaction, &mut report)?;
