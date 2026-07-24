@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
@@ -135,6 +135,10 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     await appI18n.changeLanguage('zh_Hans');
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test('AC-008 runs the unsaved draft without exposing raw context or limits editors', async () => {
     const runtimeSessionFactory = vi.fn(() => createSession());
     render(
@@ -146,6 +150,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         }
         contextSnapshot={{ pageId: 'page-1' }}
         limits={{ timeoutMs: 1_000 }}
+        presentation="debugger"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -168,6 +173,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
           code="async function main(){return {view:{primitive:'Text'},outputs:{}}} export default {main};"
           contextSnapshot={{ pageId: 'page-1' }}
           limits={{ timeoutMs: 1_000 }}
+          presentation="debugger"
           runtimeSessionFactory={() => createSession()}
         />
       </WindowWorkspaceProvider>
@@ -207,6 +213,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
+        presentation="debugger"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -222,9 +229,100 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
       expect.objectContaining({ actionId: 'sign_up' })
     );
     expect(runInputs[1]).toEqual({
-        authenticator_id: 'auth-password-local',
-        public_variables: { self_registration_enabled: true },
-        auth_event: { action_id: 'sign_up', values: {} }
-      });
+      authenticator_id: 'auth-password-local',
+      public_variables: { self_registration_enabled: true },
+      auth_event: { action_id: 'sign_up', values: {} }
+    });
+  });
+
+  test('AC-035/036 directly renders and debounces the latest draft without debugger controls', async () => {
+    vi.useFakeTimers();
+    const sessions = [
+      createReadyActionSession(),
+      createReadyActionSession(),
+      createReadyActionSession()
+    ];
+    let nextSession = 0;
+    const runSources: string[] = [];
+    const runtimeSessionFactory = vi.fn(
+      (options: FrontstageRestrictedBlockRuntimeHostOptions) => {
+        const program = options.runPlan.request.program;
+        runSources.push(
+          program.kind === 'source' ? program.source : program.fallback.source
+        );
+        const session = sessions[nextSession++];
+        if (!session) throw new Error('missing test session');
+        return session;
+      }
+    );
+    const createRunInputs = vi.fn((event?: BlockRendererActionEvent) => ({
+      ...(event ? { auth_event: { action_id: event.actionId } } : {})
+    }));
+    const { rerender } = render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="first draft"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation="direct-preview"
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+
+    for (const name of [
+      /运\s*行/,
+      '停止',
+      '预览',
+      '控制台',
+      '变量',
+      '接口调用',
+      '问题'
+    ]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+
+    await act(async () => vi.runAllTimersAsync());
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
+    expect(runSources).toEqual(['first draft']);
+    expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument();
+
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="intermediate draft"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation="direct-preview"
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="latest draft"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation="direct-preview"
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await act(async () => vi.runAllTimersAsync());
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(2);
+    expect(runSources).toEqual(['first draft', 'latest draft']);
+    expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/^draft:/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
+    await act(async () => Promise.resolve());
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(3);
+    expect(createRunInputs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ actionId: 'sign_up' })
+    );
   });
 });

@@ -201,6 +201,7 @@ export function AuthenticatorUiBlockStudio({
                 limits={PUBLIC_AUTH_RUNTIME_LIMITS}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}
                 onRevokeDraftRun={previewCapabilities.revokeDraftRun}
+                presentation="direct-preview"
               />
             ) : undefined
           }

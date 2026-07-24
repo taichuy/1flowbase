@@ -1382,6 +1382,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 onCodeChange={onCodeChange}
                 onContextSnapshotChange={setJsBlockTrialContextSnapshot}
                 onLimitsChange={setJsBlockTrialLimits}
+                presentation="debugger"
               />
             )}
           />
