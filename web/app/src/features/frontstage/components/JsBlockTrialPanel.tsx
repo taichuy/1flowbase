@@ -3,7 +3,10 @@ import {
   hashJsBlockDraft,
   type JsBlockHostEffectHandlers
 } from '@1flowbase/page-runtime';
-import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
+import {
+  BlockUiLoadingShell,
+  type BlockRendererActionEvent
+} from '@1flowbase/block-renderer';
 import { CloseOutlined } from '@ant-design/icons';
 import {
   Button,
@@ -52,6 +55,7 @@ export interface JsBlockTrialPanelProps {
   }) => Promise<void>;
   onRevokeDraftRun?: (runId: string) => void;
   limits: RestrictedBlockLoaderLimits;
+  presentation: 'debugger' | 'direct-preview';
   onCodeChange?: (code: string) => void;
   onContextSnapshotChange?: (value: Record<string, unknown>) => void;
   onLimitsChange?: (value: RestrictedBlockLoaderLimits) => void;
@@ -68,6 +72,7 @@ export function JsBlockTrialPanel({
   onPrepareDraftRun,
   onRevokeDraftRun,
   limits,
+  presentation,
   runtimeSessionFactory = createFrontstageRestrictedBlockRuntimeSession
 }: JsBlockTrialPanelProps) {
   const windowWorkspace = useOptionalWindowWorkspace();
@@ -91,7 +96,7 @@ export function JsBlockTrialPanel({
 
   useEffect(() => stop, [stop]);
 
-  const run = async (event?: BlockRendererActionEvent) => {
+  const run = useCallback(async (event?: BlockRendererActionEvent) => {
     stop();
     if (!catalogEntry) return;
     const plan = createRestrictedBlockRunPlan({
@@ -139,7 +144,27 @@ export function JsBlockTrialPanel({
       }
     });
     setSnapshot(session.run());
-  };
+  }, [
+    block,
+    catalogEntry,
+    code,
+    contextSnapshot,
+    createRunInputs,
+    handlers,
+    limits,
+    onPrepareDraftRun,
+    onRevokeDraftRun,
+    runtimeSessionFactory,
+    stop
+  ]);
+
+  useEffect(() => {
+    if (presentation !== 'direct-preview') return;
+    const timeout = window.setTimeout(() => {
+      void run();
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [presentation, run]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -150,7 +175,7 @@ export function JsBlockTrialPanel({
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  });
+  }, [run]);
 
   const diagnostics = useMemo(
     () =>
@@ -166,6 +191,17 @@ export function JsBlockTrialPanel({
         : [],
     [block.id, contextSnapshot.pageId, contextSnapshot.tabId, snapshot?.error]
   );
+
+  if (presentation === 'direct-preview') {
+    return snapshot ? (
+      <RestrictedBlockRuntimePreview
+        snapshot={snapshot}
+        onAction={createRunInputs ? (event) => void run(event) : undefined}
+      />
+    ) : (
+      <BlockUiLoadingShell />
+    );
+  }
 
   const runPanels = [
     {
