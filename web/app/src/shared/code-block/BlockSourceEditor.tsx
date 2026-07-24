@@ -1,8 +1,10 @@
 import Editor, {
   type BeforeMount,
+  type Monaco,
   type OnMount
 } from '@monaco-editor/react';
 import type { FrontendBlockMonacoExtraLib } from '@1flowbase/page-protocol';
+import { useCallback, useEffect, useRef } from 'react';
 
 export interface BlockSourceEditorProps {
   ariaLabel: string;
@@ -25,6 +27,11 @@ export function BlockSourceEditor({
   readOnly = false,
   value
 }: BlockSourceEditorProps) {
+  const monacoRef = useRef<Monaco | null>(null);
+  const registeredExtraLibsRef = useRef<{
+    source: readonly FrontendBlockMonacoExtraLib[];
+    disposables: Array<{ dispose: () => void }>;
+  } | null>(null);
   const configureMonaco: BeforeMount = (monaco) => {
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
       allowNonTsExtensions: true,
@@ -32,13 +39,40 @@ export function BlockSourceEditor({
       moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
       target: monaco.languages.typescript.ScriptTarget.ES2022
     });
-    extraLibs.forEach((extraLib) => {
-      monaco.languages.typescript.typescriptDefaults.addExtraLib(
-        extraLib.content,
-        extraLib.filePath
-      );
-    });
   };
+
+  const registerExtraLibs = useCallback(
+    (monaco: Monaco) => {
+      if (registeredExtraLibsRef.current?.source === extraLibs) return;
+      registeredExtraLibsRef.current?.disposables.forEach((disposable) =>
+        disposable.dispose()
+      );
+      registeredExtraLibsRef.current = {
+        source: extraLibs,
+        disposables: extraLibs.map((extraLib) =>
+          monaco.languages.typescript.typescriptDefaults.addExtraLib(
+            extraLib.content,
+            extraLib.filePath
+          )
+        )
+      };
+    },
+    [extraLibs]
+  );
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (monaco) registerExtraLibs(monaco);
+  }, [registerExtraLibs]);
+
+  useEffect(
+    () => () => {
+      registeredExtraLibsRef.current?.disposables.forEach((disposable) =>
+        disposable.dispose()
+      );
+    },
+    []
+  );
 
   return (
     <div aria-label={ariaLabel} role="group" style={{ height }}>
@@ -48,7 +82,11 @@ export function BlockSourceEditor({
         path={path}
         value={value}
         beforeMount={configureMonaco}
-        onMount={onMount}
+        onMount={(editor, monaco) => {
+          monacoRef.current = monaco;
+          registerExtraLibs(monaco);
+          onMount?.(editor, monaco);
+        }}
         onChange={(nextValue) => onChange(nextValue ?? '')}
         options={{
           ariaLabel,

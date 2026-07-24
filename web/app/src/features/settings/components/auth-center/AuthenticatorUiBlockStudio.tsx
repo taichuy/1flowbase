@@ -1,10 +1,12 @@
 import type { OnMount } from '@monaco-editor/react';
 import { Descriptions } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
 import { JsxStudioResourcePanel } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
+import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
+import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
 import {
   applyFrontstageJsxInsertionPlan,
@@ -38,23 +40,6 @@ const AUTH_CONTEXT_COMMENT = [
   ' * outputs: 无',
   ' */'
 ].join('\n');
-const AUTH_EDITOR_PROJECTION = {
-  components: [
-    'Alert',
-    'Button',
-    'Form',
-    'FormItem',
-    'Input',
-    'Stack',
-    'Text',
-    'Title'
-  ].map((name) => ({
-    name,
-    moduleSource: '@1flowbase/block-renderer/antd-facade' as const
-  })),
-  contextComment: AUTH_CONTEXT_COMMENT,
-  monacoExtraLibs: []
-};
 const AUTH_CONTEXT_VARIABLES = [
   {
     label: 'ctx.inputs.authenticator_id',
@@ -84,6 +69,21 @@ export function AuthenticatorUiBlockStudio({
   source,
   workspaceId
 }: AuthenticatorUiBlockStudioProps) {
+  const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
+  const authoringCatalogEntry = blockCatalog.items.find(
+    (entry) =>
+      entry.providerCode === '1flowbase' &&
+      entry.contributionCode === 'frontstage.js-ui-block'
+  ) ?? null;
+  const editorProjection = useMemo(
+    () => ({
+      ...createFrontstageJsxEditorProjection({
+        catalogEntry: authoringCatalogEntry
+      }),
+      contextComment: AUTH_CONTEXT_COMMENT
+    }),
+    [authoringCatalogEntry]
+  );
   const [draft, setDraft] = useState(source);
   const [authoringBlock, setAuthoringBlock] = useState<FrontstageBlockInstance>(
     () => createAuthoringBlock(authenticatorId)
@@ -146,6 +146,7 @@ export function AuthenticatorUiBlockStudio({
       contextComment={AUTH_CONTEXT_COMMENT}
       dirty={draft !== source}
       errorMessage={errorMessage}
+      extraLibs={editorProjection.monacoExtraLibs}
       initialSection="code"
       loading={false}
       open={open}
@@ -171,7 +172,7 @@ export function AuthenticatorUiBlockStudio({
           contextVariables={AUTH_CONTEXT_VARIABLES}
           interfacePathPrefix="/api/public/auth/"
           pageBlocks={[authoringBlock]}
-          projection={AUTH_EDITOR_PROJECTION}
+          projection={editorProjection}
           section={section}
           workspaceId={workspaceId}
           configurationPanel={(
