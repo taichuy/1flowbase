@@ -69,7 +69,7 @@ export function JsxStudioResourcePanel({
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
   configurationPanel?: ReactNode;
-  contextVariables?: readonly JsxStudioContextVariable[];
+  contextVariables?: readonly JsxStudioContextVariable[] | null;
   interfacePathPrefixes?: readonly string[];
   section: Exclude<FrontstageJsxStudioSection, 'code'>;
 }) {
@@ -324,7 +324,7 @@ function VariablesPanel({
   onSaveBlock
 }: {
   block: FrontstageBlockInstance;
-  contextVariables?: readonly JsxStudioContextVariable[];
+  contextVariables?: readonly JsxStudioContextVariable[] | null;
   pageBlocks: readonly FrontstageBlockInstance[];
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
@@ -388,52 +388,107 @@ function VariablesPanel({
     });
     setInputName('');
   };
-  const variables = contextVariables ?? [
-    {
-      label: 'ctx.currentUser',
-      member_path: 'currentUser',
-      schema: { type: 'object' }
-    },
-    {
-      label: 'ctx.workspace',
-      member_path: 'workspace',
-      schema: { type: 'object' }
-    },
-    {
-      label: 'ctx.application',
-      member_path: 'application',
-      schema: { type: 'object' }
-    },
-    {
-      label: 'ctx.page',
-      member_path: 'page',
-      schema: { type: 'object' }
-    },
-    ...ports.inputs.map((port) => ({
-      label: `ctx.inputs.${port.name}`,
-      member_path: `inputs.${port.name}`,
-      schema: port.schema
-    })),
-    { label: 'ctx.params', member_path: 'params', schema: { type: 'object' } },
-    { label: 'ctx.props', member_path: 'props', schema: { type: 'object' } },
-    { label: 'ctx.state', member_path: 'state', schema: { type: 'object' } },
-    { label: 'ctx.theme', member_path: 'theme', schema: { type: 'object' } },
-    { label: 'ctx.ui', member_path: 'ui', schema: { type: 'object' } }
-  ];
 
-  if (contextVariables) {
+  if (contextVariables === null) {
     return (
       <div className="frontstage-jsx-studio__resource-scroll">
         <ResourceHeading
           title={i18nText('frontstage', 'auto.variables')}
           description={i18nText('frontstage', 'auto.variables_description')}
         />
-        {variables.map((variable) => (
-          <div
-            className="frontstage-jsx-studio__insert-row"
-            key={variable.label}
-          >
-            <Typography.Text code>{variable.label}</Typography.Text>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={i18nText(
+            'frontstage',
+            'auto.variables_context_unavailable'
+          )}
+        />
+      </div>
+    );
+  }
+
+  const usesRegisteredContext = contextVariables !== undefined;
+  const variables = contextVariables ?? [
+    {
+      label: i18nText('frontstage', 'auto.current_user'),
+      member_path: 'currentUser',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.workspace'),
+      member_path: 'workspace',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.application'),
+      member_path: 'application',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.page'),
+      member_path: 'page',
+      schema: { type: 'object' }
+    },
+    ...ports.inputs.map((port) => ({
+      label: port.name,
+      member_path: `inputs.${port.name}`,
+      schema: port.schema
+    })),
+    {
+      label: i18nText('frontstage', 'auto.params'),
+      member_path: 'params',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.props'),
+      member_path: 'props',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.state'),
+      member_path: 'state',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.theme'),
+      member_path: 'theme',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.user_interface'),
+      member_path: 'ui',
+      schema: { type: 'object' }
+    }
+  ];
+
+  const variablesTable = (
+    <Table<JsxStudioContextVariable>
+      className="frontstage-jsx-studio__variables-table"
+      columns={[
+        {
+          title: i18nText('frontstage', 'auto.variable_label'),
+          dataIndex: 'label',
+          key: 'label',
+          width: '28%'
+        },
+        {
+          title: i18nText('frontstage', 'auto.variables'),
+          key: 'reference',
+          render: (_, variable) => (
+            <Typography.Text
+              className="frontstage-jsx-studio__variable-reference"
+              code
+            >
+              {`ctx.${variable.member_path}`}
+            </Typography.Text>
+          )
+        },
+        {
+          title: i18nText('frontstage', 'auto.operation'),
+          key: 'action',
+          align: 'right',
+          width: 96,
+          render: (_, variable) => (
             <Button
               size="small"
               onClick={() =>
@@ -445,8 +500,24 @@ function VariablesPanel({
             >
               {i18nText('frontstage', 'auto.insert_code')}
             </Button>
-          </div>
-        ))}
+          )
+        }
+      ]}
+      dataSource={variables}
+      pagination={false}
+      rowKey="member_path"
+      size="small"
+    />
+  );
+
+  if (usesRegisteredContext) {
+    return (
+      <div className="frontstage-jsx-studio__resource-scroll">
+        <ResourceHeading
+          title={i18nText('frontstage', 'auto.variables')}
+          description={i18nText('frontstage', 'auto.variables_description')}
+        />
+        {variablesTable}
       </div>
     );
   }
@@ -457,22 +528,7 @@ function VariablesPanel({
         title={i18nText('frontstage', 'auto.variables')}
         description={i18nText('frontstage', 'auto.variables_description')}
       />
-      {variables.map((variable) => (
-        <div className="frontstage-jsx-studio__insert-row" key={variable.label}>
-          <Typography.Text code>{variable.label}</Typography.Text>
-          <Button
-            size="small"
-            onClick={() =>
-              onInsertCode({
-                kind: 'context-reference',
-                memberPath: variable.member_path
-              })
-            }
-          >
-            {i18nText('frontstage', 'auto.insert_code')}
-          </Button>
-        </div>
-      ))}
+      {variablesTable}
       <Divider />
       <Typography.Text strong>
         {i18nText('frontstage', 'auto.output_ports')}

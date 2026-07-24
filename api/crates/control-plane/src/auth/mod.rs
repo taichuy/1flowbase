@@ -326,12 +326,12 @@ impl AuthenticatorRegistry {
             });
         let mut variables = vec![
             AuthenticatorContextVariableDefinition {
-                label: "ctx.inputs.authenticator_id".to_string(),
+                label: "Authenticator ID".to_string(),
                 member_path: "inputs.authenticator_id".to_string(),
                 schema: serde_json::json!({ "type": "string", "format": "uuid" }),
             },
             AuthenticatorContextVariableDefinition {
-                label: "ctx.inputs.public_variables".to_string(),
+                label: "Public variables".to_string(),
                 member_path: "inputs.public_variables".to_string(),
                 schema: public_variables_schema.clone(),
             },
@@ -345,7 +345,11 @@ impl AuthenticatorRegistry {
                     properties
                         .get(key)
                         .map(|schema| AuthenticatorContextVariableDefinition {
-                            label: format!("ctx.inputs.public_variables.{key}"),
+                            label: schema
+                                .get("title")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or(key)
+                                .to_string(),
                             member_path: format!("inputs.public_variables.{key}"),
                             schema: schema.clone(),
                         })
@@ -354,7 +358,7 @@ impl AuthenticatorRegistry {
         }
         variables.extend([
             AuthenticatorContextVariableDefinition {
-                label: "ctx.inputs.auth_event".to_string(),
+                label: "Authentication event".to_string(),
                 member_path: "inputs.auth_event".to_string(),
                 schema: serde_json::json!({
                     "type": "object",
@@ -367,7 +371,7 @@ impl AuthenticatorRegistry {
                 }),
             },
             AuthenticatorContextVariableDefinition {
-                label: "ctx.api".to_string(),
+                label: "API".to_string(),
                 member_path: "api".to_string(),
                 schema: serde_json::json!({ "type": "object" }),
             },

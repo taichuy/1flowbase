@@ -151,6 +151,14 @@ body.frontstage-jsx-studio--resizing-panel {
   min-width: 0;
 }
 
+.frontstage-jsx-studio__variables-table {
+  min-width: 0;
+}
+
+.frontstage-jsx-studio__variable-reference {
+  overflow-wrap: anywhere;
+}
+
 .frontstage-jsx-studio__field {
   display: flex;
   flex-direction: column;

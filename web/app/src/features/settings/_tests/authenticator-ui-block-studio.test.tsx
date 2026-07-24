@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -11,14 +11,21 @@ const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
   setCompilerOptions: vi.fn()
 }));
+const resourcePanelHook = vi.hoisted(() => ({
+  render: vi.fn()
+}));
 
 vi.mock('../../frontstage/hooks/use-frontstage-block-catalog', () =>
   blockCatalogHook
 );
 vi.mock('../../frontstage/components/jsx-studio/JsxStudioResourcePanel', () => ({
-  JsxStudioResourcePanel: ({ configurationPanel }: { configurationPanel: ReactNode }) => (
-    <>{configurationPanel}</>
-  )
+  JsxStudioResourcePanel: (props: {
+    configurationPanel: ReactNode;
+    contextVariables?: unknown;
+  }) => {
+    resourcePanelHook.render(props);
+    return <>{props.configurationPanel}</>;
+  }
 }));
 vi.mock('@monaco-editor/react', () => ({
   default: ({
@@ -123,6 +130,34 @@ describe('AuthenticatorUiBlockStudio', () => {
       2,
       "declare module '@1flowbase/block-renderer/antd-facade' {}",
       'file:///node_modules/@1flowbase/block-renderer/antd-facade/index.d.ts'
+    );
+  });
+
+  test('AC-024 marks a missing Auth context catalog unavailable', () => {
+    render(
+      <AuthenticatorUiBlockStudio
+        authenticatorId="password-local"
+        authenticatorTitle="Password"
+        authType="password_local"
+        contextVariables={undefined as never}
+        description={null}
+        enabled
+        errorMessage={null}
+        interfacePathPrefixes={['/api/public/']}
+        open
+        readOnly={false}
+        saving={false}
+        selfRegistrationEnabled
+        source="export default { main };"
+        workspaceId="workspace-1"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '变量' }));
+    expect(resourcePanelHook.render).toHaveBeenCalledWith(
+      expect.objectContaining({ contextVariables: null })
     );
   });
 });
