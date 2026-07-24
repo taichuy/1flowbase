@@ -9,7 +9,7 @@ import {
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
-import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
+import type { OnMount } from '@monaco-editor/react';
 import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
@@ -20,6 +20,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import { BlockSourceEditor } from '../../../../shared/code-block/BlockSourceEditor';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import {
@@ -299,21 +300,6 @@ function FrontstageJsxStudioWindow({
       diagnostic.tabId === tabId &&
       diagnostic.blockId === block.id
   );
-
-  const configureMonaco: BeforeMount = (monaco) => {
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-      allowNonTsExtensions: true,
-      jsx: monaco.languages.typescript.JsxEmit.Preserve,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      target: monaco.languages.typescript.ScriptTarget.ES2022
-    });
-    projection.monacoExtraLibs.forEach((extraLib) => {
-      monaco.languages.typescript.typescriptDefaults.addExtraLib(
-        extraLib.content,
-        extraLib.filePath
-      );
-    });
-  };
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
@@ -606,28 +592,17 @@ function FrontstageJsxStudioWindow({
             />
           ) : null}
           <div className="frontstage-jsx-studio__monaco">
-            <Editor
+            <BlockSourceEditor
+              ariaLabel={i18nText('frontstage', 'auto.code')}
+              extraLibs={projection.monacoExtraLibs}
               height="100%"
-              language="typescript"
               path={`file:///frontstage/${pageId}/${tabId ?? 'tab'}/${block.id}.tsx`}
               value={draft}
-              beforeMount={configureMonaco}
               onMount={(editor) => {
                 editorRef.current = editor;
               }}
-              onChange={(value) => setDraft(value ?? '')}
-              options={{
-                automaticLayout: true,
-                editContext: false,
-                fontSize: 13,
-                lineNumbersMinChars: 3,
-                minimap: { enabled: false },
-                padding: { top: 12, bottom: 12 },
-                readOnly: loading || saving || permissionDenied,
-                scrollBeyondLastLine: false,
-                tabSize: 2,
-                wordWrap: 'on'
-              }}
+              onChange={setDraft}
+              readOnly={loading || saving || permissionDenied}
             />
           </div>
           <div className="frontstage-jsx-studio__problems">

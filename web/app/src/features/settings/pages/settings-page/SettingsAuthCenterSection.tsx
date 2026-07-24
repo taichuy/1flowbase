@@ -44,6 +44,7 @@ import {
   type SettingsAuthCenterOverview
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
+import { AuthenticatorUiBlockDrawer } from '../../components/auth-center/AuthenticatorUiBlockDrawer';
 
 import './auth-center-panel.css';
 
@@ -82,11 +83,7 @@ function authCenterConfigFormValues(row: AuthenticatorRow): SchemaFormValues {
     enabled: row.enabled,
     description,
     self_registration_enabled:
-      row.config_values.self_registration_enabled === true,
-    public_ui_block:
-      typeof row.config_values.public_ui_block === 'string'
-        ? row.config_values.public_ui_block
-        : ''
+      row.config_values.self_registration_enabled === true
   };
   for (const field of row.config_schema) {
     const value = row.config_values[field.key];
@@ -107,7 +104,7 @@ function toAuthenticatorConfigFormValues(
   row: AuthenticatorRow
 ): AuthenticatorConfigFormValues {
   const commonKeys = new Set([
-    'title', 'description', 'enabled', 'self_registration_enabled', 'public_ui_block'
+    'title', 'description', 'enabled', 'self_registration_enabled'
   ]);
   const extension_config = Object.fromEntries(
     row.config_schema
@@ -120,7 +117,10 @@ function toAuthenticatorConfigFormValues(
     description:
       typeof values.description === 'string' ? values.description : null,
     self_registration_enabled: values.self_registration_enabled === true,
-    public_ui_block: String(values.public_ui_block ?? ''),
+    public_ui_block:
+      typeof row.config_values.public_ui_block === 'string'
+        ? row.config_values.public_ui_block
+        : '',
     extension_config
   };
 }
@@ -235,6 +235,9 @@ export function SettingsAuthCenterSection() {
   const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<
     string | null
   >(null);
+  const [selectedUiAuthenticatorId, setSelectedUiAuthenticatorId] = useState<
+    string | null
+  >(null);
   const [lifecycleForm] = Form.useForm<AuthenticatorLifecycleFormValues>();
   const [isLifecycleModalOpen, setLifecycleModalOpen] = useState(false);
   const [draggedAuthenticatorId, setDraggedAuthenticatorId] = useState<
@@ -261,6 +264,12 @@ export function SettingsAuthCenterSection() {
     selectedAuthenticatorId && overviewQuery.data
       ? (overviewQuery.data.authenticators.find(
           (row) => row.id === selectedAuthenticatorId
+        ) ?? null)
+      : null;
+  const selectedUiAuthenticator =
+    selectedUiAuthenticatorId && overviewQuery.data
+      ? (overviewQuery.data.authenticators.find(
+          (row) => row.id === selectedUiAuthenticatorId
         ) ?? null)
       : null;
   const requireAuthCenterWrite = () => {
@@ -343,6 +352,7 @@ export function SettingsAuthCenterSection() {
             : overview
       );
       setSelectedAuthenticatorId(null);
+      setSelectedUiAuthenticatorId(null);
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
@@ -572,6 +582,16 @@ export function SettingsAuthCenterSection() {
           >
             {i18nText('settings', 'auto.edit')}
           </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              configMutation.reset();
+              setSelectedUiAuthenticatorId(row.id);
+            }}
+          >
+            {i18nText('settings', 'auto.auth_center_ui_action')}
+          </Button>
           <Popconfirm
             title={i18nText('settings', 'auto.auth_center_delete_confirm', {
               value1: row.title
@@ -730,6 +750,67 @@ export function SettingsAuthCenterSection() {
           });
         }}
       />
+      {selectedUiAuthenticator ? (
+        <AuthenticatorUiBlockDrawer
+          authenticatorId={selectedUiAuthenticator.id}
+          authenticatorTitle={selectedUiAuthenticator.title}
+          errorMessage={
+            configMutation.isError
+              ? i18nText(
+                  'settings',
+                  'auto.auth_center_public_ui_update_failed'
+                )
+              : null
+          }
+          open={selectedUiAuthenticatorId != null}
+          readOnly={!canManageAuthenticators || csrfToken == null}
+          saving={configMutation.isPending}
+          source={
+            typeof selectedUiAuthenticator.config_values.public_ui_block ===
+            'string'
+              ? selectedUiAuthenticator.config_values.public_ui_block
+              : ''
+          }
+          onClose={() => {
+            configMutation.reset();
+            setSelectedUiAuthenticatorId(null);
+          }}
+          onSave={async (publicUiBlock) => {
+            const extensionConfig =
+              selectedUiAuthenticator.config_values.extension_config;
+            await new Promise<void>((resolve, reject) => {
+              configMutation.mutate(
+                {
+                  authenticatorId: selectedUiAuthenticator.id,
+                  values: {
+                    title: selectedUiAuthenticator.title,
+                    enabled: selectedUiAuthenticator.enabled,
+                    description:
+                      typeof selectedUiAuthenticator.config_values
+                        .description === 'string'
+                        ? selectedUiAuthenticator.config_values.description
+                        : null,
+                    self_registration_enabled:
+                      selectedUiAuthenticator.config_values
+                        .self_registration_enabled === true,
+                    public_ui_block: publicUiBlock,
+                    extension_config:
+                      extensionConfig &&
+                      typeof extensionConfig === 'object' &&
+                      !Array.isArray(extensionConfig)
+                        ? extensionConfig as Record<string, unknown>
+                        : {}
+                  }
+                },
+                {
+                  onError: () => reject(new Error('save failed')),
+                  onSuccess: () => resolve()
+                }
+              );
+            });
+          }}
+        />
+      ) : null}
       <Modal
         open={isLifecycleModalOpen}
         title={i18nText(
