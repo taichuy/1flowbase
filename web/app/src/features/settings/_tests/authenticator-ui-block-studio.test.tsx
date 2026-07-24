@@ -38,7 +38,10 @@ vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
       catalog: { providerCode: string; installationId: string };
       contribution: { pluginId: string; pluginVersion: string; code: string };
     };
-    presentation: string;
+    code: string;
+    presentation:
+      | { mode: 'debugger' }
+      | { mode: 'direct-preview'; revision: string };
     createRunInputs: (event?: {
       actionId: string;
       formValues?: Record<string, unknown>;
@@ -242,7 +245,11 @@ describe('AuthenticatorUiBlockStudio', () => {
         code: 'frontstage.js-ui-block'
       }
     });
-    expect(trialProps.presentation).toBe('direct-preview');
+    expect(trialProps.code).toBe('export default { main };');
+    expect(trialProps.presentation).toEqual({
+      mode: 'direct-preview',
+      revision: expect.any(String)
+    });
     expect(trialProps.createRunInputs()).toEqual({
       authenticator_id: 'password-local',
       public_variables: {

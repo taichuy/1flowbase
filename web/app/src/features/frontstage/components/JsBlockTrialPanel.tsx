@@ -55,7 +55,9 @@ export interface JsBlockTrialPanelProps {
   }) => Promise<void>;
   onRevokeDraftRun?: (runId: string) => void;
   limits: RestrictedBlockLoaderLimits;
-  presentation: 'debugger' | 'direct-preview';
+  presentation:
+    | { mode: 'debugger' }
+    | { mode: 'direct-preview'; revision: string };
   onCodeChange?: (code: string) => void;
   onContextSnapshotChange?: (value: Record<string, unknown>) => void;
   onLimitsChange?: (value: RestrictedBlockLoaderLimits) => void;
@@ -157,14 +159,19 @@ export function JsBlockTrialPanel({
     runtimeSessionFactory,
     stop
   ]);
+  const runRef = useRef(run);
 
   useEffect(() => {
-    if (presentation !== 'direct-preview') return;
-    const timeout = window.setTimeout(() => {
-      void run();
-    }, 300);
-    return () => window.clearTimeout(timeout);
-  }, [presentation, run]);
+    runRef.current = run;
+  }, [run]);
+
+  const directPreviewRevision =
+    presentation.mode === 'direct-preview' ? presentation.revision : null;
+
+  useEffect(() => {
+    if (directPreviewRevision === null) return;
+    void runRef.current();
+  }, [directPreviewRevision]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -192,7 +199,7 @@ export function JsBlockTrialPanel({
     [block.id, contextSnapshot.pageId, contextSnapshot.tabId, snapshot?.error]
   );
 
-  if (presentation === 'direct-preview') {
+  if (presentation.mode === 'direct-preview') {
     return snapshot ? (
       <RestrictedBlockRuntimePreview
         snapshot={snapshot}
