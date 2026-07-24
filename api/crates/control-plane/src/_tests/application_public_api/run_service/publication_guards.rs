@@ -170,6 +170,130 @@ async fn d4_ac_002_native_responses_passthrough_all_targets_capable_is_admitted(
     );
 }
 
+#[tokio::test]
+async fn d5_ac_005_native_responses_rejects_cross_provider_failover_before_run_creation() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Responses Pinned Route App");
+    let token = issue_key(&harness, application.id).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let mut runtime = published_llm_runtime();
+    runtime.routing = Some(orchestration_runtime::compiled_plan::CompiledLlmRouting {
+        routing_mode: orchestration_runtime::compiled_plan::LlmRoutingMode::FailoverQueue,
+        fixed_model_target: None,
+        queue_template_id: None,
+        queue_snapshot_id: Some("snapshot-native".into()),
+        queue_targets: vec![
+            orchestration_runtime::compiled_plan::CompiledLlmRouteTarget {
+                provider_instance_id: Uuid::now_v7().to_string(),
+                provider_instance_display_name: "Different Provider".into(),
+                provider_code: "other_provider".into(),
+                protocol: "openai_responses".into(),
+                upstream_model_id: "other-model".into(),
+            },
+        ],
+        distribution_rule:
+            orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin,
+        distribution_key: None,
+        context_policy: json!({"integration_context": "enabled"}),
+        stream_policy: json!({}),
+    });
+    repository.configure_published_generate_route(application.id, "node-frozen-llm", runtime);
+    repository.set_published_generate_manifest_capabilities(BTreeSet::from([
+        ProviderInvocationCapability::ResponsesNativePassthrough,
+    ]));
+    let mut request = native_request("blocking", None);
+    request.metadata.set_responses_transport_requirement(
+        control_plane::application_public_api::native::ResponsesTransportRequirement::NativePassthrough,
+    );
+
+    let error = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request,
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        NativeRunValidationError::RouteUnavailable(
+            PublishedRouteResolutionError::ProviderCapabilityMismatch
+        )
+    );
+    assert_eq!(repository.flow_run_count(), 0);
+    assert_eq!(repository.published_generate_capability_checks(), 0);
+}
+
+#[tokio::test]
+async fn d5_ac_005_native_responses_durable_summary_records_the_provider_pin() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Responses Durable Pin App");
+    let token = issue_key(&harness, application.id).await;
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: published_mapping(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    let runtime = published_llm_runtime();
+    repository.configure_published_generate_route(
+        application.id,
+        "node-frozen-llm",
+        runtime.clone(),
+    );
+    repository.set_published_generate_manifest_capabilities(BTreeSet::from([
+        ProviderInvocationCapability::ResponsesNativePassthrough,
+    ]));
+    let mut request = native_request("blocking", None);
+    request.metadata.set_responses_transport_requirement(
+        control_plane::application_public_api::native::ResponsesTransportRequirement::NativePassthrough,
+    );
+    request.metadata.set_provider_transport_payload(
+        control_plane::ports::ProviderTransportPayload::openai_responses(json!({
+            "model": "1flowbase",
+            "input": "search",
+            "tools": [{"type": "web_search", "external_web_access": false}]
+        }))
+        .unwrap(),
+    );
+
+    let result = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request,
+        })
+        .await
+        .unwrap();
+    let flow_run = repository
+        .get_flow_run(application.id, result.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let pin = &flow_run.input_payload["sys"]["public_provider_transport"]["provider_pin"];
+
+    assert_eq!(pin["provider_instance_id"], runtime.provider_instance_id);
+    assert_eq!(pin["provider_code"], runtime.provider_code);
+    assert_eq!(pin["protocol"], runtime.protocol);
+    assert_eq!(pin["upstream_model_id"], runtime.model);
+    assert!(!flow_run
+        .input_payload
+        .to_string()
+        .contains("external_web_access"));
+}
+
 /// Root #1366 AC-003 / AC-006: both Generate profiles use the frozen target and fail closed.
 #[tokio::test]
 async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_mismatch() {

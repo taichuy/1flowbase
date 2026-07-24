@@ -298,6 +298,11 @@ where
             .as_ref()
             .filter(|runtime| llm_runtime_is_complete(runtime))
             .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
+        if required_capabilities.contains(&ProviderInvocationCapability::ResponsesNativePassthrough)
+            && !native_responses_route_is_provider_pinned(runtime)
+        {
+            return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
+        }
         let supported = self
             .repository
             .supports_published_generate(workspace_id, runtime, profile, required_capabilities)
@@ -442,6 +447,17 @@ fn llm_runtime_is_complete(runtime: &CompiledLlmRuntime) -> bool {
         })
     });
     root_is_complete && routes_are_complete
+}
+
+fn native_responses_route_is_provider_pinned(runtime: &CompiledLlmRuntime) -> bool {
+    runtime.routing.as_ref().is_none_or(|routing| {
+        routing.queue_targets.iter().all(|target| {
+            target.provider_instance_id == runtime.provider_instance_id
+                && target.provider_code == runtime.provider_code
+                && target.protocol == runtime.protocol
+                && target.upstream_model_id == runtime.model
+        })
+    })
 }
 
 fn non_empty_trimmed(value: &str) -> bool {

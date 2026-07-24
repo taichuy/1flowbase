@@ -3154,6 +3154,31 @@ mod tests {
     }
 
     #[test]
+    fn d5_ac_004_hosted_tools_stay_out_of_gateway_tool_execution_inputs() {
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "search",
+            "tools": [
+                {"type": "web_search", "external_web_access": false},
+                {"type": "code_interpreter", "container": {"type": "auto"}},
+                {"type": "image_generation", "quality": "high"}
+            ]
+        }))
+        .expect("hosted tools should use native Responses transport");
+
+        assert!(translated.request.inputs.as_value().get("tools").is_none());
+        assert!(translated.request.history.is_empty());
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("hosted tools should remain in ephemeral provider transport");
+        assert_eq!(payload.wire_body()["tools"][0]["type"], "web_search");
+        assert_eq!(payload.wire_body()["tools"][1]["type"], "code_interpreter");
+        assert_eq!(payload.wire_body()["tools"][2]["type"], "image_generation");
+    }
+
+    #[test]
     fn ac_002_responses_function_calls_map_to_native_history() {
         let translated = translate_response_request(json!({
                 "model": "1flowbase",

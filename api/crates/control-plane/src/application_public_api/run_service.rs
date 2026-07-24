@@ -203,9 +203,13 @@ where
             )
             .await
             .map_err(NativeRunValidationError::RouteUnavailable)?;
-        let target_node_id = match resolved_route {
-            ResolvedPublishedRoute::ApplicationFlow { .. } => None,
-            ResolvedPublishedRoute::Provider(route) => Some(route.target_node_id),
+        let (target_node_id, provider_transport_summary) = match resolved_route {
+            ResolvedPublishedRoute::ApplicationFlow { .. } => (None, provider_transport_summary),
+            ResolvedPublishedRoute::Provider(route) => {
+                let summary =
+                    with_provider_transport_pin(provider_transport_summary, &route.llm_runtime);
+                (Some(route.target_node_id), summary)
+            }
         };
 
         let mapped = NativeInputMapper::map(&request, &publication.mapping_snapshot)
@@ -588,6 +592,26 @@ fn with_public_provider_transport_summary(
         .expect("sys payload")
         .insert(PUBLIC_PROVIDER_TRANSPORT_SUMMARY.to_string(), summary);
     input_payload
+}
+
+fn with_provider_transport_pin(
+    summary: Option<Value>,
+    runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+) -> Option<Value> {
+    let mut summary = summary?;
+    summary
+        .as_object_mut()
+        .expect("provider transport summary")
+        .insert(
+            "provider_pin".to_string(),
+            json!({
+                "provider_instance_id": runtime.provider_instance_id,
+                "provider_code": runtime.provider_code,
+                "protocol": runtime.protocol,
+                "upstream_model_id": runtime.model,
+            }),
+        );
+    Some(summary)
 }
 
 fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {

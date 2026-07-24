@@ -162,3 +162,51 @@ async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synth
     );
     assert!(!body.contains("synthetic"), "{body}");
 }
+
+#[tokio::test]
+async fn d5_ac_006_native_failed_and_incomplete_terminals_are_not_reprojected() {
+    for terminal_type in ["response.failed", "response.incomplete"] {
+        let run = native_run();
+        let synthetic_terminal = if terminal_type == "response.failed" {
+            debug_stream_events::flow_failed(run.id, json!({"message": "synthetic failure"}))
+        } else {
+            debug_stream_events::flow_incomplete(run.id, json!({"answer": "synthetic partial"}))
+        };
+        let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true)
+            .with_native_passthrough(true);
+        let mut events = mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                debug_stream_events::provider_native_event(
+                    "node-llm",
+                    Uuid::new_v4(),
+                    "openai_responses".to_string(),
+                    json!({
+                        "type": terminal_type,
+                        "response": {"id": "resp_native"}
+                    }),
+                ),
+            ),
+        );
+        events.extend(mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(run.id, 2, synthetic_terminal),
+        ));
+
+        let response = test_projected_events_response(events);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+
+        assert_eq!(
+            body.matches(&format!("event: {terminal_type}")).count(),
+            1,
+            "{body}"
+        );
+        assert!(!body.contains("synthetic"), "{body}");
+        assert!(!body.contains("response.completed"), "{body}");
+    }
+}
