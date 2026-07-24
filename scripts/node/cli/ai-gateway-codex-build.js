@@ -7,11 +7,13 @@ const FIELDS = new Map([
   ['--source-root', 'sourceRoot'],
   ['--output-dir', 'outputDir'],
   ['--jobs', 'jobs'],
+  ['--rusty-v8-dir', 'rustyV8Dir'],
 ]);
 
 function usage() {
   return `Usage: node scripts/node/cli/ai-gateway-codex-build.js \\
-  --source-root <clean-detached-codex> --output-dir <artifact-dir> [--jobs <n>]`;
+  --source-root <clean-detached-codex> --output-dir <artifact-dir> [--jobs <n>] \\
+  [--rusty-v8-dir <verified-official-artifact-dir>]`;
 }
 
 function parseArgs(argv) {

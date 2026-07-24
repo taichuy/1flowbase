@@ -85,8 +85,9 @@ function planCodexBuild(sourceRoot, outputDir, version, target, jobs) {
 }
 
 function parseChecksumManifest(value, target) {
-  const lines = String(value).trimEnd().split(/\r?\n/u);
-  if (lines.length !== 2) throw new Error('rusty_v8 checksum manifest must contain exactly two lines');
+  const document = /^([^\r\n]+)\r?\n([^\r\n]+)\r?\n$/u.exec(String(value));
+  if (!document) throw new Error('rusty_v8 checksum manifest must contain exactly two lines');
+  const lines = document.slice(1);
   const rows = lines.map((line) => {
     const match = /^([a-f0-9]{64})\s{2}([^/\\\s]+)$/u.exec(line);
     if (!match) throw new Error('rusty_v8 checksum manifest row is invalid');
@@ -104,6 +105,36 @@ function parseChecksumManifest(value, target) {
 
 function writeEvidence(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+}
+
+function artifactPaths(directory, names) {
+  return Object.fromEntries(Object.entries(names).map(([key, name]) => [key, path.join(directory, name)]));
+}
+
+function artifactEvidence(paths) {
+  return Object.fromEntries(Object.entries(paths).map(([key, filePath]) => [key, {
+    name: path.basename(filePath),
+    bytes: fs.statSync(filePath).size,
+    sha256: sha256File(filePath),
+  }]));
+}
+
+function verifyArtifactSet(paths, target, runCommand, { gzipTest = false } = {}) {
+  for (const filePath of Object.values(paths)) {
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      throw new Error(`missing official rusty_v8 artifact: ${path.basename(filePath)}`);
+    }
+  }
+  const checksumRows = parseChecksumManifest(fs.readFileSync(paths.checksums, 'utf8'), target);
+  if (gzipTest) requireSuccess('gzip', ['-t', paths.archive], { cwd: path.dirname(paths.archive) }, runCommand);
+  requireSuccess('sha256sum', ['-c', paths.checksums], {
+    cwd: path.dirname(paths.checksums),
+  }, runCommand);
+  for (const row of checksumRows) {
+    const actual = sha256File(path.join(path.dirname(paths.checksums), row.file));
+    if (actual !== row.sha256) throw new Error(`rusty_v8 checksum mismatch for ${row.file}`);
+  }
+  return checksumRows;
 }
 
 function runCodexBuild(options, dependencies = {}) {
@@ -129,21 +160,34 @@ function runCodexBuild(options, dependencies = {}) {
   const target = rustcHost(requireSuccess('rustc', ['-vV'], { cwd: sourceRoot }, runCommand).stdout);
   const plan = planCodexBuild(sourceRoot, outputDir, version, target, jobs);
   fs.mkdirSync(path.dirname(plan.paths.archive), { recursive: true, mode: 0o700 });
-  for (const filePath of Object.values(plan.paths)) fs.rmSync(filePath, { force: true });
-  for (const [index, url] of plan.urls.entries()) {
-    const output = [plan.paths.archive, plan.paths.binding, plan.paths.checksums][index];
-    requireSuccess('curl', [
-      '--fail', '--silent', '--show-error', '--location',
-      '--retry', '3', '--retry-all-errors', '--output', output, url,
-    ], { cwd: outputDir }, runCommand);
-  }
-  const checksumRows = parseChecksumManifest(fs.readFileSync(plan.paths.checksums, 'utf8'), target);
-  requireSuccess('sha256sum', ['-c', plan.paths.checksums], {
-    cwd: path.dirname(plan.paths.checksums),
-  }, runCommand);
-  for (const row of checksumRows) {
-    const actual = sha256File(path.join(path.dirname(plan.paths.checksums), row.file));
-    if (actual !== row.sha256) throw new Error(`rusty_v8 checksum mismatch for ${row.file}`);
+  let acquisition;
+  let checksumRows;
+  if (options.rustyV8Dir) {
+    const providedDirectory = path.resolve(options.rustyV8Dir);
+    if (providedDirectory === path.dirname(plan.paths.archive)) {
+      throw new Error('provided rusty_v8 directory must differ from the mutable artifact output directory');
+    }
+    const providedPaths = artifactPaths(providedDirectory, plan.names);
+    checksumRows = verifyArtifactSet(providedPaths, target, runCommand, { gzipTest: true });
+    const providedArtifacts = artifactEvidence(providedPaths);
+    for (const filePath of Object.values(plan.paths)) fs.rmSync(filePath, { force: true });
+    for (const key of Object.keys(plan.paths)) fs.copyFileSync(providedPaths[key], plan.paths[key]);
+    checksumRows = verifyArtifactSet(plan.paths, target, runCommand, { gzipTest: true });
+    acquisition = {
+      mode: 'verified-local-official-artifacts',
+      provided_artifacts: providedArtifacts,
+    };
+  } else {
+    for (const filePath of Object.values(plan.paths)) fs.rmSync(filePath, { force: true });
+    for (const [index, url] of plan.urls.entries()) {
+      const output = [plan.paths.archive, plan.paths.binding, plan.paths.checksums][index];
+      requireSuccess('curl', [
+        '--fail', '--silent', '--show-error', '--location',
+        '--retry', '3', '--retry-all-errors', '--output', output, url,
+      ], { cwd: outputDir }, runCommand);
+    }
+    checksumRows = verifyArtifactSet(plan.paths, target, runCommand);
+    acquisition = { mode: 'official-release-download' };
   }
   const buildEnv = { ...process.env, ...plan.environment };
   const buildResult = runCommand(plan.build.executable, plan.build.args, {
@@ -160,6 +204,7 @@ function runCodexBuild(options, dependencies = {}) {
       target,
       release_tag: plan.releaseTag,
       urls: plan.urls,
+      acquisition,
       checksums: checksumRows,
       artifacts: {
         archive: { path: plan.paths.archive, sha256: sha256File(plan.paths.archive) },

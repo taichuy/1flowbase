@@ -32,10 +32,117 @@ test('CLI arguments require source/output and default to two jobs', () => {
   assert.equal(parseArgs([
     '--source-root', '/src/codex', '--output-dir', '/tmp/evidence', '--jobs', '3',
   ]).jobs, 3);
+  assert.equal(parseArgs([
+    '--source-root', '/src/codex', '--output-dir', '/tmp/evidence',
+    '--rusty-v8-dir', '/home/user/Downloads',
+  ]).rustyV8Dir, '/home/user/Downloads');
   assert.throws(() => parseArgs(['--source-root', '/src/codex']), /--output-dir/u);
   assert.throws(() => parseArgs([
     '--source-root', '/src/codex', '--output-dir', '/tmp/evidence', '--jobs', '0',
   ]), /positive integer/u);
+});
+
+function writeProvidedArtifacts(directory, { tamper = false, omit = null } = {}) {
+  const target = 'x86_64-unknown-linux-gnu';
+  const names = {
+    archive: `librusty_v8_release_${target}.a.gz`,
+    binding: `src_binding_release_${target}.rs`,
+    checksums: `rusty_v8_release_${target}.sha256`,
+  };
+  fs.mkdirSync(directory, { recursive: true });
+  const archive = Buffer.from('provided verified archive');
+  const binding = Buffer.from(tamper ? 'tampered binding' : 'provided verified binding');
+  const expectedBinding = Buffer.from('provided verified binding');
+  if (omit !== 'archive') fs.writeFileSync(path.join(directory, names.archive), archive);
+  if (omit !== 'binding') fs.writeFileSync(path.join(directory, names.binding), binding);
+  if (omit !== 'checksums') fs.writeFileSync(path.join(directory, names.checksums), [
+    `${crypto.createHash('sha256').update(archive).digest('hex')}  ${names.archive}`,
+    `${crypto.createHash('sha256').update(expectedBinding).digest('hex')}  ${names.binding}`,
+    '',
+  ].join('\n'));
+  return names;
+}
+
+function localArtifactDependencies(files, calls) {
+  return {
+    inspectSource: () => ({
+      source: {
+        fixed_revision: '56395bddaf26eb2829387ca6a417bf9128e5b239',
+        observed_revision: '56395bddaf26eb2829387ca6a417bf9128e5b239', dirty: false, detached: true,
+        identity: 'github:openai/codex', observed_remote: 'https://github.com/openai/codex.git',
+      },
+    }),
+    runCommand(executable, args, options) {
+      calls.push({ executable, args, options });
+      if (executable === 'python3') return { status: 0, stdout: '149.2.0\n', stderr: '' };
+      if (executable === 'rustc') return { status: 0, stdout: 'host: x86_64-unknown-linux-gnu\n', stderr: '' };
+      if (executable === 'gzip' || executable === 'sha256sum') {
+        return { status: 0, stdout: 'OK\n', stderr: '' };
+      }
+      if (executable === 'cargo') {
+        const binary = path.join(files.sourceRoot, 'codex-rs', 'target', 'debug', 'codex');
+        fs.mkdirSync(path.dirname(binary), { recursive: true });
+        fs.writeFileSync(binary, '#!/bin/sh\n', { mode: 0o700 });
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      throw new Error(`unexpected command ${executable}`);
+    },
+  };
+}
+
+test('verified local official artifacts are copied, reverified, and used without curl', () => {
+  const files = fixture();
+  const provided = path.join(files.root, 'Downloads');
+  const names = writeProvidedArtifacts(provided);
+  const calls = [];
+  try {
+    const evidence = runCodexBuild({
+      sourceRoot: files.sourceRoot, outputDir: files.outputRoot, jobs: 2, rustyV8Dir: provided,
+    }, localArtifactDependencies(files, calls));
+    assert.equal(evidence.rusty_v8.acquisition.mode, 'verified-local-official-artifacts');
+    assert.equal(evidence.rusty_v8.urls.length, 3);
+    assert.deepEqual(Object.keys(evidence.rusty_v8.acquisition.provided_artifacts), [
+      'archive', 'binding', 'checksums',
+    ]);
+    assert.equal(calls.some((call) => call.executable === 'curl'), false);
+    assert.equal(calls.filter((call) => call.executable === 'gzip').length, 2);
+    assert.equal(calls.filter((call) => call.executable === 'sha256sum').length, 2);
+    for (const name of Object.values(names)) {
+      assert.equal(fs.existsSync(path.join(files.outputRoot, 'rusty_v8', name)), true);
+    }
+  } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('local official artifact mode fails closed when a required file is missing', () => {
+  const files = fixture();
+  const provided = path.join(files.root, 'Downloads');
+  writeProvidedArtifacts(provided, { omit: 'binding' });
+  const calls = [];
+  try {
+    assert.throws(() => runCodexBuild({
+      sourceRoot: files.sourceRoot, outputDir: files.outputRoot, jobs: 2, rustyV8Dir: provided,
+    }, localArtifactDependencies(files, calls)), /missing official rusty_v8 artifact/u);
+    assert.equal(calls.some((call) => ['curl', 'cargo'].includes(call.executable)), false);
+  } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('local official artifact mode rejects a checksum-valid-name tamper before copying or build', () => {
+  const files = fixture();
+  const provided = path.join(files.root, 'Downloads');
+  writeProvidedArtifacts(provided, { tamper: true });
+  const calls = [];
+  try {
+    assert.throws(() => runCodexBuild({
+      sourceRoot: files.sourceRoot, outputDir: files.outputRoot, jobs: 2, rustyV8Dir: provided,
+    }, localArtifactDependencies(files, calls)), /checksum mismatch/u);
+    assert.equal(calls.some((call) => ['curl', 'cargo'].includes(call.executable)), false);
+  } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
 });
 
 test('build plan mirrors the pinned official rusty_v8 release action without release or LTO', () => {
@@ -66,6 +173,9 @@ test('checksum parser requires exactly the official archive and binding rows', (
     { sha256: binding, file: 'src_binding_release_x86_64-unknown-linux-gnu.rs' },
   ]);
   assert.throws(() => parseChecksumManifest(`${archive}  one-file\n`, 'x86_64-unknown-linux-gnu'), /exactly two/u);
+  assert.throws(() => parseChecksumManifest(
+    `${archive}  first\n${binding}  second\n\n`, 'x86_64-unknown-linux-gnu'
+  ), /exactly two/u);
   assert.throws(() => parseChecksumManifest(
     `${archive}  wrong.a.gz\n${binding}  wrong.rs\n`, 'x86_64-unknown-linux-gnu'
   ), /official rusty_v8 files/u);
