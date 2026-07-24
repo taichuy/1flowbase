@@ -1248,6 +1248,9 @@ where
         let tool_prompt_transcript =
             llm_tool_prompt_transcript(node, variable_pool, &invocation.input);
         let invocation_tools = invocation.input.tools.clone();
+        let native_responses_passthrough = invocation.input.required_capabilities.contains(
+            &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+        );
         let attempt_started_at = OffsetDateTime::now_utc();
         let mut output = match invoker.invoke_llm(attempt_runtime, invocation.input).await {
             Ok(output) => output,
@@ -1357,8 +1360,12 @@ where
             .as_ref()
             .map(|error| build_provider_error_payload(attempt_runtime, error))
             .or_else(|| {
-                (!has_valid_provider_output(final_content.as_deref(), &output.result))
-                    .then(|| build_empty_provider_response_error_payload(attempt_runtime))
+                (!has_valid_provider_output(
+                    final_content.as_deref(),
+                    &output.result,
+                    native_responses_passthrough,
+                ))
+                .then(|| build_empty_provider_response_error_payload(attempt_runtime))
             });
         if failure_projection == LlmFailureProjection::LegacyTerminalFallback {
             if let (Some(error_payload), Some(message)) =

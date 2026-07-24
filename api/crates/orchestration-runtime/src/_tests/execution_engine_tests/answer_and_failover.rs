@@ -643,6 +643,59 @@ async fn llm_node_retries_protocol_only_empty_response() {
 }
 
 #[tokio::test]
+async fn native_responses_terminal_persists_provider_response_id_without_semantic_output() {
+    let plan = base_plan();
+    let (invoker, _) = sequential_tool_output_invoker(vec![ProviderInvocationOutput {
+        events: vec![ProviderStreamEvent::Finish {
+            reason: ProviderFinishReason::Stop,
+        }],
+        result: ProviderInvocationResult {
+            response_id: Some("resp_provider_owned".to_string()),
+            finish_reason: Some(ProviderFinishReason::Stop),
+            ..ProviderInvocationResult::default()
+        },
+        first_token_at: None,
+        time_to_first_token_ms: None,
+    }]);
+    let plan_input = serde_json::Map::from_iter([(
+        "node-start".to_string(),
+        json!({ "query": "native terminal" }),
+    )]);
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(&plan, &plan_input)
+        .unwrap()
+        .with_provider_invocation_capability(
+            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+        );
+
+    let outcome = start_flow_debug_run_with_runtime_context(
+        &plan,
+        &json!({ "node-start": { "query": "native terminal" } }),
+        runtime_context,
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::WaitingHuman(_)
+    ));
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+    assert_eq!(
+        llm_trace.output_payload["response_id"],
+        json!("resp_provider_owned")
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["status"],
+        "succeeded"
+    );
+}
+
+#[tokio::test]
 async fn provider_routing_does_not_retry_when_llm_node_retry_is_disabled() {
     let mut plan = base_plan();
     let llm = plan

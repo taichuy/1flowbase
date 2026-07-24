@@ -121,10 +121,16 @@ pub(super) fn finish_reason_from_events(
 pub(super) fn has_valid_provider_output(
     final_content: Option<&str>,
     result: &ProviderInvocationResult,
+    native_responses_passthrough: bool,
 ) -> bool {
     final_content.is_some_and(|content| !content.trim().is_empty())
         || !result.tool_calls.is_empty()
         || !result.mcp_calls.is_empty()
+        || (native_responses_passthrough
+            && result
+                .response_id
+                .as_deref()
+                .is_some_and(|response_id| !response_id.trim().is_empty()))
 }
 
 pub(super) fn build_empty_provider_response_error_payload(runtime: &CompiledLlmRuntime) -> Value {
