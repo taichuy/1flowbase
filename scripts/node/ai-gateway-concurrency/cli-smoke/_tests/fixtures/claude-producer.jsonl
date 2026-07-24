@@ -1,0 +1,2 @@
+{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"100","event":"tool_call","transport":"anthropic-sse"}
+{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"300","event":"second_upstream_request","transport":"anthropic-sse"}

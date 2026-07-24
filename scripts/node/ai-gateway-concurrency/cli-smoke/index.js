@@ -19,6 +19,8 @@ const {
   sanitizedInvocation,
 } = require('./invocations');
 const { assertCompatibleResult, executeInvocation, executeTmuxInvocation } = require('./runner');
+const { collectClientProvenance } = require('./provenance');
+const { readTimeline } = require('./timeline');
 
 const DEFAULT_EVIDENCE_ROOT = path.resolve(
   __dirname,
@@ -50,6 +52,11 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
     ? (invocation, env, client) => executeTmuxInvocation(invocation, env, {
       artifactDirectory: path.join(outputRoot, client),
       markers: [rawOptions.firstMarker, rawOptions.secondMarker].filter(Boolean),
+      clientResultMarker: rawOptions.clientResultMarker,
+      producerTimelinePath: inputs.producerTimelineDirectory
+        ? path.join(inputs.producerTimelineDirectory, `${client}.jsonl`)
+        : null,
+      secrets,
       onFirstMarker: inputs.barrierReleaseUrl
         ? async () => {
           const response = await fetch(inputs.barrierReleaseUrl, { method: 'POST' });
@@ -78,6 +85,11 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
     const opencodePlan = inputs.opencodeExecutable
       ? opencodeInvocation(inputs.opencodeExecutable, opencodePaths, inputs.manifest.openai)
       : null;
+    const provenance = (dependencies.collectClientProvenance || collectClientProvenance)(inputs, {
+      codex: codexPlan,
+      claude: claudePlan,
+      opencode: opencodePlan,
+    });
     const codexEnv = codexEnvironment(parentEnv, codexPaths, inputs.manifest.openai.api_key);
     const claudeEnv = claudeEnvironment(
       parentEnv,
@@ -94,7 +106,11 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       )
       : null;
     writeConfigManifest(outputRoot, {
-      schema_version: '1flowbase.ai-gateway-cli-smoke-config/v1',
+      schema_version: '1flowbase.ai-gateway-cli-smoke-config/v2',
+      transport_contract: {
+        gateway_role: 'transport-only',
+        tool_execution_owner: 'client',
+      },
       ready_manifest: {
         path: inputs.manifest.path,
         sha256: manifestDigest(inputs.manifest.path),
@@ -119,10 +135,23 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
         } : {}),
       },
       clients: {
-        codex: { invocation: sanitizedInvocation(codexPlan), environment: sanitizedEnvironment(codexEnv) },
-        claude: { invocation: sanitizedInvocation(claudePlan), environment: sanitizedEnvironment(claudeEnv) },
+        codex: {
+          invocation: sanitizedInvocation(codexPlan), environment: sanitizedEnvironment(codexEnv),
+          provenance: provenance.codex,
+        },
+        claude: {
+          invocation: sanitizedInvocation(claudePlan), environment: sanitizedEnvironment(claudeEnv),
+          provenance: provenance.claude,
+        },
+        ...(opencodePlan ? {
+          opencode: {
+            invocation: sanitizedInvocation(opencodePlan),
+            environment: sanitizedEnvironment(opencodeEnv),
+            provenance: provenance.opencode,
+          },
+        } : {}),
       },
-    });
+    }, secrets);
 
     const codexResult = await runChild(codexPlan, codexEnv, 'codex');
     writeClientEvidence(outputRoot, 'codex', codexResult, secrets);
@@ -162,12 +191,24 @@ function assertMarkerOrder(client, result, options) {
   if (!options.tmuxTiming || !options.firstMarker || !options.secondMarker) {
     throw new Error('first and second markers require --tmux-timing together');
   }
-  const first = result.pty?.markers?.[options.firstMarker];
-  const second = result.pty?.markers?.[options.secondMarker];
-  if (typeof first !== 'number' || typeof second !== 'number') {
+  const events = readTimeline(result.pty?.timeline_path);
+  const first = events.findIndex((event) => event.event === 'marker_1');
+  const second = events.findIndex((event) => event.event === 'marker_2');
+  if (first === -1 || second === -1) {
     throw new Error(`${client} PTY did not expose both streaming markers`);
   }
   if (second <= first) throw new Error(`${client} second streaming marker was not observed after the first`);
+  if (options.clientResultMarker && options.producerTimelineDirectory) {
+    const required = [
+      'tool_call', 'client_result', 'second_upstream_request', 'marker_1',
+      'barrier_release', 'marker_2', 'terminal',
+    ];
+    const positions = required.map((event) => events.findIndex((entry) => entry.event === event));
+    if (positions.some((position) => position === -1)
+      || positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+      throw new Error(`${client} timeline did not prove producer/client barrier chronology`);
+    }
+  }
 }
 
 module.exports = { DEFAULT_EVIDENCE_ROOT, runCliSmoke, temporaryClientPaths };

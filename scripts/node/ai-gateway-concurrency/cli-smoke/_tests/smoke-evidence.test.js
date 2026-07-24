@@ -51,7 +51,30 @@ function files() {
       codexExecutable: executable('codex'),
       claudeExecutable: executable('claude'),
       opencodeExecutable: executable('opencode'),
+      codexSourceRoot: root,
+      codexSourceIdentity: 'github:openai/codex',
+      codexBuildCommand: 'cargo build --release --locked',
+      claudePackageName: '@anthropic-ai/claude-code',
+      claudePackageVersion: 'fixed-test-version',
+      claudePackageIntegrity: 'sha512-fixed-test-integrity',
+      claudeInstallCommand: 'npm install --global @anthropic-ai/claude-code@fixed-test-version',
+      opencodeSourceRoot: root,
+      opencodeSourceIdentity: 'github:configured/opencode',
+      opencodeBuildCommand: 'bun run build',
     },
+  };
+}
+
+function provenanceFixture() {
+  const entry = (client, claim) => ({
+    client_kind: client,
+    provenance_claim: claim,
+    executable: { sha256: '0'.repeat(64) },
+  });
+  return {
+    codex: entry('codex', 'source-built-from-fixed-git-commit'),
+    claude: entry('claude', 'pinned-package-binary'),
+    opencode: entry('opencode', 'source-built-from-fixed-git-commit'),
   };
 }
 
@@ -68,6 +91,7 @@ test('smoke writes sanitized evidence and removes both temporary client homes', 
         EVIL_PARENT_CANARY: 'parent-canary',
         OPENAI_API_KEY: 'real-openai-key',
       },
+      collectClientProvenance: provenanceFixture,
       async executeInvocation(invocation, env) {
         calls.push({ invocation, env });
         assert.equal(fs.existsSync(invocation.cwd), true);
@@ -110,6 +134,7 @@ test('controlled negative preserves nonzero evidence and fails the sentinel', as
       runCliSmoke(fixture.options, {
         outputRoot: fixture.outputRoot,
         parentEnv: { PATH: '/safe/bin' },
+        collectClientProvenance: provenanceFixture,
         async executeInvocation() {
           return {
             ...result({ type: 'error', message: 'controlled failure' }),

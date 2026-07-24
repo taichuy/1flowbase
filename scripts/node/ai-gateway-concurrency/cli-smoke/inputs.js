@@ -91,6 +91,29 @@ function normalizeInputs(options) {
   const barrierReleaseUrl = options.barrierReleaseUrl
     ? loopbackUrl(options.barrierReleaseUrl, 'barrier release URL').href
     : null;
+  const requiredText = (value, label) => {
+    if (typeof value !== 'string' || value.trim() === '') fail(`${label} is required`);
+    return value;
+  };
+  const sourceRoot = (value, label) => {
+    const resolved = path.resolve(requiredText(value, label));
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) fail(`${label} must be a directory`);
+    return resolved;
+  };
+  const producerTimelineDirectory = options.producerTimelineDirectory
+    ? sourceRoot(options.producerTimelineDirectory, 'producer timeline directory')
+    : null;
+  if (producerTimelineDirectory) {
+    for (const [value, label] of [
+      [options.tmuxTiming, '--tmux-timing'],
+      [options.clientResultMarker, '--client-result-marker'],
+      [options.firstMarker, '--first-marker'],
+      [options.secondMarker, '--second-marker'],
+      [barrierReleaseUrl, '--barrier-release-url'],
+    ]) {
+      if (!value) fail(`producer timeline chronology requires ${label}`);
+    }
+  }
   return {
     manifest: readReadyManifest(options.readyManifest),
     codexExecutable: requireFile(options.codexExecutable, 'codex executable', true),
@@ -99,6 +122,27 @@ function normalizeInputs(options) {
       ? requireFile(options.opencodeExecutable, 'opencode executable', true)
       : null,
     barrierReleaseUrl,
+    producerTimelineDirectory,
+    provenance: {
+      codex: {
+        sourceRoot: sourceRoot(options.codexSourceRoot, 'codex source root'),
+        sourceIdentity: requiredText(options.codexSourceIdentity, 'codex source identity'),
+        buildCommand: requiredText(options.codexBuildCommand, 'codex build command'),
+      },
+      claude: {
+        packageName: requiredText(options.claudePackageName, 'claude package name'),
+        packageVersion: requiredText(options.claudePackageVersion, 'claude package version'),
+        packageIntegrity: requiredText(options.claudePackageIntegrity, 'claude package integrity'),
+        installCommand: requiredText(options.claudeInstallCommand, 'claude install command'),
+      },
+      ...(options.opencodeExecutable ? {
+        opencode: {
+          sourceRoot: sourceRoot(options.opencodeSourceRoot, 'opencode source root'),
+          sourceIdentity: requiredText(options.opencodeSourceIdentity, 'opencode source identity'),
+          buildCommand: requiredText(options.opencodeBuildCommand, 'opencode build command'),
+        },
+      } : {}),
+    },
   };
 }
 

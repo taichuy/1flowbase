@@ -11,9 +11,28 @@ const FIELDS = new Map([
   ['--first-marker', 'firstMarker'],
   ['--second-marker', 'secondMarker'],
   ['--barrier-release-url', 'barrierReleaseUrl'],
+  ['--client-result-marker', 'clientResultMarker'],
+  ['--producer-timeline-directory', 'producerTimelineDirectory'],
+  ['--codex-source-root', 'codexSourceRoot'],
+  ['--codex-source-identity', 'codexSourceIdentity'],
+  ['--codex-build-command', 'codexBuildCommand'],
+  ['--claude-package-name', 'claudePackageName'],
+  ['--claude-package-version', 'claudePackageVersion'],
+  ['--claude-package-integrity', 'claudePackageIntegrity'],
+  ['--claude-install-command', 'claudeInstallCommand'],
+  ['--opencode-source-root', 'opencodeSourceRoot'],
+  ['--opencode-source-identity', 'opencodeSourceIdentity'],
+  ['--opencode-build-command', 'opencodeBuildCommand'],
 ]);
 
 function usage() {
+  const provenance = [
+    'Required provenance: --codex-source-root, --codex-source-identity, --codex-build-command,',
+    '--claude-package-name, --claude-package-version, --claude-package-integrity,',
+    '--claude-install-command, and (with OpenCode) --opencode-source-root plus',
+    '--opencode-source-identity and --opencode-build-command. D3 timelines additionally use --client-result-marker',
+    'and --producer-timeline-directory.',
+  ].join(' ');
   return `Usage: node scripts/node/cli/ai-gateway-cli-smoke.js \\
   --ready-manifest <WP3-ready.json> \\
   --codex-executable <path> --claude-executable <path> [--opencode-executable <path>] \\
@@ -23,8 +42,10 @@ function usage() {
 The values may instead be supplied as AI_GATEWAY_FIXTURE_READY_FILE,
 AI_GATEWAY_CODEX_EXECUTABLE, AI_GATEWAY_CLAUDE_EXECUTABLE, and
 AI_GATEWAY_OPENCODE_EXECUTABLE. With --tmux-timing, each client runs inside an isolated
-tmux + util-linux script PTY and evidence is written below
-tmp/test-governance/compatible-stream-e2e/<run-id>/.`;
+tmux pipe-pane PTY stream (with supplementary capture-pane and util-linux timing) writes evidence below
+tmp/test-governance/compatible-stream-e2e/<run-id>/.
+
+${provenance}`;
 }
 
 function parseArgs(argv, env = process.env) {
@@ -34,6 +55,18 @@ function parseArgs(argv, env = process.env) {
     claudeExecutable: env.AI_GATEWAY_CLAUDE_EXECUTABLE,
     opencodeExecutable: env.AI_GATEWAY_OPENCODE_EXECUTABLE,
     tmuxTiming: env.AI_GATEWAY_TMUX_TIMING === '1',
+    codexSourceRoot: env.AI_GATEWAY_CODEX_SOURCE_ROOT,
+    codexSourceIdentity: env.AI_GATEWAY_CODEX_SOURCE_IDENTITY,
+    codexBuildCommand: env.AI_GATEWAY_CODEX_BUILD_COMMAND,
+    claudePackageName: env.AI_GATEWAY_CLAUDE_PACKAGE_NAME,
+    claudePackageVersion: env.AI_GATEWAY_CLAUDE_PACKAGE_VERSION,
+    claudePackageIntegrity: env.AI_GATEWAY_CLAUDE_PACKAGE_INTEGRITY,
+    claudeInstallCommand: env.AI_GATEWAY_CLAUDE_INSTALL_COMMAND,
+    opencodeSourceRoot: env.AI_GATEWAY_OPENCODE_SOURCE_ROOT,
+    opencodeSourceIdentity: env.AI_GATEWAY_OPENCODE_SOURCE_IDENTITY,
+    opencodeBuildCommand: env.AI_GATEWAY_OPENCODE_BUILD_COMMAND,
+    producerTimelineDirectory: env.AI_GATEWAY_PRODUCER_TIMELINE_DIRECTORY,
+    clientResultMarker: env.AI_GATEWAY_CLIENT_RESULT_MARKER,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];

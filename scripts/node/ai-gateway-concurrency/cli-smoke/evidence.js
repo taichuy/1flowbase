@@ -24,11 +24,15 @@ function prepareEvidenceRoot(outputRoot) {
   for (const name of ['config-manifest.json', 'codex.json', 'claude.json', 'opencode.json']) {
     fs.rmSync(path.join(outputRoot, name), { force: true });
   }
+  for (const name of ['codex', 'claude', 'opencode']) {
+    fs.rmSync(path.join(outputRoot, name), { recursive: true, force: true });
+  }
   return outputRoot;
 }
 
-function writeConfigManifest(outputRoot, value) {
-  writeJson(path.join(outputRoot, 'config-manifest.json'), value);
+function writeConfigManifest(outputRoot, value, secrets = []) {
+  const serialized = redact(`${JSON.stringify(value, null, 2)}\n`, secrets);
+  fs.writeFileSync(path.join(outputRoot, 'config-manifest.json'), serialized, { mode: 0o600 });
 }
 
 function writeClientEvidence(outputRoot, client, result, secrets) {
@@ -48,6 +52,8 @@ function writeClientEvidence(outputRoot, client, result, secrets) {
     stdout: redact(result.stdout.text, secrets),
     stderr: redact(result.stderr.text, secrets),
     pty_markers: result.pty?.markers ?? null,
+    pty_observation: result.pty?.observation ?? null,
+    timeline_events: result.pty?.timeline_events ?? null,
   };
   writeJson(path.join(outputRoot, `${client}.json`), evidence);
   if (result.pty) {

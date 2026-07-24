@@ -3,6 +3,7 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { appendTimelineEvent, readTimeline, writeMergedTimeline } = require('./timeline');
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -117,7 +118,10 @@ async function executeTmuxInvocation(
     tmuxExecutable = 'tmux',
     scriptExecutable = 'script',
     markers = [],
+    clientResultMarker,
     onFirstMarker,
+    producerTimelinePath,
+    secrets = [],
   } = {}
 ) {
   if (!artifactDirectory) throw new Error('tmux invocation artifact directory is required');
@@ -127,16 +131,26 @@ async function executeTmuxInvocation(
   const timingPath = path.join(root, 'timing.raw');
   const statusPath = path.join(root, 'status');
   const wrapperPath = path.join(root, 'run.sh');
+  const secretsPath = path.join(root, 'secrets.json');
+  const pipeDonePath = path.join(root, 'pipe.done');
+  const timelinePath = path.join(artifactDirectory, 'timeline.jsonl');
+  const pipeCapturePath = path.join(__dirname, 'pipe-pane-capture.js');
   const socket = `oneflowbase-stream-${process.pid}-${path.basename(root)}`;
   const session = 'compatible-stream';
   const doneSignal = `${socket}-done`;
   const releaseSignal = `${socket}-release`;
+  const startSignal = `${socket}-start`;
   const command = [invocation.executable, ...invocation.args].map(shellQuote).join(' ');
   let markerWatcher = null;
   let firstMarkerReleased = false;
   let secondMarkerTerminationStarted = false;
+  let barrierReleasePromise = null;
+  const observedMarkers = new Set();
+  fs.rmSync(timelinePath, { force: true });
+  fs.writeFileSync(secretsPath, JSON.stringify(secrets), { mode: 0o600 });
   fs.writeFileSync(wrapperPath, [
     '#!/bin/sh',
+    `${shellQuote(tmuxExecutable)} -L ${shellQuote(socket)} wait-for ${shellQuote(startSignal)}`,
     `${shellQuote(scriptExecutable)} -q -e -f -m advanced -O ${shellQuote(ptyPath)} -T ${shellQuote(timingPath)} -c ${shellQuote(command)}`,
     'status=$?',
     `printf '%s\\n' "$status" > ${shellQuote(statusPath)}`,
@@ -150,18 +164,49 @@ async function executeTmuxInvocation(
   const startedNs = process.hrtime.bigint();
   let timedOut = false;
   try {
-    if (markers[0] || (markers[1] && invocation.terminateAfterSecondMarker)) {
-      markerWatcher = fs.watch(root, () => {
-        if (!fs.existsSync(ptyPath)) return;
-        const visible = fs.readFileSync(ptyPath, 'utf8');
+    if (markers[0] || markers[1] || clientResultMarker) {
+      markerWatcher = fs.watch(artifactDirectory, () => {
+        if (!fs.existsSync(timelinePath)) return;
+        let outputEvents;
+        try {
+          outputEvents = readTimeline(timelinePath).filter((event) => event.event === 'tmux_output');
+        } catch {
+          return;
+        }
+        const visible = outputEvents.map((event) => event.text).join('');
+        const recordMarker = (marker, event) => {
+          const streamOffset = marker ? visible.indexOf(marker) : -1;
+          if (streamOffset === -1 || observedMarkers.has(event)) return false;
+          let bytes = 0;
+          const outputEvent = outputEvents.find((entry) => {
+            bytes += entry.text.length;
+            return streamOffset < bytes;
+          });
+          observedMarkers.add(event);
+          appendTimelineEvent(timelinePath, event, {
+            source: 'client-pty', marker, stream_offset: streamOffset,
+            monotonic_ns: outputEvent.monotonic_ns,
+          });
+          return true;
+        };
+        recordMarker(clientResultMarker, 'client_result');
         if (!firstMarkerReleased && markers[0] && visible.includes(markers[0])) {
           firstMarkerReleased = true;
-          Promise.resolve(onFirstMarker?.()).catch(() => {});
+          recordMarker(markers[0], 'marker_1');
+          appendTimelineEvent(timelinePath, 'barrier_release_started', { source: 'harness' });
+          barrierReleasePromise = Promise.resolve(onFirstMarker?.()).then(() => {
+            appendTimelineEvent(timelinePath, 'barrier_release', { source: 'harness' });
+          }).catch((error) => {
+            appendTimelineEvent(timelinePath, 'barrier_release_failed', {
+              source: 'harness', error: error.message,
+            });
+          });
         }
         if (secondMarkerTerminationStarted
-          || !invocation.terminateAfterSecondMarker
           || !markers[1]
           || !visible.includes(markers[1])) return;
+        recordMarker(markers[1], 'marker_2');
+        if (!invocation.terminateAfterSecondMarker) return;
         secondMarkerTerminationStarted = true;
         setTimeout(() => {
           spawnResult(tmuxExecutable, ['-L', socket, 'send-keys', '-t', session, 'C-c'])
@@ -178,6 +223,15 @@ async function executeTmuxInvocation(
     await requireSuccess(tmuxExecutable, [
       '-L', socket, 'new-session', '-d', '-s', session, '-c', invocation.cwd, wrapperPath,
     ]);
+    const pipeCommand = [process.execPath, pipeCapturePath, timelinePath, secretsPath, pipeDonePath]
+      .map(shellQuote).join(' ');
+    await requireSuccess(tmuxExecutable, ['-L', socket, 'pipe-pane', '-o', '-t', session, pipeCommand]);
+    appendTimelineEvent(timelinePath, 'client_started', {
+      source: 'harness',
+      tool_execution_owner: 'client',
+      gateway_role: 'transport-only',
+    });
+    await requireSuccess(tmuxExecutable, ['-L', socket, 'wait-for', '-S', startSignal]);
     await requireSuccess(tmuxExecutable, ['-L', socket, 'kill-session', '-t', 'bootstrap']);
     const wait = spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', doneSignal]);
     const timeout = new Promise((_, reject) => {
@@ -187,12 +241,26 @@ async function executeTmuxInvocation(
       }, timeoutMs).unref();
     });
     await Promise.race([wait, timeout]);
+    await barrierReleasePromise;
+    await requireSuccess(tmuxExecutable, ['-L', socket, 'pipe-pane', '-t', session]);
+    for (let attempt = 0; attempt < 20 && !fs.existsSync(pipeDonePath); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (!fs.existsSync(pipeDonePath)) throw new Error('tmux pipe-pane capture did not flush');
     const pane = await requireSuccess(tmuxExecutable, ['-L', socket, 'capture-pane', '-p', '-t', session]);
-    const stdoutText = fs.existsSync(ptyPath) ? fs.readFileSync(ptyPath, 'utf8') : pane.stdout.text;
+    const pipeText = readTimeline(timelinePath)
+      .filter((event) => event.event === 'tmux_output')
+      .map((event) => event.text)
+      .join('');
+    const stdoutText = pipeText || (fs.existsSync(ptyPath) ? fs.readFileSync(ptyPath, 'utf8') : pane.stdout.text);
     const timingText = fs.existsSync(timingPath) ? fs.readFileSync(timingPath, 'utf8') : '';
     const exitCode = fs.existsSync(statusPath)
       ? Number.parseInt(fs.readFileSync(statusPath, 'utf8').trim(), 10)
       : 1;
+    appendTimelineEvent(timelinePath, 'terminal', {
+      source: 'harness', exit_code: Number.isInteger(exitCode) ? exitCode : 1,
+    });
+    const timeline = writeMergedTimeline(timelinePath, producerTimelinePath, secrets);
     return {
       started_at: startedAt.toISOString(),
       finished_at: new Date().toISOString(),
@@ -206,6 +274,9 @@ async function executeTmuxInvocation(
         timing: timingText,
         pane: pane.stdout.text,
         markers: ptyMarkerTimeline(stdoutText, timingText, markers),
+        observation: 'tmux-pipe-pane',
+        timeline_path: timelinePath,
+        timeline_events: timeline.length,
       },
     };
   } catch (error) {
@@ -219,7 +290,7 @@ async function executeTmuxInvocation(
       timed_out: true,
       stdout: { text: '', bytes: 0, overflow: false },
       stderr: { text: error.message, bytes: Buffer.byteLength(error.message), overflow: false },
-      pty: { timing: '', pane: '' },
+      pty: { timing: '', pane: '', observation: 'tmux-pipe-pane', timeline_path: timelinePath },
     };
   } finally {
     markerWatcher?.close();
