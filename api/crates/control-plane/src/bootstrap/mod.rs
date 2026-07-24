@@ -24,35 +24,6 @@ pub struct BootstrapService<R> {
     repository: R,
 }
 
-fn password_local_authenticator_options() -> serde_json::Value {
-    serde_json::json!({
-        "description": "Local password authentication",
-        "config_form_schema": [
-            {
-                "key": "title",
-                "label": "Authenticator title",
-                "type": "string",
-                "required": true
-            },
-            {
-                "key": "description",
-                "label": "Description",
-                "type": "string",
-                "control": "textarea",
-                "read_only": false,
-                "required": false
-            },
-            {
-                "key": "enabled",
-                "label": "Enabled",
-                "type": "boolean",
-                "control": "switch"
-            }
-        ],
-        "extension_config": {}
-    })
-}
-
 impl<R> BootstrapService<R>
 where
     R: BootstrapRepository,
@@ -70,7 +41,10 @@ where
                 enabled: true,
                 is_builtin: true,
                 sort_order: 0,
-                options: password_local_authenticator_options(),
+                public_ui_block: crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK.to_string(),
+                options: crate::auth::public_ui::password_local_options(Some(
+                    "Local password authentication".to_string(),
+                )),
             })
             .await?;
         self.repository

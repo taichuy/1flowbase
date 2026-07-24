@@ -4,20 +4,134 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
-    ports::{AuthRepository, CreateMemberInput, MemberRepository, UpdateMemberInput},
+    ports::{
+        AuthRepository, CreateMemberInput, CreateSelfRegisteredMemberInput, MemberRepository,
+        SelfRegistrationRepository, UpdateMemberInput,
+    },
 };
 use domain::{ActorContext, AuditLogRecord};
 use uuid::Uuid;
 
 use crate::{
     auth_repository::identity_binding::{
-        insert_password_local_identities, replace_password_local_contact_identities,
+        insert_password_identities_for_authenticator, insert_password_local_identities,
+        replace_password_local_contact_identities,
     },
     auth_repository::map_user_row,
     repositories::{
-        is_root_user, tenant_id_for_workspace, workspace_id_for_user, PgControlPlaneStore,
+        is_root_user, primary_workspace_id, tenant_id_for_workspace, workspace_id_for_user,
+        PgControlPlaneStore,
     },
 };
+
+#[async_trait]
+impl SelfRegistrationRepository for PgControlPlaneStore {
+    async fn create_self_registered_member(
+        &self,
+        input: &CreateSelfRegisteredMemberInput,
+    ) -> Result<domain::UserRecord> {
+        let workspace_id = primary_workspace_id(self.pool()).await?;
+        let default_role: (Uuid, String, Uuid) = sqlx::query_as(
+            r#"
+            select id, code, scope_id
+            from roles
+            where scope_kind = 'workspace'
+              and workspace_id = $1
+              and is_default_member_role = true
+            limit 1
+            "#,
+        )
+        .bind(workspace_id)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::NotFound("default_member_role"))?;
+        let user_id = Uuid::now_v7();
+        let mut tx = self.pool().begin().await?;
+
+        let result = async {
+            sqlx::query(
+                r#"
+                insert into users (
+                    id, account, email, phone, password_hash, name, nickname, avatar_url,
+                    introduction, default_display_role, email_login_enabled,
+                    phone_login_enabled, status, session_version, created_by, updated_by
+                )
+                values ($1, $2, $3, null, $4, $2, $2, null, '', $5, true, false,
+                        'active', 1, null, null)
+                "#,
+            )
+            .bind(user_id)
+            .bind(&input.account)
+            .bind(&input.email)
+            .bind(&input.password_hash)
+            .bind(&default_role.1)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                insert into workspace_memberships (
+                    id, workspace_id, user_id, introduction, created_by, updated_by
+                )
+                values ($1, $2, $3, '', null, null)
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(workspace_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+
+            insert_password_identities_for_authenticator(
+                &mut tx,
+                input.authenticator_id,
+                user_id,
+                &input.account,
+                &input.email,
+                None,
+                None,
+            )
+            .await?;
+
+            sqlx::query(
+                r#"
+                insert into user_role_bindings (
+                    id, user_id, role_id, scope_id, created_by, updated_by
+                )
+                values ($1, $2, $3, $4, null, null)
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(user_id)
+            .bind(default_role.0)
+            .bind(default_role.2)
+            .execute(&mut *tx)
+            .await?;
+
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+        if let Err(error) = result {
+            if error
+                .downcast_ref::<sqlx::Error>()
+                .and_then(|sqlx_error| sqlx_error.as_database_error())
+                .and_then(|database_error| database_error.code())
+                .as_deref()
+                == Some("23505")
+            {
+                return Err(
+                    ControlPlaneError::Conflict("self_registration_identity_exists").into(),
+                );
+            }
+            return Err(error.into());
+        }
+        tx.commit().await?;
+
+        self.find_user_by_id(user_id)
+            .await?
+            .ok_or_else(|| anyhow!("self-registered member missing after creation"))
+    }
+}
 
 #[async_trait]
 impl MemberRepository for PgControlPlaneStore {

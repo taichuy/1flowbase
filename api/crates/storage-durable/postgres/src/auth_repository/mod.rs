@@ -147,8 +147,8 @@ impl BootstrapRepository for PgControlPlaneStore {
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         sqlx::query(
             r#"
-            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
-            values ($1, $2, $3, $4, $5, $6, $7)
+            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options)
+            values ($1, $2, $3, $4, $5, $6, $7, $8)
             on conflict (id) do update
               set auth_type = excluded.auth_type,
                   title = case
@@ -160,6 +160,10 @@ impl BootstrapRepository for PgControlPlaneStore {
                     else excluded.enabled
                   end,
                   is_builtin = excluded.is_builtin,
+                  public_ui_block = case
+                    when authenticators.public_ui_block = '' then excluded.public_ui_block
+                    else authenticators.public_ui_block
+                  end,
                   options = case
                     when authenticators.id <> '00000000-0000-0000-0000-000000000001' then excluded.options
                     else
@@ -194,6 +198,7 @@ impl BootstrapRepository for PgControlPlaneStore {
         .bind(authenticator.enabled)
         .bind(authenticator.is_builtin)
         .bind(authenticator.sort_order)
+        .bind(&authenticator.public_ui_block)
         .bind(&authenticator.options)
         .execute(self.pool())
         .await?;
@@ -550,7 +555,7 @@ impl BootstrapRepository for PgControlPlaneStore {
 impl AuthRepository for PgControlPlaneStore {
     async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
         let row = sqlx::query(
-            "select id, auth_type, title, enabled, is_builtin, sort_order, options from authenticators where id = $1",
+            "select id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options from authenticators where id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool())
@@ -564,6 +569,7 @@ impl AuthRepository for PgControlPlaneStore {
                 enabled: row.get("enabled"),
                 is_builtin: row.get("is_builtin"),
                 sort_order: row.get("sort_order"),
+                public_ui_block: row.get("public_ui_block"),
                 options: row.get("options"),
             })
         }))
@@ -572,7 +578,7 @@ impl AuthRepository for PgControlPlaneStore {
     async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
         let rows = sqlx::query(
             r#"
-            select id, auth_type, title, enabled, is_builtin, sort_order, options
+            select id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options
             from authenticators
             order by sort_order asc, id asc
             "#,
@@ -590,6 +596,7 @@ impl AuthRepository for PgControlPlaneStore {
                     enabled: row.get("enabled"),
                     is_builtin: row.get("is_builtin"),
                     sort_order: row.get("sort_order"),
+                    public_ui_block: row.get("public_ui_block"),
                     options: row.get("options"),
                 })
             })

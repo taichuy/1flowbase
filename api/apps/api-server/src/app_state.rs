@@ -209,6 +209,7 @@ pub struct ApiState {
     #[cfg(test)]
     pub(crate) test_database: Option<Arc<postgres_test_support::PostgresTestSchema>>,
     pub store: MainDurableStore,
+    pub authenticator_registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
     pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,

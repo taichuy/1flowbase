@@ -41,6 +41,17 @@ fn registry_rejects_uncontrolled_path() {
 }
 
 #[test]
+fn registry_accepts_manifest_validated_public_auth_path() {
+    let mut registry = HostRouteRegistry::default();
+
+    registry
+        .register(test_route_with_path(
+            "/api/public/auth/file-security/qr/start",
+        ))
+        .unwrap();
+}
+
+#[test]
 fn registry_rejects_empty_action_target() {
     let mut registry = HostRouteRegistry::default();
 

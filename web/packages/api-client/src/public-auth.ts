@@ -18,9 +18,8 @@ export interface PublicLoginInstance {
   title: string;
   description?: string | null;
   sort_order: number;
-  flow: string;
-  sign_in_path: string;
-  public_options: Record<string, unknown>;
+  public_ui_block: string;
+  public_variables: Record<string, unknown>;
 }
 
 export interface PublicLoginInstancesResponse {

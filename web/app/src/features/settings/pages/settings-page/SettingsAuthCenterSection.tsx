@@ -28,7 +28,10 @@ import {
   SchemaFormDrawer,
   type SchemaFormValues
 } from '../../../../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
-import type { PluginFormSchema } from '../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
+import type {
+  PluginFormSchema,
+  PluginFormValue
+} from '../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   createSettingsAuthCenterAuthenticator,
@@ -56,6 +59,9 @@ type AuthenticatorConfigFormValues = {
   title: string;
   enabled: boolean;
   description: string | null;
+  self_registration_enabled: boolean;
+  public_ui_block: string;
+  extension_config: Record<string, unknown>;
 };
 
 type AuthenticatorLifecycleFormValues = {
@@ -71,47 +77,59 @@ function authCenterConfigFormValues(row: AuthenticatorRow): SchemaFormValues {
       ? row.config_values.description
       : null;
 
-  return {
+  const values: SchemaFormValues = {
     title: row.title,
     enabled: row.enabled,
-    description
+    description,
+    self_registration_enabled:
+      row.config_values.self_registration_enabled === true,
+    public_ui_block:
+      typeof row.config_values.public_ui_block === 'string'
+        ? row.config_values.public_ui_block
+        : ''
   };
+  for (const field of row.config_schema) {
+    const value = row.config_values[field.key];
+    if (isPluginFormValue(value)) values[field.key] = value;
+  }
+  return values;
 }
 
-function authCenterConfigFormSchema(): PluginFormSchema {
+function authCenterConfigFormSchema(row: AuthenticatorRow): PluginFormSchema {
   return {
     schema_version: '1.0.0',
-    fields: [
-      {
-        key: 'title',
-        label: i18nText('settings', 'auto.name'),
-        type: 'string',
-        required: true
-      },
-      {
-        key: 'description',
-        label: i18nText('settings', 'auto.description'),
-        type: 'string',
-        control: 'textarea'
-      },
-      {
-        key: 'enabled',
-        label: i18nText('settings', 'auto.enabled'),
-        type: 'boolean'
-      }
-    ]
+    fields: row.config_schema.map((field) => ({ ...field }))
   };
 }
 
 function toAuthenticatorConfigFormValues(
-  values: SchemaFormValues
+  values: SchemaFormValues,
+  row: AuthenticatorRow
 ): AuthenticatorConfigFormValues {
+  const commonKeys = new Set([
+    'title', 'description', 'enabled', 'self_registration_enabled', 'public_ui_block'
+  ]);
+  const extension_config = Object.fromEntries(
+    row.config_schema
+      .filter((field) => !commonKeys.has(field.key) && values[field.key] !== undefined)
+      .map((field) => [field.key, values[field.key]])
+  );
   return {
     title: String(values.title ?? ''),
     enabled: Boolean(values.enabled),
     description:
-      typeof values.description === 'string' ? values.description : null
+      typeof values.description === 'string' ? values.description : null,
+    self_registration_enabled: values.self_registration_enabled === true,
+    public_ui_block: String(values.public_ui_block ?? ''),
+    extension_config
   };
+}
+
+function isPluginFormValue(value: unknown): value is PluginFormValue {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return true;
+  if (Array.isArray(value)) return value.every(isPluginFormValue);
+  return typeof value === 'object' && value !== null &&
+    Object.values(value).every(isPluginFormValue);
 }
 
 function authCenterLifecycleErrorMessage(error: unknown, fallbackKey: string) {
@@ -163,7 +181,12 @@ function AuthenticatorConfigDrawer({
     () => (authenticator ? authCenterConfigFormValues(authenticator) : {}),
     [authenticator]
   );
-  const schema = useMemo(() => authCenterConfigFormSchema(), []);
+  const schema = useMemo(
+    () => authenticator
+      ? authCenterConfigFormSchema(authenticator)
+      : { schema_version: '1.0.0', fields: [] },
+    [authenticator]
+  );
 
   const statusMessages = [
     accessErrorMessage
@@ -202,7 +225,7 @@ function AuthenticatorConfigDrawer({
       resizeLabel="调整认证器配置抽屉宽度"
       onCancel={onClose}
       onSubmit={(values) =>
-        onSubmit(authenticator.id, toAuthenticatorConfigFormValues(values))
+        onSubmit(authenticator.id, toAuthenticatorConfigFormValues(values, authenticator))
       }
     />
   ) : null;
@@ -298,7 +321,10 @@ export function SettingsAuthCenterSection() {
         {
           title: input.values.title,
           enabled: input.values.enabled,
-          description: input.values.description
+          description: input.values.description,
+          self_registration_enabled: input.values.self_registration_enabled,
+          public_ui_block: input.values.public_ui_block,
+          extension_config: input.values.extension_config
         },
         csrfToken
       );

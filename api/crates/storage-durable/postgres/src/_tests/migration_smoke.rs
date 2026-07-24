@@ -828,6 +828,7 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: serde_json::json!({}),
         })
         .await
@@ -895,6 +896,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: "default password block".into(),
             options: serde_json::json!({
                 "description": "Local password authentication",
                 "config_form_schema": [
@@ -920,6 +922,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
     saved.title = "Custom Password".into();
     saved.enabled = false;
+    saved.public_ui_block = "custom saved password block".into();
     saved.options = serde_json::json!({
         "description": "Custom local password",
         "config_form_schema": [
@@ -946,6 +949,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: "upgraded default password block".into(),
             options: serde_json::json!({
                 "description": "Local password authentication",
                 "config_form_schema": [
@@ -971,6 +975,10 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
     assert_eq!(after_bootstrap.title, "Custom Password");
     assert!(!after_bootstrap.enabled);
+    assert_eq!(
+        after_bootstrap.public_ui_block,
+        "custom saved password block"
+    );
     assert_eq!(
         after_bootstrap.options["description"],
         serde_json::json!("Custom local password")
@@ -1002,6 +1010,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
             enabled: false,
             is_builtin: false,
             sort_order: 10,
+            public_ui_block: "old oidc block".into(),
             options: serde_json::json!({
                 "description": "Old OIDC",
                 "extension_config": {
@@ -1020,6 +1029,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
             enabled: true,
             is_builtin: false,
             sort_order: 20,
+            public_ui_block: "new oidc block".into(),
             options: serde_json::json!({
                 "description": "New OIDC",
                 "extension_config": {
@@ -1033,6 +1043,9 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
     let oidc = store.find_authenticator(oidc_id).await.unwrap().unwrap();
     assert_eq!(oidc.title, "OIDC Login");
     assert!(oidc.enabled);
+    // Provider reconciliation may refresh provider-owned defaults/config, but a
+    // non-empty instance Block is user-owned and must survive plugin upgrades.
+    assert_eq!(oidc.public_ui_block, "old oidc block");
     assert_eq!(oidc.options["description"], serde_json::json!("New OIDC"));
     assert_eq!(
         oidc.options["extension_config"]["issuer_url"],

@@ -42,7 +42,8 @@ impl PgControlPlaneStore {
             update authenticators
             set title = $2,
                 enabled = $3,
-                options = $4,
+                public_ui_block = $4,
+                options = $5,
                 updated_at = now()
             where id = $1
             "#,
@@ -50,6 +51,7 @@ impl PgControlPlaneStore {
         .bind(authenticator.id)
         .bind(&authenticator.title)
         .bind(authenticator.enabled)
+        .bind(&authenticator.public_ui_block)
         .bind(&authenticator.options)
         .execute(&self.pool)
         .await?;
@@ -60,8 +62,8 @@ impl PgControlPlaneStore {
     pub async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         sqlx::query(
             r#"
-            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
-            values ($1, $2, $3, $4, $5, $6, $7)
+            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options)
+            values ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
         )
         .bind(authenticator.id)
@@ -70,6 +72,7 @@ impl PgControlPlaneStore {
         .bind(authenticator.enabled)
         .bind(authenticator.is_builtin)
         .bind(authenticator.sort_order)
+        .bind(&authenticator.public_ui_block)
         .bind(&authenticator.options)
         .execute(&self.pool)
         .await?;

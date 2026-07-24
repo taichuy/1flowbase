@@ -84,6 +84,9 @@ pub struct UpdateAuthCenterAuthenticatorConfigBody {
     pub title: String,
     pub enabled: bool,
     pub description: Option<Option<String>>,
+    pub self_registration_enabled: bool,
+    pub public_ui_block: String,
+    pub extension_config: Option<Map<String, Value>>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -184,11 +187,20 @@ fn auth_center_config_schema_from_options(
     options: &Value,
     extension_config: &Map<String, Value>,
 ) -> Vec<AuthCenterConfigFieldResponse> {
-    options
+    let provider_fields = options
         .get("config_form_schema")
         .cloned()
         .and_then(|value| serde_json::from_value(value).ok())
-        .unwrap_or_else(|| auth_center_config_schema(extension_config))
+        .unwrap_or_else(|| auth_center_config_schema(extension_config));
+    let mut fields: Vec<AuthCenterConfigFieldResponse> =
+        serde_json::from_value(control_plane::auth::public_ui::auth_common_config_form_schema())
+            .expect("core auth center config schema must be valid");
+    for field in provider_fields {
+        if !fields.iter().any(|existing| existing.key == field.key) {
+            fields.push(field);
+        }
+    }
+    fields
 }
 
 fn auth_center_description(options: &Value) -> Option<String> {
@@ -214,9 +226,21 @@ fn auth_center_config_response_values(
         description.map(Value::String).unwrap_or(Value::Null),
     );
     values.insert(
-        "extension_config".to_string(),
-        Value::Object(extension_config),
+        "self_registration_enabled".to_string(),
+        extension_config
+            .get("self_registration_enabled")
+            .cloned()
+            .unwrap_or(Value::Bool(false)),
     );
+    values.insert(
+        "public_ui_block".to_string(),
+        Value::String(authenticator.public_ui_block.clone()),
+    );
+    values.insert(
+        "extension_config".to_string(),
+        Value::Object(extension_config.clone()),
+    );
+    values.extend(extension_config);
     values
 }
 
@@ -271,9 +295,12 @@ pub async fn get_auth_center_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let overview = AuthCenterSettingsService::new(state.store.clone())
-        .overview(&context.actor)
-        .await?;
+    let overview = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .overview(&context.actor)
+    .await?;
     Ok(Json(ApiSuccess::new(auth_center_overview_response(
         overview,
     ))))
@@ -304,18 +331,21 @@ pub async fn create_auth_center_authenticator(
 > {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::new(state.store.clone())
-        .create_authenticator(
-            &context.actor,
-            CreateAuthCenterAuthenticatorCommand {
-                auth_type: body.auth_type,
-                title: body.title,
-                description: body.description,
-                enabled: body.enabled,
-                sort_order: body.sort_order,
-            },
-        )
-        .await?;
+    let authenticator = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .create_authenticator(
+        &context.actor,
+        CreateAuthCenterAuthenticatorCommand {
+            auth_type: body.auth_type,
+            title: body.title,
+            description: body.description,
+            enabled: body.enabled,
+            sort_order: body.sort_order,
+        },
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -352,16 +382,19 @@ pub async fn copy_auth_center_authenticator(
 > {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::new(state.store.clone())
-        .copy_authenticator(
-            &context.actor,
-            CopyAuthCenterAuthenticatorCommand {
-                source_id: id,
-                title: body.title,
-                sort_order: body.sort_order,
-            },
-        )
-        .await?;
+    let authenticator = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .copy_authenticator(
+        &context.actor,
+        CopyAuthCenterAuthenticatorCommand {
+            source_id: id,
+            title: body.title,
+            sort_order: body.sort_order,
+        },
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -390,9 +423,12 @@ pub async fn delete_auth_center_authenticator(
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    AuthCenterSettingsService::new(state.store.clone())
-        .delete_authenticator(&context.actor, id)
-        .await?;
+    AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .delete_authenticator(&context.actor, id)
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -414,9 +450,12 @@ pub async fn reorder_auth_center_authenticators(
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let overview = AuthCenterSettingsService::new(state.store.clone())
-        .reorder_authenticators(&context.actor, &body.ids)
-        .await?;
+    let overview = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .reorder_authenticators(&context.actor, &body.ids)
+    .await?;
     Ok(Json(ApiSuccess::new(auth_center_overview_response(
         overview,
     ))))
@@ -439,9 +478,12 @@ pub async fn enable_auth_center_authenticator(
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::new(state.store.clone())
-        .enable_authenticator(&context.actor, id)
-        .await?;
+    let authenticator = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .enable_authenticator(&context.actor, id)
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         to_auth_center_authenticator_response(authenticator),
@@ -468,17 +510,23 @@ pub async fn update_auth_center_authenticator_config(
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::new(state.store.clone())
-        .update_authenticator(
-            &context.actor,
-            UpdateAuthCenterAuthenticatorCommand {
-                authenticator_id: id,
-                title: body.title,
-                enabled: body.enabled,
-                description: body.description,
-            },
-        )
-        .await?;
+    let authenticator = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .update_authenticator(
+        &context.actor,
+        UpdateAuthCenterAuthenticatorCommand {
+            authenticator_id: id,
+            title: body.title,
+            enabled: body.enabled,
+            description: body.description,
+            self_registration_enabled: body.self_registration_enabled,
+            public_ui_block: body.public_ui_block,
+            extension_config: body.extension_config,
+        },
+    )
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         to_auth_center_authenticator_response(authenticator),

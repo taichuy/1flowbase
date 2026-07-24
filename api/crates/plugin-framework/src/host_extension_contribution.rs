@@ -51,6 +51,20 @@ pub struct HostInfrastructureProviderManifest {
     pub config_schema: Vec<PluginFormFieldSchema>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthProviderContributionManifest {
+    pub auth_type: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub config_schema: Vec<PluginFormFieldSchema>,
+    pub default_public_ui_block: String,
+    #[serde(default)]
+    pub public_variable_keys: Vec<String>,
+    #[serde(default)]
+    pub public_route_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostExtensionRouteActionManifest {
@@ -183,6 +197,8 @@ pub struct HostExtensionContributionManifest {
     pub extends_resources: Vec<String>,
     pub infrastructure_providers: Vec<HostInfrastructureProviderManifest>,
     #[serde(default)]
+    pub auth_providers: Vec<AuthProviderContributionManifest>,
+    #[serde(default)]
     pub scope_providers: Vec<ScopeProviderContributionManifest>,
     pub routes: Vec<HostExtensionRouteManifest>,
     #[serde(default)]
@@ -301,12 +317,21 @@ fn validate_host_extension_contribution_manifest(
     for provider in &manifest.scope_providers {
         validate_scope_provider_contribution(provider)?;
     }
+    validate_auth_provider_contributions(manifest)?;
+    let public_auth_route_ids = manifest
+        .auth_providers
+        .iter()
+        .flat_map(|provider| provider.public_route_ids.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
     for route in &manifest.routes {
         validate_non_empty(&route.route_id, "routes[].route_id")?;
         validate_route_method(&route.method)?;
-        if !is_controlled_host_route_path(&route.path) {
+        if !is_controlled_host_route_path(&route.path)
+            && !(public_auth_route_ids.contains(route.route_id.as_str())
+                && route.path.starts_with("/api/public/auth/"))
+        {
             return Err(PluginFrameworkError::invalid_provider_package(
-                "routes[].path must start with /api/system/ or /api/callbacks/",
+                "routes[].path must start with /api/system/, /api/callbacks/, or be an auth_providers[].public_route_ids route under /api/public/auth/",
             ));
         }
         validate_non_empty(&route.action.resource, "routes[].action.resource")?;
@@ -332,6 +357,108 @@ fn validate_host_extension_contribution_manifest(
             return Err(PluginFrameworkError::invalid_provider_package(
                 "migrations[].path must start with migrations/postgres/ and end with .sql",
             ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_auth_provider_contributions(
+    manifest: &HostExtensionContributionManifest,
+) -> FrameworkResult<()> {
+    let routes = manifest
+        .routes
+        .iter()
+        .map(|route| (route.route_id.as_str(), route.path.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let mut auth_types = BTreeSet::new();
+    let mut route_owners = BTreeMap::<&str, &str>::new();
+
+    for provider in &manifest.auth_providers {
+        validate_non_empty(&provider.auth_type, "auth_providers[].auth_type")?;
+        validate_extension_owned_id(
+            &manifest.extension_id,
+            &provider.auth_type,
+            "auth_providers[].auth_type",
+        )?;
+        if !auth_types.insert(provider.auth_type.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "auth_providers[].auth_type must be unique",
+            ));
+        }
+        validate_non_empty(&provider.display_name, "auth_providers[].display_name")?;
+        validate_non_empty(
+            &provider.default_public_ui_block,
+            "auth_providers[].default_public_ui_block",
+        )?;
+        let mut config_keys = BTreeSet::new();
+        for field in &provider.config_schema {
+            validate_non_empty(&field.key, "auth_providers[].config_schema[].key")?;
+            validate_non_empty(&field.label, "auth_providers[].config_schema[].label")?;
+            validate_non_empty(&field.field_type, "auth_providers[].config_schema[].type")?;
+            if [
+                "title",
+                "description",
+                "enabled",
+                "self_registration_enabled",
+                "public_ui_block",
+            ]
+            .contains(&field.key.as_str())
+            {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].config_schema[].key conflicts with a core authenticator field",
+                ));
+            }
+            if !config_keys.insert(field.key.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].config_schema[].key must be unique",
+                ));
+            }
+        }
+        let mut public_variable_keys = BTreeSet::new();
+        for key in &provider.public_variable_keys {
+            validate_non_empty(key, "auth_providers[].public_variable_keys[]")?;
+            if !public_variable_keys.insert(key.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].public_variable_keys[] must be unique",
+                ));
+            }
+            if !config_keys.contains(key.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].public_variable_keys[] must reference config_schema[].key",
+                ));
+            }
+        }
+        let mut provider_routes = BTreeSet::new();
+        for route_id in &provider.public_route_ids {
+            validate_extension_owned_id(
+                &manifest.extension_id,
+                route_id,
+                "auth_providers[].public_route_ids[]",
+            )?;
+            if !provider_routes.insert(route_id.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].public_route_ids[] must be unique",
+                ));
+            }
+            let path = routes.get(route_id.as_str()).ok_or_else(|| {
+                PluginFrameworkError::invalid_provider_package(
+                    "auth_providers[].public_route_ids[] must reference routes[].route_id",
+                )
+            })?;
+            if !path.starts_with("/api/public/auth/") {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth provider public routes must start with /api/public/auth/",
+                ));
+            }
+            if route_owners
+                .insert(route_id.as_str(), provider.auth_type.as_str())
+                .is_some()
+            {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "auth provider public route must have one owner",
+                ));
+            }
         }
     }
 
