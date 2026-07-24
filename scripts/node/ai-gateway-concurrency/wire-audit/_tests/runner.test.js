@@ -22,4 +22,5 @@ test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approva
     'programmatic_tool_calling', 'shell', 'mcp_list_tools', 'mcp_call',
     'mcp_approval_request', 'mcp_approval_response', canary,
   ]) assert.match(wire, new RegExp(value, 'u'));
+  assert.doesNotMatch(wire, /wire_audit_vector/u);
 });

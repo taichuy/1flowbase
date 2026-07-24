@@ -9,7 +9,7 @@ const {
   TRANSPORT,
   assertDistinctRequestNonces,
 } = require('../../contracts');
-const { createMockUpstream } = require('..');
+const { createMockUpstream, wireAuditVectorFromBody } = require('..');
 const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
 
 async function withMockUpstream(run, options = {}) {
@@ -34,6 +34,21 @@ function parseSse(text) {
     return { event, data: JSON.parse(data) };
   });
 }
+
+test('wire audit vector is inferred from the public Responses body', () => {
+  assert.equal(wireAuditVectorFromBody({
+    tools: [{ type: 'tool_search' }],
+    input: [{ type: 'tool_search_call' }],
+  }), 'tool-search-additional-tools');
+  assert.equal(wireAuditVectorFromBody({
+    input: [{ type: 'tool_search_output' }, { type: 'additional_tools' }],
+  }), 'tool-search-output-additional-tools');
+  assert.equal(wireAuditVectorFromBody({
+    tools: [{ type: 'file_search' }, { type: 'programmatic_tool_calling' }],
+  }), 'hosted-tools');
+  assert.equal(wireAuditVectorFromBody({ tools: [{ type: 'mcp' }] }), 'mcp-list-call-approval');
+  assert.equal(wireAuditVectorFromBody({ input: 'ordinary request' }), null);
+});
 
 async function waitFor(predicate, timeoutMs = 500) {
   const deadline = Date.now() + timeoutMs;

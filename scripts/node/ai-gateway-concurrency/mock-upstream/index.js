@@ -161,6 +161,25 @@ function gatewayExecutorProbeUrl(body) {
   return /GATEWAY_EXECUTOR_PROBE_URL=([^\\"\s]+)/u.exec(encoded)?.[1] ?? null;
 }
 
+function wireAuditVectorFromBody(body) {
+  const values = [
+    ...(Array.isArray(body.tools) ? body.tools : []),
+    ...(Array.isArray(body.input) ? body.input : []),
+  ];
+  const kinds = new Set(values.map((item) => item?.type).filter(Boolean));
+  if (kinds.has('mcp')) return 'mcp-list-call-approval';
+  if (['file_search', 'programmatic_tool_calling', 'shell'].some((kind) => kinds.has(kind))) {
+    return 'hosted-tools';
+  }
+  if (kinds.has('tool_search_output') || kinds.has('additional_tools')) {
+    return 'tool-search-output-additional-tools';
+  }
+  if (kinds.has('tool_search') || kinds.has('tool_search_call')) {
+    return 'tool-search-additional-tools';
+  }
+  return null;
+}
+
 function observeWireVectors(body, requestTimeline, counters) {
   const values = [...(Array.isArray(body.tools) ? body.tools : []), ...(Array.isArray(body.input) ? body.input : [])];
   const kinds = values.map((item) => item?.type).filter(Boolean);
@@ -332,7 +351,7 @@ function createMockUpstream(options = {}) {
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
       const isToolResult = containsValue(body, '1flowbase-client-tool-result');
       const isClientTextTurn = containsValue(body, '1flowbase gateway sentinel ok');
-      const wireAuditVector = body.metadata?.wire_audit_vector;
+      const wireAuditVector = wireAuditVectorFromBody(body);
       if (isToolTurn && !isToolResult) requestTimeline.record('tool_call');
       if (isToolResult) requestTimeline.record('second_upstream_request');
       const stream = path === MOCK_ROUTE.RESPONSES
@@ -475,4 +494,4 @@ function createMockUpstream(options = {}) {
   };
 }
 
-module.exports = { createMockUpstream };
+module.exports = { createMockUpstream, wireAuditVectorFromBody };

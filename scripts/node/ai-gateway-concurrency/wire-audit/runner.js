@@ -87,7 +87,6 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
       body: JSON.stringify({
         ...vector.body,
         model: inputs.manifest.openai.model,
-        metadata: { wire_audit_vector: vector.name },
       }),
     });
     if (!response.ok) throw new Error(`WireAudit ${vector.name} returned HTTP ${response.status}`);
