@@ -127,6 +127,7 @@
     "js_block_trial_requires_selected_block": "Code block trial run requires the selected block.",
     "js_code": "JS code",
     "jsx_studio": "TSX Editor",
+    "close": "Close",
     "jsx_studio_resources": "TSX Editor resources",
     "json_object_required": "{{value1}} must be a JSON object.",
     "kind": "Kind",

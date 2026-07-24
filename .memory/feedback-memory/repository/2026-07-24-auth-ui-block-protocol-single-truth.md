@@ -32,6 +32,8 @@ scope:
 
 后端插件安装后无法修改 Core 前端时，不得把简单登录交给 Schema UI、复杂登录交给 TSX，或保留 Core 默认表单形成两套维护路径。每个认证器实例持久化一个完整 `public_ui_block`，区块本身决定登录、注册、扫码、跳转和布局；Core 仅发现实例、选择实例、注入后端公开变量与 canonical Block context、挂载共享 renderer/runtime，并隔离错误。
 
+认证中心的 `UI` 作者入口同样必须复用 Frontstage 代码区块的标准浮动 TSX Studio 基准，包括共享窗口、编辑器、状态与窗口动作；不得只抽 Monaco 后再包一层 Auth 专用 Drawer / Modal，形成第二套作者交互。
+
 显示变量只负责让 Block 决定界面。后端动作必须重新读取持久化配置并独立授权，浏览器篡改变量、Block 或请求不能开启注册等能力。
 
 ## 原因

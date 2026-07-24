@@ -127,6 +127,7 @@
     "js_block_trial_requires_selected_block": "代码区块试运行需要当前选中的区块。",
     "js_code": "JS 代码",
     "jsx_studio": "TSX 编辑器",
+    "close": "关闭",
     "jsx_studio_resources": "TSX 编辑器资源",
     "json_object_required": "{{value1}} 必须是 JSON object。",
     "kind": "类型",

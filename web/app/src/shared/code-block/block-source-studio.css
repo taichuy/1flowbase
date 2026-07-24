@@ -1,9 +1,4 @@
-.frontstage-jsx-studio .ant-drawer-body {
-  overflow: hidden;
-  padding: 0;
-}
-
-.frontstage-jsx-studio__drawer-body {
+.frontstage-jsx-studio__window-body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;

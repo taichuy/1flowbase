@@ -167,7 +167,7 @@
       "web/app/src/features/frontstage/components/frontstage-node-action-button.css",
       "web/app/src/features/frontstage/components/jsx-studio/FrontstageJsxStudioDrawer.tsx",
       "web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx",
-      "web/app/src/features/frontstage/components/jsx-studio/jsx-studio.css",
+      "web/app/src/shared/code-block/block-source-studio.css",
       "web/app/src/shared/ui/window-workspace/WindowWorkspaceProvider.tsx",
       "web/app/src/shared/ui/window-workspace/WindowWorkspaceWindow.tsx",
       "web/app/src/shared/ui/window-workspace/window-workspace-state.ts",

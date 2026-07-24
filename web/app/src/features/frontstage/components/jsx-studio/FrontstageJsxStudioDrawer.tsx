@@ -3,9 +3,6 @@ import {
   AppstoreOutlined,
   CodeOutlined,
   DatabaseOutlined,
-  CloseOutlined,
-  CompressOutlined,
-  FullscreenOutlined,
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -15,12 +12,13 @@ import {
   createJsBlockDiagnostics,
   validateJsBlockSource
 } from '@1flowbase/page-runtime';
-import { Alert, Button, Modal, Space, Tooltip, Typography } from 'antd';
+import { Alert, Button, Modal, Tooltip } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { BlockSourceEditor } from '../../../../shared/code-block/BlockSourceEditor';
+import { BlockStudioWindowHeader } from '../../../../shared/code-block/BlockStudioWindowHeader';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import {
@@ -52,7 +50,7 @@ import {
   type FrontstageJsxStudioSection
 } from './JsxStudioResourcePanel';
 
-import './jsx-studio.css';
+import '../../../../shared/code-block/block-source-studio.css';
 
 export interface FrontstageJsxStudioDrawerProps {
   open: boolean;
@@ -410,7 +408,7 @@ function FrontstageJsxStudioWindow({
       title={i18nText('frontstage', 'auto.jsx_studio')}
       testId={`frontstage-jsx-studio-${block.codeRef}`}
       className="frontstage-jsx-studio frontstage-jsx-studio--window"
-      bodyClassName="frontstage-jsx-studio__drawer-body"
+      bodyClassName="frontstage-jsx-studio__window-body"
       dragHandleSelector="[data-window-drag-handle='true']"
       initialRect={() => windowEntry.rect}
       rect={windowEntry.rect}
@@ -423,61 +421,37 @@ function FrontstageJsxStudioWindow({
         windowWorkspace.setRect(mainWindowId, nextRect)
       }
     >
-      <header
-        className="frontstage-jsx-studio__window-header"
-        data-window-drag-handle="true"
-      >
-        <Space size={8}>
-          <Typography.Text strong>
-            {i18nText('frontstage', 'auto.jsx_studio')}
-          </Typography.Text>
-          <Typography.Text
-            type="secondary"
-            className="frontstage-jsx-studio__status"
-          >
-            {statusText}
-          </Typography.Text>
-        </Space>
-        <Space className="frontstage-jsx-studio__window-actions" size={8} wrap>
-          <Button onClick={reinjectContext}>
-            {i18nText('frontstage', 'auto.inject_context')}
-          </Button>
-          <Button disabled={!dirty || loading || saving} onClick={reset}>
-            {i18nText('frontstage', 'auto.reset')}
-          </Button>
-          <Button
-            type="primary"
-            disabled={!dirty || loading || saving}
-            loading={saving}
-            onClick={saveCode}
-          >
-            {i18nText('frontstage', 'auto.save_code')}
-          </Button>
-          <Button
-            aria-label={
-              windowEntry.maximized
-                ? i18nText('frontstage', 'auto.restore_window')
-                : i18nText('frontstage', 'auto.maximize_window')
-            }
-            disabled={mobile}
-            icon={
-              windowEntry.maximized ? (
-                <CompressOutlined />
-              ) : (
-                <FullscreenOutlined />
-              )
-            }
-            onClick={() =>
-              windowWorkspace.toggleMaximized(mainWindowId, viewportRect())
-            }
-          />
-          <Button
-            aria-label={i18nText('frontstage', 'auto.close')}
-            icon={<CloseOutlined />}
-            onClick={requestClose}
-          />
-        </Space>
-      </header>
+      <BlockStudioWindowHeader
+        closeLabel={i18nText('frontstage', 'auto.close')}
+        maximized={windowEntry.maximized}
+        maximizeLabel={i18nText('frontstage', 'auto.maximize_window')}
+        mobile={mobile}
+        restoreLabel={i18nText('frontstage', 'auto.restore_window')}
+        status={statusText}
+        title={i18nText('frontstage', 'auto.jsx_studio')}
+        toolbar={(
+          <>
+            <Button onClick={reinjectContext}>
+              {i18nText('frontstage', 'auto.inject_context')}
+            </Button>
+            <Button disabled={!dirty || loading || saving} onClick={reset}>
+              {i18nText('frontstage', 'auto.reset')}
+            </Button>
+            <Button
+              type="primary"
+              disabled={!dirty || loading || saving}
+              loading={saving}
+              onClick={saveCode}
+            >
+              {i18nText('frontstage', 'auto.save_code')}
+            </Button>
+          </>
+        )}
+        onClose={requestClose}
+        onToggleMaximized={() =>
+          windowWorkspace.toggleMaximized(mainWindowId, viewportRect())
+        }
+      />
       <div
         className={[
           'frontstage-jsx-studio__workspace',
