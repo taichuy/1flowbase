@@ -412,7 +412,9 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     expect(
       within(uiDialog).getByRole('button', { name: /重\s*置/ })
     ).toBeEnabled();
-    fireEvent.click(within(uiDialog).getByRole('button', { name: '保存代码' }));
+    fireEvent.click(
+      within(uiDialog).getByRole('button', { name: /保\s*存/ })
+    );
 
     await waitFor(() => expect(
       authCenterApi.updateSettingsAuthCenterAuthenticatorConfig

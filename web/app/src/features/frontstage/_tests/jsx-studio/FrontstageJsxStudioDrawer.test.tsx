@@ -524,7 +524,7 @@ async function main(ctx: unknown) {
     expect(setDraft).toHaveBeenCalledWith(
       expect.stringContaining('@1flowbase-context')
     );
-    fireEvent.click(screen.getByRole('button', { name: '保存代码' }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });
 });
