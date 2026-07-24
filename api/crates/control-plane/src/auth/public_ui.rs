@@ -125,13 +125,6 @@ pub fn auth_common_config_form_schema() -> Value {
             "label": "Enabled",
             "type": "boolean",
             "control": "switch"
-        },
-        {
-            "key": "public_ui_block",
-            "label": "Public authentication block",
-            "type": "string",
-            "control": "textarea",
-            "required": true
         }
     ])
 }
