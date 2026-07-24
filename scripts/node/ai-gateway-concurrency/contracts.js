@@ -16,6 +16,7 @@ const SCENARIO = Object.freeze({
 
 const MOCK_ROUTE = Object.freeze({
   RESPONSES: '/v1/responses',
+  CHAT_COMPLETIONS: '/v1/chat/completions',
   ANTHROPIC_MESSAGES: '/v1/messages',
 });
 

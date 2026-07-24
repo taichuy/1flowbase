@@ -29,6 +29,10 @@ function files() {
     return file;
   };
   const readyManifest = path.join(root, 'ready.json');
+  const claudePackageManifest = path.join(root, 'claude-package.json');
+  fs.writeFileSync(claudePackageManifest, JSON.stringify({
+    name: '@anthropic-ai/claude-code', version: 'fixed-test-version',
+  }));
   fs.writeFileSync(readyManifest, JSON.stringify({
     schema_version: '1flowbase.ai-gateway-fixture/v1',
     gateway_base_url: 'http://127.0.0.1:41002',
@@ -55,12 +59,14 @@ function files() {
       codexSourceIdentity: 'github:openai/codex',
       codexBuildCommand: 'cargo build --release --locked',
       claudePackageName: '@anthropic-ai/claude-code',
+      claudePackageManifest,
       claudePackageVersion: 'fixed-test-version',
       claudePackageIntegrity: 'sha512-fixed-test-integrity',
       claudeInstallCommand: 'npm install --global @anthropic-ai/claude-code@fixed-test-version',
       opencodeSourceRoot: root,
       opencodeSourceIdentity: 'github:configured/opencode',
       opencodeBuildCommand: 'bun run build',
+      secretCanary: 'sk-controlled-artifact-canary',
     },
   };
 }
@@ -92,7 +98,7 @@ test('smoke writes sanitized evidence and removes both temporary client homes', 
         OPENAI_API_KEY: 'real-openai-key',
       },
       collectClientProvenance: provenanceFixture,
-      async executeInvocation(invocation, env) {
+      async executeInvocation(invocation, env, _client, turn) {
         calls.push({ invocation, env });
         assert.equal(fs.existsSync(invocation.cwd), true);
         assert.notEqual(env.HOME, '/real/home');
@@ -100,24 +106,28 @@ test('smoke writes sanitized evidence and removes both temporary client homes', 
         if (path.basename(invocation.executable) === 'codex') {
           return result({
             type: 'item.completed',
-            item: { type: 'agent_message', text: '1flowbase gateway sentinel ok sk-openai-secret' },
+            item: { type: 'agent_message', text: `${turn === 'text' ? '1flowbase gateway sentinel ok' : '1flowbase gateway tool sentinel ok'} sk-openai-secret ${fixture.options.secretCanary}` },
           });
         }
         if (path.basename(invocation.executable) === 'claude') {
           assert.equal(fs.existsSync(invocation.settingsPath), true);
-          return result({ type: 'result', result: '1flowbase gateway sentinel ok sk-anthropic-secret' });
+          return result({ type: 'result', result: `${turn === 'text' ? '1flowbase gateway sentinel ok' : '1flowbase gateway tool sentinel ok'} sk-anthropic-secret ${fixture.options.secretCanary}` });
         }
-        return result({ type: 'text', part: { text: '1flowbase gateway sentinel ok sk-openai-secret' } });
+        return result({ type: 'text', part: { text: `${turn === 'text' ? '1flowbase gateway sentinel ok' : '1flowbase gateway tool sentinel ok'} sk-openai-secret ${fixture.options.secretCanary}` } });
       },
     });
     assert.equal(summary.status, 'pass');
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 6);
     for (const call of calls) assert.equal(fs.existsSync(path.dirname(call.invocation.cwd)), false);
 
-    const combined = ['config-manifest.json', 'codex.json', 'claude.json', 'opencode.json']
+    const combined = [
+      'config-manifest.json', 'wire-inventory.json',
+      'codex-text.json', 'codex-tool.json', 'claude-text.json', 'claude-tool.json',
+      'opencode-text.json', 'opencode-tool.json',
+    ]
       .map((name) => fs.readFileSync(path.join(fixture.outputRoot, name), 'utf8'))
       .join('\n');
-    assert.doesNotMatch(combined, /sk-openai-secret|sk-anthropic-secret|parent-canary|real-openai-key/u);
+    assert.doesNotMatch(combined, /sk-openai-secret|sk-anthropic-secret|sk-controlled-artifact-canary|parent-canary|real-openai-key/u);
     assert.match(combined, /<redacted-application-key>|<ephemeral-application-key>/u);
     assert.match(combined, /--ignore-user-config/u);
     assert.match(combined, /--bare/u);
@@ -144,9 +154,9 @@ test('controlled negative preserves nonzero evidence and fails the sentinel', as
       }),
       /codex sentinel exited with 2/u
     );
-    const evidence = JSON.parse(fs.readFileSync(path.join(fixture.outputRoot, 'codex.json')));
+    const evidence = JSON.parse(fs.readFileSync(path.join(fixture.outputRoot, 'codex-text.json')));
     assert.equal(evidence.exit_code, 2);
-    assert.equal(fs.existsSync(path.join(fixture.outputRoot, 'claude.json')), false);
+    assert.equal(fs.existsSync(path.join(fixture.outputRoot, 'claude-text.json')), false);
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }

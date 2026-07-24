@@ -1,5 +1,0 @@
-{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"200","event":"client_result","source":"client-pty","marker":"client-result"}
-{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"400","event":"marker_1","source":"client-pty","marker":"marker-1"}
-{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"500","event":"barrier_release","source":"harness"}
-{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"600","event":"marker_2","source":"client-pty","marker":"marker-2"}
-{"schema_version":"1flowbase.ai-gateway-cli-smoke-timeline/v1","monotonic_ns":"700","event":"terminal","source":"harness","exit_code":0}

@@ -9,7 +9,8 @@ const test = require('node:test');
 const {
   claudeInvocation,
   codexInvocation,
-  FIXED_PROMPT,
+  TEXT_PROMPT,
+  TOOL_SENTINEL,
   opencodeInvocation,
 } = require('../invocations');
 
@@ -26,20 +27,24 @@ test('Codex invocation is ephemeral, ignores user config/rules, and disables pro
   assert.ok(plan.args.includes('model_providers.oneflowbase_gateway.request_max_retries=0'));
   assert.ok(plan.args.includes('model_providers.oneflowbase_gateway.stream_max_retries=0'));
   assert.ok(plan.args.includes('model_providers.oneflowbase_gateway.base_url="http://127.0.0.1:41002/v1"'));
-  assert.equal(plan.args.at(-1), FIXED_PROMPT);
+  assert.equal(plan.args.at(-1), TEXT_PROMPT);
 });
 
-test('Claude invocation is bare, stateless, explicit-settings, stream-json, and tool-free', () => {
+test('Claude text/tool turns are isolated and only the tool turn enables client-owned Read', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-plan-'));
   const paths = { config: path.join(root, 'config'), output: path.join(root, 'output') };
   fs.mkdirSync(paths.config);
   fs.mkdirSync(paths.output);
   try {
-    const plan = claudeInvocation('/bin/claude', paths, { model: 'fixture-model' });
+    const plan = claudeInvocation('/bin/claude', paths, { model: 'fixture-model' }, 'text');
+    const tool = claudeInvocation('/bin/claude', paths, { model: 'fixture-model' }, 'tool');
     for (const flag of ['--bare', '--no-session-persistence', '--settings', '--output-format', '--disable-slash-commands']) {
       assert.ok(plan.args.includes(flag));
     }
     assert.equal(plan.args[plan.args.indexOf('--tools') + 1], '');
+    assert.equal(tool.args[tool.args.indexOf('--tools') + 1], 'Read');
+    assert.match(tool.args.at(-1), /1flowbase-client-tool-vector/u);
+    assert.match(tool.args.at(-1), new RegExp(TOOL_SENTINEL, 'u'));
     assert.equal(plan.args[plan.args.indexOf('--output-format') + 1], 'stream-json');
     assert.ok(plan.args.includes('--include-partial-messages'));
     assert.ok(plan.args.includes('--verbose'));
@@ -55,6 +60,18 @@ test('OpenCode invocation uses its real TUI so PTY output remains incremental', 
   assert.deepEqual(plan.args.slice(0, 5), [
     '/tmp/opencode-output', '--mini', '--model', 'oneflowbase_gateway/fixture-model', '--prompt',
   ]);
-  assert.equal(plan.args.at(-1), FIXED_PROMPT);
+  assert.equal(plan.args.at(-1), TEXT_PROMPT);
   assert.equal(plan.terminateAfterSecondMarker, true);
+});
+
+test('Codex and OpenCode tool turns carry the deterministic local vector path', () => {
+  const paths = { config: '/tmp/client-config', output: '/tmp/client-output' };
+  const codex = codexInvocation('/bin/codex', paths, 'http://127.0.0.1:41002', {
+    model: 'fixture-model',
+  }, 'tool');
+  const opencode = opencodeInvocation('/bin/opencode', paths, { model: 'fixture-model' }, 'tool');
+  for (const plan of [codex, opencode]) {
+    assert.match(plan.args.at(-1), /TOOL_VECTOR_PATH=\/tmp\/client-output\/tool-vector\.txt/u);
+    assert.doesNotMatch(plan.args.at(-1), /Do not call any tools/u);
+  }
 });

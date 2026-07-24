@@ -31,9 +31,9 @@ function validateProducerEvents(events) {
   return events;
 }
 
-function mergeTimelines(clientPath, producerPath) {
+function mergeTimelines(clientPath, producerEvents = []) {
   const client = readTimeline(clientPath);
-  const producer = validateProducerEvents(readTimeline(producerPath)).map((event) => ({
+  const producer = validateProducerEvents(producerEvents).map((event) => ({
     ...event,
     source: 'mock-upstream-producer',
   }));
@@ -46,8 +46,8 @@ function mergeTimelines(clientPath, producerPath) {
   }).map((event, index) => ({ ...event, timeline_sequence: index + 1 }));
 }
 
-function writeMergedTimeline(clientPath, producerPath, secrets = []) {
-  const events = mergeTimelines(clientPath, producerPath);
+function writeMergedTimeline(clientPath, producerEvents, secrets = []) {
+  const events = mergeTimelines(clientPath, producerEvents);
   const serialized = secrets.reduce(
     (text, secret) => secret ? text.split(secret).join('<redacted-application-key>') : text,
     events.map((event) => JSON.stringify(event)).join('\n') + '\n'

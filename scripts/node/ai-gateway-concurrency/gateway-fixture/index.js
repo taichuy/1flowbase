@@ -10,6 +10,7 @@ const { OwnerHttpClient } = require('./http-owner');
 const { normalizeOptions } = require('./inputs');
 const { reserveLoopbackPort, spawnOwned, stopOwned, waitForHealth } = require('./process-owner');
 const { persistServiceLogs, redactServiceLog } = require('./service-logs');
+const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
 
 function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -104,6 +105,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
         services: { 'api-server': apiProcess, 'plugin-runner': runnerProcess },
         secrets: fixtureSecrets(),
       });
+      assertNoArtifactSecrets([options.artifactRoot], fixtureSecrets());
     } catch (error) {
       firstError ||= error;
     }
@@ -190,6 +192,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     };
     const result = {
       schema_version: '1flowbase.ai-gateway-fixture/v1',
+      artifact_root: options.artifactRoot,
       gateway_base_url: gatewayBaseUrl,
       plugin_runner_base_url: pluginRunnerBaseUrl,
       model,
@@ -199,6 +202,12 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       },
       targets,
       pools: { anthropic: anthropicPool },
+      controlled_upstream: {
+        snapshot_url: `${options.upstreamBaseUrl}/__control/snapshot`,
+        barrier_release_url: `${options.upstreamBaseUrl}/__control/barrier/release`,
+        network_observer_url: `${options.upstreamBaseUrl}/__observer/mcp-network`,
+        gateway_executor_observer_url: `${options.upstreamBaseUrl}/__observer/gateway-executor`,
+      },
     };
 
     return {

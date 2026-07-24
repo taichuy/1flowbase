@@ -8,7 +8,15 @@ const {
   TRANSPORT,
   assertScenario,
 } = require('../contracts');
-const { anthropicEvents, responsesEvents } = require('./protocol-events');
+const {
+  anthropicEvents,
+  anthropicToolEvents,
+  chatTextEvents,
+  chatToolEvents,
+  responsesEvents,
+  responsesToolEvents,
+  responsesWireEvents,
+} = require('./protocol-events');
 const { acceptWebSocket, createFrameReader, sendClose, sendJson } = require('./websocket');
 
 const SAFE_HEADER_NAMES = Object.freeze([
@@ -79,7 +87,7 @@ function readJson(request) {
 }
 
 function writeSse(response, event, data) {
-  response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  response.write(`${event ? `event: ${event}\n` : ''}data: ${JSON.stringify(data)}\n\n`);
 }
 
 function createTimeline() {
@@ -92,6 +100,7 @@ function createTimeline() {
   const record = (event, fields = {}) => {
     entries.push({
       sequence: entries.length + 1,
+      monotonic_ns: process.hrtime.bigint().toString(),
       offsetMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
       event,
       ...fields,
@@ -121,6 +130,45 @@ function createTimeline() {
   };
 }
 
+function containsValue(value, marker) {
+  if (typeof value === 'string') return value.includes(marker);
+  if (Array.isArray(value)) return value.some((item) => containsValue(item, marker));
+  if (value && typeof value === 'object') return Object.values(value).some((item) => containsValue(item, marker));
+  return false;
+}
+
+function toolVectorPath(body) {
+  const encoded = JSON.stringify(body);
+  const match = /TOOL_VECTOR_PATH=([^\\"\s]+)/u.exec(encoded);
+  return match?.[1] ?? '/tmp/1flowbase-missing-tool-vector';
+}
+
+function gatewayExecutorProbeUrl(body) {
+  const encoded = JSON.stringify(body);
+  return /GATEWAY_EXECUTOR_PROBE_URL=([^\\"\s]+)/u.exec(encoded)?.[1] ?? null;
+}
+
+function observeWireVectors(body, requestTimeline, counters) {
+  const values = [...(Array.isArray(body.tools) ? body.tools : []), ...(Array.isArray(body.input) ? body.input : [])];
+  const kinds = values.map((item) => item?.type).filter(Boolean);
+  for (const kind of kinds) {
+    if (['file_search', 'code_interpreter', 'image_generation', 'programmatic_tool_calling', 'shell'].includes(kind)) {
+      counters.providerExecutions += 1;
+      requestTimeline.record('provider_tool_execution', { toolKind: kind });
+    }
+    if (kind === 'mcp') requestTimeline.record('mcp_server_definition');
+    if (kind === 'mcp_list_tools') requestTimeline.record('mcp_list');
+    if (kind === 'mcp_call') {
+      counters.providerExecutions += 1;
+      requestTimeline.record('mcp_call');
+    }
+    if (kind === 'mcp_approval_request' || kind === 'mcp_approval_response') requestTimeline.record('mcp_approval');
+    if (kind === 'tool_search' || kind === 'tool_search_call') requestTimeline.record('client_tool_search');
+    if (kind === 'tool_search_output') requestTimeline.record('server_tool_search');
+    if (kind === 'additional_tools') requestTimeline.record('additional_tools');
+  }
+}
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -147,11 +195,13 @@ async function emitHttpStream({
 
   let visibleDeltaReleased = false;
   for (const chunk of stream.chunks) {
-    const event = chunk.event ?? chunk.type;
+    const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
     if (!write(event, chunk.data ?? chunk)) break;
-    if (!visibleDeltaReleased && barrier.enabled && [
+    const visibleMarker = JSON.stringify(chunk).includes('marker-1');
+    if (!visibleDeltaReleased && barrier.enabled && visibleMarker && [
       'content_block_delta',
       'response.output_text.delta',
+      'chat.completion.chunk',
     ].includes(event)) {
       visibleDeltaReleased = true;
       timeline.record('barrier_waiting', { protocolEvent: event });
@@ -181,6 +231,10 @@ async function emitHttpStream({
     const event = terminal.event ?? terminal.type;
     if (write(event, terminal.data ?? terminal) && SUCCESS_TERMINALS.has(event)) successTerminalCount += 1;
   }
+  if (stream.doneSentinel && !disconnected && !response.destroyed) {
+    response.write('data: [DONE]\n\n');
+    successTerminalCount += 1;
+  }
   response.end();
   timeline.finish('completed', { successTerminalCount });
 }
@@ -200,6 +254,7 @@ function createMockUpstream(options = {}) {
   const slowChunkDelayMs = options.slowChunkDelayMs ?? 25;
   const cancelObservationMs = options.cancelObservationMs ?? 250;
   const timeline = createTimeline();
+  const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
   const sockets = new Set();
   const barrierWaiters = new Set();
   const barrier = {
@@ -218,21 +273,41 @@ function createMockUpstream(options = {}) {
   const server = http.createServer(async (request, response) => {
     try {
       const path = new URL(request.url, 'http://mock.invalid').pathname;
+      if (path === '/__observer/gateway-executor') {
+        counters.gatewayExecutorInvocations += 1;
+        response.writeHead(204).end();
+        return;
+      }
+      if (path === '/__observer/mcp-network') {
+        counters.networkObserverOutbound += 1;
+        response.writeHead(204).end();
+        return;
+      }
+      if (request.method === 'GET' && path === '/__control/snapshot') {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ...timeline.snapshot(), counters }));
+        return;
+      }
       if (request.method === 'POST' && path === '/__control/barrier/release') {
         const released = barrier.release();
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ released }));
         return;
       }
-      if (request.method !== 'POST' || ![MOCK_ROUTE.RESPONSES, MOCK_ROUTE.ANTHROPIC_MESSAGES].includes(path)) {
+      if (request.method !== 'POST' || ![
+        MOCK_ROUTE.RESPONSES, MOCK_ROUTE.CHAT_COMPLETIONS, MOCK_ROUTE.ANTHROPIC_MESSAGES,
+      ].includes(path)) {
         response.writeHead(404, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: { type: 'not_found', message: 'mock route not found' } }));
         return;
       }
       const body = await readJson(request);
       const scenario = scenarioFrom(request, body);
-      const transport = path === MOCK_ROUTE.RESPONSES ? TRANSPORT.RESPONSES_SSE : TRANSPORT.ANTHROPIC_SSE;
+      const transport = path === MOCK_ROUTE.RESPONSES
+        ? TRANSPORT.RESPONSES_SSE
+        : path === MOCK_ROUTE.CHAT_COMPLETIONS ? 'chat-completions-sse' : TRANSPORT.ANTHROPIC_SSE;
       const requestTimeline = timeline.arrive(transport, scenario, safeRequestSummary(request, body));
+      observeWireVectors(body, requestTimeline, counters);
       if (scenario === SCENARIO.HTTP_500) {
         response.writeHead(500, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: { type: 'mock_upstream_error', nonce: requestTimeline.nonce } }));
@@ -240,9 +315,31 @@ function createMockUpstream(options = {}) {
         return;
       }
       beginSse(response);
+      const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
+      const isToolResult = containsValue(body, '1flowbase-client-tool-result');
+      const isClientTextTurn = containsValue(body, '1flowbase gateway sentinel ok');
+      const wireAuditVector = body.metadata?.wire_audit_vector;
+      if (isToolTurn && !isToolResult) requestTimeline.record('tool_call');
+      if (isToolResult) requestTimeline.record('second_upstream_request');
       const stream = path === MOCK_ROUTE.RESPONSES
-        ? responsesEvents(requestTimeline.nonce)
-        : anthropicEvents(requestTimeline.nonce);
+        ? (wireAuditVector && wireAuditVector !== 'gateway-executor-probe'
+          ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
+          : isToolTurn || isToolResult
+          ? responsesToolEvents(
+            requestTimeline.nonce, toolVectorPath(body), isToolResult, gatewayExecutorProbeUrl(body)
+          )
+          : isClientTextTurn
+            ? responsesEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+            : responsesEvents(requestTimeline.nonce))
+        : path === MOCK_ROUTE.CHAT_COMPLETIONS
+          ? (isToolTurn || isToolResult
+            ? chatToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
+            : chatTextEvents(requestTimeline.nonce))
+          : (isToolTurn || isToolResult
+            ? anthropicToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
+            : isClientTextTurn
+              ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+              : anthropicEvents(requestTimeline.nonce));
       await emitHttpStream({
         response,
         request,
@@ -348,6 +445,9 @@ function createMockUpstream(options = {}) {
         httpBaseUrl: `http://${host}:${address.port}`,
         websocketBaseUrl: `ws://${host}:${address.port}`,
         barrierReleaseUrl: `http://${host}:${address.port}/__control/barrier/release`,
+        snapshotUrl: `http://${host}:${address.port}/__control/snapshot`,
+        networkObserverUrl: `http://${host}:${address.port}/__observer/mcp-network`,
+        gatewayExecutorObserverUrl: `http://${host}:${address.port}/__observer/gateway-executor`,
       };
     },
     async stop() {
@@ -355,7 +455,7 @@ function createMockUpstream(options = {}) {
       if (!server.listening) return;
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     },
-    snapshot: timeline.snapshot,
+    snapshot: () => ({ ...timeline.snapshot(), counters: structuredClone(counters) }),
     releaseBarrier: () => barrier.release(),
   };
 }

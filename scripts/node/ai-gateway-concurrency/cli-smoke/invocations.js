@@ -3,13 +3,26 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const FIXED_PROMPT = 'Do not call any tools. Reply with exactly: 1flowbase gateway sentinel ok';
+const TEXT_SENTINEL = '1flowbase gateway sentinel ok';
+const TOOL_SENTINEL = '1flowbase gateway tool sentinel ok';
+const TEXT_PROMPT = `Reply with exactly: ${TEXT_SENTINEL}`;
+
+function promptForTurn(turn, paths) {
+  if (turn === 'text') return TEXT_PROMPT;
+  if (turn !== 'tool') throw new Error(`unsupported client turn: ${turn}`);
+  return [
+    '1flowbase-client-tool-vector',
+    `TOOL_VECTOR_PATH=${path.join(paths.output, 'tool-vector.txt')}`,
+    'Use the client-owned local read or shell tool requested by the provider.',
+    `After its result is returned to the provider, print exactly: ${TOOL_SENTINEL}`,
+  ].join(' ');
+}
 
 function tomlString(value) {
   return JSON.stringify(value);
 }
 
-function codexInvocation(executable, paths, gatewayBaseUrl, target) {
+function codexInvocation(executable, paths, gatewayBaseUrl, target, turn = 'text') {
   const provider = 'oneflowbase_gateway';
   return {
     executable,
@@ -32,12 +45,12 @@ function codexInvocation(executable, paths, gatewayBaseUrl, target) {
       '-c', `model_providers.${provider}.supports_websockets=false`,
       '-c', `model_providers.${provider}.request_max_retries=0`,
       '-c', `model_providers.${provider}.stream_max_retries=0`,
-      FIXED_PROMPT,
+      promptForTurn(turn, paths),
     ],
   };
 }
 
-function claudeInvocation(executable, paths, target) {
+function claudeInvocation(executable, paths, target, turn = 'text') {
   const settingsPath = path.join(paths.config, 'settings.json');
   fs.writeFileSync(settingsPath, '{}\n', { mode: 0o600 });
   return {
@@ -46,21 +59,21 @@ function claudeInvocation(executable, paths, target) {
     settingsPath,
     args: [
       '--bare',
-      '-p', FIXED_PROMPT,
+      '-p', promptForTurn(turn, paths),
       '--no-session-persistence',
       '--settings', settingsPath,
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--verbose',
       '--model', target.model,
-      '--tools', '',
+      '--tools', turn === 'tool' ? 'Read' : '',
       '--disable-slash-commands',
       '--no-chrome',
     ],
   };
 }
 
-function opencodeInvocation(executable, paths, target) {
+function opencodeInvocation(executable, paths, target, turn = 'text') {
   return {
     executable,
     cwd: paths.output,
@@ -69,7 +82,7 @@ function opencodeInvocation(executable, paths, target) {
       paths.output,
       '--mini',
       '--model', `oneflowbase_gateway/${target.model}`,
-      '--prompt', FIXED_PROMPT,
+      '--prompt', promptForTurn(turn, paths),
     ],
   };
 }
@@ -85,9 +98,12 @@ function sanitizedInvocation(invocation) {
 }
 
 module.exports = {
-  FIXED_PROMPT,
+  TEXT_PROMPT,
+  TEXT_SENTINEL,
+  TOOL_SENTINEL,
   claudeInvocation,
   codexInvocation,
   opencodeInvocation,
+  promptForTurn,
   sanitizedInvocation,
 };

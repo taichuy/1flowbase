@@ -36,7 +36,11 @@ function identifiedFiles(root, candidates) {
   return candidates.flatMap((name) => {
     const filePath = path.join(root, name);
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return [];
-    return [{ name, sha256: sha256File(filePath) }];
+    return [{
+      name,
+      kind: /lock/iu.test(name) ? 'lockfile' : 'toolchain-or-package-manifest',
+      sha256: sha256File(filePath),
+    }];
   });
 }
 
@@ -45,29 +49,58 @@ function sourceBuiltProvenance(client, executable, input, dependencies = {}) {
   const expectedSha = FIXED_SOURCE_SHA[client];
   const actualSha = runGit(input.sourceRoot, ['rev-parse', 'HEAD']);
   const dirty = runGit(input.sourceRoot, ['status', '--porcelain', '--untracked-files=all']) !== '';
+  const remoteUrl = runGit(input.sourceRoot, ['remote', 'get-url', 'origin']);
+  const canonicalIdentity = (value) => value
+    .replace(/^github:/u, '')
+    .replace(/^https:\/\/github\.com\//u, '')
+    .replace(/^git@github\.com:/u, '')
+    .replace(/\.git$/u, '');
+  let branchRef = null;
+  try {
+    branchRef = runGit(input.sourceRoot, ['symbolic-ref', '--quiet', 'HEAD']);
+  } catch {
+    // A detached HEAD is the required reproducible source state.
+  }
   if (actualSha !== expectedSha) {
     throw new Error(`${client} source SHA ${actualSha} does not match fixed SHA ${expectedSha}`);
   }
   if (dirty) throw new Error(`${client} source worktree must be clean for provenance`);
+  if (branchRef) throw new Error(`${client} source worktree must use a detached HEAD for provenance`);
+  if (canonicalIdentity(remoteUrl) !== canonicalIdentity(input.sourceIdentity)) {
+    throw new Error(`${client} source identity does not match origin remote`);
+  }
+  const identified = identifiedFiles(input.sourceRoot, SOURCE_FILES[client]);
+  if (!identified.some((entry) => entry.kind === 'lockfile')
+    || !identified.some((entry) => entry.kind === 'toolchain-or-package-manifest')) {
+    throw new Error(`${client} source omitted required toolchain/package and lockfile provenance`);
+  }
   return {
     schema_version: PROVENANCE_SCHEMA,
     client_kind: client,
     provenance_claim: 'source-built-from-fixed-git-commit',
     source: {
       kind: 'git-worktree',
+      path: input.sourceRoot,
       identity: input.sourceIdentity,
+      observed_remote: remoteUrl,
       fixed_revision: expectedSha,
       observed_revision: actualSha,
       dirty: false,
+      detached: true,
     },
-    toolchain_and_lockfiles: identifiedFiles(input.sourceRoot, SOURCE_FILES[client]),
+    toolchain_and_lockfiles: identified,
     build_command: commandIdentity(input.buildCommand),
-    executable: { sha256: sha256File(executable) },
+    executable: { path: executable, sha256: sha256File(executable) },
   };
 }
 
 function pinnedClaudeProvenance(executable, input) {
+  const manifest = JSON.parse(fs.readFileSync(input.packageManifest, 'utf8'));
+  if (manifest.name !== input.packageName || manifest.version !== input.packageVersion) {
+    throw new Error('Claude package manifest identity does not match configured package identity');
+  }
   return {
+    schema_version: PROVENANCE_SCHEMA,
     client_kind: 'claude',
     provenance_claim: 'pinned-package-binary',
     source: { kind: 'package', dirty: null },
@@ -75,27 +108,30 @@ function pinnedClaudeProvenance(executable, input) {
       name: input.packageName,
       version: input.packageVersion,
       integrity: input.packageIntegrity,
+      manifest: { path: input.packageManifest, sha256: sha256File(input.packageManifest) },
     },
     toolchain_and_lockfiles: [],
-    build_command: commandIdentity(input.installCommand),
-    executable: { sha256: sha256File(executable) },
+    installation_command: commandIdentity(input.installCommand),
+    executable: { path: executable, sha256: sha256File(executable) },
   };
 }
 
 function collectClientProvenance(inputs, plans) {
+  const invocationIdentities = (value) => Object.values(value.executable ? { default: value } : value)
+    .map((plan) => commandIdentity([plan.executable, ...plan.args].join('\u0000')));
   return {
     codex: {
       ...sourceBuiltProvenance('codex', inputs.codexExecutable, inputs.provenance.codex),
-      invocation: commandIdentity([plans.codex.executable, ...plans.codex.args].join('\u0000')),
+      invocations: invocationIdentities(plans.codex),
     },
     claude: {
       ...pinnedClaudeProvenance(inputs.claudeExecutable, inputs.provenance.claude),
-      invocation: commandIdentity([plans.claude.executable, ...plans.claude.args].join('\u0000')),
+      invocations: invocationIdentities(plans.claude),
     },
     ...(plans.opencode ? {
       opencode: {
         ...sourceBuiltProvenance('opencode', inputs.opencodeExecutable, inputs.provenance.opencode),
-        invocation: commandIdentity([plans.opencode.executable, ...plans.opencode.args].join('\u0000')),
+        invocations: invocationIdentities(plans.opencode),
       },
     } : {}),
   };

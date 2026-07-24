@@ -120,7 +120,7 @@ async function executeTmuxInvocation(
     markers = [],
     clientResultMarker,
     onFirstMarker,
-    producerTimelinePath,
+    readProducerSnapshot,
     secrets = [],
   } = {}
 ) {
@@ -163,7 +163,9 @@ async function executeTmuxInvocation(
   const startedAt = new Date();
   const startedNs = process.hrtime.bigint();
   let timedOut = false;
+  let producerBefore = null;
   try {
+    producerBefore = await readProducerSnapshot?.();
     if (markers[0] || markers[1] || clientResultMarker) {
       markerWatcher = fs.watch(artifactDirectory, () => {
         if (!fs.existsSync(timelinePath)) return;
@@ -260,7 +262,17 @@ async function executeTmuxInvocation(
     appendTimelineEvent(timelinePath, 'terminal', {
       source: 'harness', exit_code: Number.isInteger(exitCode) ? exitCode : 1,
     });
-    const timeline = writeMergedTimeline(timelinePath, producerTimelinePath, secrets);
+    const producerAfter = await readProducerSnapshot?.();
+    const cursor = producerBefore?.entries?.at(-1)?.sequence ?? 0;
+    const producerEvents = (producerAfter?.entries ?? [])
+      .filter((event) => event.sequence > cursor && ['tool_call', 'second_upstream_request'].includes(event.event))
+      .map((event) => ({
+        schema_version: '1flowbase.ai-gateway-cli-smoke-timeline/v1',
+        monotonic_ns: event.monotonic_ns,
+        event: event.event,
+        producer_sequence: event.sequence,
+      }));
+    const timeline = writeMergedTimeline(timelinePath, producerEvents, secrets);
     return {
       started_at: startedAt.toISOString(),
       finished_at: new Date().toISOString(),
@@ -277,6 +289,7 @@ async function executeTmuxInvocation(
         observation: 'tmux-pipe-pane',
         timeline_path: timelinePath,
         timeline_events: timeline.length,
+        observer_counters: producerAfter?.counters ?? null,
       },
     };
   } catch (error) {
@@ -312,21 +325,21 @@ function parseJsonLines(text, client) {
   });
 }
 
-function includesSentinel(value) {
-  if (typeof value === 'string') return value.includes(SENTINEL_RESPONSE);
-  if (Array.isArray(value)) return value.some(includesSentinel);
-  if (value && typeof value === 'object') return Object.values(value).some(includesSentinel);
+function includesSentinel(value, sentinel = SENTINEL_RESPONSE) {
+  if (typeof value === 'string') return value.includes(sentinel);
+  if (Array.isArray(value)) return value.some((item) => includesSentinel(item, sentinel));
+  if (value && typeof value === 'object') return Object.values(value).some((item) => includesSentinel(item, sentinel));
   return false;
 }
 
-function assertCompatibleResult(client, result) {
+function assertCompatibleResult(client, result, sentinel = SENTINEL_RESPONSE) {
   if (result.timed_out) throw new Error(`${client} sentinel timed out`);
   if (result.exit_code !== 0) throw new Error(`${client} sentinel exited with ${result.exit_code}`);
   if (result.stdout.overflow || result.stderr.overflow) {
     throw new Error(`${client} sentinel output exceeded 1 MiB`);
   }
   if (client === 'opencode') {
-    if (!result.stdout.text.includes(SENTINEL_RESPONSE)) {
+    if (!result.stdout.text.includes(sentinel)) {
       throw new Error(`${client} sentinel response marker was not observed`);
     }
     return 1;
@@ -335,11 +348,11 @@ function assertCompatibleResult(client, result) {
   const compatible = client === 'codex'
     ? events.some((event) => event.type === 'item.completed'
       && event.item?.type === 'agent_message'
-      && includesSentinel(event.item))
+      && includesSentinel(event.item, sentinel))
     : client === 'claude'
       ? events.some((event) => (event.type === 'assistant' || event.type === 'result')
-        && includesSentinel(event))
-      : events.some(includesSentinel);
+        && includesSentinel(event, sentinel))
+      : events.some((event) => includesSentinel(event, sentinel));
   if (!compatible) throw new Error(`${client} sentinel response marker was not observed`);
   return events.length;
 }

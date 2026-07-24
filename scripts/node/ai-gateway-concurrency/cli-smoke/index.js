@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { manifestDigest, prepareEvidenceRoot, writeClientEvidence, writeConfigManifest } = require('./evidence');
+const {
+  manifestDigest, prepareEvidenceRoot, writeClientEvidence, writeConfigManifest, writeJson,
+} = require('./evidence');
+const { assertNoArtifactSecrets } = require('./artifact-scan');
 const {
   claudeEnvironment,
   codexEnvironment,
@@ -17,10 +20,14 @@ const {
   codexInvocation,
   opencodeInvocation,
   sanitizedInvocation,
+  TEXT_SENTINEL,
+  TOOL_SENTINEL,
 } = require('./invocations');
 const { assertCompatibleResult, executeInvocation, executeTmuxInvocation } = require('./runner');
 const { collectClientProvenance } = require('./provenance');
 const { readTimeline } = require('./timeline');
+const { loadPinnedInventory } = require('../wire-audit/inventory');
+const { runWireAudit } = require('../wire-audit/runner');
 
 const DEFAULT_EVIDENCE_ROOT = path.resolve(
   __dirname,
@@ -48,18 +55,26 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
     ? path.resolve(__dirname, `../../../../tmp/test-governance/compatible-stream-e2e/${runId}`)
     : DEFAULT_EVIDENCE_ROOT;
   const outputRoot = prepareEvidenceRoot(dependencies.outputRoot || rawOptions.evidenceRoot || defaultOutputRoot);
+  const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
+  const readProducerSnapshot = dependencies.readProducerSnapshot || (inputs.manifest.controlledUpstream
+    ? async () => {
+      const response = await fetchImpl(inputs.manifest.controlledUpstream.snapshotUrl);
+      if (!response.ok) throw new Error(`controlled upstream snapshot returned HTTP ${response.status}`);
+      return response.json();
+    }
+    : undefined);
   const runChild = dependencies.executeInvocation || (rawOptions.tmuxTiming
-    ? (invocation, env, client) => executeTmuxInvocation(invocation, env, {
-      artifactDirectory: path.join(outputRoot, client),
-      markers: [rawOptions.firstMarker, rawOptions.secondMarker].filter(Boolean),
-      clientResultMarker: rawOptions.clientResultMarker,
-      producerTimelinePath: inputs.producerTimelineDirectory
-        ? path.join(inputs.producerTimelineDirectory, `${client}.jsonl`)
-        : null,
+    ? (invocation, env, client, turn) => executeTmuxInvocation(invocation, env, {
+      artifactDirectory: path.join(outputRoot, client, turn),
+      markers: turn === 'tool'
+        ? ['marker-1', 'marker-2']
+        : client === 'opencode' ? ['__unused_text_marker__', TEXT_SENTINEL] : [],
+      clientResultMarker: turn === 'tool' ? '1flowbase-client-tool-result' : null,
+      readProducerSnapshot: turn === 'tool' ? readProducerSnapshot : undefined,
       secrets,
-      onFirstMarker: inputs.barrierReleaseUrl
+      onFirstMarker: turn === 'tool'
         ? async () => {
-          const response = await fetch(inputs.barrierReleaseUrl, { method: 'POST' });
+          const response = await fetchImpl(inputs.manifest.controlledUpstream.barrierReleaseUrl, { method: 'POST' });
           if (!response.ok) throw new Error(`barrier release returned HTTP ${response.status}`);
         }
         : undefined,
@@ -69,26 +84,31 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
   const codexPaths = temporaryClientPaths('codex');
   const claudePaths = temporaryClientPaths('claude');
   const opencodePaths = inputs.opencodeExecutable ? temporaryClientPaths('opencode') : null;
-  const secrets = [inputs.manifest.openai.api_key, inputs.manifest.anthropic.api_key];
+  const secretCanary = rawOptions.secretCanary || 'sk-1flowbase-controlled-secret-canary';
+  const secrets = [inputs.manifest.openai.api_key, inputs.manifest.anthropic.api_key, secretCanary];
+  for (const paths of [codexPaths, claudePaths, opencodePaths].filter(Boolean)) {
+    fs.writeFileSync(
+      path.join(paths.output, 'tool-vector.txt'),
+      `1flowbase-client-tool-result\n${secretCanary}\n`,
+      { mode: 0o600 }
+    );
+  }
   try {
-    const codexPlan = codexInvocation(
-      inputs.codexExecutable,
-      codexPaths,
-      inputs.manifest.gatewayBaseUrl,
-      inputs.manifest.openai
-    );
-    const claudePlan = claudeInvocation(
-      inputs.claudeExecutable,
-      claudePaths,
-      inputs.manifest.anthropic
-    );
-    const opencodePlan = inputs.opencodeExecutable
-      ? opencodeInvocation(inputs.opencodeExecutable, opencodePaths, inputs.manifest.openai)
+    const codexPlans = Object.fromEntries(['text', 'tool'].map((turn) => [turn, codexInvocation(
+      inputs.codexExecutable, codexPaths, inputs.manifest.gatewayBaseUrl, inputs.manifest.openai, turn
+    )]));
+    const claudePlans = Object.fromEntries(['text', 'tool'].map((turn) => [turn, claudeInvocation(
+      inputs.claudeExecutable, claudePaths, inputs.manifest.anthropic, turn
+    )]));
+    const opencodePlans = inputs.opencodeExecutable
+      ? Object.fromEntries(['text', 'tool'].map((turn) => [turn, opencodeInvocation(
+        inputs.opencodeExecutable, opencodePaths, inputs.manifest.openai, turn
+      )]))
       : null;
     const provenance = (dependencies.collectClientProvenance || collectClientProvenance)(inputs, {
-      codex: codexPlan,
-      claude: claudePlan,
-      opencode: opencodePlan,
+      codex: codexPlans,
+      claude: claudePlans,
+      opencode: opencodePlans,
     });
     const codexEnv = codexEnvironment(parentEnv, codexPaths, inputs.manifest.openai.api_key);
     const claudeEnv = claudeEnvironment(
@@ -97,7 +117,7 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       inputs.manifest.gatewayBaseUrl,
       inputs.manifest.anthropic.api_key
     );
-    const opencodeEnv = opencodePlan
+    const opencodeEnv = opencodePlans
       ? opencodeEnvironment(
         parentEnv,
         opencodePaths,
@@ -127,25 +147,25 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
           model: inputs.manifest.anthropic.model,
           api_key: '<ephemeral-application-key>',
         },
-        ...(opencodePlan ? {
+        ...(opencodePlans ? {
           opencode: {
-            invocation: sanitizedInvocation(opencodePlan),
+            invocations: Object.values(opencodePlans).map(sanitizedInvocation),
             environment: sanitizedEnvironment(opencodeEnv),
           },
         } : {}),
       },
       clients: {
         codex: {
-          invocation: sanitizedInvocation(codexPlan), environment: sanitizedEnvironment(codexEnv),
+          invocations: Object.values(codexPlans).map(sanitizedInvocation), environment: sanitizedEnvironment(codexEnv),
           provenance: provenance.codex,
         },
         claude: {
-          invocation: sanitizedInvocation(claudePlan), environment: sanitizedEnvironment(claudeEnv),
+          invocations: Object.values(claudePlans).map(sanitizedInvocation), environment: sanitizedEnvironment(claudeEnv),
           provenance: provenance.claude,
         },
-        ...(opencodePlan ? {
+        ...(opencodePlans ? {
           opencode: {
-            invocation: sanitizedInvocation(opencodePlan),
+            invocations: Object.values(opencodePlans).map(sanitizedInvocation),
             environment: sanitizedEnvironment(opencodeEnv),
             provenance: provenance.opencode,
           },
@@ -153,31 +173,44 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
       },
     }, secrets);
 
-    const codexResult = await runChild(codexPlan, codexEnv, 'codex');
-    writeClientEvidence(outputRoot, 'codex', codexResult, secrets);
-    const codexEventCount = assertCompatibleResult('codex', codexResult);
-    assertMarkerOrder('codex', codexResult, rawOptions);
+    const inventory = loadPinnedInventory();
+    writeJson(path.join(outputRoot, 'wire-inventory.json'), inventory);
+    const wireAudit = inputs.manifest.controlledUpstream
+      ? await (dependencies.runWireAudit || runWireAudit)(inputs, {
+        fetchImpl,
+        secretCanary,
+      })
+      : null;
+    if (wireAudit) writeJson(path.join(outputRoot, 'wire-audit.json'), wireAudit);
 
-    const claudeResult = await runChild(claudePlan, claudeEnv, 'claude');
-    writeClientEvidence(outputRoot, 'claude', claudeResult, secrets);
-    const claudeEventCount = assertCompatibleResult('claude', claudeResult);
-    assertMarkerOrder('claude', claudeResult, rawOptions);
-
-    let opencodeEventCount = null;
-    if (opencodePlan) {
-      const opencodeResult = await runChild(opencodePlan, opencodeEnv, 'opencode');
-      writeClientEvidence(outputRoot, 'opencode', opencodeResult, secrets);
-      opencodeEventCount = assertCompatibleResult('opencode', opencodeResult);
-      assertMarkerOrder('opencode', opencodeResult, rawOptions);
+    const counts = {};
+    for (const [client, plans, env] of [
+      ['codex', codexPlans, codexEnv],
+      ['claude', claudePlans, claudeEnv],
+      ...(opencodePlans ? [['opencode', opencodePlans, opencodeEnv]] : []),
+    ]) {
+      counts[client] = {};
+      for (const turn of ['text', 'tool']) {
+        const result = await runChild(plans[turn], env, client, turn);
+        writeClientEvidence(outputRoot, client, turn, result, secrets);
+        counts[client][turn] = assertCompatibleResult(
+          client, result, turn === 'text' ? TEXT_SENTINEL : TOOL_SENTINEL
+        );
+        if (turn === 'tool' && rawOptions.tmuxTiming) assertMarkerOrder(client, result);
+      }
     }
+
+    if (readProducerSnapshot) {
+      writeJson(path.join(outputRoot, 'producer-snapshot.json'), await readProducerSnapshot());
+    }
+    const scannedArtifacts = assertNoArtifactSecrets([outputRoot], secrets);
 
     return {
       schema_version: '1flowbase.ai-gateway-cli-smoke-result/v1',
       status: 'pass',
       evidence_root: outputRoot,
-      codex_event_count: codexEventCount,
-      claude_event_count: claudeEventCount,
-      opencode_event_count: opencodeEventCount,
+      event_counts: counts,
+      scanned_artifact_count: scannedArtifacts.length,
     };
   } finally {
     fs.rmSync(codexPaths.root, { recursive: true, force: true });
@@ -186,11 +219,7 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
   }
 }
 
-function assertMarkerOrder(client, result, options) {
-  if (!options.firstMarker && !options.secondMarker) return;
-  if (!options.tmuxTiming || !options.firstMarker || !options.secondMarker) {
-    throw new Error('first and second markers require --tmux-timing together');
-  }
+function assertMarkerOrder(client, result) {
   const events = readTimeline(result.pty?.timeline_path);
   const first = events.findIndex((event) => event.event === 'marker_1');
   const second = events.findIndex((event) => event.event === 'marker_2');
@@ -198,16 +227,14 @@ function assertMarkerOrder(client, result, options) {
     throw new Error(`${client} PTY did not expose both streaming markers`);
   }
   if (second <= first) throw new Error(`${client} second streaming marker was not observed after the first`);
-  if (options.clientResultMarker && options.producerTimelineDirectory) {
-    const required = [
-      'tool_call', 'client_result', 'second_upstream_request', 'marker_1',
-      'barrier_release', 'marker_2', 'terminal',
-    ];
-    const positions = required.map((event) => events.findIndex((entry) => entry.event === event));
-    if (positions.some((position) => position === -1)
-      || positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
-      throw new Error(`${client} timeline did not prove producer/client barrier chronology`);
-    }
+  const required = [
+    'tool_call', 'client_result', 'second_upstream_request', 'marker_1',
+    'barrier_release', 'marker_2', 'terminal',
+  ];
+  const positions = required.map((event) => events.findIndex((entry) => entry.event === event));
+  if (positions.some((position) => position === -1)
+    || positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+    throw new Error(`${client} timeline did not prove live producer/client barrier chronology`);
   }
 }
 

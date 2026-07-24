@@ -21,7 +21,11 @@ function manifestDigest(filePath) {
 
 function prepareEvidenceRoot(outputRoot) {
   fs.mkdirSync(outputRoot, { recursive: true });
-  for (const name of ['config-manifest.json', 'codex.json', 'claude.json', 'opencode.json']) {
+  for (const name of [
+    'config-manifest.json', 'wire-inventory.json', 'wire-audit.json', 'producer-snapshot.json',
+    'codex-text.json', 'codex-tool.json', 'claude-text.json', 'claude-tool.json',
+    'opencode-text.json', 'opencode-tool.json',
+  ]) {
     fs.rmSync(path.join(outputRoot, name), { force: true });
   }
   for (const name of ['codex', 'claude', 'opencode']) {
@@ -35,10 +39,11 @@ function writeConfigManifest(outputRoot, value, secrets = []) {
   fs.writeFileSync(path.join(outputRoot, 'config-manifest.json'), serialized, { mode: 0o600 });
 }
 
-function writeClientEvidence(outputRoot, client, result, secrets) {
+function writeClientEvidence(outputRoot, client, turn, result, secrets) {
   const evidence = {
     schema_version: '1flowbase.ai-gateway-cli-smoke-evidence/v1',
     client,
+    turn,
     started_at: result.started_at,
     finished_at: result.finished_at,
     duration_ms: result.duration_ms,
@@ -55,9 +60,9 @@ function writeClientEvidence(outputRoot, client, result, secrets) {
     pty_observation: result.pty?.observation ?? null,
     timeline_events: result.pty?.timeline_events ?? null,
   };
-  writeJson(path.join(outputRoot, `${client}.json`), evidence);
+  writeJson(path.join(outputRoot, `${client}-${turn}.json`), evidence);
   if (result.pty) {
-    const clientRoot = path.join(outputRoot, client);
+    const clientRoot = path.join(outputRoot, client, turn);
     fs.mkdirSync(clientRoot, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(clientRoot, 'pty.log'), redact(result.stdout.text, secrets), { mode: 0o600 });
     fs.writeFileSync(path.join(clientRoot, 'timing.log'), result.pty.timing, { mode: 0o600 });
@@ -71,4 +76,5 @@ module.exports = {
   redact,
   writeClientEvidence,
   writeConfigManifest,
+  writeJson,
 };

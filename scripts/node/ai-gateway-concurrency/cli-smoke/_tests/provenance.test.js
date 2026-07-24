@@ -20,7 +20,9 @@ test('source-built provenance fixes source SHA, lock/toolchain digests, command,
     fs.writeFileSync(executable, 'fixed binary fixture');
     fs.writeFileSync(path.join(root, 'Cargo.lock'), 'fixed lock fixture');
     fs.writeFileSync(path.join(root, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.88"\n');
-    const cleanGit = (_cwd, args) => args[0] === 'rev-parse' ? FIXED_SOURCE_SHA.codex : '';
+    const cleanGit = (_cwd, args) => args[0] === 'rev-parse'
+      ? FIXED_SOURCE_SHA.codex
+      : args[0] === 'remote' ? 'https://github.com/openai/codex.git' : '';
     const value = sourceBuiltProvenance('codex', executable, {
       sourceRoot: root,
       sourceIdentity: 'github:openai/codex',
@@ -36,7 +38,16 @@ test('source-built provenance fixes source SHA, lock/toolchain digests, command,
     assert.throws(() => sourceBuiltProvenance('codex', executable, {
       sourceRoot: root, sourceIdentity: 'github:openai/codex',
       buildCommand: 'cargo build --release --locked',
-    }, { git: (_cwd, args) => args[0] === 'rev-parse' ? FIXED_SOURCE_SHA.codex : ' M Cargo.lock' }), /clean/u);
+    }, { git: (_cwd, args) => args[0] === 'rev-parse'
+      ? FIXED_SOURCE_SHA.codex
+      : args[0] === 'remote' ? 'https://github.com/openai/codex.git'
+        : args[0] === 'symbolic-ref' ? 'refs/heads/main' : '' }), /detached HEAD/u);
+    assert.throws(() => sourceBuiltProvenance('codex', executable, {
+      sourceRoot: root, sourceIdentity: 'github:openai/codex',
+      buildCommand: 'cargo build --release --locked',
+    }, { git: (_cwd, args) => args[0] === 'rev-parse'
+      ? FIXED_SOURCE_SHA.codex
+      : args[0] === 'remote' ? 'https://github.com/openai/codex.git' : ' M Cargo.lock' }), /clean/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -46,8 +57,13 @@ test('Claude provenance is only a configurable pinned-package binary claim', () 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'd3-claude-provenance-'));
   try {
     const executable = path.join(root, 'claude');
+    const packageManifest = path.join(root, 'package.json');
     fs.writeFileSync(executable, 'fixed package binary fixture');
+    fs.writeFileSync(packageManifest, JSON.stringify({
+      name: '@anthropic-ai/claude-code', version: 'configured-version',
+    }));
     const value = pinnedClaudeProvenance(executable, {
+      packageManifest,
       packageName: '@anthropic-ai/claude-code',
       packageVersion: 'configured-version',
       packageIntegrity: 'sha512-configured-integrity',

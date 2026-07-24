@@ -33,6 +33,27 @@ function writeManifest(root, gatewayBaseUrl = 'http://127.0.0.1:41002') {
   return file;
 }
 
+test('controlled observation URLs are accepted only from credential-free loopback inputs', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-smoke-controlled-'));
+  try {
+    const file = writeManifest(root);
+    const value = JSON.parse(fs.readFileSync(file));
+    value.controlled_upstream = {
+      snapshot_url: 'http://127.0.0.1:41009/__control/snapshot',
+      barrier_release_url: 'http://127.0.0.1:41009/__control/barrier/release',
+      network_observer_url: 'http://127.0.0.1:41009/__observer/mcp-network',
+      gateway_executor_observer_url: 'http://127.0.0.1:41009/__observer/gateway-executor',
+    };
+    fs.writeFileSync(file, JSON.stringify(value));
+    assert.equal(readReadyManifest(file).controlledUpstream.snapshotUrl, value.controlled_upstream.snapshot_url);
+    value.controlled_upstream.network_observer_url = 'https://example.com/mcp';
+    fs.writeFileSync(file, JSON.stringify(value));
+    assert.throws(() => readReadyManifest(file), /loopback/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // Root #1377 AC-006/008: only a WP3 loopback manifest may select sentinel targets.
 test('controlled negatives reject external or mismatched gateway origins', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-smoke-inputs-'));

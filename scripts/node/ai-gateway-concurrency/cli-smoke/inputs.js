@@ -84,13 +84,19 @@ function readReadyManifest(filePath) {
     const targetGateway = loopbackUrl(target.gateway?.base_url, `${code} gateway base URL`);
     if (targetGateway.origin !== gateway.origin) fail(`${code} target gateway origin mismatch`);
   }
-  return { path: resolved, gatewayBaseUrl: gateway.origin, openai, anthropic };
+  const controlled = manifest.controlled_upstream;
+  const controlledUpstream = controlled ? {
+    snapshotUrl: loopbackUrl(controlled.snapshot_url, 'controlled upstream snapshot URL').href,
+    barrierReleaseUrl: loopbackUrl(controlled.barrier_release_url, 'controlled upstream barrier URL').href,
+    networkObserverUrl: loopbackUrl(controlled.network_observer_url, 'network observer URL').href,
+    gatewayExecutorObserverUrl: loopbackUrl(
+      controlled.gateway_executor_observer_url, 'gateway executor observer URL'
+    ).href,
+  } : null;
+  return { path: resolved, gatewayBaseUrl: gateway.origin, openai, anthropic, controlledUpstream };
 }
 
 function normalizeInputs(options) {
-  const barrierReleaseUrl = options.barrierReleaseUrl
-    ? loopbackUrl(options.barrierReleaseUrl, 'barrier release URL').href
-    : null;
   const requiredText = (value, label) => {
     if (typeof value !== 'string' || value.trim() === '') fail(`${label} is required`);
     return value;
@@ -100,29 +106,17 @@ function normalizeInputs(options) {
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) fail(`${label} must be a directory`);
     return resolved;
   };
-  const producerTimelineDirectory = options.producerTimelineDirectory
-    ? sourceRoot(options.producerTimelineDirectory, 'producer timeline directory')
-    : null;
-  if (producerTimelineDirectory) {
-    for (const [value, label] of [
-      [options.tmuxTiming, '--tmux-timing'],
-      [options.clientResultMarker, '--client-result-marker'],
-      [options.firstMarker, '--first-marker'],
-      [options.secondMarker, '--second-marker'],
-      [barrierReleaseUrl, '--barrier-release-url'],
-    ]) {
-      if (!value) fail(`producer timeline chronology requires ${label}`);
-    }
+  const manifest = readReadyManifest(options.readyManifest);
+  if (options.tmuxTiming && !manifest.controlledUpstream) {
+    fail('tmux client tool chronology requires controlled upstream observation URLs');
   }
   return {
-    manifest: readReadyManifest(options.readyManifest),
+    manifest,
     codexExecutable: requireFile(options.codexExecutable, 'codex executable', true),
     claudeExecutable: requireFile(options.claudeExecutable, 'claude executable', true),
     opencodeExecutable: options.opencodeExecutable
       ? requireFile(options.opencodeExecutable, 'opencode executable', true)
       : null,
-    barrierReleaseUrl,
-    producerTimelineDirectory,
     provenance: {
       codex: {
         sourceRoot: sourceRoot(options.codexSourceRoot, 'codex source root'),
@@ -130,6 +124,7 @@ function normalizeInputs(options) {
         buildCommand: requiredText(options.codexBuildCommand, 'codex build command'),
       },
       claude: {
+        packageManifest: requireFile(options.claudePackageManifest, 'claude package manifest'),
         packageName: requiredText(options.claudePackageName, 'claude package name'),
         packageVersion: requiredText(options.claudePackageVersion, 'claude package version'),
         packageIntegrity: requiredText(options.claudePackageIntegrity, 'claude package integrity'),

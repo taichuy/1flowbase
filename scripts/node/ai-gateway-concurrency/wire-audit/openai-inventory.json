@@ -1,0 +1,22 @@
+{
+  "schema_version": "1flowbase.openai-wire-inventory/v1",
+  "source": {
+    "repository": "openai/openai-openapi",
+    "revision": "5c044be3bf3a42854e99e34616564eeb2124a317",
+    "document": "openapi.json"
+  },
+  "pinned_known_counts": {"tools": 16, "tool_choices": 9, "input_items": 6, "items": 27, "output_items": 28, "stream_events": 53},
+  "groups": {
+    "tools": ["FunctionTool", "FileSearchTool", "ComputerTool", "ComputerUsePreviewTool", "WebSearchTool", "MCPTool", "CodeInterpreterTool", "ProgrammaticToolCallingParam", "ImageGenTool", "LocalShellToolParam", "FunctionShellToolParam", "CustomToolParam", "NamespaceToolParam", "ToolSearchToolParam", "WebSearchPreviewTool", "ApplyPatchToolParam"],
+    "tool_choices": ["ToolChoiceOptions", "ToolChoiceAllowed", "ToolChoiceTypes", "ToolChoiceFunction", "ToolChoiceMCP", "ToolChoiceCustom", "SpecificProgrammaticToolCallingParam", "SpecificApplyPatchParam", "SpecificFunctionShellParam"],
+    "input_items": ["EasyInputMessage", "Item", "CompactionTriggerItemParam", "ItemReferenceParam", "ProgramItemParam", "ProgramOutputItemParam"],
+    "items": ["InputMessage", "OutputMessage", "FileSearchToolCall", "ComputerToolCall", "ComputerCallOutputItemParam", "WebSearchToolCall", "FunctionToolCall", "FunctionCallOutputItemParam", "ToolSearchCallItemParam", "ToolSearchOutputItemParam", "AdditionalToolsItemParam", "ReasoningItem", "CompactionSummaryItemParam", "ImageGenToolCall", "CodeInterpreterToolCall", "LocalShellToolCall", "LocalShellToolCallOutput", "FunctionShellCallItemParam", "FunctionShellCallOutputItemParam", "ApplyPatchToolCallItemParam", "ApplyPatchToolCallOutputItemParam", "MCPListTools", "MCPApprovalRequest", "MCPApprovalResponse", "MCPToolCall", "CustomToolCallOutput", "CustomToolCall", "SyntheticUnknownItemDrift"],
+    "output_items": ["OutputMessage", "FileSearchToolCall", "FunctionToolCall", "FunctionToolCallOutputResource", "WebSearchToolCall", "ComputerToolCall", "ComputerToolCallOutputResource", "ReasoningItem", "Program", "ProgramOutput", "ToolSearchCall", "ToolSearchOutput", "AdditionalTools", "CompactionBody", "ImageGenToolCall", "CodeInterpreterToolCall", "LocalShellToolCall", "LocalShellToolCallOutput", "FunctionShellCall", "FunctionShellCallOutput", "ApplyPatchToolCall", "ApplyPatchToolCallOutput", "MCPToolCall", "MCPListTools", "MCPApprovalRequest", "MCPApprovalResponseResource", "CustomToolCall", "CustomToolCallOutputResource"],
+    "stream_events": ["ResponseAudioDeltaEvent", "ResponseAudioDoneEvent", "ResponseAudioTranscriptDeltaEvent", "ResponseAudioTranscriptDoneEvent", "ResponseCodeInterpreterCallCodeDeltaEvent", "ResponseCodeInterpreterCallCodeDoneEvent", "ResponseCodeInterpreterCallCompletedEvent", "ResponseCodeInterpreterCallInProgressEvent", "ResponseCodeInterpreterCallInterpretingEvent", "ResponseCompletedEvent", "ResponseContentPartAddedEvent", "ResponseContentPartDoneEvent", "ResponseCreatedEvent", "ResponseErrorEvent", "ResponseFileSearchCallCompletedEvent", "ResponseFileSearchCallInProgressEvent", "ResponseFileSearchCallSearchingEvent", "ResponseFunctionCallArgumentsDeltaEvent", "ResponseFunctionCallArgumentsDoneEvent", "ResponseInProgressEvent", "ResponseFailedEvent", "ResponseIncompleteEvent", "ResponseOutputItemAddedEvent", "ResponseOutputItemDoneEvent", "ResponseReasoningSummaryPartAddedEvent", "ResponseReasoningSummaryPartDoneEvent", "ResponseReasoningSummaryTextDeltaEvent", "ResponseReasoningSummaryTextDoneEvent", "ResponseReasoningTextDeltaEvent", "ResponseReasoningTextDoneEvent", "ResponseRefusalDeltaEvent", "ResponseRefusalDoneEvent", "ResponseTextDeltaEvent", "ResponseTextDoneEvent", "ResponseWebSearchCallCompletedEvent", "ResponseWebSearchCallInProgressEvent", "ResponseWebSearchCallSearchingEvent", "ResponseImageGenCallCompletedEvent", "ResponseImageGenCallGeneratingEvent", "ResponseImageGenCallInProgressEvent", "ResponseImageGenCallPartialImageEvent", "ResponseMCPCallArgumentsDeltaEvent", "ResponseMCPCallArgumentsDoneEvent", "ResponseMCPCallCompletedEvent", "ResponseMCPCallFailedEvent", "ResponseMCPCallInProgressEvent", "ResponseMCPListToolsCompletedEvent", "ResponseMCPListToolsFailedEvent", "ResponseMCPListToolsInProgressEvent", "ResponseOutputTextAnnotationAddedEvent", "ResponseQueuedEvent", "ResponseCustomToolCallInputDeltaEvent", "ResponseCustomToolCallInputDoneEvent"]
+  },
+  "synthetic_unknown": {
+    "group": "items",
+    "name": "SyntheticUnknownItemDrift",
+    "wire": {"type": "future_gateway_drift", "future_field": {"preserve": true}}
+  }
+}

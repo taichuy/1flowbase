@@ -8,15 +8,12 @@ const FIELDS = new Map([
   ['--codex-executable', 'codexExecutable'],
   ['--claude-executable', 'claudeExecutable'],
   ['--opencode-executable', 'opencodeExecutable'],
-  ['--first-marker', 'firstMarker'],
-  ['--second-marker', 'secondMarker'],
-  ['--barrier-release-url', 'barrierReleaseUrl'],
-  ['--client-result-marker', 'clientResultMarker'],
-  ['--producer-timeline-directory', 'producerTimelineDirectory'],
+  ['--secret-canary', 'secretCanary'],
   ['--codex-source-root', 'codexSourceRoot'],
   ['--codex-source-identity', 'codexSourceIdentity'],
   ['--codex-build-command', 'codexBuildCommand'],
   ['--claude-package-name', 'claudePackageName'],
+  ['--claude-package-manifest', 'claudePackageManifest'],
   ['--claude-package-version', 'claudePackageVersion'],
   ['--claude-package-integrity', 'claudePackageIntegrity'],
   ['--claude-install-command', 'claudeInstallCommand'],
@@ -28,16 +25,15 @@ const FIELDS = new Map([
 function usage() {
   const provenance = [
     'Required provenance: --codex-source-root, --codex-source-identity, --codex-build-command,',
-    '--claude-package-name, --claude-package-version, --claude-package-integrity,',
+    '--claude-package-manifest, --claude-package-name, --claude-package-version, --claude-package-integrity,',
     '--claude-install-command, and (with OpenCode) --opencode-source-root plus',
-    '--opencode-source-identity and --opencode-build-command. D3 timelines additionally use --client-result-marker',
-    'and --producer-timeline-directory.',
+    '--opencode-source-identity and --opencode-build-command. The ready manifest supplies',
+    'the controlled upstream timeline, barrier, network, and executor observers.',
   ].join(' ');
   return `Usage: node scripts/node/cli/ai-gateway-cli-smoke.js \\
   --ready-manifest <WP3-ready.json> \\
   --codex-executable <path> --claude-executable <path> [--opencode-executable <path>] \\
-  [--tmux-timing --first-marker <delta-1> --second-marker <delta-2> \\
-   --barrier-release-url <loopback-url>]
+  [--tmux-timing] [--secret-canary <canary>]
 
 The values may instead be supplied as AI_GATEWAY_FIXTURE_READY_FILE,
 AI_GATEWAY_CODEX_EXECUTABLE, AI_GATEWAY_CLAUDE_EXECUTABLE, and
@@ -59,14 +55,14 @@ function parseArgs(argv, env = process.env) {
     codexSourceIdentity: env.AI_GATEWAY_CODEX_SOURCE_IDENTITY,
     codexBuildCommand: env.AI_GATEWAY_CODEX_BUILD_COMMAND,
     claudePackageName: env.AI_GATEWAY_CLAUDE_PACKAGE_NAME,
+    claudePackageManifest: env.AI_GATEWAY_CLAUDE_PACKAGE_MANIFEST,
     claudePackageVersion: env.AI_GATEWAY_CLAUDE_PACKAGE_VERSION,
     claudePackageIntegrity: env.AI_GATEWAY_CLAUDE_PACKAGE_INTEGRITY,
     claudeInstallCommand: env.AI_GATEWAY_CLAUDE_INSTALL_COMMAND,
     opencodeSourceRoot: env.AI_GATEWAY_OPENCODE_SOURCE_ROOT,
     opencodeSourceIdentity: env.AI_GATEWAY_OPENCODE_SOURCE_IDENTITY,
     opencodeBuildCommand: env.AI_GATEWAY_OPENCODE_BUILD_COMMAND,
-    producerTimelineDirectory: env.AI_GATEWAY_PRODUCER_TIMELINE_DIRECTORY,
-    clientResultMarker: env.AI_GATEWAY_CLIENT_RESULT_MARKER,
+    secretCanary: env.AI_GATEWAY_SECRET_CANARY,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];

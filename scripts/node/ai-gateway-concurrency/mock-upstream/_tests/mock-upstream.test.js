@@ -288,3 +288,71 @@ test('AC-007: timeline snapshots are detached from internal evidence', async () 
     assert.equal(upstream.snapshot().entries[0].request.method, 'POST');
   });
 });
+
+// D3-AC-002/003: live producer events, not prepared chronology files, drive the tool barrier.
+test('controlled tool loop records live call and second request before barrier release', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl, barrierReleaseUrl }) => {
+    const first = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: '1flowbase-client-tool-vector TOOL_VECTOR_PATH=/tmp/tool-vector.txt',
+      }),
+    });
+    assert.match(await first.text(), /local_shell_call/u);
+
+    const second = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: [{ type: 'local_shell_call_output', call_id: 'call_fixture', output: '1flowbase-client-tool-result' }],
+      }),
+    });
+    const reader = second.body.getReader();
+    const decoder = new TextDecoder();
+    let visible = '';
+    while (!visible.includes('marker-1')) {
+      const { value } = await reader.read();
+      visible += decoder.decode(value, { stream: true });
+    }
+    await fetch(barrierReleaseUrl, { method: 'POST' });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      visible += decoder.decode(value, { stream: true });
+    }
+    assert.match(visible, /marker-2/u);
+    const events = upstream.snapshot().entries;
+    const call = events.find((event) => event.event === 'tool_call');
+    const continuation = events.find((event) => event.event === 'second_upstream_request');
+    const released = events.find((event) => event.event === 'barrier_released');
+    assert.ok(BigInt(call.monotonic_ns) < BigInt(continuation.monotonic_ns));
+    assert.ok(BigInt(continuation.monotonic_ns) < BigInt(released.monotonic_ns));
+  }, { barrierEnabled: true });
+});
+
+// Root AC-019/020/023/024: runtime counters belong to the controlled observer.
+test('controlled wire vectors count provider execution without gateway executor or server_url outbound', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl, networkObserverUrl, gatewayExecutorObserverUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        tools: [
+          { type: 'file_search' },
+          { type: 'mcp', server_label: 'fixture', server_url: networkObserverUrl },
+          { type: 'custom', name: 'caller', x_gateway_executor_observer: gatewayExecutorObserverUrl },
+        ],
+        input: [
+          { type: 'tool_search_call' }, { type: 'tool_search_output' }, { type: 'additional_tools' },
+          { type: 'mcp_list_tools' }, { type: 'mcp_call' }, { type: 'mcp_approval_request' },
+        ],
+      }),
+    });
+    await response.text();
+    const snapshot = upstream.snapshot();
+    assert.equal(snapshot.counters.gatewayExecutorInvocations, 0);
+    assert.equal(snapshot.counters.networkObserverOutbound, 0);
+    assert.equal(snapshot.counters.providerExecutions, 2);
+  });
+});

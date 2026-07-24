@@ -174,6 +174,11 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     );
     assert.equal(new Set(fixture.result.pools.anthropic.map((target) => target.api_key)).size, 2);
     assert.equal(fixture.result.targets.anthropic, fixture.result.pools.anthropic[0]);
+    assert.equal(
+      fixture.result.controlled_upstream.snapshot_url,
+      `${files.options.upstreamBaseUrl}/__control/snapshot`
+    );
+    assert.equal(fixture.result.artifact_root, files.options.artifactRoot);
     assert.match(fixture.result.targets.openai.durable.cancel_run.url_template, /\{run_id\}\/cancel$/u);
     assert.match(fixture.result.targets.openai.runtime_activity.url, /runtime-activity$/u);
     assert.match(
