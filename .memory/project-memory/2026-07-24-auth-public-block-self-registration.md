@@ -66,4 +66,5 @@ scope:
 - 变量作者界面统一为 `标签 / 变量 / 操作` 三列表格；Provider public variable 标签复用 `config_schema` 字段标签，Auth 缺失上下文目录时 fail visible，不回退 Frontstage 通用变量。交付提交：implementation `d54d5dca8`，beta merge `44aa89fb3`。
 - Auth 配置变量与运行时上下文由后端 `group` 字段分组；Host 安全投影 `title / description / enabled`，Provider 继续只投影 `public_variable_keys`，不公开 `public_ui_block`、未知字段或 secret。交付提交：implementation `42a84d16d`，beta merge `bc944e00a`。
 - Auth Center authoring DTO 直接返回 registry 安全投影的 `public_variables`；认证中心运行当前未保存草稿时复用共享 Trial UI，并以同一 `authenticator_id / public_variables / auth_event` contract 重跑 action。真实写接口调用先确认，取消或 session revoke 后不发出请求；越界路径继续由 canonical public Auth transport 拒绝。交付提交：implementation `7e7d0c879`，beta merge `d1600be24`。
-- Auth Studio 的运行预览使用共享 `JsBlockTrialPanel` 的 `direct-preview` presentation：打开即自动运行当前草稿，源码变化后 300ms 防抖重跑并释放旧 session，右侧只展示实际 Block 渲染结果；Frontstage 继续使用完整 `debugger` presentation。交付提交：implementation `6e9050cf4`，beta merge `3cdb76259`。
+- Auth Studio 的运行预览使用共享 `JsBlockTrialPanel` 的 `direct-preview` presentation，右侧只展示实际 Block 渲染结果，Frontstage 继续使用完整 `debugger` presentation；初版草稿防抖刷新语义已被下一条保存真值语义取代。初版交付提交：implementation `6e9050cf4`，beta merge `3cdb76259`。
+- Auth Studio 预览刷新语义随后收敛为后端保存真值：打开时运行已保存 `source`，滚动、选择和修改本地 `draft` 不重建 session；仅保存成功导致 source revision 变化后刷新，保存失败保留旧预览，Block action 仍可携带 `auth_event` 重跑。交付提交：implementation `8dff95011`，beta merge `a74058c47`。
