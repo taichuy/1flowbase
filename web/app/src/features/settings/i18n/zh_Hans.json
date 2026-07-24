@@ -137,6 +137,7 @@
     "auth_center_auth_type_required": "请选择认证类型。",
     "auth_center_drag_sort_authenticator": "拖拽排序认证器 {{value1}}",
     "auth_center_ui_action": "UI",
+    "auth_center_self_registration": "允许自行注册",
     "auth_center_block_source": "区块源码",
     "auth_center_public_ui_update_failed": "公开认证 UI 保存失败",
     "configuration": "{{value1}} 配置",

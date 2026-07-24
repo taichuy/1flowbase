@@ -1,216 +1,257 @@
-import { CodeOutlined } from '@ant-design/icons';
-import { Alert, Button, Modal, Tooltip } from 'antd';
-import { useEffect, useState } from 'react';
+import type { OnMount } from '@monaco-editor/react';
+import { Descriptions } from 'antd';
+import { useEffect, useRef, useState } from 'react';
 
-import { BlockSourceEditor } from '../../../../shared/code-block/BlockSourceEditor';
-import { BlockStudioWindowHeader } from '../../../../shared/code-block/BlockStudioWindowHeader';
+import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
-import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import { JsxStudioResourcePanel } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
+import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
 import {
-  fitWindowWorkspaceRect,
-  getWindowWorkspaceViewport
-} from '../../../../shared/ui/window-workspace/window-workspace-geometry';
-import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
-import {
-  closeWindowWorkspaceEntry,
-  type WindowWorkspaceRect
-} from '../../../../shared/ui/window-workspace/window-workspace-state';
-
-import '../../../../shared/code-block/block-source-studio.css';
+  applyFrontstageJsxInsertionPlan,
+  planFrontstageJsxInsertion,
+  type FrontstageJsxInsertion
+} from '../../../frontstage/lib/jsx-studio/source-insertion';
+import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
 
 export interface AuthenticatorUiBlockStudioProps {
   authenticatorId: string;
+  authenticatorTitle: string;
+  authType: string;
+  description: string | null;
+  enabled: boolean;
   errorMessage: string | null;
   open: boolean;
   readOnly: boolean;
   saving: boolean;
+  selfRegistrationEnabled: boolean;
   source: string;
+  workspaceId: string;
   onClose: () => void;
   onSave: (source: string) => Promise<void>;
 }
 
-const INITIAL_WINDOW_RECT: WindowWorkspaceRect = {
-  left: 120,
-  top: 64,
-  width: 1080,
-  height: 680
+const AUTH_CONTEXT_COMMENT = [
+  '/**',
+  ' * @1flowbase-context',
+  ' * inputs: authenticator_id, public_variables, auth_event',
+  ' * interfaces: ctx.api',
+  ' * outputs: 无',
+  ' */'
+].join('\n');
+const AUTH_EDITOR_PROJECTION = {
+  components: [
+    'Alert',
+    'Button',
+    'Form',
+    'FormItem',
+    'Input',
+    'Stack',
+    'Text',
+    'Title'
+  ].map((name) => ({
+    name,
+    moduleSource: '@1flowbase/block-renderer/antd-facade' as const
+  })),
+  contextComment: AUTH_CONTEXT_COMMENT,
+  monacoExtraLibs: []
 };
+const AUTH_CONTEXT_VARIABLES = [
+  {
+    label: 'ctx.inputs.authenticator_id',
+    memberPath: 'inputs.authenticator_id'
+  },
+  {
+    label: 'ctx.inputs.public_variables',
+    memberPath: 'inputs.public_variables'
+  },
+  { label: 'ctx.inputs.auth_event', memberPath: 'inputs.auth_event' },
+  { label: 'ctx.api', memberPath: 'api' }
+];
 
 export function AuthenticatorUiBlockStudio({
   authenticatorId,
+  authenticatorTitle,
+  authType,
+  description,
+  enabled,
   errorMessage,
   onClose,
   onSave,
   open,
   readOnly,
   saving,
-  source
+  selfRegistrationEnabled,
+  source,
+  workspaceId
 }: AuthenticatorUiBlockStudioProps) {
-  const {
-    activate,
-    close,
-    open: openWindow,
-    setDirty,
-    setRect,
-    state: windowWorkspaceState,
-    toggleMaximized
-  } = useWindowWorkspace();
   const [draft, setDraft] = useState(source);
-  const [mobile, setMobile] = useState(false);
-  const dirty = draft !== source;
-  const windowId = `auth-center-jsx-studio:${authenticatorId}`;
-
-  useEffect(() => {
-    if (!open) {
-      close(windowId);
-      return;
-    }
-    setDraft(source);
-    openWindow({
-      id: windowId,
-      owner: 'settings:auth-center',
-      parent_id: null,
-      rect: INITIAL_WINDOW_RECT,
-      dirty: false
-    });
-    return () => close(windowId);
-  }, [close, open, openWindow, source, windowId]);
-
-  useEffect(() => {
-    setDirty(windowId, dirty);
-  }, [dirty, setDirty, windowId]);
-
-  useEffect(() => {
-    const updateViewportMode = () => setMobile(window.innerWidth <= 600);
-    updateViewportMode();
-    window.addEventListener('resize', updateViewportMode);
-    return () => window.removeEventListener('resize', updateViewportMode);
-  }, []);
-
-  const windowEntry = windowWorkspaceState.windows.find(
-    (entry) => entry.id === windowId
+  const [authoringBlock, setAuthoringBlock] = useState<FrontstageBlockInstance>(
+    () => createAuthoringBlock(authenticatorId)
   );
-  const viewportRect = (): WindowWorkspaceRect => {
-    const viewport = getWindowWorkspaceViewport();
-    return fitWindowWorkspaceRect(
-      {
-        left: viewport.left,
-        top: viewport.top,
-        width: viewport.width,
-        height: viewport.height
-      },
-      320,
-      320,
-      viewport
-    );
-  };
-  const requestClose = () => {
-    const closing = closeWindowWorkspaceEntry(
-      windowWorkspaceState,
-      windowId
-    ).closed;
-    const finishClose = () => {
-      close(windowId);
-      onClose();
-    };
-    if (!closing.some((entry) => entry.dirty)) {
-      finishClose();
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft(source);
+    setAuthoringBlock(createAuthoringBlock(authenticatorId));
+  }, [authenticatorId, open, source]);
+
+  const insertCode = (insertion: FrontstageJsxInsertion) => {
+    const editor = editorRef.current;
+    const selection = editor?.getSelection();
+    const model = editor?.getModel();
+    if (editor && selection && model) {
+      const plan = planFrontstageJsxInsertion({
+        source: model.getValue(),
+        selection: {
+          start: model.getOffsetAt(selection.getStartPosition()),
+          end: model.getOffsetAt(selection.getEndPosition())
+        },
+        insertion
+      });
+      editor.pushUndoStop();
+      editor.executeEdits(
+        'auth-center-jsx-studio',
+        plan.edits.map((edit) => {
+          const start = model.getPositionAt(edit.start);
+          const end = model.getPositionAt(edit.end);
+          return {
+            range: {
+              startLineNumber: start.lineNumber,
+              startColumn: start.column,
+              endLineNumber: end.lineNumber,
+              endColumn: end.column
+            },
+            text: edit.text,
+            forceMoveMarkers: true
+          };
+        })
+      );
+      editor.pushUndoStop();
+      editor.focus();
       return;
     }
-    Modal.confirm({
-      title: i18nText('frontstage', 'auto.unsaved_close_title'),
-      content: i18nText('frontstage', 'auto.unsaved_close_description'),
-      onOk: finishClose
+    const separator = draft && !draft.endsWith('\n') ? '\n' : '';
+    const nextSource = `${draft}${separator}`;
+    const plan = planFrontstageJsxInsertion({
+      source: nextSource,
+      selection: { start: nextSource.length, end: nextSource.length },
+      insertion
     });
+    setDraft(`${applyFrontstageJsxInsertionPlan(nextSource, plan)}\n`);
   };
-
-  if (!open || !windowEntry) return null;
 
   return (
-    <WindowWorkspaceWindow
-      active={
-        windowEntry.z_index ===
-        Math.max(...windowWorkspaceState.windows.map((entry) => entry.z_index))
-      }
-      bodyClassName="frontstage-jsx-studio__window-body"
-      className="frontstage-jsx-studio frontstage-jsx-studio--window"
-      dragHandleSelector="[data-window-drag-handle='true']"
-      initialRect={() => windowEntry.rect}
-      minHeight={320}
-      minWidth={320}
-      rect={windowEntry.rect}
-      resizeLabel={() => i18nText('frontstage', 'auto.resize_jsx_studio')}
+    <BlockSourceStudio
+      contextComment={AUTH_CONTEXT_COMMENT}
+      dirty={draft !== source}
+      errorMessage={errorMessage}
+      initialSection="code"
+      loading={false}
+      open={open}
+      owner="settings:auth-center"
+      path={`file:///auth-center/${authenticatorId}/public-ui-block.tsx`}
+      readOnly={readOnly}
+      saving={saving}
+      source={draft}
       testId={`auth-center-jsx-studio-${authenticatorId}`}
-      title={i18nText('frontstage', 'auto.jsx_studio')}
-      zIndex={1050 + windowEntry.z_index}
-      onActivate={() => activate(windowId)}
-      onRectChange={(nextRect) => setRect(windowId, nextRect)}
-    >
-      <BlockStudioWindowHeader
-        closeLabel={i18nText('frontstage', 'auto.close')}
-        maximized={windowEntry.maximized}
-        maximizeLabel={i18nText('frontstage', 'auto.maximize_window')}
-        mobile={mobile}
-        restoreLabel={i18nText('frontstage', 'auto.restore_window')}
-        status={
-          dirty
-            ? i18nText('frontstage', 'auto.not_saved')
-            : i18nText('frontstage', 'auto.synced')
-        }
-        title={i18nText('frontstage', 'auto.jsx_studio')}
-        toolbar={(
-          <>
-            <Button
-              disabled={!dirty || saving}
-              onClick={() => setDraft(source)}
-            >
-              {i18nText('frontstage', 'auto.reset')}
-            </Button>
-            <Button
-              disabled={!dirty || readOnly || saving}
-              loading={saving}
-              type="primary"
-              onClick={() => void onSave(draft)}
-            >
-              {i18nText('frontstage', 'auto.save_code')}
-            </Button>
-          </>
-        )}
-        onClose={requestClose}
-        onToggleMaximized={() =>
-          toggleMaximized(windowId, viewportRect())
-        }
-      />
-      <div className="frontstage-jsx-studio__workspace frontstage-jsx-studio__workspace--code-only">
-        <main className="frontstage-jsx-studio__editor-panel">
-          {errorMessage ? (
-            <Alert message={errorMessage} showIcon type="error" />
-          ) : null}
-          <div className="frontstage-jsx-studio__monaco">
-            <BlockSourceEditor
-              ariaLabel={i18nText('settings', 'auto.auth_center_block_source')}
-              height="100%"
-              path={`file:///auth-center/${authenticatorId}/public-ui-block.tsx`}
-              readOnly={readOnly || saving}
-              value={draft}
-              onChange={setDraft}
-            />
-          </div>
-        </main>
-        <nav
-          aria-label={i18nText('frontstage', 'auto.jsx_studio_resources')}
-          className="frontstage-jsx-studio__rail"
-        >
-          <Tooltip title={i18nText('frontstage', 'auto.code')} placement="left">
-            <Button
-              aria-label={i18nText('frontstage', 'auto.code')}
-              className="frontstage-jsx-studio__rail-button frontstage-jsx-studio__rail-button--active"
-              icon={<CodeOutlined />}
-              type="text"
-            />
-          </Tooltip>
-        </nav>
-      </div>
-    </WindowWorkspaceWindow>
+      windowId={`auth-center-jsx-studio:${authenticatorId}`}
+      onChange={setDraft}
+      onClose={onClose}
+      onEditorMount={(editor) => {
+        editorRef.current = editor;
+      }}
+      onInjectContext={injectFrontstageContextComment}
+      onReset={() => setDraft(source)}
+      onSave={() => void onSave(draft)}
+      renderResource={(section) => (
+        <JsxStudioResourcePanel
+          block={authoringBlock}
+          codeSource={draft}
+          contextVariables={AUTH_CONTEXT_VARIABLES}
+          interfacePathPrefix="/api/public/auth/"
+          pageBlocks={[authoringBlock]}
+          projection={AUTH_EDITOR_PROJECTION}
+          section={section}
+          workspaceId={workspaceId}
+          configurationPanel={(
+            <div className="frontstage-jsx-studio__resource-scroll">
+              <Descriptions
+                column={1}
+                size="small"
+                items={[
+                  {
+                    key: 'title',
+                    label: i18nText('settings', 'auto.name'),
+                    children: authenticatorTitle
+                  },
+                  {
+                    key: 'type',
+                    label: i18nText(
+                      'settings',
+                      'auto.auth_center_auth_type'
+                    ),
+                    children: authType
+                  },
+                  {
+                    key: 'description',
+                    label: i18nText('settings', 'auto.description'),
+                    children: description || '-'
+                  },
+                  {
+                    key: 'enabled',
+                    label: i18nText('settings', 'auto.enabled'),
+                    children: i18nText(
+                      'settings',
+                      enabled ? 'auto.yes' : 'auto.no'
+                    )
+                  },
+                  {
+                    key: 'registration',
+                    label: i18nText(
+                      'settings',
+                      'auto.auth_center_self_registration'
+                    ),
+                    children: i18nText(
+                      'settings',
+                      selfRegistrationEnabled ? 'auto.yes' : 'auto.no'
+                    )
+                  }
+                ]}
+              />
+            </div>
+          )}
+          onInsertCode={insertCode}
+          onSaveBlock={async (block) => {
+            setAuthoringBlock(block);
+            return true;
+          }}
+        />
+      )}
+    />
   );
+}
+
+function createAuthoringBlock(authenticatorId: string): FrontstageBlockInstance {
+  return {
+    id: `public-auth:${authenticatorId}`,
+    rendererVersion: 'v1',
+    sourceId: `public-auth:${authenticatorId}`,
+    codeRef: `public-auth:${authenticatorId}`,
+    sourceCodeRef: `public-auth:${authenticatorId}`,
+    catalog: {
+      providerCode: '1flowbase',
+      installationId: 'builtin-installation'
+    },
+    contribution: {
+      pluginId: 'builtin-auth',
+      pluginVersion: '1.0.0',
+      code: 'auth.public-ui-block'
+    },
+    props: {},
+    presentation: { heightMode: 'auto', height: null },
+    layout: { order: 0 },
+    order: 0,
+    runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+  };
 }

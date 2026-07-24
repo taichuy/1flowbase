@@ -36,6 +36,11 @@ export type FrontstageJsxStudioSection =
   | 'configuration'
   | 'run';
 
+export interface JsxStudioContextVariable {
+  label: string;
+  memberPath: string;
+}
+
 const INTERFACE_FILTER_POPUP_STYLES = {
   popup: { root: { zIndex: 1400 } }
 };
@@ -49,6 +54,9 @@ export function JsxStudioResourcePanel({
   onSaveBlock,
   projection,
   runPanel,
+  configurationPanel,
+  contextVariables,
+  interfacePathPrefix,
   section
 }: {
   block: FrontstageBlockInstance;
@@ -59,12 +67,16 @@ export function JsxStudioResourcePanel({
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
+  configurationPanel?: ReactNode;
+  contextVariables?: readonly JsxStudioContextVariable[];
+  interfacePathPrefix?: string;
   section: Exclude<FrontstageJsxStudioSection, 'code'>;
 }) {
   if (section === 'interfaces') {
     return (
       <InterfaceConnectorPanel
         codeSource={codeSource}
+        pathPrefix={interfacePathPrefix}
         workspaceId={workspaceId}
         onInsertCode={onInsertCode}
       />
@@ -78,6 +90,7 @@ export function JsxStudioResourcePanel({
         pageBlocks={pageBlocks}
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
+        contextVariables={contextVariables}
       />
     );
   }
@@ -92,7 +105,9 @@ export function JsxStudioResourcePanel({
   }
 
   if (section === 'configuration') {
-    return <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />;
+    return configurationPanel ?? (
+      <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />
+    );
   }
 
   return runPanel ? (
@@ -107,10 +122,12 @@ export function JsxStudioResourcePanel({
 
 function InterfaceConnectorPanel({
   codeSource,
+  pathPrefix,
   workspaceId,
   onInsertCode
 }: {
   codeSource: string;
+  pathPrefix?: string;
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
@@ -125,7 +142,7 @@ function InterfaceConnectorPanel({
   const [method, setMethod] = useState<string>();
   const [offset, setOffset] = useState(0);
   const capabilityPage = useFrontstageInterfaceCapabilities(workspaceId, {
-    path_query: pathQuery || undefined,
+    path_query: pathPrefix || pathQuery || undefined,
     adapter_id: adapterId,
     method,
     offset,
@@ -187,13 +204,17 @@ function InterfaceConnectorPanel({
         )}
       />
       <section className="frontstage-jsx-studio__resource-section">
-        <Input
-          allowClear
-          aria-label={i18nText('frontstage', 'auto.interface_path_search')}
-          placeholder={i18nText('frontstage', 'auto.interface_path_search')}
-          value={pathInput}
-          onChange={(event) => setPathInput(event.target.value)}
-        />
+        {pathPrefix ? (
+          <Typography.Text code>{pathPrefix}</Typography.Text>
+        ) : (
+          <Input
+            allowClear
+            aria-label={i18nText('frontstage', 'auto.interface_path_search')}
+            placeholder={i18nText('frontstage', 'auto.interface_path_search')}
+            value={pathInput}
+            onChange={(event) => setPathInput(event.target.value)}
+          />
+        )}
         <Space.Compact block>
           <Select
             allowClear
@@ -298,11 +319,13 @@ function InterfaceConnectorPanel({
 
 function VariablesPanel({
   block,
+  contextVariables,
   pageBlocks,
   onInsertCode,
   onSaveBlock
 }: {
   block: FrontstageBlockInstance;
+  contextVariables?: readonly JsxStudioContextVariable[];
   pageBlocks: readonly FrontstageBlockInstance[];
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
@@ -366,7 +389,7 @@ function VariablesPanel({
     });
     setInputName('');
   };
-  const variables = [
+  const variables = contextVariables ?? [
     { label: 'ctx.currentUser', memberPath: 'currentUser' },
     { label: 'ctx.workspace', memberPath: 'workspace' },
     { label: 'ctx.application', memberPath: 'application' },
@@ -381,6 +404,36 @@ function VariablesPanel({
     { label: 'ctx.theme', memberPath: 'theme' },
     { label: 'ctx.ui', memberPath: 'ui' }
   ];
+
+  if (contextVariables) {
+    return (
+      <div className="frontstage-jsx-studio__resource-scroll">
+        <ResourceHeading
+          title={i18nText('frontstage', 'auto.variables')}
+          description={i18nText('frontstage', 'auto.variables_description')}
+        />
+        {variables.map((variable) => (
+          <div
+            className="frontstage-jsx-studio__insert-row"
+            key={variable.label}
+          >
+            <Typography.Text code>{variable.label}</Typography.Text>
+            <Button
+              size="small"
+              onClick={() =>
+                onInsertCode({
+                  kind: 'context-reference',
+                  memberPath: variable.memberPath
+                })
+              }
+            >
+              {i18nText('frontstage', 'auto.insert_code')}
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="frontstage-jsx-studio__resource-scroll">
