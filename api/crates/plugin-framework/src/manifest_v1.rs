@@ -8,6 +8,7 @@ use crate::{
     provider_contract::{
         CURRENT_PROVIDER_CONTRACT, PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
         PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY, PROVIDER_COUNT_TOKENS_CAPABILITY,
+        PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
     },
 };
 
@@ -1032,6 +1033,7 @@ fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> Framew
                 PROVIDER_COUNT_TOKENS_CAPABILITY,
                 PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
                 PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
+                PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
             ],
         )?;
         if !seen.insert(capability.as_str()) {

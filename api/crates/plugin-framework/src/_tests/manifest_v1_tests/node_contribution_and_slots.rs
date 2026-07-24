@@ -481,7 +481,7 @@ runtime:
 }
 
 #[test]
-fn provider_v2_manifest_accepts_exact_remote_compact_capability_rows() {
+fn provider_v2_manifest_accepts_openai_remote_and_native_capability_rows() {
     let raw = r#"
 manifest_version: 1
 plugin_id: openai@0.2.13
@@ -513,16 +513,18 @@ runtime:
   capabilities:
     - compact.responses_compact
     - compact.responses_compaction_v2
+    - responses.native_passthrough
 "#;
 
     let manifest = parse_plugin_manifest(raw)
-        .expect("the two declared OpenAI Compact capability rows should be accepted exactly");
+        .expect("the declared OpenAI remote and native capabilities should be accepted exactly");
 
     assert_eq!(
         manifest.runtime.capabilities,
         vec![
             "compact.responses_compact",
-            "compact.responses_compaction_v2"
+            "compact.responses_compaction_v2",
+            "responses.native_passthrough"
         ]
     );
 }
