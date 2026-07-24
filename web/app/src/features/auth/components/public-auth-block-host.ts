@@ -1,8 +1,38 @@
 import { apiFetch } from '@1flowbase/api-client';
 import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
-import type { JsBlockRunRequest } from '@1flowbase/page-runtime';
+import type {
+  JsBlockHostEffectHandler,
+  JsBlockHostInterfaceEffect,
+  JsBlockRunRequest
+} from '@1flowbase/page-runtime';
 
 import { getAuthApiBaseUrl, type PublicLoginInstance } from '../api/session';
+
+export const PUBLIC_AUTH_RUNTIME_LIMITS = {
+  timeoutMs: 10_000,
+  maxRenderDepth: 32,
+  maxRenderNodes: 500
+} as const;
+
+export function createPublicAuthInputs(
+  authenticatorId: string,
+  publicVariables: Record<string, unknown>,
+  event?: BlockRendererActionEvent
+): Record<string, unknown> {
+  return {
+    authenticator_id: authenticatorId,
+    public_variables: publicVariables,
+    ...(event
+      ? {
+          auth_event: {
+            action_id: event.actionId,
+            values: event.formValues ?? {},
+            ...(event.payload === undefined ? {} : { payload: event.payload })
+          }
+        }
+      : {})
+  };
+}
 
 export function createPublicAuthRunRequest(
   instance: PublicLoginInstance,
@@ -20,23 +50,59 @@ export function createPublicAuthRunRequest(
         '@1flowbase/block-renderer/antd-facade'
       ]
     },
-    inputs: {
-      authenticator_id: instance.id,
-      public_variables: instance.public_variables,
-      ...(event
-        ? {
-            auth_event: {
-              action_id: event.actionId,
-              values: event.formValues ?? {},
-              ...(event.payload === undefined ? {} : { payload: event.payload })
-            }
-          }
-        : {})
-    },
+    inputs: createPublicAuthInputs(instance.id, instance.public_variables, event),
     props: {},
     state: {},
     contextSnapshot: {},
-    limits: { timeoutMs: 10_000, maxRenderDepth: 32, maxRenderNodes: 500 }
+    limits: PUBLIC_AUTH_RUNTIME_LIMITS
+  };
+}
+
+interface PublicAuthPreviewRunAuthorization {
+  confirmWrite: () => Promise<boolean>;
+  writeConfirmed: boolean;
+  writeConfirmation: Promise<boolean> | null;
+}
+
+export interface PublicAuthPreviewCapabilityHandlers {
+  interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  prepareDraftRun(input: {
+    runId: string;
+    confirmWrite: () => Promise<boolean>;
+  }): Promise<void>;
+  revokeDraftRun(runId: string): void;
+}
+
+export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCapabilityHandlers {
+  const draftRuns = new Map<string, PublicAuthPreviewRunAuthorization>();
+
+  return {
+    async prepareDraftRun({ runId, confirmWrite }) {
+      draftRuns.set(runId, {
+        confirmWrite,
+        writeConfirmed: false,
+        writeConfirmation: null
+      });
+    },
+    revokeDraftRun(runId) {
+      draftRuns.delete(runId);
+    },
+    async interface(effect) {
+      const draftRun = draftRuns.get(effect.requestId);
+      if (!draftRun) {
+        throw new Error('Public authentication preview run is not registered.');
+      }
+      if (effect.operation && effect.operation !== 'call') {
+        throw new Error('Public authentication preview streaming is not supported.');
+      }
+      if (isPublicAuthWriteMethod(effect.method)) {
+        const confirmed = await confirmPublicAuthPreviewWrite(draftRun);
+        if (!confirmed) {
+          throw new Error('Public authentication preview write was cancelled.');
+        }
+      }
+      return dispatchPublicAuthApi(effect.method, effect.path, effect.request);
+    }
   };
 }
 
@@ -76,4 +142,19 @@ function toStringRecord(value: Record<string, unknown>): Record<string, string> 
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, String(item)])
   );
+}
+
+function isPublicAuthWriteMethod(method: string): boolean {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+}
+
+async function confirmPublicAuthPreviewWrite(
+  draftRun: PublicAuthPreviewRunAuthorization
+): Promise<boolean> {
+  if (draftRun.writeConfirmed) return true;
+  draftRun.writeConfirmation ??= draftRun.confirmWrite();
+  const confirmed = await draftRun.writeConfirmation;
+  draftRun.writeConfirmation = null;
+  if (confirmed) draftRun.writeConfirmed = true;
+  return confirmed;
 }

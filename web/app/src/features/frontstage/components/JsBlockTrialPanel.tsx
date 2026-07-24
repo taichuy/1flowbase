@@ -3,6 +3,7 @@ import {
   hashJsBlockDraft,
   type JsBlockHostEffectHandlers
 } from '@1flowbase/page-runtime';
+import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
 import { CloseOutlined } from '@ant-design/icons';
 import {
   Button,
@@ -15,10 +16,9 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';
-import type { FrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import {
   createFrontstageRestrictedBlockRuntimeSession,
   type FrontstageRestrictedBlockRuntimeSession
@@ -40,9 +40,17 @@ export interface JsBlockTrialPanelProps {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   code: string;
   contextSnapshot: Record<string, unknown>;
+  createRunInputs?: (
+    event?: BlockRendererActionEvent
+  ) => Record<string, unknown>;
   handlers?: JsBlockHostEffectHandlers;
-  onPrepareDraftRun?: FrontstageJsBlockCapabilityHandlers['prepareDraftRun'];
-  onRevokeDraftRun?: FrontstageJsBlockCapabilityHandlers['revokeDraftRun'];
+  onPrepareDraftRun?: (input: {
+    blockId: string;
+    runId: string;
+    draftHash: string;
+    confirmWrite: () => Promise<boolean>;
+  }) => Promise<void>;
+  onRevokeDraftRun?: (runId: string) => void;
   limits: RestrictedBlockLoaderLimits;
   onCodeChange?: (code: string) => void;
   onContextSnapshotChange?: (value: Record<string, unknown>) => void;
@@ -55,6 +63,7 @@ export function JsBlockTrialPanel({
   catalogEntry,
   code,
   contextSnapshot,
+  createRunInputs,
   handlers,
   onPrepareDraftRun,
   onRevokeDraftRun,
@@ -69,7 +78,7 @@ export function JsBlockTrialPanel({
   const [snapshot, setSnapshot] =
     useState<RestrictedBlockRuntimeHostSnapshot | null>(null);
   const [activeTab, setActiveTab] = useState('preview');
-  const stop = () => {
+  const stop = useCallback(() => {
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
     const session = sessionRef.current;
@@ -78,11 +87,11 @@ export function JsBlockTrialPanel({
       onRevokeDraftRun?.(session.getSnapshot().requestId);
       setSnapshot(session.dispose());
     }
-  };
+  }, [onRevokeDraftRun]);
 
-  useEffect(() => stop, []);
+  useEffect(() => stop, [stop]);
 
-  const run = async () => {
+  const run = async (event?: BlockRendererActionEvent) => {
     stop();
     if (!catalogEntry) return;
     const plan = createRestrictedBlockRunPlan({
@@ -90,7 +99,7 @@ export function JsBlockTrialPanel({
       catalogEntry,
       code,
       contextSnapshot,
-      inputs: {},
+      inputs: createRunInputs?.(event) ?? {},
       limits
     });
     if (!plan.ok) {
@@ -163,7 +172,10 @@ export function JsBlockTrialPanel({
       key: 'preview',
       label: i18nText('frontstage', 'auto.preview'),
       content: snapshot ? (
-        <RestrictedBlockRuntimePreview snapshot={snapshot} />
+        <RestrictedBlockRuntimePreview
+          snapshot={snapshot}
+          onAction={createRunInputs ? (event) => void run(event) : undefined}
+        />
       ) : (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
       )

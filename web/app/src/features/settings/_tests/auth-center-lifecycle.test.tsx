@@ -91,6 +91,12 @@ const baseOverview = {
       is_builtin: true,
       sort_order: 0,
       interface_path_prefixes: ['/api/public/'],
+      public_variables: {
+        title: 'Password',
+        description: 'Local password authentication',
+        enabled: true,
+        self_registration_enabled: false
+      },
       context_variables: [
         {
           group: 'configuration',
@@ -158,6 +164,12 @@ const baseOverview = {
       is_builtin: false,
       sort_order: 10,
       interface_path_prefixes: ['/api/public/'],
+      public_variables: {
+        title: 'Staff Password',
+        description: 'Staff login',
+        enabled: false,
+        self_registration_enabled: false
+      },
       context_variables: [],
       config_schema: [
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },

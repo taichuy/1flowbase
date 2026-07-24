@@ -81,6 +81,15 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["is_builtin"], json!(true));
     assert_eq!(password_local["sort_order"], json!(0));
     assert_eq!(
+        password_local["public_variables"],
+        json!({
+            "title": "Password",
+            "description": "Local password authentication",
+            "enabled": true,
+            "self_registration_enabled": false
+        })
+    );
+    assert_eq!(
         password_local["interface_path_prefixes"],
         json!(["/api/public/"])
     );
@@ -158,6 +167,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         .iter()
         .find(|authenticator| authenticator["title"] == "OIDC")
         .expect("custom authenticator should be visible in auth center overview");
+    assert!(oidc["public_variables"].is_null());
     assert_eq!(oidc["enabled"], json!(false));
     assert_eq!(oidc["sort_order"], json!(0));
     assert_eq!(

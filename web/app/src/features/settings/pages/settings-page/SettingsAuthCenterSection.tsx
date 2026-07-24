@@ -766,6 +766,7 @@ export function SettingsAuthCenterSection() {
           interfacePathPrefixes={
             selectedUiAuthenticator.interface_path_prefixes
           }
+          publicVariables={selectedUiAuthenticator.public_variables}
           selfRegistrationEnabled={
             selectedUiAuthenticator.config_values
               .self_registration_enabled === true
