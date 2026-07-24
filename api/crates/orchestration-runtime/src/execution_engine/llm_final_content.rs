@@ -226,14 +226,15 @@ pub(super) fn durable_provider_events(
 ) -> Vec<ProviderStreamEvent> {
     events
         .into_iter()
-        .map(|event| match event {
-            ProviderStreamEvent::Error { error } => ProviderStreamEvent::Error {
+        .filter_map(|event| match event {
+            ProviderStreamEvent::NativeEvent { .. } => None,
+            ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
                 error: ProviderRuntimeError::new(
                     error.kind,
                     durable_provider_error_message(error.kind),
                 ),
-            },
-            other => other,
+            }),
+            other => Some(other),
         })
         .collect()
 }

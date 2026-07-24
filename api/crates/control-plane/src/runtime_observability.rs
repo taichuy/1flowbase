@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use observability::{DeltaCoalescer, RuntimeBusEvent, RuntimeEventBus};
 use plugin_framework::provider_contract::ProviderStreamEvent;
 use serde_json::Value;
@@ -170,6 +170,10 @@ pub fn coalesce_provider_stream_events(
 
     for event in events {
         match event {
+            ProviderStreamEvent::NativeEvent { .. } => {
+                flush_text_delta(bus, &mut coalesced, &mut coalescer);
+                flush_reasoning_delta(bus, &mut coalesced, &mut coalescer);
+            }
             ProviderStreamEvent::TextDelta { delta } => {
                 flush_reasoning_delta(bus, &mut coalesced, &mut coalescer);
                 push_runtime_bus_delta(bus, &mut coalesced, coalescer.push_text(delta));
@@ -206,6 +210,9 @@ pub async fn append_provider_stream_event<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
+        bail!("ephemeral provider native events cannot be persisted");
+    }
     let event_type = provider_stream_event_type(event);
     let payload = serde_json::to_value(event)?;
     let record = repository
@@ -271,6 +278,9 @@ where
     let mut runtime_inputs = Vec::with_capacity(events.len());
 
     for event in events {
+        if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
+            continue;
+        }
         let event_type = provider_stream_event_type(event);
         let payload = serde_json::to_value(event)?;
         if should_append_run_event(event) {
@@ -327,6 +337,7 @@ where
 
 pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {
     match event {
+        ProviderStreamEvent::NativeEvent { .. } => "native_event",
         ProviderStreamEvent::TextDelta { .. } => "text_delta",
         ProviderStreamEvent::ReasoningDelta { .. } => "reasoning_delta",
         ProviderStreamEvent::ToolCallDelta { .. } => "tool_call_delta",

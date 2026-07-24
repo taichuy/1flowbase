@@ -93,3 +93,72 @@ async fn openai_responses_live_text_stream_wraps_deltas_in_output_items() {
         "message output_item.done should carry the accumulated text: {body}"
     );
 }
+
+#[tokio::test]
+async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synthetic_duplicates() {
+    let run = native_run();
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true)
+        .with_native_passthrough(true);
+    let mut events = Vec::new();
+
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+    ));
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::provider_native_event(
+                "node-llm",
+                Uuid::new_v4(),
+                "openai_responses".to_string(),
+                json!({
+                    "type": "response.future.delta",
+                    "future": {"opaque": true}
+                }),
+            ),
+        ),
+    ));
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            3,
+            debug_stream_events::provider_native_event(
+                "node-llm",
+                Uuid::new_v4(),
+                "openai_responses".to_string(),
+                json!({
+                    "type": "response.completed",
+                    "response": {"id": "resp_native"}
+                }),
+            ),
+        ),
+    ));
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            4,
+            debug_stream_events::flow_finished(run.id, json!({"answer": "synthetic"})),
+        ),
+    ));
+
+    let response = test_projected_events_response(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(!body.contains("response.created"), "{body}");
+    assert!(body.contains("event: response.future.delta"), "{body}");
+    assert!(body.contains("\"future\":{\"opaque\":true}"), "{body}");
+    assert_eq!(
+        body.matches("event: response.completed").count(),
+        1,
+        "{body}"
+    );
+    assert!(!body.contains("synthetic"), "{body}");
+}

@@ -166,6 +166,14 @@ where
                     if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
                     {
                         let runtime_events = match &event {
+                            ProviderStreamEvent::NativeEvent { protocol, event } => {
+                                vec![debug_stream_events::provider_native_event(
+                                    &node_id,
+                                    node_run_id,
+                                    protocol.clone(),
+                                    event.clone(),
+                                )]
+                            }
                             ProviderStreamEvent::TextDelta { delta } => {
                                 let mut runtime_events = Vec::new();
                                 let parts = think_tag_splitter.split(delta);

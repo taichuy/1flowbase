@@ -280,6 +280,28 @@ pub fn text_delta(node_id: &str, node_run_id: Uuid, text: String) -> RuntimeEven
     }
 }
 
+pub fn provider_native_event(
+    node_id: &str,
+    node_run_id: Uuid,
+    protocol: String,
+    event: Value,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "provider_native_event".to_string(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: false,
+        trace_visible: false,
+        payload: json!({
+            "type": "provider_native_event",
+            "node_run_id": node_run_id,
+            "node_id": node_id,
+            "protocol": protocol,
+            "event": event,
+        }),
+    }
+}
+
 pub fn answer_text_delta(
     answer_node_id: &str,
     text: String,

@@ -1118,6 +1118,7 @@ impl std::error::Error for ProviderCompactError {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderStreamEvent {
+    NativeEvent { protocol: String, event: Value },
     TextDelta { delta: String },
     ReasoningDelta { delta: String },
     ToolCallDelta { call_id: String, delta: Value },
@@ -1133,6 +1134,7 @@ pub enum ProviderStreamEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRuntimeLine {
+    NativeEvent { protocol: String, event: Value },
     TextDelta { delta: String },
     ReasoningDelta { delta: String },
     ToolCallDelta { call_id: String, delta: Value },
@@ -1149,6 +1151,9 @@ pub enum ProviderRuntimeLine {
 impl ProviderRuntimeLine {
     pub fn into_stream_event(self) -> Option<ProviderStreamEvent> {
         match self {
+            Self::NativeEvent { protocol, event } => {
+                Some(ProviderStreamEvent::NativeEvent { protocol, event })
+            }
             Self::TextDelta { delta } => Some(ProviderStreamEvent::TextDelta { delta }),
             Self::ReasoningDelta { delta } => Some(ProviderStreamEvent::ReasoningDelta { delta }),
             Self::ToolCallDelta { call_id, delta } => {

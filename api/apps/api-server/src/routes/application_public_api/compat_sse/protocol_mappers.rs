@@ -119,6 +119,8 @@ pub(super) struct OpenAiResponseStreamMapper {
     active_output_item: Option<OpenAiResponseOutputItemKind>,
     active_output_item_text: String,
     output_item_index: usize,
+    native_passthrough_active: bool,
+    native_terminal_seen: bool,
 }
 
 impl OpenAiResponseStreamMapper {
@@ -136,7 +138,14 @@ impl OpenAiResponseStreamMapper {
             active_output_item: None,
             active_output_item_text: String::new(),
             output_item_index: 0,
+            native_passthrough_active: false,
+            native_terminal_seen: false,
         }
+    }
+
+    pub(super) fn with_native_passthrough(mut self, active: bool) -> Self {
+        self.native_passthrough_active = active;
+        self
     }
 
     fn open_output_item(
@@ -190,6 +199,34 @@ impl OpenAiResponseStreamMapper {
     ) -> Vec<Result<Event, Infallible>> {
         let event = event.into();
         let envelope = event.envelope();
+        if envelope.event_type == "provider_native_event"
+            && envelope.payload["protocol"] == "openai_responses"
+        {
+            self.native_passthrough_active = true;
+            let provider_event = envelope.payload["event"].clone();
+            let event_type = provider_event
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            self.native_terminal_seen |= matches!(
+                event_type.as_str(),
+                "response.completed" | "response.done" | "response.failed" | "response.incomplete"
+            );
+            return if event_type.is_empty()
+                || event_type.contains('\n')
+                || event_type.contains('\r')
+            {
+                vec![json_sse(provider_event)]
+            } else {
+                vec![event_json_sse(&event_type, provider_event)]
+            };
+        }
+        if self.native_passthrough_active
+            && (event.terminal().is_none() || self.native_terminal_seen)
+        {
+            return Vec::new();
+        }
         let mut events = Vec::new();
         match event.answer_delta() {
             Some(CompatibleAnswerDeltaKind::Reasoning) => {
@@ -976,7 +1013,7 @@ fn json_sse(payload: Value) -> Result<Event, Infallible> {
         .expect("compatible SSE payload should serialize"))
 }
 
-fn event_json_sse(event_name: &'static str, payload: Value) -> Result<Event, Infallible> {
+fn event_json_sse(event_name: &str, payload: Value) -> Result<Event, Infallible> {
     Ok(Event::default()
         .event(event_name)
         .json_data(payload)

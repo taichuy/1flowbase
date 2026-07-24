@@ -495,6 +495,27 @@ fn provider_stream_events_are_coalesced_and_published_to_bus() {
     );
 }
 
+#[test]
+fn d4_ac_026_native_provider_events_never_enter_durable_observability() {
+    let bus = RuntimeEventBus::new(16);
+    let mut receiver = bus.subscribe();
+    let events = coalesce_provider_stream_events(
+        &bus,
+        &[ProviderStreamEvent::NativeEvent {
+            protocol: "openai_responses".into(),
+            event: serde_json::json!({
+                "type": "response.future.delta",
+                "secret": "must-not-be-observable"
+            }),
+        }],
+        32,
+    )
+    .unwrap();
+
+    assert!(events.is_empty());
+    assert!(receiver.try_recv().is_err());
+}
+
 #[tokio::test]
 async fn provider_text_deltas_are_coalesced_before_durable_write() {
     let service = OrchestrationRuntimeService::for_tests_with_provider_events(vec![
