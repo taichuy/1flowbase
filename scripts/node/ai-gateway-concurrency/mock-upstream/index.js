@@ -227,15 +227,14 @@ async function emitHttpStream({
   };
 
   let visibleDeltaReleased = false;
+  const barrierEvents = stream.barrierEvent
+    ? [stream.barrierEvent]
+    : ['content_block_delta', 'response.output_text.delta', 'chat.completion.chunk'];
   for (const chunk of stream.chunks) {
     const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
     if (!write(event, chunk.data ?? chunk)) break;
     const visibleMarker = JSON.stringify(chunk).includes(barrier.marker);
-    if (!visibleDeltaReleased && barrier.enabled && visibleMarker && [
-      'content_block_delta',
-      'response.output_text.delta',
-      'chat.completion.chunk',
-    ].includes(event)) {
+    if (!visibleDeltaReleased && barrier.enabled && visibleMarker && barrierEvents.includes(event)) {
       visibleDeltaReleased = true;
       timeline.record('barrier_waiting', { protocolEvent: event });
       await barrier.wait();

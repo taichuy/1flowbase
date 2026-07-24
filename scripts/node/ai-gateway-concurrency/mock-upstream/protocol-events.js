@@ -94,6 +94,66 @@ function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
   };
 }
 
+function responsesObservableItemEvents(nonce, firstText, secondText) {
+  const response = {
+    id: `resp_${nonce}`,
+    object: 'response',
+    status: 'in_progress',
+    model: 'mock-model',
+    output: [],
+  };
+  const texts = [firstText, secondText];
+  const completedItems = texts.map((text, index) => ({
+    id: `item_${nonce}_${index}`,
+    type: 'message',
+    role: 'assistant',
+    status: 'completed',
+    content: [{ type: 'output_text', text, annotations: [] }],
+  }));
+  const chunks = [{ type: 'response.created', sequence_number: 0, response }];
+  for (const [outputIndex, completedItem] of completedItems.entries()) {
+    const sequenceStart = chunks.length;
+    const openItem = { ...completedItem, status: 'in_progress', content: [] };
+    const openPart = { type: 'output_text', text: '', annotations: [] };
+    const completedPart = completedItem.content[0];
+    chunks.push(
+      {
+        type: 'response.output_item.added', sequence_number: sequenceStart,
+        output_index: outputIndex, item: openItem,
+      },
+      {
+        type: 'response.content_part.added', sequence_number: sequenceStart + 1,
+        item_id: completedItem.id, output_index: outputIndex, content_index: 0, part: openPart,
+      },
+      {
+        type: 'response.output_text.delta', sequence_number: sequenceStart + 2,
+        item_id: completedItem.id, output_index: outputIndex, content_index: 0, delta: texts[outputIndex],
+      },
+      {
+        type: 'response.output_text.done', sequence_number: sequenceStart + 3,
+        item_id: completedItem.id, output_index: outputIndex, content_index: 0, text: texts[outputIndex],
+      },
+      {
+        type: 'response.content_part.done', sequence_number: sequenceStart + 4,
+        item_id: completedItem.id, output_index: outputIndex, content_index: 0, part: completedPart,
+      },
+      {
+        type: 'response.output_item.done', sequence_number: sequenceStart + 5,
+        output_index: outputIndex, item: completedItem,
+      },
+    );
+  }
+  return {
+    barrierEvent: 'response.output_item.done',
+    chunks,
+    terminal: {
+      type: 'response.completed',
+      sequence_number: chunks.length,
+      response: { ...response, status: 'completed', output: completedItems },
+    },
+  };
+}
+
 function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
   return {
     chunks: [
@@ -153,7 +213,7 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
 }
 
 function responsesToolEvents(nonce, toolPath, final = false, executorProbeUrl = null) {
-  if (final) return responsesEvents(
+  if (final) return responsesObservableItemEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
     `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`

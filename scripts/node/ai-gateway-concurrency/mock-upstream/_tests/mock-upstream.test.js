@@ -64,6 +64,23 @@ async function waitFor(predicate, timeoutMs = 500) {
   throw new Error('timed out waiting for mock evidence');
 }
 
+async function readStreamChunk(reader, timeoutMs = 250) {
+  let timer;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('marker-1 item did not become observable before the barrier')),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function arrivalEntries(upstream) {
   return upstream.snapshot().entries.filter((entry) => entry.event === 'arrival');
 }
@@ -351,10 +368,11 @@ test('controlled tool loop records live call and second request before barrier r
     const reader = second.body.getReader();
     const decoder = new TextDecoder();
     let visible = '';
-    while (!visible.includes('marker-1')) {
-      const { value } = await reader.read();
+    while (!visible.includes('response.output_item.done') || !visible.includes('marker-1')) {
+      const { value } = await readStreamChunk(reader);
       visible += decoder.decode(value, { stream: true });
     }
+    assert.doesNotMatch(visible, /marker-2/u);
     await fetch(barrierReleaseUrl, { method: 'POST' });
     while (true) {
       const { done, value } = await reader.read();
