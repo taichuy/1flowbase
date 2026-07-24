@@ -5,7 +5,7 @@ import {
   validateJsBlockSource
 } from '@1flowbase/page-runtime';
 import type { ReactNode } from 'react';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -41,6 +41,7 @@ export interface FrontstageJsxStudioDrawerProps {
     | ((context: {
         code: string;
         onCodeChange: (code: string) => void;
+        runRevision: number | null;
       }) => ReactNode);
   onClose: () => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
@@ -61,6 +62,7 @@ export function FrontstageJsxStudioDrawer({
   workspaceId
 }: FrontstageJsxStudioDrawerProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const [runRevision, setRunRevision] = useState<number | null>(null);
   const {
     draft,
     dirty,
@@ -80,6 +82,9 @@ export function FrontstageJsxStudioDrawer({
     () => createFrontstageJsxEditorProjection({ catalogEntry }),
     [catalogEntry]
   );
+  useEffect(() => {
+    if (open) setRunRevision(null);
+  }, [block.id, open]);
   const allowedImports = useMemo(
     () => catalogEntry?.codeCapabilities?.allowedImports ?? [],
     [catalogEntry]
@@ -146,7 +151,7 @@ export function FrontstageJsxStudioDrawer({
   };
   const resolvedRunPanel =
     typeof runPanel === 'function'
-      ? runPanel({ code: draft, onCodeChange: setDraft })
+      ? runPanel({ code: draft, onCodeChange: setDraft, runRevision })
       : runPanel;
 
   return (
@@ -182,6 +187,7 @@ export function FrontstageJsxStudioDrawer({
       }}
       onInjectContext={injectFrontstageContextComment}
       onReset={reset}
+      onRun={() => setRunRevision((current) => (current ?? 0) + 1)}
       onSave={() => void save().catch(() => undefined)}
       renderResource={(section) => (
         <JsxStudioResourcePanel

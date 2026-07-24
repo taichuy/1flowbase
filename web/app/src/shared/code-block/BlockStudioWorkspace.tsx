@@ -30,7 +30,7 @@ const STUDIO_SECTIONS: Array<{
   { key: 'variables', label: i18nText('frontstage', 'auto.variables'), icon: <DatabaseOutlined /> },
   { key: 'components', label: i18nText('frontstage', 'auto.components'), icon: <AppstoreOutlined /> },
   { key: 'configuration', label: i18nText('frontstage', 'auto.configuration'), icon: <SettingOutlined /> },
-  { key: 'run', label: i18nText('frontstage', 'auto.run_preview'), icon: <PlayCircleOutlined /> }
+  { key: 'run', label: i18nText('frontstage', 'auto.preview'), icon: <PlayCircleOutlined /> }
 ];
 
 const DEFAULT_RESOURCE_PANEL_WIDTH = 320;
@@ -40,20 +40,18 @@ const STUDIO_RAIL_WIDTH = 44;
 const STUDIO_SPLITTER_WIDTH = 8;
 
 export function BlockStudioWorkspace({
+  activeSection,
   editor,
-  initialSection,
-  open,
+  onSectionChange,
   renderResource,
   windowWidth
 }: {
+  activeSection: BlockStudioSection;
   editor: ReactNode;
-  initialSection: BlockStudioSection;
-  open: boolean;
+  onSectionChange: (section: BlockStudioSection) => void;
   renderResource: (section: Exclude<BlockStudioSection, 'code'>) => ReactNode;
   windowWidth: number;
 }) {
-  const [activeSection, setActiveSection] =
-    useState<BlockStudioSection>(initialSection);
   const [resourcePanelWidth, setResourcePanelWidth] = useState(
     DEFAULT_RESOURCE_PANEL_WIDTH
   );
@@ -69,10 +67,6 @@ export function BlockStudioWorkspace({
       STUDIO_RAIL_WIDTH -
       STUDIO_SPLITTER_WIDTH
   );
-
-  useEffect(() => {
-    if (open) setActiveSection(initialSection);
-  }, [initialSection, open]);
 
   useEffect(() => {
     liveResourcePanelWidthRef.current = resourcePanelWidth;
@@ -140,7 +134,7 @@ export function BlockStudioWorkspace({
                 .join(' ')}
               icon={section.icon}
               type="text"
-              onClick={() => setActiveSection(section.key)}
+              onClick={() => onSectionChange(section.key)}
             />
           </Tooltip>
         ))}

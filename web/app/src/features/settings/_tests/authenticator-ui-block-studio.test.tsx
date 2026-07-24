@@ -54,10 +54,14 @@ vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
 vi.mock('@monaco-editor/react', () => ({
   default: ({
     beforeMount,
-    onMount
+    onChange,
+    onMount,
+    value
   }: {
     beforeMount?: (monaco: unknown) => void;
+    onChange?: (value: string) => void;
     onMount?: (editor: unknown, monaco: unknown) => void;
+    value?: string;
   }) => {
     const monaco = {
       languages: {
@@ -74,7 +78,13 @@ vi.mock('@monaco-editor/react', () => ({
     };
     beforeMount?.(monaco);
     onMount?.({}, monaco);
-    return <textarea aria-label="TSX source" />;
+    return (
+      <textarea
+        aria-label="TSX source"
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    );
   }
 }));
 
@@ -201,7 +211,8 @@ describe('AuthenticatorUiBlockStudio', () => {
     );
   });
 
-  test('AC-030 provides the shared resource panel with an Auth Trial run panel', () => {
+  test('AC-043/044/045 runs the current draft from the header without saving it', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
     render(
       <AuthenticatorUiBlockStudio
         authenticatorId="password-local"
@@ -224,11 +235,14 @@ describe('AuthenticatorUiBlockStudio', () => {
         source="export default { main };"
         workspaceId="workspace-1"
         onClose={vi.fn()}
-        onSave={vi.fn()}
+        onSave={onSave}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '运行预览' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'TSX source' }), {
+      target: { value: 'first unsaved draft' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
     expect(resourcePanelHook.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ runPanel: expect.anything() })
     );
@@ -245,11 +259,32 @@ describe('AuthenticatorUiBlockStudio', () => {
         code: 'frontstage.js-ui-block'
       }
     });
-    expect(trialProps.code).toBe('export default { main };');
+    expect(trialProps.code).toBe('first unsaved draft');
     expect(trialProps.presentation).toEqual({
       mode: 'direct-preview',
       revision: expect.any(String)
     });
+    const firstRevision = trialProps.presentation.revision;
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'TSX source' }), {
+      target: { value: 'second unsaved draft' }
+    });
+    expect(trialPanelHook.render.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        code: 'first unsaved draft',
+        presentation: { mode: 'direct-preview', revision: firstRevision }
+      })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('second unsaved draft'));
+    expect(trialPanelHook.render.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        code: 'first unsaved draft',
+        presentation: { mode: 'direct-preview', revision: firstRevision }
+      })
+    );
     expect(trialProps.createRunInputs()).toEqual({
       authenticator_id: 'password-local',
       public_variables: {

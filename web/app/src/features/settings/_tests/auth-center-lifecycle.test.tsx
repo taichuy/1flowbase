@@ -386,7 +386,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       '变量',
       '组件',
       '区块设置',
-      '运行预览'
+      '预览'
     ]));
     fireEvent.click(within(uiDialog).getByRole('button', { name: '接口' }));
     expect(within(uiDialog).getByText('接口连接器')).toBeInTheDocument();

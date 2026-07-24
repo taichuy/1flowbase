@@ -1,5 +1,4 @@
 import type { OnMount } from '@monaco-editor/react';
-import { hashJsBlockDraft } from '@1flowbase/page-runtime';
 import { Descriptions } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -89,6 +88,11 @@ export function AuthenticatorUiBlockStudio({
     [authoringCatalogEntry]
   );
   const [draft, setDraft] = useState(source);
+  const [previewRequest, setPreviewRequest] = useState<{
+    revision: string;
+    source: string;
+  } | null>(null);
+  const previewSequenceRef = useRef(0);
   const [authoringBlock, setAuthoringBlock] = useState<FrontstageBlockInstance>(
     () => createAuthoringBlock(authenticatorId, authoringCatalogEntry)
   );
@@ -105,6 +109,12 @@ export function AuthenticatorUiBlockStudio({
       createAuthoringBlock(authenticatorId, authoringCatalogEntry)
     );
   }, [authenticatorId, authoringCatalogEntry, open, source]);
+
+  useEffect(() => {
+    if (!open) return;
+    previewSequenceRef.current = 0;
+    setPreviewRequest(null);
+  }, [authenticatorId, open]);
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
@@ -174,6 +184,13 @@ export function AuthenticatorUiBlockStudio({
       }}
       onInjectContext={injectFrontstageContextComment}
       onReset={() => setDraft(source)}
+      onRun={(runSource) => {
+        previewSequenceRef.current += 1;
+        setPreviewRequest({
+          revision: `run:${previewSequenceRef.current}`,
+          source: runSource
+        });
+      }}
       onSave={() => void onSave(draft)}
       renderResource={(section) => (
         <JsxStudioResourcePanel
@@ -184,12 +201,12 @@ export function AuthenticatorUiBlockStudio({
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
           runPanel={
-            publicVariables && authoringCatalogEntry ? (
+            publicVariables && authoringCatalogEntry && previewRequest ? (
               <JsBlockTrialPanel
                 key={authenticatorId}
                 block={authoringBlock}
                 catalogEntry={authoringCatalogEntry}
-                code={source}
+                code={previewRequest.source}
                 contextSnapshot={{}}
                 createRunInputs={(event) =>
                   createPublicAuthInputs(
@@ -204,7 +221,7 @@ export function AuthenticatorUiBlockStudio({
                 onRevokeDraftRun={previewCapabilities.revokeDraftRun}
                 presentation={{
                   mode: 'direct-preview',
-                  revision: hashJsBlockDraft(source)
+                  revision: previewRequest.revision
                 }}
               />
             ) : undefined
