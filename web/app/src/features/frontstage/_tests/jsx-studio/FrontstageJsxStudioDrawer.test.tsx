@@ -72,10 +72,10 @@ vi.mock('@monaco-editor/react', () => ({
     beforeMount?: (monaco: unknown) => void;
     value?: string;
     onChange?: (value?: string) => void;
-    onMount?: (editor: unknown) => void;
+    onMount?: (editor: unknown, monaco: unknown) => void;
     options?: { editContext?: boolean };
   }) => {
-    beforeMount?.({
+    const monaco = {
       languages: {
         typescript: {
           JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
@@ -87,8 +87,9 @@ vi.mock('@monaco-editor/react', () => ({
           }
         }
       }
-    });
-    onMount?.(monacoEditor);
+    };
+    beforeMount?.(monaco);
+    onMount?.(monacoEditor, monaco);
     return (
       <textarea
         aria-label="JSX source"
@@ -159,6 +160,7 @@ describe('FrontstageJsxStudioDrawer', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    monacoHook.addExtraLib.mockReturnValue({ dispose: vi.fn() });
     monacoEditor.getSelection.mockReturnValue(null);
     monacoEditor.getModel.mockReturnValue(null);
     Object.defineProperty(window, 'innerWidth', {
