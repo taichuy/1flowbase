@@ -15,8 +15,8 @@ match_when:
   - 调整认证器 public projection、HostExtension Auth Provider contract 或注册接口
   - 讨论登录页应由 Core、Schema UI 还是代码区块拥有
 created_at: 2026-07-24 00
-updated_at: 2026-07-24 22
-last_verified_at: 2026-07-24 22
+updated_at: 2026-07-24 23
+last_verified_at: 2026-07-24 23
 decision_policy: verify_before_decision
 status: phase_implementation
 source_issue: "#1444"
@@ -64,3 +64,4 @@ scope:
 - 动态上下文变量交付提交：implementation `e221ec48d`，beta merge `4e0d4ace8`；AC-017～AC-021 证据见 Issue comment `5069033332`。
 - Auth Provider 公开变量 schema 从既有 `config_schema + public_variable_keys` 派生；前端直接消费 `label / member_path / schema`，不维护 Auth 专用变量常量。
 - 变量作者界面统一为 `标签 / 变量 / 操作` 三列表格；Provider public variable 标签复用 `config_schema` 字段标签，Auth 缺失上下文目录时 fail visible，不回退 Frontstage 通用变量。交付提交：implementation `d54d5dca8`，beta merge `44aa89fb3`。
+- Auth 配置变量与运行时上下文由后端 `group` 字段分组；Host 安全投影 `title / description / enabled`，Provider 继续只投影 `public_variable_keys`，不公开 `public_ui_block`、未知字段或 secret。交付提交：implementation `42a84d16d`，beta merge `bc944e00a`。
