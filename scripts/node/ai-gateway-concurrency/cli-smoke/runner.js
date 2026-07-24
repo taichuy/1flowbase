@@ -8,6 +8,7 @@ const { appendTimelineEvent, readTimeline, writeMergedTimeline } = require('./ti
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 180_000;
 const SENTINEL_RESPONSE = '1flowbase gateway sentinel ok';
+const ANSI_CSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/gu;
 
 function boundedCollector(stream) {
   const chunks = [];
@@ -310,7 +311,8 @@ async function executeTmuxInvocation(
 }
 
 function parseJsonLines(text, client) {
-  const lines = text.split(/\r?\n/u).filter((line) => line.trim() !== '');
+  const lines = text.split(/\r?\n/u).filter((line) => line.trim() !== ''
+    && line.replace(ANSI_CSI_SEQUENCE, '').trim() !== '');
   if (lines.length === 0) throw new Error(`${client} emitted no JSONL events`);
   return lines.map((line) => {
     try {

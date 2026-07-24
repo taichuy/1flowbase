@@ -9,6 +9,7 @@ const test = require('node:test');
 const {
   assertCompatibleResult,
   executeTmuxInvocation,
+  parseJsonLines,
   ptyMarkerTimeline,
   shellQuote,
 } = require('../runner');
@@ -47,6 +48,15 @@ test('OpenCode TUI acceptance reads the sentinel from raw PTY output', () => {
     stderr: { text: '', overflow: false },
   });
   assert.equal(eventCount, 1);
+});
+
+test('JSONL parsing ignores standalone PTY control lines but rejects mixed garbage', () => {
+  const event = { type: 'result', result: '1flowbase gateway sentinel ok' };
+  assert.deepEqual(parseJsonLines(`${JSON.stringify(event)}\n\u001b[?25h\r\n`, 'claude'), [event]);
+  assert.throws(
+    () => parseJsonLines(`${JSON.stringify(event)}\n\u001b[?25hnot-json\n`, 'claude'),
+    /claude emitted invalid JSONL/u,
+  );
 });
 
 test('tmux PTY runner records util-linux output and timing without using the user tmux server', async () => {
