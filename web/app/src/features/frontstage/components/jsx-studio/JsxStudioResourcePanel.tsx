@@ -56,7 +56,7 @@ export function JsxStudioResourcePanel({
   runPanel,
   configurationPanel,
   contextVariables,
-  interfacePathPrefix,
+  interfacePathPrefixes,
   section
 }: {
   block: FrontstageBlockInstance;
@@ -69,14 +69,14 @@ export function JsxStudioResourcePanel({
   runPanel?: ReactNode;
   configurationPanel?: ReactNode;
   contextVariables?: readonly JsxStudioContextVariable[];
-  interfacePathPrefix?: string;
+  interfacePathPrefixes?: readonly string[];
   section: Exclude<FrontstageJsxStudioSection, 'code'>;
 }) {
   if (section === 'interfaces') {
     return (
       <InterfaceConnectorPanel
         codeSource={codeSource}
-        pathPrefix={interfacePathPrefix}
+        pathPrefixes={interfacePathPrefixes}
         workspaceId={workspaceId}
         onInsertCode={onInsertCode}
       />
@@ -122,12 +122,12 @@ export function JsxStudioResourcePanel({
 
 function InterfaceConnectorPanel({
   codeSource,
-  pathPrefix,
+  pathPrefixes,
   workspaceId,
   onInsertCode
 }: {
   codeSource: string;
-  pathPrefix?: string;
+  pathPrefixes?: readonly string[];
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
@@ -142,7 +142,9 @@ function InterfaceConnectorPanel({
   const [method, setMethod] = useState<string>();
   const [offset, setOffset] = useState(0);
   const capabilityPage = useFrontstageInterfaceCapabilities(workspaceId, {
-    path_query: pathPrefix || pathQuery || undefined,
+    path_prefixes:
+      pathPrefixes && pathPrefixes.length > 0 ? [...pathPrefixes] : undefined,
+    path_query: pathQuery || undefined,
     adapter_id: adapterId,
     method,
     offset,
@@ -204,17 +206,20 @@ function InterfaceConnectorPanel({
         )}
       />
       <section className="frontstage-jsx-studio__resource-section">
-        {pathPrefix ? (
-          <Typography.Text code>{pathPrefix}</Typography.Text>
-        ) : (
-          <Input
-            allowClear
-            aria-label={i18nText('frontstage', 'auto.interface_path_search')}
-            placeholder={i18nText('frontstage', 'auto.interface_path_search')}
-            value={pathInput}
-            onChange={(event) => setPathInput(event.target.value)}
-          />
-        )}
+        {pathPrefixes && pathPrefixes.length > 0 ? (
+          <Space wrap>
+            {pathPrefixes.map((pathPrefix) => (
+              <Typography.Text code key={pathPrefix}>{pathPrefix}</Typography.Text>
+            ))}
+          </Space>
+        ) : null}
+        <Input
+          allowClear
+          aria-label={i18nText('frontstage', 'auto.interface_path_search')}
+          placeholder={i18nText('frontstage', 'auto.interface_path_search')}
+          value={pathInput}
+          onChange={(event) => setPathInput(event.target.value)}
+        />
         <Space.Compact block>
           <Select
             allowClear

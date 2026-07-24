@@ -57,7 +57,7 @@ describe('public Auth Block host adapter', () => {
     });
   });
 
-  test('dispatches canonical ctx.api requests only inside the public Auth route boundary', async () => {
+  test('dispatches canonical ctx.api requests only inside the public API boundary', async () => {
     apiFetch.mockResolvedValue({ ok: true });
     await expect(dispatchPublicAuthApi('POST', '/api/public/auth/qr/start', {
       query: { locale: 'zh' }, body: { nonce: 'n-1' }
@@ -68,12 +68,19 @@ describe('public Auth Block host adapter', () => {
       body: { nonce: 'n-1' }
     }));
 
+    await expect(dispatchPublicAuthApi('GET', '/api/public/mapped/status', {}))
+      .resolves.toEqual({ ok: true });
+    expect(apiFetch).toHaveBeenLastCalledWith(expect.objectContaining({
+      path: '/api/public/mapped/status',
+      method: 'GET'
+    }));
+
     await expect(
       dispatchPublicAuthApi('GET', '/api/console/users', {})
     ).rejects.toThrow('forbidden API path');
     await expect(
-      dispatchPublicAuthApi('GET', '/api/public/auth/%2e%2e/console/users', {})
+      dispatchPublicAuthApi('GET', '/api/public/%2e%2e/console/users', {})
     ).rejects.toThrow('forbidden API path');
-    expect(apiFetch).toHaveBeenCalledTimes(1);
+    expect(apiFetch).toHaveBeenCalledTimes(2);
   });
 });

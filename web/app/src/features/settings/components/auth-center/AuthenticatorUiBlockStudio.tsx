@@ -22,6 +22,7 @@ export interface AuthenticatorUiBlockStudioProps {
   description: string | null;
   enabled: boolean;
   errorMessage: string | null;
+  interfacePathPrefixes: readonly string[];
   open: boolean;
   readOnly: boolean;
   saving: boolean;
@@ -60,6 +61,7 @@ export function AuthenticatorUiBlockStudio({
   description,
   enabled,
   errorMessage,
+  interfacePathPrefixes,
   onClose,
   onSave,
   open,
@@ -170,7 +172,7 @@ export function AuthenticatorUiBlockStudio({
           block={authoringBlock}
           codeSource={draft}
           contextVariables={AUTH_CONTEXT_VARIABLES}
-          interfacePathPrefix="/api/public/auth/"
+          interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
           section={section}

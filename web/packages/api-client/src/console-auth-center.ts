@@ -25,6 +25,7 @@ export interface ConsoleAuthCenterAuthenticator {
   enabled: boolean;
   is_builtin: boolean;
   sort_order: number;
+  interface_path_prefixes: string[];
   config_schema: ConsoleAuthCenterConfigField[];
   config_values: ConsoleAuthCenterAuthenticatorConfigValues;
 }

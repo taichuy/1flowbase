@@ -314,6 +314,83 @@ async fn callable_catalog_requires_frontstage_design_permission() {
 }
 
 #[tokio::test]
+async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() {
+    // #1444 AC-012/013: no scope means all callable interfaces; scoped queries use backend OR filtering.
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+
+    let (all_status, all) = get_json(
+        &app,
+        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities?limit=20"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(all_status, StatusCode::OK, "{all}");
+
+    let (public_status, public) = get_json(
+        &app,
+        &format!(
+            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F&limit=2"
+        ),
+        &cookie,
+    )
+    .await;
+    assert_eq!(public_status, StatusCode::OK, "{public}");
+    let public_items = public["data"]["items"].as_array().unwrap();
+    assert_eq!(public_items.len(), 2, "{public}");
+    assert!(public_items.iter().all(|entry| entry["path"]
+        .as_str()
+        .is_some_and(|path| path.starts_with("/api/public/"))));
+    let public_detail = callable_detail(
+        &app,
+        &cookie,
+        &workspace_id,
+        public_items[0]["interface_id"].as_str().unwrap(),
+    )
+    .await;
+    assert!(public_detail["path"]
+        .as_str()
+        .is_some_and(|path| path.starts_with("/api/public/")));
+    assert!(public["data"]["total"].as_u64().unwrap() > 2, "{public}");
+    assert_eq!(public["data"]["has_more"], json!(true));
+    assert_eq!(public["data"]["next_offset"], json!(2));
+    assert!(all["data"]["total"].as_u64().unwrap() > public["data"]["total"].as_u64().unwrap());
+
+    let prefixes = "%2Fapi%2Fpublic%2F%2C%2Fapi%2Fconsole%2Fsettings%2Fauth-center%2F";
+    let (many_status, many) = get_json(
+        &app,
+        &format!(
+            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_prefixes={prefixes}&limit=20"
+        ),
+        &cookie,
+    )
+    .await;
+    assert_eq!(many_status, StatusCode::OK, "{many}");
+    let many_items = many["data"]["items"].as_array().unwrap();
+    assert!(many_items.iter().any(|entry| entry["path"]
+        .as_str()
+        .is_some_and(|path| path.starts_with("/api/public/"))));
+    assert!(many_items.iter().any(|entry| entry["path"]
+        .as_str()
+        .is_some_and(|path| path.starts_with("/api/console/settings/auth-center/"))));
+    assert!(many_items.iter().all(|entry| entry["path"]
+        .as_str()
+        .is_some_and(|path| path.starts_with("/api/public/")
+            || path.starts_with("/api/console/settings/auth-center/"))));
+
+    let (invalid_status, _) = get_json(
+        &app,
+        &format!(
+            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_prefixes=api%2Fpublic"
+        ),
+        &cookie,
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 #[ignore = "canonical callable route fixture lives in tests/frontstage_data_capability_routes.rs"]
 async fn callable_catalog_and_dispatch_use_registered_page_tab_read_adapter() {
     // Root AC-002/004: a non-model operation uses the same catalog and dispatcher owner.

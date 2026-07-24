@@ -81,6 +81,10 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["is_builtin"], json!(true));
     assert_eq!(password_local["sort_order"], json!(0));
     assert_eq!(
+        password_local["interface_path_prefixes"],
+        json!(["/api/public/"])
+    );
+    assert_eq!(
         password_local["config_values"]["description"],
         json!("Local password authentication")
     );
