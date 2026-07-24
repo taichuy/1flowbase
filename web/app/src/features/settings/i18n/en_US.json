@@ -137,6 +137,7 @@
     "auth_center_auth_type_required": "Select an authentication type.",
     "auth_center_drag_sort_authenticator": "Drag to sort authenticator {{value1}}",
     "auth_center_ui_action": "UI",
+    "auth_center_self_registration": "Allow self registration",
     "auth_center_block_source": "Block source",
     "auth_center_public_ui_update_failed": "Failed to save the public authentication UI",
     "configuration": "{{value1}} configuration",

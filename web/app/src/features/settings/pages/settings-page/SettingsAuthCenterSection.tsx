@@ -753,6 +753,20 @@ export function SettingsAuthCenterSection() {
       {selectedUiAuthenticator ? (
         <AuthenticatorUiBlockStudio
           authenticatorId={selectedUiAuthenticator.id}
+          authenticatorTitle={selectedUiAuthenticator.title}
+          authType={selectedUiAuthenticator.auth_type}
+          description={
+            typeof selectedUiAuthenticator.config_values.description ===
+            'string'
+              ? selectedUiAuthenticator.config_values.description
+              : null
+          }
+          enabled={selectedUiAuthenticator.enabled}
+          selfRegistrationEnabled={
+            selectedUiAuthenticator.config_values
+              .self_registration_enabled === true
+          }
+          workspaceId={actor?.current_workspace_id ?? ''}
           errorMessage={
             configMutation.isError
               ? i18nText(

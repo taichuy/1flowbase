@@ -18,8 +18,22 @@ const authCenterApi = vi.hoisted(() => ({
   deleteSettingsAuthCenterAuthenticator: vi.fn(),
   reorderSettingsAuthCenterAuthenticators: vi.fn()
 }));
+const frontstageInterfaceCapabilities = vi.hoisted(() => ({
+  useFrontstageInterfaceCapabilities: vi.fn(() => ({
+    data: { items: [], adapter_ids: [], methods: [], total: 0 },
+    loading: false,
+    error: null
+  }))
+}));
 
 vi.mock('../api/auth-center', () => authCenterApi);
+vi.mock('../../frontstage/hooks/use-frontstage-interface-capabilities', () => ({
+  useFrontstageInterfaceCapabilities:
+    frontstageInterfaceCapabilities.useFrontstageInterfaceCapabilities
+}));
+vi.mock('../../frontstage/api/interface-capabilities', () => ({
+  fetchFrontstageInterfaceCapability: vi.fn()
+}));
 
 vi.mock('@monaco-editor/react', () => ({
   default: ({
@@ -303,6 +317,27 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       within(uiDialog).getByRole('button', { name: '最大化窗口' })
     ).toBeEnabled();
     expect(within(uiDialog).getByRole('button', { name: '关闭' })).toBeEnabled();
+    expect(
+      within(uiDialog).getAllByRole('button').map((button) =>
+        button.getAttribute('aria-label')
+      )
+    ).toEqual(expect.arrayContaining([
+      '代码',
+      '接口',
+      '变量',
+      '组件',
+      '区块设置',
+      '运行预览'
+    ]));
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '接口' }));
+    expect(within(uiDialog).getByText('接口连接器')).toBeInTheDocument();
+    expect(
+      frontstageInterfaceCapabilities.useFrontstageInterfaceCapabilities
+    ).toHaveBeenLastCalledWith(
+      'workspace-1',
+      expect.objectContaining({ path_query: '/api/public/auth/' })
+    );
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '代码' }));
     const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });
     expect(blockEditor).toHaveValue('original password block');
     fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
