@@ -88,8 +88,13 @@ test('AC-002/003: Responses SSE emits unique nonce, fixed chunks, and exactly on
     for (const [index, events] of streams.entries()) {
       assert.deepEqual(events.map((event) => event.event), [
         'response.created',
+        'response.output_item.added',
+        'response.content_part.added',
         'response.output_text.delta',
         'response.output_text.delta',
+        'response.output_text.done',
+        'response.content_part.done',
+        'response.output_item.done',
         'response.completed',
       ]);
       const deltas = events.filter((event) => event.event === 'response.output_text.delta');
@@ -184,8 +189,13 @@ test('AC-002: Responses WebSocket emits fixed nonce chunks and one completed ter
     const nonce = arrivalEntries(upstream)[0].nonce;
     assert.deepEqual(events.map((event) => event.type), [
       'response.created',
+      'response.output_item.added',
+      'response.content_part.added',
       'response.output_text.delta',
       'response.output_text.delta',
+      'response.output_text.done',
+      'response.content_part.done',
+      'response.output_item.done',
       'response.completed',
     ]);
     assert.deepEqual(events.filter((event) => event.delta).map((event) => event.delta), [

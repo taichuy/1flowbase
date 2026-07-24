@@ -8,6 +8,22 @@ const DEFAULT_BARRIER_MARKERS = Object.freeze({
 });
 
 function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
+  const itemId = `item_${nonce}`;
+  const outputText = `${firstText}${secondText}`;
+  const openItem = {
+    id: itemId,
+    type: 'message',
+    role: 'assistant',
+    status: 'in_progress',
+    content: [],
+  };
+  const openPart = { type: 'output_text', text: '', annotations: [] };
+  const completedPart = { ...openPart, text: outputText };
+  const completedItem = {
+    ...openItem,
+    status: 'completed',
+    content: [completedPart],
+  };
   const response = {
     id: `resp_${nonce}`,
     object: 'response',
@@ -19,40 +35,54 @@ function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
     chunks: [
       { type: 'response.created', sequence_number: 0, response },
       {
+        type: 'response.output_item.added', sequence_number: 1,
+        output_index: 0, item: openItem,
+      },
+      {
+        type: 'response.content_part.added', sequence_number: 2,
+        item_id: itemId, output_index: 0, content_index: 0, part: openPart,
+      },
+      {
         type: 'response.output_text.delta',
-        sequence_number: 1,
-        item_id: `item_${nonce}`,
+        sequence_number: 3,
+        item_id: itemId,
         output_index: 0,
         content_index: 0,
         delta: firstText,
       },
       {
         type: 'response.output_text.delta',
-        sequence_number: 2,
-        item_id: `item_${nonce}`,
+        sequence_number: 4,
+        item_id: itemId,
         output_index: 0,
         content_index: 0,
         delta: secondText,
       },
+      {
+        type: 'response.output_text.done', sequence_number: 5,
+        item_id: itemId, output_index: 0, content_index: 0, text: outputText,
+      },
+      {
+        type: 'response.content_part.done', sequence_number: 6,
+        item_id: itemId, output_index: 0, content_index: 0, part: completedPart,
+      },
+      {
+        type: 'response.output_item.done', sequence_number: 7,
+        output_index: 0, item: completedItem,
+      },
     ],
     terminal: {
       type: 'response.completed',
-      sequence_number: 3,
+      sequence_number: 8,
       response: {
         ...response,
         status: 'completed',
-        output: [{
-          id: `item_${nonce}`,
-          type: 'message',
-          role: 'assistant',
-          status: 'completed',
-          content: [{ type: 'output_text', text: `${firstText}${secondText}`, annotations: [] }],
-        }],
+        output: [completedItem],
       },
     },
     cancelled: {
       type: 'response.cancelled',
-      sequence_number: 3,
+      sequence_number: 8,
       response: { ...response, status: 'cancelled' },
     },
   };
