@@ -106,6 +106,19 @@ function createSession(): FrontstageRestrictedBlockRuntimeSession {
 function createReadyActionSession(): FrontstageRestrictedBlockRuntimeSession {
   const ready = {
     ...snapshot('ready'),
+    logs: [
+      {
+        requestId: 'draft:block-1:run',
+        level: 'info',
+        message: 'hello {"id":1}',
+        data: ['hello', { id: 1 }]
+      },
+      {
+        requestId: 'draft:block-1:run',
+        level: 'warn',
+        message: 'check input'
+      }
+    ],
     schemaValidationOptions: { allowedActions: ['sign_up'] },
     view: {
       primitive: 'Button',
@@ -328,6 +341,38 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
     expect(runSources).toEqual(['first saved source']);
     expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument();
+    expect(screen.getByText('hello {"id":1}')).toBeInTheDocument();
+    expect(screen.getByText('check input')).toBeInTheDocument();
+    expect(screen.getByText(/"id": 1/u)).toBeInTheDocument();
+    expect(screen.getByTestId('js-block-preview-pane')).toHaveClass(
+      'frontstage-js-block-preview-console__preview'
+    );
+    expect(screen.getByTestId('js-block-console-pane')).toHaveClass(
+      'frontstage-js-block-preview-console__console'
+    );
+    const splitLayout = screen.getByTestId('js-block-preview-console');
+    vi.spyOn(splitLayout, 'getBoundingClientRect').mockReturnValue({
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    });
+    const splitter = screen.getByRole('separator', {
+      name: '调整预览和控制台高度'
+    });
+    expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
+    expect(splitter).toHaveAttribute('aria-valuenow', '65');
+    fireEvent.keyDown(splitter, { key: 'ArrowUp' });
+    expect(splitter).toHaveAttribute('aria-valuenow', '60');
+    fireEvent.mouseDown(splitter, { clientY: 240 });
+    fireEvent.mouseMove(document, { clientY: 280 });
+    fireEvent.mouseUp(document);
+    expect(splitter).toHaveAttribute('aria-valuenow', '70');
 
     rerender(
       <JsBlockTrialPanel
