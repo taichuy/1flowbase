@@ -63,6 +63,12 @@ fn builtin_manifests_load_from_plugin_workspace() {
         .1
         .infrastructure_providers
         .iter()
+        .any(|provider| provider.contract == "provider-transport-store"
+            && provider.provider_code == "local"));
+    assert!(local_infra
+        .1
+        .infrastructure_providers
+        .iter()
         .any(|provider| provider.contract == "session-store" && provider.provider_code == "local"));
     assert!(local_infra
         .1

@@ -13,10 +13,10 @@ pub use local::{
     MemoryDistributedLock, MemoryEventBus, MemoryTaskQueue, MokaCacheStore, MokaRateLimitStore,
     MokaSessionStore,
 };
-pub use memory::MemoryKvStore;
 pub use memory::MemoryLeaseStore;
 pub use memory::MemorySessionStore;
 pub use memory::MemoryWakeupSignalBus;
+pub use memory::{MemoryKvStore, MemoryProviderTransportStore};
 pub use wakeup_signal::WakeupSignalBus;
 
 #[cfg(test)]

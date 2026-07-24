@@ -4,13 +4,14 @@ use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 use plugin_framework::HostExtensionRegistry;
 use storage_ephemeral::{
-    MemoryDistributedLock, MemoryEventBus, MemoryTaskQueue, MokaCacheStore, MokaRateLimitStore,
-    MokaSessionStore,
+    MemoryDistributedLock, MemoryEventBus, MemoryProviderTransportStore, MemoryTaskQueue,
+    MokaCacheStore, MokaRateLimitStore, MokaSessionStore,
 };
+use time::Duration;
 
 use super::{
     CacheStore, DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
-    RateLimitStore, RuntimeEventStream, TaskQueue, SESSION_STORE_NAMESPACE,
+    ProviderTransportStore, RateLimitStore, RuntimeEventStream, TaskQueue, SESSION_STORE_NAMESPACE,
 };
 
 const LOCAL_PROVIDER_CODE: &str = "local";
@@ -22,10 +23,13 @@ const TASK_QUEUE_NAMESPACE: &str = "flowbase:task";
 const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
 const PROVIDER_REQUEST_LOG_QUEUE_CAPACITY: usize = 10_000;
 const LOCAL_CACHE_MAX_CAPACITY: u64 = 10_000;
+const PROVIDER_TRANSPORT_RETENTION: Duration = Duration::minutes(15);
+const PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES: usize = 2 * 1024 * 1024;
 const LOCAL_INFRASTRUCTURE_CONTRACTS: &[&str] = &[
     "storage-ephemeral",
     "session-store",
     "cache-store",
+    "provider-transport-store",
     "distributed-lock",
     "event-bus",
     "task-queue",
@@ -79,6 +83,10 @@ fn install_local_infrastructure_services(registry: &mut HostInfrastructureRegist
         CACHE_STORE_NAMESPACE,
         LOCAL_CACHE_MAX_CAPACITY,
     )) as Arc<dyn CacheStore>);
+    registry.set_provider_transport_store(Arc::new(MemoryProviderTransportStore::new(
+        PROVIDER_TRANSPORT_RETENTION,
+        PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES,
+    )) as Arc<dyn ProviderTransportStore>);
     registry.set_distributed_lock(
         Arc::new(MemoryDistributedLock::new(LOCK_NAMESPACE)) as Arc<dyn DistributedLock>
     );

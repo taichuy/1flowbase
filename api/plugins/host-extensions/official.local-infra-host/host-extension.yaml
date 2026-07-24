@@ -27,6 +27,12 @@ infrastructure_providers:
     description: Local in-process host infrastructure provider.
     config_ref: secret://system/official.local-infra-host/config
     config_schema: []
+  - contract: provider-transport-store
+    provider_code: local
+    display_name: Local
+    description: Non-durable, non-inspectable provider wire transport storage.
+    config_ref: secret://system/official.local-infra-host/config
+    config_schema: []
   - contract: distributed-lock
     provider_code: local
     display_name: Local

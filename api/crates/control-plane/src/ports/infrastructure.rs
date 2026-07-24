@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
+mod provider_transport;
 mod runtime_events;
 
+pub use provider_transport::*;
 pub use runtime_events::*;
 pub const EPHEMERAL_INSPECTION_DEFAULT_LIMIT: usize = 50;
 pub const EPHEMERAL_INSPECTION_MAX_LIMIT: usize = 200;

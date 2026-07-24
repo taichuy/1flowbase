@@ -9,7 +9,7 @@ use control_plane::ports::SessionStore;
 
 pub use contracts::{
     CacheStore, ClaimedTask, DistributedLock, EventBus, RateLimitDecision, RateLimitStore,
-    RuntimeEventStream, TaskQueue,
+    ProviderTransportStore, RuntimeEventStream, TaskQueue,
 };
 pub use local::{
     build_local_host_infrastructure, build_local_host_infrastructure_from_host_extensions,
@@ -30,6 +30,7 @@ pub struct HostInfrastructureRegistry {
     providers: BTreeMap<String, RegisteredInfrastructureProvider>,
     session_store: Option<Arc<dyn SessionStore>>,
     cache_store: Option<Arc<dyn CacheStore>>,
+    provider_transport_store: Option<Arc<dyn ProviderTransportStore>>,
     distributed_lock: Option<Arc<dyn DistributedLock>>,
     event_bus: Option<Arc<dyn EventBus>>,
     task_queue: Option<Arc<dyn TaskQueue>>,
@@ -93,6 +94,17 @@ impl HostInfrastructureRegistry {
         self.cache_store
             .clone()
             .expect("cache-store provider must be registered before use")
+    }
+
+    pub fn set_provider_transport_store(
+        &mut self,
+        provider_transport_store: Arc<dyn ProviderTransportStore>,
+    ) {
+        self.provider_transport_store = Some(provider_transport_store);
+    }
+
+    pub fn provider_transport_store(&self) -> Option<Arc<dyn ProviderTransportStore>> {
+        self.provider_transport_store.clone()
     }
 
     pub fn set_distributed_lock(&mut self, distributed_lock: Arc<dyn DistributedLock>) {

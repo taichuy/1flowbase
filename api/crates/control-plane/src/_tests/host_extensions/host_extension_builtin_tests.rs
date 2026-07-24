@@ -22,6 +22,9 @@ fn contribution_backed_builtins_populate_registry() {
     assert!(registry
         .infrastructure_provider("cache-store", "local")
         .is_some());
+    assert!(registry
+        .infrastructure_provider("provider-transport-store", "local")
+        .is_some());
 
     let identity = registry
         .extension("official.identity-host")
