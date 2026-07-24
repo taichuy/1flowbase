@@ -43,8 +43,15 @@ test('Claude text/tool turns are isolated and only the tool turn enables client-
     }
     assert.equal(plan.args[plan.args.indexOf('--tools') + 1], '');
     assert.equal(tool.args[tool.args.indexOf('--tools') + 1], 'Read');
-    assert.match(tool.args.at(-1), /1flowbase-client-tool-vector/u);
-    assert.match(tool.args.at(-1), new RegExp(TOOL_SENTINEL, 'u'));
+    const promptIndex = tool.args.indexOf('-p');
+    assert.notEqual(promptIndex, -1);
+    assert.match(tool.args[promptIndex + 1], /1flowbase-client-tool-vector/u);
+    assert.match(tool.args[promptIndex + 1], new RegExp(TOOL_SENTINEL, 'u'));
+    assert.deepEqual(tool.args.slice(promptIndex + 2), [
+      '--no-session-persistence', '--settings', tool.settingsPath,
+      '--output-format', 'stream-json', '--include-partial-messages', '--verbose',
+      '--model', 'fixture-model', '--tools', 'Read', '--disable-slash-commands', '--no-chrome',
+    ]);
     assert.equal(plan.args[plan.args.indexOf('--output-format') + 1], 'stream-json');
     assert.ok(plan.args.includes('--include-partial-messages'));
     assert.ok(plan.args.includes('--verbose'));

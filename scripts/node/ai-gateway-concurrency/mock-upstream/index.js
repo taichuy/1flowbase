@@ -13,6 +13,7 @@ const {
   anthropicToolEvents,
   chatTextEvents,
   chatToolEvents,
+  DEFAULT_BARRIER_MARKERS,
   responsesEvents,
   responsesToolEvents,
   responsesWireEvents,
@@ -96,6 +97,7 @@ function createTimeline() {
   let active = 0;
   let peak = 0;
   let requestSequence = 0;
+  const waiters = new Map();
 
   const record = (event, fields = {}) => {
     entries.push({
@@ -105,6 +107,8 @@ function createTimeline() {
       event,
       ...fields,
     });
+    for (const resolve of waiters.get(event) ?? []) resolve(structuredClone(entries.at(-1)));
+    waiters.delete(event);
   };
   const arrive = (transport, scenario, summary) => {
     requestSequence += 1;
@@ -127,6 +131,15 @@ function createTimeline() {
   return {
     arrive,
     snapshot: () => ({ active, peak, arrivals: requestSequence, entries: structuredClone(entries) }),
+    waitFor(event) {
+      const existing = entries.find((entry) => entry.event === event);
+      if (existing) return Promise.resolve(structuredClone(existing));
+      return new Promise((resolve) => {
+        const pending = waiters.get(event) ?? [];
+        pending.push(resolve);
+        waiters.set(event, pending);
+      });
+    },
   };
 }
 
@@ -197,7 +210,7 @@ async function emitHttpStream({
   for (const chunk of stream.chunks) {
     const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
     if (!write(event, chunk.data ?? chunk)) break;
-    const visibleMarker = JSON.stringify(chunk).includes('marker-1');
+    const visibleMarker = JSON.stringify(chunk).includes(barrier.marker);
     if (!visibleDeltaReleased && barrier.enabled && visibleMarker && [
       'content_block_delta',
       'response.output_text.delta',
@@ -259,6 +272,7 @@ function createMockUpstream(options = {}) {
   const barrierWaiters = new Set();
   const barrier = {
     enabled: options.barrierEnabled === true,
+    marker: options.barrierMarker ?? DEFAULT_BARRIER_MARKERS.first,
     wait() {
       return new Promise((resolve) => barrierWaiters.add(resolve));
     },
@@ -456,6 +470,7 @@ function createMockUpstream(options = {}) {
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     },
     snapshot: () => ({ ...timeline.snapshot(), counters: structuredClone(counters) }),
+    waitForEvent: (event) => timeline.waitFor(event),
     releaseBarrier: () => barrier.release(),
   };
 }

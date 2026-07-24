@@ -10,6 +10,7 @@ const {
   assertDistinctRequestNonces,
 } = require('../../contracts');
 const { createMockUpstream } = require('..');
+const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
 
 async function withMockUpstream(run, options = {}) {
   const upstream = createMockUpstream({
@@ -127,13 +128,14 @@ test('Root #1440 AC-003: producer barrier releases chunk-2 only after chunk-1 is
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let visible = '';
-    while (!visible.includes('chunk-1')) {
+    while (!visible.includes(DEFAULT_BARRIER_MARKERS.first)) {
       const { done, value } = await reader.read();
       assert.equal(done, false);
       visible += decoder.decode(value, { stream: true });
     }
-    await waitFor(() => upstream.snapshot().entries.find((entry) => entry.event === 'barrier_waiting'));
-    assert.doesNotMatch(visible, /chunk-2|response.completed/u);
+    await upstream.waitForEvent('barrier_waiting');
+    assert.equal(visible.includes(DEFAULT_BARRIER_MARKERS.second), false);
+    assert.doesNotMatch(visible, /response.completed/u);
 
     const release = await fetch(barrierReleaseUrl, { method: 'POST' });
     assert.equal(release.status, 200);
@@ -142,7 +144,7 @@ test('Root #1440 AC-003: producer barrier releases chunk-2 only after chunk-1 is
       if (done) break;
       visible += decoder.decode(value, { stream: true });
     }
-    assert.match(visible, /chunk-2/u);
+    assert.match(visible, new RegExp(DEFAULT_BARRIER_MARKERS.second, 'u'));
     assert.match(visible, /response.completed/u);
   }, { barrierEnabled: true });
 });

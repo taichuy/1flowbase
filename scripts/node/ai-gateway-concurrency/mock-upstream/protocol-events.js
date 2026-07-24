@@ -1,5 +1,12 @@
 'use strict';
 
+const DEFAULT_BARRIER_MARKERS = Object.freeze({
+  first: 'chunk-1',
+  second: 'chunk-2',
+  clientFirst: 'marker-1',
+  clientSecond: 'marker-2',
+});
+
 function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
   const response = {
     id: `resp_${nonce}`,
@@ -110,7 +117,11 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
 }
 
 function responsesToolEvents(nonce, toolPath, final = false, executorProbeUrl = null) {
-  if (final) return responsesEvents(nonce, 'marker-1', 'marker-2 1flowbase gateway tool sentinel ok');
+  if (final) return responsesEvents(
+    nonce,
+    `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
+  );
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const item = {
     id: `item_${nonce}`, type: 'local_shell_call', call_id: `call_${nonce}`,
@@ -132,7 +143,11 @@ function responsesToolEvents(nonce, toolPath, final = false, executorProbeUrl = 
 }
 
 function anthropicToolEvents(nonce, toolPath, final = false) {
-  if (final) return anthropicEvents(nonce, 'marker-1', 'marker-2 1flowbase gateway tool sentinel ok');
+  if (final) return anthropicEvents(
+    nonce,
+    `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
+  );
   return {
     chunks: [
       {
@@ -157,10 +172,10 @@ function chatToolEvents(nonce, toolPath, final = false) {
   if (final) return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
-      content: 'marker-1',
+      content: `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
-      content: 'marker-2 1flowbase gateway tool sentinel ok',
+      content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`,
     }, finish_reason: 'stop' }] },
   };
   return {
@@ -216,6 +231,7 @@ function responsesWireEvents(nonce, vector) {
 }
 
 module.exports = {
+  DEFAULT_BARRIER_MARKERS,
   anthropicEvents,
   anthropicToolEvents,
   chatTextEvents,
