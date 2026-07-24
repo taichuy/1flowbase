@@ -84,6 +84,26 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         password_local["interface_path_prefixes"],
         json!(["/api/public/"])
     );
+    let context_variables = password_local["context_variables"].as_array().unwrap();
+    assert!(context_variables.iter().any(|variable| {
+        variable["member_path"] == "inputs.authenticator_id"
+            && variable["schema"]["type"] == "string"
+    }));
+    assert!(context_variables.iter().any(|variable| {
+        variable["member_path"] == "inputs.public_variables.self_registration_enabled"
+            && variable["schema"]["type"] == "boolean"
+    }));
+    assert!(context_variables
+        .iter()
+        .any(|variable| variable["member_path"] == "inputs.auth_event"));
+    assert!(context_variables
+        .iter()
+        .any(|variable| variable["member_path"] == "api"));
+    assert!(!context_variables
+        .iter()
+        .any(|variable| variable["member_path"]
+            .as_str()
+            .is_some_and(|path| path.contains("secret"))));
     assert_eq!(
         password_local["config_values"]["description"],
         json!("Local password authentication")

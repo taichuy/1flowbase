@@ -41,6 +41,14 @@ pub struct AuthCenterConfigFieldResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct AuthCenterContextVariableResponse {
+    pub label: String,
+    pub member_path: String,
+    #[schema(value_type = Object)]
+    pub schema: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AuthCenterAuthenticatorResponse {
     pub id: Uuid,
     pub auth_type: String,
@@ -49,6 +57,7 @@ pub struct AuthCenterAuthenticatorResponse {
     pub is_builtin: bool,
     pub sort_order: i32,
     pub interface_path_prefixes: Vec<String>,
+    pub context_variables: Vec<AuthCenterContextVariableResponse>,
     pub config_schema: Vec<AuthCenterConfigFieldResponse>,
     pub config_values: Map<String, Value>,
 }
@@ -247,6 +256,7 @@ fn auth_center_config_response_values(
 
 fn to_auth_center_authenticator_response(
     authenticator: domain::AuthenticatorRecord,
+    registry: &control_plane::auth::AuthenticatorRegistry,
 ) -> AuthCenterAuthenticatorResponse {
     let description = auth_center_description(&authenticator.options);
     let extension_config = auth_center_extension_config(&authenticator.options);
@@ -254,6 +264,15 @@ fn to_auth_center_authenticator_response(
         auth_center_config_schema_from_options(&authenticator.options, &extension_config);
     let config_values =
         auth_center_config_response_values(&authenticator, description, extension_config);
+    let context_variables = registry
+        .context_variables(&authenticator.auth_type)
+        .into_iter()
+        .map(|variable| AuthCenterContextVariableResponse {
+            label: variable.label,
+            member_path: variable.member_path,
+            schema: variable.schema,
+        })
+        .collect();
     AuthCenterAuthenticatorResponse {
         id: authenticator.id,
         auth_type: authenticator.auth_type,
@@ -262,6 +281,7 @@ fn to_auth_center_authenticator_response(
         is_builtin: authenticator.is_builtin,
         sort_order: authenticator.sort_order,
         interface_path_prefixes: vec![crate::routes::PUBLIC_API_PATH_PREFIX.to_string()],
+        context_variables,
         config_schema,
         config_values,
     }
@@ -269,11 +289,12 @@ fn to_auth_center_authenticator_response(
 
 fn auth_center_overview_response(
     overview: AuthCenterSettingsOverview,
+    registry: &control_plane::auth::AuthenticatorRegistry,
 ) -> AuthCenterOverviewResponse {
     let authenticators = overview
         .authenticators
         .into_iter()
-        .map(to_auth_center_authenticator_response)
+        .map(|authenticator| to_auth_center_authenticator_response(authenticator, registry))
         .collect();
 
     AuthCenterOverviewResponse {
@@ -305,6 +326,7 @@ pub async fn get_auth_center_overview(
     .await?;
     Ok(Json(ApiSuccess::new(auth_center_overview_response(
         overview,
+        state.authenticator_registry.as_ref(),
     ))))
 }
 
@@ -353,6 +375,7 @@ pub async fn create_auth_center_authenticator(
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_auth_center_authenticator_response(
             authenticator,
+            state.authenticator_registry.as_ref(),
         ))),
     ))
 }
@@ -402,6 +425,7 @@ pub async fn copy_auth_center_authenticator(
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_auth_center_authenticator_response(
             authenticator,
+            state.authenticator_registry.as_ref(),
         ))),
     ))
 }
@@ -460,6 +484,7 @@ pub async fn reorder_auth_center_authenticators(
     .await?;
     Ok(Json(ApiSuccess::new(auth_center_overview_response(
         overview,
+        state.authenticator_registry.as_ref(),
     ))))
 }
 
@@ -488,7 +513,7 @@ pub async fn enable_auth_center_authenticator(
     .await?;
 
     Ok(Json(ApiSuccess::new(
-        to_auth_center_authenticator_response(authenticator),
+        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref()),
     )))
 }
 
@@ -531,6 +556,6 @@ pub async fn update_auth_center_authenticator_config(
     .await?;
 
     Ok(Json(ApiSuccess::new(
-        to_auth_center_authenticator_response(authenticator),
+        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref()),
     )))
 }

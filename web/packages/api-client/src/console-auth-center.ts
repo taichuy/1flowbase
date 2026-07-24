@@ -18,6 +18,12 @@ export interface ConsoleAuthCenterAuthenticatorConfigValues {
   [key: string]: unknown;
 }
 
+export interface ConsoleAuthCenterContextVariable {
+  label: string;
+  member_path: string;
+  schema: Record<string, unknown>;
+}
+
 export interface ConsoleAuthCenterAuthenticator {
   id: string;
   auth_type: string;
@@ -26,6 +32,7 @@ export interface ConsoleAuthCenterAuthenticator {
   is_builtin: boolean;
   sort_order: number;
   interface_path_prefixes: string[];
+  context_variables: ConsoleAuthCenterContextVariable[];
   config_schema: ConsoleAuthCenterConfigField[];
   config_values: ConsoleAuthCenterAuthenticatorConfigValues;
 }

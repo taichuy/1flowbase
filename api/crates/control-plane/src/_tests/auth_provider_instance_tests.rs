@@ -261,6 +261,19 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
     let definition = registry.definition("fixture-auth.qr").unwrap();
     assert!(definition.default_public_ui_block.contains("BlockModule"));
     assert_eq!(definition.config_schema[0]["key"], "issuer");
+    assert_eq!(
+        definition.public_variables_schema,
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "issuer": {
+                    "type": "string",
+                    "title": "Issuer"
+                }
+            }
+        })
+    );
     let record = AuthenticatorRecord {
         options: serde_json::json!({
             "extension_config": {

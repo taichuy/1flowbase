@@ -38,7 +38,8 @@ export type FrontstageJsxStudioSection =
 
 export interface JsxStudioContextVariable {
   label: string;
-  memberPath: string;
+  member_path: string;
+  schema: Record<string, unknown>;
 }
 
 const INTERFACE_FILTER_POPUP_STYLES = {
@@ -388,19 +389,36 @@ function VariablesPanel({
     setInputName('');
   };
   const variables = contextVariables ?? [
-    { label: 'ctx.currentUser', memberPath: 'currentUser' },
-    { label: 'ctx.workspace', memberPath: 'workspace' },
-    { label: 'ctx.application', memberPath: 'application' },
-    { label: 'ctx.page', memberPath: 'page' },
+    {
+      label: 'ctx.currentUser',
+      member_path: 'currentUser',
+      schema: { type: 'object' }
+    },
+    {
+      label: 'ctx.workspace',
+      member_path: 'workspace',
+      schema: { type: 'object' }
+    },
+    {
+      label: 'ctx.application',
+      member_path: 'application',
+      schema: { type: 'object' }
+    },
+    {
+      label: 'ctx.page',
+      member_path: 'page',
+      schema: { type: 'object' }
+    },
     ...ports.inputs.map((port) => ({
       label: `ctx.inputs.${port.name}`,
-      memberPath: `inputs.${port.name}`
+      member_path: `inputs.${port.name}`,
+      schema: port.schema
     })),
-    { label: 'ctx.params', memberPath: 'params' },
-    { label: 'ctx.props', memberPath: 'props' },
-    { label: 'ctx.state', memberPath: 'state' },
-    { label: 'ctx.theme', memberPath: 'theme' },
-    { label: 'ctx.ui', memberPath: 'ui' }
+    { label: 'ctx.params', member_path: 'params', schema: { type: 'object' } },
+    { label: 'ctx.props', member_path: 'props', schema: { type: 'object' } },
+    { label: 'ctx.state', member_path: 'state', schema: { type: 'object' } },
+    { label: 'ctx.theme', member_path: 'theme', schema: { type: 'object' } },
+    { label: 'ctx.ui', member_path: 'ui', schema: { type: 'object' } }
   ];
 
   if (contextVariables) {
@@ -421,7 +439,7 @@ function VariablesPanel({
               onClick={() =>
                 onInsertCode({
                   kind: 'context-reference',
-                  memberPath: variable.memberPath
+                  memberPath: variable.member_path
                 })
               }
             >
@@ -447,7 +465,7 @@ function VariablesPanel({
             onClick={() =>
               onInsertCode({
                 kind: 'context-reference',
-                memberPath: variable.memberPath
+                memberPath: variable.member_path
               })
             }
           >

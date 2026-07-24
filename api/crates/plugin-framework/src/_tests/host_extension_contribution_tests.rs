@@ -161,6 +161,12 @@ migrations: []
         vec!["file-security.qr.start"]
     );
 
+    let secret_public_variable = raw.replacen("type: string", "type: secret", 1);
+    let error = parse_host_extension_contribution_manifest(&secret_public_variable).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("public_variable_keys[] cannot reference a secret field"));
+
     let reserved_key = raw.replacen("key: issuer", "key: title", 1);
     let error = parse_host_extension_contribution_manifest(&reserved_key).unwrap_err();
     assert!(error

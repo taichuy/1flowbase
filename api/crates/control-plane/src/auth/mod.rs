@@ -179,6 +179,14 @@ pub struct AuthenticatorProviderDefinition {
     pub config_schema: serde_json::Value,
     pub default_public_ui_block: String,
     pub public_variable_keys: Vec<String>,
+    pub public_variables_schema: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthenticatorContextVariableDefinition {
+    pub label: String,
+    pub member_path: String,
+    pub schema: serde_json::Value,
 }
 
 #[derive(Clone)]
@@ -192,13 +200,18 @@ impl AuthenticatorRegistry {
         let password_provider: Arc<dyn AuthenticatorProvider> =
             Arc::new(PasswordLocalAuthenticator);
         let mut registry = Self::from_providers(vec![password_provider]);
+        let config_schema = public_ui::password_local_config_form_schema();
+        let public_variable_keys = vec!["self_registration_enabled".to_string()];
+        let public_variables_schema =
+            public_variables_schema(&config_schema, &public_variable_keys);
         registry.definitions.insert(
             "password-local".to_string(),
             AuthenticatorProviderDefinition {
                 auth_type: "password-local".to_string(),
-                config_schema: public_ui::password_local_config_form_schema(),
+                config_schema,
                 default_public_ui_block: public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK.to_string(),
-                public_variable_keys: vec!["self_registration_enabled".to_string()],
+                public_variable_keys,
+                public_variables_schema,
             },
         );
         registry
@@ -223,13 +236,17 @@ impl AuthenticatorRegistry {
             if registry.definitions.contains_key(&provider.auth_type) {
                 return Err(ControlPlaneError::Conflict("auth_provider").into());
             }
+            let config_schema = serde_json::to_value(&provider.config_schema)?;
+            let public_variables_schema =
+                public_variables_schema(&config_schema, &provider.public_variable_keys);
             registry.definitions.insert(
                 provider.auth_type.clone(),
                 AuthenticatorProviderDefinition {
                     auth_type: provider.auth_type.clone(),
-                    config_schema: serde_json::to_value(&provider.config_schema)?,
+                    config_schema,
                     default_public_ui_block: provider.default_public_ui_block.clone(),
                     public_variable_keys: provider.public_variable_keys.clone(),
+                    public_variables_schema,
                 },
             );
         }
@@ -254,15 +271,15 @@ impl AuthenticatorRegistry {
         &self,
         authenticator: &domain::AuthenticatorRecord,
     ) -> Option<serde_json::Map<String, serde_json::Value>> {
-        if let Some(provider) = self.provider(&authenticator.auth_type) {
-            return Some(provider.public_variables(authenticator));
-        }
-        let definition = self.definition(&authenticator.auth_type)?;
-        let config = authenticator
-            .options
-            .get("extension_config")
-            .and_then(serde_json::Value::as_object);
-        Some(
+        let definition = self.definition(&authenticator.auth_type);
+        let variables = if let Some(provider) = self.provider(&authenticator.auth_type) {
+            provider.public_variables(authenticator)
+        } else {
+            let definition = definition?;
+            let config = authenticator
+                .options
+                .get("extension_config")
+                .and_then(serde_json::Value::as_object);
             definition
                 .public_variable_keys
                 .iter()
@@ -272,8 +289,150 @@ impl AuthenticatorRegistry {
                         .cloned()
                         .map(|value| (key.clone(), value))
                 })
+                .collect()
+        };
+        let Some(definition) = definition else {
+            return Some(variables);
+        };
+        let properties = definition
+            .public_variables_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object);
+        Some(
+            variables
+                .into_iter()
+                .filter(|(key, value)| {
+                    properties
+                        .and_then(|schemas| schemas.get(key))
+                        .is_some_and(|schema| json_value_matches_schema_type(value, schema))
+                })
                 .collect(),
         )
+    }
+
+    pub fn context_variables(
+        &self,
+        auth_type: &str,
+    ) -> Vec<AuthenticatorContextVariableDefinition> {
+        let public_variables_schema = self
+            .definition(auth_type)
+            .map(|definition| definition.public_variables_schema.clone())
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {}
+                })
+            });
+        let mut variables = vec![
+            AuthenticatorContextVariableDefinition {
+                label: "ctx.inputs.authenticator_id".to_string(),
+                member_path: "inputs.authenticator_id".to_string(),
+                schema: serde_json::json!({ "type": "string", "format": "uuid" }),
+            },
+            AuthenticatorContextVariableDefinition {
+                label: "ctx.inputs.public_variables".to_string(),
+                member_path: "inputs.public_variables".to_string(),
+                schema: public_variables_schema.clone(),
+            },
+        ];
+        if let Some(definition) = self.definition(auth_type) {
+            if let Some(properties) = public_variables_schema
+                .get("properties")
+                .and_then(serde_json::Value::as_object)
+            {
+                variables.extend(definition.public_variable_keys.iter().filter_map(|key| {
+                    properties
+                        .get(key)
+                        .map(|schema| AuthenticatorContextVariableDefinition {
+                            label: format!("ctx.inputs.public_variables.{key}"),
+                            member_path: format!("inputs.public_variables.{key}"),
+                            schema: schema.clone(),
+                        })
+                }));
+            }
+        }
+        variables.extend([
+            AuthenticatorContextVariableDefinition {
+                label: "ctx.inputs.auth_event".to_string(),
+                member_path: "inputs.auth_event".to_string(),
+                schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "action_id": { "type": "string" },
+                        "values": { "type": "object" },
+                        "payload": {}
+                    },
+                    "required": ["action_id"]
+                }),
+            },
+            AuthenticatorContextVariableDefinition {
+                label: "ctx.api".to_string(),
+                member_path: "api".to_string(),
+                schema: serde_json::json!({ "type": "object" }),
+            },
+        ]);
+        variables
+    }
+}
+
+fn public_variables_schema(
+    config_schema: &serde_json::Value,
+    public_variable_keys: &[String],
+) -> serde_json::Value {
+    let mut properties = serde_json::Map::new();
+    let fields = config_schema
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    for key in public_variable_keys {
+        let Some(field) = fields
+            .iter()
+            .find(|field| field["key"].as_str() == Some(key.as_str()))
+        else {
+            continue;
+        };
+        let schema_type = match field["type"].as_str() {
+            Some("boolean") => "boolean",
+            Some("number") => "number",
+            Some("integer") => "integer",
+            Some("array") => "array",
+            Some("object") => "object",
+            _ => "string",
+        };
+        let mut schema = serde_json::Map::from_iter([
+            (
+                "type".to_string(),
+                serde_json::Value::String(schema_type.to_string()),
+            ),
+            (
+                "title".to_string(),
+                field.get("label").cloned().unwrap_or_else(|| {
+                    serde_json::Value::String(format!("ctx.inputs.public_variables.{key}"))
+                }),
+            ),
+        ]);
+        if let Some(description) = field.get("description").filter(|value| value.is_string()) {
+            schema.insert("description".to_string(), description.clone());
+        }
+        properties.insert(key.clone(), serde_json::Value::Object(schema));
+    }
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": properties
+    })
+}
+
+fn json_value_matches_schema_type(value: &serde_json::Value, schema: &serde_json::Value) -> bool {
+    match schema.get("type").and_then(serde_json::Value::as_str) {
+        Some("boolean") => value.is_boolean(),
+        Some("number") => value.is_number(),
+        Some("integer") => value.as_i64().is_some() || value.as_u64().is_some(),
+        Some("array") => value.is_array(),
+        Some("object") => value.is_object(),
+        Some("string") => value.is_string(),
+        _ => false,
     }
 }
 

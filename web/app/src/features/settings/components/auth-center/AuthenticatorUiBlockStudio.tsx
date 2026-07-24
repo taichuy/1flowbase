@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
-import { JsxStudioResourcePanel } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
+import {
+  JsxStudioResourcePanel,
+  type JsxStudioContextVariable
+} from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
@@ -22,6 +25,7 @@ export interface AuthenticatorUiBlockStudioProps {
   description: string | null;
   enabled: boolean;
   errorMessage: string | null;
+  contextVariables: readonly JsxStudioContextVariable[];
   interfacePathPrefixes: readonly string[];
   open: boolean;
   readOnly: boolean;
@@ -41,23 +45,11 @@ const AUTH_CONTEXT_COMMENT = [
   ' * outputs: 无',
   ' */'
 ].join('\n');
-const AUTH_CONTEXT_VARIABLES = [
-  {
-    label: 'ctx.inputs.authenticator_id',
-    memberPath: 'inputs.authenticator_id'
-  },
-  {
-    label: 'ctx.inputs.public_variables',
-    memberPath: 'inputs.public_variables'
-  },
-  { label: 'ctx.inputs.auth_event', memberPath: 'inputs.auth_event' },
-  { label: 'ctx.api', memberPath: 'api' }
-];
-
 export function AuthenticatorUiBlockStudio({
   authenticatorId,
   authenticatorTitle,
   authType,
+  contextVariables,
   description,
   enabled,
   errorMessage,
@@ -171,7 +163,7 @@ export function AuthenticatorUiBlockStudio({
         <JsxStudioResourcePanel
           block={authoringBlock}
           codeSource={draft}
-          contextVariables={AUTH_CONTEXT_VARIABLES}
+          contextVariables={contextVariables}
           interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
