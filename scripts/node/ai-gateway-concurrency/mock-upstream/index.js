@@ -161,6 +161,15 @@ function gatewayExecutorProbeUrl(body) {
   return /GATEWAY_EXECUTOR_PROBE_URL=([^\\"\s]+)/u.exec(encoded)?.[1] ?? null;
 }
 
+function requestedResponsesTool(body) {
+  const names = (Array.isArray(body.tools) ? body.tools : [])
+    .filter((tool) => tool?.type === 'function')
+    .map((tool) => tool.name ?? tool.function?.name);
+  if (names.includes('shell_command')) return 'shell_command';
+  if (names.includes('read')) return 'read';
+  return 'shell_command';
+}
+
 function wireAuditVectorFromBody(body) {
   const values = [
     ...(Array.isArray(body.tools) ? body.tools : []),
@@ -359,7 +368,8 @@ function createMockUpstream(options = {}) {
           ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
           : isToolTurn || isToolResult
           ? responsesToolEvents(
-            requestTimeline.nonce, toolVectorPath(body), isToolResult, gatewayExecutorProbeUrl(body)
+            requestTimeline.nonce, toolVectorPath(body), isToolResult,
+            gatewayExecutorProbeUrl(body), requestedResponsesTool(body)
           )
           : isClientTextTurn
             ? responsesEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')

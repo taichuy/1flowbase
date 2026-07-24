@@ -389,6 +389,28 @@ test('controlled tool loop records live call and second request before barrier r
   }, { barrierEnabled: true });
 });
 
+test('Responses tool fixture calls a client-declared read function', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: '1flowbase-client-tool-vector TOOL_VECTOR_PATH=/tmp/tool-vector.txt',
+        tools: [{
+          type: 'function', name: 'read',
+          parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+        }],
+      }),
+    });
+    const events = parseSse(await response.text());
+    const toolItem = events.find(
+      (event) => event.event === 'response.output_item.done',
+    )?.data.item;
+    assert.equal(toolItem?.name, 'read');
+    assert.deepEqual(JSON.parse(toolItem?.arguments), { filePath: '/tmp/tool-vector.txt' });
+  });
+});
+
 // Root AC-019/020/023/024: runtime counters belong to the controlled observer.
 test('controlled wire vectors count provider execution without gateway executor or server_url outbound', async () => {
   await withMockUpstream(async ({ upstream, httpBaseUrl, networkObserverUrl, gatewayExecutorObserverUrl }) => {

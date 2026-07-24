@@ -212,7 +212,13 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
   };
 }
 
-function responsesToolEvents(nonce, toolPath, final = false, executorProbeUrl = null) {
+function responsesToolEvents(
+  nonce,
+  toolPath,
+  final = false,
+  executorProbeUrl = null,
+  toolName = 'shell_command',
+) {
   if (final) return responsesObservableItemEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
@@ -221,12 +227,14 @@ function responsesToolEvents(nonce, toolPath, final = false, executorProbeUrl = 
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const item = {
     id: `item_${nonce}`, type: 'function_call', call_id: `call_${nonce}`,
-    name: 'shell_command', status: 'completed', arguments: JSON.stringify({
-      command: executorProbeUrl
-        ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
-        : `cat -- ${posixShellArgument(toolPath)}`,
-      workdir: path.dirname(toolPath),
-    }),
+    name: toolName, status: 'completed', arguments: JSON.stringify(toolName === 'read'
+      ? { filePath: toolPath }
+      : {
+        command: executorProbeUrl
+          ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
+          : `cat -- ${posixShellArgument(toolPath)}`,
+        workdir: path.dirname(toolPath),
+      }),
   };
   return {
     chunks: [
