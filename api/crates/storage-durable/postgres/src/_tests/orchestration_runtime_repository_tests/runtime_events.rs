@@ -21,7 +21,7 @@ async fn append_event(
 
 #[tokio::test]
 async fn orchestration_runtime_repository_persists_compiled_plan_runs_and_events() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -48,7 +48,7 @@ async fn orchestration_runtime_repository_persists_compiled_plan_runs_and_events
 
 #[tokio::test]
 async fn orchestration_runtime_repository_batch_appends_run_and_runtime_events() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -132,7 +132,7 @@ async fn orchestration_runtime_repository_batch_appends_run_and_runtime_events()
 
 #[tokio::test]
 async fn orchestration_runtime_repository_lists_runtime_event_backfill_page_by_stream_sequence() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -199,7 +199,7 @@ async fn orchestration_runtime_repository_lists_runtime_event_backfill_page_by_s
 
 #[tokio::test]
 async fn orchestration_runtime_repository_finds_callback_event_sequence_without_loading_history() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -256,7 +256,7 @@ async fn orchestration_runtime_repository_finds_callback_event_sequence_without_
 
 #[tokio::test]
 async fn orchestration_runtime_repository_serializes_concurrent_run_event_sequences() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -302,7 +302,7 @@ async fn orchestration_runtime_repository_serializes_concurrent_run_event_sequen
 
 #[tokio::test]
 async fn orchestration_runtime_repository_persists_waiting_human_checkpoint() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -381,7 +381,7 @@ async fn orchestration_runtime_repository_persists_waiting_human_checkpoint() {
 
 #[tokio::test]
 async fn orchestration_runtime_repository_returns_callback_tasks_with_run_detail() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -464,7 +464,7 @@ async fn orchestration_runtime_repository_returns_callback_tasks_with_run_detail
 
 #[tokio::test]
 async fn published_run_control_cancels_pending_callback_tasks_for_run() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -561,7 +561,7 @@ async fn published_run_control_cancels_pending_callback_tasks_for_run() {
 
 #[tokio::test]
 async fn published_run_control_lists_waiting_callback_runs_for_conversation() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -654,7 +654,7 @@ async fn published_run_control_lists_waiting_callback_runs_for_conversation() {
 
 #[tokio::test]
 async fn orchestration_runtime_repository_records_callback_resume_attempts_idempotently() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

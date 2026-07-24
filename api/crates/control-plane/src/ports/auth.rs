@@ -310,6 +310,14 @@ pub struct CreateMemberInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct CreateSelfRegisteredMemberInput {
+    pub authenticator_id: Uuid,
+    pub account: String,
+    pub email: String,
+    pub password_hash: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateMemberInput {
     pub actor_user_id: Uuid,
     pub user_id: Uuid,
@@ -515,6 +523,14 @@ pub trait MemberRepository: Send + Sync {
     ) -> anyhow::Result<()>;
     async fn list_members(&self, workspace_id: Uuid) -> anyhow::Result<Vec<UserRecord>>;
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait SelfRegistrationRepository: Send + Sync {
+    async fn create_self_registered_member(
+        &self,
+        input: &CreateSelfRegisteredMemberInput,
+    ) -> anyhow::Result<UserRecord>;
 }
 
 #[async_trait]

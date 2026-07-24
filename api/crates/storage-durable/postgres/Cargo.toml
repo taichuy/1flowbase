@@ -20,4 +20,5 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+postgres-test-support = { path = "../../postgres-test-support" }
 tokio.workspace = true

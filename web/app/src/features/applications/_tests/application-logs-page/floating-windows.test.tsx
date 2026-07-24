@@ -221,7 +221,16 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       applicationRunsPage([
         {
           id: 'run-1',
+          application_id: 'app-1',
+          scope_id: 'workspace-1',
           run_mode: 'published_api_run' as const,
+          execution_stage: 'published' as const,
+          invocation_source: 'agent_flow_api' as const,
+          principal: {
+            kind: 'application_api_key' as const,
+            id: 'key-1',
+            display_name: null
+          },
           status: 'succeeded',
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
@@ -318,7 +327,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
     expect(screen.getByText('公开 API 退款总结')).toBeInTheDocument();
     expect(screen.getByText('customer-42')).toBeInTheDocument();
-    expect(screen.getByText('root')).toBeInTheDocument();
+    expect(screen.getByText('应用 API Key · key-1')).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', {
         name: '协议'
@@ -379,6 +388,17 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       name: '运行详情'
     });
     expect(detailPane).toBeInTheDocument();
+    // AC-001: the detail subtitle only exposes the run ID and copy action.
+    const runIdSubtitle = detailPane.querySelector(
+      '.application-run-detail__run-id'
+    );
+    expect(runIdSubtitle).not.toBeNull();
+    expect(runIdSubtitle).toHaveTextContent(/^run-1$/);
+    expect(
+      within(runIdSubtitle as HTMLElement).getByRole('button', {
+        name: '复制运行 ID'
+      })
+    ).toBeInTheDocument();
     expect(
       screen.queryByTestId('application-run-detail-meta')
     ).not.toBeInTheDocument();
@@ -537,7 +557,16 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       applicationRunsPage([
         {
           id: 'run-active',
+          application_id: 'app-1',
+          scope_id: 'workspace-1',
           run_mode: 'published_api_run' as const,
+          execution_stage: 'published' as const,
+          invocation_source: 'agent_flow_api' as const,
+          principal: {
+            kind: 'application_api_key' as const,
+            id: 'key-active',
+            display_name: null
+          },
           status: 'waiting_callback',
           target_node_id: 'node-llm',
           title: '公开 API 工具调用',

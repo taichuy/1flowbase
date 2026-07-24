@@ -56,7 +56,7 @@ fn query(scope_id: Uuid, page: i64, page_size: i64) -> ListModelProviderRequestL
 
 #[tokio::test]
 async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let scope_id = Uuid::now_v7();
@@ -84,7 +84,7 @@ async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
 
 #[tokio::test]
 async fn provider_request_logs_scope_filters_and_paginates_flat_records() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let scope = Uuid::now_v7();
@@ -117,7 +117,7 @@ async fn provider_request_logs_scope_filters_and_paginates_flat_records() {
 
 #[tokio::test]
 async fn provider_request_logs_do_not_project_existing_attempt_ledgers() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -160,7 +160,7 @@ async fn provider_request_logs_do_not_project_existing_attempt_ledgers() {
 #[tokio::test]
 async fn delete_selected_provider_request_logs_is_workspace_scoped() {
     // AC-003: selected deletion only affects matching attempt IDs in the requested workspace.
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let scope = Uuid::now_v7();
@@ -210,7 +210,7 @@ async fn delete_selected_provider_request_logs_is_workspace_scoped() {
 #[tokio::test]
 async fn clear_provider_request_logs_is_bounded_and_reuses_created_at_snapshot() {
     // AC-005/AC-006: no batch exceeds 500 and late-created rows stay outside the snapshot.
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let scope = Uuid::now_v7();

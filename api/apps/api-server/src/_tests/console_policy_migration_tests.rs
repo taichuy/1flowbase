@@ -1,4 +1,4 @@
-use std::{borrow::Cow, time::Duration};
+use std::borrow::Cow;
 
 use access_control::{ConsoleAuthorization, ConsolePolicyGroup, SettingsFeatureOwnerKind};
 use control_plane::ports::{
@@ -6,7 +6,7 @@ use control_plane::ports::{
 };
 use control_plane::role::console_policy_migration::compile_console_policy_migration_probes;
 use control_plane::role::console_policy_migration::ConsolePolicyMigrationLegacyGrantProjection;
-use sqlx::{migrate::Migrator, postgres::PgPoolOptions, PgPool};
+use sqlx::{migrate::Migrator, PgPool};
 use uuid::Uuid;
 
 use crate::{
@@ -82,19 +82,10 @@ fn base_database_url() -> String {
 
 async fn isolated_historical_pool(cutoff: i64) -> PgPool {
     let base_url = base_database_url();
-    let admin_pool = PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(Duration::from_secs(30))
-        .connect(&base_url)
+    let pool = postgres_test_support::PostgresTestSchema::create(&base_url)
         .await
-        .unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema {schema}"))
-        .execute(&admin_pool)
-        .await
-        .unwrap();
-    admin_pool.close().await;
-    let pool = PgPool::connect(&format!("{base_url}?options=-csearch_path%3D{schema}"))
+        .unwrap()
+        .connect()
         .await
         .unwrap();
     let historical = Migrator {

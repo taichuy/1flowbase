@@ -27,8 +27,8 @@ pub use data_source_package::*;
 pub use error::*;
 pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementationKind};
 pub use host_extension_contribution::{
-    parse_host_extension_contribution_manifest, HostExtensionBootstrapPhase,
-    HostExtensionContributionManifest, HostExtensionMigrationManifest,
+    parse_host_extension_contribution_manifest, AuthProviderContributionManifest,
+    HostExtensionBootstrapPhase, HostExtensionContributionManifest, HostExtensionMigrationManifest,
     HostExtensionNativeEntrypointManifest, HostExtensionRouteActionManifest,
     HostExtensionRouteManifest, HostExtensionWorkerManifest, HostInfrastructureProviderManifest,
 };

@@ -1,8 +1,7 @@
 use control_plane::ports::{
     ApplicationRepository, ApplicationVisibility, CreateApplicationInput, DeleteApplicationInput,
 };
-use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -10,15 +9,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn root_tenant_id(store: &PgControlPlaneStore) -> Uuid {
@@ -80,7 +74,7 @@ async fn seed_user(store: &PgControlPlaneStore, workspace_id: Uuid, account_pref
 
 #[tokio::test]
 async fn list_applications_scopes_rows_by_workspace_and_owner() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Applications").await;
@@ -147,7 +141,7 @@ async fn list_applications_scopes_rows_by_workspace_and_owner() {
 
 #[tokio::test]
 async fn get_application_returns_section_hooks_with_null_runtime_targets() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Applications Detail").await;
@@ -196,7 +190,7 @@ async fn get_application_returns_section_hooks_with_null_runtime_targets() {
 
 #[tokio::test]
 async fn create_workflow_application_persists_trigger_type() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Workflow Trigger Type").await;
@@ -236,7 +230,7 @@ async fn create_workflow_application_persists_trigger_type() {
 
 #[tokio::test]
 async fn delete_application_cascades_flow_runtime_and_tag_bindings() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Applications Delete").await;
@@ -370,7 +364,7 @@ async fn delete_application_cascades_flow_runtime_and_tag_bindings() {
 
 #[tokio::test]
 async fn workflow_trigger_type_migration_normalizes_and_rejects_manual() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Workflow Trigger Constraint").await;

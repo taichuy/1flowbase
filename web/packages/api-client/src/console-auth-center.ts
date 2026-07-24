@@ -33,6 +33,9 @@ export interface ConsoleAuthCenterAuthenticatorConfigInput {
   title: string;
   enabled: boolean;
   description?: string | null;
+  self_registration_enabled: boolean;
+  public_ui_block: string;
+  extension_config: Record<string, unknown>;
 }
 
 export interface ConsoleAuthCenterOverview {

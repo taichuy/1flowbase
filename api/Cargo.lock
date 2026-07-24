@@ -83,6 +83,7 @@ dependencies = [
  "observability",
  "plugin-framework",
  "plugin-runner",
+ "postgres-test-support",
  "publish-gateway",
  "rand_core 0.6.4",
  "regex",
@@ -2612,6 +2613,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
+name = "postgres-test-support"
+version = "0.3.1"
+dependencies = [
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3793,6 +3803,7 @@ dependencies = [
  "chacha20poly1305",
  "control-plane",
  "domain",
+ "postgres-test-support",
  "runtime-core",
  "serde_json",
  "sha2 0.10.9",

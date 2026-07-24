@@ -219,7 +219,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
     let builtin_host_extensions =
         host_extensions::builtin::load_builtin_host_extension_manifests(api_workspace_root()?)?;
-    let host_extension_registry =
+    let mut host_extension_registry =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &builtin_host_extensions,
         )?;
@@ -376,7 +376,17 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    console_host_extensions.extend(prepared_host_extensions.take_contributions());
+    let prepared_contributions = prepared_host_extensions.take_contributions();
+    for resolved in &prepared_contributions {
+        control_plane::host_extension_boot::register_host_extension_contribution(
+            &mut host_extension_registry,
+            &resolved.contribution,
+        )?;
+    }
+    console_host_extensions.extend(prepared_contributions);
+    let authenticator_registry = Arc::new(
+        control_plane::auth::AuthenticatorRegistry::from_host_extensions(&host_extension_registry)?,
+    );
     let compiled_console_plan = compile_console_boot_plan(console_host_extensions)?;
     activate_prepared_host_extensions(&store, &config.api_node_id, prepared_host_extensions)
         .await?;
@@ -384,7 +394,10 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
 
     let state = Arc::new(ApiState {
+        #[cfg(test)]
+        test_database: None,
         store,
+        authenticator_registry,
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,

@@ -99,9 +99,19 @@ fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
     let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
     let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
     let request = json!({
-        "messages": [{
-            "role": "user",
-            "content": [
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": encode_anthropic_callback_tool_use_id(latest_callback, "toolu_latest"),
+                    "name": "lookup_latest",
+                    "input": {}
+                }]
+            },
+            {
+                "role": "user",
+                "content": [
                 {
                     "type": "tool_result",
                     "tool_use_id": encode_anthropic_callback_tool_use_id(first_callback, "toolu_first"),
@@ -110,10 +120,12 @@ fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
                 {
                     "type": "tool_result",
                     "tool_use_id": encode_anthropic_callback_tool_use_id(latest_callback, "toolu_latest"),
-                    "content": "LATEST"
+                    "content": "LATEST",
+                    "is_error": true
                 }
-            ]
-        }]
+                ]
+            }
+        ]
     });
 
     let resume = anthropic_tool_resume_request(&request)
@@ -127,6 +139,69 @@ fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
         json!("toolu_latest")
     );
     assert_eq!(resume.tool_results[0]["content"], json!("LATEST"));
+    assert_eq!(resume.tool_results[0]["is_error"], json!(true));
+}
+
+#[test]
+fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
+    let callback_task_id = Uuid::from_u128(0x33333333333333333333333333333333);
+    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_read");
+    let request = json!({
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": tool_use_id,
+                    "name": "Read",
+                    "input": {}
+                }]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": "old result"
+                    },
+                    {
+                        "type": "text",
+                        "text": "please answer the new question"
+                    }
+                ]
+            }
+        ]
+    });
+
+    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
+
+    assert!(
+        resume.is_none(),
+        "mixed new user text must create a new run"
+    );
+}
+
+#[test]
+fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
+    let callback_task_id = Uuid::from_u128(0x44444444444444444444444444444444);
+    let request = json!({
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_stale"),
+                "content": "stale result"
+            }]
+        }]
+    });
+
+    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
+
+    assert!(
+        resume.is_none(),
+        "orphan tool results must not resume callbacks"
+    );
 }
 
 #[test]

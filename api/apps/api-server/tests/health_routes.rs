@@ -30,11 +30,9 @@ use control_plane::ports::{
     OfficialPluginSourcePort,
 };
 use serde_json::Value;
-use sqlx::postgres::PgPoolOptions;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 #[derive(Clone)]
 struct UnreachablePluginRunnerSystemClient;
@@ -135,20 +133,10 @@ fn default_test_config() -> ApiConfig {
     .unwrap()
 }
 
-async fn isolated_database_url(base_url: &str) -> String {
-    let admin_pool = PgPoolOptions::new()
-        .max_connections(1)
-        .connect(base_url)
+async fn isolated_database(base_url: &str) -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(base_url)
         .await
-        .unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
-        .await
-        .unwrap();
-    admin_pool.close().await;
-
-    format!("{base_url}?options=-csearch_path%3D{schema}")
+        .unwrap()
 }
 
 async fn test_app() -> Router {
@@ -156,7 +144,8 @@ async fn test_app() -> Router {
 }
 
 async fn test_app_with_config(mut config: ApiConfig) -> Router {
-    config.database_url = isolated_database_url(&config.database_url).await;
+    let database = isolated_database(&config.database_url).await;
+    config.database_url = database.database_url().to_owned();
     let durable = storage_durable::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
@@ -226,6 +215,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
             store,
+            authenticator_registry: std::sync::Arc::new(
+                control_plane::auth::AuthenticatorRegistry::new(),
+            ),
             settings_feature_registry,
             console_operation_registry,
             infrastructure,
@@ -264,6 +256,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         }),
         &config,
     )
+    .layer(axum::Extension(std::sync::Arc::new(database)))
 }
 
 async fn login_and_capture_cookie(
@@ -367,7 +360,8 @@ async fn health_route_returns_ok_payload() {
 #[tokio::test]
 async fn app_from_config_uses_local_host_infrastructure_session_store() {
     let mut config = default_test_config();
-    config.database_url = isolated_database_url(&config.database_url).await;
+    let database = isolated_database(&config.database_url).await;
+    config.database_url = database.database_url().to_owned();
 
     let app = api_server::app_from_config(&config).await.unwrap();
     let response = app

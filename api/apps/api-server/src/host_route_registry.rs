@@ -88,5 +88,7 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), HostRouteRegistryE
 }
 
 fn is_controlled_host_route_path(path: &str) -> bool {
-    path.starts_with("/api/system/") || path.starts_with("/api/callbacks/")
+    path.starts_with("/api/system/")
+        || path.starts_with("/api/callbacks/")
+        || path.starts_with("/api/public/auth/")
 }

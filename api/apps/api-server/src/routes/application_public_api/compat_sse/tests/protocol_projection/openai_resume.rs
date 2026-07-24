@@ -62,7 +62,9 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_returns_un
     );
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let state = Arc::new(ApiState {
+        test_database: base_state.test_database.clone(),
         store: base_state.store.clone(),
+        authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
@@ -348,7 +350,9 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_unsupporte
         ),
     );
     let state = Arc::new(ApiState {
+        test_database: base_state.test_database.clone(),
         store: base_state.store.clone(),
+        authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),

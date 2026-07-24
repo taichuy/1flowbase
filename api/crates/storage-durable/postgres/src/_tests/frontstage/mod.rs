@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use serde_json::{json, Value};
 use sqlx::{migrate::Migrator, PgPool};
-use storage_postgres::{connect, run_migrations};
+use storage_postgres::run_migrations;
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -15,7 +15,7 @@ async fn page_creation_keeps_one_default_tab_and_last_tab_is_guarded() {
     use control_plane::ports::{
         CreateFrontstagePageInput, CreateFrontstagePageTabInput, FrontstagePageRepository,
     };
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let actor_user_id = Uuid::now_v7();
     sqlx::query(
@@ -256,7 +256,7 @@ async fn insert_pre_page_tab_ownership_documents(
 
 #[tokio::test]
 async fn page_tab_ownership_migration_backfills_presentation_routes_and_document_payload() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_page_tab_ownership_migrator()
         .run(&pool)
         .await
@@ -312,7 +312,7 @@ async fn page_tab_ownership_migration_backfills_presentation_routes_and_document
 #[tokio::test]
 async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_partial_schema_change(
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_page_tab_ownership_migrator()
         .run(&pool)
         .await
@@ -338,7 +338,7 @@ async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_pa
 #[tokio::test]
 async fn frontstage_block_renderer_version_migration_backfills_document_and_compatibility_projections(
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_block_renderer_version_migrator()
         .run(&pool)
         .await
@@ -486,7 +486,7 @@ async fn insert_frontstage_group_and_page(
 
 #[tokio::test]
 async fn placement_integrity_migration_rejects_dirty_history_before_installing_trigger() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_placement_integrity_migrator()
         .run(&pool)
         .await
@@ -519,7 +519,7 @@ async fn placement_integrity_migration_rejects_dirty_history_before_installing_t
 
 #[tokio::test]
 async fn placement_integrity_trigger_rejects_direct_sql_and_allows_cascade_delete() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
     let (group_id, child_id) =
@@ -572,7 +572,7 @@ async fn placement_integrity_trigger_rejects_direct_sql_and_allows_cascade_delet
 
 #[tokio::test]
 async fn placement_integrity_serializes_parent_and_child_updates() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
     let group_id = Uuid::now_v7();
@@ -719,7 +719,7 @@ async fn commit_error_contains(
 
 #[tokio::test]
 async fn full_migrations_reject_group_owned_tabs_and_block_codes_at_commit() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
     let group_id = Uuid::now_v7();
@@ -785,7 +785,7 @@ async fn full_migrations_reject_group_owned_tabs_and_block_codes_at_commit() {
 
 #[tokio::test]
 async fn full_migrations_reject_page_to_group_with_owner_rows_and_allow_cascade_delete() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
     let group_id = Uuid::now_v7();
@@ -830,7 +830,7 @@ async fn full_migrations_reject_page_to_group_with_owner_rows_and_allow_cascade_
 
 #[tokio::test]
 async fn full_migrations_defer_page_owner_kind_checks_until_transaction_end() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let trigger_timing: Vec<(String, bool, bool)> = sqlx::query_as(
         r#"
@@ -975,7 +975,7 @@ async fn full_migrations_defer_page_owner_kind_checks_until_transaction_end() {
 
 #[tokio::test]
 async fn full_migrations_validate_old_and_new_tab_owners_after_reparent() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let (workspace_id, second_workspace_id) = insert_frontstage_test_workspaces(&pool).await;
     let (source_page_id, source_default_tab_id, source_secondary_tab_id, _) =
@@ -1086,7 +1086,7 @@ async fn full_migrations_validate_old_and_new_tab_owners_after_reparent() {
 
 #[tokio::test]
 async fn page_owner_kind_migration_preflight_rejects_dirty_data_without_changes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_page_owner_kind_migrator()
         .run(&pool)
         .await
@@ -1154,7 +1154,7 @@ async fn page_owner_kind_migration_preflight_rejects_dirty_data_without_changes(
 
 #[tokio::test]
 async fn full_migrations_enforce_frontstage_page_and_block_code_workspace_ownership() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     run_migrations(&pool).await.unwrap();
     let workspace_foreign_keys: Vec<(String, String)> = sqlx::query_as(
@@ -1378,7 +1378,7 @@ async fn full_migrations_enforce_frontstage_page_and_block_code_workspace_owners
 
 #[tokio::test]
 async fn workspace_integrity_migration_rejects_dirty_history_without_schema_or_data_changes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_workspace_integrity_migrator()
         .run(&pool)
         .await
@@ -1623,7 +1623,7 @@ fn page_tabs_up_migration_preflight_precedes_schema_changes_and_uses_transaction
 
 #[tokio::test]
 async fn legacy_frontstage_page_schema_primary_key_rejects_duplicate_rows() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     let migrator = page_tabs_migrator();
     migrator.run(&pool).await.unwrap();
     migrator
@@ -1651,7 +1651,7 @@ async fn legacy_frontstage_page_schema_primary_key_rejects_duplicate_rows() {
 
 #[tokio::test]
 async fn page_tabs_up_migration_rejects_page_without_schema_and_rolls_back() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     let migrator = page_tabs_migrator();
     migrator.run(&pool).await.unwrap();
     migrator
@@ -1688,7 +1688,7 @@ async fn page_tabs_up_migration_rejects_page_without_schema_and_rolls_back() {
 
 #[tokio::test]
 async fn page_tabs_up_migration_rejects_schema_root_mismatch_and_rolls_back() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     let migrator = page_tabs_migrator();
     migrator.run(&pool).await.unwrap();
     migrator
@@ -1726,7 +1726,7 @@ async fn page_tabs_up_migration_rejects_schema_root_mismatch_and_rolls_back() {
 
 #[tokio::test]
 async fn page_tabs_migration_round_trip_preserves_legacy_document_and_block_code() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     let migrator = page_tabs_migrator();
     migrator.run(&pool).await.unwrap();
     migrator
@@ -1805,7 +1805,7 @@ async fn page_tabs_migration_round_trip_preserves_legacy_document_and_block_code
 
 #[tokio::test]
 async fn page_tabs_down_migration_rejects_multi_tab_page_without_changing_new_schema() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     let migrator = page_tabs_migrator();
     migrator.run(&pool).await.unwrap();
     migrator
@@ -1919,20 +1919,15 @@ async fn page_tabs_down_migration_rejects_multi_tab_page_without_changing_new_sc
     assert!(migration_still_applied);
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 #[tokio::test]
 async fn migration_creates_frontstage_page_visibility_rules() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)

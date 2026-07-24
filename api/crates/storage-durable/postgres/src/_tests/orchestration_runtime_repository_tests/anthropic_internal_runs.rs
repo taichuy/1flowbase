@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn claude_code_builtin_agent_run_is_hidden_from_business_run_logs() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -216,7 +216,7 @@ async fn claude_code_builtin_agent_run_is_hidden_from_business_run_logs() {
 
 #[tokio::test]
 async fn claude_code_agent_tool_links_unique_subagent_trace_to_parent_detail() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -453,7 +453,7 @@ async fn claude_code_agent_tool_links_unique_subagent_trace_to_parent_detail() {
 
 #[tokio::test]
 async fn claude_code_agent_watermark_counts_batched_agent_tool_calls() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn runtime_record_repository_supports_crud_filter_sort_and_relation_expansion() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -363,7 +363,7 @@ async fn runtime_record_repository_supports_crud_filter_sort_and_relation_expans
 
 #[tokio::test]
 async fn runtime_record_repository_blocks_expanding_draft_relation_targets() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -544,7 +544,7 @@ async fn runtime_record_repository_blocks_expanding_draft_relation_targets() {
 
 #[tokio::test]
 async fn runtime_record_repository_enforces_owner_scope() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();

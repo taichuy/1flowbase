@@ -12,7 +12,7 @@ import {
   Switch as AntdSwitch,
   Typography
 } from 'antd';
-import { Fragment, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
 
 import {
   validateBlockUiSchema,
@@ -34,6 +34,7 @@ export interface BlockRendererActionEvent {
   actionId: string;
   key?: string;
   payload?: unknown;
+  formValues?: Record<string, unknown>;
 }
 
 export interface BlockUiRendererProps {
@@ -44,6 +45,9 @@ export interface BlockUiRendererProps {
 
 interface RenderContext {
   onAction?: (event: BlockRendererActionEvent) => void;
+  fieldName?: string;
+  formValues: Record<string, unknown>;
+  setFormValue: (name: string, value: unknown) => void;
 }
 
 type SafeProps = Record<string, unknown>;
@@ -118,14 +122,22 @@ export function BlockUiRenderer({
   validationOptions,
   onAction
 }: BlockUiRendererProps) {
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const validation = validateBlockUiSchema(schema, validationOptions);
   if (!validation.ok) {
     return <BlockRendererError errors={validation.errors} />;
   }
 
   try {
+    const context: RenderContext = {
+      onAction,
+      formValues,
+      setFormValue(name, value) {
+        setFormValues((current) => ({ ...current, [name]: value }));
+      }
+    };
     return (
-      <>{renderNode(validation.schema, { onAction })}</>
+      <>{renderNode(validation.schema, context)}</>
     );
   } catch {
     return (
@@ -250,44 +262,58 @@ function renderNode(node: BlockUiSchemaNode, context: RenderContext): ReactNode 
     case 'FormItem':
       return renderFormItem(node, props, style, context);
     case 'Input':
-      return renderInput(node, props, style);
+      return renderInput(node, props, style, context);
     case 'Textarea':
+      {
+        const fieldName = context.fieldName ?? readString(props.id);
       return (
         <TextArea
           key={key}
           id={readString(props.id)}
           placeholder={readString(props.placeholder)}
-          value={readInputValue(props.value)}
+          value={readInputValue(readFieldValue(context, fieldName, props.value))}
           disabled={readBoolean(props.disabled)}
           readOnly={readBoolean(props.readOnly)}
           style={style}
+          onChange={(event) => updateFieldValue(context, fieldName, event.target.value)}
         />
       );
+      }
     case 'Select':
-      return renderSelect(node, props, style);
+      return renderSelect(node, props, style, context);
     case 'Checkbox':
+      {
+        const fieldName = context.fieldName ?? readString(props.id);
       return (
         <AntdCheckbox
           key={key}
           id={readString(props.id)}
-          checked={readBoolean(props.checked)}
+          checked={readBoolean(readFieldValue(context, fieldName, props.checked))}
           disabled={readBoolean(props.disabled)}
           style={style}
+          onChange={(event) => updateFieldValue(context, fieldName, event.target.checked)}
         >
           {readRenderable(props.children)}
         </AntdCheckbox>
       );
+      }
     case 'Switch':
+      {
+        const fieldName = context.fieldName ?? readString(props.id);
       return (
         <AntdSwitch
           key={key}
           id={readString(props.id)}
-          checked={readBoolean(props.checked)}
+          checked={readBoolean(readFieldValue(context, fieldName, props.checked))}
           disabled={readBoolean(props.disabled)}
           style={style}
+          onChange={(checked) => updateFieldValue(context, fieldName, checked)}
         />
       );
+      }
     case 'DatePicker':
+      {
+        const fieldName = context.fieldName ?? readString(props.id);
       return (
         <AntdDatePicker
           key={key}
@@ -295,22 +321,28 @@ function renderNode(node: BlockUiSchemaNode, context: RenderContext): ReactNode 
           placeholder={readString(props.placeholder)}
           disabled={readBoolean(props.disabled)}
           style={style}
+          onChange={(_date, dateString) => updateFieldValue(context, fieldName, dateString)}
         />
       );
+      }
     case 'NumberInput':
+      {
+        const fieldName = context.fieldName ?? readString(props.id);
       return (
         <AntdInputNumber
           key={key}
           id={readString(props.id)}
           placeholder={readString(props.placeholder)}
-          value={readNumber(props.value)}
+          value={readNumber(readFieldValue(context, fieldName, props.value))}
           min={readNumber(props.min)}
           max={readNumber(props.max)}
           disabled={readBoolean(props.disabled)}
           readOnly={readBoolean(props.readOnly)}
           style={style}
+          onChange={(value) => updateFieldValue(context, fieldName, value)}
         />
       );
+      }
     case 'Button':
       return renderActionButton(node, props, style, context, false);
     case 'IconButton':
@@ -396,12 +428,13 @@ function renderFormItem(
   context: RenderContext
 ): ReactNode {
   const id = readString(props.id) ?? readString(props.name);
+  const fieldName = readString(props.name) ?? id;
   const label = readString(props.label);
 
   return (
     <div key={node.key} style={{ display: 'grid', gap: 4, marginBottom: 12, ...style }}>
       {label ? <label htmlFor={id}>{label}</label> : null}
-      {renderFormItemChildren(node, id, context)}
+      {renderFormItemChildren(node, id, { ...context, fieldName })}
     </div>
   );
 }
@@ -425,17 +458,21 @@ function renderFormItemChildren(
 function renderInput(
   node: BlockUiSchemaNode,
   props: SafeProps,
-  style: CSSProperties
+  style: CSSProperties,
+  context: RenderContext
 ): ReactNode {
+  const fieldName = context.fieldName ?? readString(props.id);
   return (
     <AntdInput
       key={node.key}
       id={readString(props.id)}
       placeholder={readString(props.placeholder)}
-      value={readInputValue(props.value)}
+      type={readString(props.type)}
+      value={readInputValue(readFieldValue(context, fieldName, props.value))}
       disabled={readBoolean(props.disabled)}
       readOnly={readBoolean(props.readOnly)}
       style={style}
+      onChange={(event) => updateFieldValue(context, fieldName, event.target.value)}
     />
   );
 }
@@ -443,17 +480,20 @@ function renderInput(
 function renderSelect(
   node: BlockUiSchemaNode,
   props: SafeProps,
-  style: CSSProperties
+  style: CSSProperties,
+  context: RenderContext
 ): ReactNode {
+  const fieldName = context.fieldName ?? readString(props.id);
   return (
     <AntdSelect
       key={node.key}
       id={readString(props.id)}
       placeholder={readString(props.placeholder)}
-      value={readSelectValue(props.value)}
+      value={readSelectValue(readFieldValue(context, fieldName, props.value))}
       disabled={readBoolean(props.disabled)}
       options={readSelectOptions(props.options)}
       style={{ minWidth: 160, ...style }}
+      onChange={(value) => updateFieldValue(context, fieldName, value)}
     />
   );
 }
@@ -488,13 +528,38 @@ function renderActionButton(
           primitive: node.primitive as 'Button' | 'IconButton',
           ...(node.key === undefined ? {} : { key: node.key }),
           actionId,
-          ...(payload === undefined ? {} : { payload })
+          ...(payload === undefined ? {} : { payload }),
+          ...(Object.keys(context.formValues).length === 0
+            ? {}
+            : { formValues: context.formValues })
         });
       }}
     >
       {children}
     </AntdButton>
   );
+}
+
+function readFieldValue(
+  context: RenderContext,
+  fieldName: string | undefined,
+  fallback: unknown
+): unknown {
+  if (fieldName === undefined || !(fieldName in context.formValues)) {
+    return fallback;
+  }
+
+  return context.formValues[fieldName];
+}
+
+function updateFieldValue(
+  context: RenderContext,
+  fieldName: string | undefined,
+  value: unknown
+): void {
+  if (fieldName !== undefined) {
+    context.setFormValue(fieldName, value);
+  }
 }
 
 function renderModal(

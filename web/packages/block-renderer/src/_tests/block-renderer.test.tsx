@@ -186,6 +186,91 @@ describe('Block UI host renderer', () => {
     });
   });
 
+  test('reports current form values with a Block action', () => {
+    // Issue #1444 AC-005/AC-006: authentication consumes the same generic
+    // form/action contract as every other code block.
+    const onAction = vi.fn();
+    const schema: BlockUiSchema = {
+      primitive: 'Form',
+      children: [
+        {
+          primitive: 'FormItem',
+          props: { name: 'identifier', label: 'Account' },
+          children: [{ primitive: 'Input' }]
+        },
+        {
+          primitive: 'FormItem',
+          props: { name: 'password', label: 'Password' },
+          children: [{ primitive: 'Input', props: { type: 'password' } }]
+        },
+        {
+          primitive: 'Button',
+          props: { children: 'Sign in', actionId: 'sign_in' }
+        }
+      ]
+    };
+
+    render(<BlockUiRenderer schema={schema} onAction={onAction} />);
+    fireEvent.change(screen.getByLabelText('Account'), {
+      target: { value: 'alice' }
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'change-me' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'action',
+      primitive: 'Button',
+      actionId: 'sign_in',
+      formValues: { identifier: 'alice', password: 'change-me' }
+    });
+  });
+
+  test('reports non-text form primitives through the same action contract', () => {
+    const onAction = vi.fn();
+    render(
+      <BlockUiRenderer
+        schema={{
+          primitive: 'Form',
+          children: [
+            {
+              primitive: 'FormItem',
+              props: { name: 'remember', label: 'Remember me' },
+              children: [{ primitive: 'Checkbox' }]
+            },
+            {
+              primitive: 'FormItem',
+              props: { name: 'trusted', label: 'Trusted device' },
+              children: [{ primitive: 'Switch' }]
+            },
+            {
+              primitive: 'FormItem',
+              props: { name: 'code_length', label: 'Code length' },
+              children: [{ primitive: 'NumberInput' }]
+            },
+            { primitive: 'Button', props: { children: 'Continue', actionId: 'continue' } }
+          ]
+        }}
+        onAction={onAction}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText('Remember me'));
+    fireEvent.click(screen.getByRole('switch', { name: 'Trusted device' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Code length' }), {
+      target: { value: '6' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'action',
+      primitive: 'Button',
+      actionId: 'continue',
+      formValues: { remember: true, trusted: true, code_length: 6 }
+    });
+  });
+
   test('renders Modal in a controlled containment wrapper without a portal dependency', () => {
     render(
       <BlockUiRenderer

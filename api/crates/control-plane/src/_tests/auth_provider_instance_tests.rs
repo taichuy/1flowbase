@@ -17,6 +17,10 @@ use domain::{
     ActorContext, AuditLogRecord, AuthenticatorRecord, BoundRole, ExternalIdentityClaim,
     PermissionDefinition, RoleScopeKind, ScopeContext, UserRecord, UserStatus,
 };
+use plugin_framework::{
+    AuthProviderContributionManifest, HostExtensionBootstrapPhase, HostExtensionRegistry,
+    RegisteredHostExtension,
+};
 use uuid::Uuid;
 
 use crate::_tests::support::{password_hash, MemorySessionStore};
@@ -214,8 +218,65 @@ fn authenticator(id: Uuid, title: &str, auth_type: &str) -> AuthenticatorRecord 
         enabled: true,
         is_builtin: false,
         sort_order: 0,
+        public_ui_block: crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK.to_string(),
         options: serde_json::json!({}),
     }
+}
+
+#[test]
+fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
+    let mut host_extensions = HostExtensionRegistry::default();
+    host_extensions
+        .register(RegisteredHostExtension {
+            extension_id: "fixture-auth".to_string(),
+            bootstrap_phase: HostExtensionBootstrapPhase::Boot,
+            provides_contracts: vec![],
+            overrides_contracts: vec![],
+            registers_slots: vec![],
+            registers_storage: vec![],
+            infrastructure_providers: vec![],
+            auth_providers: vec![AuthProviderContributionManifest {
+                auth_type: "fixture-auth.qr".to_string(),
+                display_name: "Fixture QR".to_string(),
+                config_schema: vec![serde_json::from_value(serde_json::json!({
+                    "key": "issuer",
+                    "label": "Issuer",
+                    "type": "string"
+                }))
+                .unwrap()],
+                default_public_ui_block: "export default { main } satisfies BlockModule;"
+                    .to_string(),
+                public_variable_keys: vec!["issuer".to_string()],
+                public_route_ids: vec!["fixture-auth.qr.start".to_string()],
+            }],
+            owned_resources: vec![],
+            extends_resources: vec![],
+            routes: vec!["fixture-auth.qr.start".to_string()],
+            workers: vec![],
+            migrations: vec![],
+        })
+        .unwrap();
+
+    let registry = AuthenticatorRegistry::from_host_extensions(&host_extensions).unwrap();
+    let definition = registry.definition("fixture-auth.qr").unwrap();
+    assert!(definition.default_public_ui_block.contains("BlockModule"));
+    assert_eq!(definition.config_schema[0]["key"], "issuer");
+    let record = AuthenticatorRecord {
+        options: serde_json::json!({
+            "extension_config": {
+                "issuer": "https://issuer.example.test",
+                "client_secret": "must-not-leak"
+            }
+        }),
+        ..authenticator(Uuid::now_v7(), "Fixture QR", "fixture-auth.qr")
+    };
+    assert_eq!(
+        registry.public_variables(&record).unwrap(),
+        serde_json::from_value(serde_json::json!({
+            "issuer": "https://issuer.example.test"
+        }))
+        .unwrap()
+    );
 }
 
 #[tokio::test]

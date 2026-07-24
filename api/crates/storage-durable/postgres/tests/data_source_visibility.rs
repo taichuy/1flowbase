@@ -8,8 +8,7 @@ use domain::{
     PASSWORD_LOCAL_AUTHENTICATOR_ID,
 };
 use serde_json::json;
-use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -17,14 +16,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn seeded_store() -> (
@@ -33,7 +28,7 @@ async fn seeded_store() -> (
     domain::UserRecord,
     Uuid,
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let tenant = store.upsert_root_tenant().await.unwrap();
@@ -54,6 +49,7 @@ async fn seeded_store() -> (
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: json!({}),
         })
         .await

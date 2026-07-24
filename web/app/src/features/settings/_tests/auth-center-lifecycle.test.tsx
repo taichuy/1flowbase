@@ -60,12 +60,20 @@ const baseOverview = {
       enabled: true,
       is_builtin: true,
       sort_order: 0,
-      config_schema: [],
+      config_schema: [
+        { key: 'title', label: 'Authenticator title', type: 'string', required: true },
+        { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
+        { key: 'enabled', label: 'Enabled', type: 'boolean', control: 'switch' },
+        { key: 'self_registration_enabled', label: 'Allow self registration', type: 'boolean', control: 'switch' },
+        { key: 'public_ui_block', label: 'Public authentication block', type: 'string', control: 'textarea', required: true }
+      ],
       config_values: {
         title: 'Password',
         enabled: true,
         description: 'Local password authentication',
-        extension_config: {}
+        self_registration_enabled: false,
+        public_ui_block: 'original password block',
+        extension_config: { self_registration_enabled: false }
       }
     },
     {
@@ -75,12 +83,20 @@ const baseOverview = {
       enabled: false,
       is_builtin: false,
       sort_order: 10,
-      config_schema: [],
+      config_schema: [
+        { key: 'title', label: 'Authenticator title', type: 'string', required: true },
+        { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
+        { key: 'enabled', label: 'Enabled', type: 'boolean', control: 'switch' },
+        { key: 'self_registration_enabled', label: 'Allow self registration', type: 'boolean', control: 'switch' },
+        { key: 'public_ui_block', label: 'Public authentication block', type: 'string', control: 'textarea', required: true }
+      ],
       config_values: {
         title: 'Staff Password',
         enabled: false,
         description: 'Staff login',
-        extension_config: {}
+        self_registration_enabled: false,
+        public_ui_block: 'staff password block',
+        extension_config: { self_registration_enabled: false }
       }
     }
   ]
@@ -227,6 +243,36 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         authCenterApi.deleteSettingsAuthCenterAuthenticator
       ).toHaveBeenCalledWith('auth-staff-password', 'csrf-123');
     });
+  });
+
+  test('renders the backend config schema and saves the editable Block truth', async () => {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
+      baseOverview.authenticators[0]
+    );
+    render(<AppProviders><SettingsAuthCenterSection /></AppProviders>);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: '编辑' }))[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
+    const blockEditor = within(dialog).getByLabelText('Public authentication block');
+    expect(blockEditor).toHaveValue('original password block');
+    fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
+    fireEvent.click(within(dialog).getByLabelText('Allow self registration'));
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(
+      authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
+    ).toHaveBeenCalledWith(
+      'auth-password-local',
+      {
+        title: 'Password',
+        enabled: true,
+        description: 'Local password authentication',
+        self_registration_enabled: true,
+        public_ui_block: 'custom saved block',
+        extension_config: {}
+      },
+      'csrf-123'
+    ));
   });
 
   test('throttles drawer mouse resize updates with animation frames', async () => {

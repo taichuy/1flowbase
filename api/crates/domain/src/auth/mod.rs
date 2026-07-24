@@ -164,6 +164,7 @@ pub struct AuthenticatorRecord {
     pub enabled: bool,
     pub is_builtin: bool,
     pub sort_order: i32,
+    pub public_ui_block: String,
     pub options: serde_json::Value,
 }
 

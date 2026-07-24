@@ -34,7 +34,6 @@ use control_plane::{
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::postgres::PgPoolOptions;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::RwLock;
 use tower::ServiceExt;
@@ -136,6 +135,7 @@ impl OfficialMcpBundleSourcePort for NoopMcpSource {
 struct Fixture {
     app: Router,
     state: Arc<ApiState>,
+    _database: postgres_test_support::PostgresTestSchema,
 }
 
 fn test_config() -> ApiConfig {
@@ -153,24 +153,16 @@ fn test_config() -> ApiConfig {
     .unwrap()
 }
 
-async fn isolated_database_url(base_url: &str) -> String {
-    let pool = PgPoolOptions::new()
-        .max_connections(1)
-        .connect(base_url)
+async fn isolated_database(base_url: &str) -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(base_url)
         .await
-        .unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    pool.close().await;
-    format!("{base_url}?options=-csearch_path%3D{schema}")
+        .unwrap()
 }
 
 async fn fixture() -> Fixture {
     let mut config = test_config();
-    config.database_url = isolated_database_url(&config.database_url).await;
+    let database = isolated_database(&config.database_url).await;
+    config.database_url = database.database_url().to_owned();
     let durable = storage_durable::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
@@ -231,6 +223,7 @@ async fn fixture() -> Fixture {
     let process_started_at = OffsetDateTime::now_utc();
     let state = Arc::new(ApiState {
         store,
+        authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
         settings_feature_registry,
         console_operation_registry,
         infrastructure,
@@ -268,6 +261,7 @@ async fn fixture() -> Fixture {
     Fixture {
         app: app_with_state_and_config(state.clone(), &config),
         state,
+        _database: database,
     }
 }
 

@@ -4,8 +4,7 @@ use control_plane::ports::{
     UpdateModelDefinitionInput, UpdateModelFieldInput,
 };
 use domain::{DataModelScopeKind, ModelFieldKind};
-use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -13,15 +12,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn root_tenant_id(store: &PgControlPlaneStore) -> Uuid {
@@ -139,7 +133,7 @@ async fn add_string_field(
 
 #[tokio::test]
 async fn create_main_source_table_adds_platform_columns_and_scope_indexes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = create_test_workspace(&store).await;
@@ -180,7 +174,7 @@ async fn create_main_source_table_adds_platform_columns_and_scope_indexes() {
 
 #[tokio::test]
 async fn update_model_and_field_keep_physical_names_immutable() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = create_test_workspace(&store).await;
@@ -242,7 +236,7 @@ async fn update_model_and_field_keep_physical_names_immutable() {
 
 #[tokio::test]
 async fn delete_model_field_drops_dynamic_columns_but_rejects_platform_columns() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = create_test_workspace(&store).await;
@@ -278,7 +272,7 @@ async fn delete_model_field_drops_dynamic_columns_but_rejects_platform_columns()
 
 #[tokio::test]
 async fn add_model_field_rejects_codes_that_sanitize_to_platform_columns_without_metadata() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = create_test_workspace(&store).await;
@@ -331,7 +325,7 @@ async fn add_model_field_rejects_codes_that_sanitize_to_platform_columns_without
 
 #[tokio::test]
 async fn add_scalar_field_creates_real_postgres_column_and_unique_index() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -428,7 +422,7 @@ async fn add_scalar_field_creates_real_postgres_column_and_unique_index() {
 
 #[tokio::test]
 async fn add_one_to_many_field_only_writes_metadata_without_creating_column() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -529,7 +523,7 @@ async fn add_one_to_many_field_only_writes_metadata_without_creating_column() {
 
 #[tokio::test]
 async fn add_many_to_many_field_creates_host_managed_join_table() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -647,7 +641,7 @@ async fn add_many_to_many_field_creates_host_managed_join_table() {
 
 #[tokio::test]
 async fn create_runtime_model_table_always_uses_scope_id_column() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();

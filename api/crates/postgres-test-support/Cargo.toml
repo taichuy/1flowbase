@@ -1,0 +1,11 @@
+[package]
+name = "postgres-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+

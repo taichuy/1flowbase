@@ -1,5 +1,5 @@
 use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations};
+use storage_postgres::run_migrations;
 use uuid::Uuid;
 
 const LEGACY_AUTH_TEAM_ACL_CHECKSUM_HEX: &str =
@@ -176,15 +176,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn seed_legacy_auth_team_acl_migration(pool: &PgPool) {
@@ -272,7 +267,7 @@ async fn seed_legacy_password_identity(
 
 #[tokio::test]
 async fn migrations_upgrade_legacy_authenticator_identity_schema() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     let user_id = Uuid::now_v7();
     let identity_id = Uuid::now_v7();
     let legacy_authenticator_id = Uuid::now_v7();

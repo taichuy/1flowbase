@@ -12,6 +12,7 @@ fn registered_extension(extension_id: &str) -> RegisteredHostExtension {
         registers_slots: vec![],
         registers_storage: vec![],
         infrastructure_providers: vec![],
+        auth_providers: vec![],
         owned_resources: vec![],
         extends_resources: vec![],
         routes: vec![],

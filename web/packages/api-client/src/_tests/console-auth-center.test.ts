@@ -108,14 +108,17 @@ describe('console auth center client', () => {
     });
   });
 
-  test('updates an auth center authenticator config without extension_config', async () => {
+  test('updates an auth center authenticator config and its public Block truth', async () => {
     await expect(
       updateConsoleAuthCenterAuthenticatorConfig(
         'auth-oidc-main',
         {
           title: 'OIDC Login',
           enabled: true,
-          description: 'Primary OIDC login'
+          description: 'Primary OIDC login',
+          self_registration_enabled: false,
+          public_ui_block: 'export default { main };',
+          extension_config: { issuer: 'https://id.example.com' }
         },
         'csrf-123'
       )
@@ -126,7 +129,10 @@ describe('console auth center client', () => {
       body: {
         title: 'OIDC Login',
         enabled: true,
-        description: 'Primary OIDC login'
+        description: 'Primary OIDC login',
+        self_registration_enabled: false,
+        public_ui_block: 'export default { main };',
+        extension_config: { issuer: 'https://id.example.com' }
       }
     });
   });

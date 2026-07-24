@@ -1,5 +1,5 @@
 use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 const WORKFLOW_SCHEDULE_IDEMPOTENCY_INDEX_MIGRATION: &str = include_str!(
@@ -11,20 +11,15 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 #[tokio::test]
 async fn migration_smoke_creates_auth_and_workspace_tables() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -53,7 +48,7 @@ async fn migration_smoke_creates_auth_and_workspace_tables() {
 
 #[tokio::test]
 async fn migration_smoke_removes_legacy_model_provider_routing_table() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -78,7 +73,7 @@ async fn migration_smoke_removes_legacy_model_provider_routing_table() {
 
 #[tokio::test]
 async fn migration_smoke_creates_workspace_tables_and_workspace_scoped_indexes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let schema: String = sqlx::query_scalar("select current_schema()")
@@ -165,7 +160,7 @@ async fn migration_smoke_creates_workspace_tables_and_workspace_scoped_indexes()
 
 #[tokio::test]
 async fn migration_smoke_creates_lifecycle_scoped_readiness_columns_and_indexes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -299,7 +294,7 @@ async fn migration_smoke_creates_lifecycle_scoped_readiness_columns_and_indexes(
 
 #[tokio::test]
 async fn migration_smoke_creates_system_global_scoped_readiness_columns_and_indexes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -434,7 +429,7 @@ async fn migration_smoke_creates_system_global_scoped_readiness_columns_and_inde
 
 #[tokio::test]
 async fn migration_smoke_creates_identity_join_scoped_readiness_without_replacing_business_keys() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -601,7 +596,7 @@ async fn migration_smoke_creates_identity_join_scoped_readiness_without_replacin
 
 #[tokio::test]
 async fn migration_smoke_creates_remaining_owner_review_scoped_readiness() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -811,7 +806,7 @@ async fn assert_unique_constraint_columns(
 
 #[tokio::test]
 async fn bootstrap_repository_upserts_password_local_and_root_user() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -833,6 +828,7 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: serde_json::json!({}),
         })
         .await
@@ -888,7 +884,7 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
 
 #[tokio::test]
 async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -900,6 +896,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: "default password block".into(),
             options: serde_json::json!({
                 "description": "Local password authentication",
                 "config_form_schema": [
@@ -925,6 +922,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
     saved.title = "Custom Password".into();
     saved.enabled = false;
+    saved.public_ui_block = "custom saved password block".into();
     saved.options = serde_json::json!({
         "description": "Custom local password",
         "config_form_schema": [
@@ -951,6 +949,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: "upgraded default password block".into(),
             options: serde_json::json!({
                 "description": "Local password authentication",
                 "config_form_schema": [
@@ -977,6 +976,10 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
     assert_eq!(after_bootstrap.title, "Custom Password");
     assert!(!after_bootstrap.enabled);
     assert_eq!(
+        after_bootstrap.public_ui_block,
+        "custom saved password block"
+    );
+    assert_eq!(
         after_bootstrap.options["description"],
         serde_json::json!("Custom local password")
     );
@@ -994,7 +997,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
 
 #[tokio::test]
 async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let oidc_id = Uuid::now_v7();
@@ -1007,6 +1010,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
             enabled: false,
             is_builtin: false,
             sort_order: 10,
+            public_ui_block: "old oidc block".into(),
             options: serde_json::json!({
                 "description": "Old OIDC",
                 "extension_config": {
@@ -1025,6 +1029,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
             enabled: true,
             is_builtin: false,
             sort_order: 20,
+            public_ui_block: "new oidc block".into(),
             options: serde_json::json!({
                 "description": "New OIDC",
                 "extension_config": {
@@ -1038,6 +1043,9 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
     let oidc = store.find_authenticator(oidc_id).await.unwrap().unwrap();
     assert_eq!(oidc.title, "OIDC Login");
     assert!(oidc.enabled);
+    // Provider reconciliation may refresh provider-owned defaults/config, but a
+    // non-empty instance Block is user-owned and must survive plugin upgrades.
+    assert_eq!(oidc.public_ui_block, "old oidc block");
     assert_eq!(oidc.options["description"], serde_json::json!("New OIDC"));
     assert_eq!(
         oidc.options["extension_config"]["issuer_url"],
@@ -1047,7 +1055,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
 
 #[tokio::test]
 async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -1113,7 +1121,7 @@ async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
 
 #[tokio::test]
 async fn migration_smoke_creates_plugin_artifact_instances_table() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -1188,7 +1196,7 @@ async fn migration_smoke_creates_plugin_artifact_instances_table() {
 
 #[tokio::test]
 async fn migration_smoke_creates_external_bridge_tables() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -1247,7 +1255,7 @@ async fn migration_smoke_creates_external_bridge_tables() {
 
 #[tokio::test]
 async fn migration_smoke_creates_application_public_run_state() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -1354,7 +1362,7 @@ async fn migration_smoke_creates_application_public_run_state() {
 
 #[tokio::test]
 async fn migration_smoke_creates_system_default_upgrade_ledger() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -1457,7 +1465,7 @@ async fn migration_smoke_creates_system_default_upgrade_ledger() {
 
 #[tokio::test]
 async fn migration_smoke_keeps_active_run_statuses_when_adding_incomplete() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
@@ -1529,7 +1537,7 @@ fn workflow_schedule_idempotency_index_migration_only_adds_the_partial_unique_in
 
 #[tokio::test]
 async fn migration_smoke_creates_workflow_schedule_idempotency_partial_unique_index() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
         .fetch_one(&pool)
