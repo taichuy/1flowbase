@@ -35,6 +35,7 @@ import {
 import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
 import { BlockRuntimeDiagnostics } from './BlockRuntimeDiagnostics';
 import { RestrictedBlockRuntimePreview } from './RestrictedBlockRuntimePreview';
+import { JsBlockPreviewConsole } from './JsBlockPreviewConsole';
 import { WindowWorkspaceWindow } from '../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { useOptionalWindowWorkspace } from '../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 
@@ -199,13 +200,22 @@ export function JsBlockTrialPanel({
   );
 
   if (presentation.mode === 'direct-preview') {
-    return snapshot ? (
-      <RestrictedBlockRuntimePreview
+    return (
+      <JsBlockPreviewConsole
         snapshot={snapshot}
-        onAction={createRunInputs ? (event) => void run(event) : undefined}
+        preview={
+          snapshot ? (
+            <RestrictedBlockRuntimePreview
+              snapshot={snapshot}
+              onAction={
+                createRunInputs ? (event) => void run(event) : undefined
+              }
+            />
+          ) : (
+            <BlockUiLoadingShell />
+          )
+        }
       />
-    ) : (
-      <BlockUiLoadingShell />
     );
   }
 
