@@ -35,7 +35,7 @@
   "artifacts": {
     "apiServer": {
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/api/target/release/api-server",
-      "sha256": "877bd45403001d004f55bd402b7215b109f2e8d8953dcb359b43a7363eb06d5e"
+      "sha256": "dd55ea503268a78dc419a13857e3a2a5a377190019f29bcdac0bbdc8e7c80e18"
     },
     "pluginRunner": {
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/api/target/release/plugin-runner",
