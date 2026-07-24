@@ -330,13 +330,22 @@ test('controlled tool loop records live call and second request before barrier r
         input: '1flowbase-client-tool-vector TOOL_VECTOR_PATH=/tmp/tool-vector.txt',
       }),
     });
-    assert.match(await first.text(), /local_shell_call/u);
+    const firstEvents = parseSse(await first.text());
+    const toolItem = firstEvents.find(
+      (event) => event.event === 'response.output_item.done',
+    )?.data.item;
+    assert.equal(toolItem?.type, 'function_call');
+    assert.equal(toolItem?.name, 'shell_command');
+    assert.deepEqual(JSON.parse(toolItem?.arguments), {
+      command: "cat -- '/tmp/tool-vector.txt'",
+      workdir: '/tmp',
+    });
 
     const second = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'mock-model', stream: true,
-        input: [{ type: 'local_shell_call_output', call_id: 'call_fixture', output: '1flowbase-client-tool-result' }],
+        input: [{ type: 'function_call_output', call_id: 'call_fixture', output: '1flowbase-client-tool-result' }],
       }),
     });
     const reader = second.body.getReader();

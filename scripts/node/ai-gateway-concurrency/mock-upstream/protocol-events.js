@@ -1,11 +1,17 @@
 'use strict';
 
+const path = require('node:path');
+
 const DEFAULT_BARRIER_MARKERS = Object.freeze({
   first: 'chunk-1',
   second: 'chunk-2',
   clientFirst: 'marker-1',
   clientSecond: 'marker-2',
 });
+
+function posixShellArgument(value) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
 
 function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
   const itemId = `item_${nonce}`;
@@ -154,13 +160,13 @@ function responsesToolEvents(nonce, toolPath, final = false, executorProbeUrl = 
   );
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const item = {
-    id: `item_${nonce}`, type: 'local_shell_call', call_id: `call_${nonce}`,
-    status: 'completed', action: {
-      type: 'exec',
+    id: `item_${nonce}`, type: 'function_call', call_id: `call_${nonce}`,
+    name: 'shell_command', status: 'completed', arguments: JSON.stringify({
       command: executorProbeUrl
-        ? ['curl', '-fsS', '-X', 'POST', executorProbeUrl]
-        : ['cat', toolPath],
-    },
+        ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
+        : `cat -- ${posixShellArgument(toolPath)}`,
+      workdir: path.dirname(toolPath),
+    }),
   };
   return {
     chunks: [
