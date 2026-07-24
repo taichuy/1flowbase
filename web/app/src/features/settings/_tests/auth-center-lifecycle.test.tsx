@@ -90,6 +90,7 @@ const baseOverview = {
       enabled: true,
       is_builtin: true,
       sort_order: 0,
+      interface_path_prefixes: ['/api/public/'],
       config_schema: [
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },
         { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
@@ -112,6 +113,7 @@ const baseOverview = {
       enabled: false,
       is_builtin: false,
       sort_order: 10,
+      interface_path_prefixes: ['/api/public/'],
       config_schema: [
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },
         { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
@@ -335,7 +337,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       frontstageInterfaceCapabilities.useFrontstageInterfaceCapabilities
     ).toHaveBeenLastCalledWith(
       'workspace-1',
-      expect.objectContaining({ path_query: '/api/public/auth/' })
+      expect.objectContaining({ path_prefixes: ['/api/public/'] })
     );
     fireEvent.click(within(uiDialog).getByRole('button', { name: '代码' }));
     const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });

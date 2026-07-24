@@ -48,6 +48,7 @@ pub struct AuthCenterAuthenticatorResponse {
     pub enabled: bool,
     pub is_builtin: bool,
     pub sort_order: i32,
+    pub interface_path_prefixes: Vec<String>,
     pub config_schema: Vec<AuthCenterConfigFieldResponse>,
     pub config_values: Map<String, Value>,
 }
@@ -260,6 +261,7 @@ fn to_auth_center_authenticator_response(
         enabled: authenticator.enabled,
         is_builtin: authenticator.is_builtin,
         sort_order: authenticator.sort_order,
+        interface_path_prefixes: vec![crate::routes::PUBLIC_API_PATH_PREFIX.to_string()],
         config_schema,
         config_values,
     }

@@ -94,6 +94,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         description={null}
         enabled
         errorMessage={null}
+        interfacePathPrefixes={['/api/public/']}
         open
         readOnly={false}
         saving={false}

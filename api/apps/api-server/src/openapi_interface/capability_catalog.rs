@@ -40,6 +40,7 @@ pub struct OpenApiCapabilityCatalogSummary {
 
 #[derive(Debug, Clone)]
 pub struct OpenApiCapabilityCatalogQuery {
+    pub path_prefixes: Vec<String>,
     pub path_query: Option<String>,
     pub adapter_id: Option<String>,
     pub method: Option<String>,
@@ -77,6 +78,15 @@ pub async fn query_openapi_capability_catalog(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
+
+    if !query.path_prefixes.is_empty() {
+        summaries.retain(|entry| {
+            query
+                .path_prefixes
+                .iter()
+                .any(|prefix| entry.path.starts_with(prefix))
+        });
+    }
 
     if let Some(path_query) = query
         .path_query
@@ -382,5 +392,5 @@ pub fn operation_risk_level(method: &str) -> &'static str {
 }
 
 fn static_operation_is_bindable(path: &str) -> bool {
-    path.starts_with("/api/console/")
+    path.starts_with("/api/console/") || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
 }

@@ -11,7 +11,7 @@ use control_plane::{
     frontstage::{FrontstagePageService, GetFrontstagePageDetailCommand},
     ports::FrontstagePageRepository,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
@@ -74,6 +74,10 @@ pub struct FrontstageInterfaceCapabilityResponse {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FrontstageInterfaceCapabilityQuery {
+    /// Comma-separated canonical path prefixes combined with OR semantics.
+    #[param(value_type = String)]
+    #[serde(default, deserialize_with = "deserialize_path_prefixes")]
+    pub path_prefixes: Vec<String>,
     pub path_query: Option<String>,
     pub adapter_id: Option<String>,
     pub method: Option<String>,
@@ -81,6 +85,34 @@ pub struct FrontstageInterfaceCapabilityQuery {
     pub offset: Option<usize>,
     #[param(minimum = 1, maximum = 20)]
     pub limit: Option<usize>,
+}
+
+fn deserialize_path_prefixes<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    let mut prefixes = std::collections::BTreeSet::new();
+    for prefix in value
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|prefix| !prefix.is_empty())
+    {
+        if !prefix.starts_with('/')
+            || !prefix.ends_with('/')
+            || prefix.contains("..")
+            || prefix.contains('?')
+            || prefix.contains('#')
+        {
+            return Err(D::Error::custom(
+                "path_prefixes must contain canonical absolute path prefixes ending in /",
+            ));
+        }
+        prefixes.insert(prefix.to_string());
+    }
+    Ok(prefixes.into_iter().collect())
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -183,6 +215,7 @@ pub async fn list_frontstage_interface_capabilities(
         &state,
         workspace_id,
         OpenApiCapabilityCatalogQuery {
+            path_prefixes: query.path_prefixes,
             path_query: query.path_query,
             adapter_id: query.adapter_id,
             method: query.method,

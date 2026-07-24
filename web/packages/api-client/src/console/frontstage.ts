@@ -156,6 +156,7 @@ export interface ConsoleFrontstageInterfaceCapabilityPage {
 }
 
 export interface ConsoleFrontstageInterfaceCapabilityQuery {
+  path_prefixes?: string[];
   path_query?: string;
   adapter_id?: string;
   method?: string;
@@ -209,6 +210,9 @@ export function listFrontstageInterfaceCapabilities(
   baseUrl?: string
 ): Promise<ConsoleFrontstageInterfaceCapabilityPage> {
   const params = new URLSearchParams();
+  if (query.path_prefixes?.length) {
+    params.set('path_prefixes', query.path_prefixes.join(','));
+  }
   if (query.path_query) params.set('path_query', query.path_query);
   if (query.adapter_id) params.set('adapter_id', query.adapter_id);
   if (query.method) params.set('method', query.method);

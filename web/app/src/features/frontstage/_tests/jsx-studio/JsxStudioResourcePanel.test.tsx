@@ -103,10 +103,12 @@ const createSaveBlockMock = () =>
 
 function renderInterfacePanel({
   codeSource = '',
+  interfacePathPrefixes,
   onInsertCode = createInsertCodeMock(),
   onSaveBlock = createSaveBlockMock()
 }: {
   codeSource?: string;
+  interfacePathPrefixes?: readonly string[];
   onInsertCode?: ReturnType<typeof createInsertCodeMock>;
   onSaveBlock?: ReturnType<typeof createSaveBlockMock>;
 } = {}) {
@@ -114,6 +116,7 @@ function renderInterfacePanel({
     <JsxStudioResourcePanel
       block={block}
       codeSource={codeSource}
+      interfacePathPrefixes={interfacePathPrefixes}
       pageBlocks={[block]}
       workspaceId="workspace-1"
       projection={projection}
@@ -168,6 +171,33 @@ describe('TSX Studio interface connector', () => {
       async (_workspaceId: string, interfaceId: string) =>
         operations.find((operation) => operation.interface_id === interfaceId)
     );
+  });
+
+  test('passes one or many path scopes to the backend without local filtering', () => {
+    renderInterfacePanel({
+      interfacePathPrefixes: [
+        '/api/public/',
+        '/api/console/settings/auth-center/'
+      ]
+    });
+
+    expect(screen.getByText('/api/public/')).toBeInTheDocument();
+    expect(
+      screen.getByText('/api/console/settings/auth-center/')
+    ).toBeInTheDocument();
+    expect(
+      interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
+    ).toHaveBeenLastCalledWith(
+      'workspace-1',
+      expect.objectContaining({
+        path_prefixes: [
+          '/api/public/',
+          '/api/console/settings/auth-center/'
+        ]
+      })
+    );
+    expect(screen.getByRole('textbox', { name: '搜索接口路径' }))
+      .toBeInTheDocument();
   });
 
   test('searches paths, loads one detail, and inserts code without saving a binding', async () => {

@@ -48,7 +48,7 @@ export async function dispatchPublicAuthApi(
   const normalizedUrl = new URL(path, 'http://public-auth.local');
   if (
     normalizedUrl.origin !== 'http://public-auth.local' ||
-    !normalizedUrl.pathname.startsWith('/api/public/auth/')
+    !normalizedUrl.pathname.startsWith('/api/public/')
   ) {
     throw new Error('Public authentication Block requested a forbidden API path.');
   }
