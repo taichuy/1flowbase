@@ -9,7 +9,7 @@ const MODEL_PROVIDER_REQUEST_LOGS_METADATA_SQL: &str = include_str!(
 
 #[tokio::test]
 async fn runtime_record_repository_registers_builtin_runtime_read_models() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -95,7 +95,7 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
 #[tokio::test]
 async fn model_provider_request_log_migration_preserves_user_metadata_and_existing_grant() {
     // AC-009: rerunning the seed repairs system contract only.
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let model_id: Uuid = sqlx::query_scalar(
@@ -172,7 +172,7 @@ async fn model_provider_request_log_migration_preserves_user_metadata_and_existi
 #[tokio::test]
 async fn new_workspace_receives_model_provider_request_log_read_grant() {
     // AC-009: bootstrap grants newly created workspaces access to the runtime read model.
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -205,7 +205,7 @@ async fn new_workspace_receives_model_provider_request_log_read_grant() {
 
 #[tokio::test]
 async fn runtime_read_model_contract_migration_preserves_existing_scope_grant_metadata() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -257,7 +257,7 @@ async fn runtime_read_model_contract_migration_preserves_existing_scope_grant_me
 
 #[tokio::test]
 async fn runtime_read_model_contract_migration_preserves_presentation_metadata() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -348,7 +348,7 @@ async fn runtime_read_model_contract_migration_preserves_presentation_metadata()
 
 #[tokio::test]
 async fn runtime_record_repository_lists_registered_system_tables_from_physical_tables() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -530,7 +530,7 @@ async fn runtime_record_repository_lists_registered_system_tables_from_physical_
 
 #[tokio::test]
 async fn runtime_record_repository_writes_api_exposed_system_table_fields() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let actor_user_id = Uuid::now_v7();
@@ -586,7 +586,7 @@ async fn runtime_record_repository_writes_api_exposed_system_table_fields() {
 
 #[tokio::test]
 async fn runtime_record_repository_lists_application_run_logs_as_scoped_read_model() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seed = seed_runtime_read_model_rows(&store).await;
@@ -657,7 +657,7 @@ async fn runtime_record_repository_lists_application_run_logs_as_scoped_read_mod
 
 #[tokio::test]
 async fn runtime_record_repository_lists_application_conversation_messages_by_declared_filters() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seed = seed_runtime_read_model_rows(&store).await;
@@ -756,7 +756,7 @@ async fn runtime_record_repository_lists_application_conversation_messages_by_de
 
 #[tokio::test]
 async fn runtime_record_repository_lists_run_detail_shards_without_large_payload_columns() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seed = seed_runtime_read_model_rows(&store).await;

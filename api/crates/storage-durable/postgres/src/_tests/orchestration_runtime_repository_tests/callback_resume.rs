@@ -20,7 +20,7 @@ fn current_rss_bytes() -> u64 {
 #[tokio::test]
 #[ignore = "explicit 200 callback / 3 MiB RSS regression gate"]
 async fn callback_resume_context_keeps_200_large_snapshots_out_of_process_history() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

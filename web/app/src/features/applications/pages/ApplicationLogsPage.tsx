@@ -499,10 +499,6 @@ export function ApplicationLogsPage({
   });
   const runsPage = runsQuery.data;
   const runs = useMemo(() => runsPage?.items ?? [], [runsPage?.items]);
-  const selectedRun = useMemo(
-    () => runs.find((run) => run.id === selectedRunId) ?? null,
-    [runs, selectedRunId]
-  );
   const total = runsPage?.total ?? 0;
   const visibleRunIds = useMemo(
     () => new Set(runs.map((run) => run.id)),
@@ -1269,7 +1265,6 @@ export function ApplicationLogsPage({
             onClose={() => selectRun(null)}
             onOpenMessageLog={openConversationLog}
             onOpenResumeTimeline={openResumeTimeline}
-            run={selectedRun}
             runId={selectedRunId}
           />
         </ApplicationLogsFloatingWindow>

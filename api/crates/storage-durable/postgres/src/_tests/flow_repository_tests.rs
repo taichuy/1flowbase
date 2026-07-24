@@ -6,8 +6,7 @@ use control_plane::{
 };
 use domain::{ApplicationType, FlowChangeKind, FlowVersionTrigger};
 use serde_json::json;
-use sqlx::{Connection, PgConnection};
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
@@ -23,15 +22,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let mut admin_connection = PgConnection::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&mut admin_connection)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn root_tenant_id(store: &PgControlPlaneStore) -> Uuid {
@@ -118,7 +112,7 @@ async fn seed_agent_flow_application(
 #[tokio::test]
 async fn get_or_create_editor_state_bootstraps_default_draft_and_first_version() {
     let _permit = repository_test_semaphore().acquire_owned().await.unwrap();
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Flow Workspace").await;
@@ -184,7 +178,7 @@ async fn get_or_create_editor_state_bootstraps_default_draft_and_first_version()
 #[tokio::test]
 async fn save_draft_only_appends_history_for_logical_changes() {
     let _permit = repository_test_semaphore().acquire_owned().await.unwrap();
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Flow Workspace").await;
@@ -293,7 +287,7 @@ async fn save_draft_only_appends_history_for_logical_changes() {
 #[tokio::test]
 async fn update_version_metadata_rejects_an_eleventh_user_protected_version() {
     let _permit = repository_test_semaphore().acquire_owned().await.unwrap();
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Flow Protection Limit Workspace").await;
@@ -374,7 +368,7 @@ async fn update_version_metadata_rejects_an_eleventh_user_protected_version() {
 #[tokio::test]
 async fn save_draft_trim_keeps_current_publication_flow_version() {
     let _permit = repository_test_semaphore().acquire_owned().await.unwrap();
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Flow Publication Workspace").await;
@@ -504,7 +498,7 @@ async fn save_draft_trim_keeps_current_publication_flow_version() {
 #[tokio::test]
 async fn restore_version_replaces_current_draft_and_appends_restore_history() {
     let _permit = repository_test_semaphore().acquire_owned().await.unwrap();
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = seed_workspace(&store, "Flow Workspace").await;

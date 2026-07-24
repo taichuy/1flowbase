@@ -51,3 +51,4 @@ runtime-profile = { path = "../../crates/runtime-profile" }
 
 [dev-dependencies]
 ed25519-dalek = { version = "2", features = ["pem"] }
+postgres-test-support = { path = "../../crates/postgres-test-support" }

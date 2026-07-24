@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn creates_flow_run_shell_and_attaches_compiled_plan() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -73,7 +73,7 @@ async fn creates_flow_run_shell_and_attaches_compiled_plan() {
 
 #[tokio::test]
 async fn compiled_plan_rows_are_immutable_per_compile_and_attach_checks_document_scope() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -166,7 +166,7 @@ async fn compiled_plan_rows_are_immutable_per_compile_and_attach_checks_document
 
 #[tokio::test]
 async fn creates_flow_run_shell_and_attaches_compiled_plan_rejects_already_attached_shell() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -244,7 +244,7 @@ async fn creates_flow_run_shell_and_attaches_compiled_plan_rejects_already_attac
 
 #[tokio::test]
 async fn creates_flow_run_shell_and_attaches_compiled_plan_rejects_mismatched_compiled_plan() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -310,7 +310,7 @@ async fn creates_flow_run_shell_and_attaches_compiled_plan_rejects_mismatched_co
 
 #[tokio::test]
 async fn update_flow_run_if_status_does_not_overwrite_cancelled_run() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -369,7 +369,7 @@ async fn update_flow_run_if_status_does_not_overwrite_cancelled_run() {
 
 #[tokio::test]
 async fn update_flow_run_if_status_returns_not_found_for_missing_run() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -397,7 +397,7 @@ async fn update_flow_run_if_status_returns_not_found_for_missing_run() {
 /// canonical durable terminal are committed.
 #[tokio::test]
 async fn competing_terminal_commits_persist_exactly_one_winner() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = Arc::new(PgControlPlaneStore::new(pool));
     let seeded = seed_runtime_base(&store).await;
@@ -539,7 +539,7 @@ async fn competing_terminal_commits_persist_exactly_one_winner() {
 /// result and both terminal facts back instead of leaving a half-committed winner.
 #[tokio::test]
 async fn terminal_commit_rolls_back_state_result_and_events_when_terminal_insert_fails() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

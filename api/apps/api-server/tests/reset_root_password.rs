@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use sqlx::PgPool;
-use uuid::Uuid;
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -9,21 +8,16 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-    admin_pool.close().await;
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 #[tokio::test]
 async fn reset_root_password_bootstraps_password_local_authenticator_on_empty_database() {
-    let database_url = isolated_database_url().await;
+    let database = isolated_database().await;
+    let database_url = database.database_url().to_owned();
     let output = Command::new(env!("CARGO_BIN_EXE_reset_root_password"))
         .env("API_ENV", "development")
         .env("API_DATABASE_URL", &database_url)

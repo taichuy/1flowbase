@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn migration_creates_run_conversation_message_item_projection_table_and_indexes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -46,7 +46,7 @@ async fn migration_creates_run_conversation_message_item_projection_table_and_in
 
 #[tokio::test]
 async fn terminal_run_writes_conversation_message_items_and_pages_by_display_sequence() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -226,7 +226,7 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
 
 #[tokio::test]
 async fn terminal_failed_and_cancelled_runs_write_current_projection_items() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -304,7 +304,7 @@ async fn terminal_failed_and_cancelled_runs_write_current_projection_items() {
 
 #[tokio::test]
 async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_system() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -405,7 +405,7 @@ async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_
 
 #[tokio::test]
 async fn migration_repairs_missing_system_projection_without_rebuilding_history() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -526,7 +526,7 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
 
 #[tokio::test]
 async fn terminal_projection_keeps_imported_history_after_artifact_payload_update() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -617,7 +617,7 @@ async fn terminal_projection_keeps_imported_history_after_artifact_payload_updat
 
 #[tokio::test]
 async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -671,7 +671,7 @@ async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
 
 #[tokio::test]
 async fn terminal_projection_missing_rebuilds_conversation_message_projection() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

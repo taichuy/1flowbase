@@ -17,7 +17,7 @@ use control_plane::{
 use sqlx::migrate::Migrator;
 use sqlx::PgPool;
 use std::borrow::Cow;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -25,15 +25,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn current_schema(pool: &PgPool) -> String {
@@ -325,7 +320,7 @@ async fn seed_publication_revision(
 
 #[tokio::test]
 async fn application_public_api_repository_api_keys_key_kind_rejects_legacy_data_model_keys() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let schema = current_schema(&pool).await;
@@ -464,7 +459,7 @@ async fn application_public_api_repository_api_keys_key_kind_rejects_legacy_data
 
 #[tokio::test]
 async fn application_public_api_repository_mapping_round_trips_default_and_replacement() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Mapping").await;
@@ -518,7 +513,7 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
 
 #[tokio::test]
 async fn application_public_api_repository_mapping_extension_slug_round_trips_and_conflicts() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Mapping Extension").await;
@@ -573,7 +568,7 @@ async fn application_public_api_repository_mapping_extension_slug_round_trips_an
 
 #[tokio::test]
 async fn application_public_api_repository_workflow_schedule_trigger_round_trips_and_updates() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Workflow Schedule Trigger").await;
@@ -632,7 +627,7 @@ async fn application_public_api_repository_workflow_schedule_trigger_round_trips
 
 #[tokio::test]
 async fn application_public_api_repository_publication_insert_uses_real_foreign_key_rows() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Publication").await;
@@ -688,7 +683,7 @@ async fn application_public_api_repository_publication_insert_uses_real_foreign_
 
 #[tokio::test]
 async fn application_public_api_repository_publication_extension_slug_lookup_list_and_conflict() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Publication Extension").await;
@@ -795,7 +790,7 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
 
 #[tokio::test]
 async fn application_public_api_repository_republish_updates_single_current_publication() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Republish").await;
@@ -905,7 +900,7 @@ async fn application_public_api_repository_republish_updates_single_current_publ
 
 #[tokio::test]
 async fn application_public_api_js_dependency_snapshot_persists_empty_array_without_selection() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Publication Empty Dependency").await;
@@ -951,7 +946,7 @@ async fn application_public_api_js_dependency_snapshot_persists_empty_array_with
 
 #[tokio::test]
 async fn application_public_api_js_dependency_snapshot_persists_on_publication_version() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let workspace_id = seed_workspace(&store, "Application Publication Dependency").await;
@@ -1024,7 +1019,7 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
 #[tokio::test]
 async fn workflow_extension_legacy_parameters_migration_normalizes_current_and_published_mappings()
 {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_workflow_extension_legacy_parameters_migrator()
         .run(&pool)
         .await
@@ -1134,7 +1129,7 @@ async fn workflow_extension_legacy_parameters_migration_normalizes_current_and_p
 /// and the reversible migration restores the old readable snapshot shape.
 #[tokio::test]
 async fn operation_binding_migration_backfills_unique_generate_and_rolls_back() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_application_operation_bindings_migrator()
         .run(&pool)
         .await
@@ -1269,7 +1264,7 @@ async fn operation_binding_migration_backfills_unique_generate_and_rolls_back() 
 
 #[tokio::test]
 async fn application_public_api_repository_migration_creates_publication_core_tables_and_indexes() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema = current_schema(&pool).await;
 

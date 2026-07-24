@@ -15,8 +15,8 @@ keywords:
   - public native resume
   - resume worker
 created_at: 2026-05-09 23
-updated_at: 2026-07-16 16
-last_verified_at: 2026-07-16 16
+updated_at: 2026-07-23 17
+last_verified_at: 2026-07-23 17
 decision_policy: verify_before_decision
 scope:
   - api
@@ -54,6 +54,7 @@ AgentFlow 已进入调试跑通阶段，下一阶段最重要业务是应用 API
 - `2026-07-03 00` 用户确认 Claude Code / Anthropic 兼容中的 `[1M]` 只属于入口协议扩展：Native API 仍是唯一真值，Native `model` 保持标准模型 ID；Anthropic mapper 可以识别尾部 `[1M]` 并转换为 `anthropic-beta: context-1m-2025-08-07` / `client_protocol_envelope`。具体 provider / plugin 不承载该语义；是否 1M 由应用 start node `model_list.context_window` 等 Native 模型配置表达。
 - `2026-07-16 08` 用户再次确认模型调用必须坚持 `Anthropic -> AI Native -> Anthropic`：AI Native 是唯一执行真值，入口 Anthropic DTO 与供应商 Anthropic wire shape 都只是边界投影；修复协议兼容问题不得把原始请求正文作为第二真值透传，必须先提升为 AI Native 语义，再由 provider 插件确定性渲染。
 - `2026-07-16 16` 该方向已完成 callback 闭环修复：Provider 首轮调用前冻结实际 AI Native `system/messages` transcript，内部工具和外部 callback 只在 transcript 后追加 assistant tool call / tool result；Answer Presentation 完成态按 `answer_node_id + segment_index + source_node_id + source_node_run_id + output_key` 补缺，不再按整条 run 文本猜前缀。真实 Claude Code 经工具 callback 后保留原始上下文，最终 Anthropic SSE 文本只出现一次。
+- `2026-07-23 17` 用户选择兼容流式入口的激进长期方向，并批准线上 Root #1440：Anthropic Messages、OpenAI Chat Completions 与 OpenAI Responses 的全部有状态 `stream:true` Start / Resume 统一进入一个 Compatible Turn 流生命周期；`orchestration-runtime` 与 `RuntimeEventStream` 继续分别作为唯一执行状态机和实时事件源，不恢复数据库轮询。路由只解析、鉴权和形成 `Start | Resume` typed action；统一流模块必须在后台执行前完成订阅，并负责 cursor、已消费 callback、sender 生命周期、typed closure、至多一次 durable reconcile 与协议终态。三种 wire mapper 保持独立，只共享 typed runtime-event view 和 exactly-once 终态约束；删除有状态生产 `completed_*_stream` 分叉。OpenAI Compact 是不创建 flow run 的 unary operation，保留单事件 SSE 但改成明确的 Compact 命名。验收使用本地 Claude Code、Codex 源码客户端与 OpenCode 源码客户端，经 tmux + PTY timing 证明增量输出，并覆盖工具回调、幂等重放、新问题新 run、截断、错误、断连与 `stream:false`。
 - Native payload 不能只做 `inputs/response_mode/user/metadata`，必须重新设计，覆盖 query、文件图片、会话绑定、本地 agent 工具回调、流式、协议映射预留。
 - Native API 标准字段固定为 `query` 表达当前轮输入、`history` 表达外部上下文；OpenAI/Anthropic 兼容层都映射到这套 Native envelope，不在 Native API 里直接使用兼容协议的 `messages` 作为主结构。
 - Native API 增加与 `query` 同级的可选 `model` 字符串字段；平台只校验它是字符串，不校验值、不按它路由、不要求它匹配公开 serving id。后续节点怎么使用 `model` 由应用编排和 mapping 自己配置。

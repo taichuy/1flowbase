@@ -13,8 +13,7 @@ use domain::{
     PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
@@ -67,15 +66,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn seed_store() -> (
@@ -84,7 +78,7 @@ async fn seed_store() -> (
     domain::UserRecord,
     Uuid,
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -164,7 +158,7 @@ async fn seed_store_before_main_instance_aggregation() -> (
     domain::UserRecord,
     Uuid,
 ) {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     for migration_sql in PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS {
         sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
     }

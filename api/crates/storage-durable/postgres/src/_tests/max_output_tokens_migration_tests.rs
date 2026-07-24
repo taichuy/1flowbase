@@ -1,6 +1,6 @@
-use sqlx::{migrate::Migrator, PgPool};
+use sqlx::migrate::Migrator;
 use std::borrow::Cow;
-use storage_postgres::{connect, PgControlPlaneStore};
+use storage_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 
 const MIGRATION_VERSION: i64 = 20260722100000;
@@ -12,14 +12,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().simple());
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 fn before_migrator() -> Migrator {
@@ -217,7 +213,7 @@ fn plan(first_item: serde_json::Value, second_item: serde_json::Value) -> serde_
 /// siblings, publication snapshots remain immutable, and applying the SQL again is a no-op.
 #[tokio::test]
 async fn max_output_tokens_migration_preserves_items_snapshots_and_is_idempotent() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_migrator().run(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let (workspace_id, user_id) = seed_owner(&store).await;
@@ -349,7 +345,7 @@ async fn max_output_tokens_migration_preserves_items_snapshots_and_is_idempotent
 /// AC-003: a dual-key item aborts the migration before any mutable record is rewritten.
 #[tokio::test]
 async fn max_output_tokens_migration_fails_closed_on_dual_keys() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_migrator().run(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let (workspace_id, user_id) = seed_owner(&store).await;

@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn terminal_published_run_projects_application_conversation_messages_once() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -186,7 +186,7 @@ async fn terminal_published_run_projects_application_conversation_messages_once(
 
 #[tokio::test]
 async fn terminal_claude_code_control_run_does_not_project_conversation_messages() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -400,7 +400,7 @@ async fn terminal_claude_code_control_run_does_not_project_conversation_messages
 
 #[tokio::test]
 async fn terminal_claude_code_away_summary_run_does_not_project_business_logs() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
@@ -477,7 +477,7 @@ async fn terminal_claude_code_away_summary_run_does_not_project_business_logs() 
 #[tokio::test]
 async fn terminal_claude_code_compact_resume_run_without_transcript_does_not_project_business_logs()
 {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;

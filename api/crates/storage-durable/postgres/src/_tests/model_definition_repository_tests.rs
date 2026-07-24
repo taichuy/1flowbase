@@ -6,8 +6,7 @@ use domain::{
     DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
     ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
 };
-use sqlx::PgPool;
-use storage_postgres::{connect, run_migrations, PgControlPlaneStore};
+use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 const BUILTIN_SYSTEM_TABLE_CONTRACT_METADATA_SQL: &str = include_str!(
@@ -19,15 +18,10 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database_url() -> String {
-    let admin_pool = PgPool::connect(&base_database_url()).await.unwrap();
-    let schema = format!("test_{}", Uuid::now_v7().to_string().replace('-', ""));
-    sqlx::query(&format!("create schema if not exists {schema}"))
-        .execute(&admin_pool)
+async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
-        .unwrap();
-
-    format!("{}?options=-csearch_path%3D{schema}", base_database_url())
+        .unwrap()
 }
 
 async fn root_tenant_id(store: &PgControlPlaneStore) -> Uuid {
@@ -143,7 +137,7 @@ async fn seed_data_source_instance(
 
 #[tokio::test]
 async fn model_definition_repository_creates_scope_bound_metadata_without_publish_state() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -269,7 +263,7 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
 
 #[tokio::test]
 async fn model_definition_repository_binds_core_system_models_to_registered_tables() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -306,7 +300,7 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
 
 #[tokio::test]
 async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fields() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
 
@@ -472,7 +466,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
 
 #[tokio::test]
 async fn model_definition_repository_persists_status_owner_and_scope_grants() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -582,7 +576,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
 
 #[tokio::test]
 async fn model_definition_repository_rejects_scope_grant_for_workspace_model() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -636,7 +630,7 @@ async fn model_definition_repository_rejects_scope_grant_for_workspace_model() {
 
 #[tokio::test]
 async fn model_definition_repository_rejects_scope_grant_update_for_workspace_model() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -687,7 +681,7 @@ async fn model_definition_repository_rejects_scope_grant_update_for_workspace_mo
 
 #[tokio::test]
 async fn model_definition_repository_blocks_duplicate_code_inside_same_data_source() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let (workspace_id, actor_user_id, installation_id) =
@@ -727,7 +721,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_same_data_sour
 
 #[tokio::test]
 async fn model_definition_repository_blocks_duplicate_code_inside_main_source() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();
@@ -767,7 +761,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
 
 #[tokio::test]
 async fn model_definition_repository_allows_duplicate_code_across_data_sources_in_same_workspace() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let (workspace_id, actor_user_id, installation_id) =
@@ -842,7 +836,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
 
 #[tokio::test]
 async fn model_definition_repository_rejects_workspace_model_with_foreign_data_source() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let (workspace_id, actor_user_id, _installation_id) =
@@ -885,7 +879,7 @@ async fn model_definition_repository_rejects_workspace_model_with_foreign_data_s
 
 #[tokio::test]
 async fn model_definition_repository_reads_data_source_defaults_only_inside_workspace() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let (workspace_id, _actor_user_id, _installation_id) =
@@ -922,7 +916,7 @@ async fn model_definition_repository_reads_data_source_defaults_only_inside_work
 
 #[tokio::test]
 async fn model_definition_repository_deletes_external_source_field_without_local_ddl() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let (workspace_id, actor_user_id, installation_id) =
@@ -1055,7 +1049,7 @@ async fn model_definition_repository_deletes_external_source_field_without_local
 
 #[tokio::test]
 async fn model_definition_repository_status_update_requires_visible_workspace() {
-    let pool = connect(&isolated_database_url().await).await.unwrap();
+    let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let workspace_id = Uuid::now_v7();

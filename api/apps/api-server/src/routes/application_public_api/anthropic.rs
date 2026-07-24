@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use axum::{
     body::Bytes,
@@ -392,69 +392,120 @@ async fn resume_anthropic_tool_call(
 fn anthropic_tool_resume_request(
     request: &Value,
 ) -> Result<Option<AnthropicToolResumeRequest>, AnthropicRouteError> {
-    let Some(content) = request
-        .get("messages")
-        .and_then(Value::as_array)
-        .and_then(|messages| {
-            messages
-                .iter()
-                .rev()
-                .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
-        })
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_array)
-    else {
+    let Some(messages) = request.get("messages").and_then(Value::as_array) else {
         return Ok(None);
     };
-    let blocks = content
+    let mut trailing_tool_result_messages = messages
         .iter()
-        .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
+        .rev()
+        .take_while(|message| anthropic_message_has_only_tool_results(message))
         .collect::<Vec<_>>();
-    if blocks.is_empty() {
+    if trailing_tool_result_messages.is_empty() {
+        return Ok(None);
+    }
+    trailing_tool_result_messages.reverse();
+    let trailing_start = messages.len() - trailing_tool_result_messages.len();
+    let matching_tool_use_ids = anthropic_trailing_assistant_tool_use_ids(messages, trailing_start);
+    if matching_tool_use_ids.is_empty() {
         return Ok(None);
     }
 
-    let mut decoded_blocks = Vec::with_capacity(blocks.len());
-    for block in blocks {
-        let tool_use_id = block
-            .get("tool_use_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anthropic_tool_result_error("tool_result tool_use_id is required"))?;
-        let (decoded_callback_task_id, original_tool_use_id) =
-            decode_anthropic_callback_tool_use_id(tool_use_id).ok_or_else(|| {
-                anthropic_tool_result_error(
-                    "tool_result continuation could not be matched to a callback task",
-                )
-            })?;
-        decoded_blocks.push((decoded_callback_task_id, original_tool_use_id, block));
+    let mut decoded_results = Vec::new();
+    for message in trailing_tool_result_messages {
+        let Some(blocks) = message.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for block in blocks {
+            let tool_use_id = block
+                .get("tool_use_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    anthropic_tool_result_error("tool_result tool_use_id is required")
+                })?;
+            if !matching_tool_use_ids.contains(tool_use_id) {
+                continue;
+            }
+            let Some((callback_task_id, original_tool_use_id)) =
+                decode_anthropic_callback_tool_use_id(tool_use_id)
+            else {
+                continue;
+            };
+            decoded_results.push((
+                callback_task_id,
+                original_tool_use_id,
+                anthropic_tool_result_content(block),
+                block.get("is_error").and_then(Value::as_bool),
+            ));
+        }
     }
-    let Some(callback_task_id) = decoded_blocks
+
+    let Some(callback_task_id) = decoded_results
         .last()
-        .map(|(callback_task_id, _, _)| *callback_task_id)
+        .map(|(callback_task_id, _, _, _)| *callback_task_id)
     else {
-        return Err(anthropic_tool_result_error(
-            "tool_result continuation did not contain a callback task",
-        ));
+        return Ok(None);
     };
 
-    let mut tool_results = Vec::new();
-    for (_, original_tool_use_id, block) in decoded_blocks
+    let mut tool_results = decoded_results
         .into_iter()
-        .filter(|(decoded_callback_task_id, _, _)| *decoded_callback_task_id == callback_task_id)
-    {
-        let mut result = json!({
-            "tool_call_id": original_tool_use_id,
-            "content": anthropic_tool_result_content(block),
-        });
-        if let Some(is_error) = block.get("is_error").and_then(Value::as_bool) {
-            result["is_error"] = Value::Bool(is_error);
-        }
-        tool_results.push(result);
-    }
+        .rev()
+        .take_while(|(decoded_callback_task_id, _, _, _)| {
+            *decoded_callback_task_id == callback_task_id
+        })
+        .map(|(_, original_tool_use_id, content, is_error)| {
+            let mut result = json!({
+                "tool_call_id": original_tool_use_id,
+                "content": content,
+            });
+            if let Some(is_error) = is_error {
+                result["is_error"] = Value::Bool(is_error);
+            }
+            result
+        })
+        .collect::<Vec<_>>();
+    tool_results.reverse();
+
     Ok(Some(AnthropicToolResumeRequest {
         callback_task_id,
         tool_results: Value::Array(tool_results),
     }))
+}
+
+fn anthropic_trailing_assistant_tool_use_ids(
+    messages: &[Value],
+    trailing_start: usize,
+) -> HashSet<String> {
+    let mut tool_use_ids = HashSet::new();
+    for message in messages[..trailing_start].iter().rev() {
+        if message.get("role").and_then(Value::as_str) != Some("assistant") {
+            break;
+        }
+        let Some(blocks) = message.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) != Some("tool_use") {
+                continue;
+            }
+            if let Some(id) = block.get("id").and_then(Value::as_str) {
+                tool_use_ids.insert(id.to_string());
+            }
+        }
+    }
+    tool_use_ids
+}
+
+fn anthropic_message_has_only_tool_results(message: &Value) -> bool {
+    message.get("role").and_then(Value::as_str) == Some("user")
+        && message
+            .get("content")
+            .and_then(Value::as_array)
+            .is_some_and(|blocks| {
+                !blocks.is_empty()
+                    && blocks.iter().all(|block| {
+                        block.get("type").and_then(Value::as_str) == Some("tool_result")
+                    })
+            })
 }
 
 fn anthropic_tool_result_content(block: &Value) -> Value {
