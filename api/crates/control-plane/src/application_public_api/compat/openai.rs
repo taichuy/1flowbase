@@ -1404,6 +1404,58 @@ fn validate_native_responses_input(
     Ok(())
 }
 
+fn validate_native_mcp_approval_continuation(
+    input: &Value,
+    previous_response: Option<&OpenAiPreviousResponseContext>,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let Some(items) = input.as_array() else {
+        return Ok(());
+    };
+    for (index, item) in items.iter().enumerate() {
+        let Some(object) = item.as_object() else {
+            continue;
+        };
+        if object.get("type").and_then(Value::as_str) != Some("mcp_approval_response") {
+            continue;
+        }
+        let path = format!("$.input[{index}]");
+        if previous_response.is_none() {
+            report.record(
+                &path,
+                None,
+                TranslationDecisionKind::Rejected,
+                Some("MCP approval response requires provider continuation"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(OpenAiCompatError::invalid(
+                "previous_response_id",
+                "mcp_approval_response requires previous_response_id",
+            )
+            .with_report(report.clone()));
+        }
+        if !object
+            .get("approval_request_id")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            return Err(OpenAiCompatError::invalid(
+                "input",
+                "mcp_approval_response approval_request_id is required",
+            )
+            .with_report(report.clone()));
+        }
+        if !object.get("approve").is_some_and(Value::is_boolean) {
+            return Err(OpenAiCompatError::invalid(
+                "input",
+                "mcp_approval_response approve must be a boolean",
+            )
+            .with_report(report.clone()));
+        }
+    }
+    Ok(())
+}
+
 fn validate_responses_input_items(
     input: &Value,
     is_v2_compaction: bool,
@@ -3176,6 +3228,62 @@ mod tests {
         assert_eq!(payload.wire_body()["tools"][0]["type"], "web_search");
         assert_eq!(payload.wire_body()["tools"][1]["type"], "code_interpreter");
         assert_eq!(payload.wire_body()["tools"][2]["type"], "image_generation");
+    }
+
+    #[test]
+    fn d6_ac_003_orphan_mcp_approval_response_is_rejected_before_run_creation() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": [{
+                "type": "mcp_approval_response",
+                "approval_request_id": "approval_provider_owned",
+                "approve": true
+            }]
+        }))
+        .expect_err("MCP approval response must name a provider continuation");
+
+        assert_eq!(error.code, "invalid_request");
+        assert_eq!(error.param.as_deref(), Some("previous_response_id"));
+    }
+
+    #[test]
+    fn d6_ac_001_mcp_approval_response_remains_opaque_with_provider_continuation() {
+        let mut translated = translate_response_request_with_context_and_previous(
+            json!({
+                "model": "1flowbase",
+                "previous_response_id": "resp_provider_owned",
+                "input": [{
+                    "type": "mcp_approval_response",
+                    "approval_request_id": "approval_provider_owned",
+                    "approve": false,
+                    "future_extension": {"opaque": true}
+                }]
+            }),
+            OpenAiResponsesRequestContext::responses(),
+            Some(OpenAiPreviousResponseContext {
+                response_id: "resp_provider_owned".to_string(),
+                external_user: None,
+                external_conversation_id: None,
+                answer: None,
+            }),
+        )
+        .expect("MCP approval response should continue through the native provider lane");
+
+        assert!(translated.request.history.is_empty());
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("MCP approval response should remain ephemeral");
+        assert_eq!(
+            payload.wire_body()["input"][0]["approval_request_id"],
+            "approval_provider_owned"
+        );
+        assert_eq!(payload.wire_body()["input"][0]["approve"], false);
+        assert_eq!(
+            payload.wire_body()["input"][0]["future_extension"]["opaque"],
+            true
+        );
     }
 
     #[test]
