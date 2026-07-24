@@ -56,7 +56,7 @@ export interface JsBlockTrialPanelProps {
   onRevokeDraftRun?: (runId: string) => void;
   limits: RestrictedBlockLoaderLimits;
   presentation:
-    | { mode: 'debugger' }
+    | { mode: 'debugger'; revision?: string }
     | { mode: 'direct-preview'; revision: string };
   onCodeChange?: (code: string) => void;
   onContextSnapshotChange?: (value: Record<string, unknown>) => void;
@@ -165,13 +165,12 @@ export function JsBlockTrialPanel({
     runRef.current = run;
   }, [run]);
 
-  const directPreviewRevision =
-    presentation.mode === 'direct-preview' ? presentation.revision : null;
+  const requestedRunRevision = presentation.revision ?? null;
 
   useEffect(() => {
-    if (directPreviewRevision === null) return;
+    if (requestedRunRevision === null) return;
     void runRef.current();
-  }, [directPreviewRevision]);
+  }, [requestedRunRevision]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {

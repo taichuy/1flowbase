@@ -50,6 +50,7 @@ export interface BlockSourceStudioProps {
   onEditorMount?: OnMount;
   onInjectContext: (source: string, contextComment: string) => string;
   onReset: () => void;
+  onRun: (source: string) => void;
   onSave: () => void;
   renderResource: (
     section: Exclude<BlockStudioSection, 'code'>
@@ -87,6 +88,7 @@ function BlockSourceStudioWindow({
   onEditorMount,
   onInjectContext,
   onReset,
+  onRun,
   onSave,
   open,
   owner,
@@ -108,6 +110,12 @@ function BlockSourceStudioWindow({
     toggleMaximized
   } = useWindowWorkspace();
   const [mobile, setMobile] = useState(false);
+  const [activeSection, setActiveSection] =
+    useState<BlockStudioSection>(initialSection);
+
+  useEffect(() => {
+    if (open) setActiveSection(initialSection);
+  }, [initialSection, open]);
 
   useEffect(() => {
     if (!open) {
@@ -211,6 +219,15 @@ function BlockSourceStudioWindow({
               {i18nText('frontstage', 'auto.reset')}
             </Button>
             <Button
+              disabled={loading || saving}
+              onClick={() => {
+                onRun(source);
+                setActiveSection('run');
+              }}
+            >
+              {i18nText('frontstage', 'auto.run')}
+            </Button>
+            <Button
               disabled={!dirty || loading || readOnly || saving}
               loading={saving}
               type="primary"
@@ -226,8 +243,8 @@ function BlockSourceStudioWindow({
         }
       />
       <BlockStudioWorkspace
-        initialSection={initialSection}
-        open={open}
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
         renderResource={renderResource}
         windowWidth={windowEntry.rect.width}
         editor={(

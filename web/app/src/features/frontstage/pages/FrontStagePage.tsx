@@ -1369,7 +1369,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             diagnostics={[]}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
-            runPanel={({ code, onCodeChange }) => (
+            runPanel={({ code, onCodeChange, runRevision }) => (
               <JsBlockTrialPanel
                 block={selectedBlock}
                 catalogEntry={matchingJsBlockCatalogEntry}
@@ -1382,7 +1382,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 onCodeChange={onCodeChange}
                 onContextSnapshotChange={setJsBlockTrialContextSnapshot}
                 onLimitsChange={setJsBlockTrialLimits}
-                presentation={{ mode: 'debugger' }}
+                presentation={{
+                  mode: 'debugger',
+                  ...(runRevision === null
+                    ? {}
+                    : { revision: `run:${runRevision}` })
+                }}
               />
             )}
           />

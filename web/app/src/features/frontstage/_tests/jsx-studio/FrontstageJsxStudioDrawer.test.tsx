@@ -478,7 +478,7 @@ async function main(ctx: unknown) {
     });
   });
 
-  test('injects generated context from the window header and saves code through the existing hook', async () => {
+  test('AC-043/044/046 runs from the header and keeps save persistence separate', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const setDraft = vi.fn();
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
@@ -504,6 +504,9 @@ async function main(ctx: unknown) {
         block={block}
         catalogEntry={catalogEntry}
         diagnostics={[]}
+        runPanel={({ code, runRevision }) => (
+          <div>{`Preview ${runRevision ?? 'idle'}: ${code}`}</div>
+        )}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
@@ -524,6 +527,9 @@ async function main(ctx: unknown) {
     expect(setDraft).toHaveBeenCalledWith(
       expect.stringContaining('@1flowbase-context')
     );
+    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
+    expect(screen.getByText('Preview 1: export default {}')).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });

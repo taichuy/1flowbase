@@ -222,10 +222,16 @@ describe('FrontStagePage trial panel link', () => {
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
+    fireEvent.click(within(studio).getByRole('button', { name: '预览' }));
 
+    const resourcePanel = studio.querySelector(
+      '.frontstage-jsx-studio__resource-panel'
+    );
+    expect(resourcePanel).not.toBeNull();
     expect(
-      within(studio).getByRole('button', { name: /^运\s*行$/ })
+      within(resourcePanel as HTMLElement).getByRole('button', {
+        name: /^运\s*行$/
+      })
     ).toBeInTheDocument();
   }, 10000);
 
@@ -237,10 +243,16 @@ describe('FrontStagePage trial panel link', () => {
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '运行预览' }));
+    fireEvent.click(within(studio).getByRole('button', { name: '预览' }));
 
+    const resourcePanel = studio.querySelector(
+      '.frontstage-jsx-studio__resource-panel'
+    );
+    expect(resourcePanel).not.toBeNull();
     expect(
-      within(studio).getByRole('button', { name: /^运\s*行$/ })
+      within(resourcePanel as HTMLElement).getByRole('button', {
+        name: /^运\s*行$/
+      })
     ).toBeInTheDocument();
 
     // Exit design mode — Drawer should close

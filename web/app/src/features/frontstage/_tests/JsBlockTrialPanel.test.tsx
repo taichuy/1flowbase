@@ -235,6 +235,49 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     });
   });
 
+  test('AC-047 automatically runs debugger presentation only for a new run revision', async () => {
+    const runtimeSessionFactory = vi.fn(() => createSession());
+    const { rerender } = render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="first draft"
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger', revision: 'run:1' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="edited draft"
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger', revision: 'run:1' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await act(async () => Promise.resolve());
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="edited draft"
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger', revision: 'run:2' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+  });
+
   test('AC-039/040/041 refreshes direct preview only when the saved revision changes', async () => {
     const sessions = [
       createReadyActionSession(),
