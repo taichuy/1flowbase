@@ -434,7 +434,28 @@ fn openai_runtime_event_to_sse(
                 "code": "run_cancelled"
             }
         }))],
-        "waiting_callback" | "waiting_human" => required_action_not_supported_openai_sse(),
+        "waiting_callback" => {
+            if let Some(payload) = openai_tool_call_chunk_payload(
+                initial_run,
+                model,
+                chat_completion_id,
+                &envelope.payload,
+            ) {
+                vec![
+                    json_sse(payload),
+                    json_sse(openai_finish_chunk_payload(
+                        initial_run,
+                        model,
+                        chat_completion_id,
+                        "tool_calls",
+                    )),
+                    done_sse(),
+                ]
+            } else {
+                required_action_not_supported_openai_sse()
+            }
+        }
+        "waiting_human" => required_action_not_supported_openai_sse(),
         _ => Vec::new(),
     }
 }
@@ -663,7 +684,6 @@ pub(super) fn openai_delta_chunk_payload(
     }))
 }
 
-#[cfg(test)]
 pub(super) fn openai_tool_call_chunk_payload(
     initial_run: &NativeRunResult,
     model: &str,

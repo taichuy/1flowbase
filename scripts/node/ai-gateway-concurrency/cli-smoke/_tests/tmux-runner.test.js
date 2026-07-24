@@ -12,11 +12,24 @@ const {
   parseJsonLines,
   ptyMarkerTimeline,
   shellQuote,
+  waitForFile,
 } = require('../runner');
 
 test('shell quoting preserves spaces, quotes, and shell metacharacters as one argument', () => {
   const value = "a b'c;$HOME";
   assert.equal(shellQuote(value), "'a b'\\''c;$HOME'");
+});
+
+test('tmux pipe cleanup observes completion files without polling', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tmux-pipe-ready-'));
+  const ready = path.join(root, 'pipe.done');
+  try {
+    const observed = waitForFile(ready);
+    fs.writeFileSync(ready, 'done\n');
+    await observed;
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('advanced util-linux timing maps the two visible markers to distinct output times', () => {

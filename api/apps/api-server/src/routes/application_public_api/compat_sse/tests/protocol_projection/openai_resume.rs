@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_returns_unsupported() {
+async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_tool_call() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
     let callback_task_id = Uuid::from_u128(0x66666666666666666666666666666666);
@@ -121,12 +121,13 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_returns_un
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(body.contains("prior node answer"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
+    assert!(body.contains("lookup_next"), "{body}");
+    assert!(body.contains("\"tool_calls\""), "{body}");
     assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
-    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
     assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
-    assert!(!body.contains("[DONE]"), "{body}");
+    assert!(body.contains("[DONE]"), "{body}");
 }
 
 #[tokio::test]

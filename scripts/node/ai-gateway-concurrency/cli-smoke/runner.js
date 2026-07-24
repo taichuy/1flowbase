@@ -110,6 +110,30 @@ async function requireSuccess(executable, args, options) {
   return result;
 }
 
+function waitForFile(filePath, timeoutMs = 2000) {
+  if (fs.existsSync(filePath)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let watcher;
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      watcher?.close();
+      if (error) reject(error);
+      else resolve();
+    };
+    const timer = setTimeout(
+      () => finish(new Error(`timed out waiting for ${path.basename(filePath)}`)),
+      timeoutMs,
+    );
+    watcher = fs.watch(path.dirname(filePath), () => {
+      if (fs.existsSync(filePath)) finish();
+    });
+    if (fs.existsSync(filePath)) finish();
+  });
+}
+
 async function executeTmuxInvocation(
   invocation,
   env,
@@ -241,10 +265,7 @@ async function executeTmuxInvocation(
     await Promise.race([wait, timeout]);
     await barrierReleasePromise;
     await requireSuccess(tmuxExecutable, ['-L', socket, 'pipe-pane', '-t', session]);
-    for (let attempt = 0; attempt < 20 && !fs.existsSync(pipeDonePath); attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    if (!fs.existsSync(pipeDonePath)) throw new Error('tmux pipe-pane capture did not flush');
+    await waitForFile(pipeDonePath);
     const pane = await requireSuccess(tmuxExecutable, ['-L', socket, 'capture-pane', '-p', '-t', session]);
     const pipeText = readTimeline(timelinePath)
       .filter((event) => event.event === 'tmux_output')
@@ -306,7 +327,8 @@ async function executeTmuxInvocation(
     rawPtyWatcher?.close();
     await spawnResult(tmuxExecutable, ['-L', socket, 'wait-for', '-S', releaseSignal]).catch(() => {});
     await spawnResult(tmuxExecutable, ['-L', socket, 'kill-server']).catch(() => {});
-    fs.rmSync(root, { recursive: true, force: true });
+    await waitForFile(pipeDonePath).catch(() => {});
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 }
 
@@ -363,4 +385,5 @@ module.exports = {
   parseJsonLines,
   ptyMarkerTimeline,
   shellQuote,
+  waitForFile,
 };
