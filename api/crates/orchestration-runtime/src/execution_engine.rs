@@ -1200,7 +1200,11 @@ where
             variable_pool,
             &invocation.input,
         );
-        if invocation.input.messages.is_empty() {
+        if invocation.input.messages.is_empty()
+            && !invocation.input.required_capabilities.contains(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+            )
+        {
             let attempt_finished_at = OffsetDateTime::now_utc();
             let error_payload = build_empty_prompt_messages_error_payload(attempt_runtime);
             let attempt = build_attempt_metric(AttemptMetricInput {

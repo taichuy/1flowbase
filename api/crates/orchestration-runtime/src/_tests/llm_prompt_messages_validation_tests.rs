@@ -6,7 +6,8 @@ use std::{
 use anyhow::Result;
 use async_trait::async_trait;
 use plugin_framework::provider_contract::{
-    ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderStreamEvent,
+    ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
+    ProviderInvocationResult, ProviderStreamEvent,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -17,8 +18,9 @@ use crate::{
         CompiledPlan,
     },
     execution_engine::{
-        start_flow_debug_run, CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput,
-        CodeInvoker, ProviderInvocationOutput, ProviderInvoker,
+        start_flow_debug_run, start_flow_debug_run_with_runtime_context,
+        CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
+        ExecutionRuntimeContext, ProviderInvocationOutput, ProviderInvoker,
     },
     execution_state::ExecutionStopReason,
 };
@@ -264,6 +266,41 @@ async fn llm_runtime_fails_before_provider_when_prompt_messages_are_empty() {
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn native_responses_runtime_capability_allows_item_only_provider_invocation() {
+    let plan = plan_with_empty_prompt_messages();
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = CapturingProviderInvoker {
+        captured_input: captured_input.clone(),
+    };
+    let runtime_context = ExecutionRuntimeContext::default().with_provider_invocation_capability(
+        ProviderInvocationCapability::ResponsesNativePassthrough,
+    );
+
+    let outcome = start_flow_debug_run_with_runtime_context(
+        &plan,
+        &json!({ "node-start": { "query": "" } }),
+        runtime_context,
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    let captured = captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("native item-only invocation should reach the provider");
+    assert!(captured.messages.is_empty());
+    assert!(captured
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::ResponsesNativePassthrough));
 }
 
 #[tokio::test]

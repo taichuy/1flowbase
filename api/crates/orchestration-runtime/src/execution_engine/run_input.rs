@@ -1,8 +1,8 @@
 use super::*;
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext,
-    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY, NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
-    NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+    ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+    NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
 use std::sync::Arc;
 
@@ -17,6 +17,7 @@ pub struct ExecutionRuntimeContext {
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
     pub(super) compact_response_ingress: Option<CompactResponseIngress>,
+    pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
 }
 
 impl ExecutionRuntimeContext {
@@ -36,6 +37,7 @@ impl ExecutionRuntimeContext {
             llm_routing_counter_store: None,
             http_response_file_persister: None,
             compact_response_ingress: None,
+            provider_invocation_capabilities: BTreeSet::new(),
         })
     }
 
@@ -52,6 +54,14 @@ impl ExecutionRuntimeContext {
         persister: Arc<dyn HttpResponseFilePersister>,
     ) -> Self {
         self.http_response_file_persister = Some(persister);
+        self
+    }
+
+    pub fn with_provider_invocation_capability(
+        mut self,
+        capability: ProviderInvocationCapability,
+    ) -> Self {
+        self.provider_invocation_capabilities.insert(capability);
         self
     }
 

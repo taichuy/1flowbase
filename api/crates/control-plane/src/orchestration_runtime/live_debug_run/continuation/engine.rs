@@ -101,6 +101,14 @@ where
     let lifecycle =
         PersistedNodeLifecycle::new(service, flow_run.id, flow_execution_context.clone());
 
+    let provider_invocation_capability = provider_transport_payload.as_ref().map(|payload| {
+        match payload.protocol() {
+            crate::ports::ProviderTransportProtocol::OpenAiResponses => {
+                plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough
+            }
+        }
+    });
+
     let invoker = match live_provider_events {
         Some(live_provider_events) => service.runtime_invoker_with_live_provider_events(
             application.workspace_id,
@@ -121,6 +129,9 @@ where
         None => invoker,
     };
     let mut runtime_context = service.execution_runtime_context(&compiled_plan, &variable_pool)?;
+    if let Some(capability) = provider_invocation_capability {
+        runtime_context = runtime_context.with_provider_invocation_capability(capability);
+    }
     if let Some(http_file_persister) = service.http_response_file_persister(actor) {
         runtime_context =
             runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));

@@ -185,7 +185,7 @@ pub(super) fn build_provider_invocation(
         messages: provider_context.messages,
         system: provider_context.system,
         request_context: runtime_context.native_model_request_context.clone(),
-        required_capabilities: BTreeSet::new(),
+        required_capabilities: runtime_context.provider_invocation_capabilities.clone(),
         tools: provider_tools(
             node,
             resolved_inputs,
