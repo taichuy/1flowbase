@@ -125,7 +125,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         .unwrap()
         .iter()
         .any(|field| field["key"] == "issuer_url" && field["pattern"] == "^https://"));
-    assert!(oidc["config_schema"]
+    assert!(!oidc["config_schema"]
         .as_array()
         .unwrap()
         .iter()
@@ -780,7 +780,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
         .unwrap()
         .iter()
         .any(|field| field["key"] == "issuer_url" && field["pattern"] == "^https://"));
-    assert!(authenticator["config_schema"]
+    assert!(!authenticator["config_schema"]
         .as_array()
         .unwrap()
         .iter()

@@ -21,6 +21,22 @@ const authCenterApi = vi.hoisted(() => ({
 
 vi.mock('../api/auth-center', () => authCenterApi);
 
+vi.mock('@monaco-editor/react', () => ({
+  default: ({
+    value,
+    onChange
+  }: {
+    value?: string;
+    onChange?: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label="区块源码"
+      value={value}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  )
+}));
+
 import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
 import { SettingsAuthCenterSection } from '../pages/settings-page/SettingsAuthCenterSection';
@@ -64,8 +80,7 @@ const baseOverview = {
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },
         { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
         { key: 'enabled', label: 'Enabled', type: 'boolean', control: 'switch' },
-        { key: 'self_registration_enabled', label: 'Allow self registration', type: 'boolean', control: 'switch' },
-        { key: 'public_ui_block', label: 'Public authentication block', type: 'string', control: 'textarea', required: true }
+        { key: 'self_registration_enabled', label: 'Allow self registration', type: 'boolean', control: 'switch' }
       ],
       config_values: {
         title: 'Password',
@@ -87,8 +102,7 @@ const baseOverview = {
         { key: 'title', label: 'Authenticator title', type: 'string', required: true },
         { key: 'description', label: 'Description', type: 'string', control: 'textarea' },
         { key: 'enabled', label: 'Enabled', type: 'boolean', control: 'switch' },
-        { key: 'self_registration_enabled', label: 'Allow self registration', type: 'boolean', control: 'switch' },
-        { key: 'public_ui_block', label: 'Public authentication block', type: 'string', control: 'textarea', required: true }
+        { key: 'self_registration_enabled', label: 'Allow self registration', type: 'boolean', control: 'switch' }
       ],
       config_values: {
         title: 'Staff Password',
@@ -245,7 +259,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     });
   });
 
-  test('renders the backend config schema and saves the editable Block truth', async () => {
+  test('edits regular configuration separately from the public UI Block', async () => {
     authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
       baseOverview.authenticators[0]
     );
@@ -253,9 +267,8 @@ describe('SettingsAuthCenterSection lifecycle', () => {
 
     fireEvent.click((await screen.findAllByRole('button', { name: '编辑' }))[0]);
     const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
-    const blockEditor = within(dialog).getByLabelText('Public authentication block');
-    expect(blockEditor).toHaveValue('original password block');
-    fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
+    expect(within(dialog).queryByLabelText('Public authentication block')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('区块源码')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText('Allow self registration'));
     fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
 
@@ -268,8 +281,35 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         enabled: true,
         description: 'Local password authentication',
         self_registration_enabled: true,
-        public_ui_block: 'custom saved block',
+        public_ui_block: 'original password block',
         extension_config: {}
+      },
+      'csrf-123'
+    ));
+
+    const passwordRow = await screen.findByRole('row', {
+      name: /Local password authentication/
+    });
+    fireEvent.click(within(passwordRow).getByRole('button', { name: 'UI' }));
+    const uiDialog = await screen.findByRole('dialog', {
+      name: 'Password 公开认证 UI'
+    });
+    const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });
+    expect(blockEditor).toHaveValue('original password block');
+    fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
+    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(
+      authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
+    ).toHaveBeenLastCalledWith(
+      'auth-password-local',
+      {
+        title: 'Password',
+        enabled: true,
+        description: 'Local password authentication',
+        self_registration_enabled: false,
+        public_ui_block: 'custom saved block',
+        extension_config: { self_registration_enabled: false }
       },
       'csrf-123'
     ));
