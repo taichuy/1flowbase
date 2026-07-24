@@ -278,6 +278,8 @@
     "variables": "Variables",
     "variables_description": "These ctx variables are injected by the controlled runtime and can be inserted into the current JSX.",
     "variables_context_unavailable": "Variable context unavailable",
+    "configuration_variables": "Configuration variables",
+    "runtime_context": "Runtime context",
     "variable_label": "Label",
     "operation": "Operation",
     "workspace": "Workspace",

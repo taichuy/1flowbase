@@ -555,7 +555,12 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
     );
     assert_eq!(
         staff["public_variables"],
-        json!({ "self_registration_enabled": true })
+        json!({
+            "title": "Staff Password",
+            "description": "Staff login",
+            "enabled": true,
+            "self_registration_enabled": true
+        })
     );
     assert!(staff.get("options").is_none());
     assert!(staff.get("config_schema").is_none());

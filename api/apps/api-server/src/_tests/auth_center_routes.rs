@@ -85,21 +85,43 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         json!(["/api/public/"])
     );
     let context_variables = password_local["context_variables"].as_array().unwrap();
-    assert!(context_variables.iter().any(|variable| {
-        variable["member_path"] == "inputs.authenticator_id"
-            && variable["schema"]["type"] == "string"
+    assert_eq!(context_variables.len(), 7);
+    for (label, member_path, schema_type) in [
+        (
+            "Authenticator title",
+            "inputs.public_variables.title",
+            "string",
+        ),
+        (
+            "Description",
+            "inputs.public_variables.description",
+            "string",
+        ),
+        ("Enabled", "inputs.public_variables.enabled", "boolean"),
+        (
+            "Allow self registration",
+            "inputs.public_variables.self_registration_enabled",
+            "boolean",
+        ),
+    ] {
+        assert!(context_variables.iter().any(|variable| {
+            variable["group"] == "configuration"
+                && variable["label"] == label
+                && variable["member_path"] == member_path
+                && variable["schema"]["type"] == schema_type
+        }));
+    }
+    for member_path in ["inputs.authenticator_id", "inputs.auth_event", "api"] {
+        assert!(context_variables.iter().any(|variable| {
+            variable["group"] == "runtime" && variable["member_path"] == member_path
+        }));
+    }
+    assert!(!context_variables.iter().any(|variable| {
+        matches!(
+            variable["member_path"].as_str(),
+            Some("inputs.public_variables" | "inputs.public_variables.public_ui_block")
+        )
     }));
-    assert!(context_variables.iter().any(|variable| {
-        variable["member_path"] == "inputs.public_variables.self_registration_enabled"
-            && variable["label"] == "Allow self registration"
-            && variable["schema"]["type"] == "boolean"
-    }));
-    assert!(context_variables
-        .iter()
-        .any(|variable| variable["member_path"] == "inputs.auth_event"));
-    assert!(context_variables
-        .iter()
-        .any(|variable| variable["member_path"] == "api"));
     assert!(!context_variables
         .iter()
         .any(|variable| variable["member_path"]

@@ -19,6 +19,7 @@ export interface ConsoleAuthCenterAuthenticatorConfigValues {
 }
 
 export interface ConsoleAuthCenterContextVariable {
+  group: 'configuration' | 'runtime';
   label: string;
   member_path: string;
   schema: Record<string, unknown>;
