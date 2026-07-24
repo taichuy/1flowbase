@@ -65,6 +65,7 @@ pub struct AuthCenterAuthenticatorResponse {
     pub is_builtin: bool,
     pub sort_order: i32,
     pub interface_path_prefixes: Vec<String>,
+    pub public_variables: Option<Map<String, Value>>,
     pub context_variables: Vec<AuthCenterContextVariableResponse>,
     pub config_schema: Vec<AuthCenterConfigFieldResponse>,
     pub config_values: Map<String, Value>,
@@ -272,6 +273,7 @@ fn to_auth_center_authenticator_response(
         auth_center_config_schema_from_options(&authenticator.options, &extension_config);
     let config_values =
         auth_center_config_response_values(&authenticator, description, extension_config);
+    let public_variables = registry.public_variables(&authenticator);
     let context_variables = registry
         .context_variables(&authenticator.auth_type)
         .into_iter()
@@ -297,6 +299,7 @@ fn to_auth_center_authenticator_response(
         is_builtin: authenticator.is_builtin,
         sort_order: authenticator.sort_order,
         interface_path_prefixes: vec![crate::routes::PUBLIC_API_PATH_PREFIX.to_string()],
+        public_variables,
         context_variables,
         config_schema,
         config_values,

@@ -5,6 +5,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
+  createPublicAuthInputs,
+  createPublicAuthPreviewCapabilityHandlers,
+  PUBLIC_AUTH_RUNTIME_LIMITS
+} from '../../../auth/components/public-auth-block-host';
+import { JsBlockTrialPanel } from '../../../frontstage/components/JsBlockTrialPanel';
+import {
   JsxStudioResourcePanel,
   type JsxStudioContextVariable
 } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
@@ -16,6 +22,7 @@ import {
   planFrontstageJsxInsertion,
   type FrontstageJsxInsertion
 } from '../../../frontstage/lib/jsx-studio/source-insertion';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../../../frontstage/lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
 
 export interface AuthenticatorUiBlockStudioProps {
@@ -27,6 +34,7 @@ export interface AuthenticatorUiBlockStudioProps {
   errorMessage: string | null;
   contextVariables?: readonly JsxStudioContextVariable[];
   interfacePathPrefixes: readonly string[];
+  publicVariables: Record<string, unknown> | null;
   open: boolean;
   readOnly: boolean;
   saving: boolean;
@@ -54,6 +62,7 @@ export function AuthenticatorUiBlockStudio({
   enabled,
   errorMessage,
   interfacePathPrefixes,
+  publicVariables,
   onClose,
   onSave,
   open,
@@ -80,15 +89,21 @@ export function AuthenticatorUiBlockStudio({
   );
   const [draft, setDraft] = useState(source);
   const [authoringBlock, setAuthoringBlock] = useState<FrontstageBlockInstance>(
-    () => createAuthoringBlock(authenticatorId)
+    () => createAuthoringBlock(authenticatorId, authoringCatalogEntry)
+  );
+  const previewCapabilities = useMemo(
+    () => createPublicAuthPreviewCapabilityHandlers(),
+    []
   );
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDraft(source);
-    setAuthoringBlock(createAuthoringBlock(authenticatorId));
-  }, [authenticatorId, open, source]);
+    setAuthoringBlock(
+      createAuthoringBlock(authenticatorId, authoringCatalogEntry)
+    );
+  }, [authenticatorId, authoringCatalogEntry, open, source]);
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
@@ -167,6 +182,28 @@ export function AuthenticatorUiBlockStudio({
           interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
+          runPanel={
+            publicVariables && authoringCatalogEntry ? (
+              <JsBlockTrialPanel
+                key={authenticatorId}
+                block={authoringBlock}
+                catalogEntry={authoringCatalogEntry}
+                code={draft}
+                contextSnapshot={{}}
+                createRunInputs={(event) =>
+                  createPublicAuthInputs(
+                    authenticatorId,
+                    publicVariables,
+                    event
+                  )
+                }
+                handlers={previewCapabilities}
+                limits={PUBLIC_AUTH_RUNTIME_LIMITS}
+                onPrepareDraftRun={previewCapabilities.prepareDraftRun}
+                onRevokeDraftRun={previewCapabilities.revokeDraftRun}
+              />
+            ) : undefined
+          }
           section={section}
           workspaceId={workspaceId}
           configurationPanel={(
@@ -227,7 +264,10 @@ export function AuthenticatorUiBlockStudio({
   );
 }
 
-function createAuthoringBlock(authenticatorId: string): FrontstageBlockInstance {
+function createAuthoringBlock(
+  authenticatorId: string,
+  catalogEntry: NormalizedFrontstageBlockCatalogEntry | null
+): FrontstageBlockInstance {
   return {
     id: `public-auth:${authenticatorId}`,
     rendererVersion: 'v1',
@@ -235,18 +275,22 @@ function createAuthoringBlock(authenticatorId: string): FrontstageBlockInstance 
     codeRef: `public-auth:${authenticatorId}`,
     sourceCodeRef: `public-auth:${authenticatorId}`,
     catalog: {
-      providerCode: '1flowbase',
-      installationId: 'builtin-installation'
+      providerCode: catalogEntry?.providerCode ?? '1flowbase',
+      installationId: catalogEntry?.installationId ?? 'builtin-installation'
     },
     contribution: {
-      pluginId: 'builtin-auth',
-      pluginVersion: '1.0.0',
-      code: 'auth.public-ui-block'
+      pluginId: catalogEntry?.pluginId ?? 'builtin-frontstage',
+      pluginVersion: catalogEntry?.pluginVersion ?? '1.0.0',
+      code: catalogEntry?.contributionCode ?? 'frontstage.js-ui-block'
     },
     props: {},
     presentation: { heightMode: 'auto', height: null },
     layout: { order: 0 },
     order: 0,
-    runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+    runtime: {
+      kind: catalogEntry?.runtimeKind ?? 'iframe',
+      entry: catalogEntry?.entry ?? 'index.js',
+      hint: catalogEntry?.runtimeKind ?? 'iframe'
+    }
   };
 }

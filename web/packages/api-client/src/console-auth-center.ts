@@ -33,6 +33,7 @@ export interface ConsoleAuthCenterAuthenticator {
   is_builtin: boolean;
   sort_order: number;
   interface_path_prefixes: string[];
+  public_variables: Record<string, unknown> | null;
   context_variables: ConsoleAuthCenterContextVariable[];
   config_schema: ConsoleAuthCenterConfigField[];
   config_values: ConsoleAuthCenterAuthenticatorConfigValues;

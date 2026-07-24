@@ -1,11 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { WindowWorkspaceProvider } from '../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
-import type { FrontstageRestrictedBlockRuntimeSession } from '../lib/frontstage-restricted-block-runtime-host';
+import type {
+  FrontstageRestrictedBlockRuntimeHostOptions,
+  FrontstageRestrictedBlockRuntimeSession
+} from '../lib/frontstage-restricted-block-runtime-host';
 import type { FrontstageBlockInstance } from '../lib/page-document';
 import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
 
@@ -99,6 +103,32 @@ function createSession(): FrontstageRestrictedBlockRuntimeSession {
   };
 }
 
+function createReadyActionSession(): FrontstageRestrictedBlockRuntimeSession {
+  const ready = {
+    ...snapshot('ready'),
+    schemaValidationOptions: { allowedActions: ['sign_up'] },
+    view: {
+      primitive: 'Button',
+      props: { children: 'Register', actionId: 'sign_up' }
+    }
+  } satisfies RestrictedBlockRuntimeHostSnapshot;
+  const disposed = {
+    ...ready,
+    status: 'disposed'
+  } satisfies RestrictedBlockRuntimeHostSnapshot;
+  return {
+    run: vi.fn(() => ready),
+    dispose: vi.fn(() => disposed),
+    getSnapshot: vi.fn(() => ready),
+    getHostState: vi.fn(() => ({
+      workerStatus: 'idle' as const,
+      requests: {},
+      rejections: []
+    })),
+    subscribe: vi.fn(() => () => undefined)
+  };
+}
+
 describe('JsBlockTrialPanel Draft Run Console', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -147,5 +177,54 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     fireEvent.click(screen.getByRole('button', { name: '控制台' }));
     expect(screen.getByRole('dialog', { name: '预览' })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: '控制台' })).toBeInTheDocument();
+  });
+
+  test('AC-032 reruns the current draft with host inputs derived from an action event', async () => {
+    const createRunInputs = vi.fn((event?: BlockRendererActionEvent) => ({
+      authenticator_id: 'auth-password-local',
+      public_variables: { self_registration_enabled: true },
+      ...(event
+        ? {
+            auth_event: {
+              action_id: event.actionId,
+              values: event.formValues ?? {}
+            }
+          }
+        : {})
+    }));
+    const runInputs: Array<Record<string, unknown> | undefined> = [];
+    const runtimeSessionFactory = vi.fn(
+      (options: FrontstageRestrictedBlockRuntimeHostOptions) => {
+        runInputs.push(options.runPlan.request.inputs);
+        return createReadyActionSession();
+      }
+    );
+    render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="async function main(){return {view:{primitive:'Button'},outputs:{}}} export default {main};"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /运\s*行/ }));
+    await screen.findByRole('button', { name: 'Register' });
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    expect(createRunInputs).toHaveBeenNthCalledWith(1, undefined);
+    expect(createRunInputs).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ actionId: 'sign_up' })
+    );
+    expect(runInputs[1]).toEqual({
+        authenticator_id: 'auth-password-local',
+        public_variables: { self_registration_enabled: true },
+        auth_event: { action_id: 'sign_up', values: {} }
+      });
   });
 });
