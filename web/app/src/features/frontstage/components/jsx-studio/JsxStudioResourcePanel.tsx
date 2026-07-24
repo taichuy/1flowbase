@@ -206,13 +206,6 @@ function InterfaceConnectorPanel({
         )}
       />
       <section className="frontstage-jsx-studio__resource-section">
-        {pathPrefixes && pathPrefixes.length > 0 ? (
-          <Space wrap>
-            {pathPrefixes.map((pathPrefix) => (
-              <Typography.Text code key={pathPrefix}>{pathPrefix}</Typography.Text>
-            ))}
-          </Space>
-        ) : null}
         <Input
           allowClear
           aria-label={i18nText('frontstage', 'auto.interface_path_search')}

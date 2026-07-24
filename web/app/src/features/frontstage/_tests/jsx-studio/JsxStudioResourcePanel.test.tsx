@@ -173,7 +173,7 @@ describe('TSX Studio interface connector', () => {
     );
   });
 
-  test('passes one or many path scopes to the backend without local filtering', () => {
+  test('passes path scopes to the backend without exposing them in the connector UI', () => {
     renderInterfacePanel({
       interfacePathPrefixes: [
         '/api/public/',
@@ -181,10 +181,10 @@ describe('TSX Studio interface connector', () => {
       ]
     });
 
-    expect(screen.getByText('/api/public/')).toBeInTheDocument();
+    expect(screen.queryByText('/api/public/')).not.toBeInTheDocument();
     expect(
-      screen.getByText('/api/console/settings/auth-center/')
-    ).toBeInTheDocument();
+      screen.queryByText('/api/console/settings/auth-center/')
+    ).not.toBeInTheDocument();
     expect(
       interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
     ).toHaveBeenLastCalledWith(
