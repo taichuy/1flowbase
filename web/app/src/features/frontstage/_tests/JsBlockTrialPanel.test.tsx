@@ -150,7 +150,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         }
         contextSnapshot={{ pageId: 'page-1' }}
         limits={{ timeoutMs: 1_000 }}
-        presentation="debugger"
+        presentation={{ mode: 'debugger' }}
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -173,7 +173,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
           code="async function main(){return {view:{primitive:'Text'},outputs:{}}} export default {main};"
           contextSnapshot={{ pageId: 'page-1' }}
           limits={{ timeoutMs: 1_000 }}
-          presentation="debugger"
+          presentation={{ mode: 'debugger' }}
           runtimeSessionFactory={() => createSession()}
         />
       </WindowWorkspaceProvider>
@@ -213,7 +213,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation="debugger"
+        presentation={{ mode: 'debugger' }}
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -235,8 +235,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     });
   });
 
-  test('AC-035/036 directly renders and debounces the latest draft without debugger controls', async () => {
-    vi.useFakeTimers();
+  test('AC-039/040/041 refreshes direct preview only when the saved revision changes', async () => {
     const sessions = [
       createReadyActionSession(),
       createReadyActionSession(),
@@ -262,11 +261,11 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
       <JsBlockTrialPanel
         block={block}
         catalogEntry={catalog}
-        code="first draft"
+        code="first saved source"
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation="direct-preview"
+        presentation={{ mode: 'direct-preview', revision: 'saved:v1' }}
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -283,38 +282,42 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
     }
 
-    await act(async () => vi.runAllTimersAsync());
-    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
-    expect(runSources).toEqual(['first draft']);
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+    expect(runSources).toEqual(['first saved source']);
     expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument();
 
     rerender(
       <JsBlockTrialPanel
         block={block}
         catalogEntry={catalog}
-        code="intermediate draft"
+        code="unsaved draft"
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation="direct-preview"
+        presentation={{ mode: 'direct-preview', revision: 'saved:v1' }}
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
+    expect(sessions[0]?.dispose).not.toHaveBeenCalled();
+
     rerender(
       <JsBlockTrialPanel
         block={block}
         catalogEntry={catalog}
-        code="latest draft"
+        code="second saved source"
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation="direct-preview"
+        presentation={{ mode: 'direct-preview', revision: 'saved:v2' }}
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
-    await act(async () => vi.runAllTimersAsync());
-    expect(runtimeSessionFactory).toHaveBeenCalledTimes(2);
-    expect(runSources).toEqual(['first draft', 'latest draft']);
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    expect(runSources).toEqual(['first saved source', 'second saved source']);
     expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/^draft:/)).not.toBeInTheDocument();
 

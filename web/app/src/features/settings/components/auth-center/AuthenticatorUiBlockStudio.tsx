@@ -1,4 +1,5 @@
 import type { OnMount } from '@monaco-editor/react';
+import { hashJsBlockDraft } from '@1flowbase/page-runtime';
 import { Descriptions } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -188,7 +189,7 @@ export function AuthenticatorUiBlockStudio({
                 key={authenticatorId}
                 block={authoringBlock}
                 catalogEntry={authoringCatalogEntry}
-                code={draft}
+                code={source}
                 contextSnapshot={{}}
                 createRunInputs={(event) =>
                   createPublicAuthInputs(
@@ -201,7 +202,10 @@ export function AuthenticatorUiBlockStudio({
                 limits={PUBLIC_AUTH_RUNTIME_LIMITS}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}
                 onRevokeDraftRun={previewCapabilities.revokeDraftRun}
-                presentation="direct-preview"
+                presentation={{
+                  mode: 'direct-preview',
+                  revision: hashJsBlockDraft(source)
+                }}
               />
             ) : undefined
           }
