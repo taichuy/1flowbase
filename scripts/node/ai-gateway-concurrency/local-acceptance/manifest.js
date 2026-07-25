@@ -9,9 +9,10 @@ const DEFAULT_MANIFEST = path.join(__dirname, 'manifest.json');
 const FORBIDDEN_ACTION_WORDS = Object.freeze(['fetch', 'pull', 'clone', 'build', 'install', 'curl', 'wget']);
 const LOCAL_ACTIONS = Object.freeze([
   Object.freeze({ owner: 'git', action: 'inspect-fixed-revisions' }),
+  Object.freeze({ owner: 'git', action: 'materialize-detached-worktrees-from-local-objects' }),
   Object.freeze({ owner: 'docker', action: 'create-and-probe-ephemeral-postgresql' }),
   Object.freeze({ owner: 'node', action: 'start-controlled-gateway-runtime-once' }),
-  Object.freeze({ owner: 'node', action: 'run-three-pinned-acp-clients' }),
+  Object.freeze({ owner: 'tmux', action: 'run-six-client-turns' }),
   Object.freeze({ owner: 'node', action: 'clean-all-owned-resources' }),
 ]);
 
@@ -35,9 +36,6 @@ function loadManifest(filePath = DEFAULT_MANIFEST) {
   if (manifest.schema_version !== SCHEMA) throw new Error('local acceptance manifest schema mismatch');
   requiredObject(manifest.database, 'database contract');
   requiredObject(manifest.artifacts, 'artifact inventory');
-  for (const required of ['apiServer', 'pluginRunner', 'openaiPackage', 'anthropicPackage']) {
-    if (!manifest.artifacts[required]) throw new Error(`artifact ${required} is required`);
-  }
   if (
     manifest.database.container !== 'docker-db-1'
     || manifest.database.image !== 'postgres:16-alpine'

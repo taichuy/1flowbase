@@ -9,17 +9,11 @@ const DEFAULT_BARRIER_MARKERS = Object.freeze({
   clientSecond: 'marker-2',
 });
 
-function usageOrdinal(nonce) {
-  const value = Number.parseInt(String(nonce).split('-').at(-1), 10);
-  return Number.isInteger(value) && value > 0 ? value : 1;
-}
-
 function posixShellArgument(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
-  const ordinal = usageOrdinal(nonce);
   const itemId = `item_${nonce}`;
   const outputText = `${firstText}${secondText}`;
   const openItem = {
@@ -90,13 +84,6 @@ function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
         ...response,
         status: 'completed',
         output: [completedItem],
-        usage: {
-          input_tokens: ordinal,
-          output_tokens: ordinal + 1,
-          total_tokens: ordinal * 2 + 1,
-          input_tokens_details: { cached_tokens: 0 },
-          output_tokens_details: { reasoning_tokens: 0 },
-        },
       },
     },
     cancelled: {
@@ -108,7 +95,6 @@ function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
 }
 
 function responsesObservableItemEvents(nonce, firstText, secondText) {
-  const ordinal = usageOrdinal(nonce);
   const response = {
     id: `resp_${nonce}`,
     object: 'response',
@@ -163,19 +149,12 @@ function responsesObservableItemEvents(nonce, firstText, secondText) {
     terminal: {
       type: 'response.completed',
       sequence_number: chunks.length,
-      response: {
-        ...response, status: 'completed', output: completedItems,
-        usage: {
-          input_tokens: ordinal, output_tokens: ordinal + 1, total_tokens: ordinal * 2 + 1,
-          input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 },
-        },
-      },
+      response: { ...response, status: 'completed', output: completedItems },
     },
   };
 }
 
 function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
-  const ordinal = usageOrdinal(nonce);
   return {
     chunks: [
       {
@@ -190,7 +169,7 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
             content: [],
             stop_reason: null,
             stop_sequence: null,
-            usage: { input_tokens: ordinal, output_tokens: 0 },
+            usage: { input_tokens: 1, output_tokens: 0 },
           },
         },
       },
@@ -225,7 +204,7 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
         data: {
           type: 'message_delta',
           delta: { stop_reason: 'end_turn', stop_sequence: null },
-          usage: { output_tokens: ordinal + 1 },
+          usage: { output_tokens: 2 },
         },
       },
       { event: 'message_stop', data: { type: 'message_stop' } },
@@ -273,13 +252,12 @@ function anthropicToolEvents(nonce, toolPath, final = false) {
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
     `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
   );
-  const ordinal = usageOrdinal(nonce);
   return {
     chunks: [
       {
         event: 'message_start', data: { type: 'message_start', message: {
           id: `msg_${nonce}`, type: 'message', role: 'assistant', model: 'mock-model', content: [],
-          stop_reason: null, stop_sequence: null, usage: { input_tokens: ordinal, output_tokens: 0 },
+          stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 },
         } },
       },
       { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: {
@@ -288,22 +266,19 @@ function anthropicToolEvents(nonce, toolPath, final = false) {
       { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
     ],
     terminal: [
-      { event: 'message_delta', data: { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: ordinal + 1 } } },
+      { event: 'message_delta', data: { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 1 } } },
       { event: 'message_stop', data: { type: 'message_stop' } },
     ],
   };
 }
 
 function chatToolEvents(nonce, toolPath, final = false) {
-  const ordinal = usageOrdinal(nonce);
   if (final) return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       content: `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
     }, finish_reason: null }] }],
-    terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', usage: {
-      prompt_tokens: ordinal, completion_tokens: ordinal + 1, total_tokens: ordinal * 2 + 1,
-    }, choices: [{ index: 0, delta: {
+    terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`,
     }, finish_reason: 'stop' }] },
   };
@@ -320,16 +295,13 @@ function chatToolEvents(nonce, toolPath, final = false) {
   };
 }
 
-function chatTextEvents(nonce, text = '1flowbase gateway sentinel ok') {
-  const ordinal = usageOrdinal(nonce);
+function chatTextEvents(nonce) {
   return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
-      index: 0, delta: { role: 'assistant', content: text }, finish_reason: null,
+      index: 0, delta: { role: 'assistant', content: '1flowbase gateway sentinel ok' }, finish_reason: null,
     }] }],
-    terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', usage: {
-      prompt_tokens: ordinal, completion_tokens: ordinal + 1, total_tokens: ordinal * 2 + 1,
-    }, choices: [{
+    terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'stop',
     }] },
   };

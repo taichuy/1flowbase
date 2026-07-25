@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { TRANSPORT } = require('../contracts');
 const { runGatewayCharacterize } = require('../characterize/engine');
-const { runClientCompatibilityCommand } = require('../client-compatibility');
+const { runCliSmoke } = require('../cli-smoke');
 const { createGatewayFixture } = require('../gateway-fixture');
 const { createMockUpstream } = require('../mock-upstream');
 const { normalizeRunInputs } = require('./inputs');
@@ -119,7 +119,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   const paths = prepareEvidence(inputs.repoRoot);
   const createMock = dependencies.createMockUpstream ?? createMockUpstream;
   const createFixture = dependencies.createGatewayFixture ?? createGatewayFixture;
-  const compatibility = dependencies.runClientCompatibility ?? runClientCompatibilityCommand;
+  const smoke = dependencies.runCliSmoke ?? runCliSmoke;
   const characterize = dependencies.runGatewayCharacterize ?? runGatewayCharacterize;
   let mock = null;
   let fixture = null;
@@ -144,10 +144,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     writeJson(paths.readyFile, fixture.result, 0o600);
     ready = readReadyManifest(paths.readyFile);
 
-    cliSmoke = await compatibility({
+    cliSmoke = await smoke({
       readyManifest: paths.readyFile,
-      runtimeRoot: path.join(inputs.repoRoot, 'scripts/node/ai-gateway-concurrency/client-compatibility/runtime'),
-      evidenceRoot: path.join(paths.root, 'client-compatibility'),
+      codexExecutable: inputs.codexExecutable,
+      claudeExecutable: inputs.claudeExecutable,
     });
 
     characterizeResult = await characterize({
@@ -201,7 +201,8 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     status: finalError ? 'fail' : 'pass',
     cli_smoke: cliSmoke ? {
       status: cliSmoke.status,
-      clients: cliSmoke.clients,
+      codex_event_count: cliSmoke.codex_event_count,
+      claude_event_count: cliSmoke.claude_event_count,
     } : null,
     targets: ready ? {
       openai: {

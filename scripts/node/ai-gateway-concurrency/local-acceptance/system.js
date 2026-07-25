@@ -82,12 +82,14 @@ async function verifyFsWatch() {
 
 async function preflight(manifest) {
   const repositories = Object.entries(manifest.repo).map(([name, value]) => requireRepositoryState(name, value));
+  const sources = Object.entries(manifest.sources).map(([name, value]) => requireSourceObject(name, value));
   const artifacts = verifyChecksums(manifest);
-  for (const name of ['apiServer', 'pluginRunner']) {
+  for (const name of ['apiServer', 'pluginRunner', 'codex', 'claude', 'opencode']) {
     fs.accessSync(manifest.artifacts[name].path, fs.constants.X_OK);
   }
   return {
     repositories,
+    sources,
     artifacts,
     database: verifyDockerDatabase(manifest.database),
     readiness: await verifyFsWatch(),

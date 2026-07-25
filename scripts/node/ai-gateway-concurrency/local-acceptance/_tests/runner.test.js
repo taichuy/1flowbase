@@ -13,12 +13,28 @@ function fixtureManifest() {
       officialPlugins: { path: '/plugins', revision: 'b'.repeat(40) },
       protectedMain: { path: '/main', revision: 'c'.repeat(40) },
     },
+    sources: {
+      codex: { repository: '/codex', revision: 'd'.repeat(40), identity: 'github:openai/codex' },
+      opencode: { repository: '/opencode', revision: 'e'.repeat(40), identity: 'github:anomalyco/opencode' },
+    },
     database: { container: 'docker-db-1', image: 'postgres:16-alpine', host: '127.0.0.1', port: 35432 },
     artifacts: {
       apiServer: { path: '/bin/api-server', sha256: '1'.repeat(64) },
       pluginRunner: { path: '/bin/plugin-runner', sha256: '2'.repeat(64) },
       openaiPackage: { path: '/packages/openai', sha256: '3'.repeat(64) },
       anthropicPackage: { path: '/packages/anthropic', sha256: '4'.repeat(64) },
+      codex: { path: '/bin/codex', sha256: '5'.repeat(64) },
+      claude: { path: '/bin/claude', sha256: '6'.repeat(64) },
+      claudeManifest: { path: '/package.json', sha256: '7'.repeat(64) },
+      opencode: { path: '/bin/opencode', sha256: '8'.repeat(64) },
+    },
+    clients: {
+      codex: { buildCommand: 'fixed-codex-build-claim' },
+      claude: {
+        packageName: '@anthropic-ai/claude-code', packageVersion: '2.1.218', packageIntegrity: 'sha512-fixed',
+        installCommand: 'fixed-claude-install-claim',
+      },
+      opencode: { buildCommand: 'fixed-opencode-build-claim' },
     },
   };
 }
@@ -30,6 +46,10 @@ function dependencies({ failAt } = {}) {
     loadManifest() { calls.push('manifest'); return fixtureManifest(); },
     async preflight() { calls.push('preflight'); if (failAt === 'preflight') throw new Error('preflight failed'); },
     createEvidenceRoot() { calls.push('evidence'); return '/evidence'; },
+    createDetachedSource(client) {
+      calls.push(`source:${client}`);
+      return { path: `/detached/${client}`, async close() { cleanup.push(`source:${client}`); } };
+    },
     createDatabase() {
       calls.push('database:create');
       return {
@@ -52,14 +72,15 @@ function dependencies({ failAt } = {}) {
       return { result: { schema_version: '1flowbase.ai-gateway-fixture/v1' }, async close() { cleanup.push('fixture'); } };
     },
     writeReadyManifest() { calls.push('ready:write'); return '/evidence/ready.json'; },
-    async runClientCompatibility(options) { calls.push(['smoke', options]); if (failAt === 'smoke') throw new Error('smoke failed'); return { status: 'pass', clients: {} }; },
+    async runCliSmoke(options) { calls.push(['smoke', options]); if (failAt === 'smoke') throw new Error('smoke failed'); return { status: 'pass' }; },
     writeSnapshot() { calls.push('snapshot:write'); },
     writeResult(_root, result) { calls.push(['result', result.status]); },
+    async cleanupTmux() { cleanup.push('tmux'); },
   };
   return { deps, calls, cleanup };
 }
 
-test('AC-003/014/027/028/029: one attempt probes the exact URL then runs the portable ACP gate', async () => {
+test('AC-003/014/027/028: one attempt probes the exact URL then runs all clients with tmux timing', async () => {
   const { deps, calls, cleanup } = dependencies();
   const result = await runLocalAcceptance({}, deps);
   assert.equal(result.status, 'pass', JSON.stringify(result));
@@ -68,16 +89,19 @@ test('AC-003/014/027/028/029: one attempt probes the exact URL then runs the por
   const probe = calls.find((call) => Array.isArray(call) && call[0] === 'database:probe');
   const smoke = calls.find((call) => Array.isArray(call) && call[0] === 'smoke')[1];
   assert.equal(probe[1], 'postgres://role:password@127.0.0.1:35432/database');
-  assert.match(smoke.runtimeRoot, /client-compatibility\/runtime$/u);
+  assert.equal(smoke.tmuxTiming, true);
+  assert.equal(smoke.opencodeExecutable, '/bin/opencode');
+  assert.equal(smoke.codexSourceRoot, '/detached/codex');
+  assert.equal(smoke.opencodeSourceRoot, '/detached/opencode');
   assert.ok(calls.indexOf(probe) < calls.indexOf('fixture:create'));
-  assert.deepEqual(cleanup, ['fixture', 'mock', 'database']);
+  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
 });
 
 test('AC-027 controlled negative: every runtime failure still executes the complete owned cleanup stack', async () => {
   const { deps, calls, cleanup } = dependencies({ failAt: 'smoke' });
   const result = await runLocalAcceptance({}, deps);
   assert.equal(result.status, 'fail');
-  assert.deepEqual(cleanup, ['fixture', 'mock', 'database']);
+  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
   assert.equal(calls.filter((call) => call === 'fixture:create').length, 1);
 });
 
@@ -88,7 +112,7 @@ test('AC-028 controlled negatives: preflight and same-URL probe fail before runt
     assert.equal(result.status, 'fail');
     assert.equal(calls.includes('fixture:create'), false);
     assert.equal(calls.some((call) => Array.isArray(call) && call[0] === 'smoke'), false);
-    if (failAt === 'preflight') assert.deepEqual(cleanup, []);
-    else assert.deepEqual(cleanup, ['database']);
+    if (failAt === 'preflight') assert.deepEqual(cleanup, ['tmux']);
+    else assert.deepEqual(cleanup, ['database', 'source:opencode', 'source:codex', 'tmux']);
   }
 });

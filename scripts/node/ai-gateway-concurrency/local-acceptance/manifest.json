@@ -14,6 +14,18 @@
       "revision": "fe432c810af37376aea066e7b49ad5fdad4fdc2d"
     }
   },
+  "sources": {
+    "codex": {
+      "repository": "/home/taichuy/git/codex",
+      "revision": "56395bddaf26eb2829387ca6a417bf9128e5b239",
+      "identity": "github:openai/codex"
+    },
+    "opencode": {
+      "repository": "/home/taichuy/git/opencode",
+      "revision": "411eff73f026d4950c07947c4d983788cb615baa",
+      "identity": "github:anomalyco/opencode"
+    }
+  },
   "database": {
     "container": "docker-db-1",
     "image": "postgres:16-alpine",
@@ -36,6 +48,36 @@
     "anthropicPackage": {
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/tmp/test-governance/compatible-stream-e2e/qa-cycle6-20260724-154629/candidate/packages/anthropic/1flowbase@anthropic@0.1.24@linux-amd64@1bb62b56af050e7e259afea4b58764cc408e51f2255ec48eb8341c8f9ff97e20.1flowbasepkg",
       "sha256": "1bb62b56af050e7e259afea4b58764cc408e51f2255ec48eb8341c8f9ff97e20"
+    },
+    "codex": {
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/tmp/test-governance/compatible-stream-e2e/qa-cycle6-20260724-154629/evidence/bin/codex-56395bdd",
+      "sha256": "372fc4023bb9836af5c94b7772165640126807ad2ea584ef7725adaf231630ec"
+    },
+    "claude": {
+      "path": "/home/taichuy/.nvm/versions/node/v24.18.0/bin/claude",
+      "sha256": "e12071751a9336b8af1012c103358ff04ac18f9aaff4a738cff7ba5cdfaf63f2"
+    },
+    "claudeManifest": {
+      "path": "/home/taichuy/.nvm/versions/node/v24.18.0/lib/node_modules/@anthropic-ai/claude-code/package.json",
+      "sha256": "e3ea99daaf9c111af49f7ceb367f0274745565c44762befb03656adbd62b19b0"
+    },
+    "opencode": {
+      "path": "/home/taichuy/.local/bin/opencode",
+      "sha256": "767cd0ee3d4bb6d27874a383f81e01918b76c29b7c0998a4fc0851d026852508"
+    }
+  },
+  "clients": {
+    "codex": {
+      "buildCommand": "cargo build --locked --manifest-path codex-rs/Cargo.toml --bin codex --jobs 2"
+    },
+    "claude": {
+      "packageName": "@anthropic-ai/claude-code",
+      "packageVersion": "2.1.218",
+      "packageIntegrity": "sha512-BHV951ruIa6QXaZFDF1wRhwxAOkAiafB2AOWG6wGRUJ4apaJ9mlzp1BFLAhGfG0SknwAyqBenqeT6nit6at4uQ==",
+      "installCommand": "npm install -g @anthropic-ai/claude-code@2.1.218"
+    },
+    "opencode": {
+      "buildCommand": "not-executed:user-authorized-existing-local-binary"
     }
   }
 }

@@ -47,6 +47,8 @@ test('AC-001: run inputs preserve the default PostgreSQL pool owner outside work
     pluginRunnerBin: executable,
     openaiPackageDir: openai,
     anthropicPackageDir: anthropic,
+    codexExecutable: executable,
+    claudeExecutable: executable,
     hostTarget: 'x86_64-unknown-linux-gnu',
   });
   assert.equal(Object.hasOwn(normalized, 'databasePoolMaxConnections'), false);
