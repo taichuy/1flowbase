@@ -47,9 +47,15 @@ test('AC-001: run inputs preserve the default PostgreSQL pool owner outside work
     pluginRunnerBin: executable,
     openaiPackageDir: openai,
     anthropicPackageDir: anthropic,
-    codexExecutable: executable,
-    claudeExecutable: executable,
     hostTarget: 'x86_64-unknown-linux-gnu',
   });
   assert.equal(Object.hasOwn(normalized, 'databasePoolMaxConnections'), false);
+});
+
+test('AC-028/029: paired provider lock is portable and exact', () => {
+  const lock = require('../paired-source.lock.json');
+  assert.equal(lock.schema_version, '1flowbase.ai-gateway-paired-source/v1');
+  assert.equal(lock.official_plugins.repository, 'taichuy/1flowbase-official-plugins');
+  assert.match(lock.official_plugins.revision, /^[a-f0-9]{40}$/u);
+  assert.doesNotMatch(JSON.stringify(lock), /\/home\//u);
 });

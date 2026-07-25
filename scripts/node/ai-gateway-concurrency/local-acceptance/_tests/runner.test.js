@@ -84,6 +84,7 @@ test('AC-003/014/027/028: one attempt probes the exact URL then runs all clients
   const { deps, calls, cleanup } = dependencies();
   const result = await runLocalAcceptance({}, deps);
   assert.equal(result.status, 'pass', JSON.stringify(result));
+  assert.equal(result.gate_role, 'non_blocking_client_diagnostic');
   assert.equal(calls.filter((call) => call === 'database:create').length, 1);
   assert.equal(calls.filter((call) => call === 'fixture:create').length, 1);
   const probe = calls.find((call) => Array.isArray(call) && call[0] === 'database:probe');

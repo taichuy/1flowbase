@@ -116,6 +116,7 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
     : null);
   const result = {
     schema_version: '1flowbase.local-ai-gateway-acceptance-result/v1',
+    gate_role: 'non_blocking_client_diagnostic',
     status: finalError ? 'fail' : 'pass',
     runtime_attempts: fixture || mock ? 1 : 0,
     database_attempts: database ? 1 : 0,

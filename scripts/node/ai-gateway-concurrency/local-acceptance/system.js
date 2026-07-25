@@ -197,9 +197,10 @@ function writeResult(evidenceRoot, result) {
     .join('\n');
   fs.writeFileSync(path.join(evidenceRoot, 'artifact-checksums.sha256'), `${checksums}\n`, { mode: 0o600 });
   fs.writeFileSync(path.join(evidenceRoot, 'local-acceptance-report.md'), [
-    '# Local AI Gateway Acceptance',
+    '# Local AI Gateway Client Diagnostics',
     '',
     `- Status: ${result.status.toUpperCase()}`,
+    `- Gate role: ${result.gate_role}`,
     `- Runtime attempts: ${result.runtime_attempts}`,
     `- Database attempts: ${result.database_attempts}`,
     `- Client batch: ${result.clients?.status || 'not-run'}`,

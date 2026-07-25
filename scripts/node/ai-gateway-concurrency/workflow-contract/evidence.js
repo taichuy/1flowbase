@@ -43,7 +43,6 @@ function workflowResultBase(inputs) {
     main_source_sha: inputs.mainSourceSha,
     official_source_sha: inputs.officialSourceSha,
     host_target: inputs.hostTarget,
-    client_versions: { codex: '0.144.1', claude_code: '2.1.212' },
     performance_budget_applied: false,
   };
 }

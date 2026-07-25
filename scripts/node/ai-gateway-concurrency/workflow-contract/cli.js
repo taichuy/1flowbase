@@ -16,8 +16,6 @@ const RUN_FIELDS = new Map([
   ['--plugin-runner-bin', 'pluginRunnerBin'],
   ['--openai-package-dir', 'openaiPackageDir'],
   ['--anthropic-package-dir', 'anthropicPackageDir'],
-  ['--codex-executable', 'codexExecutable'],
-  ['--claude-executable', 'claudeExecutable'],
   ['--host-target', 'hostTarget'],
 ]);
 
@@ -71,7 +69,7 @@ async function main(argv = process.argv.slice(2)) {
     fallback: {
       ...workflowResultBase(input),
       status: 'fail',
-      cli_smoke: null,
+      protocol_conformance: null,
       characterize: null,
       cleanup: { status: 'not-started', errors: [] },
       error: { type: 'Unverified', message: 'workflow stopped before the integration runner produced evidence' },

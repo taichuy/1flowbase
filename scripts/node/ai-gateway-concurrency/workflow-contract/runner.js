@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { TRANSPORT } = require('../contracts');
 const { runGatewayCharacterize } = require('../characterize/engine');
-const { runCliSmoke } = require('../cli-smoke');
 const { createGatewayFixture } = require('../gateway-fixture');
 const { createMockUpstream } = require('../mock-upstream');
+const { loadPinnedInventory } = require('../wire-audit/inventory');
+const { runWireAudit } = require('../wire-audit/runner');
 const { normalizeRunInputs } = require('./inputs');
 const {
   prepareEvidence,
@@ -14,6 +15,8 @@ const {
   workflowResultBase,
   writeJson,
 } = require('./evidence');
+
+const SECRET_CANARY = 'sk-1flowbase-controlled-secret-canary';
 
 function requireReadyEndpoint(value, provider, pathname) {
   let url;
@@ -114,17 +117,32 @@ function readReadyManifest(filePath) {
   return manifest;
 }
 
+function wireAuditManifest(ready) {
+  const controlled = ready.controlled_upstream;
+  return {
+    gatewayBaseUrl: new URL(ready.targets.openai.gateway.responses_url).origin,
+    openai: ready.targets.openai,
+    anthropic: ready.targets.anthropic,
+    controlledUpstream: controlled ? {
+      snapshotUrl: controlled.snapshot_url,
+      barrierReleaseUrl: controlled.barrier_release_url,
+      networkObserverUrl: controlled.network_observer_url,
+      gatewayExecutorObserverUrl: controlled.gateway_executor_observer_url,
+    } : null,
+  };
+}
+
 async function runWorkflowContract(rawOptions, dependencies = {}) {
   const inputs = normalizeRunInputs(rawOptions);
   const paths = prepareEvidence(inputs.repoRoot);
   const createMock = dependencies.createMockUpstream ?? createMockUpstream;
   const createFixture = dependencies.createGatewayFixture ?? createGatewayFixture;
-  const smoke = dependencies.runCliSmoke ?? runCliSmoke;
+  const wireAuditRunner = dependencies.runWireAudit ?? runWireAudit;
   const characterize = dependencies.runGatewayCharacterize ?? runGatewayCharacterize;
   let mock = null;
   let fixture = null;
   let ready = null;
-  let cliSmoke = null;
+  let wireAudit = null;
   let characterizeResult = null;
   let executionError = null;
   const cleanupErrors = [];
@@ -143,12 +161,12 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     });
     writeJson(paths.readyFile, fixture.result, 0o600);
     ready = readReadyManifest(paths.readyFile);
-
-    cliSmoke = await smoke({
-      readyManifest: paths.readyFile,
-      codexExecutable: inputs.codexExecutable,
-      claudeExecutable: inputs.claudeExecutable,
+    const compatibilityManifest = wireAuditManifest(ready);
+    writeJson(path.join(paths.root, 'wire-inventory.json'), loadPinnedInventory());
+    wireAudit = await wireAuditRunner({ manifest: compatibilityManifest }, {
+      secretCanary: SECRET_CANARY,
     });
+    writeJson(path.join(paths.root, 'wire-audit.json'), wireAudit);
 
     characterizeResult = await characterize({
       repoRoot: inputs.repoRoot,
@@ -194,16 +212,13 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   const secrets = [
     ready?.targets?.openai?.api_key,
     ...(ready?.pools?.anthropic ?? []).map((target) => target.api_key),
+    SECRET_CANARY,
   ].filter(Boolean);
   const finalError = executionError ?? cleanupErrors[0] ?? null;
   const result = {
     ...workflowResultBase(inputs),
     status: finalError ? 'fail' : 'pass',
-    cli_smoke: cliSmoke ? {
-      status: cliSmoke.status,
-      codex_event_count: cliSmoke.codex_event_count,
-      claude_event_count: cliSmoke.claude_event_count,
-    } : null,
+    protocol_conformance: wireAudit ? { status: 'pass', wire_audit: wireAudit } : null,
     targets: ready ? {
       openai: {
         model: ready.targets.openai.model,
@@ -236,4 +251,4 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   return result;
 }
 
-module.exports = { readReadyManifest, requireReadyEndpoint, runWorkflowContract };
+module.exports = { readReadyManifest, requireReadyEndpoint, runWorkflowContract, wireAuditManifest };

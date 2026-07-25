@@ -83,8 +83,6 @@ function normalizeRunInputs(options) {
     pluginRunnerBin: requireFile(options.pluginRunnerBin, 'plugin-runner binary', true),
     openaiPackage: singlePackage(options.openaiPackageDir, 'OpenAI'),
     anthropicPackage: singlePackage(options.anthropicPackageDir, 'Anthropic'),
-    codexExecutable: requireFile(options.codexExecutable, 'Codex executable', true),
-    claudeExecutable: requireFile(options.claudeExecutable, 'Claude executable', true),
     hostTarget: requireText(options.hostTarget, 'host target'),
   };
 }
