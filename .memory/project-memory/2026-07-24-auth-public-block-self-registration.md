@@ -70,3 +70,4 @@ scope:
 - Auth Studio 预览刷新语义曾收敛为保存真值、仅保存后刷新；该交互语义已被下一条“运行 / 保存解耦”取代。阶段交付提交：implementation `8dff95011`，beta merge `a74058c47`。
 - 共享 Studio 顶部顺序为“上下文 / 重置 / 保存 / 运行”，运行是 primary 主操作：点击时冻结当前未保存草稿、切换到预览并通过显式 revision 运行；继续编辑不自动重跑。“保存”只持久化，不切换或运行；预览轨道只负责查看最近结果。Auth 使用 `direct-preview`，Frontstage 继续使用既有 `debugger` runtime。语义交付提交：implementation `496e47c30`，beta merge `df6be02b3`；顺序与主操作修正：implementation `2b090cbe0`，beta merge `0cb0e2141`。
 - Auth `direct-preview` 使用 65% / 35% 的预览与控制台垂直分屏；控制台直接消费 runtime 已清洗的 `snapshot.logs`，展示 level、message 与结构化 data。中间 splitter 支持鼠标和键盘调节，两侧独立滚动；Frontstage debugger 保持原控制台能力。交付提交：implementation `4589fa9e1`，beta merge `56cc7f370`。
+- Auth 内嵌控制台使用白色轻量 DevTools 风格而非深色终端：空状态只显示左侧高亮 `>` prompt，日志行使用固定 gutter，info/debug/warn/error 通过符号和颜色区分；不提供输入或 REPL。交付提交：implementation `0d4c1db14`，beta merge `cbc428360`。
