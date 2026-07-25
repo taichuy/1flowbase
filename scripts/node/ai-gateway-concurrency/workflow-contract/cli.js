@@ -16,8 +16,6 @@ const RUN_FIELDS = new Map([
   ['--plugin-runner-bin', 'pluginRunnerBin'],
   ['--openai-package-dir', 'openaiPackageDir'],
   ['--anthropic-package-dir', 'anthropicPackageDir'],
-  ['--codex-executable', 'codexExecutable'],
-  ['--claude-executable', 'claudeExecutable'],
   ['--host-target', 'hostTarget'],
 ]);
 

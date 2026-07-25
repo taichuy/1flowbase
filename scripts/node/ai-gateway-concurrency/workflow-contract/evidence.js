@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { loadLock } = require('../client-compatibility/lock');
 
 const ARTIFACT_RELATIVE_ROOT = path.join('tmp', 'test-governance', 'ai-gateway-concurrency');
 const READY_FILE_NAME = 'gateway-ready.json';
@@ -37,13 +38,20 @@ function publicError(error, secrets) {
 }
 
 function workflowResultBase(inputs) {
+  const packages = loadLock().packages;
   return {
     schema_version: '1flowbase.ai-gateway-concurrency-workflow/v1',
     profile: inputs.profile,
     main_source_sha: inputs.mainSourceSha,
     official_source_sha: inputs.officialSourceSha,
     host_target: inputs.hostTarget,
-    client_versions: { codex: '0.144.1', claude_code: '2.1.212' },
+    client_versions: {
+      claude_code: packages.claude_code.version,
+      claude_acp: packages.claude_acp.version,
+      codex: packages.codex.version,
+      codex_acp: packages.codex_acp.version,
+      opencode: packages.opencode.version,
+    },
     performance_budget_applied: false,
   };
 }

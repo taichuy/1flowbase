@@ -29,8 +29,6 @@ function fixtureInputs() {
     pluginRunnerBin: executable,
     openaiPackageDir,
     anthropicPackageDir,
-    codexExecutable: executable,
-    claudeExecutable: executable,
     hostTarget: 'x86_64-unknown-linux-gnu',
   };
 }
@@ -95,9 +93,9 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       calls.push(['fixture:create', options.upstreamBaseUrl, options.artifactRoot]);
       return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
     },
-    async runCliSmoke(options) {
+    async runClientCompatibility(options) {
       calls.push(['smoke', fs.existsSync(options.readyManifest)]);
-      return { status: 'pass', codex_event_count: 2, claude_event_count: 3 };
+      return { status: 'pass', clients: { claude: {}, codex: {}, opencode: {} } };
     },
     async runGatewayCharacterize(options) {
       calls.push(['characterize', options]);
@@ -152,7 +150,7 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
     async createGatewayFixture() {
       return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
     },
-    async runCliSmoke() { throw new Error('sentinel failed with anthropic-application-key-2'); },
+    async runClientCompatibility() { throw new Error('sentinel failed with anthropic-application-key-2'); },
   });
   assert.equal(result.status, 'fail');
   assert.deepEqual(calls, ['fixture:close', 'mock:stop']);
@@ -177,7 +175,7 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
         async close() { calls.push('fixture:close'); throw new Error('service log persistence failed'); },
       };
     },
-    async runCliSmoke() { return { status: 'pass', codex_event_count: 1, claude_event_count: 1 }; },
+    async runClientCompatibility() { return { status: 'pass', clients: { claude: {}, codex: {}, opencode: {} } }; },
     async runGatewayCharacterize() {
       return {
         summary: { verdict: 'PASS', totals: { requests: 237, contractFailures: 0 } },

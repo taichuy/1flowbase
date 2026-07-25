@@ -1,0 +1,29 @@
+name: AI Gateway Client Version Canary
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  discover-upstream-versions:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Probe upstream versions without changing the blocking lock
+        run: node scripts/node/ai-gateway-concurrency/client-compatibility/canary.js
+      - name: Upload canary report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ai-gateway-client-version-canary-${{ github.run_id }}
+          path: tmp/test-governance/ai-gateway-client-canary/**
+          if-no-files-found: error
+          retention-days: 14

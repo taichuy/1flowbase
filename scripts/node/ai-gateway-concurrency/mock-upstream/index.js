@@ -360,12 +360,15 @@ function createMockUpstream(options = {}) {
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
       const isToolResult = containsValue(body, '1flowbase-client-tool-result');
       const isClientTextTurn = containsValue(body, '1flowbase gateway sentinel ok');
+      const isNewPromptTurn = containsValue(body, '1flowbase gateway new prompt sentinel ok');
       const wireAuditVector = wireAuditVectorFromBody(body);
       if (isToolTurn && !isToolResult) requestTimeline.record('tool_call');
-      if (isToolResult) requestTimeline.record('second_upstream_request');
+      if (isToolResult && !isNewPromptTurn) requestTimeline.record('second_upstream_request');
       const stream = path === MOCK_ROUTE.RESPONSES
         ? (wireAuditVector && wireAuditVector !== 'gateway-executor-probe'
           ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
+          : isNewPromptTurn
+            ? responsesEvents(requestTimeline.nonce, '1flowbase gateway new prompt sentinel ', 'ok')
           : isToolTurn || isToolResult
           ? responsesToolEvents(
             requestTimeline.nonce, toolVectorPath(body), isToolResult,
@@ -375,10 +378,14 @@ function createMockUpstream(options = {}) {
             ? responsesEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
             : responsesEvents(requestTimeline.nonce))
         : path === MOCK_ROUTE.CHAT_COMPLETIONS
-          ? (isToolTurn || isToolResult
+          ? (isNewPromptTurn
+            ? chatTextEvents(requestTimeline.nonce, '1flowbase gateway new prompt sentinel ok')
+            : isToolTurn || isToolResult
             ? chatToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
-            : chatTextEvents(requestTimeline.nonce))
-          : (isToolTurn || isToolResult
+            : chatTextEvents(requestTimeline.nonce, '1flowbase gateway sentinel ok'))
+          : (isNewPromptTurn
+            ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway new prompt sentinel ', 'ok')
+            : isToolTurn || isToolResult
             ? anthropicToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
             : isClientTextTurn
               ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
