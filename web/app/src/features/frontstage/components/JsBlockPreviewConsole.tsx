@@ -1,4 +1,4 @@
-import { Empty, Tag, Typography } from 'antd';
+import { Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -122,38 +122,41 @@ export function JsBlockPreviewConsole({
           </Typography.Text>
         </header>
         <div className="frontstage-js-block-preview-console__console-content">
-          {snapshot?.logs.length ? (
-            <div
-              className="frontstage-js-block-preview-console__log-list"
-              role="log"
-            >
-              {snapshot.logs.map((log, index) => (
-                <div
-                  key={`${log.requestId}:${index}`}
-                  className={[
-                    'frontstage-js-block-preview-console__log-entry',
-                    `frontstage-js-block-preview-console__log-entry--${log.level}`
-                  ].join(' ')}
+          <div
+            className="frontstage-js-block-preview-console__log-list"
+            role="log"
+          >
+            {snapshot?.logs.map((log, index) => (
+              <div
+                key={`${log.requestId}:${index}`}
+                className={[
+                  'frontstage-js-block-preview-console__log-entry',
+                  `frontstage-js-block-preview-console__log-entry--${log.level}`
+                ].join(' ')}
+              >
+                <span
+                  className="frontstage-js-block-preview-console__log-gutter"
+                  data-testid={`js-block-console-gutter-${log.level}`}
+                  title={log.level}
                 >
-                  <Tag>{log.level}</Tag>
-                  <div className="frontstage-js-block-preview-console__log-body">
-                    <Typography.Text code>{log.message}</Typography.Text>
-                    {log.data === undefined ? null : (
-                      <pre>{formatConsoleData(log.data)}</pre>
-                    )}
-                  </div>
+                  {consoleGutter(log.level)}
+                </span>
+                <div className="frontstage-js-block-preview-console__log-body">
+                  <Typography.Text code>{log.message}</Typography.Text>
+                  {log.data === undefined ? null : (
+                    <pre>{formatConsoleData(log.data)}</pre>
+                  )}
                 </div>
-              ))}
+              </div>
+            ))}
+            <div
+              className="frontstage-js-block-preview-console__prompt"
+              data-testid="js-block-console-prompt"
+            >
+              <span>&gt;</span>
+              <span aria-hidden="true" />
             </div>
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={i18nText(
-                'frontstage',
-                'auto.no_console_output'
-              )}
-            />
-          )}
+          </div>
         </div>
       </section>
     </div>
@@ -167,4 +170,13 @@ function clampPreviewPercent(value: number) {
 function formatConsoleData(value: unknown) {
   if (typeof value === 'string') return value;
   return JSON.stringify(value, null, 2) ?? String(value);
+}
+
+function consoleGutter(
+  level: RestrictedBlockRuntimeHostSnapshot['logs'][number]['level']
+) {
+  if (level === 'warn') return '!';
+  if (level === 'error') return '×';
+  if (level === 'debug') return '·';
+  return '>';
 }
