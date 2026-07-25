@@ -7,7 +7,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const test = require('node:test');
 
-const { requireRepositoryState, requireSourceObject } = require('../system');
+const { requireRepositoryRevision, requireRepositoryState, requireSourceObject } = require('../system');
 
 function git(root, ...args) {
   return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
@@ -33,6 +33,23 @@ test('AC-028 controlled negative: dirty project worktrees fail closed', () => {
     assert.throws(
       () => requireRepositoryState('fixture', { path: root, revision }),
       /must be clean/u,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('AC-029: protected baseline verifies revision without owning private worktree cleanliness', () => {
+  const root = repositoryFixture();
+  try {
+    const revision = git(root, 'rev-parse', 'HEAD');
+    fs.appendFileSync(path.join(root, 'tracked.txt'), 'private-memory-change\n');
+    assert.deepEqual(requireRepositoryRevision('protected', { path: root, revision }), {
+      name: 'protected', path: root, revision, clean: null,
+    });
+    assert.throws(
+      () => requireRepositoryRevision('protected', { path: root, revision: 'f'.repeat(40) }),
+      /expected revision check failed/u,
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

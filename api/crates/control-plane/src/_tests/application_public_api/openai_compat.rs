@@ -507,31 +507,28 @@ fn d2_ac_001_responses_system_and_developer_text_share_the_system_mapping() {
 }
 
 #[test]
-fn d2_ac_001_responses_store_is_unsupported_not_dropped() {
-    let error = translate_response_request(json!({
+fn d4_ac_016_responses_store_is_exact_in_native_transport() {
+    let mut translated = translate_response_request(json!({
         "model": "gpt-compatible",
         "input": "hello",
         "store": true
     }))
-    .expect_err("server-side response storage has no current Native owner");
+    .expect("server-side response storage should remain in native Responses transport");
 
-    assert_openai_unsupported_feature(error.clone(), "store");
-    let decisions = error
+    let decisions = translated
         .report
         .decisions
         .iter()
         .filter(|decision| decision.source_path == "$.store")
         .collect::<Vec<_>>();
     assert_eq!(decisions.len(), 1, "store needs one final receipt");
-    assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
-    assert!(
-        !error
-            .report
-            .decisions
-            .iter()
-            .any(|decision| decision.kind == TranslationDecisionKind::Dropped),
-        "a capability-dependent ingress field must not be silently dropped"
-    );
+    assert_eq!(decisions[0].kind, TranslationDecisionKind::Exact);
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("store should remain in ephemeral provider transport");
+    assert_eq!(payload.wire_body()["store"], true);
 }
 
 #[test]
@@ -858,8 +855,8 @@ fn d2_ac_007_chat_legacy_function_call_is_unsupported_with_a_translation_receipt
 }
 
 #[test]
-fn d2_ac_007_responses_nested_unsupported_content_has_a_field_receipt() {
-    let error = translate_response_request(json!({
+fn d4_ac_016_responses_input_file_remains_exact_in_native_transport() {
+    let mut translated = translate_response_request(json!({
         "model": "gpt-compatible",
         "input": [{
             "type": "message",
@@ -867,13 +864,20 @@ fn d2_ac_007_responses_nested_unsupported_content_has_a_field_receipt() {
             "content": [{"type": "input_file", "file_id": "file_123"}]
         }]
     }))
-    .expect_err("input_file has no D2 canonical owner");
+    .expect("input_file should remain in native Responses transport");
 
-    assert_openai_unsupported_feature(error.clone(), "input");
-    assert!(error.report.has_decision(
-        "$.input[0].content[0].type",
-        TranslationDecisionKind::Unsupported
-    ));
+    assert!(translated
+        .report
+        .has_decision("$.input[0]", TranslationDecisionKind::Exact));
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("input_file should remain in ephemeral provider transport");
+    assert_eq!(
+        payload.wire_body()["input"][0]["content"][0]["type"],
+        "input_file"
+    );
 }
 
 #[test]
@@ -898,8 +902,8 @@ fn d2_ac_001_chat_content_part_unknown_field_is_rejected_with_its_own_receipt() 
 }
 
 #[test]
-fn d2_ac_001_responses_content_part_unknown_field_is_rejected_with_its_own_receipt() {
-    let error = translate_response_request(json!({
+fn d4_ac_016_responses_unknown_content_field_remains_exact_in_native_transport() {
+    let mut translated = translate_response_request(json!({
         "model": "gpt-compatible",
         "input": [{
             "type": "message",
@@ -911,12 +915,20 @@ fn d2_ac_001_responses_content_part_unknown_field_is_rejected_with_its_own_recei
             }]
         }]
     }))
-    .expect_err("an unknown Responses content-part field has no canonical owner");
+    .expect("unknown Responses content fields should remain in native transport");
 
-    assert!(error.report.has_decision(
-        "$.input[0].content[0].<unknown>[0]",
-        TranslationDecisionKind::Rejected
-    ));
+    assert!(translated
+        .report
+        .has_decision("$.input[0]", TranslationDecisionKind::Exact));
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("unknown content field should remain ephemeral");
+    assert_eq!(
+        payload.wire_body()["input"][0]["content"][0]["unexpected"],
+        "must not reach canonical history"
+    );
 }
 
 #[test]

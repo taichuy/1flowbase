@@ -115,6 +115,7 @@ function dependencies({ failAt } = {}) {
         },
       };
     },
+    writeProtocolEvidence() { calls.push('protocol:evidence'); },
     async runCliSmoke(options) { calls.push(['smoke', options]); if (failAt === 'smoke') throw new Error('smoke failed'); return { status: 'pass' }; },
     writeSnapshot() { calls.push('snapshot:write'); },
     writeResult(_root, result) { calls.push(['result', result.status]); },

@@ -2893,17 +2893,26 @@ mod tests {
     }
 
     #[test]
-    fn codex_reasoning_encrypted_content_include_is_an_optional_hint() {
-        let translated = translate_response_request(json!({
+    fn d4_ac_016_reasoning_encrypted_content_include_is_exact_native_transport() {
+        let mut translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": ["reasoning.encrypted_content"]
         }))
-        .expect("Codex encrypted reasoning include is optional for Native responses");
+        .expect("encrypted reasoning include should remain in native Responses transport");
 
         assert!(translated
             .report
-            .has_decision("$.include", TranslationDecisionKind::Dropped));
+            .has_decision("$.include", TranslationDecisionKind::Exact));
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("include should remain in ephemeral provider transport");
+        assert_eq!(
+            payload.wire_body()["include"][0],
+            "reasoning.encrypted_content"
+        );
     }
 
     #[test]
@@ -2965,50 +2974,66 @@ mod tests {
     }
 
     #[test]
-    fn responses_unknown_include_remains_explicitly_unsupported() {
-        let error = translate_response_request(json!({
+    fn d4_ac_016_unknown_include_remains_exact_in_native_transport() {
+        let mut translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": ["message.output_text"]
         }))
-        .expect_err("unknown include projections must not be silently dropped");
+        .expect("unknown include projections should remain in native Responses transport");
 
-        assert_eq!(error.param.as_deref(), Some("include"));
-        assert!(error
+        assert!(translated
             .report
-            .has_decision("$.include", TranslationDecisionKind::Unsupported));
+            .has_decision("$.include", TranslationDecisionKind::Exact));
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("include should remain in ephemeral provider transport");
+        assert_eq!(payload.wire_body()["include"][0], "message.output_text");
     }
 
     #[test]
-    fn responses_include_requires_an_array_of_strings() {
-        let error = translate_response_request(json!({
+    fn d4_ac_016_untyped_include_remains_exact_in_native_transport() {
+        let mut translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": "reasoning.encrypted_content"
         }))
-        .expect_err("include must retain its array wire type");
+        .expect("untyped include should remain opaque in native Responses transport");
 
-        assert_eq!(error.param.as_deref(), Some("include"));
-        assert_eq!(error.code, "invalid_request");
-        assert!(error
+        assert!(translated
             .report
-            .has_decision("$.include", TranslationDecisionKind::Rejected));
+            .has_decision("$.include", TranslationDecisionKind::Exact));
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("untyped include should remain in ephemeral provider transport");
+        assert_eq!(
+            payload.wire_body()["include"],
+            "reasoning.encrypted_content"
+        );
     }
 
     #[test]
-    fn responses_parallel_tool_calls_true_remains_explicitly_unsupported() {
-        let error = translate_response_request(json!({
+    fn d4_ac_016_parallel_tool_calls_true_remains_exact_in_native_transport() {
+        let mut translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "parallel_tool_calls": true
         }))
-        .expect_err("Native execution cannot promise parallel tool calls");
+        .expect("parallel tool calls should remain in native Responses transport");
 
-        assert_eq!(error.param.as_deref(), Some("parallel_tool_calls"));
-        assert!(error.report.has_decision(
-            "$.parallel_tool_calls",
-            TranslationDecisionKind::Unsupported
-        ));
+        assert!(translated
+            .report
+            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Exact));
+        let payload = translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .expect("parallel tool calls should remain in ephemeral provider transport");
+        assert_eq!(payload.wire_body()["parallel_tool_calls"], true);
     }
 
     #[test]

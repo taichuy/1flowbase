@@ -38,6 +38,9 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
     runWireAudit: dependencies.runWireAudit || runWireAudit,
     runGatewayCharacterize: dependencies.runGatewayCharacterize || runGatewayCharacterize,
     runCliSmoke: dependencies.runCliSmoke || runCliSmoke,
+    writeProtocolEvidence: dependencies.writeProtocolEvidence || ((root, name, value) => {
+      system.writeJson(path.join(root, name), value);
+    }),
     writeResult: dependencies.writeResult || system.writeResult,
     writeSnapshot: dependencies.writeSnapshot || ((root, snapshot) => {
       system.writeJson(path.join(root, 'controlled-upstream-finally.json'), snapshot);
@@ -82,7 +85,7 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
     readyFile = deps.writeReadyManifest(evidenceRoot, fixture.result);
     const secretCanary = 'sk-1flowbase-controlled-secret-canary';
     const wireAudit = await deps.runWireAudit({ manifest: wireAuditManifest(fixture.result) }, { secretCanary });
-    system.writeJson(path.join(evidenceRoot, 'wire-audit.json'), wireAudit);
+    deps.writeProtocolEvidence(evidenceRoot, 'wire-audit.json', wireAudit);
     const characterize = await deps.runGatewayCharacterize(characterizeOptions({
       repoRoot: evidenceRoot,
       ready: fixture.result,

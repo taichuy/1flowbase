@@ -38,6 +38,15 @@ function requireRepositoryState(name, contract) {
   return { name, path: contract.path, revision, clean: true };
 }
 
+function requireRepositoryRevision(name, contract) {
+  const revision = git(contract.path, ['rev-parse', 'HEAD'], { label: `${name} revision check` });
+  const expected = contract.revision === 'HEAD'
+    ? revision
+    : git(contract.path, ['rev-parse', contract.revision], { label: `${name} expected revision check` });
+  if (revision !== expected) throw new Error(`${name} revision mismatch`);
+  return { name, path: contract.path, revision, clean: null };
+}
+
 function requireSourceObject(name, contract) {
   git(contract.repository, ['cat-file', '-e', `${contract.revision}^{commit}`], {
     label: `${name} local source object check`,
@@ -81,7 +90,9 @@ async function verifyFsWatch() {
 }
 
 async function preflight(manifest) {
-  const repositories = Object.entries(manifest.repo).map(([name, value]) => requireRepositoryState(name, value));
+  const repositories = Object.entries(manifest.repo).map(([name, value]) => value.require_clean === false
+    ? requireRepositoryRevision(name, value)
+    : requireRepositoryState(name, value));
   const sources = Object.entries(manifest.sources).map(([name, value]) => requireSourceObject(name, value));
   const artifacts = verifyChecksums(manifest);
   for (const name of ['apiServer', 'pluginRunner', 'codex', 'claude', 'opencode']) {
@@ -229,6 +240,7 @@ module.exports = {
   preflight,
   probeDatabase,
   requireRepositoryState,
+  requireRepositoryRevision,
   requireSourceObject,
   writeJson,
   writeReadyManifest,
