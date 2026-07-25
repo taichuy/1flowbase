@@ -106,10 +106,6 @@ async function createPublishedApplication(client, provider, ordinal = 1) {
 
   const orchestration = await client.read(`/api/console/applications/${applicationId}/orchestration`);
   const document = configureDraft(orchestration.data?.draft?.document, provider);
-  const generateTargetNodeId = document.graph.nodes.find((node) => node.type === 'llm')?.id;
-  if (typeof generateTargetNodeId !== 'string' || !generateTargetNodeId) {
-    throw new Error('application draft omitted a Generate target node');
-  }
   await client.write(`/api/console/applications/${applicationId}/orchestration/draft`, 'PUT', {
     document,
     change_kind: 'logical',
@@ -129,14 +125,6 @@ async function createPublishedApplication(client, provider, ordinal = 1) {
       usage_selector: null,
       files_selector: null,
       error_selector: null,
-    },
-    operation_bindings: {
-      generate: { target_node_id: generateTargetNodeId },
-      count_tokens: null,
-      compact: {
-        responses_compact: null,
-        responses_compaction_v2: null,
-      },
     },
   };
   const publication = await client.write(

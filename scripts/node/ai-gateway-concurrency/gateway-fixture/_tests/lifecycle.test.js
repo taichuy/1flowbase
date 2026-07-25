@@ -261,25 +261,10 @@ test('publication source binds Generate for Responses, Chat Completions, and Ant
   ];
   for (const [protocol, publication] of protocolPublications) {
     assert.ok(publication, `${protocol} publication write must exist`);
-    const draft = FakeOwnerClient.calls.find(
-      (call) => call.kind === 'write'
-        && call.pathname.startsWith(publication.pathname.replace('/api-publications', ''))
-        && call.pathname.endsWith('/orchestration/draft')
-    );
-    const generateTargetNodeId = draft.body.document.graph.nodes.find(
-      (node) => node.type === 'llm'
-    ).id;
-    assert.deepEqual(
-      publication.body.mapping.operation_bindings,
-      {
-        generate: { target_node_id: generateTargetNodeId },
-        count_tokens: null,
-        compact: {
-          responses_compact: null,
-          responses_compaction_v2: null,
-        },
-      },
-      `${protocol} must publish the backend Generate operation target`
+    assert.equal(
+      Object.hasOwn(publication.body.mapping, 'operation_bindings'),
+      false,
+      `${protocol} must route through the published workflow without a second target`
     );
   }
 });
