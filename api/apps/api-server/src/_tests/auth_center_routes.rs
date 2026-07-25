@@ -874,8 +874,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
     assert_eq!(
         authenticator["config_values"]["extension_config"],
         json!({
-            "issuer_url": "https://idp.example.com",
-            "allow_signup": true
+            "issuer_url": "https://idp.example.com"
         })
     );
 
