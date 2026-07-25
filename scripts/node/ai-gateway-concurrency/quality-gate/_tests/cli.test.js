@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -40,4 +41,10 @@ test("quality gate inventory contains the four blocking protocol harness suites"
       suite,
     );
   }
+});
+
+test("release gate vendors Swagger UI instead of downloading a GitHub archive during Cargo build", () => {
+  const repoRoot = path.resolve(__dirname, "../../../../../");
+  const cargo = fs.readFileSync(path.join(repoRoot, "api/Cargo.toml"), "utf8");
+  assert.match(cargo, /utoipa-swagger-ui = \{ version = "8", features = \["axum", "vendored"\] \}/u);
 });
