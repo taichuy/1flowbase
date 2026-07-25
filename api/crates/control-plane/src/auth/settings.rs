@@ -40,14 +40,18 @@ pub struct CopyAuthCenterAuthenticatorCommand {
     pub sort_order: Option<i32>,
 }
 
-pub struct UpdateAuthCenterAuthenticatorCommand {
+pub struct UpdateAuthCenterAuthenticatorConfigCommand {
     pub authenticator_id: Uuid,
     pub title: String,
     pub enabled: bool,
     pub description: Option<Option<String>>,
     pub self_registration_enabled: bool,
-    pub public_ui_block: String,
     pub extension_config: Option<Map<String, Value>>,
+}
+
+pub struct UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
+    pub authenticator_id: Uuid,
+    pub public_ui_block: String,
 }
 
 pub struct AuthCenterSettingsService<R> {
@@ -210,15 +214,14 @@ where
         Ok(authenticator)
     }
 
-    pub async fn update_authenticator(
+    pub async fn update_authenticator_config(
         &self,
         actor: &domain::ActorContext,
-        command: UpdateAuthCenterAuthenticatorCommand,
+        command: UpdateAuthCenterAuthenticatorConfigCommand,
     ) -> Result<domain::AuthenticatorRecord> {
         self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
             .await?;
         validate_authenticator_title(&command.title)?;
-        validate_public_ui_block(&command.public_ui_block)?;
         let mut authenticator = self
             .repository
             .find_authenticator(command.authenticator_id)
@@ -226,7 +229,6 @@ where
             .ok_or(ControlPlaneError::NotFound("authenticator"))?;
         authenticator.title = command.title;
         authenticator.enabled = command.enabled;
-        authenticator.public_ui_block = command.public_ui_block;
         if let Some(description) = command.description {
             upsert_description(&mut authenticator.options, description);
         }
@@ -239,6 +241,26 @@ where
                 command.self_registration_enabled,
             );
         }
+        self.repository
+            .update_authenticator_config(&authenticator)
+            .await?;
+        Ok(authenticator)
+    }
+
+    pub async fn update_authenticator_public_ui_block(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpdateAuthCenterAuthenticatorPublicUiBlockCommand,
+    ) -> Result<domain::AuthenticatorRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
+            .await?;
+        validate_public_ui_block(&command.public_ui_block)?;
+        let mut authenticator = self
+            .repository
+            .find_authenticator(command.authenticator_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("authenticator"))?;
+        authenticator.public_ui_block = command.public_ui_block;
         self.repository
             .update_authenticator_config(&authenticator)
             .await?;

@@ -90,6 +90,7 @@ const authCenterApi = vi.hoisted(() => ({
   fetchSettingsAuthCenterOverview: vi.fn(),
   enableSettingsAuthCenterAuthenticator: vi.fn(),
   updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
+  updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
   createSettingsAuthCenterAuthenticator: vi.fn(),
   copySettingsAuthCenterAuthenticator: vi.fn(),
   deleteSettingsAuthCenterAuthenticator: vi.fn(),

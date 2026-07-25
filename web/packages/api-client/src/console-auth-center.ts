@@ -32,6 +32,7 @@ export interface ConsoleAuthCenterAuthenticator {
   enabled: boolean;
   is_builtin: boolean;
   sort_order: number;
+  public_ui_block: string;
   interface_path_prefixes: string[];
   public_variables: Record<string, unknown> | null;
   context_variables: ConsoleAuthCenterContextVariable[];
@@ -44,8 +45,11 @@ export interface ConsoleAuthCenterAuthenticatorConfigInput {
   enabled: boolean;
   description?: string | null;
   self_registration_enabled: boolean;
-  public_ui_block: string;
   extension_config: Record<string, unknown>;
+}
+
+export interface ConsoleAuthCenterAuthenticatorPublicUiBlockInput {
+  public_ui_block: string;
 }
 
 export interface ConsoleAuthCenterOverview {
@@ -156,6 +160,21 @@ export function updateConsoleAuthCenterAuthenticatorConfig(
 ): Promise<ConsoleAuthCenterAuthenticator> {
   return apiFetch<ConsoleAuthCenterAuthenticator>({
     path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/config`,
+    method: 'PUT',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleAuthCenterAuthenticatorPublicUiBlock(
+  authenticatorId: string,
+  input: ConsoleAuthCenterAuthenticatorPublicUiBlockInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleAuthCenterAuthenticator> {
+  return apiFetch<ConsoleAuthCenterAuthenticator>({
+    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/public-ui-block`,
     method: 'PUT',
     body: input,
     csrfToken,
