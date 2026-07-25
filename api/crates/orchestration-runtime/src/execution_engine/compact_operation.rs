@@ -31,7 +31,7 @@ where
 
     match invoker.compact(runtime, input).await {
         Ok(result) if result.satisfies_profile(expected_profile) => {
-            let receipt = CompactResponseReceipt::from_provider_result(result)?;
+            let receipt = CompactOperationReceipt::from_provider_result(result)?;
             Ok(LlmNodeExecution {
                 output_payload: receipt.as_payload()?,
                 error_payload: None,

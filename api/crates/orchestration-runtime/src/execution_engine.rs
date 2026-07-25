@@ -23,11 +23,11 @@ use crate::{
     },
     compiled_plan::{
         CompiledEdge, CompiledLlmRuntime, CompiledNode, CompiledPlan, CompiledPluginRuntime,
-        LlmRoutingMode, StartCompactDispatch, COMPACT_SOURCE_HANDLE_ID,
+        LlmRoutingMode,
     },
     execution_state::{
-        compact_response_receipt_from_traces, count_tokens_receipt_from_traces,
-        CheckpointSnapshot, CompactResponseReceipt, CountTokensReceipt, ExecutionIncompleteReason,
+        compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
+        CheckpointSnapshot, CompactOperationReceipt, CountTokensReceipt, ExecutionIncompleteReason,
         ExecutionStopReason, FlowDebugExecutionOutcome, NativeOperationTerminal,
         NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask, PendingHumanInput,
     },
@@ -472,41 +472,6 @@ where
     .await
 }
 
-fn application_flow_compact_start_node_id(
-    plan: &CompiledPlan,
-    runtime_context: &ExecutionRuntimeContext,
-) -> Result<Option<String>> {
-    if runtime_context.compact_response_ingress().is_none() {
-        return Ok(None);
-    }
-
-    // A Compact ingress reaches this engine only after the published route
-    // explicitly selected application-flow dispatch. Revalidate the compiled
-    // shape here as a defense for old or manually constructed plan records.
-    crate::compiler::ensure_plan_execution_contract(plan)?;
-
-    let start_nodes = plan
-        .nodes
-        .values()
-        .filter(|node| node.node_type == "start")
-        .collect::<Vec<_>>();
-    if start_nodes.len() != 1 {
-        bail!("application-flow Compact execution requires exactly one start node");
-    }
-
-    let start = start_nodes[0];
-    if StartCompactDispatch::from_start_config(&start.config)?
-        != StartCompactDispatch::ApplicationFlow
-    {
-        bail!(
-            "typed Compact ingress reached a transparent Start node {}; transparent Compact routing must bypass the AgentFlow engine",
-            start.node_id
-        );
-    }
-
-    Ok(Some(start.node_id.clone()))
-}
-
 async fn execute_from<I>(
     plan: &CompiledPlan,
     next_node_index: usize,
@@ -525,7 +490,6 @@ where
     let mut pending_failure: Option<NodeExecutionFailure> = None;
     let mut active_node_ids = active_node_ids.unwrap_or_else(|| initial_active_node_ids(plan));
     let mounted_llm_target_node_ids = visible_internal_llm_tool_target_node_ids(plan);
-    let compact_start_node_id = application_flow_compact_start_node_id(plan, runtime_context)?;
 
     for (index, node_id) in plan
         .topological_order
@@ -593,11 +557,6 @@ where
 
         match node.node_type.as_str() {
             "start" | "workflow_start" => {
-                if node.node_type == "start"
-                    && compact_start_node_id.as_deref() == Some(node.node_id.as_str())
-                {
-                    selected_source_handle = Some(COMPACT_SOURCE_HANDLE_ID.to_string());
-                }
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
@@ -622,26 +581,6 @@ where
                     output_payload,
                     error_payload: None,
                     metrics_payload: json!({ "preview_mode": true }),
-                    debug_payload: json!({}),
-                    provider_events: Vec::new(),
-                });
-            }
-            "compact_response" => {
-                let ingress = runtime_context.compact_response_ingress().ok_or_else(|| {
-                    anyhow!(
-                        "compact_response node {} cannot execute without a typed Compact ingress",
-                        node.node_id
-                    )
-                })?;
-                let output_payload = ingress.receipt().as_payload()?;
-                node_traces.push(NodeExecutionTrace {
-                    node_id: node.node_id.clone(),
-                    node_type: node.node_type.clone(),
-                    node_alias: node.alias.clone(),
-                    input_payload: Value::Object(resolved_inputs),
-                    output_payload,
-                    error_payload: None,
-                    metrics_payload: json!({ "semantic_terminal": "compact_response" }),
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
@@ -1085,9 +1024,9 @@ where
                         error_payload,
                     }),
                     variable_pool,
-                            checkpoint_snapshot: None,
-                            operation_terminal: None,
-                            node_traces,
+                    checkpoint_snapshot: None,
+                    operation_terminal: None,
+                    node_traces,
                 });
             }
         }
@@ -1103,9 +1042,9 @@ where
         return Ok(FlowDebugExecutionOutcome {
             stop_reason: ExecutionStopReason::Failed(failure),
             variable_pool,
-                            checkpoint_snapshot: None,
-                            operation_terminal: None,
-                            node_traces,
+            checkpoint_snapshot: None,
+            operation_terminal: None,
+            node_traces,
         });
     }
 
@@ -1115,7 +1054,7 @@ where
             count_tokens_receipt_from_traces(&node_traces)?,
         )),
         domain::AiNativeOperation::Compact(_) => Some(NativeOperationTerminal::Compact(
-            compact_response_receipt_from_traces(&node_traces)?,
+            compact_operation_receipt_from_traces(&node_traces)?,
         )),
     };
 

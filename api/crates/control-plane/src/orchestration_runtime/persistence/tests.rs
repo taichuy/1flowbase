@@ -187,8 +187,7 @@ fn canonical_native_operation_terminal_wins_over_later_ordinary_node_payload() {
             "result": { "operation": "count_tokens", "input_tokens": 41 }
         }),
         json!({
-            "semantic_terminal": "compact_response",
-            "profile": "responses_compact",
+            "semantic_terminal": "compact",
             "result": {
                 "result_type": "response_items",
                 "operation": "compact",

@@ -515,10 +515,7 @@ async fn create_response_for_endpoint(
             let run = create_native_run(state.clone(), credential.token.clone(), request).await?;
             let run = native::execute_blocking_native_run(state, credential.token, run).await?;
             let result = match run.operation_terminal.as_ref() {
-                Some(NativeOperationTerminal::Compact(receipt)) => receipt
-                    .compact_result()
-                    .cloned()
-                    .ok_or_else(compact::unexpected_compact_result_error)?,
+                Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
                 _ => return Err(native::blocking_run_projection_error(&run).into()),
             };
 

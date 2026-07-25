@@ -2,9 +2,8 @@ use orchestration_runtime::answer_projection::{
     answer_segments_from_value, AnswerProjectionSegment, ANSWER_SEGMENTS_KEY,
 };
 use domain::{AiNativeCompactProfile, AiNativeOperation};
-use orchestration_runtime::execution_state::{
-    CompactResponseProfile, NativeOperationTerminal,
-};
+use orchestration_runtime::execution_state::NativeOperationTerminal;
+use plugin_framework::provider_contract::ProviderCompactProfile;
 use serde_json::{json, Value};
 
 use crate::application_public_api::native::{self, NativeRunResult, NativeRunStatus};
@@ -181,11 +180,11 @@ fn native_operation_terminal(
         (
             AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompact),
             NativeOperationTerminal::Compact(receipt),
-        ) if receipt.profile() == CompactResponseProfile::ResponsesCompact => Some(terminal),
+        ) if receipt.profile() == ProviderCompactProfile::ResponsesCompact => Some(terminal),
         (
             AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompactionV2),
             NativeOperationTerminal::Compact(receipt),
-        ) if receipt.profile() == CompactResponseProfile::ResponsesCompactionV2 => Some(terminal),
+        ) if receipt.profile() == ProviderCompactProfile::ResponsesCompactionV2 => Some(terminal),
         _ => None,
     }
 }

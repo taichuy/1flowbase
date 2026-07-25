@@ -542,8 +542,8 @@ async fn selected_llm_branch_emits_typed_compact_terminal_for_both_profiles() {
         .await
         .expect("selected Compact consumer should complete");
 
-        let receipt = compact_response_receipt_from_traces(&outcome.node_traces).unwrap();
-        assert_eq!(receipt.compact_result(), Some(&compact_result(profile)));
+        let receipt = compact_operation_receipt_from_traces(&outcome.node_traces).unwrap();
+        assert_eq!(receipt.result(), &compact_result(profile));
         let captured = captured.lock().expect("capture mutex poisoned");
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].operation, ProviderWireOperation::Compact);

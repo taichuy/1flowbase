@@ -30,7 +30,7 @@ use crate::{
         ExecutionRuntimeContext, LlmRoutingCounterStore, ProviderInvocationOutput, ProviderInvoker,
     },
     execution_state::{
-        compact_response_receipt_from_traces, count_tokens_receipt_from_traces,
+        compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
         ExecutionStopReason,
     },
 };
@@ -1117,7 +1117,6 @@ fn provider_output(result: ProviderInvocationResult) -> ProviderInvocationOutput
 
 mod answer_and_failover;
 mod branches;
-mod compact_response;
 mod failures_and_parameters;
 mod http_request;
 mod human_and_tool_resume;
