@@ -24,6 +24,7 @@ async function installProvider(client, archivePath, expectedProviderCode) {
 }
 
 async function createProviderInstance(client, installation, upstreamBaseUrl, model, ordinal = 1) {
+  const fixtureSuffix = crypto.randomBytes(5).toString('hex');
   const providerBaseUrl = installation.provider_code === 'openai'
     ? `${upstreamBaseUrl}/v1`
     : upstreamBaseUrl;
@@ -38,7 +39,7 @@ async function createProviderInstance(client, installation, upstreamBaseUrl, mod
     'POST',
     {
       installation_id: installation.installation_id,
-      display_name: `Gateway fixture ${installation.provider_code} ${ordinal}`,
+      display_name: `Gateway fixture ${installation.provider_code} ${ordinal} ${fixtureSuffix}`,
       configured_models: [{
         model_id: model,
         enabled: true,

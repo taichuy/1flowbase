@@ -79,6 +79,9 @@ function fixtureManifest() {
 
 test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready-manifest keys once', async () => {
   const inputs = fixtureInputs();
+  const staleArtifact = path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/stale-secret.json');
+  fs.mkdirSync(path.dirname(staleArtifact), { recursive: true });
+  fs.writeFileSync(staleArtifact, 'stale secret from a prior cycle');
   const calls = [];
   const result = await runWorkflowContract(inputs, {
     createMockUpstream() {
@@ -90,6 +93,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       };
     },
     async createGatewayFixture(options) {
+      assert.equal(fs.existsSync(staleArtifact), false);
       calls.push(['fixture:create', options.upstreamBaseUrl, options.artifactRoot]);
       return {
         result: fixtureManifest(),
