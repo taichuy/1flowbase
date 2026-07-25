@@ -826,3 +826,36 @@ async fn llm_json_schema_response_rejects_invalid_structured_output() {
 
     assert!(error.to_string().contains("invalid structured LLM output"));
 }
+#[tokio::test]
+async fn generate_llm_consumer_rejects_non_generate_operations_before_provider_invocation() {
+    for operation in [
+        json!({"kind": "count_tokens", "profile": null}),
+        json!({"kind": "compact", "profile": "responses_compact"}),
+    ] {
+        let invoker = successful_invoker();
+        let captured = invoker.captured_input.clone();
+        let outcome = start_flow_debug_run(
+            &base_plan(),
+            &json!({
+                "node-start": {
+                    "query": "unsupported operation",
+                    "operation": operation
+                }
+            }),
+            &invoker,
+        )
+        .await
+        .unwrap();
+
+        let llm_trace = outcome
+            .node_traces
+            .iter()
+            .find(|trace| trace.node_id == "node-llm")
+            .expect("LLM consumer must emit a typed failure trace");
+        assert_eq!(
+            llm_trace.error_payload.as_ref().unwrap()["error_code"],
+            "ai_native_operation_unsupported"
+        );
+        assert!(captured.lock().expect("input mutex poisoned").is_none());
+    }
+}

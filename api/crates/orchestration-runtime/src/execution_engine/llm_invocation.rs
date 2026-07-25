@@ -110,6 +110,7 @@ pub(super) fn build_provider_invocation(
     variable_pool: &Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<BuiltProviderInvocation, Value> {
+    let operation = generate_provider_operation(runtime_context.operation())?;
     let previous_response_id =
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
     let context_policy = llm_context_policy(node, runtime);
@@ -173,7 +174,7 @@ pub(super) fn build_provider_invocation(
     }
 
     let mut input = ProviderInvocationInput {
-        operation: ProviderWireOperation::Generate,
+        operation,
         contract_version: Default::default(),
         profile: None,
         provider_instance_id: runtime.provider_instance_id.clone(),
@@ -207,6 +208,25 @@ pub(super) fn build_provider_invocation(
         input,
         debug_context,
     })
+}
+
+fn generate_provider_operation(
+    operation: domain::AiNativeOperation,
+) -> Result<ProviderWireOperation, Value> {
+    match operation {
+        domain::AiNativeOperation::Generate(_) => Ok(ProviderWireOperation::Generate),
+        domain::AiNativeOperation::CountTokens | domain::AiNativeOperation::Compact(_) => {
+            Err(json!({
+                "error_code": "ai_native_operation_unsupported",
+                "message": format!(
+                    "AI Native operation {} is not supported by the Generate LLM consumer",
+                    operation.kind()
+                ),
+                "operation": serde_json::to_value(operation)
+                    .expect("canonical AI Native operation must serialize"),
+            }))
+        }
+    }
 }
 
 pub(super) fn prompt_messages_from_provider_messages(messages: &[ProviderMessage]) -> Vec<Value> {

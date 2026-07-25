@@ -201,6 +201,65 @@ async fn run_branch_plan(input_payload: Value, include_else_if_edge: bool) -> Ve
 }
 
 #[tokio::test]
+async fn selected_llm_branch_is_the_only_canonical_generate_consumer() {
+    let mut plan = branch_plan(true, None);
+    let llm_template = base_plan()
+        .nodes
+        .get("node-llm")
+        .expect("base plan must contain an LLM node")
+        .clone();
+    for node_id in ["node-if-answer", "node-elseif-answer", "node-else-answer"] {
+        let mut llm = llm_template.clone();
+        llm.node_id = node_id.to_string();
+        llm.alias = node_id.to_string();
+        llm.dependency_node_ids = vec!["node-if".to_string()];
+        llm.downstream_node_ids = Vec::new();
+        plan.nodes.insert(node_id.to_string(), llm);
+    }
+
+    let (invoker, captured_inputs) =
+        sequential_tool_output_invoker(vec![ProviderInvocationOutput {
+            events: vec![ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Stop,
+            }],
+            result: ProviderInvocationResult {
+                final_content: Some("selected".to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        }]);
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": {
+                "query": "route this request",
+                "status": "vip",
+                "segment": "enterprise-a",
+                "model": "requested/model",
+                "operation": {"kind": "generate", "profile": "local_summary"}
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let traced_nodes = outcome
+        .node_traces
+        .iter()
+        .map(|trace| trace.node_id.as_str())
+        .collect::<Vec<_>>();
+    assert!(traced_nodes.contains(&"node-if-answer"));
+    assert!(!traced_nodes.contains(&"node-elseif-answer"));
+    assert!(!traced_nodes.contains(&"node-else-answer"));
+    let captured = captured_inputs.lock().expect("inputs mutex poisoned");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].operation, ProviderWireOperation::Generate);
+}
+
+#[tokio::test]
 async fn if_else_runs_first_matching_if_branch() {
     let traces = run_branch_plan(
         json!({ "node-start": { "status": "vip", "segment": "enterprise-a" } }),

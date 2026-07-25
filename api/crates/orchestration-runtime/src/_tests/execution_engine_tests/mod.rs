@@ -10,7 +10,7 @@ use plugin_framework::{
     provider_contract::{
         ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
         ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage,
+        ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Value};
