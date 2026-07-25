@@ -7,8 +7,8 @@ use axum::{
 };
 use control_plane::auth::settings::{
     AuthCenterSettingsOverview, AuthCenterSettingsService, CopyAuthCenterAuthenticatorCommand,
-    CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorCommand,
-    AUTH_CENTER_HOST_CONFIG_KEYS,
+    CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorConfigCommand,
+    UpdateAuthCenterAuthenticatorPublicUiBlockCommand, AUTH_CENTER_HOST_CONFIG_KEYS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -65,6 +65,7 @@ pub struct AuthCenterAuthenticatorResponse {
     pub enabled: bool,
     pub is_builtin: bool,
     pub sort_order: i32,
+    pub public_ui_block: String,
     pub interface_path_prefixes: Vec<String>,
     pub public_variables: Option<Map<String, Value>>,
     pub context_variables: Vec<AuthCenterContextVariableResponse>,
@@ -105,8 +106,12 @@ pub struct UpdateAuthCenterAuthenticatorConfigBody {
     pub enabled: bool,
     pub description: Option<Option<String>>,
     pub self_registration_enabled: bool,
-    pub public_ui_block: String,
     pub extension_config: Option<Map<String, Value>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateAuthCenterAuthenticatorPublicUiBlockBody {
+    pub public_ui_block: String,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -156,6 +161,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/auth-center/authenticators/:id/config",
             console_put(
                 update_auth_center_authenticator_config,
+                ConsoleOperation("auth_center.authenticators.update".to_string()),
+            ),
+        )
+        .route(
+            "/settings/auth-center/authenticators/:id/public-ui-block",
+            console_put(
+                update_auth_center_authenticator_public_ui_block,
                 ConsoleOperation("auth_center.authenticators.update".to_string()),
             ),
         )
@@ -215,7 +227,10 @@ fn auth_center_config_schema_from_options(
     let mut fields: Vec<AuthCenterConfigFieldResponse> =
         serde_json::from_value(control_plane::auth::public_ui::auth_common_config_form_schema())
             .expect("core auth center config schema must be valid");
-    for field in provider_fields {
+    for field in provider_fields
+        .into_iter()
+        .filter(|field| field.key != "public_ui_block")
+    {
         if !fields.iter().any(|existing| existing.key == field.key) {
             fields.push(field);
         }
@@ -260,10 +275,6 @@ fn auth_center_config_response_values(
             .get("self_registration_enabled")
             .cloned()
             .unwrap_or(Value::Bool(false)),
-    );
-    values.insert(
-        "public_ui_block".to_string(),
-        Value::String(authenticator.public_ui_block.clone()),
     );
     values.insert(
         "extension_config".to_string(),
@@ -312,6 +323,7 @@ fn to_auth_center_authenticator_response(
         enabled: authenticator.enabled,
         is_builtin: authenticator.is_builtin,
         sort_order: authenticator.sort_order,
+        public_ui_block: authenticator.public_ui_block,
         interface_path_prefixes: vec![crate::routes::PUBLIC_API_PATH_PREFIX.to_string()],
         public_variables,
         context_variables,
@@ -574,16 +586,53 @@ pub async fn update_auth_center_authenticator_config(
         state.store.clone(),
         state.authenticator_registry.clone(),
     )
-    .update_authenticator(
+    .update_authenticator_config(
         &context.actor,
-        UpdateAuthCenterAuthenticatorCommand {
+        UpdateAuthCenterAuthenticatorConfigCommand {
             authenticator_id: id,
             title: body.title,
             enabled: body.enabled,
             description: body.description,
             self_registration_enabled: body.self_registration_enabled,
-            public_ui_block: body.public_ui_block,
             extension_config: body.extension_config,
+        },
+    )
+    .await?;
+
+    Ok(Json(ApiSuccess::new(
+        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref()),
+    )))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/settings/auth-center/authenticators/{id}/public-ui-block",
+    request_body = UpdateAuthCenterAuthenticatorPublicUiBlockBody,
+    responses(
+        (status = 200, body = AuthCenterAuthenticatorResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn update_auth_center_authenticator_public_ui_block(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(body): Json<UpdateAuthCenterAuthenticatorPublicUiBlockBody>,
+) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let authenticator = AuthCenterSettingsService::with_registry(
+        state.store.clone(),
+        state.authenticator_registry.clone(),
+    )
+    .update_authenticator_public_ui_block(
+        &context.actor,
+        UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
+            authenticator_id: id,
+            public_ui_block: body.public_ui_block,
         },
     )
     .await?;

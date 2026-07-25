@@ -1,8 +1,4 @@
-import {
-  BarsOutlined,
-  DeleteOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import { BarsOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState, type DragEvent } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +37,7 @@ import {
   reorderSettingsAuthCenterAuthenticators,
   settingsAuthCenterOverviewQueryKey,
   updateSettingsAuthCenterAuthenticatorConfig,
+  updateSettingsAuthCenterAuthenticatorPublicUiBlock,
   type SettingsAuthCenterOverview
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
@@ -61,7 +58,6 @@ type AuthenticatorConfigFormValues = {
   enabled: boolean;
   description: string | null;
   self_registration_enabled: boolean;
-  public_ui_block: string;
   extension_config: Record<string, unknown>;
 };
 
@@ -104,11 +100,16 @@ function toAuthenticatorConfigFormValues(
   row: AuthenticatorRow
 ): AuthenticatorConfigFormValues {
   const commonKeys = new Set([
-    'title', 'description', 'enabled', 'self_registration_enabled'
+    'title',
+    'description',
+    'enabled',
+    'self_registration_enabled'
   ]);
   const extension_config = Object.fromEntries(
     row.config_schema
-      .filter((field) => !commonKeys.has(field.key) && values[field.key] !== undefined)
+      .filter(
+        (field) => !commonKeys.has(field.key) && values[field.key] !== undefined
+      )
       .map((field) => [field.key, values[field.key]])
   );
   return {
@@ -117,19 +118,19 @@ function toAuthenticatorConfigFormValues(
     description:
       typeof values.description === 'string' ? values.description : null,
     self_registration_enabled: values.self_registration_enabled === true,
-    public_ui_block:
-      typeof row.config_values.public_ui_block === 'string'
-        ? row.config_values.public_ui_block
-        : '',
     extension_config
   };
 }
 
 function isPluginFormValue(value: unknown): value is PluginFormValue {
-  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return true;
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value))
+    return true;
   if (Array.isArray(value)) return value.every(isPluginFormValue);
-  return typeof value === 'object' && value !== null &&
-    Object.values(value).every(isPluginFormValue);
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.values(value).every(isPluginFormValue)
+  );
 }
 
 function authCenterLifecycleErrorMessage(error: unknown, fallbackKey: string) {
@@ -156,7 +157,6 @@ function AuthenticatorConfigDrawer({
   canManageAuthenticators,
   hasCsrfToken,
   submitting,
-  errorMessage,
   onClose,
   onSubmit
 }: {
@@ -165,7 +165,6 @@ function AuthenticatorConfigDrawer({
   canManageAuthenticators: boolean;
   hasCsrfToken: boolean;
   submitting: boolean;
-  errorMessage: string | null;
   onClose: () => void;
   onSubmit: (
     authenticatorId: string,
@@ -182,28 +181,22 @@ function AuthenticatorConfigDrawer({
     [authenticator]
   );
   const schema = useMemo(
-    () => authenticator
-      ? authCenterConfigFormSchema(authenticator)
-      : { schema_version: '1.0.0', fields: [] },
+    () =>
+      authenticator
+        ? authCenterConfigFormSchema(authenticator)
+        : { schema_version: '1.0.0', fields: [] },
     [authenticator]
   );
 
-  const statusMessages = [
-    accessErrorMessage
-      ? {
+  const statusMessages = accessErrorMessage
+    ? [
+        {
           key: 'access-error',
           message: accessErrorMessage,
           type: 'error' as const
         }
-      : null,
-    errorMessage
-      ? {
-          key: 'submit-error',
-          message: errorMessage,
-          type: 'error' as const
-        }
-      : null
-  ].filter((message) => message != null);
+      ]
+    : [];
 
   return authenticator ? (
     <SchemaFormDrawer
@@ -225,7 +218,10 @@ function AuthenticatorConfigDrawer({
       resizeLabel="调整认证器配置抽屉宽度"
       onCancel={onClose}
       onSubmit={(values) =>
-        onSubmit(authenticator.id, toAuthenticatorConfigFormValues(values, authenticator))
+        onSubmit(
+          authenticator.id,
+          toAuthenticatorConfigFormValues(values, authenticator)
+        )
       }
     />
   ) : null;
@@ -301,10 +297,7 @@ export function SettingsAuthCenterSection() {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return enableSettingsAuthCenterAuthenticator(
-        authenticatorId,
-        csrfToken
-      );
+      return enableSettingsAuthCenterAuthenticator(authenticatorId, csrfToken);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -332,7 +325,6 @@ export function SettingsAuthCenterSection() {
           enabled: input.values.enabled,
           description: input.values.description,
           self_registration_enabled: input.values.self_registration_enabled,
-          public_ui_block: input.values.public_ui_block,
           extension_config: input.values.extension_config
         },
         csrfToken
@@ -352,7 +344,40 @@ export function SettingsAuthCenterSection() {
             : overview
       );
       setSelectedAuthenticatorId(null);
-      setSelectedUiAuthenticatorId(null);
+      await queryClient.invalidateQueries({
+        queryKey: settingsAuthCenterOverviewQueryKey
+      });
+    }
+  });
+  const publicUiBlockMutation = useMutation({
+    mutationFn: (input: { authenticatorId: string; publicUiBlock: string }) => {
+      if (!canManageAuthenticators) {
+        throw new Error(
+          i18nText('settings', 'auto.auth_center_manage_permission_required')
+        );
+      }
+      if (!csrfToken) {
+        throw new Error(i18nText('settings', 'auto.auth_center_csrf_required'));
+      }
+      return updateSettingsAuthCenterAuthenticatorPublicUiBlock(
+        input.authenticatorId,
+        { public_ui_block: input.publicUiBlock },
+        csrfToken
+      );
+    },
+    onSuccess: async (authenticator) => {
+      queryClient.setQueryData<SettingsAuthCenterOverview>(
+        settingsAuthCenterOverviewQueryKey,
+        (overview) =>
+          overview
+            ? {
+                ...overview,
+                authenticators: overview.authenticators.map((row) =>
+                  row.id === authenticator.id ? authenticator : row
+                )
+              }
+            : overview
+      );
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
@@ -518,10 +543,7 @@ export function SettingsAuthCenterSection() {
               onDragStart={(event) => {
                 event.stopPropagation();
                 event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData(
-                  AUTH_CENTER_DRAG_DATA_TYPE,
-                  row.id
-                );
+                event.dataTransfer.setData(AUTH_CENTER_DRAG_DATA_TYPE, row.id);
                 setDraggedAuthenticatorId(row.id);
               }}
             />
@@ -586,7 +608,7 @@ export function SettingsAuthCenterSection() {
             type="link"
             size="small"
             onClick={() => {
-              configMutation.reset();
+              publicUiBlockMutation.reset();
               setSelectedUiAuthenticatorId(row.id);
             }}
           >
@@ -636,9 +658,7 @@ export function SettingsAuthCenterSection() {
   ];
 
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-    >
+    <SettingsSectionSurface heightMode="fill">
       {overviewQuery.isLoading ? <LoadingState compact /> : null}
       {overviewQuery.isError ? (
         <Alert
@@ -703,7 +723,10 @@ export function SettingsAuthCenterSection() {
                 const sourceAuthenticatorId = getDraggedAuthenticatorId(event);
                 setDraggedAuthenticatorId(null);
                 setDragOverAuthenticatorId(null);
-                if (!sourceAuthenticatorId || sourceAuthenticatorId === row.id) {
+                if (
+                  !sourceAuthenticatorId ||
+                  sourceAuthenticatorId === row.id
+                ) {
                   return;
                 }
 
@@ -721,11 +744,6 @@ export function SettingsAuthCenterSection() {
         canManageAuthenticators={canManageAuthenticators}
         hasCsrfToken={csrfToken != null}
         submitting={configMutation.isPending}
-        errorMessage={
-          configMutation.isError
-            ? i18nText('settings', 'auto.auth_center_config_update_failed')
-            : null
-        }
         onClose={() => {
           configMutation.reset();
           setSelectedAuthenticatorId(null);
@@ -735,15 +753,7 @@ export function SettingsAuthCenterSection() {
             configMutation.mutate(
               { authenticatorId, values },
               {
-                onError: () =>
-                  reject(
-                    new Error(
-                      i18nText(
-                        'settings',
-                        'auto.auth_center_config_update_failed'
-                      )
-                    )
-                  ),
+                onError: (error) => reject(error),
                 onSuccess: () => resolve()
               }
             );
@@ -768,15 +778,15 @@ export function SettingsAuthCenterSection() {
           }
           publicVariables={selectedUiAuthenticator.public_variables}
           selfRegistrationEnabled={
-            selectedUiAuthenticator.config_values
-              .self_registration_enabled === true
+            selectedUiAuthenticator.config_values.self_registration_enabled ===
+            true
           }
           workspaceId={actor?.current_workspace_id ?? ''}
           errorMessage={
-            configMutation.isError
-              ? configMutation.error instanceof Error &&
-                configMutation.error.message.trim().length > 0
-                ? configMutation.error.message
+            publicUiBlockMutation.isError
+              ? publicUiBlockMutation.error instanceof Error &&
+                publicUiBlockMutation.error.message.trim().length > 0
+                ? publicUiBlockMutation.error.message
                 : i18nText(
                     'settings',
                     'auto.auth_center_public_ui_update_failed'
@@ -785,43 +795,18 @@ export function SettingsAuthCenterSection() {
           }
           open={selectedUiAuthenticatorId != null}
           readOnly={!canManageAuthenticators || csrfToken == null}
-          saving={configMutation.isPending}
-          source={
-            typeof selectedUiAuthenticator.config_values.public_ui_block ===
-            'string'
-              ? selectedUiAuthenticator.config_values.public_ui_block
-              : ''
-          }
+          saving={publicUiBlockMutation.isPending}
+          source={selectedUiAuthenticator.public_ui_block}
           onClose={() => {
-            configMutation.reset();
+            publicUiBlockMutation.reset();
             setSelectedUiAuthenticatorId(null);
           }}
           onSave={async (publicUiBlock) => {
-            const extensionConfig =
-              selectedUiAuthenticator.config_values.extension_config;
             await new Promise<void>((resolve, reject) => {
-              configMutation.mutate(
+              publicUiBlockMutation.mutate(
                 {
                   authenticatorId: selectedUiAuthenticator.id,
-                  values: {
-                    title: selectedUiAuthenticator.title,
-                    enabled: selectedUiAuthenticator.enabled,
-                    description:
-                      typeof selectedUiAuthenticator.config_values
-                        .description === 'string'
-                        ? selectedUiAuthenticator.config_values.description
-                        : null,
-                    self_registration_enabled:
-                      selectedUiAuthenticator.config_values
-                        .self_registration_enabled === true,
-                    public_ui_block: publicUiBlock,
-                    extension_config:
-                      extensionConfig &&
-                      typeof extensionConfig === 'object' &&
-                      !Array.isArray(extensionConfig)
-                        ? extensionConfig as Record<string, unknown>
-                        : {}
-                  }
+                  publicUiBlock
                 },
                 {
                   onError: (error) => reject(error),
@@ -834,10 +819,7 @@ export function SettingsAuthCenterSection() {
       ) : null}
       <Modal
         open={isLifecycleModalOpen}
-        title={i18nText(
-          'settings',
-          'auto.auth_center_create_authenticator'
-        )}
+        title={i18nText('settings', 'auto.auth_center_create_authenticator')}
         okText={i18nText('settings', 'auto.save')}
         cancelText={i18nText('settings', 'auto.cancel')}
         confirmLoading={createMutation.isPending}

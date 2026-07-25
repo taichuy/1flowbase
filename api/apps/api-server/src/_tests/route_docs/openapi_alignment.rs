@@ -122,6 +122,8 @@ async fn openapi_contains_auth_center_lifecycle_schemas() {
 
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
+    assert!(payload["paths"].as_object().is_some_and(|paths| paths
+        .contains_key("/api/console/settings/auth-center/authenticators/{id}/public-ui-block")));
     let components = payload["components"]["schemas"]
         .as_object()
         .cloned()
@@ -131,11 +133,24 @@ async fn openapi_contains_auth_center_lifecycle_schemas() {
         "CreateAuthCenterAuthenticatorBody",
         "CopyAuthCenterAuthenticatorBody",
         "ReorderAuthCenterAuthenticatorsBody",
+        "UpdateAuthCenterAuthenticatorConfigBody",
+        "UpdateAuthCenterAuthenticatorPublicUiBlockBody",
         "PublicLoginInstanceResponse",
         "PublicLoginInstancesResponse",
     ] {
         assert!(components.contains_key(schema), "missing schema {schema}");
     }
+    assert!(
+        components["UpdateAuthCenterAuthenticatorConfigBody"]["properties"]
+            .as_object()
+            .is_some_and(|properties| !properties.contains_key("public_ui_block"))
+    );
+    assert_eq!(
+        components["UpdateAuthCenterAuthenticatorPublicUiBlockBody"]["properties"]
+            .as_object()
+            .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["public_ui_block".to_string()])
+    );
 }
 
 #[tokio::test]
