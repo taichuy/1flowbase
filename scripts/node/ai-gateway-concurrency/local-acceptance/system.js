@@ -222,12 +222,30 @@ function writeResult(evidenceRoot, result) {
   ].join('\n'), { mode: 0o600 });
 }
 
-async function cleanupTmux() {
-  const socketRoot = path.join(os.tmpdir(), `tmux-${process.getuid()}`);
-  if (!fs.existsSync(socketRoot)) return;
-  const prefix = `oneflowbase-stream-${process.pid}-`;
-  for (const socket of fs.readdirSync(socketRoot).filter((name) => name.startsWith(prefix))) {
-    try { command('tmux', ['-L', socket, 'kill-server'], { label: 'owned tmux cleanup' }); } catch {}
+async function cleanupTmux(options = {}) {
+  const socketRoot = options.socketRoot || path.join(os.tmpdir(), `tmux-${process.getuid()}`);
+  const prefix = options.prefix || `oneflowbase-stream-${process.pid}-`;
+  const killServer = options.killServer || ((socket) => {
+    command('tmux', ['-L', socket, 'kill-server'], { label: 'owned tmux cleanup' });
+  });
+  const removeSocket = options.removeSocket || ((socketPath) => {
+    fs.rmSync(socketPath, { force: true });
+  });
+  const ownedSockets = () => fs.existsSync(socketRoot)
+    ? fs.readdirSync(socketRoot).filter((name) => name.startsWith(prefix))
+    : [];
+
+  for (const socket of ownedSockets()) {
+    try { killServer(socket); } catch {}
+    const socketPath = path.join(socketRoot, socket);
+    if (fs.existsSync(socketPath)) {
+      try { removeSocket(socketPath); } catch {}
+    }
+  }
+
+  const residue = ownedSockets();
+  if (residue.length) {
+    throw new Error(`owned tmux cleanup left residue: ${residue.join(', ')}`);
   }
 }
 
