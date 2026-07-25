@@ -175,7 +175,7 @@ async function runCliSmoke(rawOptions, dependencies = {}) {
 
     const inventory = loadPinnedInventory();
     writeJson(path.join(outputRoot, 'wire-inventory.json'), inventory);
-    const wireAudit = inputs.manifest.controlledUpstream
+    const wireAudit = !rawOptions.skipWireAudit && inputs.manifest.controlledUpstream
       ? await (dependencies.runWireAudit || runWireAudit)(inputs, {
         fetchImpl,
         secretCanary,

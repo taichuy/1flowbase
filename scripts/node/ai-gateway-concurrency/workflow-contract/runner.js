@@ -132,6 +132,31 @@ function wireAuditManifest(ready) {
   };
 }
 
+function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot }) {
+  return {
+    repoRoot,
+    endpointSet: {
+      [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
+      [TRANSPORT.RESPONSES_WEBSOCKET]: `${websocketBaseUrl}/v1/responses`,
+      [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.gateway.anthropic_messages_url,
+    },
+    authorizationTokenByTransport: {
+      [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.api_key,
+      [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.api_key,
+    },
+    modelByTransport: {
+      [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.model,
+      [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.model,
+    },
+    mockSnapshot,
+    durableTargetsByTransport: {
+      [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
+      [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
+    },
+    anthropicTargetPool: ready.pools.anthropic,
+  };
+}
+
 async function runWorkflowContract(rawOptions, dependencies = {}) {
   const inputs = normalizeRunInputs(rawOptions);
   const paths = prepareEvidence(inputs.repoRoot);
@@ -168,28 +193,12 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     });
     writeJson(path.join(paths.root, 'wire-audit.json'), wireAudit);
 
-    characterizeResult = await characterize({
+    characterizeResult = await characterize(characterizeOptions({
       repoRoot: inputs.repoRoot,
-      endpointSet: {
-        [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
-        [TRANSPORT.RESPONSES_WEBSOCKET]: mockEndpoints.websocketBaseUrl + '/v1/responses',
-        [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.gateway.anthropic_messages_url,
-      },
-      authorizationTokenByTransport: {
-        [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.api_key,
-        [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.api_key,
-      },
-      modelByTransport: {
-        [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.model,
-        [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.model,
-      },
+      ready,
+      websocketBaseUrl: mockEndpoints.websocketBaseUrl,
       mockSnapshot: mock.snapshot,
-      durableTargetsByTransport: {
-        [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
-        [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
-      },
-      anthropicTargetPool: ready.pools.anthropic,
-    });
+    }));
     if (characterizeResult.summary.verdict !== 'PASS') {
       throw new Error(`gateway characterize verdict was ${characterizeResult.summary.verdict}`);
     }
@@ -251,4 +260,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   return result;
 }
 
-module.exports = { readReadyManifest, requireReadyEndpoint, runWorkflowContract, wireAuditManifest };
+module.exports = {
+  characterizeOptions,
+  readReadyManifest,
+  requireReadyEndpoint,
+  runWorkflowContract,
+  wireAuditManifest,
+};

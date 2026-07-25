@@ -39,6 +39,35 @@ function fixtureManifest() {
   };
 }
 
+function fixtureReady() {
+  const target = (provider, ordinal) => ({
+    application_id: `${provider}-app-${ordinal}`,
+    provider_instance_id: `${provider}-provider-${ordinal}`,
+    publication_id: `${provider}-publication-${ordinal}`,
+    api_key: `${provider}-key-${ordinal}`,
+    model: 'fixture-model',
+    gateway: {
+      responses_url: 'http://127.0.0.1:4100/v1/responses',
+      anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages',
+    },
+    durable: { query_run: {}, list_runs: {} },
+    runtime_activity: {},
+    plugin_runner_active_streams: {},
+  });
+  const anthropic = [target('anthropic', 1), target('anthropic', 2)];
+  return {
+    schema_version: '1flowbase.ai-gateway-fixture/v1',
+    targets: { openai: target('openai', 1), anthropic: anthropic[0] },
+    pools: { anthropic },
+    controlled_upstream: {
+      snapshot_url: 'http://127.0.0.1:4000/__control/snapshot',
+      barrier_release_url: 'http://127.0.0.1:4000/__control/barrier/release',
+      network_observer_url: 'http://127.0.0.1:4000/__observer/mcp-network',
+      gateway_executor_observer_url: 'http://127.0.0.1:4000/__observer/gateway-executor',
+    },
+  };
+}
+
 function dependencies({ failAt } = {}) {
   const calls = [];
   const cleanup = [];
@@ -61,7 +90,7 @@ function dependencies({ failAt } = {}) {
     createMockUpstream(options) {
       calls.push(['mock:create', options]);
       return {
-        async start() { calls.push('mock:start'); return { httpBaseUrl: 'http://127.0.0.1:4000' }; },
+        async start() { calls.push('mock:start'); return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },
         snapshot() { return { active: 0, entries: [] }; },
         async stop() { cleanup.push('mock'); },
       };
@@ -69,9 +98,23 @@ function dependencies({ failAt } = {}) {
     async createGatewayFixture() {
       calls.push('fixture:create');
       if (failAt === 'fixture') throw new Error('fixture failed');
-      return { result: { schema_version: '1flowbase.ai-gateway-fixture/v1' }, async close() { cleanup.push('fixture'); } };
+      return { result: fixtureReady(), async close() { cleanup.push('fixture'); } };
     },
     writeReadyManifest() { calls.push('ready:write'); return '/evidence/ready.json'; },
+    async runWireAudit() {
+      calls.push('protocol:wire-audit');
+      if (failAt === 'protocol') throw new Error('protocol failed');
+      return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } };
+    },
+    async runGatewayCharacterize() {
+      calls.push('protocol:characterize');
+      return {
+        summary: {
+          verdict: 'PASS', totals: { requests: 237, contractFailures: 0 },
+          durableConvergence: { verdict: 'PASS', rows: 25 },
+        },
+      };
+    },
     async runCliSmoke(options) { calls.push(['smoke', options]); if (failAt === 'smoke') throw new Error('smoke failed'); return { status: 'pass' }; },
     writeSnapshot() { calls.push('snapshot:write'); },
     writeResult(_root, result) { calls.push(['result', result.status]); },
@@ -90,7 +133,9 @@ test('AC-003/014/027/028: one attempt probes the exact URL then runs all clients
   const probe = calls.find((call) => Array.isArray(call) && call[0] === 'database:probe');
   const smoke = calls.find((call) => Array.isArray(call) && call[0] === 'smoke')[1];
   assert.equal(probe[1], 'postgres://role:password@127.0.0.1:35432/database');
+  assert.equal(result.protocol.characterize.verdict, 'PASS');
   assert.equal(smoke.tmuxTiming, true);
+  assert.equal(smoke.skipWireAudit, true);
   assert.equal(smoke.opencodeExecutable, '/bin/opencode');
   assert.equal(smoke.codexSourceRoot, '/detached/codex');
   assert.equal(smoke.opencodeSourceRoot, '/detached/opencode');
@@ -98,12 +143,22 @@ test('AC-003/014/027/028: one attempt probes the exact URL then runs all clients
   assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
 });
 
-test('AC-027 controlled negative: every runtime failure still executes the complete owned cleanup stack', async () => {
+test('AC-029: local client diagnostic failure is reported but does not fail the protocol gate', async () => {
   const { deps, calls, cleanup } = dependencies({ failAt: 'smoke' });
   const result = await runLocalAcceptance({}, deps);
-  assert.equal(result.status, 'fail');
+  assert.equal(result.status, 'pass');
+  assert.equal(result.protocol.status, 'pass');
+  assert.equal(result.clients.status, 'fail');
   assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
   assert.equal(calls.filter((call) => call === 'fixture:create').length, 1);
+});
+
+test('AC-027 controlled negative: protocol failure still executes the complete owned cleanup stack', async () => {
+  const { deps, cleanup } = dependencies({ failAt: 'protocol' });
+  const result = await runLocalAcceptance({}, deps);
+  assert.equal(result.status, 'fail');
+  assert.equal(result.clients, null);
+  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
 });
 
 test('AC-028 controlled negatives: preflight and same-URL probe fail before runtime', async () => {
