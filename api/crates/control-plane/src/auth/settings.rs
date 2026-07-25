@@ -12,6 +12,14 @@ use crate::{
 
 use super::AuthenticatorRegistry;
 
+pub const AUTH_CENTER_HOST_CONFIG_KEYS: &[&str] = &[
+    "title",
+    "description",
+    "enabled",
+    "self_registration_enabled",
+    "public_ui_block",
+];
+
 pub struct AuthCenterSettingsOverview {
     pub default_authenticator_id: Uuid,
     pub supported_auth_types: Vec<String>,
@@ -388,15 +396,7 @@ fn replace_extension_config(
         .filter_map(|field| field.get("key").and_then(Value::as_str))
         .collect::<HashSet<_>>();
     if extension_config.keys().any(|key| {
-        !allowed_keys.contains(key.as_str())
-            || [
-                "title",
-                "description",
-                "enabled",
-                "self_registration_enabled",
-                "public_ui_block",
-            ]
-            .contains(&key.as_str())
+        !allowed_keys.contains(key.as_str()) || AUTH_CENTER_HOST_CONFIG_KEYS.contains(&key.as_str())
     }) {
         return Err(ControlPlaneError::InvalidInput("extension_config").into());
     }

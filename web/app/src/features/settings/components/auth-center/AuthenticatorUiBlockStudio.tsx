@@ -191,7 +191,9 @@ export function AuthenticatorUiBlockStudio({
           source: runSource
         });
       }}
-      onSave={() => void onSave(draft)}
+      onSave={() => {
+        void onSave(draft).catch(() => undefined);
+      }}
       renderResource={(section) => (
         <JsxStudioResourcePanel
           block={authoringBlock}

@@ -774,10 +774,13 @@ export function SettingsAuthCenterSection() {
           workspaceId={actor?.current_workspace_id ?? ''}
           errorMessage={
             configMutation.isError
-              ? i18nText(
-                  'settings',
-                  'auto.auth_center_public_ui_update_failed'
-                )
+              ? configMutation.error instanceof Error &&
+                configMutation.error.message.trim().length > 0
+                ? configMutation.error.message
+                : i18nText(
+                    'settings',
+                    'auto.auth_center_public_ui_update_failed'
+                  )
               : null
           }
           open={selectedUiAuthenticatorId != null}
@@ -821,7 +824,7 @@ export function SettingsAuthCenterSection() {
                   }
                 },
                 {
-                  onError: () => reject(new Error('save failed')),
+                  onError: (error) => reject(error),
                   onSuccess: () => resolve()
                 }
               );

@@ -311,4 +311,32 @@ describe('AuthenticatorUiBlockStudio', () => {
       }
     });
   });
+
+  test('AC-013 keeps editor errors in a content-sized notice row', () => {
+    render(
+      <AuthenticatorUiBlockStudio
+        authenticatorId="password-local"
+        authenticatorTitle="Password"
+        authType="password_local"
+        contextVariables={[]}
+        description={null}
+        enabled
+        errorMessage="invalid input: public_ui_block"
+        interfacePathPrefixes={['/api/public/']}
+        publicVariables={{ title: 'Password', enabled: true }}
+        open
+        readOnly={false}
+        saving={false}
+        selfRegistrationEnabled={false}
+        source="export default { main };"
+        workspaceId="workspace-1"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('alert').parentElement).toHaveClass(
+      'frontstage-jsx-studio__editor-notice'
+    );
+  });
 });
