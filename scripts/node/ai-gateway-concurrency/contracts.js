@@ -20,7 +20,7 @@ const MOCK_ROUTE = Object.freeze({
   ANTHROPIC_MESSAGES: '/v1/messages',
 });
 
-const MOCK_SCENARIO_HEADER = 'x-1flowbase-mock-scenario';
+const MOCK_SCENARIO_SENTINEL_PREFIX = '1flowbase-test-scenario=';
 
 const SUCCESS_TERMINAL = Object.freeze({
   [TRANSPORT.RESPONSES_SSE]: 'response.completed',
@@ -33,6 +33,10 @@ function assertScenario(scenario) {
     throw new Error(`unsupported mock scenario: ${scenario}`);
   }
   return scenario;
+}
+
+function mockScenarioSentinel(scenario) {
+  return `[${MOCK_SCENARIO_SENTINEL_PREFIX}${assertScenario(scenario)}]`;
 }
 
 function assertTransport(transport) {
@@ -55,11 +59,12 @@ function assertDistinctRequestNonces(nonces) {
 
 module.exports = {
   MOCK_ROUTE,
-  MOCK_SCENARIO_HEADER,
+  MOCK_SCENARIO_SENTINEL_PREFIX,
   SCENARIO,
   SUCCESS_TERMINAL,
   TRANSPORT,
   assertDistinctRequestNonces,
   assertScenario,
   assertTransport,
+  mockScenarioSentinel,
 };

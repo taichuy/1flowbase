@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   MOCK_ROUTE,
-  MOCK_SCENARIO_HEADER,
   SCENARIO,
   TRANSPORT,
   assertDistinctRequestNonces,
+  mockScenarioSentinel,
 } = require('../../contracts');
 const { createMockUpstream, wireAuditVectorFromBody } = require('..');
 const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
@@ -228,9 +228,8 @@ test('AC-004/005: slow streams overlap and retain arrival/active/peak evidence',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        [MOCK_SCENARIO_HEADER]: SCENARIO.SLOW,
       },
-      body: JSON.stringify({ model: 'mock-model', stream: true, input: [] }),
+      body: JSON.stringify({ model: 'mock-model', stream: true, input: mockScenarioSentinel(SCENARIO.SLOW) }),
     }).then((response) => response.text());
     await Promise.all([request(), request(), request(), request()]);
     const snapshot = upstream.snapshot();
@@ -247,13 +246,31 @@ test('AC-004: HTTP 500 is explicit and produces no success terminal', async () =
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        [MOCK_SCENARIO_HEADER]: SCENARIO.HTTP_500,
       },
-      body: JSON.stringify({ model: 'mock-model', stream: true, messages: [] }),
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        messages: [{ role: 'user', content: mockScenarioSentinel(SCENARIO.HTTP_500) }],
+      }),
     });
     assert.equal(response.status, 500);
     const evidence = await waitFor(() => upstream.snapshot().entries.find((entry) => entry.outcome === 'http-500'));
     assert.equal(evidence.successTerminalCount, 0);
+  });
+});
+
+test('AC-004 controlled negative: ambiguous scenario sentinels fail closed', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model',
+        input: `${mockScenarioSentinel(SCENARIO.HTTP_500)} ${mockScenarioSentinel(SCENARIO.SLOW)}`,
+      }),
+    });
+    assert.equal(response.status, 400);
+    const payload = await response.json();
+    assert.match(payload.error.message, /multiple scenario sentinels/u);
   });
 });
 
@@ -263,9 +280,11 @@ test('AC-004: stream interruption closes Responses SSE without a success termina
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        [MOCK_SCENARIO_HEADER]: SCENARIO.STREAM_INTERRUPTION,
       },
-      body: JSON.stringify({ model: 'mock-model', stream: true, input: [] }),
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: mockScenarioSentinel(SCENARIO.STREAM_INTERRUPTION),
+      }),
     });
     await assert.rejects(response.text());
     const evidence = await waitFor(() => upstream.snapshot().entries.find((entry) => entry.outcome === 'interrupted'));
@@ -281,9 +300,11 @@ test('AC-004: HTTP cancellation is observed and never produces a success termina
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        [MOCK_SCENARIO_HEADER]: SCENARIO.CANCEL_OBSERVATION,
       },
-      body: JSON.stringify({ model: 'mock-model', stream: true, input: [] }),
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: mockScenarioSentinel(SCENARIO.CANCEL_OBSERVATION),
+      }),
       signal: controller.signal,
     });
     const reader = response.body.getReader();
@@ -299,8 +320,11 @@ test('AC-004: WebSocket response.cancel produces cancelled, never completed', as
   await withMockUpstream(async ({ upstream, websocketBaseUrl }) => {
     const events = await new Promise((resolve, reject) => {
       const received = [];
-      const socket = new WebSocket(`${websocketBaseUrl}${MOCK_ROUTE.RESPONSES}?scenario=${SCENARIO.CANCEL_OBSERVATION}`);
-      socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'response.create', response: {} })));
+      const socket = new WebSocket(`${websocketBaseUrl}${MOCK_ROUTE.RESPONSES}`);
+      socket.addEventListener('open', () => socket.send(JSON.stringify({
+        type: 'response.create',
+        response: { input: mockScenarioSentinel(SCENARIO.CANCEL_OBSERVATION) },
+      })));
       socket.addEventListener('message', (message) => {
         const event = JSON.parse(message.data);
         received.push(event);

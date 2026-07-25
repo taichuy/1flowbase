@@ -3,10 +3,10 @@
 const http = require('node:http');
 const {
   MOCK_ROUTE,
-  MOCK_SCENARIO_HEADER,
   SCENARIO,
   TRANSPORT,
   assertScenario,
+  mockScenarioSentinel,
 } = require('../contracts');
 const {
   anthropicEvents,
@@ -25,7 +25,6 @@ const SAFE_HEADER_NAMES = Object.freeze([
   'content-type',
   'user-agent',
   'x-request-id',
-  MOCK_SCENARIO_HEADER,
 ]);
 const SUCCESS_TERMINALS = new Set(['response.completed', 'message_stop']);
 
@@ -53,13 +52,11 @@ function safeRequestSummary(request, body) {
   };
 }
 
-function scenarioFrom(request, body) {
-  const url = new URL(request.url, 'http://mock.invalid');
-  const scenario = request.headers[MOCK_SCENARIO_HEADER]
-    ?? url.searchParams.get('scenario')
-    ?? body?.metadata?.mock_scenario
-    ?? SCENARIO.NORMAL;
-  return assertScenario(scenario);
+function scenarioFrom(body) {
+  const encoded = JSON.stringify(body);
+  const scenarios = Object.values(SCENARIO).filter((scenario) => encoded.includes(mockScenarioSentinel(scenario)));
+  if (scenarios.length > 1) throw new Error('mock request contains multiple scenario sentinels');
+  return assertScenario(scenarios[0] ?? SCENARIO.NORMAL);
 }
 
 function readJson(request) {
@@ -344,7 +341,7 @@ function createMockUpstream(options = {}) {
         return;
       }
       const body = await readJson(request);
-      const scenario = scenarioFrom(request, body);
+      const scenario = scenarioFrom(body);
       const transport = path === MOCK_ROUTE.RESPONSES
         ? TRANSPORT.RESPONSES_SSE
         : path === MOCK_ROUTE.CHAT_COMPLETIONS ? 'chat-completions-sse' : TRANSPORT.ANTHROPIC_SSE;
@@ -435,7 +432,7 @@ function createMockUpstream(options = {}) {
       }
       if (body.type !== 'response.create' || started) return;
       started = true;
-      scenario = scenarioFrom(request, body.response ?? body);
+      scenario = scenarioFrom(body.response ?? body);
       requestTimeline = timeline.arrive(
         TRANSPORT.RESPONSES_WEBSOCKET,
         scenario,

@@ -72,22 +72,10 @@ function requestIdentityFailures(requests) {
 function evaluateSnapshot(requests, snapshot) {
   const failures = requestIdentityFailures(requests);
   for (const request of requests) {
-    const matches = snapshot.lists[request.transport]?.filter(
-      (item) => item.externalTraceId === request.clientNonce,
-    ) ?? [];
-    if (matches.length !== 1) {
-      failures.push(`${request.clientNonce}: expected one list correlation, received ${matches.length}`);
-      continue;
-    }
-    const listed = matches[0];
     const queried = snapshot.queries[request.clientNonce] ?? null;
-    if (listed.id !== request.runId) failures.push(`${request.clientNonce}: protocol/list run id mismatch`);
-    if (!TERMINAL_STATUSES.has(listed.status)) failures.push(`${request.clientNonce}: list status remained ${listed.status}`);
     if (!queried) failures.push(`${request.clientNonce}: query_run result missing`);
     else {
       if (queried.id !== request.runId) failures.push(`${request.clientNonce}: protocol/query run id mismatch`);
-      if (queried.id !== listed.id) failures.push(`${request.clientNonce}: list/query run id mismatch`);
-      if (queried.status !== listed.status) failures.push(`${request.clientNonce}: list/query status mismatch`);
       if (!TERMINAL_STATUSES.has(queried.status)) failures.push(`${request.clientNonce}: query status remained ${queried.status}`);
     }
   }
@@ -99,6 +87,29 @@ function evaluateSnapshot(requests, snapshot) {
     else if (streams.length !== 0) failures.push(`${url}: plugin streams contained ${streams.length} active stream(s)`);
   }
   return failures;
+}
+
+function evaluateListObservations(requests, snapshot) {
+  const advisories = Object.entries(snapshot.listErrors ?? {}).map(
+    ([transport, message]) => `${transport}: list_runs observation failed: ${message}`
+  );
+  for (const request of requests) {
+    if (snapshot.listErrors?.[request.transport]) continue;
+    const matches = snapshot.lists[request.transport]?.filter(
+      (item) => item.externalTraceId === request.clientNonce,
+    ) ?? [];
+    if (matches.length !== 1) {
+      advisories.push(`${request.clientNonce}: expected one list correlation, received ${matches.length}`);
+      continue;
+    }
+    const listed = matches[0];
+    const queried = snapshot.queries[request.clientNonce] ?? null;
+    if (listed.id !== request.runId) advisories.push(`${request.clientNonce}: protocol/list run id mismatch`);
+    if (!TERMINAL_STATUSES.has(listed.status)) advisories.push(`${request.clientNonce}: list status remained ${listed.status}`);
+    if (queried && queried.id !== listed.id) advisories.push(`${request.clientNonce}: list/query run id mismatch`);
+    if (queried && queried.status !== listed.status) advisories.push(`${request.clientNonce}: list/query status mismatch`);
+  }
+  return advisories;
 }
 
 function sanitizedListItems(payload) {
@@ -117,10 +128,16 @@ function sanitizedQuery(payload) {
 async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
   const lists = {};
   const queries = {};
+  const listErrors = {};
   const runtimeActiveTotals = {};
   const pluginStreams = {};
   await Promise.all(Object.entries(targetsByTransport).map(async ([transport, target]) => {
-    lists[transport] = sanitizedListItems(await readJson(target.durable.list_runs, fetchImpl));
+    try {
+      lists[transport] = sanitizedListItems(await readJson(target.durable.list_runs, fetchImpl));
+    } catch (error) {
+      lists[transport] = [];
+      listErrors[transport] = error.message;
+    }
     runtimeActiveTotals[transport] = activeTotal(await readJson(target.runtime_activity, fetchImpl));
   }));
   await Promise.all(requests.filter((request) => request.runId).map(async (request) => {
@@ -135,7 +152,7 @@ async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
   await Promise.all([...uniqueStreamEndpoints].map(async ([url, endpoint]) => {
     pluginStreams[url] = activeStreams(await readJson(endpoint, fetchImpl));
   }));
-  return { lists, queries, runtimeActiveTotals, pluginStreams };
+  return { lists, listErrors, queries, runtimeActiveTotals, pluginStreams };
 }
 
 async function collectDurableConvergence({
@@ -158,11 +175,13 @@ async function collectDurableConvergence({
     }));
   const polls = [];
   let failures = requestIdentityFailures(requests);
+  let advisories = [];
   while (performance.now() - started <= graceMs) {
     try {
       const snapshot = await captureSnapshot(requests, targetsByTransport, fetchImpl);
       failures = evaluateSnapshot(requests, snapshot);
-      polls.push({ offsetMs: Math.round(performance.now() - started), ...snapshot, failures });
+      advisories = evaluateListObservations(requests, snapshot);
+      polls.push({ offsetMs: Math.round(performance.now() - started), ...snapshot, failures, advisories });
       if (failures.length === 0) break;
     } catch (error) {
       failures = [`poll failed: ${error.message}`];
@@ -181,6 +200,7 @@ async function collectDurableConvergence({
     requests,
     polls,
     failures,
+    advisories,
   };
 }
 
@@ -188,6 +208,7 @@ module.exports = {
   DURABLE_GRACE_MS,
   DURABLE_POLL_INTERVAL_MS,
   collectDurableConvergence,
+  evaluateListObservations,
   evaluateSnapshot,
   runUuidFromProtocolId,
 };

@@ -12,24 +12,30 @@ function markdownReport(summary) {
     `- Verdict: **${summary.verdict}**`,
     `- Profile: \`${summary.profile}\``,
     `- Requests: ${summary.totals.requests}`,
-    `- Contract failures: ${summary.totals.contractFailures}`,
+    `- Blocking correctness requests: ${summary.totals.blockingRequests ?? summary.totals.requests}`,
+    `- Non-blocking performance requests: ${summary.totals.advisoryRequests ?? 0}`,
+    `- Blocking contract failures: ${summary.totals.contractFailures}`,
+    `- Non-blocking advisories: ${summary.totals.advisoryFailures ?? 0}`,
     `- Durable convergence: ${summary.durableConvergence?.verdict ?? 'not-collected'}`,
     `- Peak observed at mock upstream: ${summary.metrics.mockArrivalPeak}`,
     '',
     'Absolute timing values are characterization observations, not performance budgets.',
     '',
-    '| Topology | Barrier | Transport | Scenario | Concurrency | Targets (application/provider instance:requests) | Overlap | Pass | Outcomes | TTFT p50 ms | Total p50 ms | Throughput rps | Mock peak | Derived queue max ms |',
-    '| --- | --- | --- | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |',
+    '| Gate role | Topology | Barrier | Transport | Scenario | Concurrency | Targets (application/provider instance:requests) | Overlap | Pass | Outcomes | TTFT p50 ms | Total p50 ms | Throughput rps | Mock peak | Derived queue max ms |',
+    '| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |',
   ];
   for (const batch of summary.batches) {
     const outcomes = Object.entries(batch.outcomes).map(([name, count]) => `${name}:${count}`).join(', ');
     const targets = Object.entries(batch.targetDistribution ?? {}).map(([id, count]) => `${id}:${count}`).join(', ');
     const overlap = batch.overlapEvidence ? (batch.overlapEvidence.observed ? 'both' : 'missing') : '-';
-    lines.push(`| ${batch.topology ?? 'same-pool'} | ${batch.batchBarrierId ?? '-'} | ${batch.transport} | ${batch.scenario} | ${batch.concurrency} | ${targets || '-'} | ${overlap} | ${batch.pass ? 'yes' : 'no'} | ${outcomes} | ${batch.metrics.ttftP50Ms ?? '-'} | ${batch.metrics.totalLatencyP50Ms ?? '-'} | ${batch.metrics.throughputRps} | ${batch.metrics.mockArrivalPeak ?? '-'} | ${batch.metrics.derivedQueueMaxMs ?? '-'} |`);
+    lines.push(`| ${batch.gateRole ?? 'blocking-correctness'} | ${batch.topology ?? 'same-pool'} | ${batch.batchBarrierId ?? '-'} | ${batch.transport} | ${batch.scenario} | ${batch.concurrency} | ${targets || '-'} | ${overlap} | ${batch.pass ? 'yes' : 'no'} | ${outcomes} | ${batch.metrics.ttftP50Ms ?? '-'} | ${batch.metrics.totalLatencyP50Ms ?? '-'} | ${batch.metrics.throughputRps} | ${batch.metrics.mockArrivalPeak ?? '-'} | ${batch.metrics.derivedQueueMaxMs ?? '-'} |`);
   }
   lines.push('', '## Contract failures', '');
   if (summary.failures.length === 0) lines.push('- None');
   else for (const failure of summary.failures) lines.push(`- ${failure.batch}: ${failure.message}`);
+  lines.push('', '## Non-blocking performance and observability advisories', '');
+  if ((summary.advisories ?? []).length === 0) lines.push('- None');
+  else for (const advisory of summary.advisories) lines.push(`- ${advisory.batch}: ${advisory.message}`);
   lines.push('');
   return `${lines.join('\n')}\n`;
 }

@@ -110,8 +110,15 @@ function dependencies({ failAt } = {}) {
       calls.push('protocol:characterize');
       return {
         summary: {
-          verdict: 'PASS', totals: { requests: 237, contractFailures: 0 },
-          durableConvergence: { verdict: 'PASS', rows: 25 },
+          verdict: 'PASS',
+          totals: {
+            requests: 225,
+            blockingRequests: 29,
+            advisoryRequests: 196,
+            contractFailures: 0,
+            advisoryFailures: 2,
+          },
+          durableConvergence: { verdict: 'PASS', rows: 8, observabilityAdvisories: 2 },
         },
       };
     },
@@ -135,6 +142,9 @@ test('AC-003/014/027/028: one attempt probes the exact URL then runs all clients
   const smoke = calls.find((call) => Array.isArray(call) && call[0] === 'smoke')[1];
   assert.equal(probe[1], 'postgres://role:password@127.0.0.1:35432/database');
   assert.equal(result.protocol.characterize.verdict, 'PASS');
+  assert.equal(result.protocol.characterize.blocking_requests, 29);
+  assert.equal(result.protocol.characterize.performance_requests, 196);
+  assert.equal(result.protocol.characterize.performance_and_observability_advisories, 2);
   assert.equal(smoke.tmuxTiming, true);
   assert.equal(smoke.skipWireAudit, true);
   assert.equal(smoke.opencodeExecutable, '/bin/opencode');

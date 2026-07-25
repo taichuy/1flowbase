@@ -13,10 +13,18 @@ function fixtureSummary() {
     profile: 'characterize',
     verdict: 'PASS',
     performanceBudgetApplied: false,
-    totals: { requests: 1, contractFailures: 0 },
+    totals: {
+      requests: 1,
+      blockingRequests: 1,
+      advisoryRequests: 0,
+      contractFailures: 0,
+      advisoryFailures: 0,
+    },
     metrics: { mockArrivalPeak: 1 },
     failures: [],
+    advisories: [],
     batches: [{
+      gateRole: 'blocking-correctness',
       topology: 'multi-pool',
       batchBarrierId: 'batch-001',
       transport: 'responses-sse',
@@ -63,6 +71,6 @@ test('AC-007: artifacts use the fixed governance paths and valid JSON/JSONL', ()
 test('AC-007: report labels timings as observations without an absolute budget', () => {
   const report = markdownReport(fixtureSummary());
   assert.match(report, /Absolute timing values are characterization observations, not performance budgets\./u);
-  assert.match(report, /multi-pool \| batch-001 \| responses-sse \| normal \| 1/u);
+  assert.match(report, /blocking-correctness \| multi-pool \| batch-001 \| responses-sse \| normal \| 1/u);
   assert.match(report, /application-1\/instance-1:1 \| both/u);
 });

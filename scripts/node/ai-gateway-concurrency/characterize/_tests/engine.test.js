@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { MOCK_ROUTE, MOCK_SCENARIO_HEADER, SCENARIO, TRANSPORT } = require('../../contracts');
+const { MOCK_ROUTE, SCENARIO, TRANSPORT, mockScenarioSentinel } = require('../../contracts');
 const { createMockUpstream } = require('../../mock-upstream');
 const {
   authorizationHeadersByTransport,
@@ -15,7 +15,13 @@ const {
   requireAnthropicTargetPool,
   validateRequestResult,
 } = require('../engine');
-const { CHARACTERIZE_CONCURRENCY, CHARACTERIZE_PLAN, TOPOLOGY } = require('../plan');
+const {
+  CHARACTERIZE_PLAN,
+  CORRECTNESS_CONCURRENCY,
+  GATE_ROLE,
+  PERFORMANCE_CONCURRENCY,
+  TOPOLOGY,
+} = require('../plan');
 
 async function withMock(run) {
   const mock = createMockUpstream({ slowChunkDelayMs: 10, cancelObservationMs: 150 });
@@ -95,7 +101,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
       fetchCalls.push({
         url: String(url),
         authorization: options.headers.authorization,
-        scenario: options.headers[MOCK_SCENARIO_HEADER],
+        prompt: JSON.stringify(JSON.parse(options.body)),
         metadata: JSON.parse(options.body).metadata,
         traceId: JSON.parse(options.body).metadata.trace_id,
         model: JSON.parse(options.body).model,
@@ -140,7 +146,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
       'Bearer responses-key',
       'Bearer anthropic-key',
     ]);
-    assert.deepEqual(fetchCalls.map((call) => call.scenario), [SCENARIO.NORMAL, SCENARIO.NORMAL]);
+    assert.deepEqual(fetchCalls.map((call) => call.prompt.includes(mockScenarioSentinel(SCENARIO.NORMAL))), [true, true]);
     assert.deepEqual(fetchCalls.map((call) => call.metadata), [
       { trace_id: 'load-000001' },
       { trace_id: 'load-000003' },
@@ -157,6 +163,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
     assert.equal(websocketRequests.length, 1);
     assert.equal(websocketRequests[0].response.model, 'mock-model');
     assert.deepEqual(websocketRequests[0].response.metadata, { trace_id: 'load-000002' });
+    assert.equal(JSON.stringify(websocketRequests[0].response).includes(mockScenarioSentinel(SCENARIO.NORMAL)), true);
   });
 });
 
@@ -300,30 +307,62 @@ test('AC multi-pool controlled negatives: missing tuple and duplicate identity/k
   ]]), true);
 });
 
-test('AC-003/004: characterize matrix fixes 1/4/16/32 normal load and finite fault rows', () => {
-  assert.deepEqual(CHARACTERIZE_CONCURRENCY, [1, 4, 16, 32]);
-  for (const concurrency of CHARACTERIZE_CONCURRENCY) {
-    const normalRows = CHARACTERIZE_PLAN.filter((row) => row.scenario === SCENARIO.NORMAL && row.concurrency === concurrency);
+test('AC-003/004: characterize matrix separates blocking correctness from performance observations', () => {
+  assert.deepEqual(CORRECTNESS_CONCURRENCY, [1, 4]);
+  assert.deepEqual(PERFORMANCE_CONCURRENCY, [16, 32]);
+  for (const concurrency of [...CORRECTNESS_CONCURRENCY, ...PERFORMANCE_CONCURRENCY]) {
+    const normalRows = CHARACTERIZE_PLAN.filter((row) => (
+      row.topology === TOPOLOGY.SAME_POOL
+      && row.scenario === SCENARIO.NORMAL
+      && row.concurrency === concurrency
+    ));
     assert.deepEqual(new Set(normalRows.map((row) => row.transport)), new Set(Object.values(TRANSPORT)));
+    assert.equal(
+      normalRows.every((row) => row.gateRole === (
+        CORRECTNESS_CONCURRENCY.includes(concurrency) ? GATE_ROLE.BLOCKING : GATE_ROLE.ADVISORY
+      )),
+      true,
+    );
   }
   for (const scenario of [SCENARIO.SLOW, SCENARIO.CANCEL_OBSERVATION, SCENARIO.HTTP_500, SCENARIO.STREAM_INTERRUPTION]) {
     assert.deepEqual(
-      new Set(CHARACTERIZE_PLAN.filter((row) => row.scenario === scenario).map((row) => row.transport)),
+      new Set(CHARACTERIZE_PLAN.filter((row) => (
+        row.gateRole === GATE_ROLE.BLOCKING && row.scenario === scenario
+      )).map((row) => row.transport)),
       new Set(Object.values(TRANSPORT)),
     );
   }
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.scenario === SCENARIO.SLOW).every((row) => row.concurrency === 4), true);
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => [SCENARIO.CANCEL_OBSERVATION, SCENARIO.HTTP_500, SCENARIO.STREAM_INTERRUPTION].includes(row.scenario)).every((row) => row.concurrency === 1), true);
+  assert.equal(CHARACTERIZE_PLAN.filter((row) => (
+    row.gateRole === GATE_ROLE.BLOCKING && row.scenario !== SCENARIO.NORMAL
+  )).every((row) => row.concurrency === 1), true);
   const multiRows = CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.MULTI_POOL);
-  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency]), [
-    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 1],
-    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 4],
-    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 16],
-    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 32],
-    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4],
+  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency, row.gateRole]), [
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 2, GATE_ROLE.BLOCKING],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 16, GATE_ROLE.ADVISORY],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 32, GATE_ROLE.ADVISORY],
+    [TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4, GATE_ROLE.ADVISORY],
   ]);
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.SAME_POOL).reduce((total, row) => total + row.concurrency, 0), 180);
-  assert.equal(CHARACTERIZE_PLAN.reduce((total, row) => total + row.concurrency, 0), 237);
+  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.BLOCKING).reduce((total, row) => total + row.concurrency, 0), 29);
+  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.ADVISORY).reduce((total, row) => total + row.concurrency, 0), 196);
+  assert.equal(CHARACTERIZE_PLAN.reduce((total, row) => total + row.concurrency, 0), 225);
+});
+
+test('AC-029: non-blocking performance failures remain visible without changing the protocol verdict', async () => {
+  const result = await executeCharacterizePlan({
+    endpointSet: { [TRANSPORT.RESPONSES_SSE]: 'http://127.0.0.1:1/v1/responses' },
+    plan: [{
+      transport: TRANSPORT.RESPONSES_SSE,
+      scenario: SCENARIO.NORMAL,
+      concurrency: 1,
+      gateRole: GATE_ROLE.ADVISORY,
+    }],
+    async fetchImpl() { throw new Error('controlled performance timeout'); },
+    timeoutMs: 10,
+  });
+  assert.equal(result.summary.verdict, 'PASS');
+  assert.equal(result.summary.totals.contractFailures, 0);
+  assert.equal(result.summary.totals.advisoryFailures > 0, true);
+  assert.match(result.summary.advisories.map((item) => item.message).join('\n'), /expected outcome completed/u);
 });
 
 test('AC-003: invalid plan rows fail closed before load generation', async () => {
@@ -333,5 +372,17 @@ test('AC-003: invalid plan rows fail closed before load generation', async () =>
       plan: [{ transport: 'unknown', scenario: SCENARIO.NORMAL, concurrency: 33 }],
     }),
     /unsupported mock transport/u,
+  );
+  await assert.rejects(
+    executeCharacterizePlan({
+      endpointSet: {},
+      plan: [{
+        transport: TRANSPORT.RESPONSES_SSE,
+        scenario: SCENARIO.NORMAL,
+        concurrency: 1,
+        gateRole: 'ignored-failure',
+      }],
+    }),
+    /invalid characterize gate role/u,
   );
 });

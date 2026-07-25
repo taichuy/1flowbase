@@ -101,7 +101,10 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
       characterize: {
         verdict: characterize.summary.verdict,
         requests: characterize.summary.totals.requests,
+        blocking_requests: characterize.summary.totals.blockingRequests,
+        performance_requests: characterize.summary.totals.advisoryRequests,
         contract_failures: characterize.summary.totals.contractFailures,
+        performance_and_observability_advisories: characterize.summary.totals.advisoryFailures,
         durable_convergence: characterize.summary.durableConvergence ?? null,
       },
     };

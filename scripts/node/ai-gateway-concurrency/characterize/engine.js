@@ -3,16 +3,16 @@
 const { performance } = require('node:perf_hooks');
 const {
   MOCK_ROUTE,
-  MOCK_SCENARIO_HEADER,
   SCENARIO,
   SUCCESS_TERMINAL,
   TRANSPORT,
   assertDistinctRequestNonces,
   assertScenario,
   assertTransport,
+  mockScenarioSentinel,
 } = require('../contracts');
 const { createMockUpstream } = require('../mock-upstream');
-const { CHARACTERIZE_PLAN, TOPOLOGY } = require('./plan');
+const { CHARACTERIZE_PLAN, GATE_ROLE, TOPOLOGY } = require('./plan');
 const { collectDurableConvergence } = require('./durable-evidence');
 const { createSseParser, eventText, nonceFromText, protocolEventType, protocolRunId } = require('./stream-parsers');
 const { writeCharacterizeArtifacts } = require('./report');
@@ -52,22 +52,23 @@ function endpointUrl(endpointSet, transport) {
   return url;
 }
 
-function requestBody(transport, clientNonce, model = 'mock-model') {
+function requestBody(transport, scenario, clientNonce, model = 'mock-model') {
   const metadata = { trace_id: clientNonce };
+  const prompt = `concurrency probe ${clientNonce}\n${mockScenarioSentinel(scenario)}`;
   if (transport === TRANSPORT.ANTHROPIC_SSE) {
     return {
       model,
       max_tokens: 32,
       stream: true,
       metadata,
-      messages: [{ role: 'user', content: `concurrency probe ${clientNonce}` }],
+      messages: [{ role: 'user', content: prompt }],
     };
   }
   return {
     model,
     stream: true,
     metadata,
-    input: [{ role: 'user', content: [{ type: 'input_text', text: `concurrency probe ${clientNonce}` }] }],
+    input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
   };
 }
 
@@ -258,10 +259,9 @@ async function runSseRequest({
       headers: {
         accept: 'text/event-stream',
         'content-type': 'application/json',
-        [MOCK_SCENARIO_HEADER]: scenario,
         ...headers,
       },
-      body: JSON.stringify(requestBody(transport, clientNonce, model)),
+      body: JSON.stringify(requestBody(transport, scenario, clientNonce, model)),
       signal: controller.signal,
     });
     httpStatus = response.status;
@@ -337,7 +337,6 @@ function runWebSocketRequest({
 }) {
   const startedAt = performance.now();
   const url = new URL(endpoint);
-  url.searchParams.set('scenario', scenario);
   return new Promise((resolve, reject) => {
     const protocolEvents = [];
     const texts = [];
@@ -376,7 +375,7 @@ function runWebSocketRequest({
     }, timeoutMs);
     socket.addEventListener('open', () => socket.send(JSON.stringify({
       type: 'response.create',
-      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, clientNonce, 'mock-model'),
+      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
     })));
     socket.addEventListener('message', (message) => {
       let event;
@@ -601,6 +600,10 @@ async function executeCharacterizePlan({
     if (![TOPOLOGY.SAME_POOL, TOPOLOGY.MULTI_POOL].includes(topology)) {
       throw new Error(`invalid characterize topology: ${topology}`);
     }
+    const gateRole = row.gateRole ?? GATE_ROLE.BLOCKING;
+    if (!Object.values(GATE_ROLE).includes(gateRole)) {
+      throw new Error(`invalid characterize gate role: ${gateRole}`);
+    }
     const configuredPool = targetPoolsByTransport[row.transport];
     if (topology === TOPOLOGY.MULTI_POOL && (!Array.isArray(configuredPool) || configuredPool.length !== 2)) {
       throw new Error(`multi-pool row requires two targets for ${row.transport}`);
@@ -668,22 +671,32 @@ async function executeCharacterizePlan({
     const after = await waitForMockBatch(before, mockSnapshot, row.concurrency, timeoutMs);
     const evidence = mockBatchEvidence(before, after, results);
     const rowDurableLedgers = [];
-    for (const targetIndex of [...new Set(results.map((result) => result.targetIndex))]) {
+    const durableResults = gateRole === GATE_ROLE.BLOCKING
+      ? results.filter((result) => result.outcome === 'completed')
+      : [];
+    for (const targetIndex of [...new Set(durableResults.map((result) => result.targetIndex))]) {
       const target = pool[targetIndex];
       if (!target?.durableTarget) continue;
       const ledger = await collectDurableConvergence({
-        requestEvents: results.filter((result) => result.targetIndex === targetIndex),
+        requestEvents: durableResults.filter((result) => result.targetIndex === targetIndex),
         targetsByTransport: { [row.transport]: target.durableTarget },
         fetchImpl,
         graceMs: durableGraceMs,
         pollIntervalMs: durablePollIntervalMs,
       });
       rowDurableLedgers.push({ targetIndex, applicationId: target.applicationId, ledger });
-      durableRows.push({ batchBarrierId, topology, transport: row.transport, scenario: row.scenario, targetIndex, ledger });
+      durableRows.push({ batchBarrierId, topology, transport: row.transport, scenario: row.scenario, gateRole, targetIndex, ledger });
     }
     const durableFailures = rowDurableLedgers.flatMap(({ targetIndex, ledger }) =>
       ledger.failures.map((message) => `target ${targetIndex}: ${message}`));
-    const summary = batchSummary({ row: { ...row, topology, batchBarrierId }, results, durationMs, mockEvidence: evidence, overlapEvidence, durableFailures });
+    const summary = batchSummary({
+      row: { ...row, topology, gateRole, batchBarrierId },
+      results,
+      durationMs,
+      mockEvidence: evidence,
+      overlapEvidence,
+      durableFailures,
+    });
     batches.push(summary);
     events.push(...results.map((result) => ({
       kind: 'request',
@@ -702,10 +715,18 @@ async function executeCharacterizePlan({
     }
     events.push(...evidence.arrivalEntries.map((entry) => ({ kind: 'mock-timeline', ...entry })));
   }
-  const failures = batches.flatMap((batch) => batch.failures.map((failure) => ({
+  const blockingFailures = batches
+    .filter((batch) => batch.gateRole === GATE_ROLE.BLOCKING)
+    .flatMap((batch) => batch.failures.map((failure) => ({
     batch: `${batch.topology}/${batch.transport}/${batch.scenario}/c${batch.concurrency}`,
     ...failure,
   })));
+  const advisories = batches
+    .filter((batch) => batch.gateRole === GATE_ROLE.ADVISORY)
+    .flatMap((batch) => batch.failures.map((failure) => ({
+      batch: `${batch.topology}/${batch.transport}/${batch.scenario}/c${batch.concurrency}`,
+      ...failure,
+    })));
   try {
     assertDistinctRequestNonces(events
       .filter((event) => event.kind === 'request')
@@ -714,24 +735,35 @@ async function executeCharacterizePlan({
       .filter((event) => event.kind === 'request' && event.upstreamNonce)
       .map((event) => event.upstreamNonce));
   } catch (error) {
-    failures.push({ batch: 'all-streams', clientNonce: null, message: error.message });
+    blockingFailures.push({ batch: 'all-streams', clientNonce: null, message: error.message });
   }
+  advisories.push(...durableRows.flatMap((row) => (row.ledger.advisories ?? []).map((message) => ({
+    batch: `${row.topology}/${row.transport}/${row.scenario}/durable-list`,
+    clientNonce: null,
+    message,
+  }))));
   const observedPeaks = batches.map((batch) => batch.metrics.mockArrivalPeak).filter((value) => value !== null);
+  const blockingBatches = batches.filter((batch) => batch.gateRole === GATE_ROLE.BLOCKING);
+  const advisoryBatches = batches.filter((batch) => batch.gateRole === GATE_ROLE.ADVISORY);
   return {
     summary: {
       schemaVersion: 1,
       profile: 'characterize',
-      verdict: failures.length === 0 ? 'PASS' : 'FAIL',
+      verdict: blockingFailures.length === 0 ? 'PASS' : 'FAIL',
       performanceBudgetApplied: false,
       totals: {
         requests: batches.reduce((total, batch) => total + batch.concurrency, 0),
-        contractFailures: failures.length,
+        blockingRequests: blockingBatches.reduce((total, batch) => total + batch.concurrency, 0),
+        advisoryRequests: advisoryBatches.reduce((total, batch) => total + batch.concurrency, 0),
+        contractFailures: blockingFailures.length,
+        advisoryFailures: advisories.length,
       },
       metrics: {
         mockArrivalPeak: observedPeaks.length ? Math.max(...observedPeaks) : null,
       },
       batches,
-      failures,
+      failures: blockingFailures,
+      advisories,
     },
     events,
     durableLedger: {
@@ -739,6 +771,7 @@ async function executeCharacterizePlan({
       verdict: durableRows.every((row) => row.ledger.verdict === 'PASS') ? 'PASS' : 'FAIL',
       rows: durableRows,
       failures: durableRows.flatMap((row) => row.ledger.failures),
+      advisories: durableRows.flatMap((row) => row.ledger.advisories ?? []),
     },
   };
 }
@@ -811,6 +844,7 @@ async function runGatewayCharacterize({
     requests: durableLedger.rows.reduce((total, row) => total + row.ledger.requests.length, 0),
     polls: durableLedger.rows.reduce((total, row) => total + row.ledger.polls.length, 0),
     rows: durableLedger.rows.length,
+    observabilityAdvisories: durableLedger.advisories.length,
   };
   return {
     ...result,

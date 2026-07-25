@@ -102,15 +102,28 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       return {
         summary: {
           verdict: 'PASS',
-          totals: { requests: 237, contractFailures: 0 },
-          durableConvergence: { verdict: 'PASS', requests: 177, polls: 25, rows: 25 },
+          totals: {
+            requests: 225,
+            blockingRequests: 29,
+            advisoryRequests: 196,
+            contractFailures: 0,
+            advisoryFailures: 2,
+          },
+          durableConvergence: {
+            verdict: 'PASS', requests: 14, polls: 8, rows: 8, observabilityAdvisories: 2,
+          },
         },
         artifacts: { outputDirectory: path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency') },
       };
     },
   });
   assert.equal(result.status, 'pass');
-  assert.deepEqual(result.characterize.durable_convergence, { verdict: 'PASS', requests: 177, polls: 25, rows: 25 });
+  assert.deepEqual(result.characterize.durable_convergence, {
+    verdict: 'PASS', requests: 14, polls: 8, rows: 8, observabilityAdvisories: 2,
+  });
+  assert.equal(result.characterize.blocking_requests, 29);
+  assert.equal(result.characterize.performance_requests, 196);
+  assert.equal(result.characterize.performance_and_observability_advisories, 2);
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
     'mock:create', 'mock:start', 'fixture:create', 'wire-audit', 'characterize', 'fixture:close', 'mock:stop',
   ]);
@@ -178,7 +191,16 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
     async runWireAudit() { return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } }; },
     async runGatewayCharacterize() {
       return {
-        summary: { verdict: 'PASS', totals: { requests: 237, contractFailures: 0 } },
+        summary: {
+          verdict: 'PASS',
+          totals: {
+            requests: 225,
+            blockingRequests: 29,
+            advisoryRequests: 196,
+            contractFailures: 0,
+            advisoryFailures: 0,
+          },
+        },
         artifacts: { outputDirectory: path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency') },
       };
     },

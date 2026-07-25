@@ -246,7 +246,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     characterize: characterizeResult ? {
       verdict: characterizeResult.summary.verdict,
       requests: characterizeResult.summary.totals.requests,
+      blocking_requests: characterizeResult.summary.totals.blockingRequests,
+      performance_requests: characterizeResult.summary.totals.advisoryRequests,
       contract_failures: characterizeResult.summary.totals.contractFailures,
+      performance_and_observability_advisories: characterizeResult.summary.totals.advisoryFailures,
       durable_convergence: characterizeResult.summary.durableConvergence ?? null,
       artifact_root: path.relative(inputs.repoRoot, characterizeResult.artifacts.outputDirectory),
     } : null,
