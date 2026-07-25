@@ -11,6 +11,7 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
+use domain::AiNativeGenerateProfile;
 use plugin_framework::provider_contract::{ProviderCompactProfile, ProviderInvocationCapability};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -67,7 +68,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     fail_mark_api_key_used: bool,
     published_generate_manifest_capabilities: Option<BTreeSet<ProviderInvocationCapability>>,
     published_generate_capability_checks: usize,
-    published_generate_capability_profiles: Vec<run_service::GenerateExecutionProfile>,
+    published_generate_capability_profiles: Vec<AiNativeGenerateProfile>,
     published_generate_capability_requirements: Vec<BTreeSet<ProviderInvocationCapability>>,
     published_count_tokens_capability_supported: Option<bool>,
     published_count_tokens_capability_checks: usize,
@@ -243,9 +244,7 @@ impl ApplicationPublicApiTestRepository {
             .published_generate_capability_checks
     }
 
-    pub fn published_generate_capability_profiles(
-        &self,
-    ) -> Vec<run_service::GenerateExecutionProfile> {
+    pub fn published_generate_capability_profiles(&self) -> Vec<AiNativeGenerateProfile> {
         self.inner
             .lock()
             .expect("application public api test repo mutex poisoned")

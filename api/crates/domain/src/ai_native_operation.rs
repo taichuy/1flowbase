@@ -40,6 +40,20 @@ impl AiNativeOperation {
         Self::Compact(profile)
     }
 
+    pub fn generate_profile(self) -> Option<AiNativeGenerateProfile> {
+        match self {
+            Self::Generate(profile) => Some(profile),
+            Self::CountTokens | Self::Compact(_) => None,
+        }
+    }
+
+    pub fn compact_profile(self) -> Option<AiNativeCompactProfile> {
+        match self {
+            Self::Compact(profile) => Some(profile),
+            Self::Generate(_) | Self::CountTokens => None,
+        }
+    }
+
     pub fn kind(self) -> &'static str {
         match self {
             Self::Generate(_) => "generate",

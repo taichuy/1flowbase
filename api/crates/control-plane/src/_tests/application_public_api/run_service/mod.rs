@@ -13,8 +13,8 @@ use control_plane::application_public_api::{
     publications::{ApplicationPublicationService, PublishApplicationCommand},
     run_service::{
         ApplicationPublishedRunControlRepository, ApplicationPublishedRunService,
-        GenerateExecutionProfile, PublishedRouteDispatch, PublishedRouteResolutionError,
-        PublishedRouteResolver, ResolvedPublishedRoute,
+        PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
+        ResolvedPublishedRoute,
     },
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
@@ -23,6 +23,7 @@ use control_plane::ports::{
     ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
     ReplaceApplicationEnvironmentVariablesInput,
 };
+use domain::AiNativeGenerateProfile;
 use plugin_framework::provider_contract::{
     NativePromptBlock, ProviderCompactProfile, ProviderWireOperation,
 };

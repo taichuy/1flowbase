@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use domain::AiNativeGenerateProfile;
 use orchestration_runtime::compiled_plan::{CompiledLlmRuntime, CompiledPlan};
 use plugin_framework::provider_contract::{
     ProviderCompactProfile, ProviderInvocationCapability, ProviderWireOperation,
@@ -18,21 +19,6 @@ use plugin_framework::{
 use super::super::publications::ApplicationPublicationVersionRecord;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GenerateExecutionProfile {
-    Standard,
-    LocalSummary,
-}
-
-impl GenerateExecutionProfile {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Standard => "generate",
-            Self::LocalSummary => "local_summary",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublishedRouteDispatch {
     OperationBinding,
     ApplicationFlow,
@@ -41,7 +27,7 @@ pub enum PublishedRouteDispatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedProviderRoute {
     pub operation: ProviderWireOperation,
-    pub profile: GenerateExecutionProfile,
+    pub profile: AiNativeGenerateProfile,
     pub target_node_id: String,
     pub llm_runtime: CompiledLlmRuntime,
 }
@@ -101,7 +87,7 @@ pub trait PublishedProviderManifestCapabilityRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
-        profile: GenerateExecutionProfile,
+        profile: AiNativeGenerateProfile,
         required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool>;
     async fn supports_published_count_tokens(
@@ -132,7 +118,7 @@ where
         &self,
         workspace_id: Uuid,
         runtime: &CompiledLlmRuntime,
-        _profile: GenerateExecutionProfile,
+        _profile: AiNativeGenerateProfile,
         required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool> {
         supports_published_manifest_capabilities(self, workspace_id, runtime, required_capabilities)
@@ -261,7 +247,7 @@ where
         publication: &ApplicationPublicationVersionRecord,
         compiled_plan_record: &domain::CompiledPlanRecord,
         dispatch: PublishedRouteDispatch,
-        profile: GenerateExecutionProfile,
+        profile: AiNativeGenerateProfile,
         required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> std::result::Result<ResolvedPublishedRoute, PublishedRouteResolutionError> {
         if compiled_plan_record.id != publication.compiled_plan_id {

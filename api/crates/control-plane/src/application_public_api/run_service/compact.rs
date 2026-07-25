@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use domain::AiNativeGenerateProfile;
 use orchestration_runtime::{
     compiled_plan::{CompiledLlmRuntime, CompiledPlan, StartCompactDispatch},
     execution_state::CompactResponseIngress,
@@ -21,9 +22,9 @@ use super::super::{
     publications::ApplicationPublicationVersionRecord,
 };
 use super::{
-    GenerateExecutionProfile, PublishedProviderManifestCapabilityRepository,
-    PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
-    ResolvedCompactProviderRoute, ResolvedProviderRoute, ResolvedPublishedRoute,
+    PublishedProviderManifestCapabilityRepository, PublishedRouteDispatch,
+    PublishedRouteResolutionError, PublishedRouteResolver, ResolvedCompactProviderRoute,
+    ResolvedProviderRoute, ResolvedPublishedRoute,
 };
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
@@ -185,7 +186,7 @@ where
                         &publication,
                         &compiled_plan_record,
                         PublishedRouteDispatch::OperationBinding,
-                        GenerateExecutionProfile::LocalSummary,
+                        AiNativeGenerateProfile::LocalSummary,
                         &required_semantic_capabilities,
                     )
                     .await

@@ -40,8 +40,8 @@ mod metadata;
 mod model_parameters;
 
 pub use compaction::{
-    CompactionIntent, CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
-    RemoteCompactionProfile,
+    compaction_intent, operation_result_requirement, CompactionIntent, CompactionProfile,
+    CompactionResultRequirement,
 };
 pub use metadata::NativeRequestMetadata;
 pub(crate) use metadata::ResponsesTransportRequirement;
@@ -742,6 +742,12 @@ impl NativeInputMapper {
             input.inputs_target.as_deref(),
             request.inputs.as_value(),
         )?;
+        write_selector(
+            &mut node_input_payload,
+            &operation_target(input)?,
+            serde_json::to_value(request.execution.execution_operation())
+                .expect("canonical AI Native operation must serialize"),
+        )?;
         if input.inputs_target.is_none() {
             let (start_selector, _) = input.query_target.rsplit_once('.').ok_or_else(|| {
                 NativeInputMappingError::InvalidSelector {
@@ -809,6 +815,20 @@ impl NativeInputMapper {
             metadata: build_run_metadata(request),
         })
     }
+}
+
+fn operation_target(
+    input: &super::mapping::ApplicationApiMappingInput,
+) -> std::result::Result<String, NativeInputMappingError> {
+    if let Some(inputs_target) = &input.inputs_target {
+        return Ok(format!("{inputs_target}.operation"));
+    }
+    let (start_selector, _) = input.query_target.rsplit_once('.').ok_or_else(|| {
+        NativeInputMappingError::InvalidSelector {
+            selector: input.query_target.clone(),
+        }
+    })?;
+    Ok(format!("{start_selector}.operation"))
 }
 
 fn client_protocol_envelope_payload(envelope: &ClientProtocolEnvelope) -> Value {
@@ -1548,8 +1568,41 @@ mod tests {
 
         assert_eq!(mapped.node_input_payload["node-start"]["system"], json!([]));
         assert_eq!(
+            mapped.node_input_payload["node-start"]["operation"],
+            json!({"kind": "generate", "profile": "standard"})
+        );
+        assert_eq!(
             mapped.node_input_payload["node-start"]["history"],
             json!([])
+        );
+    }
+
+    #[test]
+    fn mapper_materializes_only_the_safe_canonical_operation_view() {
+        let request: NativeRunRequest = serde_json::from_value(json!({
+            "query": "compact",
+            "execution": {
+                "operation": {
+                    "kind": "compact",
+                    "profile": "responses_compaction_v2"
+                }
+            }
+        }))
+        .unwrap();
+
+        let mapped =
+            NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
+                .unwrap();
+
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["operation"],
+            json!({"kind": "compact", "profile": "responses_compaction_v2"})
+        );
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["operation"]
+                .as_object()
+                .map(|operation| operation.len()),
+            Some(2)
         );
     }
 

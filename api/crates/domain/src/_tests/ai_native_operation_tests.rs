@@ -47,3 +47,20 @@ fn ai_native_operation_rejects_unknown_kinds_and_profiles() {
         assert!(serde_json::from_value::<AiNativeOperation>(envelope).is_err());
     }
 }
+
+#[test]
+fn ai_native_operation_exposes_only_its_matching_typed_profile() {
+    let generate = AiNativeOperation::generate(AiNativeGenerateProfile::LocalSummary);
+    assert_eq!(
+        generate.generate_profile(),
+        Some(AiNativeGenerateProfile::LocalSummary)
+    );
+    assert_eq!(generate.compact_profile(), None);
+
+    let compact = AiNativeOperation::compact(AiNativeCompactProfile::ResponsesCompact);
+    assert_eq!(compact.generate_profile(), None);
+    assert_eq!(
+        compact.compact_profile(),
+        Some(AiNativeCompactProfile::ResponsesCompact)
+    );
+}

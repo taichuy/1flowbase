@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use domain::AiNativeGenerateProfile;
 use plugin_framework::provider_contract::{
     semantic_required_capabilities, ProviderInvocationCapability,
 };
@@ -16,8 +17,8 @@ use super::{
         ListApplicationPublicConversationMessagesInput,
     },
     native::{
-        CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
-        NativeRunValidationError, ResponsesTransportRequirement,
+        compaction_intent, CreateNativeRunCommand, NativeInputMapper, NativeRunRequest,
+        NativeRunResult, NativeRunValidationError, ResponsesTransportRequirement,
     },
     publications::ApplicationPublicationVersionRecord,
 };
@@ -58,10 +59,9 @@ pub use repository_contracts::{
     PublishedRunStreamState,
 };
 pub use resolved_route::{
-    GenerateExecutionProfile, PublishedProviderManifestCapabilityRepository,
-    PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
-    ResolvedCompactProviderRoute, ResolvedCountTokensProviderRoute, ResolvedProviderRoute,
-    ResolvedPublishedRoute,
+    PublishedProviderManifestCapabilityRepository, PublishedRouteDispatch,
+    PublishedRouteResolutionError, PublishedRouteResolver, ResolvedCompactProviderRoute,
+    ResolvedCountTokensProviderRoute, ResolvedProviderRoute, ResolvedPublishedRoute,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
@@ -125,13 +125,7 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        if command
-            .request
-            .execution
-            .execution_operation()
-            .compaction_intent()
-            .is_none()
-        {
+        if compaction_intent(*command.request.execution.execution_operation()).is_none() {
             return Err(NativeRunValidationError::InvalidMapping);
         }
         self.start_native_run_for_dispatch(command, PublishedRouteDispatch::ApplicationFlow)
@@ -159,7 +153,7 @@ where
             .execution
             .execution_operation()
             .generate_profile()
-            .unwrap_or(GenerateExecutionProfile::Standard);
+            .unwrap_or(AiNativeGenerateProfile::Standard);
         let mut required_provider_capabilities =
             semantic_required_capabilities(&client_request.system, &client_request.request_context);
         if client_request.metadata.responses_transport_requirement()

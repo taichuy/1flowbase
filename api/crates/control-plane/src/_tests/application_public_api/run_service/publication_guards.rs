@@ -372,7 +372,7 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &required_semantic_capabilities,
         )
         .await
@@ -383,7 +383,7 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::LocalSummary,
+            AiNativeGenerateProfile::LocalSummary,
             &required_semantic_capabilities,
         )
         .await
@@ -400,8 +400,8 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
     assert_eq!(
         repository.published_generate_capability_profiles(),
         vec![
-            GenerateExecutionProfile::Standard,
-            GenerateExecutionProfile::LocalSummary,
+            AiNativeGenerateProfile::Standard,
+            AiNativeGenerateProfile::LocalSummary,
         ]
     );
     assert_eq!(
@@ -419,7 +419,7 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::LocalSummary,
+            AiNativeGenerateProfile::LocalSummary,
             &required_semantic_capabilities,
         )
         .await
@@ -432,9 +432,9 @@ async fn generate_profiles_ignore_draft_mutation_and_fail_closed_on_capability_m
     assert_eq!(
         repository.published_generate_capability_profiles(),
         vec![
-            GenerateExecutionProfile::Standard,
-            GenerateExecutionProfile::LocalSummary,
-            GenerateExecutionProfile::LocalSummary,
+            AiNativeGenerateProfile::Standard,
+            AiNativeGenerateProfile::LocalSummary,
+            AiNativeGenerateProfile::LocalSummary,
         ]
     );
     assert_eq!(
@@ -791,7 +791,7 @@ async fn ordinary_generate_never_reaches_the_compact_resolver() {
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &BTreeSet::new(),
         )
         .await
@@ -849,7 +849,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
             &missing_target_publication,
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &BTreeSet::new(),
         )
         .await
@@ -864,7 +864,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
             &publication,
             &incomplete_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &BTreeSet::new(),
         )
         .await
@@ -878,7 +878,7 @@ async fn generate_invalid_targets_fail_before_capability_lookup() {
             &publication,
             &non_llm_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &BTreeSet::new(),
         )
         .await
@@ -925,7 +925,7 @@ async fn explicit_application_flow_dispatch_returns_the_frozen_compiled_plan() {
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::ApplicationFlow,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &BTreeSet::new(),
         )
         .await
@@ -972,7 +972,7 @@ async fn d4_ac_002_application_flow_rejects_native_responses_passthrough_require
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::ApplicationFlow,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &BTreeSet::from([ProviderInvocationCapability::ResponsesNativePassthrough]),
         )
         .await

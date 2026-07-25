@@ -1,4 +1,5 @@
 use super::*;
+use domain::AiNativeGenerateProfile;
 use plugin_framework::provider_contract::{ProviderCompactProfile, ProviderInvocationCapability};
 
 #[async_trait]
@@ -9,7 +10,7 @@ impl run_service::PublishedProviderManifestCapabilityRepository
         &self,
         _workspace_id: Uuid,
         _runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
-        profile: run_service::GenerateExecutionProfile,
+        profile: AiNativeGenerateProfile,
         required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool> {
         let mut inner = self
