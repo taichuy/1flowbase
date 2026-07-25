@@ -1,9 +1,5 @@
 use std::sync::Arc;
 
-use domain::AiNativeGenerateProfile;
-use plugin_framework::provider_contract::{
-    semantic_required_capabilities, ProviderInvocationCapability,
-};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -18,7 +14,7 @@ use super::{
     },
     native::{
         compaction_intent, CreateNativeRunCommand, NativeInputMapper, NativeRunRequest,
-        NativeRunResult, NativeRunValidationError, ResponsesTransportRequirement,
+        NativeRunResult, NativeRunValidationError,
     },
     publications::ApplicationPublicationVersionRecord,
 };
@@ -95,7 +91,6 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
-        + PublishedProviderManifestCapabilityRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {
@@ -114,8 +109,7 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        self.start_native_run_for_dispatch(command, PublishedRouteDispatch::OperationBinding)
-            .await
+        self.start_agentflow_run(command).await
     }
 
     /// Creates the durable shell for a Compact request that has already been
@@ -128,14 +122,12 @@ where
         if compaction_intent(*command.request.execution.execution_operation()).is_none() {
             return Err(NativeRunValidationError::InvalidMapping);
         }
-        self.start_native_run_for_dispatch(command, PublishedRouteDispatch::ApplicationFlow)
-            .await
+        self.start_agentflow_run(command).await
     }
 
-    async fn start_native_run_for_dispatch(
+    async fn start_agentflow_run(
         &self,
         command: CreateNativeRunCommand,
-        route_dispatch: PublishedRouteDispatch,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let mut api_key_service = ApplicationApiKeyService::new(self.repository.clone());
         if let Some(cache) = &self.last_used_cache {
@@ -149,19 +141,6 @@ where
 
         let publication = self.load_enabled_publication(&actor).await?;
         let client_request = command.request;
-        let generate_profile = client_request
-            .execution
-            .execution_operation()
-            .generate_profile()
-            .unwrap_or(AiNativeGenerateProfile::Standard);
-        let mut required_provider_capabilities =
-            semantic_required_capabilities(&client_request.system, &client_request.request_context);
-        if client_request.metadata.responses_transport_requirement()
-            == ResponsesTransportRequirement::NativePassthrough
-        {
-            required_provider_capabilities
-                .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
-        }
         let external_model_parameters = validate_external_model_parameters(
             client_request.execution.model_parameters(),
             client_request.model.as_deref(),
@@ -186,26 +165,6 @@ where
             .await
             .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
-        let resolved_route = PublishedRouteResolver::new(&self.repository)
-            .resolve_generate(
-                actor.workspace_id,
-                &publication,
-                &compiled_plan,
-                route_dispatch,
-                generate_profile,
-                &required_provider_capabilities,
-            )
-            .await
-            .map_err(NativeRunValidationError::RouteUnavailable)?;
-        let (target_node_id, provider_transport_summary) = match resolved_route {
-            ResolvedPublishedRoute::ApplicationFlow { .. } => (None, provider_transport_summary),
-            ResolvedPublishedRoute::Provider(route) => {
-                let summary =
-                    with_provider_transport_pin(provider_transport_summary, &route.llm_runtime);
-                (Some(route.target_node_id), summary)
-            }
-        };
-
         let mapped = NativeInputMapper::map(&request, &publication.mapping_snapshot)
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let metadata = mapped.metadata;
@@ -259,7 +218,7 @@ where
                 flow_schema_version: publication.flow_schema_version.clone(),
                 document_hash: publication.document_hash.clone(),
                 run_mode: domain::FlowRunMode::PublishedApiRun,
-                target_node_id,
+                target_node_id: None,
                 title: build_flow_run_title(request.title.as_deref(), &request.query),
                 status: domain::FlowRunStatus::Queued,
                 input_payload,
@@ -586,26 +545,6 @@ fn with_public_provider_transport_summary(
         .expect("sys payload")
         .insert(PUBLIC_PROVIDER_TRANSPORT_SUMMARY.to_string(), summary);
     input_payload
-}
-
-fn with_provider_transport_pin(
-    summary: Option<Value>,
-    runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
-) -> Option<Value> {
-    let mut summary = summary?;
-    summary
-        .as_object_mut()
-        .expect("provider transport summary")
-        .insert(
-            "provider_pin".to_string(),
-            json!({
-                "provider_instance_id": runtime.provider_instance_id,
-                "provider_code": runtime.provider_code,
-                "protocol": runtime.protocol,
-                "upstream_model_id": runtime.model,
-            }),
-        );
-    Some(summary)
 }
 
 fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {

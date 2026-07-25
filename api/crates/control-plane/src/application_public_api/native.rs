@@ -1484,6 +1484,23 @@ mod tests {
     }
 
     #[test]
+    fn mapper_keeps_requested_model_in_the_existing_start_model_builtin() {
+        let mapped = NativeInputMapper::map(
+            &request_with_model("provider/requested-model"),
+            &ApplicationApiMappingConfig::default_native(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["model"],
+            json!("provider/requested-model")
+        );
+        assert!(mapped.node_input_payload["node-start"]
+            .get("requested_model")
+            .is_none());
+    }
+
+    #[test]
     fn mapper_places_tool_registry_under_default_start_input() {
         let request: NativeRunRequest = serde_json::from_value(json!({
             "query": "hello",

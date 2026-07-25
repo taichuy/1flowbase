@@ -2,7 +2,6 @@ use super::*;
 use control_plane::application_public_api::{
     compat::anthropic::translate_messages_request, protocol_translation::TranslationDecisionKind,
 };
-use std::collections::BTreeSet;
 
 #[tokio::test]
 async fn start_native_run_creates_published_api_flow_run_from_frozen_publication() {
@@ -39,10 +38,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
     );
     assert_eq!(flow_run.document_hash, publication.document_hash);
     assert_eq!(flow_run.publication_version_id, Some(publication.id));
-    assert_eq!(
-        flow_run.target_node_id.as_deref(),
-        Some("node-published-llm")
-    );
+    assert_eq!(flow_run.target_node_id, None);
     assert_eq!(flow_run.title, "Summarize the incident");
     assert_eq!(flow_run.external_user.as_deref(), Some("customer-1"));
     assert_eq!(
@@ -58,16 +54,13 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
             "node-start": {
                 "query": "Summarize the incident",
                 "priority": "high",
-                "system": []
+                "system": [],
+                "operation": {"kind": "generate", "profile": "standard"}
             }
         })
     );
     assert_eq!(result.metadata["model"], json!("public-model/pass-through"));
-    // D4-AC-002: the semantic subset remains admitted without native passthrough capability.
-    assert_eq!(
-        repository.published_generate_capability_requirements(),
-        vec![BTreeSet::new()]
-    );
+    assert_eq!(repository.published_generate_capability_checks(), 0);
 }
 
 #[tokio::test]

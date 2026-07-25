@@ -4,9 +4,9 @@ use plugin_framework::provider_contract::ProviderInvocationCapability;
 
 use super::*;
 
-/// Root #1366 AC-003 / AC-005: unbound Generate fails before capability lookup or run creation.
+/// Root #1453: AgentFlow run creation does not preflight Generate bindings.
 #[tokio::test]
-async fn generate_unbound_fails_closed_without_run_or_provider_capability_lookup() {
+async fn generate_unbound_creates_agentflow_run_without_provider_capability_lookup() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Unbound Generate App");
@@ -21,26 +21,30 @@ async fn generate_unbound_fails_closed_without_run_or_provider_capability_lookup
         .await
         .unwrap();
 
-    let error = ApplicationPublishedRunService::new(repository.clone())
+    let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
             request: native_request("blocking", None),
         })
         .await
-        .unwrap_err();
+        .expect("unbound Generate must create the complete AgentFlow run");
 
+    let flow_run = repository
+        .get_flow_run(application.id, result.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(flow_run.target_node_id, None);
     assert_eq!(
-        error,
-        NativeRunValidationError::RouteUnavailable(PublishedRouteResolutionError::OperationUnbound)
+        flow_run.input_payload["node-start"]["operation"],
+        json!({"kind": "generate", "profile": "standard"})
     );
-    assert_eq!(repository.flow_run_count(), 0);
     assert_eq!(repository.published_generate_capability_checks(), 0);
 }
 
-/// Root #1366 AC-003 / AC-005: capability mismatch is rejected before any durable run exists.
+/// Provider semantic capability checks belong to the actual LLM consumer.
 #[tokio::test]
-async fn generate_end_user_reference_capability_mismatch_fails_closed_without_run_or_provider_spawn(
-) {
+async fn generate_end_user_reference_capability_is_not_preflighted_during_run_creation() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Capability Mismatch App");
@@ -63,33 +67,24 @@ async fn generate_end_user_reference_capability_mismatch_fails_closed_without_ru
     let mut request = native_request("blocking", None);
     request.request_context.end_user_reference = Some("external-user-123".to_string());
 
-    let error = ApplicationPublishedRunService::new(repository.clone())
+    ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
             request,
         })
         .await
-        .unwrap_err();
+        .expect("semantic capability admission is deferred to the LLM consumer");
 
-    assert_eq!(
-        error,
-        NativeRunValidationError::RouteUnavailable(
-            PublishedRouteResolutionError::ProviderCapabilityMismatch
-        )
-    );
-    assert_eq!(repository.flow_run_count(), 0);
-    assert_eq!(repository.published_generate_capability_checks(), 1);
-    assert_eq!(
-        repository.published_generate_capability_requirements(),
-        vec![BTreeSet::from([
-            ProviderInvocationCapability::EndUserReference
-        ])]
-    );
+    assert_eq!(repository.flow_run_count(), 1);
+    assert_eq!(repository.published_generate_capability_checks(), 0);
+    assert!(repository
+        .published_generate_capability_requirements()
+        .is_empty());
 }
 
-/// D4-AC-002: opaque Responses input cannot create a run unless every reachable target opts in.
+/// Opaque Responses transport is staged after run creation and does not select a provider here.
 #[tokio::test]
-async fn d4_ac_002_native_responses_passthrough_requirement_fails_before_run_creation() {
+async fn native_responses_passthrough_requirement_is_not_preflighted_during_run_creation() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Responses Admission App");
@@ -114,27 +109,19 @@ async fn d4_ac_002_native_responses_passthrough_requirement_fails_before_run_cre
         control_plane::application_public_api::native::ResponsesTransportRequirement::NativePassthrough,
     );
 
-    let error = ApplicationPublishedRunService::new(repository.clone())
+    ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
             request,
         })
         .await
-        .unwrap_err();
+        .expect("opaque transport capability admission is deferred to the LLM consumer");
 
-    assert_eq!(
-        error,
-        NativeRunValidationError::RouteUnavailable(
-            PublishedRouteResolutionError::ProviderCapabilityMismatch
-        )
-    );
-    assert_eq!(repository.flow_run_count(), 0);
-    assert_eq!(
-        repository.published_generate_capability_requirements(),
-        vec![BTreeSet::from([
-            ProviderInvocationCapability::ResponsesNativePassthrough
-        ])]
-    );
+    assert_eq!(repository.flow_run_count(), 1);
+    assert_eq!(repository.published_generate_capability_checks(), 0);
+    assert!(repository
+        .published_generate_capability_requirements()
+        .is_empty());
 }
 
 /// D4-AC-002: the existing all-target manifest check admits a fully capable provider route.
@@ -162,16 +149,11 @@ async fn d4_ac_002_native_responses_passthrough_all_targets_capable_is_admitted(
         .expect("all reachable targets declare native Responses passthrough");
 
     assert_eq!(repository.flow_run_count(), 1);
-    assert_eq!(
-        repository.published_generate_capability_requirements(),
-        vec![BTreeSet::from([
-            ProviderInvocationCapability::ResponsesNativePassthrough
-        ])]
-    );
+    assert_eq!(repository.published_generate_capability_checks(), 0);
 }
 
 #[tokio::test]
-async fn d5_ac_005_native_responses_rejects_cross_provider_failover_before_run_creation() {
+async fn native_responses_defers_cross_provider_failover_validation_to_the_llm_consumer() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Responses Pinned Route App");
@@ -215,26 +197,20 @@ async fn d5_ac_005_native_responses_rejects_cross_provider_failover_before_run_c
         control_plane::application_public_api::native::ResponsesTransportRequirement::NativePassthrough,
     );
 
-    let error = ApplicationPublishedRunService::new(repository.clone())
+    ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
             request,
         })
         .await
-        .unwrap_err();
+        .expect("provider failover validation is deferred to the actual LLM consumer");
 
-    assert_eq!(
-        error,
-        NativeRunValidationError::RouteUnavailable(
-            PublishedRouteResolutionError::ProviderCapabilityMismatch
-        )
-    );
-    assert_eq!(repository.flow_run_count(), 0);
+    assert_eq!(repository.flow_run_count(), 1);
     assert_eq!(repository.published_generate_capability_checks(), 0);
 }
 
 #[tokio::test]
-async fn d5_ac_005_native_responses_durable_summary_records_the_provider_pin() {
+async fn native_responses_durable_summary_does_not_record_provider_affinity() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Responses Durable Pin App");
@@ -282,16 +258,16 @@ async fn d5_ac_005_native_responses_durable_summary_records_the_provider_pin() {
         .await
         .unwrap()
         .unwrap();
-    let pin = &flow_run.input_payload["sys"]["public_provider_transport"]["provider_pin"];
+    let summary = &flow_run.input_payload["sys"]["public_provider_transport"];
 
-    assert_eq!(pin["provider_instance_id"], runtime.provider_instance_id);
-    assert_eq!(pin["provider_code"], runtime.provider_code);
-    assert_eq!(pin["protocol"], runtime.protocol);
-    assert_eq!(pin["upstream_model_id"], runtime.model);
+    assert!(summary.get("provider_pin").is_none());
+    assert!(summary["digest"].is_string());
+    assert!(summary["size_bytes"].is_number());
     assert!(!flow_run
         .input_payload
         .to_string()
         .contains("external_web_access"));
+    assert_eq!(repository.published_generate_capability_checks(), 0);
 }
 
 /// Root #1366 AC-003 / AC-006: both Generate profiles use the frozen target and fail closed.
