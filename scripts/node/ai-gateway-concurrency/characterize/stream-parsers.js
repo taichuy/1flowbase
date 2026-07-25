@@ -41,6 +41,12 @@ function protocolEventType(parsed) {
   return parsed.event ?? parsed.data?.type ?? null;
 }
 
+function isProtocolFailureTerminal(transport, eventType) {
+  if (transport === 'responses-sse') return eventType === 'response.failed';
+  if (transport === 'anthropic-sse') return eventType === 'error';
+  return false;
+}
+
 function eventText(parsed) {
   const data = parsed.data;
   if (data?.type === 'response.output_text.delta') return data.delta;
@@ -73,4 +79,5 @@ module.exports = {
   parseSseBlock,
   protocolEventType,
   protocolRunId,
+  isProtocolFailureTerminal,
 };

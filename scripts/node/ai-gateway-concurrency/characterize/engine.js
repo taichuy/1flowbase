@@ -14,7 +14,14 @@ const {
 const { createMockUpstream } = require('../mock-upstream');
 const { CHARACTERIZE_PLAN, GATE_ROLE, TOPOLOGY } = require('./plan');
 const { collectDurableConvergence } = require('./durable-evidence');
-const { createSseParser, eventText, nonceFromText, protocolEventType, protocolRunId } = require('./stream-parsers');
+const {
+  createSseParser,
+  eventText,
+  isProtocolFailureTerminal,
+  nonceFromText,
+  protocolEventType,
+  protocolRunId,
+} = require('./stream-parsers');
 const { writeCharacterizeArtifacts } = require('./report');
 
 const EXPECTED_OUTCOME = Object.freeze({
@@ -298,6 +305,7 @@ async function runSseRequest({
       const evidence = inspectProtocolEvents(transport, protocolEvents, texts);
       if (scenario === SCENARIO.CANCEL_OBSERVATION && controller.signal.aborted) outcome = 'cancelled';
       else if (evidence.terminalCount === 1) outcome = 'completed';
+      else if (protocolEvents.some((eventType) => isProtocolFailureTerminal(transport, eventType))) outcome = 'failed';
       else outcome = 'interrupted';
     }
   } catch (error) {
@@ -491,13 +499,7 @@ function mockBatchEvidence(before, after, results) {
   if (arrivals.length !== results.length) contractFailures.push(`expected ${results.length} mock arrivals, received ${arrivals.length}`);
   if (after.active !== before.active) contractFailures.push(`mock active count did not return to ${before.active}: ${after.active}`);
   const scenario = results[0]?.scenario;
-  const observedScenarioCount = scenario === SCENARIO.CANCEL_OBSERVATION
-    ? entries.filter((entry) => entry.event === 'cancel_observed').length
-    : scenario === SCENARIO.STREAM_INTERRUPTION
-      ? entries.filter((entry) => entry.event === 'stream_interrupted').length
-      : scenario === SCENARIO.HTTP_500
-        ? entries.filter((entry) => ['http-500', 'upstream-error'].includes(entry.outcome)).length
-        : entries.filter((entry) => entry.outcome === 'completed').length;
+  const observedScenarioCount = countMockScenarioObservations(scenario, entries, results);
   if (observedScenarioCount !== results.length) {
     contractFailures.push(`expected ${results.length} mock ${scenario} observations, received ${observedScenarioCount}`);
   }
@@ -508,6 +510,26 @@ function mockBatchEvidence(before, after, results) {
     arrivalEntries: entries,
     contractFailures,
   };
+}
+
+function countMockScenarioObservations(scenario, entries, results) {
+  if (scenario === SCENARIO.CANCEL_OBSERVATION) {
+    const gatewayOwnsAcceptedRun = results.length > 0 && results.every((result) => (
+      typeof result.applicationId === 'string' && result.applicationId.length > 0
+      && typeof result.providerInstanceId === 'string' && result.providerInstanceId.length > 0
+    ));
+    // Root AC-011: disconnect stops projection but does not cancel an accepted durable run.
+    return gatewayOwnsAcceptedRun
+      ? entries.filter((entry) => entry.event === 'settled' && entry.outcome === 'completed').length
+      : entries.filter((entry) => entry.event === 'cancel_observed').length;
+  }
+  if (scenario === SCENARIO.STREAM_INTERRUPTION) {
+    return entries.filter((entry) => entry.event === 'stream_interrupted').length;
+  }
+  if (scenario === SCENARIO.HTTP_500) {
+    return entries.filter((entry) => ['http-500', 'upstream-error'].includes(entry.outcome)).length;
+  }
+  return entries.filter((entry) => entry.outcome === 'completed').length;
 }
 
 function identifiedSamePoolMockPeakFailure(row, results, mockEvidence) {
@@ -855,6 +877,7 @@ async function runGatewayCharacterize({
 
 module.exports = {
   authorizationHeadersByTransport,
+  countMockScenarioObservations,
   executeCharacterizePlan,
   hasExpectedActiveStreamOverlap,
   identifiedSamePoolMockPeakFailure,

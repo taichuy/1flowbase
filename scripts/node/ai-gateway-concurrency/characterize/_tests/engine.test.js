@@ -6,6 +6,7 @@ const { MOCK_ROUTE, SCENARIO, TRANSPORT, mockScenarioSentinel } = require('../..
 const { createMockUpstream } = require('../../mock-upstream');
 const {
   authorizationHeadersByTransport,
+  countMockScenarioObservations,
   executeCharacterizePlan,
   hasExpectedActiveStreamOverlap,
   identifiedSamePoolMockPeakFailure,
@@ -90,6 +91,26 @@ test('AC-003 controlled negative: mixed upstream nonces fail chunk authenticity'
     upstreamNonceCount: 2,
   });
   assert.equal(failures.some((failure) => failure.includes('expected one upstream nonce')), true);
+});
+
+test('AC-011: downstream disconnect preserves an accepted Gateway run but cancels a direct mock request', () => {
+  const cancelledEntries = [{ event: 'cancel_observed' }];
+  const completedEntries = [{ event: 'settled', outcome: 'completed' }];
+  assert.equal(countMockScenarioObservations(
+    SCENARIO.CANCEL_OBSERVATION,
+    cancelledEntries,
+    [{ applicationId: null, providerInstanceId: null }],
+  ), 1);
+  assert.equal(countMockScenarioObservations(
+    SCENARIO.CANCEL_OBSERVATION,
+    completedEntries,
+    [{ applicationId: 'application-1', providerInstanceId: 'provider-1' }],
+  ), 1);
+  assert.equal(countMockScenarioObservations(
+    SCENARIO.CANCEL_OBSERVATION,
+    cancelledEntries,
+    [{ applicationId: 'application-1', providerInstanceId: 'provider-1' }],
+  ), 0);
 });
 
 test('AC-003: one execute call keeps global nonce order and transport-specific authorization', async () => {
