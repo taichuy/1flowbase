@@ -93,6 +93,30 @@ test('AC-003 controlled negative: mixed upstream nonces fail chunk authenticity'
   assert.equal(failures.some((failure) => failure.includes('expected one upstream nonce')), true);
 });
 
+test('AC-004: Gateway converts accepted HTTP upstream interruption to explicit failure', () => {
+  const base = {
+    transport: TRANSPORT.RESPONSES_SSE,
+    scenario: SCENARIO.STREAM_INTERRUPTION,
+    terminalCount: 0,
+    chunkTexts: [],
+    upstreamNonce: null,
+    upstreamNonceCount: 0,
+  };
+  assert.deepEqual(validateRequestResult({ ...base, outcome: 'interrupted' }), []);
+  assert.deepEqual(validateRequestResult({
+    ...base,
+    outcome: 'failed',
+    applicationId: 'application-1',
+    providerInstanceId: 'provider-1',
+  }), []);
+  assert.match(validateRequestResult({
+    ...base,
+    outcome: 'interrupted',
+    applicationId: 'application-1',
+    providerInstanceId: 'provider-1',
+  }).join('\n'), /expected outcome failed/u);
+});
+
 test('AC-011: downstream disconnect preserves an accepted Gateway run but cancels a direct mock request', () => {
   const cancelledEntries = [{ event: 'cancel_observed' }];
   const completedEntries = [{ event: 'settled', outcome: 'completed' }];

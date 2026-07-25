@@ -425,7 +425,12 @@ function runWebSocketRequest({
 
 function validateRequestResult(result) {
   const failures = [];
-  const expected = EXPECTED_OUTCOME[result.scenario];
+  const gatewayOwnsAcceptedHttpRun = AUTHORIZED_HTTP_TRANSPORTS.includes(result.transport)
+    && typeof result.applicationId === 'string' && result.applicationId.length > 0
+    && typeof result.providerInstanceId === 'string' && result.providerInstanceId.length > 0;
+  const expected = result.scenario === SCENARIO.STREAM_INTERRUPTION && gatewayOwnsAcceptedHttpRun
+    ? 'failed'
+    : EXPECTED_OUTCOME[result.scenario];
   if (result.outcome !== expected) failures.push(`expected outcome ${expected}, received ${result.outcome}`);
   if ([SCENARIO.NORMAL, SCENARIO.SLOW].includes(result.scenario)) {
     if (result.terminalCount !== 1) failures.push(`expected one success terminal, received ${result.terminalCount}`);
