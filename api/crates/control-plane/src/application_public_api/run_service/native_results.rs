@@ -1,37 +1,15 @@
 use orchestration_runtime::answer_projection::{
     answer_segments_from_value, AnswerProjectionSegment, ANSWER_SEGMENTS_KEY,
 };
-use orchestration_runtime::execution_state::CompactResponseReceipt;
+use domain::{AiNativeCompactProfile, AiNativeOperation};
+use orchestration_runtime::execution_state::{
+    CompactResponseProfile, NativeOperationTerminal,
+};
 use serde_json::{json, Value};
 
 use crate::application_public_api::native::{self, NativeRunResult, NativeRunStatus};
 
 use super::repository_contracts::{PublishedRunPendingCallback, PublishedRunStreamState};
-
-/// A durable native projection for the application-flow Compact terminal.
-/// The receipt is decoded only from the committed winner payload, never from
-/// an inbound protocol body or an ordinary Answer output.
-#[derive(Debug, Clone, PartialEq)]
-pub struct NativeCompactRunResult {
-    pub run: NativeRunResult,
-    pub receipt: Option<CompactResponseReceipt>,
-}
-
-pub fn native_compact_result_from_run_detail(
-    detail: &domain::ApplicationRunDetail,
-    metadata: Value,
-) -> NativeCompactRunResult {
-    let receipt = matches!(
-        detail.flow_run.status,
-        domain::FlowRunStatus::Succeeded | domain::FlowRunStatus::Incomplete
-    )
-    .then(|| CompactResponseReceipt::from_payload(&detail.flow_run.output_payload).ok())
-    .flatten();
-    NativeCompactRunResult {
-        run: native_result_from_run_detail(detail, metadata),
-        receipt,
-    }
-}
 
 pub fn native_result_from_flow_run(
     flow_run: &domain::FlowRunRecord,
@@ -58,6 +36,17 @@ pub fn native_result_from_flow_run(
             .flatten(),
         usage: extract_usage(&flow_run.output_payload),
         error: native_error_from_payload(flow_run.error_payload.as_ref()),
+        operation_terminal: matches!(
+            status,
+            NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
+        )
+        .then(|| {
+            native_operation_terminal(
+                &flow_run.input_payload,
+                &flow_run.output_payload,
+            )
+        })
+        .flatten(),
         created_at: flow_run.created_at,
     }
 }
@@ -164,8 +153,82 @@ pub fn native_result_from_run_stream_state(
         }))
     });
     result.error = native_error_from_payload(stream_state.error_payload.as_ref());
+    result.operation_terminal = matches!(
+        result.status,
+        NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
+    )
+    .then(|| {
+        native_operation_terminal(
+            &result.node_input_payload,
+            &stream_state.output_payload,
+        )
+    })
+    .flatten();
     apply_pending_callback_state(&mut result, stream_state.latest_pending_callback.as_ref());
     result
+}
+
+fn native_operation_terminal(
+    run_input_payload: &Value,
+    output_payload: &Value,
+) -> Option<NativeOperationTerminal> {
+    let operation = unique_start_operation(run_input_payload)?;
+    let terminal = NativeOperationTerminal::from_payload(output_payload).ok()??;
+    match (&operation, &terminal) {
+        (AiNativeOperation::CountTokens, NativeOperationTerminal::CountTokens(_)) => {
+            Some(terminal)
+        }
+        (
+            AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompact),
+            NativeOperationTerminal::Compact(receipt),
+        ) if receipt.profile() == CompactResponseProfile::ResponsesCompact => Some(terminal),
+        (
+            AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompactionV2),
+            NativeOperationTerminal::Compact(receipt),
+        ) if receipt.profile() == CompactResponseProfile::ResponsesCompactionV2 => Some(terminal),
+        _ => None,
+    }
+}
+
+fn unique_start_operation(run_input_payload: &Value) -> Option<AiNativeOperation> {
+    let operations = run_input_payload
+        .as_object()?
+        .values()
+        .filter_map(Value::as_object)
+        .filter_map(|payload| payload.get("operation"))
+        .filter_map(|operation| serde_json::from_value(operation.clone()).ok())
+        .collect::<Vec<_>>();
+    match operations.as_slice() {
+        [operation] => Some(*operation),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod operation_terminal_tests {
+    use super::*;
+
+    #[test]
+    fn durable_terminal_requires_matching_frozen_start_operation() {
+        let terminal = json!({
+            "semantic_terminal": "count_tokens",
+            "result": { "operation": "count_tokens", "input_tokens": 17 }
+        });
+        assert!(native_operation_terminal(
+            &json!({ "node-start": { "operation": {
+                "kind": "count_tokens", "profile": null
+            }}}),
+            &terminal,
+        )
+        .is_some());
+        assert!(native_operation_terminal(
+            &json!({ "node-start": { "operation": {
+                "kind": "generate", "profile": "standard"
+            }}}),
+            &terminal,
+        )
+        .is_none());
+    }
 }
 
 fn latest_pending_callback_task(

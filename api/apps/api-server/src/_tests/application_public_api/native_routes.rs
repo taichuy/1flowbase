@@ -2,7 +2,9 @@ use crate::_tests::{
     create_ready_provider_instance,
     support::{login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config},
 };
-use crate::routes::application_public_api::native::{parse_native_run_request, service_error};
+use crate::routes::application_public_api::native::{
+    parse_native_run_request, service_error, to_native_run_response,
+};
 use std::collections::BTreeSet;
 
 use axum::{
@@ -13,6 +15,7 @@ use axum::{
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
+use control_plane::application_public_api::native::{NativeRunResult, NativeRunStatus};
 use control_plane::{
     application_public_api::run_service::{
         PublishedRouteDispatch, PublishedRouteResolver, ResolvedPublishedRoute,
@@ -24,7 +27,10 @@ use control_plane::{
     },
 };
 use domain::AiNativeGenerateProfile;
-use plugin_framework::provider_contract::ProviderInvocationCapability;
+use orchestration_runtime::execution_state::{CountTokensReceipt, NativeOperationTerminal};
+use plugin_framework::provider_contract::{
+    ProviderCountTokensResult, ProviderInvocationCapability, ProviderWireOperation,
+};
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use tower::ServiceExt;
@@ -33,6 +39,41 @@ use uuid::Uuid;
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+#[test]
+fn native_blocking_response_exposes_typed_operation_terminal() {
+    let terminal = NativeOperationTerminal::CountTokens(
+        CountTokensReceipt::new(ProviderCountTokensResult {
+            operation: ProviderWireOperation::CountTokens,
+            input_tokens: 29,
+        })
+        .expect("fixture CountTokens receipt"),
+    );
+    let response = to_native_run_response(NativeRunResult {
+        id: Uuid::nil(),
+        application_id: Uuid::nil(),
+        api_key_id: Uuid::nil(),
+        publication_version_id: Uuid::nil(),
+        status: NativeRunStatus::Succeeded,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: None,
+        answer_segments: None,
+        required_action: None,
+        tool_calls: None,
+        usage: None,
+        error: None,
+        operation_terminal: Some(terminal),
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    });
+    assert_eq!(
+        response.operation_terminal,
+        Some(json!({
+            "semantic_terminal": "count_tokens",
+            "result": { "operation": "count_tokens", "input_tokens": 29 }
+        }))
+    );
 }
 
 #[test]

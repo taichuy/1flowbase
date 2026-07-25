@@ -28,8 +28,8 @@ use crate::{
     execution_state::{
         compact_response_receipt_from_traces, count_tokens_receipt_from_traces,
         CheckpointSnapshot, CompactResponseReceipt, CountTokensReceipt, ExecutionIncompleteReason,
-        ExecutionStopReason, FlowDebugExecutionOutcome, NodeExecutionFailure, NodeExecutionTrace,
-        PendingCallbackTask, PendingHumanInput,
+        ExecutionStopReason, FlowDebugExecutionOutcome, NativeOperationTerminal,
+        NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask, PendingHumanInput,
     },
     node_errors::build_node_type_not_implemented_error_payload,
     output_schema::value_is_llm_context_messages,
@@ -402,6 +402,7 @@ where
                             variable_pool: checkpoint_variable_pool,
                             active_node_ids: checkpoint.active_node_ids.clone(),
                         }),
+                        operation_terminal: None,
                         node_traces: wait.node_trace.into_iter().collect(),
                     });
                 }
@@ -424,6 +425,7 @@ where
                         }),
                         variable_pool: Map::new(),
                         checkpoint_snapshot: None,
+                        operation_terminal: None,
                         node_traces: Vec::new(),
                     });
                 }
@@ -575,6 +577,7 @@ where
                         }),
                         variable_pool,
                         checkpoint_snapshot: None,
+                        operation_terminal: None,
                         node_traces,
                     });
                 }
@@ -699,6 +702,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -722,6 +726,7 @@ where
                             variable_pool: wait.checkpoint_variable_pool,
                             active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                         }),
+                        operation_terminal: None,
                         node_traces,
                     });
                 }
@@ -765,6 +770,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -809,6 +815,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -830,6 +837,7 @@ where
                             variable_pool,
                             active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                         }),
+                        operation_terminal: None,
                         node_traces,
                     });
                 }
@@ -933,6 +941,7 @@ where
                         variable_pool,
                         active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                     }),
+                    operation_terminal: None,
                     node_traces,
                 });
             }
@@ -962,6 +971,7 @@ where
                         variable_pool,
                         active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                     }),
+                    operation_terminal: None,
                     node_traces,
                 });
             }
@@ -1000,8 +1010,9 @@ where
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
-                            checkpoint_snapshot: None,
-                            node_traces,
+                    checkpoint_snapshot: None,
+                    operation_terminal: None,
+                    node_traces,
                         });
                     }
                     continue;
@@ -1041,8 +1052,9 @@ where
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
-                            checkpoint_snapshot: None,
-                            node_traces,
+            checkpoint_snapshot: None,
+            operation_terminal: None,
+            node_traces,
                         });
                     }
                     continue;
@@ -1073,8 +1085,9 @@ where
                         error_payload,
                     }),
                     variable_pool,
-                    checkpoint_snapshot: None,
-                    node_traces,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
                 });
             }
         }
@@ -1090,25 +1103,27 @@ where
         return Ok(FlowDebugExecutionOutcome {
             stop_reason: ExecutionStopReason::Failed(failure),
             variable_pool,
-            checkpoint_snapshot: None,
-            node_traces,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
         });
     }
 
-    if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
-        count_tokens_receipt_from_traces(&node_traces)?;
-    }
-    if matches!(
-        runtime_context.operation(),
-        domain::AiNativeOperation::Compact(_)
-    ) {
-        compact_response_receipt_from_traces(&node_traces)?;
-    }
+    let operation_terminal = match runtime_context.operation() {
+        domain::AiNativeOperation::Generate(_) => None,
+        domain::AiNativeOperation::CountTokens => Some(NativeOperationTerminal::CountTokens(
+            count_tokens_receipt_from_traces(&node_traces)?,
+        )),
+        domain::AiNativeOperation::Compact(_) => Some(NativeOperationTerminal::Compact(
+            compact_response_receipt_from_traces(&node_traces)?,
+        )),
+    };
 
     Ok(FlowDebugExecutionOutcome {
         stop_reason: successful_flow_stop_reason(&node_traces),
         variable_pool,
         checkpoint_snapshot: None,
+        operation_terminal,
         node_traces,
     })
 }

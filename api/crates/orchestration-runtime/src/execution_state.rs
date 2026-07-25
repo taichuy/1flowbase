@@ -14,6 +14,59 @@ pub struct CountTokensReceipt {
     result: ProviderCountTokensResult,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum NativeOperationTerminal {
+    CountTokens(CountTokensReceipt),
+    Compact(CompactResponseReceipt),
+}
+
+impl NativeOperationTerminal {
+    pub fn from_payload(payload: &Value) -> Result<Option<Self>> {
+        match payload
+            .get("semantic_terminal")
+            .and_then(Value::as_str)
+        {
+            Some(COUNT_TOKENS_TERMINAL_KIND) => {
+                CountTokensReceipt::from_payload(payload).map(Self::CountTokens).map(Some)
+            }
+            Some(COMPACT_RESPONSE_TERMINAL_KIND) => CompactResponseReceipt::from_payload(payload)
+                .map(Self::Compact)
+                .map(Some),
+            _ => Ok(None),
+        }
+    }
+
+    pub fn as_payload(&self) -> Result<Value> {
+        match self {
+            Self::CountTokens(receipt) => receipt.as_payload(),
+            Self::Compact(receipt) => receipt.as_payload(),
+        }
+    }
+}
+
+impl Serialize for NativeOperationTerminal {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.as_payload()
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for NativeOperationTerminal {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = Value::deserialize(deserializer)?;
+        Self::from_payload(&payload)
+            .map_err(serde::de::Error::custom)?
+            .ok_or_else(|| serde::de::Error::custom("payload is not a Native operation terminal"))
+    }
+}
+
 impl CountTokensReceipt {
     pub fn new(result: ProviderCountTokensResult) -> Result<Self> {
         if result.operation != ProviderWireOperation::CountTokens {
@@ -368,6 +421,7 @@ pub struct FlowDebugExecutionOutcome {
     pub stop_reason: ExecutionStopReason,
     pub variable_pool: Map<String, Value>,
     pub checkpoint_snapshot: Option<CheckpointSnapshot>,
+    pub operation_terminal: Option<NativeOperationTerminal>,
     pub node_traces: Vec<NodeExecutionTrace>,
 }
 

@@ -450,6 +450,12 @@ pub(super) fn final_flow_output_payload(
             .unwrap_or_else(|| json!({}));
     }
 
+    if let Some(terminal) = &outcome.operation_terminal {
+        return terminal
+            .as_payload()
+            .expect("runtime-owned Native operation terminal must serialize");
+    }
+
     outcome
         .node_traces
         .last()

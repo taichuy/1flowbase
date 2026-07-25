@@ -648,6 +648,9 @@ pub struct NativeRunResult {
     pub usage: Option<NativeUsage>,
     #[serde(default)]
     pub error: Option<NativeError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_terminal:
+        Option<orchestration_runtime::execution_state::NativeOperationTerminal>,
     pub created_at: OffsetDateTime,
 }
 
@@ -988,15 +991,6 @@ where
             .await?;
 
         Ok(run)
-    }
-
-    pub async fn create_application_flow_compact_run(
-        &self,
-        command: CreateNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        self.published_run_service()
-            .start_application_flow_compact_run(command)
-            .await
     }
 
     pub async fn get_native_run(

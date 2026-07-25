@@ -98,7 +98,7 @@ impl NativeExecution {
         &self.execution_operation
     }
 
-    pub(crate) fn set_execution_operation(&mut self, operation: AiNativeOperation) {
+    pub fn set_execution_operation(&mut self, operation: AiNativeOperation) {
         self.execution_operation = operation;
     }
 

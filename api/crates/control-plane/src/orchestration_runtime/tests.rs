@@ -318,6 +318,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
         stop_reason: ExecutionStopReason::Completed,
         variable_pool: Map::new(),
         checkpoint_snapshot: None,
+        operation_terminal: None,
         node_traces: vec![NodeExecutionTrace {
             node_id: "node-answer".to_string(),
             node_type: "answer".to_string(),
@@ -423,6 +424,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
         stop_reason: ExecutionStopReason::Completed,
         variable_pool: Map::new(),
         checkpoint_snapshot: None,
+        operation_terminal: None,
         node_traces: vec![NodeExecutionTrace {
             node_id: "node-llm".to_string(),
             node_type: "llm".to_string(),

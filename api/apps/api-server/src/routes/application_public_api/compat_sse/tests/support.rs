@@ -162,6 +162,7 @@ pub(super) fn native_run() -> NativeRunResult {
         tool_calls: None,
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
 }

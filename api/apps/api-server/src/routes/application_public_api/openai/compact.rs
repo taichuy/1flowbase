@@ -5,10 +5,6 @@ use control_plane::application_public_api::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
-    run_service::PublishedCompactError,
-};
-use plugin_framework::provider_contract::{
-    ProviderCompactError, ProviderRuntimeError, ProviderRuntimeErrorKind,
 };
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -47,38 +43,6 @@ pub(super) fn responses_request_context(
         invalid_codex_turn_metadata("x-codex-turn-metadata must contain valid JSON")
     })?;
     Ok(context.with_captured_codex_turn_metadata(metadata))
-}
-
-pub(super) fn published_compact_error(error: PublishedCompactError) -> OpenAiRouteError {
-    let error = match error {
-        PublishedCompactError::NotAuthenticated => native::NativeApiError::new(
-            StatusCode::UNAUTHORIZED,
-            "not_authenticated",
-            "invalid application API key",
-        ),
-        PublishedCompactError::ApplicationNotPublished => native::NativeApiError::new(
-            StatusCode::CONFLICT,
-            "application_not_published",
-            "application has no active published public API version",
-        ),
-        PublishedCompactError::RouteUnavailable(error) => native::native_error(
-            control_plane::application_public_api::native::NativeRunValidationError::RouteUnavailable(
-                error,
-            ),
-        ),
-        PublishedCompactError::InvalidRequest => native::NativeApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "translated Compact request is invalid",
-        ),
-        PublishedCompactError::ProviderTargetUnavailable => native::NativeApiError::new(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "provider_compact_unavailable",
-            "published Compact provider target is unavailable",
-        ),
-        PublishedCompactError::Provider(error) => provider_compact_error(error),
-    };
-    OpenAiRouteError::Native(error)
 }
 
 /// The V2 item was already validated by the provider contract. Keep the
@@ -127,45 +91,4 @@ fn invalid_codex_turn_metadata(message: &'static str) -> OpenAiRouteError {
         code: "invalid_request".to_string(),
         report,
     }))
-}
-
-fn provider_compact_error(error: ProviderCompactError) -> native::NativeApiError {
-    match error {
-        ProviderCompactError::Unsupported { capabilities, .. } => native::NativeApiError::new(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "provider_compact_unsupported",
-            format!(
-                "provider does not declare required Compact capabilities: {}",
-                capabilities.join(", ")
-            ),
-        ),
-        ProviderCompactError::InvalidContract { message } => native::NativeApiError::new(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "provider_compact_contract_invalid",
-            message,
-        ),
-        ProviderCompactError::Runtime { error } => provider_runtime_compact_error(error),
-    }
-}
-
-fn provider_runtime_compact_error(error: ProviderRuntimeError) -> native::NativeApiError {
-    let (status, code) = match error.kind {
-        ProviderRuntimeErrorKind::AuthFailed => (StatusCode::BAD_GATEWAY, "provider_auth_failed"),
-        ProviderRuntimeErrorKind::EndpointUnreachable => {
-            (StatusCode::BAD_GATEWAY, "provider_endpoint_unreachable")
-        }
-        ProviderRuntimeErrorKind::ModelNotFound => {
-            (StatusCode::UNPROCESSABLE_ENTITY, "provider_model_not_found")
-        }
-        ProviderRuntimeErrorKind::RateLimited => {
-            (StatusCode::TOO_MANY_REQUESTS, "provider_rate_limited")
-        }
-        ProviderRuntimeErrorKind::ProviderUpstreamError => {
-            (StatusCode::BAD_GATEWAY, "provider_upstream_error")
-        }
-        ProviderRuntimeErrorKind::ProviderInvalidResponse => {
-            (StatusCode::BAD_GATEWAY, "provider_invalid_response")
-        }
-    };
-    native::NativeApiError::new(status, code, error.message)
 }

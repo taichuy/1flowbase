@@ -13,14 +13,12 @@ use super::{
         ListApplicationPublicConversationMessagesInput,
     },
     native::{
-        compaction_intent, CreateNativeRunCommand, NativeInputMapper, NativeRunRequest,
-        NativeRunResult, NativeRunValidationError,
+        CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
+        NativeRunValidationError,
     },
     publications::ApplicationPublicationVersionRecord,
 };
-mod compact;
 mod conversation_history;
-mod count_tokens;
 mod native_results;
 mod repository_contracts;
 mod resolved_route;
@@ -35,18 +33,10 @@ use crate::{
     },
     state_transition::ensure_flow_run_transition,
 };
-pub use compact::{
-    ApplicationPublishedCompactService, CompactCommand, PublishedCompactError,
-    PublishedCompactResult,
-};
 use conversation_history::application_public_conversation_messages_to_native_history;
-pub use count_tokens::{
-    ApplicationPublishedCountTokensService, CountTokensCommand, PublishedCountTokensError,
-    PublishedCountTokensResult,
-};
 pub use native_results::{
-    native_compact_result_from_run_detail, native_result_from_flow_run,
-    native_result_from_run_detail, native_result_from_run_stream_state, NativeCompactRunResult,
+    native_result_from_flow_run, native_result_from_run_detail,
+    native_result_from_run_stream_state,
 };
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
@@ -56,8 +46,8 @@ pub use repository_contracts::{
 };
 pub use resolved_route::{
     PublishedProviderManifestCapabilityRepository, PublishedRouteDispatch,
-    PublishedRouteResolutionError, PublishedRouteResolver, ResolvedCompactProviderRoute,
-    ResolvedCountTokensProviderRoute, ResolvedProviderRoute, ResolvedPublishedRoute,
+    PublishedRouteResolutionError, PublishedRouteResolver, ResolvedProviderRoute,
+    ResolvedPublishedRoute,
 };
 use run_input::{
     compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
@@ -109,19 +99,6 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        self.start_agentflow_run(command).await
-    }
-
-    /// Creates the durable shell for a Compact request that has already been
-    /// admitted to the application-flow terminal. Provider ingress remains
-    /// transient and is supplied only when the runtime starts this run.
-    pub async fn start_application_flow_compact_run(
-        &self,
-        command: CreateNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        if compaction_intent(*command.request.execution.execution_operation()).is_none() {
-            return Err(NativeRunValidationError::InvalidMapping);
-        }
         self.start_agentflow_run(command).await
     }
 
@@ -740,38 +717,6 @@ mod tests {
                 { "kind": "message", "text": "结构化回答" }
             ])
         );
-    }
-
-    #[test]
-    fn native_compact_projection_reads_only_a_successful_durable_receipt() {
-        let result = ProviderInvocationResult {
-            final_content: Some("typed local compact summary".to_string()),
-            finish_reason: Some(ProviderFinishReason::Stop),
-            ..ProviderInvocationResult::default()
-        };
-        let receipt_payload = json!({
-            "semantic_terminal": "compact_response",
-            "profile": "local_summary",
-            "result": serde_json::to_value(result).expect("fixture receipt should serialize"),
-        });
-        let mut detail = domain::ApplicationRunDetail {
-            flow_run: test_flow_run(receipt_payload),
-            node_runs: Vec::new(),
-            checkpoints: Vec::new(),
-            callback_tasks: Vec::new(),
-            events: Vec::new(),
-            stitched_trace: Vec::new(),
-            subagent_traces: Vec::new(),
-        };
-
-        let projected = native_compact_result_from_run_detail(&detail, json!({}));
-        assert!(projected.receipt.is_some());
-        assert!(projected.run.answer.is_none());
-
-        detail.flow_run.status = domain::FlowRunStatus::Failed;
-        let failed = native_compact_result_from_run_detail(&detail, json!({}));
-        assert!(failed.receipt.is_none());
-        assert!(failed.run.answer.is_none());
     }
 
     #[test]

@@ -660,6 +660,7 @@ mod tests {
             tool_calls: None,
             usage: None,
             error: None,
+            operation_terminal: None,
             created_at: OffsetDateTime::UNIX_EPOCH,
         }
     }

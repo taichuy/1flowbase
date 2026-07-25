@@ -1,5 +1,6 @@
 use orchestration_runtime::execution_state::{
-    ExecutionStopReason, FlowDebugExecutionOutcome, NodeExecutionFailure, NodeExecutionTrace,
+    ExecutionStopReason, FlowDebugExecutionOutcome, NativeOperationTerminal,
+    NodeExecutionFailure, NodeExecutionTrace,
 };
 use serde_json::{json, Map, Value};
 use time::OffsetDateTime;
@@ -141,6 +142,7 @@ fn failed_flow_output_keeps_last_successful_node_payload() {
         }),
         variable_pool: Map::new(),
         checkpoint_snapshot: None,
+        operation_terminal: None,
         node_traces: vec![
             trace("start", json!({}), None),
             trace("llm-1", json!({ "text": "first answer" }), None),
@@ -164,6 +166,7 @@ fn completed_flow_output_uses_terminal_node_payload() {
         stop_reason: ExecutionStopReason::Completed,
         variable_pool: Map::new(),
         checkpoint_snapshot: None,
+        operation_terminal: None,
         node_traces: vec![
             trace("llm-1", json!({ "text": "first answer" }), None),
             trace("answer", json!({ "answer": "final answer" }), None),
@@ -174,6 +177,38 @@ fn completed_flow_output_uses_terminal_node_payload() {
         final_flow_output_payload(&outcome),
         json!({ "answer": "final answer" })
     );
+}
+
+#[test]
+fn canonical_native_operation_terminal_wins_over_later_ordinary_node_payload() {
+    for terminal in [
+        json!({
+            "semantic_terminal": "count_tokens",
+            "result": { "operation": "count_tokens", "input_tokens": 41 }
+        }),
+        json!({
+            "semantic_terminal": "compact_response",
+            "profile": "responses_compact",
+            "result": {
+                "result_type": "response_items",
+                "operation": "compact",
+                "profile": "responses_compact",
+                "response_items": [{ "type": "message" }]
+            }
+        }),
+    ] {
+        let outcome = FlowDebugExecutionOutcome {
+            stop_reason: ExecutionStopReason::Completed,
+            variable_pool: Map::new(),
+            checkpoint_snapshot: None,
+            operation_terminal: NativeOperationTerminal::from_payload(&terminal).unwrap(),
+            node_traces: vec![
+                trace("llm-operation", terminal.clone(), None),
+                trace("ordinary-tail", json!({ "text": "must not win" }), None),
+            ],
+        };
+        assert_eq!(final_flow_output_payload(&outcome), terminal);
+    }
 }
 
 #[test]
@@ -194,6 +229,7 @@ fn failed_flow_output_uses_terminal_answer_payload_even_when_answer_has_error() 
         }),
         variable_pool: Map::new(),
         checkpoint_snapshot: None,
+        operation_terminal: None,
         node_traces: vec![
             trace("llm-1", json!({ "text": "partial final answer" }), None),
             typed_trace(

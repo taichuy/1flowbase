@@ -22,6 +22,7 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         tool_calls: None,
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
 }
@@ -84,6 +85,7 @@ fn openai_response_projects_native_tool_calls() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -139,6 +141,7 @@ fn openai_response_filters_internal_visible_llm_tool_calls() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -201,6 +204,7 @@ fn openai_response_encodes_callback_task_id_into_tool_call_ids() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -252,6 +256,7 @@ fn openai_responses_response_projects_native_tool_calls_with_encoded_call_id() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 

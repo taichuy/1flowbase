@@ -90,6 +90,8 @@ pub struct NativeRunResponse {
     pub tool_calls: Option<Value>,
     pub usage: Option<Value>,
     pub error: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_terminal: Option<Value>,
     pub created_at: String,
 }
 
@@ -452,6 +454,10 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
         tool_calls: run.tool_calls,
         usage: run.usage.and_then(|value| serde_json::to_value(value).ok()),
         error: run.error.and_then(|value| serde_json::to_value(value).ok()),
+        operation_terminal: run.operation_terminal.map(|terminal| {
+            serde_json::to_value(terminal)
+                .expect("typed Native operation terminal must serialize at the protocol boundary")
+        }),
         created_at: run.created_at.to_string(),
     }
 }

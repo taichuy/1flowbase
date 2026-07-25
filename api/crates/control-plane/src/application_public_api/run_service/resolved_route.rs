@@ -4,9 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use domain::AiNativeGenerateProfile;
 use orchestration_runtime::compiled_plan::{CompiledLlmRuntime, CompiledPlan};
-use plugin_framework::provider_contract::{
-    ProviderCompactProfile, ProviderInvocationCapability, ProviderWireOperation,
-};
+use plugin_framework::provider_contract::{ProviderInvocationCapability, ProviderWireOperation};
 use uuid::Uuid;
 
 #[cfg(not(test))]
@@ -28,24 +26,6 @@ pub enum PublishedRouteDispatch {
 pub struct ResolvedProviderRoute {
     pub operation: ProviderWireOperation,
     pub profile: AiNativeGenerateProfile,
-    pub target_node_id: String,
-    pub llm_runtime: CompiledLlmRuntime,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedCountTokensProviderRoute {
-    pub operation: ProviderWireOperation,
-    pub target_node_id: String,
-    pub llm_runtime: CompiledLlmRuntime,
-}
-
-/// A remote Compact target resolved from the immutable publication snapshot.
-/// Local summary remains a Generate execution and is deliberately not routable
-/// through this unary provider path.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedCompactProviderRoute {
-    pub operation: ProviderWireOperation,
-    pub profile: ProviderCompactProfile,
     pub target_node_id: String,
     pub llm_runtime: CompiledLlmRuntime,
 }
@@ -90,20 +70,6 @@ pub trait PublishedProviderManifestCapabilityRepository: Send + Sync {
         profile: AiNativeGenerateProfile,
         required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     ) -> Result<bool>;
-    async fn supports_published_count_tokens(
-        &self,
-        workspace_id: Uuid,
-        runtime: &CompiledLlmRuntime,
-    ) -> Result<bool>;
-    async fn supports_published_compact(
-        &self,
-        workspace_id: Uuid,
-        runtime: &CompiledLlmRuntime,
-        profile: ProviderCompactProfile,
-    ) -> Result<bool> {
-        let _ = (workspace_id, runtime, profile);
-        Ok(false)
-    }
 }
 
 // Unit tests inject an explicit in-memory implementation from test_support. Excluding the
@@ -125,36 +91,6 @@ where
             .await
     }
 
-    async fn supports_published_count_tokens(
-        &self,
-        workspace_id: Uuid,
-        runtime: &CompiledLlmRuntime,
-    ) -> Result<bool> {
-        let required_capabilities = BTreeSet::from([ProviderInvocationCapability::CountTokens]);
-        supports_published_manifest_capabilities(
-            self,
-            workspace_id,
-            runtime,
-            &required_capabilities,
-        )
-        .await
-    }
-
-    async fn supports_published_compact(
-        &self,
-        workspace_id: Uuid,
-        runtime: &CompiledLlmRuntime,
-        profile: ProviderCompactProfile,
-    ) -> Result<bool> {
-        let required_capabilities = BTreeSet::from([profile.required_capability()]);
-        supports_published_manifest_capabilities(
-            self,
-            workspace_id,
-            runtime,
-            &required_capabilities,
-        )
-        .await
-    }
 }
 
 #[cfg(not(test))]
@@ -308,107 +244,6 @@ where
         )))
     }
 
-    pub async fn resolve_count_tokens(
-        &self,
-        workspace_id: Uuid,
-        publication: &ApplicationPublicationVersionRecord,
-        compiled_plan_record: &domain::CompiledPlanRecord,
-    ) -> std::result::Result<ResolvedCountTokensProviderRoute, PublishedRouteResolutionError> {
-        if compiled_plan_record.id != publication.compiled_plan_id {
-            return Err(PublishedRouteResolutionError::CompiledPlanMismatch);
-        }
-
-        let binding = publication
-            .operation_bindings
-            .count_tokens
-            .as_ref()
-            .ok_or(PublishedRouteResolutionError::OperationUnbound)?;
-        let compiled_plan: CompiledPlan = serde_json::from_value(compiled_plan_record.plan.clone())
-            .map_err(|_| PublishedRouteResolutionError::CompiledPlanInvalid)?;
-        let node = compiled_plan
-            .nodes
-            .get(&binding.target_node_id)
-            .filter(|node| node.node_id == binding.target_node_id)
-            .ok_or(PublishedRouteResolutionError::TargetMissing)?;
-        if node.node_type != "llm" {
-            return Err(PublishedRouteResolutionError::TargetNotLlm);
-        }
-        let runtime = node
-            .llm_runtime
-            .as_ref()
-            .filter(|runtime| llm_runtime_is_complete(runtime))
-            .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
-        let supported = self
-            .repository
-            .supports_published_count_tokens(workspace_id, runtime)
-            .await
-            .unwrap_or(false);
-        if !supported {
-            return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
-        }
-
-        Ok(ResolvedCountTokensProviderRoute {
-            operation: ProviderWireOperation::CountTokens,
-            target_node_id: binding.target_node_id.clone(),
-            llm_runtime: runtime.clone(),
-        })
-    }
-
-    pub async fn resolve_compact(
-        &self,
-        workspace_id: Uuid,
-        publication: &ApplicationPublicationVersionRecord,
-        compiled_plan_record: &domain::CompiledPlanRecord,
-        profile: ProviderCompactProfile,
-    ) -> std::result::Result<ResolvedCompactProviderRoute, PublishedRouteResolutionError> {
-        if compiled_plan_record.id != publication.compiled_plan_id {
-            return Err(PublishedRouteResolutionError::CompiledPlanMismatch);
-        }
-
-        let binding = match profile {
-            ProviderCompactProfile::ResponsesCompact => publication
-                .operation_bindings
-                .compact
-                .responses_compact
-                .as_ref(),
-            ProviderCompactProfile::ResponsesCompactionV2 => publication
-                .operation_bindings
-                .compact
-                .responses_compaction_v2
-                .as_ref(),
-        }
-        .ok_or(PublishedRouteResolutionError::OperationUnbound)?;
-        let compiled_plan: CompiledPlan = serde_json::from_value(compiled_plan_record.plan.clone())
-            .map_err(|_| PublishedRouteResolutionError::CompiledPlanInvalid)?;
-        let node = compiled_plan
-            .nodes
-            .get(&binding.target_node_id)
-            .filter(|node| node.node_id == binding.target_node_id)
-            .ok_or(PublishedRouteResolutionError::TargetMissing)?;
-        if node.node_type != "llm" {
-            return Err(PublishedRouteResolutionError::TargetNotLlm);
-        }
-        let runtime = node
-            .llm_runtime
-            .as_ref()
-            .filter(|runtime| llm_runtime_is_complete(runtime))
-            .ok_or(PublishedRouteResolutionError::IncompleteLlmRuntime)?;
-        let supported = self
-            .repository
-            .supports_published_compact(workspace_id, runtime, profile)
-            .await
-            .unwrap_or(false);
-        if !supported {
-            return Err(PublishedRouteResolutionError::ProviderCapabilityMismatch);
-        }
-
-        Ok(ResolvedCompactProviderRoute {
-            operation: ProviderWireOperation::Compact,
-            profile,
-            target_node_id: binding.target_node_id.clone(),
-            llm_runtime: runtime.clone(),
-        })
-    }
 }
 
 fn llm_runtime_is_complete(runtime: &CompiledLlmRuntime) -> bool {

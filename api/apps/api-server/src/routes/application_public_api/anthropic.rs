@@ -25,9 +25,10 @@ use control_plane::application_public_api::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
-    run_service::{ApplicationPublishedCountTokensService, CountTokensCommand},
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
+use domain::AiNativeOperation;
+use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::ClientProtocolEnvelope;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -265,26 +266,22 @@ pub async fn count_message_tokens(
         anthropic_client_protocol_envelope_from_headers(&headers),
         translation.request.client_protocol_envelope,
     );
+    translation
+        .request
+        .execution
+        .set_execution_operation(AiNativeOperation::CountTokens);
     debug!(
         route = "messages_count_tokens",
         translation_decision_count = translation.report.decisions.len(),
         "anthropic count tokens request translated"
     );
-    let result = ApplicationPublishedCountTokensService::new(
-        state.store.clone(),
-        native::api_provider_runtime(state.as_ref()),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_last_used_cache(state.infrastructure.cache_store())
-    .count_tokens(CountTokensCommand {
-        bearer_token,
-        request: translation.request,
-    })
-    .await
-    .map_err(token_count::anthropic_count_tokens_error)?;
-    Ok(Json(to_anthropic_count_tokens_response(
-        result.input_tokens,
-    )))
+    let run = create_native_run(state.clone(), bearer_token.clone(), translation.request).await?;
+    let run = native::execute_blocking_native_run(state, bearer_token, run).await?;
+    let input_tokens = match run.operation_terminal.as_ref() {
+        Some(NativeOperationTerminal::CountTokens(receipt)) => receipt.input_tokens(),
+        _ => return Err(native::blocking_run_projection_error(&run).into()),
+    };
+    Ok(Json(to_anthropic_count_tokens_response(input_tokens)))
 }
 
 fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError> {

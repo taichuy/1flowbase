@@ -121,16 +121,6 @@ pub struct StartPublishedFlowRunCommand {
     pub provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
 }
 
-/// Starts a published application-flow Compact branch with the already
-/// classified, typed provider result. The ingress is transient; the runtime
-/// persists only the Compact Response terminal receipt through the normal
-/// terminal winner path.
-pub struct StartPublishedCompactFlowRunCommand {
-    pub application_id: Uuid,
-    pub flow_run_id: Uuid,
-    pub ingress: orchestration_runtime::execution_state::CompactResponseIngress,
-}
-
 #[derive(Debug, Clone)]
 pub struct LiveProviderStreamEvent {
     pub node_id: String,
@@ -855,23 +845,6 @@ where
             command.application_id,
             command.flow_run_id,
             command.provider_transport_slot,
-            None,
-        )
-        .await
-    }
-
-    pub async fn start_published_compact_flow_run(
-        &self,
-        command: StartPublishedCompactFlowRunCommand,
-    ) -> Result<domain::ApplicationRunDetail>
-    where
-        R: crate::ports::FileManagementRepository,
-    {
-        self.start_published_flow_run_inner(
-            command.application_id,
-            command.flow_run_id,
-            None,
-            Some(command.ingress),
         )
         .await
     }
@@ -881,9 +854,6 @@ where
         application_id: Uuid,
         flow_run_id: Uuid,
         provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
-        compact_response_ingress: Option<
-            orchestration_runtime::execution_state::CompactResponseIngress,
-        >,
     ) -> Result<domain::ApplicationRunDetail>
     where
         R: crate::ports::FileManagementRepository,
@@ -987,8 +957,8 @@ where
             flow_run_id: running.id,
             workspace_id: application.workspace_id,
         };
-        let result = match (provider_transport_payload, compact_response_ingress) {
-            (Some(payload), None) => {
+        let result = match provider_transport_payload {
+            Some(payload) => {
                 live_debug_run::continue_flow_debug_run_with_provider_transport(
                     self,
                     continuation,
@@ -996,18 +966,7 @@ where
                 )
                 .await
             }
-            (None, Some(ingress)) => {
-                live_debug_run::continue_flow_debug_run_with_compact_ingress(
-                    self,
-                    continuation,
-                    ingress,
-                )
-                .await
-            }
-            (None, None) => self.continue_flow_debug_run(continuation).await,
-            (Some(_), Some(_)) => Err(anyhow!(
-                "provider transport payload cannot be combined with compact ingress"
-            )),
+            None => self.continue_flow_debug_run(continuation).await,
         };
         let detail = match result {
             Ok(detail) => detail,

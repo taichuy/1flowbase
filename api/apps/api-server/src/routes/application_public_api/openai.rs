@@ -31,10 +31,7 @@ use control_plane::application_public_api::{
         TranslationSafeRepresentation,
     },
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
-    run_service::{
-        ApplicationPublishedCompactService, ApplicationPublishedRunControlRepository,
-        CompactCommand,
-    },
+    run_service::ApplicationPublishedRunControlRepository,
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use control_plane::ports::ProviderTransportSlotId;
@@ -42,6 +39,7 @@ use domain::{AiNativeCompactProfile, AiNativeOperation};
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
+use orchestration_runtime::execution_state::NativeOperationTerminal;
 use serde_json::{json, Value};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -514,29 +512,14 @@ async fn create_response_for_endpoint(
                     ProviderCompactProfile::ResponsesCompactionV2
                 }
             };
-            let result = match ApplicationPublishedCompactService::new(
-                state.store.clone(),
-                native::api_provider_runtime(state.as_ref()),
-                state.provider_secret_master_key.clone(),
-            )
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .compact(CompactCommand {
-                bearer_token: credential.token,
-                request,
-                profile,
-            })
-            .await
-            {
-                Ok(result) => result,
-                Err(error) => {
-                    let route_error = compact::published_compact_error(error);
-                    warn_openai_route_error(
-                        route,
-                        &route_error,
-                        "openai responses Compact request failed without a flow run",
-                    );
-                    return Err(route_error);
-                }
+            let run = create_native_run(state.clone(), credential.token.clone(), request).await?;
+            let run = native::execute_blocking_native_run(state, credential.token, run).await?;
+            let result = match run.operation_terminal.as_ref() {
+                Some(NativeOperationTerminal::Compact(receipt)) => receipt
+                    .compact_result()
+                    .cloned()
+                    .ok_or_else(compact::unexpected_compact_result_error)?,
+                _ => return Err(native::blocking_run_projection_error(&run).into()),
             };
 
             info!(
@@ -546,10 +529,10 @@ async fn create_response_for_endpoint(
                 response_mode = response_mode.as_deref().unwrap_or("blocking"),
                 model = %model,
                 translation_decision_count,
-                "openai responses Compact request completed without a flow run"
+                "openai responses Compact request completed through a durable flow run"
             );
 
-            match (profile, result.result) {
+            match (profile, result) {
                 (
                     ProviderCompactProfile::ResponsesCompact,
                     ProviderCompactResult::ResponseItems { response_items, .. },
