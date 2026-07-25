@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::application_public_api::mapping::{
-    ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationOperationBindings,
+    ApplicationApiMappingConfig, ApplicationApiMappingDraft,
 };
 use crate::application_public_api::operation_bindings::{
     ApplicationOperationBindingCapabilitySupport, ApplicationOperationBindingOperation,
@@ -14,7 +14,6 @@ pub struct ReplaceApplicationApiMappingInput {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub mapping: ApplicationApiMappingConfig,
-    pub operation_bindings: ApplicationOperationBindings,
 }
 
 #[derive(Debug, Clone)]
@@ -22,7 +21,6 @@ pub struct CreateApplicationPublicationVersionInput {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub mapping_snapshot: ApplicationApiMappingConfig,
-    pub operation_bindings: ApplicationOperationBindings,
     pub extension_slug: Option<String>,
     pub api_enabled: bool,
     pub compiled_plan_id: Uuid,

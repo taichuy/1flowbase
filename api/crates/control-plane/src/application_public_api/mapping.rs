@@ -29,7 +29,6 @@ pub struct ReplaceApplicationApiMappingCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationApiMappingDraft {
     pub mapping: ApplicationApiMappingConfig,
-    pub operation_bindings: ApplicationOperationBindings,
 }
 
 pub struct ApplicationApiMappingService<R> {
@@ -87,13 +86,12 @@ where
         &self,
         command: ReplaceApplicationApiMappingCommand,
     ) -> Result<ApplicationApiMappingConfig> {
-        Ok(self.replace_mapping_draft(command, None).await?.mapping)
+        Ok(self.replace_mapping_draft(command).await?.mapping)
     }
 
     pub async fn replace_mapping_draft(
         &self,
         command: ReplaceApplicationApiMappingCommand,
-        operation_bindings: Option<ApplicationOperationBindings>,
     ) -> Result<ApplicationApiMappingDraft> {
         validate_application_api_mapping(&command.mapping)?;
         let actor = self
@@ -141,11 +139,6 @@ where
                 actor_user_id: command.actor_user_id,
                 application_id: application.id,
                 mapping: command.mapping,
-                operation_bindings: operation_bindings.unwrap_or_else(|| {
-                    current_draft
-                        .map(|draft| draft.operation_bindings)
-                        .unwrap_or_default()
-                }),
             })
             .await
     }
@@ -217,31 +210,8 @@ impl ApplicationApiMappingDraft {
     pub fn default_native() -> Self {
         Self {
             mapping: ApplicationApiMappingConfig::default_native(),
-            operation_bindings: ApplicationOperationBindings::default(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ApplicationOperationTargetBinding {
-    pub target_node_id: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ApplicationCompactOperationBindings {
-    pub responses_compact: Option<ApplicationOperationTargetBinding>,
-    pub responses_compaction_v2: Option<ApplicationOperationTargetBinding>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ApplicationOperationBindings {
-    pub generate: Option<ApplicationOperationTargetBinding>,
-    pub count_tokens: Option<ApplicationOperationTargetBinding>,
-    #[serde(default)]
-    pub compact: ApplicationCompactOperationBindings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
