@@ -205,6 +205,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   } catch (error) {
     executionError = error;
   } finally {
+    fs.rmSync(paths.readyFile, { force: true });
     try {
       await fixture?.close();
     } catch (error) {
@@ -215,7 +216,6 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     } catch (error) {
       cleanupErrors.push(error);
     }
-    fs.rmSync(paths.readyFile, { force: true });
   }
 
   const secrets = [

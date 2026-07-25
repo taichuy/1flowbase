@@ -91,7 +91,16 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
     },
     async createGatewayFixture(options) {
       calls.push(['fixture:create', options.upstreamBaseUrl, options.artifactRoot]);
-      return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
+      return {
+        result: fixtureManifest(),
+        async close() {
+          assert.equal(
+            fs.existsSync(path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/gateway-ready.json')),
+            false,
+          );
+          calls.push('fixture:close');
+        },
+      };
     },
     async runWireAudit(options) {
       calls.push(['wire-audit', options.manifest.gatewayBaseUrl]);
