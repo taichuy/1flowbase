@@ -871,9 +871,6 @@ where
         ) {
             return Err(ControlPlaneError::InvalidInput("run_mode").into());
         }
-        let provider_transport_payload = self
-            .resolve_provider_transport_payload(&flow_run, provider_transport_slot)
-            .await?;
         let actor = ApplicationRepository::load_actor_context_for_user(
             &self.repository,
             flow_run.created_by,
@@ -957,6 +954,11 @@ where
             flow_run_id: running.id,
             workspace_id: application.workspace_id,
         };
+        // Keep the slot available until the complete execution segment has exhausted Provider
+        // retries. A disconnected SSE receiver does not own this background execution lifetime.
+        let provider_transport_payload = self
+            .resolve_provider_transport_payload(&running, provider_transport_slot)
+            .await?;
         let result = match provider_transport_payload {
             Some(payload) => {
                 live_debug_run::continue_flow_debug_run_with_provider_transport(
@@ -968,6 +970,9 @@ where
             }
             None => self.continue_flow_debug_run(continuation).await,
         };
+        if let Some(slot_id) = provider_transport_slot {
+            self.delete_provider_transport_slot(slot_id).await;
+        }
         let detail = match result {
             Ok(detail) => detail,
             Err(error) => {
