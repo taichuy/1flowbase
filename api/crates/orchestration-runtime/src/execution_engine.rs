@@ -5,10 +5,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        NativePromptBlock, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
-        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        NativePromptBlock, ProviderCompactResult, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderFinishReason, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};
@@ -25,9 +26,10 @@ use crate::{
         LlmRoutingMode, StartCompactDispatch, COMPACT_SOURCE_HANDLE_ID,
     },
     execution_state::{
-        count_tokens_receipt_from_traces, CheckpointSnapshot, CountTokensReceipt,
-        ExecutionIncompleteReason, ExecutionStopReason, FlowDebugExecutionOutcome,
-        NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask, PendingHumanInput,
+        compact_response_receipt_from_traces, count_tokens_receipt_from_traces,
+        CheckpointSnapshot, CompactResponseReceipt, CountTokensReceipt, ExecutionIncompleteReason,
+        ExecutionStopReason, FlowDebugExecutionOutcome, NodeExecutionFailure, NodeExecutionTrace,
+        PendingCallbackTask, PendingHumanInput,
     },
     node_errors::build_node_type_not_implemented_error_payload,
     output_schema::value_is_llm_context_messages,
@@ -41,6 +43,7 @@ pub use crate::code_runtime::{
 };
 
 pub mod branching;
+mod compact_operation;
 mod http_request;
 mod llm_callbacks;
 mod llm_context;
@@ -58,6 +61,7 @@ mod variable_assignment;
 mod visible_internal_llm_tools;
 
 use branching::*;
+use compact_operation::execute_compact_consumer;
 pub use http_request::{
     execute_http_request_node, HttpRequestNodeExecution, HttpResponseFilePersistInput,
     HttpResponseFilePersister,
@@ -106,6 +110,14 @@ pub trait ProviderInvoker: Send + Sync {
         _input: ProviderCountTokensInput,
     ) -> Result<ProviderCountTokensResult> {
         bail!("provider CountTokens is not supported by this invoker")
+    }
+
+    async fn compact(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderCompactResult> {
+        bail!("provider Compact is not supported by this invoker")
     }
 }
 
@@ -1086,6 +1098,12 @@ where
     if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
         count_tokens_receipt_from_traces(&node_traces)?;
     }
+    if matches!(
+        runtime_context.operation(),
+        domain::AiNativeOperation::Compact(_)
+    ) {
+        compact_response_receipt_from_traces(&node_traces)?;
+    }
 
     Ok(FlowDebugExecutionOutcome {
         stop_reason: successful_flow_stop_reason(&node_traces),
@@ -1160,6 +1178,25 @@ where
             .first()
             .ok_or_else(|| anyhow!("CountTokens LLM consumer has no selected runtime"))?;
         return execute_count_tokens_consumer(
+            plan,
+            node,
+            selected_runtime,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await;
+    }
+    if matches!(
+        runtime_context.operation(),
+        domain::AiNativeOperation::Compact(_)
+    ) {
+        let selected_runtime = attempt_runtimes
+            .first()
+            .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;
+        return execute_compact_consumer(
             plan,
             node,
             selected_runtime,

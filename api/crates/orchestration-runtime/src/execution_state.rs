@@ -150,6 +150,15 @@ impl CompactResponseReceipt {
         Ok(Self::ResponsesCompactionV2(result))
     }
 
+    pub fn from_provider_result(result: ProviderCompactResult) -> Result<Self> {
+        match result.profile() {
+            ProviderCompactProfile::ResponsesCompact => Self::responses_compact(result),
+            ProviderCompactProfile::ResponsesCompactionV2 => {
+                Self::responses_compaction_v2(result)
+            }
+        }
+    }
+
     pub fn profile(&self) -> CompactResponseProfile {
         match self {
             Self::LocalGenerate(_) => CompactResponseProfile::LocalSummary,
@@ -290,11 +299,36 @@ pub struct NodeExecutionTrace {
 pub fn compact_response_receipt_from_trace(
     trace: &NodeExecutionTrace,
 ) -> Result<Option<CompactResponseReceipt>> {
-    if trace.node_type != COMPACT_RESPONSE_TERMINAL_KIND {
+    if trace
+        .output_payload
+        .get("semantic_terminal")
+        .and_then(Value::as_str)
+        != Some(COMPACT_RESPONSE_TERMINAL_KIND)
+    {
         return Ok(None);
     }
 
     CompactResponseReceipt::from_payload(&trace.output_payload).map(Some)
+}
+
+pub fn compact_response_receipt_from_traces(
+    traces: &[NodeExecutionTrace],
+) -> Result<CompactResponseReceipt> {
+    let receipts = traces
+        .iter()
+        .map(compact_response_receipt_from_trace)
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    match receipts.as_slice() {
+        [receipt] => Ok(receipt.clone()),
+        [] => bail!("Compact workflow completed without a typed Compact terminal"),
+        _ => bail!(
+            "Compact workflow completed with {} typed Compact terminals; expected exactly one",
+            receipts.len()
+        ),
+    }
 }
 
 pub fn count_tokens_receipt_from_trace(

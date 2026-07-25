@@ -8,10 +8,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
-        ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation,
+        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderFinishReason, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation,
     },
 };
 use serde_json::{json, Value};
@@ -28,7 +29,10 @@ use crate::{
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
         ExecutionRuntimeContext, LlmRoutingCounterStore, ProviderInvocationOutput, ProviderInvoker,
     },
-    execution_state::{count_tokens_receipt_from_traces, ExecutionStopReason},
+    execution_state::{
+        compact_response_receipt_from_traces, count_tokens_receipt_from_traces,
+        ExecutionStopReason,
+    },
 };
 
 struct StubProviderInvoker {

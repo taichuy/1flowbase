@@ -56,6 +56,95 @@ impl CodeInvoker for CountTokensInvoker {
     }
 }
 
+struct CompactInvoker {
+    captured: Arc<Mutex<Vec<ProviderInvocationInput>>>,
+    result: ProviderCompactResult,
+    unsupported: bool,
+}
+
+#[async_trait]
+impl ProviderInvoker for CompactInvoker {
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        panic!("Compact must not fall back to Generate")
+    }
+
+    async fn compact(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderCompactResult> {
+        self.captured.lock().expect("capture mutex poisoned").push(input);
+        if self.unsupported {
+            anyhow::bail!("provider Compact is unsupported");
+        }
+        Ok(self.result.clone())
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for CompactInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("fixture has no capability nodes")
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for CompactInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        unreachable!("fixture has no code nodes")
+    }
+}
+
+fn compact_result(profile: ProviderCompactProfile) -> ProviderCompactResult {
+    match profile {
+        ProviderCompactProfile::ResponsesCompact => ProviderCompactResult::ResponseItems {
+            operation: ProviderWireOperation::Compact,
+            profile,
+            response_items: vec![json!({ "type": "message", "content": "compacted" })],
+        },
+        ProviderCompactProfile::ResponsesCompactionV2 => {
+            ProviderCompactResult::CompletedOpaqueCompactionItem {
+                operation: ProviderWireOperation::Compact,
+                profile,
+                response_id: Some("resp-compact".to_string()),
+                compaction_item: json!({
+                    "type": "compaction",
+                    "encrypted_content": "opaque-canary",
+                }),
+                encrypted_content: "opaque-canary".to_string(),
+            }
+        }
+    }
+}
+
+fn selected_branch_llm_plan() -> (CompiledPlan, CompiledLlmRuntime) {
+    let mut plan = branch_plan(true, None);
+    let llm_template = base_plan().nodes["node-llm"].clone();
+    for node_id in ["node-if-answer", "node-elseif-answer", "node-else-answer"] {
+        let mut llm = llm_template.clone();
+        llm.node_id = node_id.to_string();
+        llm.alias = node_id.to_string();
+        llm.dependency_node_ids = vec!["node-if".to_string()];
+        llm.downstream_node_ids.clear();
+        plan.nodes.insert(node_id.to_string(), llm);
+    }
+    (plan, llm_template.llm_runtime.expect("fixture LLM runtime"))
+}
+
 fn answer_node(node_id: &str, text: &str) -> CompiledNode {
     CompiledNode {
         node_id: node_id.to_string(),
@@ -415,6 +504,172 @@ async fn unsupported_count_tokens_provider_fails_without_generate_fallback() {
         &json!({ "node-start": {
             "query": "unsupported",
             "operation": { "kind": "count_tokens", "profile": null }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect("provider failure is represented by the execution outcome");
+    assert!(matches!(outcome.stop_reason, ExecutionStopReason::Failed(_)));
+}
+
+/// Root #1453 / Delivery #1457: both canonical Compact profiles use the selected graph LLM.
+#[tokio::test]
+async fn selected_llm_branch_emits_typed_compact_terminal_for_both_profiles() {
+    for (profile, profile_name) in [
+        (ProviderCompactProfile::ResponsesCompact, "responses_compact"),
+        (
+            ProviderCompactProfile::ResponsesCompactionV2,
+            "responses_compaction_v2",
+        ),
+    ] {
+        let (plan, runtime) = selected_branch_llm_plan();
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let invoker = CompactInvoker {
+            captured: captured.clone(),
+            result: compact_result(profile),
+            unsupported: false,
+        };
+        let outcome = start_flow_debug_run(
+            &plan,
+            &json!({ "node-start": {
+                "query": "canonical compact prompt",
+                "status": "vip",
+                "segment": "enterprise-a",
+                "operation": { "kind": "compact", "profile": profile_name }
+            }}),
+            &invoker,
+        )
+        .await
+        .expect("selected Compact consumer should complete");
+
+        let receipt = compact_response_receipt_from_traces(&outcome.node_traces).unwrap();
+        assert_eq!(receipt.compact_result(), Some(&compact_result(profile)));
+        let captured = captured.lock().expect("capture mutex poisoned");
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].operation, ProviderWireOperation::Compact);
+        assert_eq!(captured[0].profile, Some(profile));
+        assert_eq!(captured[0].provider_instance_id, runtime.provider_instance_id);
+        assert_eq!(captured[0].model, runtime.model);
+        assert!(captured[0]
+            .messages
+            .iter()
+            .any(|message| message.content.contains("canonical compact prompt")));
+    }
+}
+
+#[tokio::test]
+async fn compact_fails_when_no_llm_consumer_is_selected() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let invoker = CompactInvoker {
+        captured: captured.clone(),
+        result: compact_result(ProviderCompactProfile::ResponsesCompact),
+        unsupported: false,
+    };
+    let error = start_flow_debug_run(
+        &branch_plan(false, None),
+        &json!({ "node-start": {
+            "status": "regular",
+            "segment": "enterprise-a",
+            "operation": { "kind": "compact", "profile": "responses_compact" }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect_err("Compact completion without an LLM consumer must fail");
+    assert!(error.to_string().contains("without a typed Compact terminal"));
+    assert!(captured.lock().expect("capture mutex poisoned").is_empty());
+}
+
+#[tokio::test]
+async fn compact_fails_when_multiple_llm_consumers_are_reached() {
+    let mut plan = base_plan();
+    plan.nodes.remove("node-answer");
+    plan.topological_order.retain(|node_id| node_id != "node-answer");
+    plan.edges.retain(|edge| edge.target != "node-answer");
+    plan.nodes.get_mut("node-llm").unwrap().downstream_node_ids.clear();
+    let mut second = plan.nodes["node-llm"].clone();
+    second.node_id = "node-llm-second".to_string();
+    second.alias = "LLM second".to_string();
+    second.dependency_node_ids = vec!["node-start".to_string()];
+    second.downstream_node_ids.clear();
+    plan.nodes
+        .get_mut("node-start")
+        .unwrap()
+        .downstream_node_ids
+        .push(second.node_id.clone());
+    plan.edges.push(CompiledEdge {
+        edge_id: "edge-start-llm-second".to_string(),
+        source: "node-start".to_string(),
+        target: second.node_id.clone(),
+        source_handle: None,
+        target_handle: None,
+    });
+    plan.topological_order.push(second.node_id.clone());
+    plan.nodes.insert(second.node_id.clone(), second);
+    let invoker = CompactInvoker {
+        captured: Arc::new(Mutex::new(Vec::new())),
+        result: compact_result(ProviderCompactProfile::ResponsesCompact),
+        unsupported: false,
+    };
+    let error = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {
+            "query": "compact twice",
+            "operation": { "kind": "compact", "profile": "responses_compact" }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect_err("multiple Compact consumers must fail");
+    assert!(error.to_string().contains("expected exactly one"));
+}
+
+#[tokio::test]
+async fn compact_rejects_wrong_provider_operation_and_profile() {
+    let invalid_results = [
+        ProviderCompactResult::ResponseItems {
+            operation: ProviderWireOperation::Generate,
+            profile: ProviderCompactProfile::ResponsesCompact,
+            response_items: vec![json!({ "type": "message" })],
+        },
+        compact_result(ProviderCompactProfile::ResponsesCompactionV2),
+    ];
+    for result in invalid_results {
+        let (plan, _) = selected_branch_llm_plan();
+        let invoker = CompactInvoker {
+            captured: Arc::new(Mutex::new(Vec::new())),
+            result,
+            unsupported: false,
+        };
+        let outcome = start_flow_debug_run(
+            &plan,
+            &json!({ "node-start": {
+                "query": "invalid compact result",
+                "status": "vip",
+                "operation": { "kind": "compact", "profile": "responses_compact" }
+            }}),
+            &invoker,
+        )
+        .await
+        .expect("provider contract mismatch is represented by the execution outcome");
+        assert!(matches!(outcome.stop_reason, ExecutionStopReason::Failed(_)));
+    }
+}
+
+#[tokio::test]
+async fn unsupported_compact_provider_fails_without_generate_fallback() {
+    let (plan, _) = selected_branch_llm_plan();
+    let invoker = CompactInvoker {
+        captured: Arc::new(Mutex::new(Vec::new())),
+        result: compact_result(ProviderCompactProfile::ResponsesCompact),
+        unsupported: true,
+    };
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {
+            "query": "unsupported compact",
+            "status": "vip",
+            "operation": { "kind": "compact", "profile": "responses_compact" }
         }}),
         &invoker,
     )

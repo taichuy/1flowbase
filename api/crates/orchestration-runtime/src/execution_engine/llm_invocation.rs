@@ -110,7 +110,7 @@ pub(super) fn build_provider_invocation(
     variable_pool: &Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<BuiltProviderInvocation, Value> {
-    let operation = provider_wire_operation(runtime_context.operation())?;
+    let (operation, profile) = provider_operation(runtime_context.operation());
     let previous_response_id =
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
     let context_policy = llm_context_policy(node, runtime);
@@ -176,7 +176,7 @@ pub(super) fn build_provider_invocation(
     let mut input = ProviderInvocationInput {
         operation,
         contract_version: Default::default(),
-        profile: None,
+        profile,
         provider_instance_id: runtime.provider_instance_id.clone(),
         provider_code: runtime.provider_code.clone(),
         protocol: runtime.protocol.clone(),
@@ -210,23 +210,22 @@ pub(super) fn build_provider_invocation(
     })
 }
 
-fn provider_wire_operation(
+fn provider_operation(
     operation: domain::AiNativeOperation,
-) -> Result<ProviderWireOperation, Value> {
+) -> (ProviderWireOperation, Option<ProviderCompactProfile>) {
     match operation {
-        domain::AiNativeOperation::Generate(_) => Ok(ProviderWireOperation::Generate),
-        domain::AiNativeOperation::CountTokens => Ok(ProviderWireOperation::CountTokens),
-        domain::AiNativeOperation::Compact(_) => {
-            Err(json!({
-                "error_code": "ai_native_operation_unsupported",
-                "message": format!(
-                    "AI Native operation {} is not supported by the Generate LLM consumer",
-                    operation.kind()
-                ),
-                "operation": serde_json::to_value(operation)
-                    .expect("canonical AI Native operation must serialize"),
-            }))
-        }
+        domain::AiNativeOperation::Generate(_) => (ProviderWireOperation::Generate, None),
+        domain::AiNativeOperation::CountTokens => (ProviderWireOperation::CountTokens, None),
+        domain::AiNativeOperation::Compact(domain::AiNativeCompactProfile::ResponsesCompact) => (
+            ProviderWireOperation::Compact,
+            Some(ProviderCompactProfile::ResponsesCompact),
+        ),
+        domain::AiNativeOperation::Compact(
+            domain::AiNativeCompactProfile::ResponsesCompactionV2,
+        ) => (
+            ProviderWireOperation::Compact,
+            Some(ProviderCompactProfile::ResponsesCompactionV2),
+        ),
     }
 }
 
