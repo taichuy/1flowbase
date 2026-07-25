@@ -52,8 +52,8 @@ function endpointUrl(endpointSet, transport) {
   return url;
 }
 
-function requestBody(transport, scenario, clientNonce, model = 'mock-model') {
-  const metadata = { mock_scenario: scenario, request_nonce: clientNonce, trace_id: clientNonce };
+function requestBody(transport, clientNonce, model = 'mock-model') {
+  const metadata = { trace_id: clientNonce };
   if (transport === TRANSPORT.ANTHROPIC_SSE) {
     return {
       model,
@@ -261,7 +261,7 @@ async function runSseRequest({
         [MOCK_SCENARIO_HEADER]: scenario,
         ...headers,
       },
-      body: JSON.stringify(requestBody(transport, scenario, clientNonce, model)),
+      body: JSON.stringify(requestBody(transport, clientNonce, model)),
       signal: controller.signal,
     });
     httpStatus = response.status;
@@ -376,7 +376,7 @@ function runWebSocketRequest({
     }, timeoutMs);
     socket.addEventListener('open', () => socket.send(JSON.stringify({
       type: 'response.create',
-      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
+      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, clientNonce, 'mock-model'),
     })));
     socket.addEventListener('message', (message) => {
       let event;

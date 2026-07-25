@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { MOCK_ROUTE, SCENARIO, TRANSPORT } = require('../../contracts');
+const { MOCK_ROUTE, MOCK_SCENARIO_HEADER, SCENARIO, TRANSPORT } = require('../../contracts');
 const { createMockUpstream } = require('../../mock-upstream');
 const {
   authorizationHeadersByTransport,
@@ -95,7 +95,8 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
       fetchCalls.push({
         url: String(url),
         authorization: options.headers.authorization,
-        clientNonce: JSON.parse(options.body).metadata.request_nonce,
+        scenario: options.headers[MOCK_SCENARIO_HEADER],
+        metadata: JSON.parse(options.body).metadata,
         traceId: JSON.parse(options.body).metadata.trace_id,
         model: JSON.parse(options.body).model,
       });
@@ -139,7 +140,11 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
       'Bearer responses-key',
       'Bearer anthropic-key',
     ]);
-    assert.deepEqual(fetchCalls.map((call) => call.clientNonce), ['load-000001', 'load-000003']);
+    assert.deepEqual(fetchCalls.map((call) => call.scenario), [SCENARIO.NORMAL, SCENARIO.NORMAL]);
+    assert.deepEqual(fetchCalls.map((call) => call.metadata), [
+      { trace_id: 'load-000001' },
+      { trace_id: 'load-000003' },
+    ]);
     assert.deepEqual(fetchCalls.map((call) => call.traceId), ['load-000001', 'load-000003']);
     assert.deepEqual(fetchCalls.map((call) => call.model), ['published-openai-model', 'published-anthropic-model']);
     assert.deepEqual(
@@ -151,8 +156,7 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
     assert.equal(String(websocketCalls[0][0]).includes('key'), false);
     assert.equal(websocketRequests.length, 1);
     assert.equal(websocketRequests[0].response.model, 'mock-model');
-    assert.equal(websocketRequests[0].response.metadata.request_nonce, 'load-000002');
-    assert.equal(websocketRequests[0].response.metadata.trace_id, 'load-000002');
+    assert.deepEqual(websocketRequests[0].response.metadata, { trace_id: 'load-000002' });
   });
 });
 

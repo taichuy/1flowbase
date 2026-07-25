@@ -49,7 +49,7 @@ test('AC-029: protected baseline verifies revision without owning private worktr
     });
     assert.throws(
       () => requireRepositoryRevision('protected', { path: root, revision: 'f'.repeat(40) }),
-      /expected revision check failed/u,
+      /revision mismatch/u,
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

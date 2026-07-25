@@ -235,7 +235,7 @@ async fn terminal_answer_recovery_prefers_durable_answer_presentation() {
 }
 
 #[tokio::test]
-async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_unsupported() {
+async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let previous_callback_task_id = Uuid::from_u128(0x88888888888888888888888888888888);
@@ -410,10 +410,10 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_unsupporte
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(body.contains("prior node answer"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
     assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
-    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
     assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
-    assert!(!body.contains("[DONE]"), "{body}");
+    assert!(body.contains("[DONE]"), "{body}");
 }

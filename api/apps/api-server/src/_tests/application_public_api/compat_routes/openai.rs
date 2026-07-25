@@ -41,9 +41,10 @@ async fn opencode_chat_stream_options_cross_the_request_boundary() {
 }
 
 #[tokio::test]
-async fn codex_reasoning_include_crosses_the_request_boundary() {
-    let app = test_app().await;
+async fn codex_native_reasoning_include_reaches_provider_capability_boundary() {
+    let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Codex Reasoning Include App").await;
+    let before = flow_run_count(state.as_ref()).await;
     let mut body = responses_body(false);
     body["store"] = json!(false);
     body["parallel_tool_calls"] = json!(false);
@@ -63,7 +64,13 @@ async fn codex_reasoning_include_crosses_the_request_boundary() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let payload = response_json(response).await;
+    assert_eq!(
+        payload["error"]["code"],
+        json!("provider_capability_mismatch")
+    );
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
@@ -254,9 +261,10 @@ async fn openai_responses_resolves_previous_response_id_before_creating_a_run() 
 }
 
 #[tokio::test]
-async fn openai_responses_rejects_malformed_previous_response_id_before_lookup() {
-    let app = test_app().await;
+async fn openai_responses_treats_opaque_previous_response_id_as_provider_lookup() {
+    let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Invalid Previous App").await;
+    let before = flow_run_count(state.as_ref()).await;
     let mut body = responses_body(false);
     body["previous_response_id"] = json!("resp_not-a-native-run-id");
 
@@ -268,10 +276,10 @@ async fn openai_responses_rejects_malformed_previous_response_id_before_lookup()
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["param"], json!("previous_response_id"));
-    assert_eq!(payload["error"]["code"], json!("invalid_request"));
+    assert_eq!(payload["error"]["code"], json!("application_run_not_found"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 
 #[tokio::test]
@@ -328,7 +336,7 @@ async fn openai_responses_function_call_output_resolves_callback_before_run_crea
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_responses_nested_input_file_is_rejected_before_run_creation() {
+async fn d4_ac_016_openai_responses_input_file_reaches_provider_capability_boundary() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Nested Input File App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -349,10 +357,12 @@ async fn d2_ac_007_openai_responses_nested_input_file_is_rejected_before_run_cre
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("unsupported_feature"));
-    assert_eq!(payload["error"]["param"], json!("input"));
+    assert_eq!(
+        payload["error"]["code"],
+        json!("provider_capability_mismatch")
+    );
     assert_eq!(flow_run_count(state.as_ref()).await, before);
 }
 

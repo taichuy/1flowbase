@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_becomes_unsupported() {
+async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects_tool_call() {
     let mut run = native_run();
     let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
     let callback_task_id = Uuid::from_u128(0x99999999999999999999999999999999);
@@ -163,12 +163,12 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_becomes_
     let body = String::from_utf8(body.to_vec()).unwrap();
 
     assert_eq!(body.matches("prior node answer").count(), 1, "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("lookup_next"), "{body}");
+    assert!(body.contains("lookup_next"), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
     assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
-    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
     assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
-    assert!(!body.contains("[DONE]"), "{body}");
+    assert!(body.contains("[DONE]"), "{body}");
 }
 
 #[test]
@@ -409,7 +409,7 @@ async fn d2_ac_004_openai_responses_cancelled_terminal_is_failed_without_complet
 }
 
 #[tokio::test]
-async fn d2_ac_004_openai_waiting_terminal_is_adapter_unsupported_without_success_signal() {
+async fn d2_ac_004_openai_waiting_terminal_projects_client_tool_callback() {
     let mut run = native_run();
     run.status = NativeRunStatus::Waiting;
     let waiting = RuntimeEventPayload {
@@ -435,13 +435,16 @@ async fn d2_ac_004_openai_waiting_terminal_is_adapter_unsupported_without_succes
             .unwrap();
         String::from_utf8(body.to_vec()).unwrap()
     };
+    assert!(chat_body.contains("must-not-project"), "{chat_body}");
     assert!(
-        chat_body.contains("required_action_not_supported"),
+        chat_body.contains("\"finish_reason\":\"tool_calls\""),
         "{chat_body}"
     );
-    assert!(!chat_body.contains("must-not-project"), "{chat_body}");
-    assert!(!chat_body.contains("\"finish_reason\""), "{chat_body}");
-    assert!(!chat_body.contains("[DONE]"), "{chat_body}");
+    assert!(chat_body.contains("[DONE]"), "{chat_body}");
+    assert!(
+        !chat_body.contains("required_action_not_supported"),
+        "{chat_body}"
+    );
 
     let mut responses = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
     let response = test_projected_events_response(
@@ -451,8 +454,9 @@ async fn d2_ac_004_openai_waiting_terminal_is_adapter_unsupported_without_succes
         .await
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
-    assert!(body.contains("event: response.failed"), "{body}");
-    assert!(body.contains("required_action_not_supported"), "{body}");
-    assert!(!body.contains("must-not-project"), "{body}");
-    assert!(!body.contains("event: response.completed"), "{body}");
+    assert!(body.contains("event: response.output_item.added"), "{body}");
+    assert!(body.contains("\"type\":\"function_call\""), "{body}");
+    assert!(body.contains("must-not-project"), "{body}");
+    assert!(body.contains("event: response.completed"), "{body}");
+    assert!(!body.contains("required_action_not_supported"), "{body}");
 }
