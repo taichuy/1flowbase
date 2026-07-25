@@ -4,6 +4,11 @@ use control_plane::application_public_api::native::{NativeRequiredAction, Native
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
+use control_plane::ports::{
+    ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+};
+use storage_ephemeral::MemoryProviderTransportStore;
+use time::Duration;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -25,6 +30,59 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
+}
+
+fn provider_transport_payload(canary: &str) -> ProviderTransportPayload {
+    ProviderTransportPayload::openai_responses(json!({
+        "model": "gpt-test",
+        "input": canary,
+    }))
+    .expect("fixture provider payload should be valid")
+}
+
+#[tokio::test]
+async fn d3_p1_generate_and_compact_share_the_flow_run_transport_slot() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    for operation in [
+        AiNativeOperation::Generate(domain::AiNativeGenerateProfile::Standard),
+        AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompact),
+    ] {
+        let flow_run_id = Uuid::now_v7();
+        let payload = provider_transport_payload("D3-P1-ROUTE-STAGING-CANARY");
+        let expected_payload = payload.clone();
+
+        let slot = stage_openai_provider_transport(&store, flow_run_id, operation, Some(payload))
+            .await
+            .expect("route-local staging should succeed")
+            .expect("Generate and Compact should receive a sealed transport slot");
+
+        assert!(slot == ProviderTransportSlotId::for_flow_run(flow_run_id));
+        assert_eq!(store.get(slot).await.unwrap(), Some(expected_payload));
+    }
+}
+
+#[tokio::test]
+async fn d3_p1_count_tokens_without_payload_does_not_create_a_transport_slot() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+
+    let slot = stage_openai_provider_transport(
+        &store,
+        flow_run_id,
+        AiNativeOperation::CountTokens,
+        None,
+    )
+    .await
+    .expect("CountTokens staging decision should succeed");
+
+    assert!(slot.is_none());
+    assert_eq!(
+        store
+            .get(ProviderTransportSlotId::for_flow_run(flow_run_id))
+            .await
+            .unwrap(),
+        None
+    );
 }
 
 #[test]

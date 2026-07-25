@@ -34,7 +34,9 @@ use control_plane::application_public_api::{
     run_service::ApplicationPublishedRunControlRepository,
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
-use control_plane::ports::ProviderTransportSlotId;
+use control_plane::ports::{
+    ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+};
 use domain::{AiNativeCompactProfile, AiNativeOperation};
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
@@ -396,6 +398,7 @@ async fn create_response_for_endpoint(
             }
         }
     }
+    let provider_transport_wire_body = value.clone();
     let translated = match translate_response_request_with_context_and_previous(
         value,
         request_context,
@@ -415,10 +418,22 @@ async fn create_response_for_endpoint(
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
     request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
+    let operation = *request.execution.execution_operation();
+    if matches!(operation, AiNativeOperation::Compact(_)) {
+        let payload = ProviderTransportPayload::openai_responses(provider_transport_wire_body)
+            .map_err(|_| {
+                OpenAiRouteError::Native(native::NativeApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "provider_transport_payload_invalid",
+                    "could not stage the provider transport payload",
+                ))
+            })?;
+        request.metadata.set_provider_transport_payload(payload);
+    }
     let provider_transport_payload = request.metadata.take_provider_transport_payload();
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    match *request.execution.execution_operation() {
+    match operation {
         AiNativeOperation::Generate(_) => {
             let run =
                 match create_native_run(state.clone(), credential.token.clone(), request).await {
@@ -435,32 +450,13 @@ async fn create_response_for_endpoint(
                     }
                 };
 
-            let provider_transport_slot = if matches!(
-                run.status,
-                NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running
-            ) {
-                provider_transport_payload.map(|payload| {
-                    let slot = ProviderTransportSlotId::for_flow_run(run.id);
-                    let store = state.infrastructure.provider_transport_store();
-                    (slot, store, payload)
-                })
-            } else {
-                None
-            };
-            let provider_transport_slot = match provider_transport_slot {
-                Some((slot, store, payload)) => {
-                    if let Err(error) = store.put(slot, payload).await {
-                        warn!(
-                            route,
-                            flow_run_id = %run.id,
-                            error = %error,
-                            "openai responses provider transport staging failed"
-                        );
-                    }
-                    Some(slot)
-                }
-                None => None,
-            };
+            let provider_transport_slot = stage_openai_provider_transport(
+                state.infrastructure.provider_transport_store().as_ref(),
+                run.id,
+                operation,
+                provider_transport_payload,
+            )
+            .await?;
 
             info!(
                 route,
@@ -513,7 +509,20 @@ async fn create_response_for_endpoint(
                 }
             };
             let run = create_native_run(state.clone(), credential.token.clone(), request).await?;
-            let run = native::execute_blocking_native_run(state, credential.token, run).await?;
+            let provider_transport_slot = stage_openai_provider_transport(
+                state.infrastructure.provider_transport_store().as_ref(),
+                run.id,
+                operation,
+                provider_transport_payload,
+            )
+            .await?;
+            let run = native::execute_blocking_native_run_with_provider_transport(
+                state,
+                credential.token,
+                run,
+                provider_transport_slot,
+            )
+            .await?;
             let result = match run.operation_terminal.as_ref() {
                 Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
                 _ => return Err(native::blocking_run_projection_error(&run).into()),
@@ -569,6 +578,34 @@ async fn create_response_for_endpoint(
             }
         }
     }
+}
+
+async fn stage_openai_provider_transport(
+    store: &dyn ProviderTransportStore,
+    flow_run_id: Uuid,
+    operation: AiNativeOperation,
+    payload: Option<ProviderTransportPayload>,
+) -> Result<Option<ProviderTransportSlotId>, OpenAiRouteError> {
+    if matches!(operation, AiNativeOperation::CountTokens) {
+        return Ok(None);
+    }
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    store.put(slot, payload).await.map_err(|error| {
+        warn!(
+            flow_run_id = %flow_run_id,
+            error = %error,
+            "openai responses provider transport staging failed"
+        );
+        OpenAiRouteError::Native(native::NativeApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "provider_transport_staging_failed",
+            "provider transport is temporarily unavailable",
+        ))
+    })?;
+    Ok(Some(slot))
 }
 
 #[utoipa::path(

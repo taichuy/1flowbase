@@ -88,7 +88,9 @@ impl NativeRequestMetadata {
         self.responses_transport_requirement
     }
 
-    pub(crate) fn set_provider_transport_payload(&mut self, payload: ProviderTransportPayload) {
+    /// Admits an adapter-owned wire payload long enough to create its durable-safe summary.
+    /// The adapter must take the payload before the request crosses into runtime execution.
+    pub fn set_provider_transport_payload(&mut self, payload: ProviderTransportPayload) {
         self.provider_transport_summary = Some(ProviderTransportSummary {
             protocol: match payload.protocol() {
                 crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
@@ -215,5 +217,34 @@ mod tests {
             decoded.responses_transport_requirement(),
             ResponsesTransportRequirement::SemanticCompatible
         );
+    }
+
+    #[test]
+    fn d3_p1_provider_transport_metadata_exposes_only_the_exact_ephemeral_summary() {
+        const CANARY: &str = "D3-P1-RAW-PROVIDER-CANARY";
+        let mut metadata = NativeRequestMetadata::with_trace_id(Some("trace-1".to_string()));
+        let payload = ProviderTransportPayload::openai_responses(json!({
+            "model": "gpt-test",
+            "provider_target": "must-not-be-durable",
+            "input": CANARY,
+        }))
+        .expect("fixture provider payload should be valid");
+        let expected_digest = payload.digest().to_string();
+        let expected_size = payload.size_bytes();
+
+        metadata.set_provider_transport_payload(payload);
+
+        assert_eq!(
+            metadata.provider_transport_summary_value(),
+            Some(json!({
+                "protocol": "openai_responses",
+                "digest": expected_digest,
+                "size_bytes": expected_size,
+                "storage": "ephemeral",
+            }))
+        );
+        assert_eq!(serde_json::to_value(&metadata).unwrap(), json!({"trace_id": "trace-1"}));
+        assert!(!format!("{metadata:?}").contains(CANARY));
+        assert!(!format!("{metadata:?}").contains("must-not-be-durable"));
     }
 }

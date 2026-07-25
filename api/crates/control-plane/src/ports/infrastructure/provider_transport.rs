@@ -5,7 +5,11 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Opaque runtime-only handle for an AI Native operation's ephemeral provider payload.
+///
+/// The handle intentionally has no serde or `Debug` representation: it may cross the
+/// route-to-runtime call boundary, but must not enter Native input, durable state, or logs.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProviderTransportSlotId(Uuid);
 
 impl ProviderTransportSlotId {
@@ -13,7 +17,7 @@ impl ProviderTransportSlotId {
         Self(flow_run_id)
     }
 
-    pub const fn as_uuid(self) -> Uuid {
+    pub(crate) const fn as_uuid(self) -> Uuid {
         self.0
     }
 }
