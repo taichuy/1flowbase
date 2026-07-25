@@ -15,8 +15,7 @@ use control_plane::application_public_api::protocol_translation::{
 };
 use control_plane::{
     application_public_api::run_service::{
-        GenerateExecutionProfile, PublishedRouteDispatch, PublishedRouteResolver,
-        ResolvedPublishedRoute,
+        PublishedRouteDispatch, PublishedRouteResolver, ResolvedPublishedRoute,
     },
     ports::{
         ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
@@ -24,6 +23,7 @@ use control_plane::{
         UpdateFlowRunInput,
     },
 };
+use domain::AiNativeGenerateProfile;
 use plugin_framework::provider_contract::ProviderInvocationCapability;
 use serde_json::{json, Value};
 use time::OffsetDateTime;
@@ -353,7 +353,7 @@ pub(super) async fn assert_published_native_generate_route(
             &publication,
             &compiled_plan,
             PublishedRouteDispatch::OperationBinding,
-            GenerateExecutionProfile::Standard,
+            AiNativeGenerateProfile::Standard,
             &required_semantic_capabilities,
         )
         .await

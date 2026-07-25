@@ -23,9 +23,8 @@ use control_plane::application_public_api::{
     },
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand,
-        GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeExecutionOperation,
-        NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
-        RemoteCompactionProfile,
+        GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeRunRequest,
+        NativeRunResult, NativeRunStatus, NativeRunValidationError,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -39,6 +38,7 @@ use control_plane::application_public_api::{
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use control_plane::ports::ProviderTransportSlotId;
+use domain::{AiNativeCompactProfile, AiNativeOperation};
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
@@ -420,8 +420,8 @@ async fn create_response_for_endpoint(
     let provider_transport_payload = request.metadata.take_provider_transport_payload();
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    match request.execution.execution_operation().clone() {
-        NativeExecutionOperation::Generate(_) => {
+    match *request.execution.execution_operation() {
+        AiNativeOperation::Generate(_) => {
             let run =
                 match create_native_run(state.clone(), credential.token.clone(), request).await {
                     Ok(run) => run,
@@ -501,12 +501,16 @@ async fn create_response_for_endpoint(
             )?)
             .into_response())
         }
-        NativeExecutionOperation::Compact(remote_profile) => {
+        AiNativeOperation::CountTokens => Err(openai_invalid_request(
+            "operation",
+            "count_tokens is not supported by the OpenAI Responses route",
+        )),
+        AiNativeOperation::Compact(remote_profile) => {
             let profile = match remote_profile {
-                RemoteCompactionProfile::ResponsesCompact => {
+                AiNativeCompactProfile::ResponsesCompact => {
                     ProviderCompactProfile::ResponsesCompact
                 }
-                RemoteCompactionProfile::ResponsesCompactionV2 => {
+                AiNativeCompactProfile::ResponsesCompactionV2 => {
                     ProviderCompactProfile::ResponsesCompactionV2
                 }
             };
