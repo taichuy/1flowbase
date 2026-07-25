@@ -164,7 +164,6 @@
     "no_allowed_data_operations": "No allowed data operations",
     "no_allowed_events": "No allowed events",
     "no_available_components": "No components are available from the current Catalog",
-    "no_console_output": "No console output",
     "no_available_block_catalog_entries": "There are currently no available block directory entries, and new blocks cannot be added at the moment.",
     "no_block_selected": "No block selected",
     "no_data_capabilities": "No data model capabilities are available to bind",

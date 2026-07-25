@@ -164,7 +164,6 @@
     "no_allowed_data_operations": "无允许的数据操作",
     "no_allowed_events": "无允许的事件",
     "no_available_components": "当前 Catalog 没有可用组件",
-    "no_console_output": "暂无控制台输出",
     "no_available_block_catalog_entries": "当前没有可用区块目录项，暂时无法新增区块。",
     "no_block_selected": "未选择区块",
     "no_data_capabilities": "当前没有可绑定的数据模型能力",

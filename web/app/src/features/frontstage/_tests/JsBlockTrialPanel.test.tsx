@@ -344,6 +344,16 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     expect(screen.getByText('hello {"id":1}')).toBeInTheDocument();
     expect(screen.getByText('check input')).toBeInTheDocument();
     expect(screen.getByText(/"id": 1/u)).toBeInTheDocument();
+    expect(screen.queryByText('暂无控制台输出')).not.toBeInTheDocument();
+    expect(screen.getByTestId('js-block-console-prompt')).toHaveTextContent(
+      '>'
+    );
+    expect(screen.getByTestId('js-block-console-gutter-info')).toHaveTextContent(
+      '>'
+    );
+    expect(screen.getByTestId('js-block-console-gutter-warn')).toHaveTextContent(
+      '!'
+    );
     expect(screen.getByTestId('js-block-preview-pane')).toHaveClass(
       'frontstage-js-block-preview-console__preview'
     );
