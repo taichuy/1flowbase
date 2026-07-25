@@ -9,7 +9,6 @@ use control_plane::{
         mapping::{
             validate_application_api_mapping, ApplicationApiMappingConfig,
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
-            ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
             WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
@@ -46,7 +45,6 @@ mod client_protocol_envelope;
 mod conversations;
 mod native_run;
 mod openai_compat;
-mod operation_bindings;
 mod publications;
 mod published_workflow_operation;
 mod resume;

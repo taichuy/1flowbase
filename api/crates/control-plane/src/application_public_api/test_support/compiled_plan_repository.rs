@@ -50,7 +50,6 @@ impl ApplicationApiMappingRepository for ApplicationPublicApiTestRepository {
         }
         let draft = mapping::ApplicationApiMappingDraft {
             mapping: input.mapping.clone(),
-            operation_bindings: input.operation_bindings.clone(),
         };
         inner.mappings.insert(input.application_id, draft.clone());
         Ok(draft)

@@ -5,28 +5,19 @@ use crate::_tests::{
 use crate::routes::application_public_api::native::{
     parse_native_run_request, service_error, to_native_run_response,
 };
-use std::collections::BTreeSet;
-
 use axum::{
     body::{to_bytes, Body, Bytes},
     http::{Request, StatusCode},
     Router,
 };
+use control_plane::application_public_api::native::{NativeRunResult, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
-use control_plane::application_public_api::native::{NativeRunResult, NativeRunStatus};
-use control_plane::{
-    application_public_api::run_service::{
-        PublishedRouteDispatch, PublishedRouteResolver, ResolvedPublishedRoute,
-    },
-    ports::{
-        ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-        CreateCallbackTaskInput, CreateNodeRunInput, OrchestrationRuntimeRepository,
-        UpdateFlowRunInput,
-    },
+use control_plane::ports::{
+    ApplicationCompiledPlanRepository, ApplicationPublicationRepository, CreateCallbackTaskInput,
+    CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
 };
-use domain::AiNativeGenerateProfile;
 use orchestration_runtime::execution_state::{CountTokensReceipt, NativeOperationTerminal};
 use plugin_framework::provider_contract::{
     ProviderCountTokensResult, ProviderInvocationCapability, ProviderWireOperation,
@@ -211,11 +202,7 @@ async fn publish_native_application(
 
     assert_eq!(response.status(), StatusCode::CREATED);
     let payload = response_json(response).await;
-    assert_eq!(
-        payload["data"]["operation_bindings"]["generate"]["target_node_id"],
-        json!("node-llm"),
-        "publication must preserve the explicit Generate target: {payload}"
-    );
+    assert!(payload["data"].get("operation_bindings").is_none());
 }
 
 fn mapping_with_runnable_generate_target() -> Value {
@@ -232,14 +219,6 @@ fn mapping_with_runnable_generate_target() -> Value {
             "usage_selector": null,
             "files_selector": null,
             "error_selector": null
-        },
-        "operation_bindings": {
-            "generate": { "target_node_id": "node-llm" },
-            "count_tokens": null,
-            "compact": {
-                "responses_compact": null,
-                "responses_compaction_v2": null
-            }
         }
     })
 }
@@ -356,60 +335,32 @@ pub(super) async fn configure_runnable_native_generate_target(
     assert_eq!(save.status(), StatusCode::OK);
 }
 
-/// Root #1366 AC-003 / AC-005 / AC-008: positive native fixtures must resolve the frozen provider route.
+/// Root #1453: publication freezes the workflow; it does not create a second Provider route.
 pub(super) async fn assert_published_native_generate_route(
     state: &crate::app_state::ApiState,
     application_id: &str,
 ) {
     let application_id = Uuid::parse_str(application_id).expect("application id should be a UUID");
-    let workspace_id: Uuid = sqlx::query_scalar("select scope_id from applications where id = $1")
-        .bind(application_id)
-        .fetch_one(state.store.pool())
-        .await
-        .unwrap();
     let publication = state
         .store
         .load_active_application_publication(application_id)
         .await
         .unwrap()
         .expect("fixture should publish an active application version");
-    assert_eq!(
-        publication
-            .operation_bindings
-            .generate
-            .as_ref()
-            .map(|binding| binding.target_node_id.as_str()),
-        Some("node-llm")
-    );
     let compiled_plan = state
         .store
         .get_application_compiled_plan(publication.compiled_plan_id)
         .await
         .unwrap()
         .expect("fixture publication should freeze a compiled plan");
-    let required_semantic_capabilities = BTreeSet::<ProviderInvocationCapability>::new();
-    let ResolvedPublishedRoute::Provider(route) = PublishedRouteResolver::new(&state.store)
-        .resolve_generate(
-            workspace_id,
-            &publication,
-            &compiled_plan,
-            PublishedRouteDispatch::OperationBinding,
-            AiNativeGenerateProfile::Standard,
-            &required_semantic_capabilities,
-        )
-        .await
-        .expect("fixture publication should resolve Generate through its provider")
-    else {
-        panic!("native public API fixture must resolve a provider route");
-    };
-
-    assert_eq!(route.target_node_id, "node-llm");
-    assert_eq!(route.llm_runtime.provider_code, "fixture_provider");
-    assert_eq!(route.llm_runtime.model, "fixture_chat");
-    assert!(
-        !route.llm_runtime.provider_instance_id.is_empty(),
-        "published Generate route should retain a provider instance"
-    );
+    let plan: orchestration_runtime::compiled_plan::CompiledPlan =
+        serde_json::from_value(compiled_plan.plan).expect("compiled plan should be valid");
+    let runtime = plan.nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .expect("workflow LLM node should retain its runtime");
+    assert_eq!(runtime.provider_code, "fixture_provider");
+    assert_eq!(runtime.model, "fixture_chat");
 }
 
 async fn setup_published_native_app(

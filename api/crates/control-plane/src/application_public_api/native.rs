@@ -649,8 +649,7 @@ pub struct NativeRunResult {
     #[serde(default)]
     pub error: Option<NativeError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub operation_terminal:
-        Option<orchestration_runtime::execution_state::NativeOperationTerminal>,
+    pub operation_terminal: Option<orchestration_runtime::execution_state::NativeOperationTerminal>,
     pub created_at: OffsetDateTime,
 }
 
@@ -940,7 +939,6 @@ pub enum NativeRunValidationError {
     InvalidToolResults(String),
     InvalidState,
     IdempotencyConflict,
-    RouteUnavailable(super::run_service::PublishedRouteResolutionError),
 }
 
 pub struct ApplicationNativeRunService<R> {
@@ -960,7 +958,6 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
-        + super::run_service::PublishedProviderManifestCapabilityRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {

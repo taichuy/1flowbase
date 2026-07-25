@@ -285,11 +285,6 @@ pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
             "idempotency_conflict",
             "idempotency key was already used with a different request",
         ),
-        NativeRunValidationError::RouteUnavailable(error) => NativeApiError::new(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            error.code(),
-            format!("published operation route is unavailable: {}", error.code()),
-        ),
     }
 }
 

@@ -12,7 +12,6 @@ pub mod conversations;
 pub mod mapping;
 pub mod model_catalog;
 pub mod native;
-pub mod operation_bindings;
 pub mod protocol_translation;
 pub mod publications;
 pub mod published_workflow_operation;

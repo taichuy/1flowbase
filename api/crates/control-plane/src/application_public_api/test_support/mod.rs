@@ -1,11 +1,8 @@
-use super::{
-    conversations, mapping, native, operation_bindings as binding_projection, publications,
-    run_service, workflow_schedule,
-};
+use super::{conversations, mapping, native, publications, run_service, workflow_schedule};
 use crate::errors::ControlPlaneError;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     sync::{Arc, Mutex},
 };
 
@@ -19,12 +16,11 @@ use uuid::Uuid;
 use crate::ports::{
     ApiKeyRepository, AppendRunEventInput, ApplicationApiMappingRepository,
     ApplicationCompileContextRepository, ApplicationCompiledPlanRepository,
-    ApplicationJsDependencySelectionRepository, ApplicationOperationBindingCapabilityRepository,
-    ApplicationPublicationRepository, ApplicationRepository, ApplicationVisibility, AuthRepository,
-    CacheStore, CreateApiKeyInput, CreateApplicationInput,
-    CreateApplicationPublicationVersionInput, CreateApplicationTagInput, CreateFlowRunInput,
-    DeactivateApplicationPublicationsInput, DeleteApplicationInput, FlowRepository,
-    ReplaceApplicationApiMappingInput, ReplaceApplicationEnvironmentVariablesInput,
+    ApplicationJsDependencySelectionRepository, ApplicationPublicationRepository,
+    ApplicationRepository, ApplicationVisibility, AuthRepository, CacheStore, CreateApiKeyInput,
+    CreateApplicationInput, CreateApplicationPublicationVersionInput, CreateApplicationTagInput,
+    CreateFlowRunInput, DeactivateApplicationPublicationsInput, DeleteApplicationInput,
+    FlowRepository, ReplaceApplicationApiMappingInput, ReplaceApplicationEnvironmentVariablesInput,
     ReplaceApplicationJsDependencySelectionInput, ReplaceWorkflowScheduleTriggerInput,
     SetApplicationApiEnabledInput, UpdateApplicationInput, UpdateProfileInput,
     UpsertCompiledPlanInput, WorkflowScheduleTriggerRepository,
@@ -75,10 +71,6 @@ struct ApplicationPublicApiTestRepositoryInner {
     published_compact_capability_supported: Option<bool>,
     published_compact_capability_checks: usize,
     published_compact_capability_profiles: Vec<ProviderCompactProfile>,
-    operation_binding_capability_supports: BTreeMap<
-        binding_projection::ApplicationOperationBindingOperation,
-        binding_projection::ApplicationOperationBindingCapabilitySupport,
-    >,
 }
 
 #[derive(Clone, Default)]
@@ -298,18 +290,6 @@ impl ApplicationPublicApiTestRepository {
             .clone()
     }
 
-    pub fn set_operation_binding_capability_support(
-        &self,
-        operation: binding_projection::ApplicationOperationBindingOperation,
-        support: binding_projection::ApplicationOperationBindingCapabilitySupport,
-    ) {
-        self.inner
-            .lock()
-            .expect("application public api test repo mutex poisoned")
-            .operation_binding_capability_supports
-            .insert(operation, support);
-    }
-
     pub fn configure_published_generate_route(
         &self,
         application_id: Uuid,
@@ -322,16 +302,12 @@ impl ApplicationPublicApiTestRepository {
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
-        let publication = inner
+        let compiled_plan_id = inner
             .publications
-            .values_mut()
+            .values()
             .find(|publication| publication.application_id == application_id)
-            .expect("published generate route fixture requires a publication");
-        publication.operation_bindings.generate =
-            Some(mapping::ApplicationOperationTargetBinding {
-                target_node_id: target_node_id.to_string(),
-            });
-        let compiled_plan_id = publication.compiled_plan_id;
+            .expect("published generate route fixture requires a publication")
+            .compiled_plan_id;
         let compiled_plan = inner
             .compiled_plans
             .get_mut(&compiled_plan_id)
@@ -392,16 +368,12 @@ impl ApplicationPublicApiTestRepository {
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
-        let publication = inner
+        let compiled_plan_id = inner
             .publications
-            .values_mut()
+            .values()
             .find(|publication| publication.application_id == application_id)
-            .expect("published CountTokens route fixture requires a publication");
-        publication.operation_bindings.count_tokens =
-            Some(mapping::ApplicationOperationTargetBinding {
-                target_node_id: target_node_id.to_string(),
-            });
-        let compiled_plan_id = publication.compiled_plan_id;
+            .expect("published CountTokens route fixture requires a publication")
+            .compiled_plan_id;
         let compiled_plan = inner
             .compiled_plans
             .get_mut(&compiled_plan_id)
@@ -434,10 +406,9 @@ impl ApplicationPublicApiTestRepository {
             serde_json::to_value(plan).expect("published CountTokens route fixture must serialize");
     }
 
-    pub fn configure_published_operation_binding(
+    fn configure_published_llm_node(
         &self,
         application_id: Uuid,
-        operation: binding_projection::ApplicationOperationBindingOperation,
         target_node_id: &str,
         llm_runtime: orchestration_runtime::compiled_plan::CompiledLlmRuntime,
     ) {
@@ -447,33 +418,16 @@ impl ApplicationPublicApiTestRepository {
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
-        let publication = inner
+        let compiled_plan_id = inner
             .publications
-            .values_mut()
+            .values()
             .find(|publication| publication.application_id == application_id)
-            .expect("published operation-binding fixture requires a publication");
-        let binding = mapping::ApplicationOperationTargetBinding {
-            target_node_id: target_node_id.to_string(),
-        };
-        match operation {
-            binding_projection::ApplicationOperationBindingOperation::Generate => {
-                publication.operation_bindings.generate = Some(binding);
-            }
-            binding_projection::ApplicationOperationBindingOperation::CountTokens => {
-                publication.operation_bindings.count_tokens = Some(binding);
-            }
-            binding_projection::ApplicationOperationBindingOperation::CompactResponsesCompact => {
-                publication.operation_bindings.compact.responses_compact = Some(binding);
-            }
-            binding_projection::ApplicationOperationBindingOperation::CompactResponsesCompactionV2 => {
-                publication.operation_bindings.compact.responses_compaction_v2 = Some(binding);
-            }
-        }
-        let compiled_plan_id = publication.compiled_plan_id;
+            .expect("published LLM fixture requires a publication")
+            .compiled_plan_id;
         let compiled_plan = inner
             .compiled_plans
             .get_mut(&compiled_plan_id)
-            .expect("published operation-binding fixture requires a compiled plan");
+            .expect("published LLM fixture requires a compiled plan");
         let node = CompiledNode {
             node_id: target_node_id.to_string(),
             node_type: "llm".to_string(),
@@ -489,7 +443,7 @@ impl ApplicationPublicApiTestRepository {
             code_runtime: None,
         };
         let mut plan: CompiledPlan = serde_json::from_value(compiled_plan.plan.clone())
-            .expect("published operation-binding fixture requires a valid compiled plan");
+            .expect("published LLM fixture requires a valid compiled plan");
         plan.nodes.insert(target_node_id.to_string(), node);
         if !plan
             .topological_order
@@ -499,30 +453,17 @@ impl ApplicationPublicApiTestRepository {
             plan.topological_order.push(target_node_id.to_string());
         }
         compiled_plan.plan =
-            serde_json::to_value(plan).expect("published operation-binding fixture must serialize");
+            serde_json::to_value(plan).expect("published LLM fixture must serialize");
     }
 
     pub fn configure_published_compact_route(
         &self,
         application_id: Uuid,
-        profile: ProviderCompactProfile,
+        _profile: ProviderCompactProfile,
         target_node_id: &str,
         llm_runtime: orchestration_runtime::compiled_plan::CompiledLlmRuntime,
     ) {
-        let operation = match profile {
-            ProviderCompactProfile::ResponsesCompact => {
-                binding_projection::ApplicationOperationBindingOperation::CompactResponsesCompact
-            }
-            ProviderCompactProfile::ResponsesCompactionV2 => {
-                binding_projection::ApplicationOperationBindingOperation::CompactResponsesCompactionV2
-            }
-        };
-        self.configure_published_operation_binding(
-            application_id,
-            operation,
-            target_node_id,
-            llm_runtime,
-        );
+        self.configure_published_llm_node(application_id, target_node_id, llm_runtime);
     }
 }
 
@@ -819,8 +760,6 @@ mod application_repository;
 mod auth_repository;
 mod compiled_plan_repository;
 mod flow_repository;
-mod operation_bindings;
 mod publication_repository;
 mod repository_seeders;
-mod resolved_route;
 mod run_repositories;
