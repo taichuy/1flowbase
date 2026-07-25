@@ -218,6 +218,11 @@ async fn save_start_model_catalog(
         {
             "id": "plain-model",
             "name": "Plain model"
+        },
+        {
+            "id": "claude-opus-4-8",
+            "name": "Claude Opus 4.8",
+            "context_window": 1000000
         }
     ]);
     FlowRepository::save_draft(

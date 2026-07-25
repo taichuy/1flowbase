@@ -43,8 +43,8 @@ pub use repository_contracts::{
     PublishedRunStreamState,
 };
 use run_input::{
-    compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
-    validate_external_model_parameters,
+    compiled_plan_start_node_id, enrich_anthropic_context_beta_from_start_model,
+    freeze_run_input_environment, generate_external_conversation_id,
 };
 pub(crate) use run_input::{
     compiled_plan_start_node_id as public_compiled_plan_start_node_id,
@@ -110,12 +110,14 @@ where
         self.ensure_application_exists(&actor).await?;
 
         let publication = self.load_enabled_publication(&actor).await?;
-        let client_request = command.request;
-        let external_model_parameters = validate_external_model_parameters(
-            client_request.execution.model_parameters(),
-            client_request.model.as_deref(),
+        let mut client_request = command.request;
+        enrich_anthropic_context_beta_from_start_model(
+            &mut client_request,
             &publication.document_snapshot,
-        )?;
+        );
+        // The request model is workflow input. Only the LLM node selected by the
+        // graph owns provider/model capability validation.
+        let external_model_parameters = client_request.execution.model_parameters().cloned();
         let idempotency_key = client_request
             .execution
             .idempotency_key()

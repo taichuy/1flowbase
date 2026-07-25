@@ -8,6 +8,19 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const { main, startDemoServer } = require('../core.js');
+const { parseRustTargetTriple } = require('../package.js');
+
+test('plugin package supports the native GNU Linux targets used by GitHub runners', () => {
+  assert.deepEqual(parseRustTargetTriple('x86_64-unknown-linux-gnu'), {
+    rustTargetTriple: 'x86_64-unknown-linux-gnu',
+    os: 'linux',
+    arch: 'amd64',
+    libc: 'gnu',
+    assetSuffix: 'linux-amd64',
+    executableSuffix: '',
+  });
+  assert.equal(parseRustTargetTriple('aarch64-unknown-linux-gnu').arch, 'arm64');
+});
 
 function makeTempPluginPath(prefix = 'oneflowbase-plugin-') {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));

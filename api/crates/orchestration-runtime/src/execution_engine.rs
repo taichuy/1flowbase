@@ -5,11 +5,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        NativePromptBlock, ProviderCompactResult, ProviderCountTokensInput,
-        ProviderCountTokensResult, ProviderFinishReason, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        NativePromptBlock, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
+        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
+        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
+        ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};
@@ -1031,12 +1031,22 @@ where
                 });
             }
         }
-        activate_downstream_nodes(
-            plan,
-            &mut active_node_ids,
-            node,
-            selected_source_handle.as_deref(),
-        );
+        // CountTokens and Compact terminate at the LLM node selected by the
+        // workflow. Generate-only downstream nodes (for example Answer) must
+        // not reinterpret their typed provider terminal as generated text.
+        if node.node_type != "llm"
+            || matches!(
+                runtime_context.operation(),
+                domain::AiNativeOperation::Generate(_)
+            )
+        {
+            activate_downstream_nodes(
+                plan,
+                &mut active_node_ids,
+                node,
+                selected_source_handle.as_deref(),
+            );
+        }
     }
 
     if let Some(failure) = pending_failure {
@@ -1592,12 +1602,10 @@ where
         }
         Err(error) => Ok(LlmNodeExecution {
             output_payload: json!({}),
-            error_payload: Some(json!({
-                "error_code": "provider_count_tokens_failed",
-                "message": error.to_string(),
-                "provider_code": runtime.provider_code,
-                "model": runtime.model,
-            })),
+            error_payload: Some(build_provider_error_payload(
+                runtime,
+                &provider_runtime_error_from_anyhow(&error),
+            )),
             metrics_payload: json!({ "operation": "count_tokens", "error": true }),
             debug_payload: json!({}),
             provider_events: Vec::new(),

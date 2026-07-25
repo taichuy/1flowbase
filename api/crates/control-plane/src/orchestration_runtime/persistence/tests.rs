@@ -1,6 +1,6 @@
 use orchestration_runtime::execution_state::{
-    ExecutionStopReason, FlowDebugExecutionOutcome, NativeOperationTerminal,
-    NodeExecutionFailure, NodeExecutionTrace,
+    ExecutionStopReason, FlowDebugExecutionOutcome, NativeOperationTerminal, NodeExecutionFailure,
+    NodeExecutionTrace,
 };
 use serde_json::{json, Map, Value};
 use time::OffsetDateTime;

@@ -1,7 +1,7 @@
+use domain::{AiNativeCompactProfile, AiNativeOperation};
 use orchestration_runtime::answer_projection::{
     answer_segments_from_value, AnswerProjectionSegment, ANSWER_SEGMENTS_KEY,
 };
-use domain::{AiNativeCompactProfile, AiNativeOperation};
 use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::ProviderCompactProfile;
 use serde_json::{json, Value};
@@ -39,12 +39,7 @@ pub fn native_result_from_flow_run(
             status,
             NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
         )
-        .then(|| {
-            native_operation_terminal(
-                &flow_run.input_payload,
-                &flow_run.output_payload,
-            )
-        })
+        .then(|| native_operation_terminal(&flow_run.input_payload, &flow_run.output_payload))
         .flatten(),
         created_at: flow_run.created_at,
     }
@@ -156,12 +151,7 @@ pub fn native_result_from_run_stream_state(
         result.status,
         NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
     )
-    .then(|| {
-        native_operation_terminal(
-            &result.node_input_payload,
-            &stream_state.output_payload,
-        )
-    })
+    .then(|| native_operation_terminal(&result.node_input_payload, &stream_state.output_payload))
     .flatten();
     apply_pending_callback_state(&mut result, stream_state.latest_pending_callback.as_ref());
     result
@@ -174,9 +164,7 @@ fn native_operation_terminal(
     let operation = unique_start_operation(run_input_payload)?;
     let terminal = NativeOperationTerminal::from_payload(output_payload).ok()??;
     match (&operation, &terminal) {
-        (AiNativeOperation::CountTokens, NativeOperationTerminal::CountTokens(_)) => {
-            Some(terminal)
-        }
+        (AiNativeOperation::CountTokens, NativeOperationTerminal::CountTokens(_)) => Some(terminal),
         (
             AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompact),
             NativeOperationTerminal::Compact(receipt),

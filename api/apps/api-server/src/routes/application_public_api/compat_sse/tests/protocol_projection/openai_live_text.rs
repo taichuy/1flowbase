@@ -115,7 +115,8 @@ async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synth
                 Uuid::new_v4(),
                 "openai_responses".to_string(),
                 json!({
-                    "type": "response.future.delta",
+                    "type": "response.created",
+                    "response": {"id": "resp_provider_private"},
                     "future": {"opaque": true}
                 }),
             ),
@@ -131,8 +132,9 @@ async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synth
                 Uuid::new_v4(),
                 "openai_responses".to_string(),
                 json!({
-                    "type": "response.completed",
-                    "response": {"id": "resp_native"}
+                    "type": "response.future.delta",
+                    "response_id": "resp_provider_private",
+                    "future": {"opaque": true}
                 }),
             ),
         ),
@@ -142,6 +144,22 @@ async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synth
         RuntimeEventEnvelope::new(
             run.id,
             4,
+            debug_stream_events::provider_native_event(
+                "node-llm",
+                Uuid::new_v4(),
+                "openai_responses".to_string(),
+                json!({
+                    "type": "response.completed",
+                    "response": {"id": "resp_provider_private"}
+                }),
+            ),
+        ),
+    ));
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            5,
             debug_stream_events::flow_finished(run.id, json!({"answer": "synthetic"})),
         ),
     ));
@@ -152,9 +170,17 @@ async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synth
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(!body.contains("response.created"), "{body}");
+    assert!(body.contains("event: response.created"), "{body}");
     assert!(body.contains("event: response.future.delta"), "{body}");
     assert!(body.contains("\"future\":{\"opaque\":true}"), "{body}");
+    assert!(
+        body.contains(&format!("resp_{}", run.id)),
+        "gateway-owned response identity should be externally correlated: {body}"
+    );
+    assert!(
+        !body.contains("resp_provider_private"),
+        "sealed Provider continuation identity must not escape: {body}"
+    );
     assert_eq!(
         body.matches("event: response.completed").count(),
         1,

@@ -66,14 +66,10 @@ async fn d3_p1_count_tokens_without_payload_does_not_create_a_transport_slot() {
     let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
     let flow_run_id = Uuid::now_v7();
 
-    let slot = stage_openai_provider_transport(
-        &store,
-        flow_run_id,
-        AiNativeOperation::CountTokens,
-        None,
-    )
-    .await
-    .expect("CountTokens staging decision should succeed");
+    let slot =
+        stage_openai_provider_transport(&store, flow_run_id, AiNativeOperation::CountTokens, None)
+            .await
+            .expect("CountTokens staging decision should succeed");
 
     assert!(slot.is_none());
     assert_eq!(

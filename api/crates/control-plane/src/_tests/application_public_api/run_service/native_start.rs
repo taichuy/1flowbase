@@ -109,6 +109,47 @@ async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_ru
 }
 
 #[tokio::test]
+async fn anthropic_catalog_model_with_one_million_context_adds_the_required_beta() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Anthropic 1M Context App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    publish_runnable_application(&repository, application.id).await;
+    let mut translated = translate_messages_request(json!({
+        "model": "claude-opus-4-8",
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": "use declared context"}]
+    }))
+    .expect("Anthropic request should translate");
+    translated.request.client_protocol_envelope =
+        control_plane::application_public_api::client_protocol_envelope::capture_client_protocol_envelope(
+            control_plane::application_public_api::client_protocol_envelope::ClientProtocolIngressPolicy::AnthropicMessages,
+            [("user-agent", "claude-code/2.1.220")],
+        );
+
+    let result = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request: translated.request,
+        })
+        .await
+        .expect("declared 1M workflow model should create a run");
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
+    let beta = flow_run.input_payload["__client_protocol_envelope"]["headers"]["anthropic-beta"]
+        .as_str()
+        .expect("Anthropic beta should be frozen into the private runtime envelope");
+
+    assert!(beta
+        .split(',')
+        .any(|value| value == "context-1m-2025-08-07"));
+}
+
+#[tokio::test]
 async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtime() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
@@ -224,7 +265,7 @@ fn native_adapter_rejects_context_window_as_runtime_model_parameter() {
 }
 
 #[tokio::test]
-async fn start_native_run_rejects_external_reasoning_for_unknown_model() {
+async fn start_native_run_defers_requested_model_validation_to_the_selected_llm_node() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Unknown App");
@@ -246,77 +287,18 @@ async fn start_native_run_rejects_external_reasoning_for_unknown_model() {
                 }),
             ),
         })
-        .await;
+        .await
+        .expect("the workflow must select its LLM node before model capability validation");
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
 
+    assert_eq!(result.metadata["model"], json!("missing-model"));
     assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters("model"))
-    );
-}
-
-#[tokio::test]
-async fn start_native_run_rejects_external_reasoning_for_unsupported_model() {
-    let harness = ApplicationPublicApiTestHarness::new();
-    let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Plain App");
-    let token = issue_key(&harness, application.id).await;
-    save_start_model_catalog(&repository, &application).await;
-    publish_runnable_application(&repository, application.id).await;
-    let service = ApplicationPublishedRunService::new(repository.clone());
-
-    let result = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: native_request_with_model_parameters(
-                "plain-model",
-                json!({
-                    "reasoning": {
-                        "enabled": true,
-                        "effort": "high"
-                    }
-                }),
-            ),
-        })
-        .await;
-
-    assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.reasoning"
-        ))
-    );
-}
-
-#[tokio::test]
-async fn start_native_run_rejects_unsupported_reasoning_effort() {
-    let harness = ApplicationPublicApiTestHarness::new();
-    let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Effort App");
-    let token = issue_key(&harness, application.id).await;
-    save_start_model_catalog(&repository, &application).await;
-    publish_runnable_application(&repository, application.id).await;
-    let service = ApplicationPublishedRunService::new(repository.clone());
-
-    let result = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: native_request_with_model_parameters(
-                "gpt-5.4",
-                json!({
-                    "reasoning": {
-                        "enabled": true,
-                        "effort": "xhigh"
-                    }
-                }),
-            ),
-        })
-        .await;
-
-    assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.reasoning.effort"
-        ))
+        flow_run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
+        json!("high")
     );
 }
 
@@ -353,7 +335,7 @@ async fn ac_004_start_native_run_accepts_request_cap_over_catalog_default_output
 }
 
 #[tokio::test]
-async fn ac_004_start_native_run_rejects_max_output_tokens_over_context_limit() {
+async fn ac_004_start_native_run_defers_output_limit_validation_to_the_selected_llm_node() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Output App");
@@ -369,57 +351,22 @@ async fn ac_004_start_native_run_rejects_max_output_tokens_over_context_limit() 
         "user": "catalog-over-limit-user"
     }))
     .expect("conversation fixture must be valid Native data");
-    let conversations_before = repository.conversation_count();
-    let flow_runs_before = repository.flow_run_count();
-
     let result = service
         .start_native_run(CreateNativeRunCommand {
             bearer_token: token,
             request,
         })
-        .await;
+        .await
+        .expect("the selected LLM/provider owns its output limit");
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
 
     assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.max_output_tokens"
-        ))
-    );
-    assert_eq!(repository.conversation_count(), conversations_before);
-    assert_eq!(repository.flow_run_count(), flow_runs_before);
-}
-
-#[tokio::test]
-async fn start_native_run_rejects_reasoning_budget_over_model_output_limit() {
-    let harness = ApplicationPublicApiTestHarness::new();
-    let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Budget App");
-    let token = issue_key(&harness, application.id).await;
-    save_start_model_catalog(&repository, &application).await;
-    publish_runnable_application(&repository, application.id).await;
-    let service = ApplicationPublishedRunService::new(repository.clone());
-
-    let result = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: native_request_with_model_parameters(
-                "gpt-5.4",
-                json!({
-                    "reasoning": {
-                        "enabled": true,
-                        "effort": "high",
-                        "budget_tokens": 32001
-                    }
-                }),
-            ),
-        })
-        .await;
-
-    assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.reasoning.budget_tokens"
-        ))
+        flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
+        json!(128001)
     );
 }
 

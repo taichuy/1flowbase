@@ -76,7 +76,7 @@ async fn three_ingress_routes_create_agentflow_runs_without_generate_bindings() 
         }),
     )
     .await;
-    assert_eq!(native.status(), StatusCode::OK);
+    assert_eq!(native.status(), StatusCode::CREATED);
 
     let mut openai_body = openai_body(false);
     openai_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);

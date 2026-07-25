@@ -38,6 +38,24 @@ function createTarArchive(archivePath, sourceDir) {
 
 function parseRustTargetTriple(raw) {
   switch (String(raw || '').trim()) {
+    case 'x86_64-unknown-linux-gnu':
+      return {
+        rustTargetTriple: raw,
+        os: 'linux',
+        arch: 'amd64',
+        libc: 'gnu',
+        assetSuffix: 'linux-amd64',
+        executableSuffix: '',
+      };
+    case 'aarch64-unknown-linux-gnu':
+      return {
+        rustTargetTriple: raw,
+        os: 'linux',
+        arch: 'arm64',
+        libc: 'gnu',
+        assetSuffix: 'linux-arm64',
+        executableSuffix: '',
+      };
     case 'x86_64-unknown-linux-musl':
       return {
         rustTargetTriple: raw,

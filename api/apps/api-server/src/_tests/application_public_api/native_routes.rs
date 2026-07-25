@@ -19,9 +19,7 @@ use control_plane::ports::{
     CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
 };
 use orchestration_runtime::execution_state::{CountTokensReceipt, NativeOperationTerminal};
-use plugin_framework::provider_contract::{
-    ProviderCountTokensResult, ProviderInvocationCapability, ProviderWireOperation,
-};
+use plugin_framework::provider_contract::{ProviderCountTokensResult, ProviderWireOperation};
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use tower::ServiceExt;

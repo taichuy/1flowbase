@@ -17,17 +17,16 @@ test('AC-029: protocol conformance blocks relevant PRs and protected pushes', ()
   assert.match(source, /name: AI Gateway Protocol Conformance Gate/u);
 });
 
-test('AC-003/005/006/008/019/024: gate owns protocol and conversation evidence, not client releases', () => {
-  assert.match(source, /Run protocol harness structural tests/u);
-  assert.match(source, /Verify complete-conversation state machines/u);
-  assert.match(source, /-p control-plane application_public_api/u);
-  assert.match(source, /-p api-server application_public_api/u);
-  assert.match(source, /Run real protocol characterize contract/u);
+test('AC-003/005/006/008/019/024: workflow delegates all blocking checks to one repository command', () => {
+  assert.match(source, /Run the single blocking AI Gateway quality command/u);
+  assert.match(source, /quality-gate\/cli\.js run/u);
+  assert.equal(source.match(/quality-gate\/cli\.js run/gu)?.length, 1);
+  assert.doesNotMatch(source, /cargo (test|build)|node --test/u);
   assert.doesNotMatch(source, /@openai\/codex|@anthropic-ai\/claude-code|opencode|npm install --global|@latest/u);
 });
 
 test('AC-027/028: gate uses paired provider source, empty credentials, and always uploads evidence', () => {
-  assert.match(source, /paired-source\.lock\.json/u);
+  assert.match(source, /40b155590d1d50fbbd9ae22b26cb0a25ce2901d7/u);
   assert.match(source, /OPENAI_API_KEY: ''/u);
   assert.match(source, /ANTHROPIC_API_KEY: ''/u);
   assert.match(source, /name: Upload bounded protocol evidence\n        if: always\(\)/u);

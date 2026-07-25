@@ -43,8 +43,7 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    continue_flow_debug_run_with_optional_live_provider_events(service, command, None, None)
-        .await
+    continue_flow_debug_run_with_optional_live_provider_events(service, command, None, None).await
 }
 
 pub(in crate::orchestration_runtime) async fn continue_flow_debug_run_with_provider_transport<

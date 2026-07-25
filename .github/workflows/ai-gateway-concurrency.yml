@@ -7,12 +7,14 @@ on:
       - '.github/workflows/ai-gateway-concurrency.yml'
       - 'api/**'
       - 'scripts/node/ai-gateway-concurrency/**'
+      - 'scripts/node/plugin/**'
   push:
     branches: [dev]
     paths:
       - '.github/workflows/ai-gateway-concurrency.yml'
       - 'api/**'
       - 'scripts/node/ai-gateway-concurrency/**'
+      - 'scripts/node/plugin/**'
 
 permissions:
   contents: read
@@ -29,7 +31,6 @@ env:
   ANTHROPIC_AUTH_TOKEN: ''
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
-  AI_GATEWAY_ARTIFACT_ROOT: tmp/test-governance/ai-gateway-concurrency
 
 jobs:
   protocol-conformance:
@@ -55,108 +56,29 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Checkout paired official provider source
+        uses: actions/checkout@v6
+        with:
+          repository: taichuy/1flowbase-official-plugins
+          ref: 40b155590d1d50fbbd9ae22b26cb0a25ce2901d7
+          path: tmp/ai-gateway-concurrency/official-source
+          fetch-depth: 1
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
 
-      - name: Resolve committed paired source
-        shell: bash
-        run: |
-          set -euo pipefail
-          lock=scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json
-          echo "MAIN_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          official_source_sha="$(node -e 'process.stdout.write(require(`./${process.argv[1]}`).official_plugins.revision)' "$lock")"
-          echo "OFFICIAL_SOURCE_SHA=$official_source_sha" >> "$GITHUB_ENV"
-
-      - name: Checkout committed official provider source
-        uses: actions/checkout@v6
-        with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ env.OFFICIAL_SOURCE_SHA }}
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
-
-      - name: Verify paired source
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$(git rev-parse HEAD)" == "$MAIN_SOURCE_SHA" ]]
-          [[ "$(git -C tmp/ai-gateway-concurrency/official-source rev-parse HEAD)" == "$OFFICIAL_SOURCE_SHA" ]]
-
-      - name: Run protocol harness structural tests
-        shell: bash
-        run: >-
-          node --test
-          scripts/node/ai-gateway-concurrency/{workflow-contract,wire-audit,mock-upstream,gateway-fixture}/_tests/*.test.js
-
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Verify complete-conversation state machines
+      - name: Run the single blocking AI Gateway quality command
         shell: bash
-        run: |
-          set -euo pipefail
-          cargo test --manifest-path api/Cargo.toml -p control-plane application_public_api
-          cargo test --manifest-path api/Cargo.toml -p api-server application_public_api
-
-      - name: Build and package host-compatible official providers
-        shell: bash
-        run: |
-          set -euo pipefail
-          host_target="$(rustc -vV | sed -n 's/^host: //p')"
-          [[ -n "$host_target" ]]
-          echo "HOST_TARGET=$host_target" >> "$GITHUB_ENV"
-          official_root=tmp/ai-gateway-concurrency/official-source
-          package_root=tmp/ai-gateway-concurrency/packages
-          rm -rf "$package_root"
-          for provider_code in openai anthropic; do
-            plugin_dir="$official_root/runtime-extensions/model-providers/$provider_code"
-            cargo build --manifest-path "$plugin_dir/Cargo.toml" --release --target "$host_target"
-            runtime_binary_name="$(node "$official_root/scripts/list-provider-package-targets.mjs" \
-              --plugin-dir "$plugin_dir" --rust-target "$host_target" --field runtime_binary_name)"
-            node scripts/node/plugin/cli.js package "$plugin_dir" \
-              --out "$package_root/$provider_code" \
-              --runtime-binary "$plugin_dir/target/$host_target/release/$runtime_binary_name" \
-              --target "$host_target"
-          done
-
-      - name: Build real gateway binaries
-        shell: bash
-        run: cargo build --manifest-path api/Cargo.toml --release -p api-server -p plugin-runner
-
-      - name: Run real protocol characterize contract
-        shell: bash
-        env:
-          AI_GATEWAY_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-        run: |
-          set -euo pipefail
-          mkdir -p "$AI_GATEWAY_ARTIFACT_ROOT"
-          node scripts/node/ai-gateway-concurrency/workflow-contract/cli.js run \
-            --main-source-sha "$MAIN_SOURCE_SHA" \
-            --official-source-sha "$OFFICIAL_SOURCE_SHA" \
-            --profile characterize \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --database-url "$AI_GATEWAY_DATABASE_URL" \
-            --api-server-bin api/target/release/api-server \
-            --plugin-runner-bin api/target/release/plugin-runner \
-            --openai-package-dir tmp/ai-gateway-concurrency/packages/openai \
-            --anthropic-package-dir tmp/ai-gateway-concurrency/packages/anthropic \
-            --host-target "$HOST_TARGET" \
-            2>&1 | tee "$AI_GATEWAY_ARTIFACT_ROOT/workflow-runner.log"
-
-      - name: Finalize job summary and owned cleanup
-        if: always()
-        shell: bash
-        run: |
-          set -u
-          node scripts/node/ai-gateway-concurrency/workflow-contract/cli.js finalize \
-            --main-source-sha "${MAIN_SOURCE_SHA:-0000000000000000000000000000000000000000}" \
-            --official-source-sha "${OFFICIAL_SOURCE_SHA:-0000000000000000000000000000000000000000}" \
-            --profile characterize \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --host-target "${HOST_TARGET:-unavailable}" \
-            --summary-path "$GITHUB_STEP_SUMMARY"
+        run: >-
+          node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
+          --repo-root "$GITHUB_WORKSPACE"
+          --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
+          --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
 
       - name: Upload bounded protocol evidence
         if: always()

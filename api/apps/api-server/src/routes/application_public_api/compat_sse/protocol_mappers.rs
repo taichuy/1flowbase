@@ -203,7 +203,11 @@ impl OpenAiResponseStreamMapper {
             && envelope.payload["protocol"] == "openai_responses"
         {
             self.native_passthrough_active = true;
-            let provider_event = envelope.payload["event"].clone();
+            let provider_event = externalize_openai_response_identity(
+                initial_run,
+                self.previous_response_id.as_deref(),
+                envelope.payload["event"].clone(),
+            );
             let event_type = provider_event
                 .get("type")
                 .and_then(Value::as_str)
@@ -308,6 +312,37 @@ impl OpenAiResponseStreamMapper {
         ));
         events
     }
+}
+
+fn externalize_openai_response_identity(
+    initial_run: &NativeRunResult,
+    previous_response_id: Option<&str>,
+    mut provider_event: Value,
+) -> Value {
+    let external_response_id = response_id_from_run_id(initial_run.id);
+    let Some(event) = provider_event.as_object_mut() else {
+        return provider_event;
+    };
+    if event.contains_key("response_id") {
+        event.insert(
+            "response_id".to_string(),
+            Value::String(external_response_id.clone()),
+        );
+    }
+    if let Some(response) = event.get_mut("response").and_then(Value::as_object_mut) {
+        if response.contains_key("id") {
+            response.insert("id".to_string(), Value::String(external_response_id));
+        }
+        if response.contains_key("previous_response_id") {
+            response.insert(
+                "previous_response_id".to_string(),
+                previous_response_id
+                    .map(|value| Value::String(value.to_string()))
+                    .unwrap_or(Value::Null),
+            );
+        }
+    }
+    provider_event
 }
 
 fn openai_response_output_item_payload(

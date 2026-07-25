@@ -267,11 +267,6 @@ pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
             "invalid_mapping",
             "application public API mapping is invalid",
         ),
-        NativeRunValidationError::InvalidModelParameters(field) => NativeApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_model_parameters",
-            format!("invalid native request model parameter field: {field}"),
-        ),
         NativeRunValidationError::InvalidToolResults(message) => {
             NativeApiError::new(StatusCode::BAD_REQUEST, "tool_results", message)
         }
@@ -522,6 +517,22 @@ pub(crate) async fn execute_blocking_native_run_with_provider_transport(
 pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiError {
     match run.status {
         NativeRunStatus::Failed => {
+            let code = match run
+                .error
+                .as_ref()
+                .map(|error| error.code.as_str())
+                .unwrap_or("runtime_error")
+            {
+                "auth_failed" => "auth_failed",
+                "endpoint_unreachable" => "endpoint_unreachable",
+                "model_not_found" => "model_not_found",
+                "provider_affinity_mismatch" => "provider_affinity_mismatch",
+                "provider_transport_unavailable" => "provider_transport_unavailable",
+                "rate_limited" => "rate_limited",
+                "provider_upstream_error" => "provider_upstream_error",
+                "provider_invalid_response" => "provider_invalid_response",
+                _ => "runtime_error",
+            };
             let status = run
                 .error
                 .as_ref()
@@ -530,13 +541,21 @@ pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiE
                 .and_then(|status| u16::try_from(status).ok())
                 .and_then(|status| StatusCode::from_u16(status).ok())
                 .filter(|status| status.is_client_error() || status.is_server_error())
-                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                .unwrap_or_else(|| match code {
+                    "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
+                    "provider_affinity_mismatch" => StatusCode::CONFLICT,
+                    "provider_transport_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
+                    "endpoint_unreachable"
+                    | "provider_upstream_error"
+                    | "provider_invalid_response" => StatusCode::BAD_GATEWAY,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                });
             let message = run
                 .error
                 .as_ref()
                 .map(|error| error.message.as_str())
                 .unwrap_or("published run failed");
-            NativeApiError::new(status, "runtime_error", message)
+            NativeApiError::new(status, code, message)
         }
         NativeRunStatus::Cancelled => NativeApiError::new(
             StatusCode::CONFLICT,

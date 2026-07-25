@@ -56,12 +56,10 @@ where
             "actual_operation": result.operation(),
             "actual_profile": result.profile(),
         }))),
-        Err(error) => Ok(failed_compact_execution(json!({
-            "error_code": "provider_compact_failed",
-            "message": error.to_string(),
-            "provider_code": runtime.provider_code,
-            "model": runtime.model,
-        }))),
+        Err(error) => Ok(failed_compact_execution(build_provider_error_payload(
+            runtime,
+            &provider_runtime_error_from_anyhow(&error),
+        ))),
     }
 }
 

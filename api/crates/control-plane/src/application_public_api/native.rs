@@ -935,7 +935,6 @@ pub enum NativeRunValidationError {
     Forbidden,
     NotFound,
     InvalidMapping,
-    InvalidModelParameters(&'static str),
     InvalidToolResults(String),
     InvalidState,
     IdempotencyConflict,

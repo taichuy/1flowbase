@@ -347,6 +347,16 @@ pub(super) fn provider_runtime_error_from_anyhow(error: &anyhow::Error) -> Provi
     {
         return normalize_runtime_contract_error(error);
     }
+    if let Some(ProviderCompactError::Runtime { error }) =
+        error.downcast_ref::<ProviderCompactError>()
+    {
+        return normalize_runtime_contract_error(error);
+    }
+    if let Some(ProviderCountTokensError::Runtime { error }) =
+        error.downcast_ref::<ProviderCountTokensError>()
+    {
+        return normalize_runtime_contract_error(error);
+    }
 
     ProviderRuntimeError::normalize("invoke", error.to_string(), None)
 }

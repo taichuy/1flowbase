@@ -84,6 +84,7 @@ impl NativeRequestMetadata {
         self.responses_transport_requirement = requirement;
     }
 
+    #[cfg(test)]
     pub(crate) fn responses_transport_requirement(&self) -> ResponsesTransportRequirement {
         self.responses_transport_requirement
     }
@@ -243,7 +244,10 @@ mod tests {
                 "storage": "ephemeral",
             }))
         );
-        assert_eq!(serde_json::to_value(&metadata).unwrap(), json!({"trace_id": "trace-1"}));
+        assert_eq!(
+            serde_json::to_value(&metadata).unwrap(),
+            json!({"trace_id": "trace-1"})
+        );
         assert!(!format!("{metadata:?}").contains(CANARY));
         assert!(!format!("{metadata:?}").contains("must-not-be-durable"));
     }

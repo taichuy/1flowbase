@@ -128,7 +128,9 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
         }),
       });
       if (!approvalResponse.ok) {
-        throw new Error(`WireAudit mcp-approval-continuation returned HTTP ${approvalResponse.status}`);
+        throw new Error(
+          `WireAudit mcp-approval-continuation ${continuation.previous_response_id} returned HTTP ${approvalResponse.status}: ${await approvalResponse.text()}`,
+        );
       }
       vector.capture += `\n${await approvalResponse.text()}`;
     }

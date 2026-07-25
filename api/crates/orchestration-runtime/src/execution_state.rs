@@ -22,13 +22,10 @@ pub enum NativeOperationTerminal {
 
 impl NativeOperationTerminal {
     pub fn from_payload(payload: &Value) -> Result<Option<Self>> {
-        match payload
-            .get("semantic_terminal")
-            .and_then(Value::as_str)
-        {
-            Some(COUNT_TOKENS_TERMINAL_KIND) => {
-                CountTokensReceipt::from_payload(payload).map(Self::CountTokens).map(Some)
-            }
+        match payload.get("semantic_terminal").and_then(Value::as_str) {
+            Some(COUNT_TOKENS_TERMINAL_KIND) => CountTokensReceipt::from_payload(payload)
+                .map(Self::CountTokens)
+                .map(Some),
             Some(COMPACT_OPERATION_TERMINAL_KIND) => CompactOperationReceipt::from_payload(payload)
                 .map(Self::Compact)
                 .map(Some),
@@ -150,7 +147,6 @@ impl CompactOperationReceipt {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingHumanInput {
     pub node_id: String,
@@ -241,7 +237,10 @@ pub fn compact_operation_receipt_from_traces(
 pub fn count_tokens_receipt_from_trace(
     trace: &NodeExecutionTrace,
 ) -> Result<Option<CountTokensReceipt>> {
-    if trace.output_payload.get("semantic_terminal").and_then(Value::as_str)
+    if trace
+        .output_payload
+        .get("semantic_terminal")
+        .and_then(Value::as_str)
         != Some(COUNT_TOKENS_TERMINAL_KIND)
     {
         return Ok(None);

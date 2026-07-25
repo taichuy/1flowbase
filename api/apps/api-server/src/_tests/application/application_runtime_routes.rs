@@ -27,6 +27,9 @@ fn create_provider_fixture(root: &Path) {
     fs::create_dir_all(root.join("demo")).unwrap();
     fs::create_dir_all(root.join("scripts")).unwrap();
     write_provider_manifest_v2(root, "fixture_provider", "Fixture Provider", "0.1.0");
+    let mut manifest = fs::read_to_string(root.join("manifest.yaml")).unwrap();
+    manifest.push_str("  capabilities:\n    - count_tokens\n");
+    fs::write(root.join("manifest.yaml"), manifest).unwrap();
     fs::write(
         root.join("provider/fixture_provider.yaml"),
         r#"provider_code: fixture_provider
@@ -87,6 +90,10 @@ switch (request.method) {
     }];
     break;
   case 'invoke': {
+    if (request.input?.operation === 'count_tokens') {
+      result = { operation: 'count_tokens', input_tokens: 29 };
+      break;
+    }
     const query = request.input?.messages?.[0]?.content ?? "";
     const configuredText = request.input?.provider_config?.test_response_text;
     const text = typeof configuredText === "string" ? configuredText : "reply:" + query;
