@@ -2,7 +2,6 @@ use control_plane::application_public_api::{
     api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
     mapping::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
-        ApplicationApiMappingService, ReplaceApplicationApiMappingCommand,
     },
     native::{
         translate_native_run_request, CreateNativeRunCommand, NativeRunRequest,
@@ -13,14 +12,10 @@ use control_plane::application_public_api::{
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use control_plane::ports::{
-    ApplicationCompiledPlanRepository, ApplicationEnvironmentVariableInput,
-    ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
-    ReplaceApplicationEnvironmentVariablesInput,
+    ApplicationEnvironmentVariableInput, ApplicationPublicationRepository, ApplicationRepository,
+    FlowRepository, ReplaceApplicationEnvironmentVariablesInput,
 };
-use domain::AiNativeGenerateProfile;
-use plugin_framework::provider_contract::{
-    NativePromptBlock, ProviderCompactProfile, ProviderWireOperation,
-};
+use plugin_framework::provider_contract::NativePromptBlock;
 use serde_json::json;
 use uuid::Uuid;
 

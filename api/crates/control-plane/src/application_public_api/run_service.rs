@@ -599,7 +599,6 @@ fn ensure_idempotency_fingerprint_matches(
 mod tests {
     use super::super::conversations::ApplicationPublicConversationMessageRecord;
     use super::*;
-    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderInvocationResult};
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;

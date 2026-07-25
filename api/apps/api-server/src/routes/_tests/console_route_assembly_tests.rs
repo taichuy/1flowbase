@@ -304,10 +304,6 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "GET",
-                "applications.view",
-            ),
-            (
-                "GET",
                 "/api/console/applications/:application_id/api-publication",
                 "applications.view",
             ),
