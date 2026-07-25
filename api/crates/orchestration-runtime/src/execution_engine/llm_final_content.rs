@@ -211,12 +211,19 @@ pub(super) fn durable_provider_error_message(kind: ProviderRuntimeErrorKind) -> 
         ProviderRuntimeErrorKind::AuthFailed => "provider authentication failed",
         ProviderRuntimeErrorKind::EndpointUnreachable => "provider endpoint is unreachable",
         ProviderRuntimeErrorKind::ModelNotFound => "provider model was not found",
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch => {
+            "selected LLM Provider does not own the opaque continuation"
+        }
         ProviderRuntimeErrorKind::RateLimited => "provider rate limit exceeded",
         ProviderRuntimeErrorKind::ProviderUpstreamError => "provider upstream request failed",
         ProviderRuntimeErrorKind::ProviderInvalidResponse => {
             "provider returned an invalid response"
         }
     }
+}
+
+pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {
+    error.kind != ProviderRuntimeErrorKind::ProviderAffinityMismatch
 }
 
 fn provider_status_code(details: Option<&Value>) -> Option<u16> {

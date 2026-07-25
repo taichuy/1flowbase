@@ -20,6 +20,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: ProviderInvocationInput,
     ) -> Result<plugin_framework::provider_contract::ProviderCompactResult> {
+        self.apply_provider_transport(runtime, &mut input)?;
         let instance = self.resolve_llm_instance(runtime).await?;
         let installation = self.ready_installation(instance.installation_id).await?;
         let package = load_provider_package(&installation.installed_path)?;
@@ -58,29 +59,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
-        let native_transport_capability =
-            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
-        if let Some(payload) = self.provider_transport_payload.as_ref() {
-            input
-                .required_capabilities
-                .insert(native_transport_capability.clone());
-            let protocol = match payload.protocol() {
-                crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
-            };
-            input.native_transport = Some(
-                plugin_framework::provider_contract::ProviderNativeTransport {
-                    protocol: protocol.to_string(),
-                    wire_body: payload.wire_body().clone(),
-                    digest: payload.digest().to_string(),
-                    size_bytes: payload.size_bytes() as u64,
-                },
-            );
-        } else if input
-            .required_capabilities
-            .contains(&native_transport_capability)
-        {
-            return Err(anyhow!("ephemeral_transport_missing"));
-        }
+        self.apply_provider_transport(runtime, &mut input)?;
         let provider_resolve_started = std::time::Instant::now();
         let instance = self.resolve_llm_instance(runtime).await?;
         tracing::debug!(
@@ -537,6 +516,57 @@ where
     R: PluginRepository + Clone + Send + Sync,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    fn apply_provider_transport(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<()> {
+        let native_transport_capability =
+            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
+        let Some(payload) = self.provider_transport_payload.as_ref() else {
+            if input
+                .required_capabilities
+                .contains(&native_transport_capability)
+            {
+                return Err(anyhow!("ephemeral_transport_missing"));
+            }
+            return Ok(());
+        };
+
+        if payload.affinity().is_some_and(|affinity| {
+            !affinity.matches(
+                &runtime.provider_instance_id,
+                &runtime.provider_code,
+                &runtime.protocol,
+                &runtime.model,
+            )
+        }) {
+            return Err(plugin_framework::PluginFrameworkError::runtime(
+                plugin_framework::provider_contract::ProviderRuntimeError::new(
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                    "selected LLM Provider does not own the opaque continuation",
+                ),
+            )
+            .into());
+        }
+
+        input
+            .required_capabilities
+            .insert(native_transport_capability);
+        let protocol = match payload.protocol() {
+            crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
+        };
+        input.native_transport = Some(
+            plugin_framework::provider_contract::ProviderNativeTransport {
+                protocol: protocol.to_string(),
+                wire_body: payload.wire_body().clone(),
+                digest: payload.digest().to_string(),
+                size_bytes: payload.size_bytes() as u64,
+            },
+        );
+        Ok(())
+    }
+
     async fn ready_installation(
         &self,
         installation_id: Uuid,

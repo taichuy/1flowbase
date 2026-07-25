@@ -8,7 +8,8 @@ use plugin_framework::provider_contract::{
     ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderFinishReason, ProviderInvocationCapability,
     ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
-    ProviderModelDescriptor, ProviderStreamEvent, ProviderToolCall, ProviderWireOperation,
+    ProviderModelDescriptor, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
+    ProviderWireOperation,
 };
 use serde_json::Map;
 
@@ -108,7 +109,19 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
-        provider_transport_payload: None,
+        provider_transport_payload: Some(
+            crate::ports::ProviderTransportPayload::openai_responses(json!({
+                "model": "gpt-5.4-mini",
+                "input": "compact transport"
+            }))
+            .unwrap()
+            .with_affinity(crate::ports::ProviderTransportAffinity::new(
+                provider_instance_id.to_string(),
+                "fixture_provider",
+                "openai_compatible",
+                "gpt-5.4-mini",
+            )),
+        ),
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let result = orchestration_runtime::execution_engine::ProviderInvoker::compact(
@@ -143,9 +156,13 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         captured[0].profile,
         Some(ProviderCompactProfile::ResponsesCompact)
     );
-    assert_eq!(captured[0].provider_instance_id, provider_instance_id.to_string());
+    assert_eq!(
+        captured[0].provider_instance_id,
+        provider_instance_id.to_string()
+    );
     assert_eq!(captured[0].model, "gpt-5.4-mini");
     assert_eq!(captured[0].messages[0].content, "canonical compact prompt");
+    assert!(captured[0].native_transport.is_some());
     assert!(!captured[0].provider_config.is_null());
 }
 
@@ -176,7 +193,10 @@ impl ProviderRuntimePort for CapturingCountTokensRuntime {
         _installation: &domain::PluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> Result<ProviderCountTokensResult> {
-        self.captured.lock().expect("capture mutex poisoned").push(input);
+        self.captured
+            .lock()
+            .expect("capture mutex poisoned")
+            .push(input);
         Ok(ProviderCountTokensResult {
             operation: ProviderWireOperation::CountTokens,
             input_tokens: 23,
@@ -199,7 +219,9 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
     let captured = Arc::new(Mutex::new(Vec::new()));
     let invoker = RuntimeProviderInvoker {
         repository,
-        runtime: CapturingCountTokensRuntime { captured: captured.clone() },
+        runtime: CapturingCountTokensRuntime {
+            captured: captured.clone(),
+        },
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
@@ -239,7 +261,10 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
     assert_eq!(result.input_tokens, 23);
     let captured = captured.lock().expect("capture mutex poisoned");
     assert_eq!(captured.len(), 1);
-    assert_eq!(captured[0].provider_instance_id, provider_instance_id.to_string());
+    assert_eq!(
+        captured[0].provider_instance_id,
+        provider_instance_id.to_string()
+    );
     assert_eq!(captured[0].model, "gpt-5.4-mini");
     assert_eq!(captured[0].messages[0].content, "canonical prompt");
     assert!(!captured[0].provider_config.is_null());
@@ -1065,7 +1090,13 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
                 "model": "gpt-5.4-mini",
                 "input": "native transport"
             }))
-            .unwrap(),
+            .unwrap()
+            .with_affinity(crate::ports::ProviderTransportAffinity::new(
+                provider_instance_id.to_string(),
+                "fixture_provider",
+                "openai_compatible",
+                "gpt-5.4-mini",
+            )),
         ),
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
@@ -1097,6 +1128,78 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
     assert!(captured[0]
         .required_capabilities
         .contains(&ProviderInvocationCapability::ResponsesNativePassthrough));
+}
+
+#[tokio::test]
+async fn native_provider_transport_affinity_rejects_a_different_selected_llm_before_invocation() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    let (runtime_port, captured_inputs) =
+        test_support::InMemoryProviderRuntime::with_invocation_capture();
+    let affinity = crate::ports::ProviderTransportAffinity::new(
+        Uuid::now_v7().to_string(),
+        "other_provider",
+        "openai_compatible",
+        "gpt-5.4-mini",
+    );
+    let invoker = RuntimeProviderInvoker {
+        repository,
+        runtime: runtime_port,
+        workspace_id: Uuid::nil(),
+        provider_secret_master_key: "test-master-key".to_string(),
+        live_provider_events: None,
+        runtime_event_stream: None,
+        flow_run_id: None,
+        active_node_id: None,
+        active_node_run_id: None,
+        api_node_id: None,
+        provider_install_root: None,
+        flow_execution_context: None,
+        answer_presentation: None,
+        provider_transport_payload: Some(
+            crate::ports::ProviderTransportPayload::openai_responses(json!({
+                "model": "gpt-5.4-mini",
+                "input": "opaque continuation"
+            }))
+            .unwrap()
+            .with_affinity(affinity),
+        ),
+    };
+    let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
+    let input = ProviderInvocationInput {
+        provider_instance_id: provider_instance_id.to_string(),
+        provider_code: "fixture_provider".to_string(),
+        protocol: "openai_compatible".to_string(),
+        model: "gpt-5.4-mini".to_string(),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "continue".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: None,
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let error = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker, &runtime, input,
+    )
+    .await
+    .expect_err("a different selected Provider must not receive opaque continuation state");
+    let runtime_error = error
+        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .and_then(|error| match error {
+            plugin_framework::PluginFrameworkError::RuntimeContract { error } => Some(error),
+            _ => None,
+        })
+        .expect("affinity mismatch should remain a typed runtime error");
+    assert_eq!(
+        runtime_error.kind,
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch
+    );
+    assert!(captured_inputs.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

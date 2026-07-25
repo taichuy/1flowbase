@@ -964,6 +964,7 @@ pub enum ProviderRuntimeErrorKind {
     AuthFailed,
     EndpointUnreachable,
     ModelNotFound,
+    ProviderAffinityMismatch,
     RateLimited,
     ProviderUpstreamError,
     ProviderInvalidResponse,

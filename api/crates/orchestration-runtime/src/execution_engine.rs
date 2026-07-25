@@ -949,9 +949,9 @@ where
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
-                    checkpoint_snapshot: None,
-                    operation_terminal: None,
-                    node_traces,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
                         });
                     }
                     continue;
@@ -991,9 +991,9 @@ where
                         return Ok(FlowDebugExecutionOutcome {
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
-            checkpoint_snapshot: None,
-            operation_terminal: None,
-            node_traces,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
                         });
                     }
                     continue;
@@ -1295,7 +1295,10 @@ where
                 });
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
-                if retry_enabled && attempt_index + 1 < attempt_runtimes.len() {
+                if retry_enabled
+                    && provider_error_allows_retry(&provider_error)
+                    && attempt_index + 1 < attempt_runtimes.len()
+                {
                     retry_reason = error_payload
                         .get("error_code")
                         .and_then(Value::as_str)

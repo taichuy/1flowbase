@@ -27,12 +27,54 @@ pub enum ProviderTransportProtocol {
     OpenAiResponses,
 }
 
+/// Runtime-only identity of the Provider route that owns opaque continuation state.
+///
+/// This value is derived from an actual LLM invocation. It is deliberately not serializable
+/// because workflow variables and durable request bodies must not become a second routing owner.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ProviderTransportAffinity {
+    provider_instance_id: String,
+    provider_code: String,
+    protocol: String,
+    model: String,
+}
+
+impl ProviderTransportAffinity {
+    pub fn new(
+        provider_instance_id: impl Into<String>,
+        provider_code: impl Into<String>,
+        protocol: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider_instance_id: provider_instance_id.into(),
+            provider_code: provider_code.into(),
+            protocol: protocol.into(),
+            model: model.into(),
+        }
+    }
+
+    pub fn matches(
+        &self,
+        provider_instance_id: &str,
+        provider_code: &str,
+        protocol: &str,
+        model: &str,
+    ) -> bool {
+        self.provider_instance_id == provider_instance_id
+            && self.provider_code == provider_code
+            && self.protocol == protocol
+            && self.model == model
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProviderTransportPayload {
     protocol: ProviderTransportProtocol,
     wire_body: Value,
     digest: String,
     size_bytes: usize,
+    affinity: Option<ProviderTransportAffinity>,
 }
 
 impl ProviderTransportPayload {
@@ -50,7 +92,13 @@ impl ProviderTransportPayload {
             wire_body,
             digest,
             size_bytes: encoded.len(),
+            affinity: None,
         })
+    }
+
+    pub fn with_affinity(mut self, affinity: ProviderTransportAffinity) -> Self {
+        self.affinity = Some(affinity);
+        self
     }
 
     pub const fn protocol(&self) -> ProviderTransportProtocol {
@@ -71,6 +119,10 @@ impl ProviderTransportPayload {
 
     pub const fn size_bytes(&self) -> usize {
         self.size_bytes
+    }
+
+    pub fn affinity(&self) -> Option<&ProviderTransportAffinity> {
+        self.affinity.as_ref()
     }
 }
 
@@ -113,6 +165,7 @@ impl fmt::Debug for ProviderTransportPayload {
             .field("protocol", &self.protocol)
             .field("digest", &self.digest)
             .field("size_bytes", &self.size_bytes)
+            .field("has_affinity", &self.affinity.is_some())
             .finish_non_exhaustive()
     }
 }
