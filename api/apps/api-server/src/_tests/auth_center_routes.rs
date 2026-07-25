@@ -48,9 +48,10 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         .await
         .unwrap();
     let app = crate::app_with_state(state);
-    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
@@ -145,7 +146,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["config_values"]["enabled"], json!(true));
     assert_eq!(
         password_local["config_values"]["extension_config"],
-        json!({ "self_registration_enabled": false })
+        json!({})
     );
     assert!(password_local.get("options").is_none());
     assert!(password_local.get("description").is_none());
@@ -190,7 +191,6 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(
         oidc["config_values"]["extension_config"],
         json!({
-            "allow_signup": true,
             "issuer_url": "https://idp.example.com"
         })
     );
@@ -198,6 +198,35 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         payload["data"]["supported_auth_types"],
         json!(["password-local"])
     );
+
+    let round_trip = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/auth-center/authenticators/{}/config",
+                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "title": password_local["config_values"]["title"],
+                        "enabled": password_local["config_values"]["enabled"],
+                        "description": password_local["config_values"]["description"],
+                        "self_registration_enabled": password_local["config_values"]
+                            ["self_registration_enabled"],
+                        "public_ui_block": password_local["config_values"]["public_ui_block"],
+                        "extension_config": password_local["config_values"]["extension_config"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(round_trip.status(), StatusCode::OK);
 }
 
 #[tokio::test]

@@ -249,10 +249,12 @@ function BlockSourceStudioWindow({
         windowWidth={windowEntry.rect.width}
         editor={(
           <main className="frontstage-jsx-studio__editor-panel">
-            {editorNotice}
-            {errorMessage ? (
-              <Alert message={errorMessage} showIcon type="error" />
-            ) : null}
+            <div className="frontstage-jsx-studio__editor-notice">
+              {editorNotice}
+              {errorMessage ? (
+                <Alert message={errorMessage} showIcon type="error" />
+              ) : null}
+            </div>
             <div className="frontstage-jsx-studio__monaco">
               <BlockSourceEditor
                 ariaLabel={i18nText('frontstage', 'auto.code')}

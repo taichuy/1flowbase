@@ -8,6 +8,7 @@ use axum::{
 use control_plane::auth::settings::{
     AuthCenterSettingsOverview, AuthCenterSettingsService, CopyAuthCenterAuthenticatorCommand,
     CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorCommand,
+    AUTH_CENTER_HOST_CONFIG_KEYS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -233,7 +234,16 @@ fn auth_center_config_response_values(
     authenticator: &domain::AuthenticatorRecord,
     description: Option<String>,
     extension_config: Map<String, Value>,
+    config_schema: &[AuthCenterConfigFieldResponse],
 ) -> Map<String, Value> {
+    let writable_extension_config = extension_config
+        .iter()
+        .filter(|(key, _)| {
+            !AUTH_CENTER_HOST_CONFIG_KEYS.contains(&key.as_str())
+                && config_schema.iter().any(|field| field.key == key.as_str())
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Map<_, _>>();
     let mut values = Map::new();
     values.insert(
         "title".to_string(),
@@ -257,9 +267,9 @@ fn auth_center_config_response_values(
     );
     values.insert(
         "extension_config".to_string(),
-        Value::Object(extension_config.clone()),
+        Value::Object(writable_extension_config.clone()),
     );
-    values.extend(extension_config);
+    values.extend(writable_extension_config);
     values
 }
 
@@ -271,8 +281,12 @@ fn to_auth_center_authenticator_response(
     let extension_config = auth_center_extension_config(&authenticator.options);
     let config_schema =
         auth_center_config_schema_from_options(&authenticator.options, &extension_config);
-    let config_values =
-        auth_center_config_response_values(&authenticator, description, extension_config);
+    let config_values = auth_center_config_response_values(
+        &authenticator,
+        description,
+        extension_config,
+        &config_schema,
+    );
     let public_variables = registry.public_variables(&authenticator);
     let context_variables = registry
         .context_variables(&authenticator.auth_type)

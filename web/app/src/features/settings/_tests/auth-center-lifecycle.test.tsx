@@ -153,7 +153,7 @@ const baseOverview = {
         description: 'Local password authentication',
         self_registration_enabled: false,
         public_ui_block: 'original password block',
-        extension_config: { self_registration_enabled: false }
+        extension_config: {}
       }
     },
     {
@@ -183,7 +183,7 @@ const baseOverview = {
         description: 'Staff login',
         self_registration_enabled: false,
         public_ui_block: 'staff password block',
-        extension_config: { self_registration_enabled: false }
+        extension_config: {}
       }
     }
   ]
@@ -426,10 +426,30 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         description: 'Local password authentication',
         self_registration_enabled: false,
         public_ui_block: 'custom saved block',
-        extension_config: { self_registration_enabled: false }
+        extension_config: {}
       },
       'csrf-123'
     ));
+  });
+
+  test('AC-014 shows the backend reason when public UI saving fails', async () => {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockRejectedValue(
+      new Error('invalid input: public_ui_block')
+    );
+    render(<AppProviders><SettingsAuthCenterSection /></AppProviders>);
+
+    const passwordRow = await screen.findByRole('row', {
+      name: /Local password authentication/
+    });
+    fireEvent.click(within(passwordRow).getByRole('button', { name: 'UI' }));
+    const uiDialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    const blockEditor = within(uiDialog).getByRole('textbox', { name: '区块源码' });
+    fireEvent.change(blockEditor, { target: { value: 'invalid draft' } });
+    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(
+      await within(uiDialog).findByText('invalid input: public_ui_block')
+    ).toBeInTheDocument();
   });
 
   test('throttles drawer mouse resize updates with animation frames', async () => {
