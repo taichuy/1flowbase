@@ -1,7 +1,7 @@
 ---
 created_at: 2026-07-23 19
-updated_at: 2026-07-24 09
-last_verified_at: 2026-07-24 09
+updated_at: 2026-07-25 15
+last_verified_at: 2026-07-25 15
 memory_type: project
 decision_policy: verify_before_decision
 status: discussion
@@ -16,6 +16,21 @@ scope:
 ---
 
 # Compatible Stream And Gateway Transport Conformance Root 1440
+
+## 2026-07-25 协议门禁边界与 cycle31 停止点
+
+- 用户确认 Claude Code、Codex、OpenCode 不下载、不追最新、不进入 Blocking contract；本机现有版本只作非阻断诊断。
+- Gateway Blocking 只证明 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 的 wire contract、真实 SSE 增量、工具 call/result 关联、显式 terminal/error、完整多轮不复用旧 id/answer/usage，以及 WireAudit no-executor/no-network。
+- frozen assembly 为 host `006e0780100cd5c39c776361c83ebbf2c323c06d`、official plugins `40b155590d1d50fbbd9ae22b26cb0a25ce2901d7`。
+- cycle31 的 Node 73/73、control-plane 304/304、api-server 196/196 全绿；唯一真实协议门禁执行一次后 RED。HTTP mock scenario header 不会穿过 Gateway，c32 负载超时，Anthropic list correlation 陈旧；WireAudit、secret、cleanup green，客户端未运行且仅记非阻断未验证。
+- 同一 conformance fixture 控制边界连续两轮失败，命中 Root 停止条件；#1440/#1452 已返回 `phase:discussion`，不启动 cycle32。下一步需把 Blocking correctness 与 load/observability 分开，并重新确认 mock 场景控制只使用合法协议数据、不增加 Gateway 测试专用透传。
+
+## 2026-07-25 当前检查点
+
+- 用户将真实客户端验收范围固定为 Claude Code、Codex、OpenCode 三项；AionUI 本地 `taichuy_v2_dev` 的 Native GPT Codex / 直连 app-server 增量不进入 #1440 门禁。
+- AionCore 与 AionUi 只以 local `main` 作为 ACP 拓扑参考；已分别创建 detached worktree：`AionCore-main@c0b50baf`、`AionUi-main@a5a8b34c7`，原开发工作树及未提交修改保持不动。
+- 用户要求把当前一次性本地客户端验收演进为可长期运行的 GitHub Actions 质量门禁。当前方向仍在 discussion：需要对齐 portable client lock、ACP 事件门禁、WireAudit、blocking pinned lane 与 upstream canary 的边界后再实现。
+- 1flowbase assembly 仍冻结在 `0f69c382a`，最终 fresh QA、protected branch 合入与 push 继续暂停；新增门禁若获批准，需作为 #1440 新 Delivery/Work Packet 装配后再进行唯一集中 QA。
 
 - 谁在做什么：Root #1440 因 durable transport source-of-truth 决策返回 `grade:g3 / phase:discussion`。D4 WP-D4-01A 与 D3 WP-D3-02 已分别装配为 `5589ebf4f`、`9b6a96a0a`；WP-D4-01B 为 `BLOCKED / NEEDS_SPLIT` 且 diff 为空。D4 #1446、D5 #1447、D6 #1448 暂停，D3 #1443 为 `phase:ready`；Root Control Ledger 是唯一计划真值。
 - 为什么这样做：QA cycle 3 证明实时状态机已经事件驱动；Codex 的合法 `web_search` 失败源于 function-only gateway 转换。工具类型应作为传输、流式、关联和终态测试向量，而不是授权 gateway 执行客户端或 Provider 专属工具。
