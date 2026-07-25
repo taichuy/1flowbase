@@ -1,3 +1,4 @@
+mod ai_native_operation_tests;
 mod binding_runtime_tests;
 mod code_executor_capability_tests;
 mod code_runtime_tests;
