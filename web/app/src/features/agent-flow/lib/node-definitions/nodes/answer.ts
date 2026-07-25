@@ -36,14 +36,3 @@ export const answerNodeDefinition: NodeDefinition = {
     }
   ]
 };
-
-export const compactResponseNodeDefinition: NodeDefinition = {
-  label: i18nText('agentFlow', 'auto.compact_response'),
-  sections: [
-    {
-      key: 'basics',
-      title: 'Basics',
-      fields: basicFields
-    }
-  ]
-};

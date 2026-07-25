@@ -8,7 +8,6 @@ import type {
   NodeRuntimeUiContract
 } from '@1flowbase/flow-schema';
 import {
-  DEFAULT_START_COMPACT_DISPATCH,
   NODE_CONTRIBUTION_SCHEMA_VERSION,
   getLlmNodeOutputs
 } from '@1flowbase/flow-schema';
@@ -283,8 +282,7 @@ function createStartContract(): NodeRuntimeUiContract {
     category: 'io',
     config: {
       input_fields: [],
-      model_list: [],
-      compact_dispatch: DEFAULT_START_COMPACT_DISPATCH
+      model_list: []
     },
     outputs: [],
     panelSections: [
@@ -304,34 +302,7 @@ function createStartContract(): NodeRuntimeUiContract {
           renderer: 'start_model_list',
           valueType: 'array'
         })
-      ]),
-      panelSection(
-        'compact_dispatch',
-        i18nText('agentFlow', 'auto.compact_dispatch'),
-        [
-          panelField({
-            key: 'config.compact_dispatch',
-            title: i18nText('agentFlow', 'auto.compact_dispatch'),
-            renderer: 'static_select',
-            options: [
-              {
-                value: 'transparent',
-                label: i18nText(
-                  'agentFlow',
-                  'auto.compact_dispatch_transparent'
-                )
-              },
-              {
-                value: 'application_flow',
-                label: i18nText(
-                  'agentFlow',
-                  'auto.compact_dispatch_application_flow'
-                )
-              }
-            ]
-          })
-        ]
-      )
+      ])
     ]
   });
 }
@@ -456,21 +427,6 @@ function createAnswerContract(): NodeRuntimeUiContract {
       ]),
       outputsPanelSection(outputs)
     ]
-  });
-}
-
-function createCompactResponseContract(): NodeRuntimeUiContract {
-  return createNodeRuntimeContract({
-    type: 'compact_response',
-    title: i18nText('agentFlow', 'auto.compact_response'),
-    description: i18nText(
-      'agentFlow',
-      'auto.compact_response_description'
-    ),
-    category: 'io',
-    config: {},
-    outputs: [],
-    panelSections: [basicsPanelSection]
   });
 }
 
@@ -1130,7 +1086,6 @@ function createDataModelContract(
 export const builtinNodeRuntimeContractTypes = [
   'start',
   'answer',
-  'compact_response',
   'workflow_start',
   'workflow_end',
   'llm',
@@ -1166,7 +1121,6 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
 > = {
   start: createStartContract(),
   answer: createAnswerContract(),
-  compact_response: createCompactResponseContract(),
   llm: createLlmContract(),
   knowledge_retrieval: createKnowledgeRetrievalContract(),
   question_classifier: createQuestionClassifierContract(),

@@ -12,11 +12,6 @@ import {
 import { createEdgeDocument } from '../edge-factory';
 import { getEdgeById, getNodeById } from '../selectors';
 import { shiftDownstreamNodesBFS } from './layout';
-import {
-  isApplicationFlowCompactSource,
-  isFlowTerminalNode,
-  isStartCompactHandle
-} from '../../compact-dispatch';
 
 export interface EdgeConnection {
   source?: string | null;
@@ -27,8 +22,7 @@ export interface EdgeConnection {
 
 export function validateConnection(
   document: FlowAuthoringDocument,
-  connection: EdgeConnection,
-  options: { ignoreEdgeId?: string } = {}
+  connection: EdgeConnection
 ) {
   if (!connection.source || !connection.target) {
     return false;
@@ -42,36 +36,12 @@ export function validateConnection(
     !targetNode ||
     sourceNode.id === targetNode.id ||
     sourceNode.containerId !== targetNode.containerId ||
-    isFlowTerminalNode(sourceNode)
+    sourceNode.type === 'answer'
   ) {
     return false;
   }
 
-  const isCompactHandle = isStartCompactHandle(
-    sourceNode,
-    connection.sourceHandle
-  );
-
-  if (isCompactHandle) {
-    if (
-      !isApplicationFlowCompactSource(
-        sourceNode,
-        connection.sourceHandle
-      ) ||
-      targetNode.type !== 'compact_response'
-    ) {
-      return false;
-    }
-
-    return !document.graph.edges.some(
-      (edge) =>
-        edge.id !== options.ignoreEdgeId &&
-        edge.source === sourceNode.id &&
-        edge.sourceHandle === connection.sourceHandle
-    );
-  }
-
-  return targetNode.type !== 'compact_response';
+  return true;
 }
 
 export function validateVisibleInternalLlmToolConnection(
@@ -106,9 +76,7 @@ export function reconnectEdge(
 
   if (
     !edge ||
-    !validateConnection(document, payload.connection, {
-      ignoreEdgeId: edge.id
-    })
+    !validateConnection(document, payload.connection)
   ) {
     return document;
   }
@@ -238,9 +206,8 @@ export function insertNodeOnEdge(
   }
 
   if (
-    isFlowTerminalNode(sourceNode) ||
-    isStartCompactHandle(sourceNode, edge.sourceHandle) ||
-    isFlowTerminalNode(payload.node)
+    sourceNode.type === 'answer' ||
+    payload.node.type === 'answer'
   ) {
     return document;
   }
@@ -297,7 +264,7 @@ export function connectNodeFromSource(
     return document;
   }
 
-  if (isFlowTerminalNode(sourceNode)) {
+  if (sourceNode.type === 'answer') {
     return document;
   }
 
@@ -307,21 +274,6 @@ export function connectNodeFromSource(
   };
   const sourceHandleId =
     payload.sourceHandleId ?? getDefaultIfElseSourceHandle(sourceNode);
-
-  if (isStartCompactHandle(sourceNode, sourceHandleId)) {
-    if (
-      !isApplicationFlowCompactSource(sourceNode, sourceHandleId) ||
-      payload.node.type !== 'compact_response' ||
-      document.graph.edges.some(
-        (edge) =>
-          edge.source === sourceNode.id && edge.sourceHandle === sourceHandleId
-      )
-    ) {
-      return document;
-    }
-  } else if (payload.node.type === 'compact_response') {
-    return document;
-  }
 
   const intermediateDoc = {
     ...document,
