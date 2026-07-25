@@ -1,7 +1,7 @@
 use domain::{
-    password_local_identity_claims, ActorContext, BoundRole, RoleScopeKind, UserRecord, UserStatus,
-    AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
-    PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    password_local_identity_claims, ActorContext, AuthenticatorRecord, BoundRole, RoleScopeKind,
+    UserRecord, UserStatus, AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL,
+    AUTH_SUBJECT_TYPE_PHONE, PASSWORD_LOCAL_AUTHENTICATOR_ID,
 };
 use uuid::Uuid;
 
@@ -62,4 +62,26 @@ fn password_local_identity_claims_cover_account_email_and_phone() {
     assert_eq!(claims[1].subject_value, "alice@example.com");
     assert_eq!(claims[2].subject_type, AUTH_SUBJECT_TYPE_PHONE);
     assert_eq!(claims[2].subject_value, "18800001111");
+}
+
+#[test]
+fn authenticator_serialization_keeps_public_ui_block_as_first_class_truth() {
+    // Issue #1444 AC-002/AC-009: public UI content must not be hidden inside
+    // private options, because settings and the public projection have distinct DTOs.
+    let authenticator = AuthenticatorRecord {
+        id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        auth_type: "password-local".into(),
+        title: "Password".into(),
+        enabled: true,
+        is_builtin: true,
+        sort_order: 0,
+        public_ui_block: "export default { main } satisfies BlockModule;".into(),
+        options: serde_json::json!({}),
+    };
+
+    let serialized = serde_json::to_value(authenticator).unwrap();
+
+    assert!(serialized["public_ui_block"]
+        .as_str()
+        .is_some_and(|source| source.contains("satisfies BlockModule")));
 }

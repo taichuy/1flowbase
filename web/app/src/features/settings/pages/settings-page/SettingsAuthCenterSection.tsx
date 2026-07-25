@@ -1,8 +1,4 @@
-import {
-  BarsOutlined,
-  DeleteOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import { BarsOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState, type DragEvent } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,7 +24,10 @@ import {
   SchemaFormDrawer,
   type SchemaFormValues
 } from '../../../../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
-import type { PluginFormSchema } from '../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
+import type {
+  PluginFormSchema,
+  PluginFormValue
+} from '../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   createSettingsAuthCenterAuthenticator,
@@ -38,9 +37,11 @@ import {
   reorderSettingsAuthCenterAuthenticators,
   settingsAuthCenterOverviewQueryKey,
   updateSettingsAuthCenterAuthenticatorConfig,
+  updateSettingsAuthCenterAuthenticatorPublicUiBlock,
   type SettingsAuthCenterOverview
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
+import { AuthenticatorUiBlockStudio } from '../../components/auth-center/AuthenticatorUiBlockStudio';
 
 import './auth-center-panel.css';
 
@@ -56,6 +57,8 @@ type AuthenticatorConfigFormValues = {
   title: string;
   enabled: boolean;
   description: string | null;
+  self_registration_enabled: boolean;
+  extension_config: Record<string, unknown>;
 };
 
 type AuthenticatorLifecycleFormValues = {
@@ -71,47 +74,63 @@ function authCenterConfigFormValues(row: AuthenticatorRow): SchemaFormValues {
       ? row.config_values.description
       : null;
 
-  return {
+  const values: SchemaFormValues = {
     title: row.title,
     enabled: row.enabled,
-    description
+    description,
+    self_registration_enabled:
+      row.config_values.self_registration_enabled === true
   };
+  for (const field of row.config_schema) {
+    const value = row.config_values[field.key];
+    if (isPluginFormValue(value)) values[field.key] = value;
+  }
+  return values;
 }
 
-function authCenterConfigFormSchema(): PluginFormSchema {
+function authCenterConfigFormSchema(row: AuthenticatorRow): PluginFormSchema {
   return {
     schema_version: '1.0.0',
-    fields: [
-      {
-        key: 'title',
-        label: i18nText('settings', 'auto.name'),
-        type: 'string',
-        required: true
-      },
-      {
-        key: 'description',
-        label: i18nText('settings', 'auto.description'),
-        type: 'string',
-        control: 'textarea'
-      },
-      {
-        key: 'enabled',
-        label: i18nText('settings', 'auto.enabled'),
-        type: 'boolean'
-      }
-    ]
+    fields: row.config_schema.map((field) => ({ ...field }))
   };
 }
 
 function toAuthenticatorConfigFormValues(
-  values: SchemaFormValues
+  values: SchemaFormValues,
+  row: AuthenticatorRow
 ): AuthenticatorConfigFormValues {
+  const commonKeys = new Set([
+    'title',
+    'description',
+    'enabled',
+    'self_registration_enabled'
+  ]);
+  const extension_config = Object.fromEntries(
+    row.config_schema
+      .filter(
+        (field) => !commonKeys.has(field.key) && values[field.key] !== undefined
+      )
+      .map((field) => [field.key, values[field.key]])
+  );
   return {
     title: String(values.title ?? ''),
     enabled: Boolean(values.enabled),
     description:
-      typeof values.description === 'string' ? values.description : null
+      typeof values.description === 'string' ? values.description : null,
+    self_registration_enabled: values.self_registration_enabled === true,
+    extension_config
   };
+}
+
+function isPluginFormValue(value: unknown): value is PluginFormValue {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value))
+    return true;
+  if (Array.isArray(value)) return value.every(isPluginFormValue);
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.values(value).every(isPluginFormValue)
+  );
 }
 
 function authCenterLifecycleErrorMessage(error: unknown, fallbackKey: string) {
@@ -138,7 +157,6 @@ function AuthenticatorConfigDrawer({
   canManageAuthenticators,
   hasCsrfToken,
   submitting,
-  errorMessage,
   onClose,
   onSubmit
 }: {
@@ -147,7 +165,6 @@ function AuthenticatorConfigDrawer({
   canManageAuthenticators: boolean;
   hasCsrfToken: boolean;
   submitting: boolean;
-  errorMessage: string | null;
   onClose: () => void;
   onSubmit: (
     authenticatorId: string,
@@ -163,24 +180,23 @@ function AuthenticatorConfigDrawer({
     () => (authenticator ? authCenterConfigFormValues(authenticator) : {}),
     [authenticator]
   );
-  const schema = useMemo(() => authCenterConfigFormSchema(), []);
+  const schema = useMemo(
+    () =>
+      authenticator
+        ? authCenterConfigFormSchema(authenticator)
+        : { schema_version: '1.0.0', fields: [] },
+    [authenticator]
+  );
 
-  const statusMessages = [
-    accessErrorMessage
-      ? {
+  const statusMessages = accessErrorMessage
+    ? [
+        {
           key: 'access-error',
           message: accessErrorMessage,
           type: 'error' as const
         }
-      : null,
-    errorMessage
-      ? {
-          key: 'submit-error',
-          message: errorMessage,
-          type: 'error' as const
-        }
-      : null
-  ].filter((message) => message != null);
+      ]
+    : [];
 
   return authenticator ? (
     <SchemaFormDrawer
@@ -202,7 +218,10 @@ function AuthenticatorConfigDrawer({
       resizeLabel="调整认证器配置抽屉宽度"
       onCancel={onClose}
       onSubmit={(values) =>
-        onSubmit(authenticator.id, toAuthenticatorConfigFormValues(values))
+        onSubmit(
+          authenticator.id,
+          toAuthenticatorConfigFormValues(values, authenticator)
+        )
       }
     />
   ) : null;
@@ -210,6 +229,9 @@ function AuthenticatorConfigDrawer({
 
 export function SettingsAuthCenterSection() {
   const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<
+    string | null
+  >(null);
+  const [selectedUiAuthenticatorId, setSelectedUiAuthenticatorId] = useState<
     string | null
   >(null);
   const [lifecycleForm] = Form.useForm<AuthenticatorLifecycleFormValues>();
@@ -238,6 +260,12 @@ export function SettingsAuthCenterSection() {
     selectedAuthenticatorId && overviewQuery.data
       ? (overviewQuery.data.authenticators.find(
           (row) => row.id === selectedAuthenticatorId
+        ) ?? null)
+      : null;
+  const selectedUiAuthenticator =
+    selectedUiAuthenticatorId && overviewQuery.data
+      ? (overviewQuery.data.authenticators.find(
+          (row) => row.id === selectedUiAuthenticatorId
         ) ?? null)
       : null;
   const requireAuthCenterWrite = () => {
@@ -269,10 +297,7 @@ export function SettingsAuthCenterSection() {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return enableSettingsAuthCenterAuthenticator(
-        authenticatorId,
-        csrfToken
-      );
+      return enableSettingsAuthCenterAuthenticator(authenticatorId, csrfToken);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -298,7 +323,9 @@ export function SettingsAuthCenterSection() {
         {
           title: input.values.title,
           enabled: input.values.enabled,
-          description: input.values.description
+          description: input.values.description,
+          self_registration_enabled: input.values.self_registration_enabled,
+          extension_config: input.values.extension_config
         },
         csrfToken
       );
@@ -317,6 +344,40 @@ export function SettingsAuthCenterSection() {
             : overview
       );
       setSelectedAuthenticatorId(null);
+      await queryClient.invalidateQueries({
+        queryKey: settingsAuthCenterOverviewQueryKey
+      });
+    }
+  });
+  const publicUiBlockMutation = useMutation({
+    mutationFn: (input: { authenticatorId: string; publicUiBlock: string }) => {
+      if (!canManageAuthenticators) {
+        throw new Error(
+          i18nText('settings', 'auto.auth_center_manage_permission_required')
+        );
+      }
+      if (!csrfToken) {
+        throw new Error(i18nText('settings', 'auto.auth_center_csrf_required'));
+      }
+      return updateSettingsAuthCenterAuthenticatorPublicUiBlock(
+        input.authenticatorId,
+        { public_ui_block: input.publicUiBlock },
+        csrfToken
+      );
+    },
+    onSuccess: async (authenticator) => {
+      queryClient.setQueryData<SettingsAuthCenterOverview>(
+        settingsAuthCenterOverviewQueryKey,
+        (overview) =>
+          overview
+            ? {
+                ...overview,
+                authenticators: overview.authenticators.map((row) =>
+                  row.id === authenticator.id ? authenticator : row
+                )
+              }
+            : overview
+      );
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
@@ -482,10 +543,7 @@ export function SettingsAuthCenterSection() {
               onDragStart={(event) => {
                 event.stopPropagation();
                 event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData(
-                  AUTH_CENTER_DRAG_DATA_TYPE,
-                  row.id
-                );
+                event.dataTransfer.setData(AUTH_CENTER_DRAG_DATA_TYPE, row.id);
                 setDraggedAuthenticatorId(row.id);
               }}
             />
@@ -546,6 +604,16 @@ export function SettingsAuthCenterSection() {
           >
             {i18nText('settings', 'auto.edit')}
           </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              publicUiBlockMutation.reset();
+              setSelectedUiAuthenticatorId(row.id);
+            }}
+          >
+            {i18nText('settings', 'auto.auth_center_ui_action')}
+          </Button>
           <Popconfirm
             title={i18nText('settings', 'auto.auth_center_delete_confirm', {
               value1: row.title
@@ -590,9 +658,7 @@ export function SettingsAuthCenterSection() {
   ];
 
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-    >
+    <SettingsSectionSurface heightMode="fill">
       {overviewQuery.isLoading ? <LoadingState compact /> : null}
       {overviewQuery.isError ? (
         <Alert
@@ -657,7 +723,10 @@ export function SettingsAuthCenterSection() {
                 const sourceAuthenticatorId = getDraggedAuthenticatorId(event);
                 setDraggedAuthenticatorId(null);
                 setDragOverAuthenticatorId(null);
-                if (!sourceAuthenticatorId || sourceAuthenticatorId === row.id) {
+                if (
+                  !sourceAuthenticatorId ||
+                  sourceAuthenticatorId === row.id
+                ) {
                   return;
                 }
 
@@ -675,11 +744,6 @@ export function SettingsAuthCenterSection() {
         canManageAuthenticators={canManageAuthenticators}
         hasCsrfToken={csrfToken != null}
         submitting={configMutation.isPending}
-        errorMessage={
-          configMutation.isError
-            ? i18nText('settings', 'auto.auth_center_config_update_failed')
-            : null
-        }
         onClose={() => {
           configMutation.reset();
           setSelectedAuthenticatorId(null);
@@ -689,27 +753,73 @@ export function SettingsAuthCenterSection() {
             configMutation.mutate(
               { authenticatorId, values },
               {
-                onError: () =>
-                  reject(
-                    new Error(
-                      i18nText(
-                        'settings',
-                        'auto.auth_center_config_update_failed'
-                      )
-                    )
-                  ),
+                onError: (error) => reject(error),
                 onSuccess: () => resolve()
               }
             );
           });
         }}
       />
+      {selectedUiAuthenticator ? (
+        <AuthenticatorUiBlockStudio
+          authenticatorId={selectedUiAuthenticator.id}
+          authenticatorTitle={selectedUiAuthenticator.title}
+          authType={selectedUiAuthenticator.auth_type}
+          contextVariables={selectedUiAuthenticator.context_variables}
+          description={
+            typeof selectedUiAuthenticator.config_values.description ===
+            'string'
+              ? selectedUiAuthenticator.config_values.description
+              : null
+          }
+          enabled={selectedUiAuthenticator.enabled}
+          interfacePathPrefixes={
+            selectedUiAuthenticator.interface_path_prefixes
+          }
+          publicVariables={selectedUiAuthenticator.public_variables}
+          selfRegistrationEnabled={
+            selectedUiAuthenticator.config_values.self_registration_enabled ===
+            true
+          }
+          workspaceId={actor?.current_workspace_id ?? ''}
+          errorMessage={
+            publicUiBlockMutation.isError
+              ? publicUiBlockMutation.error instanceof Error &&
+                publicUiBlockMutation.error.message.trim().length > 0
+                ? publicUiBlockMutation.error.message
+                : i18nText(
+                    'settings',
+                    'auto.auth_center_public_ui_update_failed'
+                  )
+              : null
+          }
+          open={selectedUiAuthenticatorId != null}
+          readOnly={!canManageAuthenticators || csrfToken == null}
+          saving={publicUiBlockMutation.isPending}
+          source={selectedUiAuthenticator.public_ui_block}
+          onClose={() => {
+            publicUiBlockMutation.reset();
+            setSelectedUiAuthenticatorId(null);
+          }}
+          onSave={async (publicUiBlock) => {
+            await new Promise<void>((resolve, reject) => {
+              publicUiBlockMutation.mutate(
+                {
+                  authenticatorId: selectedUiAuthenticator.id,
+                  publicUiBlock
+                },
+                {
+                  onError: (error) => reject(error),
+                  onSuccess: () => resolve()
+                }
+              );
+            });
+          }}
+        />
+      ) : null}
       <Modal
         open={isLifecycleModalOpen}
-        title={i18nText(
-          'settings',
-          'auto.auth_center_create_authenticator'
-        )}
+        title={i18nText('settings', 'auto.auth_center_create_authenticator')}
         okText={i18nText('settings', 'auto.save')}
         cancelText={i18nText('settings', 'auto.cancel')}
         confirmLoading={createMutation.isPending}

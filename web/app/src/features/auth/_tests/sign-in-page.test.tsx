@@ -1,243 +1,134 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { navigateSpy, signInWithPassword, fetchCurrentMe, fetchLoginInstances } =
+const { navigateSpy, fetchCurrentMe, fetchLoginInstances, renderedBlocks } =
   vi.hoisted(() => ({
     navigateSpy: vi.fn(),
-    signInWithPassword: vi.fn(),
     fetchCurrentMe: vi.fn(),
-    fetchLoginInstances: vi.fn()
+    fetchLoginInstances: vi.fn(),
+    renderedBlocks: vi.fn()
   }));
 
 vi.mock('@tanstack/react-router', async () => {
   const actual = await vi.importActual<typeof import('@tanstack/react-router')>(
     '@tanstack/react-router'
   );
-
-  return {
-    ...actual,
-    useNavigate: () => navigateSpy
-  };
+  return { ...actual, useNavigate: () => navigateSpy };
 });
 
-vi.mock('../api/session', () => ({
-  signInWithPassword,
-  fetchCurrentMe,
-  fetchLoginInstances
+vi.mock('../api/session', () => ({ fetchCurrentMe, fetchLoginInstances }));
+
+vi.mock('../components/PublicAuthBlock', () => ({
+  PublicAuthBlock: (props: {
+    instance: { id: string; public_ui_block: string };
+    onAuthenticated: (session: {
+      csrf_token: string;
+      effective_display_role: string;
+      current_workspace_id: string;
+    }) => Promise<void>;
+  }) => {
+    renderedBlocks(props.instance);
+    return (
+      <button
+        onClick={() => void props.onAuthenticated({
+          csrf_token: 'csrf-123',
+          effective_display_role: 'member',
+          current_workspace_id: 'workspace-1'
+        })}
+      >
+        Run {props.instance.id}
+      </button>
+    );
+  }
 }));
 
 import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
 import { SignInPage } from '../pages/SignInPage';
 
+const passwordInstance = {
+  id: 'auth-password-local',
+  auth_type: 'password-local',
+  title: 'Password',
+  description: 'Local password login',
+  sort_order: 0,
+  public_ui_block: 'export default { main };',
+  public_variables: { self_registration_enabled: false }
+};
+
 describe('SignInPage', () => {
   beforeEach(() => {
-    window.history.pushState({}, '', '/sign-in');
     window.localStorage.clear();
+    window.history.pushState({}, '', '/sign-in');
     navigateSpy.mockReset();
-    signInWithPassword.mockReset();
     fetchCurrentMe.mockReset();
     fetchLoginInstances.mockReset();
-    fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
-      login_instances: [
-        {
-          id: 'auth-password-local',
-          auth_type: 'password-local',
-          title: 'Password',
-          description: 'Local password login',
-          sort_order: 0,
-          flow: 'password',
-          sign_in_path: '/api/public/auth/sign-in',
-          public_options: {}
-        }
-      ]
-    });
+    renderedBlocks.mockReset();
     useAuthStore.getState().setAnonymous();
-  });
-
-  test('submits account/password and redirects to home on success', async () => {
-    signInWithPassword.mockResolvedValue({
-      csrf_token: 'csrf-123',
-      effective_display_role: 'member',
-      current_workspace_id: 'workspace-1'
+    fetchLoginInstances.mockResolvedValue({
+      default_authenticator_id: passwordInstance.id,
+      login_instances: [passwordInstance]
     });
     fetchCurrentMe.mockResolvedValue({
-      id: 'user-1',
-      account: 'root',
-      email: 'root@example.com',
-      phone: null,
-      nickname: 'Root',
-      name: 'Root',
-      avatar_url: null,
-      introduction: '',
-      effective_display_role: 'member',
-      permissions: []
+      id: 'user-1', account: 'root', email: 'root@example.com', phone: null,
+      nickname: 'Root', name: 'Root', avatar_url: null, introduction: '',
+      effective_display_role: 'member', permissions: []
     });
+  });
 
-    render(
-      <AppProviders>
-        <SignInPage />
-      </AppProviders>
-    );
+  test('mounts the only authenticator Block directly and accepts its session', async () => {
+    render(<AppProviders><SignInPage /></AppProviders>);
 
-    fireEvent.change(await screen.findByLabelText('Account'), {
-      target: { value: 'root' }
-    });
-    fireEvent.change(screen.getByPlaceholderText('Enter password'), {
-      target: { value: 'change-me' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Sign in/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run auth-password-local' }));
 
-    await waitFor(() =>
-      expect(signInWithPassword).toHaveBeenCalledWith({
-        authenticator_id: 'auth-password-local',
-        identifier: 'root',
-        password: 'change-me'
-      })
-    );
+    expect(renderedBlocks).toHaveBeenCalledWith(passwordInstance);
     await waitFor(() => expect(fetchCurrentMe).toHaveBeenCalled());
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/' }));
-
-    expect(useAuthStore.getState()).toEqual(
-      expect.objectContaining({
-        sessionStatus: 'authenticated',
-        csrfToken: 'csrf-123',
-        actor: expect.objectContaining({
-          account: 'root',
-          current_workspace_id: 'workspace-1'
-        }),
-        me: expect.objectContaining({
-          name: 'Root'
-        })
-      })
-    );
+    expect(useAuthStore.getState().csrfToken).toBe('csrf-123');
   });
 
-  test('submits the selected authenticator when multiple login instances exist', async () => {
+  test('renders vertical selectors for multiple authenticators and mounts the selection', async () => {
+    const qrInstance = {
+      ...passwordInstance,
+      id: 'auth-qr',
+      auth_type: 'qr-code',
+      title: 'QR code',
+      sort_order: 10,
+      public_ui_block: 'qr block'
+    };
     fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: 'auth-staff-password',
-      login_instances: [
-        {
-          id: 'auth-staff-password',
-          auth_type: 'password-local',
-          title: 'Staff Password',
-          description: 'Staff login',
-          sort_order: 0,
-          flow: 'password',
-          sign_in_path: '/api/public/auth/sign-in',
-          public_options: {}
-        },
-        {
-          id: 'auth-password-local',
-          auth_type: 'password-local',
-          title: 'Password',
-          description: 'Local password login',
-          sort_order: 10,
-          flow: 'password',
-          sign_in_path: '/api/public/auth/sign-in',
-          public_options: {}
-        }
-      ]
-    });
-    signInWithPassword.mockResolvedValue({
-      csrf_token: 'csrf-123',
-      effective_display_role: 'member',
-      current_workspace_id: 'workspace-1'
-    });
-    fetchCurrentMe.mockResolvedValue({
-      id: 'user-1',
-      account: 'root',
-      email: 'root@example.com',
-      phone: null,
-      nickname: 'Root',
-      name: 'Root',
-      avatar_url: null,
-      introduction: '',
-      effective_display_role: 'member',
-      permissions: []
+      default_authenticator_id: passwordInstance.id,
+      login_instances: [passwordInstance, qrInstance]
     });
 
-    render(
-      <AppProviders>
-        <SignInPage />
-      </AppProviders>
-    );
+    render(<AppProviders><SignInPage /></AppProviders>);
 
-    expect(await screen.findByText('Staff Password')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Account'), {
-      target: { value: 'root' }
-    });
-    fireEvent.change(screen.getByPlaceholderText('Enter password'), {
-      target: { value: 'change-me' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Sign in/ }));
-
-    await waitFor(() =>
-      expect(signInWithPassword).toHaveBeenCalledWith({
-        authenticator_id: 'auth-staff-password',
-        identifier: 'root',
-        password: 'change-me'
-      })
-    );
+    expect(await screen.findByRole('button', { name: 'Password' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'QR code' }));
+    expect(await screen.findByRole('button', { name: 'Run auth-qr' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run auth-password-local' })).not.toBeInTheDocument();
   });
 
-  test('shows a stable error when login instances cannot be loaded', async () => {
+  test('shows a formal unavailable state and no fallback form when none are enabled', async () => {
+    fetchLoginInstances.mockResolvedValue({
+      default_authenticator_id: '',
+      login_instances: []
+    });
+
+    render(<AppProviders><SignInPage /></AppProviders>);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No sign-in option is available.');
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    expect(renderedBlocks).not.toHaveBeenCalled();
+  });
+
+  test('shows a stable error and no fallback form when discovery fails', async () => {
     fetchLoginInstances.mockRejectedValue(new Error('network failed'));
+    render(<AppProviders><SignInPage /></AppProviders>);
 
-    render(
-      <AppProviders>
-        <SignInPage />
-      </AppProviders>
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Failed to load sign-in options. Please refresh the page and try again.'
     );
-
-    expect(
-      await screen.findByText(
-        'Failed to load sign-in options. Please refresh the page and try again.'
-      )
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Sign in/ })).toBeDisabled();
-  });
-
-  test('defaults the sign-in page copy to English without rendering a language selector', async () => {
-    render(
-      <AppProviders>
-        <SignInPage />
-      </AppProviders>
-    );
-
-    expect(await screen.findByLabelText('Account')).toBeInTheDocument();
-    expect(screen.getByLabelText('Password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Sign in/ })).toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: /language/i })
-    ).not.toBeInTheDocument();
-  });
-
-  test('uses the URL language parameter when no cached locale exists', async () => {
-    window.history.pushState({}, '', '/sign-in?language=zh');
-
-    render(
-      <AppProviders>
-        <SignInPage />
-      </AppProviders>
-    );
-
-    expect(await screen.findByLabelText('\u8d26\u53f7')).toBeInTheDocument();
-    expect(screen.getByLabelText('\u5bc6\u7801')).toBeInTheDocument();
-  });
-
-  test('uses cached locale preference before the URL language parameter', async () => {
-    window.history.pushState({}, '', '/sign-in?language=zh');
-    window.localStorage.setItem('1flowbase.ui.locale_preference', 'en_US');
-
-    render(
-      <AppProviders>
-        <SignInPage />
-      </AppProviders>
-    );
-
-    expect(await screen.findByLabelText('Account')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Sign in/ })).toBeInTheDocument();
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
   });
 });

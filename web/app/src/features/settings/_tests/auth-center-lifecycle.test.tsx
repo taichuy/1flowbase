@@ -13,13 +13,44 @@ const authCenterApi = vi.hoisted(() => ({
   fetchSettingsAuthCenterOverview: vi.fn(),
   enableSettingsAuthCenterAuthenticator: vi.fn(),
   updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
+  updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
   createSettingsAuthCenterAuthenticator: vi.fn(),
   copySettingsAuthCenterAuthenticator: vi.fn(),
   deleteSettingsAuthCenterAuthenticator: vi.fn(),
   reorderSettingsAuthCenterAuthenticators: vi.fn()
 }));
+const frontstageInterfaceCapabilities = vi.hoisted(() => ({
+  useFrontstageInterfaceCapabilities: vi.fn(() => ({
+    data: { items: [], adapter_ids: [], methods: [], total: 0 },
+    loading: false,
+    error: null
+  }))
+}));
 
 vi.mock('../api/auth-center', () => authCenterApi);
+vi.mock('../../frontstage/hooks/use-frontstage-interface-capabilities', () => ({
+  useFrontstageInterfaceCapabilities:
+    frontstageInterfaceCapabilities.useFrontstageInterfaceCapabilities
+}));
+vi.mock('../../frontstage/api/interface-capabilities', () => ({
+  fetchFrontstageInterfaceCapability: vi.fn()
+}));
+
+vi.mock('@monaco-editor/react', () => ({
+  default: ({
+    value,
+    onChange
+  }: {
+    value?: string;
+    onChange?: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label="区块源码"
+      value={value}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  )
+}));
 
 import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
@@ -60,11 +91,89 @@ const baseOverview = {
       enabled: true,
       is_builtin: true,
       sort_order: 0,
-      config_schema: [],
+      public_ui_block: 'original password block',
+      interface_path_prefixes: ['/api/public/'],
+      public_variables: {
+        title: 'Password',
+        description: 'Local password authentication',
+        enabled: true,
+        self_registration_enabled: false
+      },
+      context_variables: [
+        {
+          group: 'configuration',
+          label: 'Authenticator title',
+          member_path: 'inputs.public_variables.title',
+          schema: { type: 'string' }
+        },
+        {
+          group: 'configuration',
+          label: 'Description',
+          member_path: 'inputs.public_variables.description',
+          schema: { type: 'string' }
+        },
+        {
+          group: 'configuration',
+          label: 'Enabled',
+          member_path: 'inputs.public_variables.enabled',
+          schema: { type: 'boolean' }
+        },
+        {
+          group: 'configuration',
+          label: 'Allow self registration',
+          member_path: 'inputs.public_variables.self_registration_enabled',
+          schema: { type: 'boolean' }
+        },
+        {
+          group: 'runtime',
+          label: 'Authenticator ID',
+          member_path: 'inputs.authenticator_id',
+          schema: { type: 'string', format: 'uuid' }
+        },
+        {
+          group: 'runtime',
+          label: 'Authentication event',
+          member_path: 'inputs.auth_event',
+          schema: { type: 'object' }
+        },
+        {
+          group: 'runtime',
+          label: 'API',
+          member_path: 'api',
+          schema: { type: 'object' }
+        }
+      ],
+      config_schema: [
+        {
+          key: 'title',
+          label: 'Authenticator title',
+          type: 'string',
+          required: true
+        },
+        {
+          key: 'description',
+          label: 'Description',
+          type: 'string',
+          control: 'textarea'
+        },
+        {
+          key: 'enabled',
+          label: 'Enabled',
+          type: 'boolean',
+          control: 'switch'
+        },
+        {
+          key: 'self_registration_enabled',
+          label: 'Allow self registration',
+          type: 'boolean',
+          control: 'switch'
+        }
+      ],
       config_values: {
         title: 'Password',
         enabled: true,
         description: 'Local password authentication',
+        self_registration_enabled: false,
         extension_config: {}
       }
     },
@@ -75,11 +184,46 @@ const baseOverview = {
       enabled: false,
       is_builtin: false,
       sort_order: 10,
-      config_schema: [],
+      public_ui_block: 'staff password block',
+      interface_path_prefixes: ['/api/public/'],
+      public_variables: {
+        title: 'Staff Password',
+        description: 'Staff login',
+        enabled: false,
+        self_registration_enabled: false
+      },
+      context_variables: [],
+      config_schema: [
+        {
+          key: 'title',
+          label: 'Authenticator title',
+          type: 'string',
+          required: true
+        },
+        {
+          key: 'description',
+          label: 'Description',
+          type: 'string',
+          control: 'textarea'
+        },
+        {
+          key: 'enabled',
+          label: 'Enabled',
+          type: 'boolean',
+          control: 'switch'
+        },
+        {
+          key: 'self_registration_enabled',
+          label: 'Allow self registration',
+          type: 'boolean',
+          control: 'switch'
+        }
+      ],
       config_values: {
         title: 'Staff Password',
         enabled: false,
         description: 'Staff login',
+        self_registration_enabled: false,
         extension_config: {}
       }
     }
@@ -227,6 +371,164 @@ describe('SettingsAuthCenterSection lifecycle', () => {
         authCenterApi.deleteSettingsAuthCenterAuthenticator
       ).toHaveBeenCalledWith('auth-staff-password', 'csrf-123');
     });
+  });
+
+  test('edits regular configuration separately from the public UI Block', async () => {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
+      baseOverview.authenticators[0]
+    );
+    authCenterApi.updateSettingsAuthCenterAuthenticatorPublicUiBlock.mockResolvedValue(
+      baseOverview.authenticators[0]
+    );
+    render(
+      <AppProviders>
+        <SettingsAuthCenterSection />
+      </AppProviders>
+    );
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: '编辑' }))[0]
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
+    expect(
+      within(dialog).queryByLabelText('Public authentication block')
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('区块源码')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText('Allow self registration'));
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() =>
+      expect(
+        authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
+      ).toHaveBeenCalledWith(
+        'auth-password-local',
+        {
+          title: 'Password',
+          enabled: true,
+          description: 'Local password authentication',
+          self_registration_enabled: true,
+          extension_config: {}
+        },
+        'csrf-123'
+      )
+    );
+
+    const passwordRow = await screen.findByRole('row', {
+      name: /Local password authentication/
+    });
+    fireEvent.click(within(passwordRow).getByRole('button', { name: 'UI' }));
+    const uiDialog = await screen.findByRole('dialog', {
+      name: 'TSX 编辑器'
+    });
+    expect(uiDialog).toHaveClass('frontstage-jsx-studio--window');
+    expect(uiDialog.closest('.ant-drawer')).toBeNull();
+    expect(
+      within(uiDialog).getByRole('button', { name: /重\s*置/ })
+    ).toBeDisabled();
+    expect(
+      within(uiDialog).getByRole('button', { name: '最大化窗口' })
+    ).toBeEnabled();
+    expect(
+      within(uiDialog).getByRole('button', { name: '关闭' })
+    ).toBeEnabled();
+    expect(
+      within(uiDialog)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label'))
+    ).toEqual(
+      expect.arrayContaining([
+        '代码',
+        '接口',
+        '变量',
+        '组件',
+        '区块设置',
+        '预览'
+      ])
+    );
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '接口' }));
+    expect(within(uiDialog).getByText('接口连接器')).toBeInTheDocument();
+    expect(
+      frontstageInterfaceCapabilities.useFrontstageInterfaceCapabilities
+    ).toHaveBeenLastCalledWith(
+      'workspace-1',
+      expect.objectContaining({ path_prefixes: ['/api/public/'] })
+    );
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '变量' }));
+    expect(
+      within(uiDialog).getByText(
+        'ctx.inputs.public_variables.self_registration_enabled'
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(uiDialog).getByText('Allow self registration')
+    ).toBeInTheDocument();
+    fireEvent.click(within(uiDialog).getByRole('button', { name: '代码' }));
+    const blockEditor = within(uiDialog).getByRole('textbox', {
+      name: '区块源码'
+    });
+    expect(blockEditor).toHaveValue('original password block');
+    fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
+    expect(
+      within(uiDialog).getByRole('button', { name: /重\s*置/ })
+    ).toBeEnabled();
+    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() =>
+      expect(
+        authCenterApi.updateSettingsAuthCenterAuthenticatorPublicUiBlock
+      ).toHaveBeenCalledWith(
+        'auth-password-local',
+        { public_ui_block: 'custom saved block' },
+        'csrf-123'
+      )
+    );
+  });
+
+  test('AC-014 shows the backend reason when public UI saving fails', async () => {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorPublicUiBlock.mockRejectedValue(
+      new Error('invalid input: public_ui_block')
+    );
+    render(
+      <AppProviders>
+        <SettingsAuthCenterSection />
+      </AppProviders>
+    );
+
+    const passwordRow = await screen.findByRole('row', {
+      name: /Local password authentication/
+    });
+    fireEvent.click(within(passwordRow).getByRole('button', { name: 'UI' }));
+    const uiDialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    const blockEditor = within(uiDialog).getByRole('textbox', {
+      name: '区块源码'
+    });
+    fireEvent.change(blockEditor, { target: { value: 'invalid draft' } });
+    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(
+      await within(uiDialog).findByText('invalid input: public_ui_block')
+    ).toBeInTheDocument();
+  });
+
+  test('AC-020 shows one backend error when configuration saving fails', async () => {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockRejectedValue(
+      new Error('invalid input: extension_config')
+    );
+    render(
+      <AppProviders>
+        <SettingsAuthCenterSection />
+      </AppProviders>
+    );
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: '编辑' }))[0]
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(
+      await within(dialog).findAllByText('invalid input: extension_config')
+    ).toHaveLength(1);
   });
 
   test('throttles drawer mouse resize updates with animation frames', async () => {

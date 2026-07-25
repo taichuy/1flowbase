@@ -7,7 +7,7 @@ import {
   type JsBlockWorkerLike
 } from '@1flowbase/page-runtime';
 
-import frontstageRestrictedBlockWorkerUrl from '../workers/restricted-block-runtime.worker?worker&url';
+import frontstageRestrictedBlockWorkerUrl from '../../../shared/code-block/default-js-block-runtime.worker?worker&url';
 
 export const FRONTSTAGE_RESTRICTED_BLOCK_WORKER_NAME =
   'frontstage-restricted-block-runtime';

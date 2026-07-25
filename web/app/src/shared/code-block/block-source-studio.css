@@ -1,9 +1,4 @@
-.frontstage-jsx-studio .ant-drawer-body {
-  overflow: hidden;
-  padding: 0;
-}
-
-.frontstage-jsx-studio__drawer-body {
+.frontstage-jsx-studio__window-body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
@@ -121,12 +116,176 @@ body.frontstage-jsx-studio--resizing-panel {
 }
 
 .frontstage-jsx-studio__resource-scroll {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 14px;
   height: 100%;
   padding: 16px;
   overflow: auto;
+}
+
+.frontstage-js-block-preview-console {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.frontstage-js-block-preview-console__preview {
+  min-height: 0;
+  padding: 2px;
+  overflow: auto;
+}
+
+.frontstage-js-block-preview-console__resize-handle {
+  position: relative;
+  min-height: 8px;
+  cursor: row-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.frontstage-js-block-preview-console__resize-handle::after {
+  position: absolute;
+  inset: 3px 0;
+  background: var(--border-default, #d5ddd8);
+  content: '';
+}
+
+.frontstage-js-block-preview-console__resize-handle:hover::after,
+.frontstage-js-block-preview-console__resize-handle:focus-visible::after,
+.frontstage-js-block-preview-console--resizing
+  .frontstage-js-block-preview-console__resize-handle::after {
+  background: var(--color-primary, #2563eb);
+}
+
+body.frontstage-js-block-preview-console--resizing {
+  cursor: row-resize;
+  user-select: none;
+}
+
+.frontstage-js-block-preview-console__console {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--border-default, #d5ddd8);
+  background: #fff;
+  color: #1f2937;
+}
+
+.frontstage-js-block-preview-console__console-header {
+  min-height: 32px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-default, #d5ddd8);
+  background: #f8fafc;
+}
+
+.frontstage-js-block-preview-console__console-header .ant-typography {
+  color: #334155;
+}
+
+.frontstage-js-block-preview-console__console-content {
+  min-height: 0;
+  overflow: auto;
+}
+
+.frontstage-js-block-preview-console__log-list {
+  min-width: max-content;
+}
+
+.frontstage-js-block-preview-console__log-entry {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 10px 4px 4px;
+  border-bottom: 1px solid #e5e7eb;
+  font-family:
+    'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 12px;
+}
+
+.frontstage-js-block-preview-console__log-entry--warn {
+  background: #fffbeb;
+}
+
+.frontstage-js-block-preview-console__log-entry--error {
+  background: #fef2f2;
+}
+
+.frontstage-js-block-preview-console__log-entry--debug {
+  color: #64748b;
+}
+
+.frontstage-js-block-preview-console__log-gutter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  color: #2563eb;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.frontstage-js-block-preview-console__log-entry--debug
+  .frontstage-js-block-preview-console__log-gutter {
+  color: #64748b;
+}
+
+.frontstage-js-block-preview-console__log-entry--warn
+  .frontstage-js-block-preview-console__log-gutter {
+  color: #a16207;
+}
+
+.frontstage-js-block-preview-console__log-entry--error
+  .frontstage-js-block-preview-console__log-gutter {
+  color: #dc2626;
+}
+
+.frontstage-js-block-preview-console__log-body {
+  min-width: 0;
+}
+
+.frontstage-js-block-preview-console__log-body .ant-typography code {
+  color: #1f2937;
+  background: transparent;
+  border: 0;
+}
+
+.frontstage-js-block-preview-console__log-body pre {
+  margin: 6px 0 0;
+  color: #475569;
+  white-space: pre-wrap;
+}
+
+.frontstage-js-block-preview-console__prompt {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 10px 4px 4px;
+  color: #9a6700;
+  font-family:
+    'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.frontstage-js-block-preview-console__prompt > span:first-child {
+  display: inline-flex;
+  justify-content: center;
+  width: 22px;
+}
+
+@media (max-width: 768px) {
+  .frontstage-js-block-preview-console__resize-handle {
+    pointer-events: none;
+  }
 }
 
 .frontstage-jsx-studio__resource-section {
@@ -156,6 +315,14 @@ body.frontstage-jsx-studio--resizing-panel {
   min-width: 0;
 }
 
+.frontstage-jsx-studio__variables-table {
+  min-width: 0;
+}
+
+.frontstage-jsx-studio__variable-reference {
+  overflow-wrap: anywhere;
+}
+
 .frontstage-jsx-studio__field {
   display: flex;
   flex-direction: column;
@@ -168,11 +335,15 @@ body.frontstage-jsx-studio--resizing-panel {
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  grid-template-rows: minmax(320px, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: #fff;
+}
+
+.frontstage-jsx-studio__editor-notice {
+  min-width: 0;
 }
 
 .frontstage-jsx-studio__generated-context {

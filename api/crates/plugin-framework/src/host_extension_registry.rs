@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::{FrameworkResult, PluginFrameworkError};
 use crate::host_extension_contribution::{
-    HostExtensionBootstrapPhase, HostInfrastructureProviderManifest,
+    AuthProviderContributionManifest, HostExtensionBootstrapPhase,
+    HostInfrastructureProviderManifest,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +15,7 @@ pub struct RegisteredHostExtension {
     pub registers_slots: Vec<String>,
     pub registers_storage: Vec<(String, String)>,
     pub infrastructure_providers: Vec<HostInfrastructureProviderManifest>,
+    pub auth_providers: Vec<AuthProviderContributionManifest>,
     pub owned_resources: Vec<String>,
     pub extends_resources: Vec<String>,
     pub routes: Vec<String>,
@@ -36,6 +38,7 @@ pub struct HostExtensionRegistry {
     storage: BTreeMap<String, String>,
     extensions: BTreeMap<String, RegisteredHostExtension>,
     infrastructure_providers: BTreeMap<(String, String), RegisteredInfrastructureProvider>,
+    auth_providers: BTreeMap<String, (String, AuthProviderContributionManifest)>,
     default_infrastructure_providers: BTreeMap<String, (String, String)>,
 }
 
@@ -79,6 +82,14 @@ impl HostExtensionRegistry {
                 )));
             }
         }
+        for provider in &extension.auth_providers {
+            if self.auth_providers.contains_key(&provider.auth_type) {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "duplicate auth provider: {}",
+                    provider.auth_type
+                )));
+            }
+        }
 
         for contract in &extension.provides_contracts {
             self.contracts
@@ -111,6 +122,12 @@ impl HostExtensionRegistry {
                     provider_code: provider.provider_code.clone(),
                     config_ref: provider.config_ref.clone(),
                 },
+            );
+        }
+        for provider in &extension.auth_providers {
+            self.auth_providers.insert(
+                provider.auth_type.clone(),
+                (extension.extension_id.clone(), provider.clone()),
             );
         }
 
@@ -152,5 +169,22 @@ impl HostExtensionRegistry {
 
     pub fn extension(&self, extension_id: &str) -> Option<&RegisteredHostExtension> {
         self.extensions.get(extension_id)
+    }
+
+    pub fn auth_provider(
+        &self,
+        auth_type: &str,
+    ) -> Option<(&str, &AuthProviderContributionManifest)> {
+        self.auth_providers
+            .get(auth_type)
+            .map(|(extension_id, provider)| (extension_id.as_str(), provider))
+    }
+
+    pub fn auth_providers(
+        &self,
+    ) -> impl Iterator<Item = (&str, &AuthProviderContributionManifest)> {
+        self.auth_providers
+            .values()
+            .map(|(extension_id, provider)| (extension_id.as_str(), provider))
     }
 }

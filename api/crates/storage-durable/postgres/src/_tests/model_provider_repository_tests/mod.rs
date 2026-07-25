@@ -100,6 +100,7 @@ async fn seed_store() -> (
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: serde_json::json!({}),
         })
         .await
@@ -203,6 +204,7 @@ async fn seed_store_before_main_instance_aggregation() -> (
             enabled: true,
             is_builtin: true,
             sort_order: 0,
+            public_ui_block: String::new(),
             options: serde_json::json!({}),
         })
         .await

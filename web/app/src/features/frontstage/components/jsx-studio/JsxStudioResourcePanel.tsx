@@ -36,6 +36,13 @@ export type FrontstageJsxStudioSection =
   | 'configuration'
   | 'run';
 
+export interface JsxStudioContextVariable {
+  group?: 'configuration' | 'runtime';
+  label: string;
+  member_path: string;
+  schema: Record<string, unknown>;
+}
+
 const INTERFACE_FILTER_POPUP_STYLES = {
   popup: { root: { zIndex: 1400 } }
 };
@@ -49,6 +56,9 @@ export function JsxStudioResourcePanel({
   onSaveBlock,
   projection,
   runPanel,
+  configurationPanel,
+  contextVariables,
+  interfacePathPrefixes,
   section
 }: {
   block: FrontstageBlockInstance;
@@ -59,12 +69,16 @@ export function JsxStudioResourcePanel({
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
+  configurationPanel?: ReactNode;
+  contextVariables?: readonly JsxStudioContextVariable[] | null;
+  interfacePathPrefixes?: readonly string[];
   section: Exclude<FrontstageJsxStudioSection, 'code'>;
 }) {
   if (section === 'interfaces') {
     return (
       <InterfaceConnectorPanel
         codeSource={codeSource}
+        pathPrefixes={interfacePathPrefixes}
         workspaceId={workspaceId}
         onInsertCode={onInsertCode}
       />
@@ -78,6 +92,7 @@ export function JsxStudioResourcePanel({
         pageBlocks={pageBlocks}
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
+        contextVariables={contextVariables}
       />
     );
   }
@@ -92,7 +107,9 @@ export function JsxStudioResourcePanel({
   }
 
   if (section === 'configuration') {
-    return <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />;
+    return configurationPanel ?? (
+      <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />
+    );
   }
 
   return runPanel ? (
@@ -107,10 +124,12 @@ export function JsxStudioResourcePanel({
 
 function InterfaceConnectorPanel({
   codeSource,
+  pathPrefixes,
   workspaceId,
   onInsertCode
 }: {
   codeSource: string;
+  pathPrefixes?: readonly string[];
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
@@ -125,6 +144,8 @@ function InterfaceConnectorPanel({
   const [method, setMethod] = useState<string>();
   const [offset, setOffset] = useState(0);
   const capabilityPage = useFrontstageInterfaceCapabilities(workspaceId, {
+    path_prefixes:
+      pathPrefixes && pathPrefixes.length > 0 ? [...pathPrefixes] : undefined,
     path_query: pathQuery || undefined,
     adapter_id: adapterId,
     method,
@@ -298,11 +319,13 @@ function InterfaceConnectorPanel({
 
 function VariablesPanel({
   block,
+  contextVariables,
   pageBlocks,
   onInsertCode,
   onSaveBlock
 }: {
   block: FrontstageBlockInstance;
+  contextVariables?: readonly JsxStudioContextVariable[] | null;
   pageBlocks: readonly FrontstageBlockInstance[];
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
@@ -366,21 +389,183 @@ function VariablesPanel({
     });
     setInputName('');
   };
-  const variables = [
-    { label: 'ctx.currentUser', memberPath: 'currentUser' },
-    { label: 'ctx.workspace', memberPath: 'workspace' },
-    { label: 'ctx.application', memberPath: 'application' },
-    { label: 'ctx.page', memberPath: 'page' },
+
+  if (contextVariables === null) {
+    return (
+      <div className="frontstage-jsx-studio__resource-scroll">
+        <ResourceHeading
+          title={i18nText('frontstage', 'auto.variables')}
+          description={i18nText('frontstage', 'auto.variables_description')}
+        />
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={i18nText(
+            'frontstage',
+            'auto.variables_context_unavailable'
+          )}
+        />
+      </div>
+    );
+  }
+
+  const usesRegisteredContext = contextVariables !== undefined;
+  const variables: readonly JsxStudioContextVariable[] = contextVariables ?? [
+    {
+      label: i18nText('frontstage', 'auto.current_user'),
+      member_path: 'currentUser',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.workspace'),
+      member_path: 'workspace',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.application'),
+      member_path: 'application',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.page'),
+      member_path: 'page',
+      schema: { type: 'object' }
+    },
     ...ports.inputs.map((port) => ({
-      label: `ctx.inputs.${port.name}`,
-      memberPath: `inputs.${port.name}`
+      label: port.name,
+      member_path: `inputs.${port.name}`,
+      schema: port.schema
     })),
-    { label: 'ctx.params', memberPath: 'params' },
-    { label: 'ctx.props', memberPath: 'props' },
-    { label: 'ctx.state', memberPath: 'state' },
-    { label: 'ctx.theme', memberPath: 'theme' },
-    { label: 'ctx.ui', memberPath: 'ui' }
+    {
+      label: i18nText('frontstage', 'auto.params'),
+      member_path: 'params',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.props'),
+      member_path: 'props',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.state'),
+      member_path: 'state',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.theme'),
+      member_path: 'theme',
+      schema: { type: 'object' }
+    },
+    {
+      label: i18nText('frontstage', 'auto.user_interface'),
+      member_path: 'ui',
+      schema: { type: 'object' }
+    }
   ];
+
+  const renderVariablesTable = (
+    tableVariables: readonly JsxStudioContextVariable[]
+  ) => (
+    <Table<JsxStudioContextVariable>
+      className="frontstage-jsx-studio__variables-table"
+      columns={[
+        {
+          title: i18nText('frontstage', 'auto.variable_label'),
+          dataIndex: 'label',
+          key: 'label',
+          width: '28%'
+        },
+        {
+          title: i18nText('frontstage', 'auto.variables'),
+          key: 'reference',
+          render: (_, variable) => (
+            <Typography.Text
+              className="frontstage-jsx-studio__variable-reference"
+              code
+            >
+              {`ctx.${variable.member_path}`}
+            </Typography.Text>
+          )
+        },
+        {
+          title: i18nText('frontstage', 'auto.operation'),
+          key: 'action',
+          align: 'right',
+          width: 96,
+          render: (_, variable) => (
+            <Button
+              size="small"
+              onClick={() =>
+                onInsertCode({
+                  kind: 'context-reference',
+                  memberPath: variable.member_path
+                })
+              }
+            >
+              {i18nText('frontstage', 'auto.insert_code')}
+            </Button>
+          )
+        }
+      ]}
+      dataSource={tableVariables}
+      pagination={false}
+      rowKey="member_path"
+      size="small"
+    />
+  );
+
+  if (usesRegisteredContext) {
+    const hasCompleteGroups = variables.every((variable) => variable.group);
+    if (!hasCompleteGroups) {
+      return (
+        <div className="frontstage-jsx-studio__resource-scroll">
+          <ResourceHeading
+            title={i18nText('frontstage', 'auto.variables')}
+            description={i18nText('frontstage', 'auto.variables_description')}
+          />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={i18nText(
+              'frontstage',
+              'auto.variables_context_unavailable'
+            )}
+          />
+        </div>
+      );
+    }
+    const groups = [
+      {
+        key: 'configuration' as const,
+        label: i18nText('frontstage', 'auto.configuration_variables')
+      },
+      {
+        key: 'runtime' as const,
+        label: i18nText('frontstage', 'auto.runtime_context')
+      }
+    ];
+    return (
+      <div className="frontstage-jsx-studio__resource-scroll">
+        <ResourceHeading
+          title={i18nText('frontstage', 'auto.variables')}
+          description={i18nText('frontstage', 'auto.variables_description')}
+        />
+        {groups.map((group) => {
+          const groupVariables = variables.filter(
+            (variable) => variable.group === group.key
+          );
+          return groupVariables.length > 0 ? (
+            <section
+              aria-label={group.label}
+              className="frontstage-jsx-studio__resource-section"
+              key={group.key}
+            >
+              <Typography.Text strong>{group.label}</Typography.Text>
+              {renderVariablesTable(groupVariables)}
+            </section>
+          ) : null;
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="frontstage-jsx-studio__resource-scroll">
@@ -388,22 +573,7 @@ function VariablesPanel({
         title={i18nText('frontstage', 'auto.variables')}
         description={i18nText('frontstage', 'auto.variables_description')}
       />
-      {variables.map((variable) => (
-        <div className="frontstage-jsx-studio__insert-row" key={variable.label}>
-          <Typography.Text code>{variable.label}</Typography.Text>
-          <Button
-            size="small"
-            onClick={() =>
-              onInsertCode({
-                kind: 'context-reference',
-                memberPath: variable.memberPath
-              })
-            }
-          >
-            {i18nText('frontstage', 'auto.insert_code')}
-          </Button>
-        </div>
-      ))}
+      {renderVariablesTable(variables)}
       <Divider />
       <Typography.Text strong>
         {i18nText('frontstage', 'auto.output_ports')}

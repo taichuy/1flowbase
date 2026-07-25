@@ -8,7 +8,8 @@ import {
   enableConsoleAuthCenterAuthenticator,
   fetchConsoleAuthCenterOverview,
   reorderConsoleAuthCenterAuthenticators,
-  updateConsoleAuthCenterAuthenticatorConfig
+  updateConsoleAuthCenterAuthenticatorConfig,
+  updateConsoleAuthCenterAuthenticatorPublicUiBlock
 } from '../console-auth-center';
 
 describe('console auth center client', () => {
@@ -108,14 +109,16 @@ describe('console auth center client', () => {
     });
   });
 
-  test('updates an auth center authenticator config without extension_config', async () => {
+  test('AC-017 updates authenticator config without the public Block', async () => {
     await expect(
       updateConsoleAuthCenterAuthenticatorConfig(
         'auth-oidc-main',
         {
           title: 'OIDC Login',
           enabled: true,
-          description: 'Primary OIDC login'
+          description: 'Primary OIDC login',
+          self_registration_enabled: false,
+          extension_config: { issuer: 'https://id.example.com' }
         },
         'csrf-123'
       )
@@ -126,8 +129,25 @@ describe('console auth center client', () => {
       body: {
         title: 'OIDC Login',
         enabled: true,
-        description: 'Primary OIDC login'
+        description: 'Primary OIDC login',
+        self_registration_enabled: false,
+        extension_config: { issuer: 'https://id.example.com' }
       }
+    });
+  });
+
+  test('AC-018 updates only the authenticator public UI Block', async () => {
+    await expect(
+      updateConsoleAuthCenterAuthenticatorPublicUiBlock(
+        'auth-oidc-main',
+        { public_ui_block: 'export default { main };' },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/auth-center/authenticators/auth-oidc-main/public-ui-block',
+      method: 'PUT',
+      csrfToken: 'csrf-123',
+      body: { public_ui_block: 'export default { main };' }
     });
   });
 });

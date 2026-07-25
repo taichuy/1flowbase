@@ -1,8 +1,8 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use access_control::SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID;
 use anyhow::Result;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use crate::{
@@ -11,6 +11,14 @@ use crate::{
 };
 
 use super::AuthenticatorRegistry;
+
+pub const AUTH_CENTER_HOST_CONFIG_KEYS: &[&str] = &[
+    "title",
+    "description",
+    "enabled",
+    "self_registration_enabled",
+    "public_ui_block",
+];
 
 pub struct AuthCenterSettingsOverview {
     pub default_authenticator_id: Uuid,
@@ -32,15 +40,23 @@ pub struct CopyAuthCenterAuthenticatorCommand {
     pub sort_order: Option<i32>,
 }
 
-pub struct UpdateAuthCenterAuthenticatorCommand {
+pub struct UpdateAuthCenterAuthenticatorConfigCommand {
     pub authenticator_id: Uuid,
     pub title: String,
     pub enabled: bool,
     pub description: Option<Option<String>>,
+    pub self_registration_enabled: bool,
+    pub extension_config: Option<Map<String, Value>>,
+}
+
+pub struct UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
+    pub authenticator_id: Uuid,
+    pub public_ui_block: String,
 }
 
 pub struct AuthCenterSettingsService<R> {
     repository: R,
+    registry: Arc<AuthenticatorRegistry>,
 }
 
 const AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID: &str = "auth_center.overview.view";
@@ -56,7 +72,17 @@ where
     R: AuthRepository + AuthenticatorSettingsRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            registry: Arc::new(AuthenticatorRegistry::new()),
+        }
+    }
+
+    pub fn with_registry(repository: R, registry: Arc<AuthenticatorRegistry>) -> Self {
+        Self {
+            repository,
+            registry,
+        }
     }
 
     pub async fn overview(
@@ -67,7 +93,7 @@ where
             .await?;
         Ok(AuthCenterSettingsOverview {
             default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
-            supported_auth_types: supported_auth_types(),
+            supported_auth_types: self.registry.supported_auth_types(),
             authenticators: self.repository.list_authenticators().await?,
         })
     }
@@ -79,7 +105,10 @@ where
     ) -> Result<domain::AuthenticatorRecord> {
         self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_CREATE_OPERATION_ID)
             .await?;
-        validate_supported_auth_type(&command.auth_type)?;
+        let definition = self
+            .registry
+            .definition(&command.auth_type)
+            .ok_or(ControlPlaneError::InvalidInput("auth_type"))?;
         validate_authenticator_title(&command.title)?;
         let sort_order = match command.sort_order {
             Some(sort_order) => sort_order,
@@ -92,7 +121,12 @@ where
             enabled: command.enabled,
             is_builtin: false,
             sort_order,
-            options: new_authenticator_options(command.description),
+            public_ui_block: definition.default_public_ui_block.clone(),
+            options: new_authenticator_options(
+                command.description,
+                definition.config_schema.clone(),
+                &definition.auth_type,
+            ),
         };
         self.repository.create_authenticator(&authenticator).await?;
         Ok(authenticator)
@@ -111,7 +145,9 @@ where
             .find_authenticator(command.source_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("authenticator"))?;
-        validate_supported_auth_type(&source.auth_type)?;
+        if self.registry.definition(&source.auth_type).is_none() {
+            return Err(ControlPlaneError::InvalidInput("auth_type").into());
+        }
         let sort_order = match command.sort_order {
             Some(sort_order) => sort_order,
             None => self.next_sort_order().await?,
@@ -123,6 +159,7 @@ where
             enabled: false,
             is_builtin: false,
             sort_order,
+            public_ui_block: source.public_ui_block,
             options: source.options,
         };
         self.repository.create_authenticator(&authenticator).await?;
@@ -153,7 +190,7 @@ where
         self.repository.update_authenticator_order(ids).await?;
         Ok(AuthCenterSettingsOverview {
             default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
-            supported_auth_types: supported_auth_types(),
+            supported_auth_types: self.registry.supported_auth_types(),
             authenticators: self.repository.list_authenticators().await?,
         })
     }
@@ -177,10 +214,10 @@ where
         Ok(authenticator)
     }
 
-    pub async fn update_authenticator(
+    pub async fn update_authenticator_config(
         &self,
         actor: &domain::ActorContext,
-        command: UpdateAuthCenterAuthenticatorCommand,
+        command: UpdateAuthCenterAuthenticatorConfigCommand,
     ) -> Result<domain::AuthenticatorRecord> {
         self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
             .await?;
@@ -195,6 +232,35 @@ where
         if let Some(description) = command.description {
             upsert_description(&mut authenticator.options, description);
         }
+        if let Some(extension_config) = command.extension_config {
+            replace_extension_config(&mut authenticator.options, extension_config)?;
+        }
+        if authenticator.auth_type == "password-local" {
+            upsert_self_registration_enabled(
+                &mut authenticator.options,
+                command.self_registration_enabled,
+            );
+        }
+        self.repository
+            .update_authenticator_config(&authenticator)
+            .await?;
+        Ok(authenticator)
+    }
+
+    pub async fn update_authenticator_public_ui_block(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpdateAuthCenterAuthenticatorPublicUiBlockCommand,
+    ) -> Result<domain::AuthenticatorRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
+            .await?;
+        validate_public_ui_block(&command.public_ui_block)?;
+        let mut authenticator = self
+            .repository
+            .find_authenticator(command.authenticator_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("authenticator"))?;
+        authenticator.public_ui_block = command.public_ui_block;
         self.repository
             .update_authenticator_config(&authenticator)
             .await?;
@@ -244,24 +310,16 @@ fn auth_center_console_group() -> domain::ConsolePolicyGroup {
         .expect("compiled auth-center settings feature id must be valid")
 }
 
-fn supported_auth_types() -> Vec<String> {
-    AuthenticatorRegistry::new().supported_auth_types()
-}
-
-fn validate_supported_auth_type(auth_type: &str) -> Result<()> {
-    if supported_auth_types()
-        .iter()
-        .any(|supported| supported == auth_type)
-    {
-        Ok(())
-    } else {
-        Err(ControlPlaneError::InvalidInput("auth_type").into())
-    }
-}
-
 fn validate_authenticator_title(title: &str) -> Result<()> {
     if title.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("title").into());
+    }
+    Ok(())
+}
+
+fn validate_public_ui_block(public_ui_block: &str) -> Result<()> {
+    if public_ui_block.trim().is_empty() {
+        return Err(ControlPlaneError::InvalidInput("public_ui_block").into());
     }
     Ok(())
 }
@@ -289,38 +347,25 @@ fn validate_reorder_ids(
     Ok(())
 }
 
-fn new_authenticator_options(description: Option<String>) -> Value {
-    let mut options = Map::new();
+fn new_authenticator_options(
+    description: Option<String>,
+    config_schema: Value,
+    auth_type: &str,
+) -> Value {
+    let mut values = Map::new();
     if let Some(description) = description {
-        options.insert("description".to_string(), Value::String(description));
+        values.insert("description".to_string(), Value::String(description));
     }
-    options.insert(
-        "config_form_schema".to_string(),
-        json!([
-            {
-                "key": "title",
-                "label": "Authenticator title",
-                "type": "string",
-                "required": true
-            },
-            {
-                "key": "description",
-                "label": "Description",
-                "type": "string",
-                "control": "textarea",
-                "read_only": false,
-                "required": false
-            },
-            {
-                "key": "enabled",
-                "label": "Enabled",
-                "type": "boolean",
-                "control": "switch"
-            }
-        ]),
+    values.insert("config_form_schema".to_string(), config_schema);
+    values.insert(
+        "extension_config".to_string(),
+        if auth_type == "password-local" {
+            serde_json::json!({ "self_registration_enabled": false })
+        } else {
+            Value::Object(Map::new())
+        },
     );
-    options.insert("extension_config".to_string(), Value::Object(Map::new()));
-    Value::Object(options)
+    Value::Object(values)
 }
 
 fn upsert_description(options: &mut Value, description: Option<String>) {
@@ -337,4 +382,55 @@ fn upsert_description(options: &mut Value, description: Option<String>) {
             }
         }
     }
+}
+
+fn upsert_self_registration_enabled(options: &mut Value, enabled: bool) {
+    if !options.is_object() {
+        *options = Value::Object(Map::new());
+    }
+    let values = options
+        .as_object_mut()
+        .expect("authenticator options were normalized to an object");
+    let extension_config = values
+        .entry("extension_config".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !extension_config.is_object() {
+        *extension_config = Value::Object(Map::new());
+    }
+    extension_config
+        .as_object_mut()
+        .expect("extension config was normalized to an object")
+        .insert(
+            "self_registration_enabled".to_string(),
+            Value::Bool(enabled),
+        );
+}
+
+fn replace_extension_config(
+    options: &mut Value,
+    extension_config: Map<String, Value>,
+) -> Result<()> {
+    let allowed_keys = options
+        .get("config_form_schema")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|field| field.get("key").and_then(Value::as_str))
+        .collect::<HashSet<_>>();
+    if extension_config.keys().any(|key| {
+        !allowed_keys.contains(key.as_str()) || AUTH_CENTER_HOST_CONFIG_KEYS.contains(&key.as_str())
+    }) {
+        return Err(ControlPlaneError::InvalidInput("extension_config").into());
+    }
+    if !options.is_object() {
+        *options = Value::Object(Map::new());
+    }
+    options
+        .as_object_mut()
+        .expect("authenticator options were normalized to an object")
+        .insert(
+            "extension_config".to_string(),
+            Value::Object(extension_config),
+        );
+    Ok(())
 }

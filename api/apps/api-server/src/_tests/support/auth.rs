@@ -230,6 +230,7 @@ async fn test_state_with_runtime_profile_state(
         Arc::new(ApiState {
             test_database: Some(Arc::new(database)),
             store,
+            authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
             settings_feature_registry,
             console_operation_registry,
             infrastructure,

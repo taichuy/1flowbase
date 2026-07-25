@@ -8,7 +8,9 @@ import {
   type ConsoleAuthCenterCopyAuthenticatorInput,
   type ConsoleAuthCenterCreateAuthenticatorInput,
   updateConsoleAuthCenterAuthenticatorConfig,
+  updateConsoleAuthCenterAuthenticatorPublicUiBlock,
   type ConsoleAuthCenterAuthenticatorConfigInput,
+  type ConsoleAuthCenterAuthenticatorPublicUiBlockInput,
   type ConsoleAuthCenterOverview
 } from '@1flowbase/api-client';
 
@@ -43,11 +45,7 @@ export function copySettingsAuthCenterAuthenticator(
   input: ConsoleAuthCenterCopyAuthenticatorInput,
   csrfToken: string
 ) {
-  return copyConsoleAuthCenterAuthenticator(
-    sourceId,
-    input,
-    csrfToken
-  );
+  return copyConsoleAuthCenterAuthenticator(sourceId, input, csrfToken);
 }
 
 export function deleteSettingsAuthCenterAuthenticator(
@@ -70,6 +68,18 @@ export function updateSettingsAuthCenterAuthenticatorConfig(
   csrfToken: string
 ) {
   return updateConsoleAuthCenterAuthenticatorConfig(
+    authenticatorId,
+    input,
+    csrfToken
+  );
+}
+
+export function updateSettingsAuthCenterAuthenticatorPublicUiBlock(
+  authenticatorId: string,
+  input: ConsoleAuthCenterAuthenticatorPublicUiBlockInput,
+  csrfToken: string
+) {
+  return updateConsoleAuthCenterAuthenticatorPublicUiBlock(
     authenticatorId,
     input,
     csrfToken

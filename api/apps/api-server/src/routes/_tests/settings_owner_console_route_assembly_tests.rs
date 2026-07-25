@@ -182,6 +182,11 @@ fn ac_002_013_auth_center_route_bindings_are_explicit_and_stable() {
                 "auth_center.authenticators.update",
             ),
             (
+                "PUT",
+                "/api/console/settings/auth-center/authenticators/:id/public-ui-block",
+                "auth_center.authenticators.update",
+            ),
+            (
                 "DELETE",
                 "/api/console/settings/auth-center/authenticators/:id",
                 "auth_center.authenticators.delete",

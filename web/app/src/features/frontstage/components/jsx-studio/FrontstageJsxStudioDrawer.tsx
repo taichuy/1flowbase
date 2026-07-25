@@ -1,40 +1,15 @@
-import {
-  ApiOutlined,
-  AppstoreOutlined,
-  CodeOutlined,
-  DatabaseOutlined,
-  CloseOutlined,
-  CompressOutlined,
-  FullscreenOutlined,
-  PlayCircleOutlined,
-  SettingOutlined
-} from '@ant-design/icons';
-import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
+import type { OnMount } from '@monaco-editor/react';
 import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
   validateJsBlockSource
 } from '@1flowbase/page-runtime';
-import { Alert, Button, Modal, Space, Tooltip, Typography } from 'antd';
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
-import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
-import {
-  fitWindowWorkspaceRect,
-  getWindowWorkspaceViewport
-} from '../../../../shared/ui/window-workspace/window-workspace-geometry';
-import {
-  WindowWorkspaceProvider,
-  useOptionalWindowWorkspace,
-  useWindowWorkspace
-} from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
-import {
-  closeWindowWorkspaceEntry,
-  type WindowWorkspaceRect
-} from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
@@ -51,8 +26,6 @@ import {
   type FrontstageJsxStudioSection
 } from './JsxStudioResourcePanel';
 
-import './jsx-studio.css';
-
 export interface FrontstageJsxStudioDrawerProps {
   open: boolean;
   initialSection: FrontstageJsxStudioSection;
@@ -68,95 +41,28 @@ export interface FrontstageJsxStudioDrawerProps {
     | ((context: {
         code: string;
         onCodeChange: (code: string) => void;
+        runRevision: number | null;
       }) => ReactNode);
   onClose: () => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
 
-const studioSections: Array<{
-  key: FrontstageJsxStudioSection;
-  label: string;
-  icon: ReactNode;
-}> = [
-  {
-    key: 'code',
-    label: i18nText('frontstage', 'auto.code'),
-    icon: <CodeOutlined />
-  },
-  {
-    key: 'interfaces',
-    label: i18nText('frontstage', 'auto.interfaces'),
-    icon: <ApiOutlined />
-  },
-  {
-    key: 'variables',
-    label: i18nText('frontstage', 'auto.variables'),
-    icon: <DatabaseOutlined />
-  },
-  {
-    key: 'components',
-    label: i18nText('frontstage', 'auto.components'),
-    icon: <AppstoreOutlined />
-  },
-  {
-    key: 'configuration',
-    label: i18nText('frontstage', 'auto.configuration'),
-    icon: <SettingOutlined />
-  },
-  {
-    key: 'run',
-    label: i18nText('frontstage', 'auto.run_preview'),
-    icon: <PlayCircleOutlined />
-  }
-];
-
-const DEFAULT_RESOURCE_PANEL_WIDTH = 320;
-const MIN_RESOURCE_PANEL_WIDTH = 260;
-const MIN_EDITOR_PANEL_WIDTH = 320;
-const STUDIO_RAIL_WIDTH = 44;
-const STUDIO_SPLITTER_WIDTH = 8;
-
 export function FrontstageJsxStudioDrawer({
-  ...props
-}: FrontstageJsxStudioDrawerProps) {
-  const sharedWindowWorkspace = useOptionalWindowWorkspace();
-  if (sharedWindowWorkspace) {
-    return <FrontstageJsxStudioWindow {...props} />;
-  }
-  return (
-    <WindowWorkspaceProvider>
-      <FrontstageJsxStudioWindow {...props} />
-    </WindowWorkspaceProvider>
-  );
-}
-
-function FrontstageJsxStudioWindow({
   block,
-  pageBlocks = [],
   catalogEntry,
   diagnostics,
   initialSection,
   onClose,
   onSaveBlock,
   open,
+  pageBlocks = [],
   pageId,
   runPanel,
   tabId,
   workspaceId
 }: FrontstageJsxStudioDrawerProps) {
-  const windowWorkspace = useWindowWorkspace();
-  const [activeSection, setActiveSection] =
-    useState<FrontstageJsxStudioSection>(initialSection);
-  const [mobile, setMobile] = useState(false);
-  const [resourcePanelWidth, setResourcePanelWidth] = useState(
-    DEFAULT_RESOURCE_PANEL_WIDTH
-  );
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const liveResourcePanelWidthRef = useRef(DEFAULT_RESOURCE_PANEL_WIDTH);
-  const resourcePanelDragStartRef = useRef<{
-    pointerX: number;
-    width: number;
-  } | null>(null);
+  const [runRevision, setRunRevision] = useState<number | null>(null);
   const {
     draft,
     dirty,
@@ -172,125 +78,25 @@ function FrontstageJsxStudioWindow({
     pageId,
     codeRef: block.codeRef
   });
-  const mainWindowId = `frontstage-jsx-studio:${block.codeRef}`;
-  const initialWindowRect: WindowWorkspaceRect = {
-    left: 120,
-    top: 64,
-    width: 1080,
-    height: 680
-  };
-
-  useEffect(() => {
-    if (!open) {
-      windowWorkspace.close(mainWindowId);
-      return;
-    }
-    windowWorkspace.open({
-      id: mainWindowId,
-      owner: `frontstage:${pageId}:${tabId ?? 'tab'}`,
-      parent_id: null,
-      rect: initialWindowRect,
-      dirty
-    });
-    return () => windowWorkspace.close(mainWindowId);
-  }, [
-    mainWindowId,
-    open,
-    pageId,
-    tabId,
-    windowWorkspace.close,
-    windowWorkspace.open
-  ]);
-
-  useEffect(() => {
-    windowWorkspace.setDirty(mainWindowId, dirty);
-  }, [dirty, mainWindowId, windowWorkspace.setDirty]);
-
-  useEffect(() => {
-    if (open) {
-      setActiveSection(initialSection);
-    }
-  }, [initialSection, open]);
-
-  useEffect(() => {
-    const updateViewportMode = () => {
-      const nextMobile = window.innerWidth <= 600;
-      setMobile(nextMobile);
-    };
-    updateViewportMode();
-    window.addEventListener('resize', updateViewportMode);
-    return () => window.removeEventListener('resize', updateViewportMode);
-  }, []);
-
-  const windowEntry = windowWorkspace.state.windows.find(
-    (entry) => entry.id === mainWindowId
-  );
-  const maxResourcePanelWidth = Math.max(
-    MIN_RESOURCE_PANEL_WIDTH,
-    (windowEntry?.rect.width ?? initialWindowRect.width) -
-      MIN_EDITOR_PANEL_WIDTH -
-      STUDIO_RAIL_WIDTH -
-      STUDIO_SPLITTER_WIDTH
-  );
-
-  useEffect(() => {
-    liveResourcePanelWidthRef.current = resourcePanelWidth;
-  }, [resourcePanelWidth]);
-
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      const dragStart = resourcePanelDragStartRef.current;
-      if (!dragStart) return;
-      setResourcePanelWidth(
-        clampResourcePanelWidth(
-          dragStart.width + dragStart.pointerX - event.clientX,
-          maxResourcePanelWidth
-        )
-      );
-    };
-    const handleMouseUp = () => {
-      resourcePanelDragStartRef.current = null;
-      document.body.classList.remove('frontstage-jsx-studio--resizing-panel');
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.classList.remove('frontstage-jsx-studio--resizing-panel');
-    };
-  }, [maxResourcePanelWidth]);
-
-  useEffect(() => {
-    setResourcePanelWidth((current) =>
-      clampResourcePanelWidth(current, maxResourcePanelWidth)
-    );
-  }, [maxResourcePanelWidth]);
-
-  useEffect(() => {
-    if (mobile && windowEntry && !windowEntry.maximized) {
-      windowWorkspace.toggleMaximized(mainWindowId, viewportRect());
-    }
-  }, [mainWindowId, mobile, windowEntry, windowWorkspace.toggleMaximized]);
-
   const projection = useMemo(
-    () =>
-      createFrontstageJsxEditorProjection({
-        catalogEntry
-      }),
+    () => createFrontstageJsxEditorProjection({ catalogEntry }),
     [catalogEntry]
   );
-  const allowedImports = catalogEntry?.codeCapabilities?.allowedImports ?? [];
+  useEffect(() => {
+    if (open) setRunRevision(null);
+  }, [block.id, open]);
+  const allowedImports = useMemo(
+    () => catalogEntry?.codeCapabilities?.allowedImports ?? [],
+    [catalogEntry]
+  );
   const compileDiagnostics = useMemo(() => {
-    if (!tabId || draft.trim().length === 0) {
-      return [];
-    }
-    const sourceValidation = validateJsBlockSource(draft, { allowedImports });
-    return sourceValidation.ok
+    if (!tabId || draft.trim().length === 0) return [];
+    const validation = validateJsBlockSource(draft, { allowedImports });
+    return validation.ok
       ? []
       : createJsBlockDiagnostics(
           { pageId, tabId, blockId: block.id },
-          sourceValidation.errors
+          validation.errors
         );
   }, [allowedImports, block.id, draft, pageId, tabId]);
   const selectedDiagnostics = [...diagnostics, ...compileDiagnostics].filter(
@@ -299,22 +105,6 @@ function FrontstageJsxStudioWindow({
       diagnostic.tabId === tabId &&
       diagnostic.blockId === block.id
   );
-
-  const configureMonaco: BeforeMount = (monaco) => {
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-      allowNonTsExtensions: true,
-      jsx: monaco.languages.typescript.JsxEmit.Preserve,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      target: monaco.languages.typescript.ScriptTarget.ES2022
-    });
-    projection.monacoExtraLibs.forEach((extraLib) => {
-      monaco.languages.typescript.typescriptDefaults.addExtraLib(
-        extraLib.content,
-        extraLib.filePath
-      );
-    });
-  };
-
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
@@ -350,8 +140,7 @@ function FrontstageJsxStudioWindow({
       editor.focus();
       return;
     }
-
-    const separator = draft.length > 0 && !draft.endsWith('\n') ? '\n' : '';
+    const separator = draft && !draft.endsWith('\n') ? '\n' : '';
     const source = `${draft}${separator}`;
     const plan = planFrontstageJsxInsertion({
       source,
@@ -360,285 +149,59 @@ function FrontstageJsxStudioWindow({
     });
     setDraft(`${applyFrontstageJsxInsertionPlan(source, plan)}\n`);
   };
-
-  const saveCode = () => {
-    void save().catch(() => undefined);
-  };
-  const reinjectContext = () => {
-    setDraft(injectFrontstageContextComment(draft, projection.contextComment));
-  };
-  const statusText = loading
-    ? i18nText('frontstage', 'auto.code_loading')
-    : dirty
-      ? i18nText('frontstage', 'auto.not_saved')
-      : i18nText('frontstage', 'auto.synced');
   const resolvedRunPanel =
     typeof runPanel === 'function'
-      ? runPanel({ code: draft, onCodeChange: setDraft })
+      ? runPanel({ code: draft, onCodeChange: setDraft, runRevision })
       : runPanel;
 
-  const requestClose = () => {
-    const closing = closeWindowWorkspaceEntry(
-      windowWorkspace.state,
-      mainWindowId
-    ).closed;
-    const hasDirtyWindow = closing.some((entry) => entry.dirty);
-    const finishClose = () => {
-      windowWorkspace.close(mainWindowId);
-      onClose();
-    };
-    if (!hasDirtyWindow) {
-      finishClose();
-      return;
-    }
-    Modal.confirm({
-      title: i18nText('frontstage', 'auto.unsaved_close_title'),
-      content: i18nText('frontstage', 'auto.unsaved_close_description'),
-      onOk: finishClose
-    });
-  };
-  const viewportRect = (): WindowWorkspaceRect => {
-    const viewport = getWindowWorkspaceViewport();
-    return fitWindowWorkspaceRect(
-      {
-        left: viewport.left,
-        top: viewport.top,
-        width: viewport.width,
-        height: viewport.height
-      },
-      320,
-      320,
-      viewport
-    );
-  };
-
-  if (!open) return null;
-  if (!windowEntry) return null;
-
   return (
-    <WindowWorkspaceWindow
-      active={
-        windowEntry.z_index ===
-        Math.max(...windowWorkspace.state.windows.map((entry) => entry.z_index))
+    <BlockSourceStudio
+      contextComment={projection.contextComment}
+      dirty={dirty}
+      errorMessage={
+        error && !permissionDenied
+          ? i18nText('frontstage', 'auto.code_load_or_save_failed')
+          : null
       }
-      title={i18nText('frontstage', 'auto.jsx_studio')}
+      extraLibs={projection.monacoExtraLibs}
+      initialSection={initialSection}
+      loading={loading}
+      open={open}
+      owner={`frontstage:${pageId}:${tabId ?? 'tab'}`}
+      path={`file:///frontstage/${pageId}/${tabId ?? 'tab'}/${block.id}.tsx`}
+      readOnly={permissionDenied}
+      saving={saving}
+      source={draft}
       testId={`frontstage-jsx-studio-${block.codeRef}`}
-      className="frontstage-jsx-studio frontstage-jsx-studio--window"
-      bodyClassName="frontstage-jsx-studio__drawer-body"
-      dragHandleSelector="[data-window-drag-handle='true']"
-      initialRect={() => windowEntry.rect}
-      rect={windowEntry.rect}
-      minWidth={320}
-      minHeight={320}
-      resizeLabel={() => i18nText('frontstage', 'auto.resize_jsx_studio')}
-      zIndex={1050 + windowEntry.z_index}
-      onActivate={() => windowWorkspace.activate(mainWindowId)}
-      onRectChange={(nextRect) =>
-        windowWorkspace.setRect(mainWindowId, nextRect)
-      }
-    >
-      <header
-        className="frontstage-jsx-studio__window-header"
-        data-window-drag-handle="true"
-      >
-        <Space size={8}>
-          <Typography.Text strong>
-            {i18nText('frontstage', 'auto.jsx_studio')}
-          </Typography.Text>
-          <Typography.Text
-            type="secondary"
-            className="frontstage-jsx-studio__status"
-          >
-            {statusText}
-          </Typography.Text>
-        </Space>
-        <Space className="frontstage-jsx-studio__window-actions" size={8} wrap>
-          <Button onClick={reinjectContext}>
-            {i18nText('frontstage', 'auto.inject_context')}
-          </Button>
-          <Button disabled={!dirty || loading || saving} onClick={reset}>
-            {i18nText('frontstage', 'auto.reset')}
-          </Button>
-          <Button
-            type="primary"
-            disabled={!dirty || loading || saving}
-            loading={saving}
-            onClick={saveCode}
-          >
-            {i18nText('frontstage', 'auto.save_code')}
-          </Button>
-          <Button
-            aria-label={
-              windowEntry.maximized
-                ? i18nText('frontstage', 'auto.restore_window')
-                : i18nText('frontstage', 'auto.maximize_window')
-            }
-            disabled={mobile}
-            icon={
-              windowEntry.maximized ? (
-                <CompressOutlined />
-              ) : (
-                <FullscreenOutlined />
-              )
-            }
-            onClick={() =>
-              windowWorkspace.toggleMaximized(mainWindowId, viewportRect())
-            }
-          />
-          <Button
-            aria-label={i18nText('frontstage', 'auto.close')}
-            icon={<CloseOutlined />}
-            onClick={requestClose}
-          />
-        </Space>
-      </header>
-      <div
-        className={[
-          'frontstage-jsx-studio__workspace',
-          activeSection === 'code'
-            ? 'frontstage-jsx-studio__workspace--code-only'
-            : null
-        ]
-          .filter(Boolean)
-          .join(' ')}
-        style={
-          {
-            '--resource-panel-width': `${resourcePanelWidth}px`
-          } as CSSProperties
-        }
-      >
-        <nav
-          aria-label={i18nText('frontstage', 'auto.jsx_studio_resources')}
-          className="frontstage-jsx-studio__rail"
-        >
-          {studioSections.map((section) => (
-            <Tooltip key={section.key} title={section.label} placement="left">
-              <Button
-                aria-label={section.label}
-                className={[
-                  'frontstage-jsx-studio__rail-button',
-                  activeSection === section.key
-                    ? 'frontstage-jsx-studio__rail-button--active'
-                    : null
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                icon={section.icon}
-                type="text"
-                onClick={() => setActiveSection(section.key)}
-              />
-            </Tooltip>
-          ))}
-        </nav>
-
-        <aside
-          className="frontstage-jsx-studio__resource-panel"
-          style={{ display: activeSection === 'code' ? 'none' : undefined }}
-        >
-          <div
-            style={{ display: activeSection === 'run' ? undefined : 'none' }}
-          >
-            {resolvedRunPanel}
-          </div>
-          {activeSection !== 'run' && activeSection !== 'code' ? (
-            <JsxStudioResourcePanel
-              block={block}
-              codeSource={draft}
-              pageBlocks={pageBlocks}
-              workspaceId={workspaceId}
-              onInsertCode={insertCode}
-              onSaveBlock={onSaveBlock}
-              projection={projection}
-              section={activeSection}
-            />
-          ) : null}
-        </aside>
-
-        {activeSection !== 'code' ? (
-          <div
-            aria-label={i18nText('frontstage', 'auto.resize_resource_panel')}
-            aria-orientation="vertical"
-            aria-valuemax={maxResourcePanelWidth}
-            aria-valuemin={MIN_RESOURCE_PANEL_WIDTH}
-            aria-valuenow={resourcePanelWidth}
-            className="frontstage-jsx-studio__panel-resize-handle"
-            role="separator"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowLeft') {
-                event.preventDefault();
-                setResourcePanelWidth((current) =>
-                  clampResourcePanelWidth(current + 40, maxResourcePanelWidth)
-                );
-              } else if (event.key === 'ArrowRight') {
-                event.preventDefault();
-                setResourcePanelWidth((current) =>
-                  clampResourcePanelWidth(current - 40, maxResourcePanelWidth)
-                );
-              } else if (event.key === 'Home') {
-                event.preventDefault();
-                setResourcePanelWidth(MIN_RESOURCE_PANEL_WIDTH);
-              } else if (event.key === 'End') {
-                event.preventDefault();
-                setResourcePanelWidth(maxResourcePanelWidth);
-              }
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              resourcePanelDragStartRef.current = {
-                pointerX: event.clientX,
-                width: liveResourcePanelWidthRef.current
-              };
-              document.body.classList.add(
-                'frontstage-jsx-studio--resizing-panel'
-              );
-            }}
-          />
-        ) : null}
-
-        <main className="frontstage-jsx-studio__editor-panel">
-          {permissionDenied ? <PermissionDeniedState /> : null}
-          {error && !permissionDenied ? (
-            <Alert
-              type="error"
-              showIcon
-              message={i18nText('frontstage', 'auto.code_load_or_save_failed')}
-            />
-          ) : null}
-          <div className="frontstage-jsx-studio__monaco">
-            <Editor
-              height="100%"
-              language="typescript"
-              path={`file:///frontstage/${pageId}/${tabId ?? 'tab'}/${block.id}.tsx`}
-              value={draft}
-              beforeMount={configureMonaco}
-              onMount={(editor) => {
-                editorRef.current = editor;
-              }}
-              onChange={(value) => setDraft(value ?? '')}
-              options={{
-                automaticLayout: true,
-                editContext: false,
-                fontSize: 13,
-                lineNumbersMinChars: 3,
-                minimap: { enabled: false },
-                padding: { top: 12, bottom: 12 },
-                readOnly: loading || saving || permissionDenied,
-                scrollBeyondLastLine: false,
-                tabSize: 2,
-                wordWrap: 'on'
-              }}
-            />
-          </div>
-          <div className="frontstage-jsx-studio__problems">
-            <BlockRuntimeDiagnostics diagnostics={selectedDiagnostics} />
-          </div>
-        </main>
-      </div>
-    </WindowWorkspaceWindow>
+      windowId={`frontstage-jsx-studio:${block.codeRef}`}
+      editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
+      editorFooter={(
+        <div className="frontstage-jsx-studio__problems">
+          <BlockRuntimeDiagnostics diagnostics={selectedDiagnostics} />
+        </div>
+      )}
+      onChange={setDraft}
+      onClose={onClose}
+      onEditorMount={(editor) => {
+        editorRef.current = editor;
+      }}
+      onInjectContext={injectFrontstageContextComment}
+      onReset={reset}
+      onRun={() => setRunRevision((current) => (current ?? 0) + 1)}
+      onSave={() => void save().catch(() => undefined)}
+      renderResource={(section) => (
+        <JsxStudioResourcePanel
+          block={block}
+          codeSource={draft}
+          pageBlocks={pageBlocks}
+          workspaceId={workspaceId}
+          onInsertCode={insertCode}
+          onSaveBlock={onSaveBlock}
+          projection={projection}
+          runPanel={resolvedRunPanel}
+          section={section}
+        />
+      )}
+    />
   );
-}
-
-function clampResourcePanelWidth(width: number, maxWidth: number) {
-  return Math.min(maxWidth, Math.max(MIN_RESOURCE_PANEL_WIDTH, width));
 }

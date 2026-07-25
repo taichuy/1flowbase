@@ -1,11 +1,15 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { WindowWorkspaceProvider } from '../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
-import type { FrontstageRestrictedBlockRuntimeSession } from '../lib/frontstage-restricted-block-runtime-host';
+import type {
+  FrontstageRestrictedBlockRuntimeHostOptions,
+  FrontstageRestrictedBlockRuntimeSession
+} from '../lib/frontstage-restricted-block-runtime-host';
 import type { FrontstageBlockInstance } from '../lib/page-document';
 import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
 
@@ -99,10 +103,53 @@ function createSession(): FrontstageRestrictedBlockRuntimeSession {
   };
 }
 
+function createReadyActionSession(): FrontstageRestrictedBlockRuntimeSession {
+  const ready = {
+    ...snapshot('ready'),
+    logs: [
+      {
+        requestId: 'draft:block-1:run',
+        level: 'info',
+        message: 'hello {"id":1}',
+        data: ['hello', { id: 1 }]
+      },
+      {
+        requestId: 'draft:block-1:run',
+        level: 'warn',
+        message: 'check input'
+      }
+    ],
+    schemaValidationOptions: { allowedActions: ['sign_up'] },
+    view: {
+      primitive: 'Button',
+      props: { children: 'Register', actionId: 'sign_up' }
+    }
+  } satisfies RestrictedBlockRuntimeHostSnapshot;
+  const disposed = {
+    ...ready,
+    status: 'disposed'
+  } satisfies RestrictedBlockRuntimeHostSnapshot;
+  return {
+    run: vi.fn(() => ready),
+    dispose: vi.fn(() => disposed),
+    getSnapshot: vi.fn(() => ready),
+    getHostState: vi.fn(() => ({
+      workerStatus: 'idle' as const,
+      requests: {},
+      rejections: []
+    })),
+    subscribe: vi.fn(() => () => undefined)
+  };
+}
+
 describe('JsBlockTrialPanel Draft Run Console', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await appI18n.changeLanguage('zh_Hans');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   test('AC-008 runs the unsaved draft without exposing raw context or limits editors', async () => {
@@ -116,6 +163,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         }
         contextSnapshot={{ pageId: 'page-1' }}
         limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger' }}
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -138,6 +186,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
           code="async function main(){return {view:{primitive:'Text'},outputs:{}}} export default {main};"
           contextSnapshot={{ pageId: 'page-1' }}
           limits={{ timeoutMs: 1_000 }}
+          presentation={{ mode: 'debugger' }}
           runtimeSessionFactory={() => createSession()}
         />
       </WindowWorkspaceProvider>
@@ -147,5 +196,234 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     fireEvent.click(screen.getByRole('button', { name: '控制台' }));
     expect(screen.getByRole('dialog', { name: '预览' })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: '控制台' })).toBeInTheDocument();
+  });
+
+  test('AC-032 reruns the current draft with host inputs derived from an action event', async () => {
+    const createRunInputs = vi.fn((event?: BlockRendererActionEvent) => ({
+      authenticator_id: 'auth-password-local',
+      public_variables: { self_registration_enabled: true },
+      ...(event
+        ? {
+            auth_event: {
+              action_id: event.actionId,
+              values: event.formValues ?? {}
+            }
+          }
+        : {})
+    }));
+    const runInputs: Array<Record<string, unknown> | undefined> = [];
+    const runtimeSessionFactory = vi.fn(
+      (options: FrontstageRestrictedBlockRuntimeHostOptions) => {
+        runInputs.push(options.runPlan.request.inputs);
+        return createReadyActionSession();
+      }
+    );
+    render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="async function main(){return {view:{primitive:'Button'},outputs:{}}} export default {main};"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /运\s*行/ }));
+    await screen.findByRole('button', { name: 'Register' });
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    expect(createRunInputs).toHaveBeenNthCalledWith(1, undefined);
+    expect(createRunInputs).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ actionId: 'sign_up' })
+    );
+    expect(runInputs[1]).toEqual({
+      authenticator_id: 'auth-password-local',
+      public_variables: { self_registration_enabled: true },
+      auth_event: { action_id: 'sign_up', values: {} }
+    });
+  });
+
+  test('AC-047 automatically runs debugger presentation only for a new run revision', async () => {
+    const runtimeSessionFactory = vi.fn(() => createSession());
+    const { rerender } = render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="first draft"
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger', revision: 'run:1' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="edited draft"
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger', revision: 'run:1' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await act(async () => Promise.resolve());
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="edited draft"
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'debugger', revision: 'run:2' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+  });
+
+  test('AC-039/040/041 refreshes direct preview only when the saved revision changes', async () => {
+    const sessions = [
+      createReadyActionSession(),
+      createReadyActionSession(),
+      createReadyActionSession()
+    ];
+    let nextSession = 0;
+    const runSources: string[] = [];
+    const runtimeSessionFactory = vi.fn(
+      (options: FrontstageRestrictedBlockRuntimeHostOptions) => {
+        const program = options.runPlan.request.program;
+        runSources.push(
+          program.kind === 'source' ? program.source : program.fallback.source
+        );
+        const session = sessions[nextSession++];
+        if (!session) throw new Error('missing test session');
+        return session;
+      }
+    );
+    const createRunInputs = vi.fn((event?: BlockRendererActionEvent) => ({
+      ...(event ? { auth_event: { action_id: event.actionId } } : {})
+    }));
+    const { rerender } = render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="first saved source"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'direct-preview', revision: 'saved:v1' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+
+    for (const name of [
+      /运\s*行/,
+      '停止',
+      '预览',
+      '控制台',
+      '变量',
+      '接口调用',
+      '问题'
+    ]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+    expect(runSources).toEqual(['first saved source']);
+    expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument();
+    expect(screen.getByText('hello {"id":1}')).toBeInTheDocument();
+    expect(screen.getByText('check input')).toBeInTheDocument();
+    expect(screen.getByText(/"id": 1/u)).toBeInTheDocument();
+    expect(screen.queryByText('暂无控制台输出')).not.toBeInTheDocument();
+    expect(screen.getByTestId('js-block-console-prompt')).toHaveTextContent(
+      '>'
+    );
+    expect(screen.getByTestId('js-block-console-gutter-info')).toHaveTextContent(
+      '>'
+    );
+    expect(screen.getByTestId('js-block-console-gutter-warn')).toHaveTextContent(
+      '!'
+    );
+    expect(screen.getByTestId('js-block-preview-pane')).toHaveClass(
+      'frontstage-js-block-preview-console__preview'
+    );
+    expect(screen.getByTestId('js-block-console-pane')).toHaveClass(
+      'frontstage-js-block-preview-console__console'
+    );
+    const splitLayout = screen.getByTestId('js-block-preview-console');
+    vi.spyOn(splitLayout, 'getBoundingClientRect').mockReturnValue({
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    });
+    const splitter = screen.getByRole('separator', {
+      name: '调整预览和控制台高度'
+    });
+    expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
+    expect(splitter).toHaveAttribute('aria-valuenow', '65');
+    fireEvent.keyDown(splitter, { key: 'ArrowUp' });
+    expect(splitter).toHaveAttribute('aria-valuenow', '60');
+    fireEvent.mouseDown(splitter, { clientY: 240 });
+    fireEvent.mouseMove(document, { clientY: 280 });
+    fireEvent.mouseUp(document);
+    expect(splitter).toHaveAttribute('aria-valuenow', '70');
+
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="unsaved draft"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'direct-preview', revision: 'saved:v1' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
+    expect(sessions[0]?.dispose).not.toHaveBeenCalled();
+
+    rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code="second saved source"
+        contextSnapshot={{}}
+        createRunInputs={createRunInputs}
+        limits={{ timeoutMs: 1_000 }}
+        presentation={{ mode: 'direct-preview', revision: 'saved:v2' }}
+        runtimeSessionFactory={runtimeSessionFactory}
+      />
+    );
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    expect(runSources).toEqual(['first saved source', 'second saved source']);
+    expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/^draft:/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
+    await act(async () => Promise.resolve());
+    expect(runtimeSessionFactory).toHaveBeenCalledTimes(3);
+    expect(createRunInputs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ actionId: 'sign_up' })
+    );
   });
 });

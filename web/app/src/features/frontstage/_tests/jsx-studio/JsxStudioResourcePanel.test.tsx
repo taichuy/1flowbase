@@ -103,10 +103,12 @@ const createSaveBlockMock = () =>
 
 function renderInterfacePanel({
   codeSource = '',
+  interfacePathPrefixes,
   onInsertCode = createInsertCodeMock(),
   onSaveBlock = createSaveBlockMock()
 }: {
   codeSource?: string;
+  interfacePathPrefixes?: readonly string[];
   onInsertCode?: ReturnType<typeof createInsertCodeMock>;
   onSaveBlock?: ReturnType<typeof createSaveBlockMock>;
 } = {}) {
@@ -114,6 +116,7 @@ function renderInterfacePanel({
     <JsxStudioResourcePanel
       block={block}
       codeSource={codeSource}
+      interfacePathPrefixes={interfacePathPrefixes}
       pageBlocks={[block]}
       workspaceId="workspace-1"
       projection={projection}
@@ -168,6 +171,33 @@ describe('TSX Studio interface connector', () => {
       async (_workspaceId: string, interfaceId: string) =>
         operations.find((operation) => operation.interface_id === interfaceId)
     );
+  });
+
+  test('passes path scopes to the backend without exposing them in the connector UI', () => {
+    renderInterfacePanel({
+      interfacePathPrefixes: [
+        '/api/public/',
+        '/api/console/settings/auth-center/'
+      ]
+    });
+
+    expect(screen.queryByText('/api/public/')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('/api/console/settings/auth-center/')
+    ).not.toBeInTheDocument();
+    expect(
+      interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
+    ).toHaveBeenLastCalledWith(
+      'workspace-1',
+      expect.objectContaining({
+        path_prefixes: [
+          '/api/public/',
+          '/api/console/settings/auth-center/'
+        ]
+      })
+    );
+    expect(screen.getByRole('textbox', { name: '搜索接口路径' }))
+      .toBeInTheDocument();
   });
 
   test('searches paths, loads one detail, and inserts code without saving a binding', async () => {
@@ -333,13 +363,84 @@ describe('TSX Studio insertion descriptors', () => {
       />
     );
 
-    const row = screen.getByText('ctx.currentUser').closest('div');
+    const row = screen.getByText('ctx.currentUser').closest('tr');
     fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
 
     expect(onInsertCode).toHaveBeenCalledWith({
       kind: 'context-reference',
       memberPath: 'currentUser'
     });
+  });
+
+  test('AC-022 and AC-023 render registered variables as label, reference, and insert columns', () => {
+    const onInsertCode = createInsertCodeMock();
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        contextVariables={[
+          {
+            group: 'configuration',
+            label: 'Issuer',
+            member_path: 'inputs.public_variables.issuer',
+            schema: { type: 'string' }
+          },
+          {
+            group: 'runtime',
+            label: 'API',
+            member_path: 'api',
+            schema: { type: 'object' }
+          }
+        ]}
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={projection}
+        section="variables"
+        onInsertCode={onInsertCode}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    expect(screen.getAllByRole('columnheader', { name: '标签' })).toHaveLength(2);
+    expect(screen.getAllByRole('columnheader', { name: '变量' })).toHaveLength(2);
+    expect(screen.getAllByRole('columnheader', { name: '操作' })).toHaveLength(2);
+    const configurationGroup = screen.getByRole('region', {
+      name: '配置变量'
+    });
+    const runtimeGroup = screen.getByRole('region', {
+      name: '运行时上下文'
+    });
+    expect(within(configurationGroup).getByText('Issuer')).toBeInTheDocument();
+    expect(within(runtimeGroup).getByText('API')).toBeInTheDocument();
+    const row = screen.getByText('Issuer').closest('tr');
+    expect(
+      within(row!).getByText('ctx.inputs.public_variables.issuer')
+    ).toBeInTheDocument();
+    fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
+
+    expect(onInsertCode).toHaveBeenCalledWith({
+      kind: 'context-reference',
+      memberPath: 'inputs.public_variables.issuer'
+    });
+  });
+
+  test('AC-024 renders an unavailable state instead of Frontstage defaults', () => {
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        contextVariables={null}
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={projection}
+        section="variables"
+        onInsertCode={createInsertCodeMock()}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    expect(screen.getByText('变量上下文不可用')).toBeInTheDocument();
+    expect(screen.queryByText('ctx.currentUser')).not.toBeInTheDocument();
   });
 
   test('AC-002 carries the catalog module source with a component insertion', () => {

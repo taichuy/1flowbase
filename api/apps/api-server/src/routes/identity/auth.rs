@@ -6,7 +6,9 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
-use control_plane::auth::{AuthKernel, LoginCommand, SessionIssuer};
+use control_plane::auth::{
+    AuthKernel, AuthenticatorRegistry, LoginCommand, SessionIssuer, SignUpCommand,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use utoipa::ToSchema;
@@ -28,9 +30,8 @@ pub struct PublicLoginInstanceResponse {
     pub title: String,
     pub description: Option<String>,
     pub sort_order: i32,
-    pub flow: String,
-    pub sign_in_path: String,
-    pub public_options: Map<String, Value>,
+    pub public_ui_block: String,
+    pub public_variables: Map<String, Value>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -46,6 +47,15 @@ pub struct LoginBody {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SignUpBody {
+    pub authenticator_id: Uuid,
+    pub account: String,
+    pub email: String,
+    pub password: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
     pub csrf_token: String,
@@ -58,6 +68,7 @@ pub fn router() -> Router<Arc<ApiState>> {
         .route("/providers", get(list_providers))
         .route("/login-instances", get(list_login_instances))
         .route("/sign-in", post(sign_in))
+        .route("/sign-up", post(sign_up))
 }
 
 fn public_authenticator_description(options: &Value) -> Option<String> {
@@ -67,20 +78,14 @@ fn public_authenticator_description(options: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn public_authenticator_options(options: &Value) -> Map<String, Value> {
-    options
-        .get("public_options")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default()
-}
-
 fn to_public_login_instance(
     authenticator: domain::AuthenticatorRecord,
+    registry: &AuthenticatorRegistry,
 ) -> Option<PublicLoginInstanceResponse> {
-    if !authenticator.enabled || authenticator.auth_type != "password-local" {
+    if !authenticator.enabled {
         return None;
     }
+    let public_variables = registry.public_variables(&authenticator)?;
 
     Some(PublicLoginInstanceResponse {
         id: authenticator.id,
@@ -88,9 +93,8 @@ fn to_public_login_instance(
         title: authenticator.title,
         description: public_authenticator_description(&authenticator.options),
         sort_order: authenticator.sort_order,
-        flow: "password".to_string(),
-        sign_in_path: "/api/public/auth/sign-in".to_string(),
-        public_options: public_authenticator_options(&authenticator.options),
+        public_ui_block: authenticator.public_ui_block,
+        public_variables,
     })
 }
 
@@ -123,12 +127,13 @@ pub async fn list_providers(
 pub async fn list_login_instances(
     State(state): State<Arc<ApiState>>,
 ) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
+    let registry = state.authenticator_registry.as_ref();
     let login_instances = state
         .store
         .list_authenticators()
         .await?
         .into_iter()
-        .filter_map(to_public_login_instance)
+        .filter_map(|authenticator| to_public_login_instance(authenticator, registry))
         .collect::<Vec<_>>();
     let default_authenticator_id = login_instances
         .first()
@@ -164,6 +169,51 @@ pub async fn sign_in(
             password: body.password,
         })
         .await?;
+
+    let cookie = Cookie::build((state.cookie_name.clone(), result.session.session_id.clone()))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(state.cookie_secure)
+        .path("/")
+        .build();
+    let jar = CookieJar::new().add(cookie);
+
+    Ok((
+        jar,
+        Json(ApiSuccess::new(LoginResponse {
+            csrf_token: result.session.csrf_token,
+            effective_display_role: result.actor.effective_display_role,
+            current_workspace_id: result.session.current_workspace_id.to_string(),
+        })),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/public/auth/sign-up",
+    request_body = SignUpBody,
+    responses(
+        (status = 200, body = LoginResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 409, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn sign_up(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<SignUpBody>,
+) -> Result<(CookieJar, Json<ApiSuccess<LoginResponse>>), ApiError> {
+    let result = AuthKernel::new(
+        state.store.clone(),
+        SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
+    )
+    .sign_up(SignUpCommand {
+        authenticator_id: body.authenticator_id,
+        account: body.account,
+        email: body.email,
+        password: body.password,
+    })
+    .await?;
 
     let cookie = Cookie::build((state.cookie_name.clone(), result.session.session_id.clone()))
         .http_only(true)

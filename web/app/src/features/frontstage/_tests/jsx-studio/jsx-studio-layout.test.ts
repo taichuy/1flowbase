@@ -6,7 +6,7 @@ import { describe, expect, test } from 'vitest';
 const cssSource = fs.readFileSync(
   path.resolve(
     import.meta.dirname,
-    '../../components/jsx-studio/jsx-studio.css'
+    '../../../../shared/code-block/block-source-studio.css'
   ),
   'utf8'
 );

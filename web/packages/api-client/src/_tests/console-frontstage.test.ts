@@ -74,6 +74,10 @@ describe('console-frontstage client', () => {
       name: 'OpenAPI capability catalog',
       request: () =>
         listFrontstageInterfaceCapabilities('workspace-1', {
+          path_prefixes: [
+            '/api/public/',
+            '/api/console/settings/auth-center/'
+          ],
           path_query: '/api/console/applications',
           adapter_id: 'console_openapi',
           method: 'GET',
@@ -81,7 +85,7 @@ describe('console-frontstage client', () => {
           limit: 20
         }),
       expected: {
-        path: '/api/console/frontstage/workspace-1/interface-capabilities?path_query=%2Fapi%2Fconsole%2Fapplications&adapter_id=console_openapi&method=GET&offset=20&limit=20',
+        path: '/api/console/frontstage/workspace-1/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F%2C%2Fapi%2Fconsole%2Fsettings%2Fauth-center%2F&path_query=%2Fapi%2Fconsole%2Fapplications&adapter_id=console_openapi&method=GET&offset=20&limit=20',
         method: 'GET'
       }
     },
