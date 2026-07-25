@@ -22,6 +22,15 @@ impl ProviderTransportSlotId {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProviderContinuationSlotId(Uuid);
+
+impl ProviderContinuationSlotId {
+    pub const fn for_flow_run(flow_run_id: Uuid) -> Self {
+        Self(flow_run_id)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderTransportProtocol {
     OpenAiResponses,
@@ -37,6 +46,37 @@ pub struct ProviderTransportAffinity {
     provider_code: String,
     protocol: String,
     model: String,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ProviderContinuation {
+    response_id: String,
+    affinity: ProviderTransportAffinity,
+}
+
+impl ProviderContinuation {
+    pub fn new(
+        response_id: impl Into<String>,
+        affinity: ProviderTransportAffinity,
+    ) -> anyhow::Result<Self> {
+        let response_id = response_id.into();
+        anyhow::ensure!(
+            !response_id.trim().is_empty() && response_id.len() <= 4096,
+            "provider_continuation_id_invalid"
+        );
+        Ok(Self {
+            response_id,
+            affinity,
+        })
+    }
+
+    pub(crate) fn response_id(&self) -> &str {
+        &self.response_id
+    }
+
+    pub(crate) fn affinity(&self) -> &ProviderTransportAffinity {
+        &self.affinity
+    }
 }
 
 impl ProviderTransportAffinity {
@@ -99,6 +139,31 @@ impl ProviderTransportPayload {
     pub fn with_affinity(mut self, affinity: ProviderTransportAffinity) -> Self {
         self.affinity = Some(affinity);
         self
+    }
+
+    pub fn bind_openai_continuation(
+        mut self,
+        continuation: ProviderContinuation,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            self.protocol == ProviderTransportProtocol::OpenAiResponses,
+            "provider_continuation_protocol_mismatch"
+        );
+        let body = self
+            .wire_body
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("provider_transport_payload_must_be_object"))?;
+        body.insert(
+            "previous_response_id".to_string(),
+            Value::String(continuation.response_id),
+        );
+        self.affinity = Some(continuation.affinity);
+        let encoded = serde_json::to_vec(&self.wire_body)?;
+        let mut canonical = Vec::new();
+        write_canonical_json(&self.wire_body, &mut canonical)?;
+        self.digest = format!("sha256:{:x}", Sha256::digest(&canonical));
+        self.size_bytes = encoded.len();
+        Ok(self)
     }
 
     pub const fn protocol(&self) -> ProviderTransportProtocol {
@@ -184,4 +249,20 @@ pub trait ProviderTransportStore: Send + Sync {
     ) -> anyhow::Result<Option<ProviderTransportPayload>>;
 
     async fn delete(&self, slot_id: ProviderTransportSlotId) -> anyhow::Result<bool>;
+
+    async fn put_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+        continuation: ProviderContinuation,
+    ) -> anyhow::Result<()>;
+
+    async fn get_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<Option<ProviderContinuation>>;
+
+    async fn delete_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<bool>;
 }

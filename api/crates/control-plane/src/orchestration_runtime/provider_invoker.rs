@@ -356,6 +356,8 @@ where
             }
         }
         let invocation_output = invocation_result?;
+        self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
+            .await?;
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
         let mut output = orchestration_runtime::execution_engine::ProviderInvocationOutput {
             events: invocation_output.events,
@@ -521,6 +523,10 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         input: &mut ProviderInvocationInput,
     ) -> Result<()> {
+        if let Some(continuation) = self.provider_continuation.as_ref() {
+            self.ensure_provider_affinity(runtime, continuation.affinity())?;
+            input.previous_response_id = Some(continuation.response_id().to_string());
+        }
         let native_transport_capability =
             plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
         let Some(payload) = self.provider_transport_payload.as_ref() else {
@@ -533,21 +539,8 @@ where
             return Ok(());
         };
 
-        if payload.affinity().is_some_and(|affinity| {
-            !affinity.matches(
-                &runtime.provider_instance_id,
-                &runtime.provider_code,
-                &runtime.protocol,
-                &runtime.model,
-            )
-        }) {
-            return Err(plugin_framework::PluginFrameworkError::runtime(
-                plugin_framework::provider_contract::ProviderRuntimeError::new(
-                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
-                    "selected LLM Provider does not own the opaque continuation",
-                ),
-            )
-            .into());
+        if let Some(affinity) = payload.affinity() {
+            self.ensure_provider_affinity(runtime, affinity)?;
         }
 
         input
@@ -565,6 +558,28 @@ where
             },
         );
         Ok(())
+    }
+
+    fn ensure_provider_affinity(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        affinity: &crate::ports::ProviderTransportAffinity,
+    ) -> Result<()> {
+        if affinity.matches(
+            &runtime.provider_instance_id,
+            &runtime.provider_code,
+            &runtime.protocol,
+            &runtime.model,
+        ) {
+            return Ok(());
+        }
+        Err(plugin_framework::PluginFrameworkError::runtime(
+            plugin_framework::provider_contract::ProviderRuntimeError::new(
+                plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                "selected LLM Provider does not own the opaque continuation",
+            ),
+        )
+        .into())
     }
 
     async fn ready_installation(
@@ -610,6 +625,8 @@ where
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
             provider_transport_payload: self.provider_transport_payload.clone(),
+            provider_transport_store: self.provider_transport_store.clone(),
+            provider_continuation: self.provider_continuation.clone(),
         }
     }
 
@@ -638,6 +655,56 @@ where
         let mut invoker = self.clone();
         invoker.provider_transport_payload = provider_transport_payload;
         invoker
+    }
+
+    pub(super) fn with_provider_continuation(
+        &self,
+        provider_continuation: Option<crate::ports::ProviderContinuation>,
+    ) -> Self {
+        let mut invoker = self.clone();
+        invoker.provider_continuation = provider_continuation;
+        invoker
+    }
+
+    async fn stage_provider_continuation(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        response_id: Option<&str>,
+    ) -> Result<()> {
+        let Some(response_id) = response_id.filter(|value| !value.trim().is_empty()) else {
+            return Ok(());
+        };
+        let (Some(store), Some(flow_run_id)) =
+            (self.provider_transport_store.as_ref(), self.flow_run_id)
+        else {
+            return Ok(());
+        };
+        if self.provider_transport_payload.is_none() && self.provider_continuation.is_none() {
+            return Ok(());
+        }
+        let continuation = crate::ports::ProviderContinuation::new(
+            response_id,
+            crate::ports::ProviderTransportAffinity::new(
+                &runtime.provider_instance_id,
+                &runtime.provider_code,
+                &runtime.protocol,
+                &runtime.model,
+            ),
+        )?;
+        store
+            .put_continuation(
+                crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id),
+                continuation,
+            )
+            .await
+            .map_err(|_| {
+                anyhow::Error::from(plugin_framework::PluginFrameworkError::runtime(
+                    plugin_framework::provider_contract::ProviderRuntimeError::new(
+                        plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                        "opaque Provider continuation could not be staged",
+                    ),
+                ))
+            })
     }
 
     pub(super) async fn resolve_llm_instance(

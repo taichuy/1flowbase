@@ -1,4 +1,5 @@
 use control_plane::ports::{
+    ProviderContinuation, ProviderContinuationSlotId, ProviderTransportAffinity,
     ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
 };
 use serde_json::json;
@@ -78,4 +79,43 @@ async fn d4_ac_027_provider_transport_store_rejects_payload_over_its_bound() {
         .to_string()
         .contains("provider_transport_payload_too_large"));
     assert_eq!(store.get(slot).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_ephemeral_memory() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let previous_run_id = Uuid::now_v7();
+    let slot = ProviderContinuationSlotId::for_flow_run(previous_run_id);
+    let continuation = ProviderContinuation::new(
+        "provider-response-secret",
+        ProviderTransportAffinity::new(
+            "provider-instance-a",
+            "openai",
+            "openai_responses",
+            "gpt-test",
+        ),
+    )
+    .unwrap();
+    store.put_continuation(slot, continuation).await.unwrap();
+
+    let restored = store
+        .get_continuation(slot)
+        .await
+        .unwrap()
+        .expect("continuation should remain available inside its TTL");
+    let payload = ProviderTransportPayload::openai_responses(json!({
+        "model": "gpt-test",
+        "previous_response_id": format!("resp_{previous_run_id}"),
+        "input": "continue"
+    }))
+    .unwrap()
+    .bind_openai_continuation(restored)
+    .unwrap();
+
+    assert_eq!(
+        payload.wire_body()["previous_response_id"],
+        json!("provider-response-secret")
+    );
+    assert!(payload.affinity().is_some());
+    assert!(!format!("{payload:?}").contains("provider-response-secret"));
 }

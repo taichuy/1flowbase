@@ -66,6 +66,7 @@ pub use http_request::{
     execute_http_request_node, HttpRequestNodeExecution, HttpResponseFilePersistInput,
     HttpResponseFilePersister,
 };
+pub use llm_callbacks::pending_llm_tool_callback_requires_ephemeral_provider_continuation;
 use llm_callbacks::*;
 use llm_context::*;
 use llm_error_payloads::*;
@@ -1467,6 +1468,7 @@ where
             attempt_runtime,
             &output.result,
             final_content,
+            native_responses_passthrough,
             build_llm_metrics_payload(
                 attempt_runtime,
                 usage,

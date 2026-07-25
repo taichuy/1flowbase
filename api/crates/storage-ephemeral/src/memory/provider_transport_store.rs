@@ -2,7 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use control_plane::ports::{
-    ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+    ProviderContinuation, ProviderContinuationSlotId, ProviderTransportPayload,
+    ProviderTransportSlotId, ProviderTransportStore,
 };
 use time::{Duration, OffsetDateTime};
 use tokio::sync::RwLock;
@@ -12,11 +13,18 @@ pub struct MemoryProviderTransportStore {
     retention: Duration,
     max_payload_bytes: usize,
     entries: Arc<RwLock<HashMap<ProviderTransportSlotId, TransportEntry>>>,
+    continuations: Arc<RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>>,
 }
 
 #[derive(Clone)]
 struct TransportEntry {
     payload: ProviderTransportPayload,
+    expires_at: OffsetDateTime,
+}
+
+#[derive(Clone)]
+struct ContinuationEntry {
+    continuation: ProviderContinuation,
     expires_at: OffsetDateTime,
 }
 
@@ -26,6 +34,7 @@ impl MemoryProviderTransportStore {
             retention,
             max_payload_bytes,
             entries: Arc::new(RwLock::new(HashMap::new())),
+            continuations: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -77,5 +86,43 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
 
     async fn delete(&self, slot_id: ProviderTransportSlotId) -> anyhow::Result<bool> {
         Ok(self.entries.write().await.remove(&slot_id).is_some())
+    }
+
+    async fn put_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+        continuation: ProviderContinuation,
+    ) -> anyhow::Result<()> {
+        self.validate_policy()?;
+        self.continuations.write().await.insert(
+            slot_id,
+            ContinuationEntry {
+                continuation,
+                expires_at: OffsetDateTime::now_utc() + self.retention,
+            },
+        );
+        Ok(())
+    }
+
+    async fn get_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<Option<ProviderContinuation>> {
+        let mut continuations = self.continuations.write().await;
+        let Some(entry) = continuations.get(&slot_id).cloned() else {
+            return Ok(None);
+        };
+        if entry.expires_at <= OffsetDateTime::now_utc() {
+            continuations.remove(&slot_id);
+            return Ok(None);
+        }
+        Ok(Some(entry.continuation))
+    }
+
+    async fn delete_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<bool> {
+        Ok(self.continuations.write().await.remove(&slot_id).is_some())
     }
 }

@@ -277,6 +277,8 @@ struct RuntimeProviderInvoker<R, H> {
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
+    provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
+    provider_continuation: Option<crate::ports::ProviderContinuation>,
 }
 
 struct RuntimeFlowExecutionContext {
@@ -464,6 +466,8 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             provider_transport_payload: None,
+            provider_transport_store: self.provider_transport_store.clone(),
+            provider_continuation: None,
         }
     }
 
@@ -487,6 +491,8 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             provider_transport_payload: None,
+            provider_transport_store: self.provider_transport_store.clone(),
+            provider_continuation: None,
         }
     }
 
@@ -518,6 +524,26 @@ where
             .runtime_invoker(input.application.workspace_id)
             .for_flow_run(input.flow_run.id)
             .with_flow_execution_context(flow_execution_context);
+        let provider_continuation = if orchestration_runtime::execution_engine::pending_llm_tool_callback_requires_ephemeral_provider_continuation(
+            &input.snapshot.variable_pool,
+            input.waiting_node_id,
+        ) {
+            let store = self
+                .provider_transport_store
+                .as_ref()
+                .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?;
+            Some(
+                store
+                    .get_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
+                        input.flow_run.id,
+                    ))
+                    .await?
+                    .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?,
+            )
+        } else {
+            None
+        };
+        let invoker = invoker.with_provider_continuation(provider_continuation);
         let answer_presentation = answer_presentation::AnswerPresentationCursor::from_plan(
             input.compiled_plan,
         )

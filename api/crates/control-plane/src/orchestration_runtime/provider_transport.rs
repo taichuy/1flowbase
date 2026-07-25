@@ -133,6 +133,12 @@ mod tests {
     #[derive(Default)]
     struct TestProviderTransportStore {
         entry: Mutex<Option<(ProviderTransportSlotId, ProviderTransportPayload)>>,
+        continuation: Mutex<
+            Option<(
+                crate::ports::ProviderContinuationSlotId,
+                crate::ports::ProviderContinuation,
+            )>,
+        >,
     }
 
     #[async_trait]
@@ -166,6 +172,43 @@ mod tests {
                 .is_some_and(|(stored_slot, _)| *stored_slot == slot_id)
             {
                 entry.take();
+                return Ok(true);
+            }
+            Ok(false)
+        }
+
+        async fn put_continuation(
+            &self,
+            slot_id: crate::ports::ProviderContinuationSlotId,
+            continuation: crate::ports::ProviderContinuation,
+        ) -> anyhow::Result<()> {
+            *self.continuation.lock().await = Some((slot_id, continuation));
+            Ok(())
+        }
+
+        async fn get_continuation(
+            &self,
+            slot_id: crate::ports::ProviderContinuationSlotId,
+        ) -> anyhow::Result<Option<crate::ports::ProviderContinuation>> {
+            Ok(self
+                .continuation
+                .lock()
+                .await
+                .as_ref()
+                .filter(|(stored_slot, _)| *stored_slot == slot_id)
+                .map(|(_, continuation)| continuation.clone()))
+        }
+
+        async fn delete_continuation(
+            &self,
+            slot_id: crate::ports::ProviderContinuationSlotId,
+        ) -> anyhow::Result<bool> {
+            let mut continuation = self.continuation.lock().await;
+            if continuation
+                .as_ref()
+                .is_some_and(|(stored_slot, _)| *stored_slot == slot_id)
+            {
+                continuation.take();
                 return Ok(true);
             }
             Ok(false)

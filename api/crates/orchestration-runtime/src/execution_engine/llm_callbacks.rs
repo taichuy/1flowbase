@@ -59,6 +59,7 @@ pub(super) fn build_llm_tool_callback_request_payload(
         "usage",
         "provider_route",
         "response_id",
+        "provider_continuation",
         "provider_metadata",
     ] {
         if let Some(value) = output_payload.get(key) {
@@ -108,6 +109,12 @@ pub(super) fn variable_pool_with_pending_llm_tool_callback(
     }
     if let Some(provider_route) = output_payload.get("provider_route") {
         callback_state.insert("provider_route".to_string(), provider_route.clone());
+    }
+    if let Some(provider_continuation) = output_payload.get("provider_continuation") {
+        callback_state.insert(
+            "provider_continuation".to_string(),
+            provider_continuation.clone(),
+        );
     }
     if let Some(provider_metadata) = output_payload.get("provider_metadata") {
         callback_state.insert("provider_metadata".to_string(), provider_metadata.clone());
@@ -284,6 +291,7 @@ pub(super) fn append_llm_tool_result_messages(
         .map(ToOwned::to_owned);
     let system = state.get("system").cloned();
     let provider_route = state.get("provider_route").cloned();
+    let provider_continuation = state.get("provider_continuation").cloned();
     let provider_metadata = state.get("provider_metadata").cloned();
     let visible_internal_transcript = state.get("visible_internal_llm_tool_transcript").cloned();
     let visible_internal_events = state.get("visible_internal_llm_tool_events").cloned();
@@ -397,6 +405,9 @@ pub(super) fn append_llm_tool_result_messages(
     }
     if let Some(provider_route) = provider_route {
         callback_state.insert("provider_route".to_string(), provider_route);
+    }
+    if let Some(provider_continuation) = provider_continuation {
+        callback_state.insert("provider_continuation".to_string(), provider_continuation);
     }
     if let Some(provider_metadata) = provider_metadata {
         callback_state.insert("provider_metadata".to_string(), provider_metadata);
@@ -637,6 +648,17 @@ pub(super) fn pending_llm_tool_callback_route_matches(
             == Some(runtime.provider_code.as_str())
         && provider_route.get("protocol").and_then(Value::as_str) == Some(runtime.protocol.as_str())
         && provider_route.get("model").and_then(Value::as_str) == Some(runtime.model.as_str())
+}
+
+pub fn pending_llm_tool_callback_requires_ephemeral_provider_continuation(
+    variable_pool: &Map<String, Value>,
+    node_id: &str,
+) -> bool {
+    pending_llm_tool_callback_state(variable_pool, node_id)
+        .and_then(|state| state.get("provider_continuation"))
+        .and_then(|continuation| continuation.get("storage"))
+        .and_then(Value::as_str)
+        == Some("ephemeral")
 }
 
 #[cfg(test)]

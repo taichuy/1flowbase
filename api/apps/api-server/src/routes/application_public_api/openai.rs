@@ -35,13 +35,14 @@ use control_plane::application_public_api::{
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use control_plane::ports::{
-    ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+    ProviderContinuationSlotId, ProviderTransportPayload, ProviderTransportSlotId,
+    ProviderTransportStore,
 };
 use domain::{AiNativeCompactProfile, AiNativeOperation};
+use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
-use orchestration_runtime::execution_state::NativeOperationTerminal;
 use serde_json::{json, Value};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -343,6 +344,10 @@ async fn create_response_for_endpoint(
         previous_response_id.as_deref(),
     )
     .await?;
+    let previous_flow_run_id = previous_response
+        .as_ref()
+        .map(|previous| previous.flow_run_id);
+    let previous_translation_context = previous_response.map(|previous| previous.translation);
     let response_mode = value
         .get("stream")
         .and_then(Value::as_bool)
@@ -402,7 +407,7 @@ async fn create_response_for_endpoint(
     let translated = match translate_response_request_with_context_and_previous(
         value,
         request_context,
-        previous_response,
+        previous_translation_context,
     ) {
         Ok(translated) => translated,
         Err(error) => {
@@ -430,7 +435,43 @@ async fn create_response_for_endpoint(
             })?;
         request.metadata.set_provider_transport_payload(payload);
     }
-    let provider_transport_payload = request.metadata.take_provider_transport_payload();
+    let mut provider_transport_payload = request.metadata.take_provider_transport_payload();
+    if let Some(previous_flow_run_id) = previous_flow_run_id {
+        if let Some(payload) = provider_transport_payload.take() {
+            let continuation = state
+                .infrastructure
+                .provider_transport_store()
+                .get_continuation(ProviderContinuationSlotId::for_flow_run(
+                    previous_flow_run_id,
+                ))
+                .await
+                .map_err(|_| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "provider_continuation_lookup_failed",
+                        "Provider continuation storage is temporarily unavailable",
+                    ))
+                })?
+                .ok_or_else(|| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::CONFLICT,
+                        "ephemeral_continuation_missing",
+                        "the previous Provider continuation is no longer available",
+                    ))
+                })?;
+            let payload = payload
+                .bind_openai_continuation(continuation)
+                .map_err(|_| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "provider_continuation_binding_failed",
+                        "could not bind the Provider continuation",
+                    ))
+                })?;
+            request.metadata.set_provider_transport_payload(payload);
+            provider_transport_payload = request.metadata.take_provider_transport_payload();
+        }
+    }
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
     match operation {
@@ -959,7 +1000,7 @@ async fn load_previous_response_context(
     state: Arc<ApiState>,
     bearer_token: &str,
     previous_response_id: Option<&str>,
-) -> Result<Option<OpenAiPreviousResponseContext>, OpenAiRouteError> {
+) -> Result<Option<LoadedOpenAiPreviousResponseContext>, OpenAiRouteError> {
     let Some(response_id) = previous_response_id else {
         return Ok(None);
     };
@@ -991,12 +1032,20 @@ async fn load_previous_response_context(
             .await
             .map_err(native::native_error)?,
     };
-    Ok(Some(OpenAiPreviousResponseContext {
-        response_id: response_id.to_string(),
-        external_user: string_value(&run.metadata, "external_user"),
-        external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
-        answer: run.answer,
+    Ok(Some(LoadedOpenAiPreviousResponseContext {
+        flow_run_id: run.id,
+        translation: OpenAiPreviousResponseContext {
+            response_id: response_id.to_string(),
+            external_user: string_value(&run.metadata, "external_user"),
+            external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
+            answer: run.answer,
+        },
     }))
+}
+
+struct LoadedOpenAiPreviousResponseContext {
+    flow_run_id: Uuid,
+    translation: OpenAiPreviousResponseContext,
 }
 
 fn string_value(value: &Value, field: &str) -> Option<String> {

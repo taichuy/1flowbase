@@ -214,6 +214,9 @@ pub(super) fn durable_provider_error_message(kind: ProviderRuntimeErrorKind) -> 
         ProviderRuntimeErrorKind::ProviderAffinityMismatch => {
             "selected LLM Provider does not own the opaque continuation"
         }
+        ProviderRuntimeErrorKind::ProviderTransportUnavailable => {
+            "opaque Provider continuation is temporarily unavailable"
+        }
         ProviderRuntimeErrorKind::RateLimited => "provider rate limit exceeded",
         ProviderRuntimeErrorKind::ProviderUpstreamError => "provider upstream request failed",
         ProviderRuntimeErrorKind::ProviderInvalidResponse => {
@@ -223,7 +226,11 @@ pub(super) fn durable_provider_error_message(kind: ProviderRuntimeErrorKind) -> 
 }
 
 pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {
-    error.kind != ProviderRuntimeErrorKind::ProviderAffinityMismatch
+    !matches!(
+        error.kind,
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch
+            | ProviderRuntimeErrorKind::ProviderTransportUnavailable
+    )
 }
 
 fn provider_status_code(details: Option<&Value>) -> Option<u16> {
