@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const { parseArgs, testFiles } = require("../cli");
+const { dockerDatabaseContract, parseArgs, testFiles } = require("../cli");
 
 test("quality gate exposes one explicit command with local source and database inputs", () => {
   assert.deepEqual(
@@ -47,4 +47,30 @@ test("release gate vendors Swagger UI instead of downloading a GitHub archive du
   const repoRoot = path.resolve(__dirname, "../../../../../");
   const cargo = fs.readFileSync(path.join(repoRoot, "api/Cargo.toml"), "utf8");
   assert.match(cargo, /utoipa-swagger-ui = \{ version = "8", features = \["axum", "vendored"\] \}/u);
+});
+
+test("quality gate derives one owned temporary database from the loopback Docker service", () => {
+  assert.deepEqual(
+    dockerDatabaseContract(
+      "postgres://postgres:secret@127.0.0.1:35432/1flowbase",
+      "container-1\n",
+    ),
+    { container: "container-1", host: "127.0.0.1", port: 35432 },
+  );
+  assert.throws(
+    () =>
+      dockerDatabaseContract(
+        "postgres://postgres:secret@db.internal:5432/1flowbase",
+        "container-1",
+      ),
+    /loopback/u,
+  );
+  assert.throws(
+    () =>
+      dockerDatabaseContract(
+        "postgres://postgres:secret@127.0.0.1:5432/1flowbase",
+        "one\ntwo",
+      ),
+    /exactly one/u,
+  );
 });

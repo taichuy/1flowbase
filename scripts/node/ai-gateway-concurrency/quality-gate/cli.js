@@ -6,6 +6,26 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const { runWorkflowContract } = require("../workflow-contract/runner");
+const { createDatabase } = require("../local-acceptance/system");
+
+function dockerDatabaseContract(databaseUrl, containerIds) {
+  const url = new URL(databaseUrl);
+  const host = url.hostname;
+  const port = Number(url.port || 5432);
+  if (!["127.0.0.1", "localhost", "::1"].includes(host)) {
+    throw new Error("quality gate PostgreSQL must be a loopback Docker service");
+  }
+  const containers = containerIds
+    .split(/\r?\n/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (containers.length !== 1) {
+    throw new Error(
+      `quality gate requires exactly one PostgreSQL container on host port ${port}`,
+    );
+  }
+  return { container: containers[0], host, port };
+}
 
 function parseArgs(argv) {
   if (argv[0] !== "run")
@@ -185,18 +205,35 @@ async function runQualityGate(rawOptions) {
     "plugin-runner",
   ]);
 
-  const result = await runWorkflowContract({
-    mainSourceSha,
-    officialSourceSha,
-    profile: "characterize",
+  const adminDatabaseUrl = new URL(rawOptions.databaseUrl);
+  const publishedPort = Number(adminDatabaseUrl.port || 5432);
+  const containerIds = command(
     repoRoot,
-    databaseUrl: rawOptions.databaseUrl,
-    apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
-    pluginRunnerBin: path.join(repoRoot, "api/target/release/plugin-runner"),
-    openaiPackageDir: path.join(packageRoot, "openai"),
-    anthropicPackageDir: path.join(packageRoot, "anthropic"),
-    hostTarget,
-  });
+    artifactRoot,
+    "postgres-container",
+    "docker",
+    ["ps", "--filter", `publish=${publishedPort}`, "--format", "{{.ID}}"],
+  );
+  const database = createDatabase(
+    dockerDatabaseContract(rawOptions.databaseUrl, containerIds),
+  );
+  let result;
+  try {
+    result = await runWorkflowContract({
+      mainSourceSha,
+      officialSourceSha,
+      profile: "characterize",
+      repoRoot,
+      databaseUrl: database.url,
+      apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
+      pluginRunnerBin: path.join(repoRoot, "api/target/release/plugin-runner"),
+      openaiPackageDir: path.join(packageRoot, "openai"),
+      anthropicPackageDir: path.join(packageRoot, "anthropic"),
+      hostTarget,
+    });
+  } finally {
+    await database.close();
+  }
   fs.writeFileSync(
     path.join(artifactRoot, "quality-gate.json"),
     `${JSON.stringify(
@@ -235,4 +272,10 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, parseArgs, runQualityGate, testFiles };
+module.exports = {
+  dockerDatabaseContract,
+  main,
+  parseArgs,
+  runQualityGate,
+  testFiles,
+};
