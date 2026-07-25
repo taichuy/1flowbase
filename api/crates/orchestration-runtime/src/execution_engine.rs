@@ -5,9 +5,10 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        NativePromptBlock, ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        NativePromptBlock, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
+        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
+        ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};
@@ -24,9 +25,9 @@ use crate::{
         LlmRoutingMode, StartCompactDispatch, COMPACT_SOURCE_HANDLE_ID,
     },
     execution_state::{
-        CheckpointSnapshot, ExecutionIncompleteReason, ExecutionStopReason,
-        FlowDebugExecutionOutcome, NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask,
-        PendingHumanInput,
+        count_tokens_receipt_from_traces, CheckpointSnapshot, CountTokensReceipt,
+        ExecutionIncompleteReason, ExecutionStopReason, FlowDebugExecutionOutcome,
+        NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask, PendingHumanInput,
     },
     node_errors::build_node_type_not_implemented_error_payload,
     output_schema::value_is_llm_context_messages,
@@ -98,6 +99,14 @@ pub trait ProviderInvoker: Send + Sync {
         runtime: &CompiledLlmRuntime,
         input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput>;
+
+    async fn count_tokens(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderCountTokensInput,
+    ) -> Result<ProviderCountTokensResult> {
+        bail!("provider CountTokens is not supported by this invoker")
+    }
 }
 
 #[async_trait]
@@ -1074,6 +1083,10 @@ where
         });
     }
 
+    if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
+        count_tokens_receipt_from_traces(&node_traces)?;
+    }
+
     Ok(FlowDebugExecutionOutcome {
         stop_reason: successful_flow_stop_reason(&node_traces),
         variable_pool,
@@ -1142,6 +1155,22 @@ where
         )
     })?;
     let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
+    if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
+        let selected_runtime = attempt_runtimes
+            .first()
+            .ok_or_else(|| anyhow!("CountTokens LLM consumer has no selected runtime"))?;
+        return execute_count_tokens_consumer(
+            plan,
+            node,
+            selected_runtime,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await;
+    }
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -1494,6 +1523,93 @@ where
             context: None,
         },
     )
+}
+
+async fn execute_count_tokens_consumer<I>(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    runtime: &CompiledLlmRuntime,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &I,
+) -> Result<LlmNodeExecution>
+where
+    I: ProviderInvoker + ?Sized,
+{
+    let invocation = match build_provider_invocation(
+        plan,
+        node,
+        runtime,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+    ) {
+        Ok(invocation) => invocation,
+        Err(error_payload) => {
+            return Ok(LlmNodeExecution {
+                output_payload: json!({}),
+                error_payload: Some(error_payload),
+                metrics_payload: json!({ "operation": "count_tokens" }),
+                debug_payload: json!({}),
+                provider_events: Vec::new(),
+                pending_callback: None,
+                failure_projection: LlmFailureProjection::NoNodeOutput,
+                recoverable_error_message: None,
+            });
+        }
+    };
+    let input = ProviderCountTokensInput {
+        operation: ProviderWireOperation::CountTokens,
+        contract_version: invocation.input.contract_version,
+        provider_instance_id: invocation.input.provider_instance_id,
+        provider_code: invocation.input.provider_code,
+        protocol: invocation.input.protocol,
+        model: invocation.input.model,
+        provider_config: Value::Null,
+        messages: invocation.input.messages,
+        system: invocation.input.system,
+        request_context: invocation.input.request_context,
+        required_capabilities: invocation.input.required_capabilities,
+        client_protocol_envelope: invocation.input.client_protocol_envelope,
+    };
+    match invoker.count_tokens(runtime, input).await {
+        Ok(result) => {
+            let receipt = CountTokensReceipt::new(result)?;
+            Ok(LlmNodeExecution {
+                output_payload: receipt.as_payload()?,
+                error_payload: None,
+                metrics_payload: json!({
+                    "operation": "count_tokens",
+                    "provider_instance_id": runtime.provider_instance_id,
+                    "provider_code": runtime.provider_code,
+                    "model": runtime.model,
+                }),
+                debug_payload: json!({}),
+                provider_events: Vec::new(),
+                pending_callback: None,
+                failure_projection: LlmFailureProjection::NoNodeOutput,
+                recoverable_error_message: None,
+            })
+        }
+        Err(error) => Ok(LlmNodeExecution {
+            output_payload: json!({}),
+            error_payload: Some(json!({
+                "error_code": "provider_count_tokens_failed",
+                "message": error.to_string(),
+                "provider_code": runtime.provider_code,
+                "model": runtime.model,
+            })),
+            metrics_payload: json!({ "operation": "count_tokens", "error": true }),
+            debug_payload: json!({}),
+            provider_events: Vec::new(),
+            pending_callback: None,
+            failure_projection: LlmFailureProjection::NoNodeOutput,
+            recoverable_error_message: None,
+        }),
+    }
 }
 
 pub async fn execute_capability_plugin_node<I>(

@@ -110,7 +110,7 @@ pub(super) fn build_provider_invocation(
     variable_pool: &Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<BuiltProviderInvocation, Value> {
-    let operation = generate_provider_operation(runtime_context.operation())?;
+    let operation = provider_wire_operation(runtime_context.operation())?;
     let previous_response_id =
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
     let context_policy = llm_context_policy(node, runtime);
@@ -210,12 +210,13 @@ pub(super) fn build_provider_invocation(
     })
 }
 
-fn generate_provider_operation(
+fn provider_wire_operation(
     operation: domain::AiNativeOperation,
 ) -> Result<ProviderWireOperation, Value> {
     match operation {
         domain::AiNativeOperation::Generate(_) => Ok(ProviderWireOperation::Generate),
-        domain::AiNativeOperation::CountTokens | domain::AiNativeOperation::Compact(_) => {
+        domain::AiNativeOperation::CountTokens => Ok(ProviderWireOperation::CountTokens),
+        domain::AiNativeOperation::Compact(_) => {
             Err(json!({
                 "error_code": "ai_native_operation_unsupported",
                 "message": format!(

@@ -1,6 +1,61 @@
 use super::*;
 use crate::compiled_plan::CompiledEdge;
 
+struct CountTokensInvoker {
+    captured: Arc<Mutex<Vec<ProviderCountTokensInput>>>,
+    unsupported: bool,
+}
+
+#[async_trait]
+impl ProviderInvoker for CountTokensInvoker {
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        panic!("CountTokens must not fall back to Generate")
+    }
+
+    async fn count_tokens(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        input: ProviderCountTokensInput,
+    ) -> Result<ProviderCountTokensResult> {
+        self.captured.lock().expect("capture mutex poisoned").push(input);
+        if self.unsupported {
+            anyhow::bail!("provider CountTokens is unsupported");
+        }
+        Ok(ProviderCountTokensResult {
+            operation: ProviderWireOperation::CountTokens,
+            input_tokens: 37,
+        })
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for CountTokensInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("fixture has no capability nodes")
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for CountTokensInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        unreachable!("fixture has no code nodes")
+    }
+}
+
 fn answer_node(node_id: &str, text: &str) -> CompiledNode {
     CompiledNode {
         node_id: node_id.to_string(),
@@ -257,6 +312,115 @@ async fn selected_llm_branch_is_the_only_canonical_generate_consumer() {
     let captured = captured_inputs.lock().expect("inputs mutex poisoned");
     assert_eq!(captured.len(), 1);
     assert_eq!(captured[0].operation, ProviderWireOperation::Generate);
+}
+
+/// Root #1453 / Delivery #1457: the selected graph LLM is the CountTokens consumer.
+#[tokio::test]
+async fn selected_llm_branch_emits_one_typed_count_tokens_terminal_with_canonical_prompt() {
+    let mut plan = branch_plan(true, None);
+    let llm_template = base_plan().nodes["node-llm"].clone();
+    for node_id in ["node-if-answer", "node-elseif-answer", "node-else-answer"] {
+        let mut llm = llm_template.clone();
+        llm.node_id = node_id.to_string();
+        llm.alias = node_id.to_string();
+        llm.dependency_node_ids = vec!["node-if".to_string()];
+        llm.downstream_node_ids.clear();
+        plan.nodes.insert(node_id.to_string(), llm);
+    }
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let invoker = CountTokensInvoker { captured: captured.clone(), unsupported: false };
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {
+            "query": "canonical count prompt",
+            "status": "vip",
+            "segment": "enterprise-a",
+            "operation": { "kind": "count_tokens", "profile": null }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect("selected CountTokens consumer should complete");
+
+    assert_eq!(count_tokens_receipt_from_traces(&outcome.node_traces).unwrap().input_tokens(), 37);
+    let captured = captured.lock().expect("capture mutex poisoned");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].provider_instance_id, llm_template.llm_runtime.as_ref().unwrap().provider_instance_id);
+    assert_eq!(captured[0].model, llm_template.llm_runtime.as_ref().unwrap().model);
+    assert!(captured[0].messages.iter().any(|message| message.content.contains("canonical count prompt")));
+}
+
+#[tokio::test]
+async fn count_tokens_fails_when_no_llm_branch_is_selected() {
+    let plan = branch_plan(false, None);
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let invoker = CountTokensInvoker { captured: captured.clone(), unsupported: false };
+    let error = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {
+            "status": "regular",
+            "segment": "enterprise-a",
+            "operation": { "kind": "count_tokens", "profile": null }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect_err("CountTokens completion without an LLM consumer must fail");
+    assert!(error.to_string().contains("without a typed token-count terminal"));
+    assert!(captured.lock().expect("capture mutex poisoned").is_empty());
+}
+
+#[tokio::test]
+async fn count_tokens_fails_when_multiple_llm_consumers_are_reached() {
+    let mut plan = base_plan();
+    plan.nodes.remove("node-answer");
+    plan.topological_order.retain(|node_id| node_id != "node-answer");
+    plan.edges.retain(|edge| edge.target != "node-answer");
+    plan.nodes.get_mut("node-llm").unwrap().downstream_node_ids.clear();
+    let mut second = plan.nodes["node-llm"].clone();
+    second.node_id = "node-llm-second".to_string();
+    second.alias = "LLM second".to_string();
+    second.dependency_node_ids = vec!["node-start".to_string()];
+    second.downstream_node_ids.clear();
+    plan.nodes.get_mut("node-start").unwrap().downstream_node_ids.push(second.node_id.clone());
+    plan.edges.push(CompiledEdge {
+        edge_id: "edge-start-llm-second".to_string(),
+        source: "node-start".to_string(),
+        target: second.node_id.clone(),
+        source_handle: None,
+        target_handle: None,
+    });
+    plan.topological_order.push(second.node_id.clone());
+    plan.nodes.insert(second.node_id.clone(), second);
+    let invoker = CountTokensInvoker { captured: Arc::new(Mutex::new(Vec::new())), unsupported: false };
+    let error = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {
+            "query": "count twice",
+            "operation": { "kind": "count_tokens", "profile": null }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect_err("multiple CountTokens consumers must fail");
+    assert!(error.to_string().contains("expected exactly one"));
+}
+
+#[tokio::test]
+async fn unsupported_count_tokens_provider_fails_without_generate_fallback() {
+    let plan = base_plan();
+    let invoker = CountTokensInvoker { captured: Arc::new(Mutex::new(Vec::new())), unsupported: true };
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {
+            "query": "unsupported",
+            "operation": { "kind": "count_tokens", "profile": null }
+        }}),
+        &invoker,
+    )
+    .await
+    .expect("provider failure is represented by the execution outcome");
+    assert!(matches!(outcome.stop_reason, ExecutionStopReason::Failed(_)));
 }
 
 #[tokio::test]

@@ -1,12 +1,55 @@
 use anyhow::{anyhow, bail, Result};
 use plugin_framework::provider_contract::{
-    ProviderCompactProfile, ProviderCompactResult, ProviderFinishReason, ProviderInvocationResult,
-    ProviderStreamEvent,
+    ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensResult, ProviderFinishReason,
+    ProviderInvocationResult, ProviderStreamEvent, ProviderWireOperation,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 const COMPACT_RESPONSE_TERMINAL_KIND: &str = "compact_response";
+const COUNT_TOKENS_TERMINAL_KIND: &str = "count_tokens";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CountTokensReceipt {
+    result: ProviderCountTokensResult,
+}
+
+impl CountTokensReceipt {
+    pub fn new(result: ProviderCountTokensResult) -> Result<Self> {
+        if result.operation != ProviderWireOperation::CountTokens {
+            bail!("CountTokens receipt requires a typed CountTokens provider result");
+        }
+        Ok(Self { result })
+    }
+
+    pub fn input_tokens(&self) -> u64 {
+        self.result.input_tokens
+    }
+
+    pub fn as_payload(&self) -> Result<Value> {
+        Ok(json!({
+            "semantic_terminal": COUNT_TOKENS_TERMINAL_KIND,
+            "result": serde_json::to_value(&self.result)
+                .map_err(|error| anyhow!("could not serialize CountTokens receipt: {error}"))?,
+        }))
+    }
+
+    pub fn from_payload(payload: &Value) -> Result<Self> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Payload {
+            semantic_terminal: String,
+            result: ProviderCountTokensResult,
+        }
+
+        let payload: Payload = serde_json::from_value(payload.clone())
+            .map_err(|error| anyhow!("invalid CountTokens receipt payload: {error}"))?;
+        if payload.semantic_terminal != COUNT_TOKENS_TERMINAL_KIND {
+            bail!("invalid CountTokens semantic terminal");
+        }
+        Self::new(payload.result)
+    }
+}
 
 /// The closed set of canonical Compact profiles that may enter an
 /// application-flow Compact Response terminal.
@@ -252,6 +295,38 @@ pub fn compact_response_receipt_from_trace(
     }
 
     CompactResponseReceipt::from_payload(&trace.output_payload).map(Some)
+}
+
+pub fn count_tokens_receipt_from_trace(
+    trace: &NodeExecutionTrace,
+) -> Result<Option<CountTokensReceipt>> {
+    if trace.output_payload.get("semantic_terminal").and_then(Value::as_str)
+        != Some(COUNT_TOKENS_TERMINAL_KIND)
+    {
+        return Ok(None);
+    }
+
+    CountTokensReceipt::from_payload(&trace.output_payload).map(Some)
+}
+
+pub fn count_tokens_receipt_from_traces(
+    traces: &[NodeExecutionTrace],
+) -> Result<CountTokensReceipt> {
+    let receipts = traces
+        .iter()
+        .map(count_tokens_receipt_from_trace)
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    match receipts.as_slice() {
+        [receipt] => Ok(receipt.clone()),
+        [] => bail!("CountTokens workflow completed without a typed token-count terminal"),
+        _ => bail!(
+            "CountTokens workflow completed with {} typed token-count terminals; expected exactly one",
+            receipts.len()
+        ),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

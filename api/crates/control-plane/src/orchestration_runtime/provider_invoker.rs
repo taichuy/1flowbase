@@ -15,6 +15,25 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn count_tokens(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        mut input: plugin_framework::provider_contract::ProviderCountTokensInput,
+    ) -> Result<plugin_framework::provider_contract::ProviderCountTokensResult> {
+        let instance = self.resolve_llm_instance(runtime).await?;
+        let installation = self.ready_installation(instance.installation_id).await?;
+        let package = load_provider_package(&installation.installed_path)?;
+        input.provider_config = build_provider_runtime_config(
+            &self.repository,
+            &self.provider_secret_master_key,
+            &package,
+            &instance,
+        )
+        .await?;
+
+        self.runtime.count_tokens(&installation, input).await
+    }
+
     async fn invoke_llm(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
