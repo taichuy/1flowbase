@@ -8,11 +8,10 @@ const SCHEMA = '1flowbase.local-ai-gateway-acceptance/v1';
 const DEFAULT_MANIFEST = path.join(__dirname, 'manifest.json');
 const FORBIDDEN_ACTION_WORDS = Object.freeze(['fetch', 'pull', 'clone', 'build', 'install', 'curl', 'wget']);
 const LOCAL_ACTIONS = Object.freeze([
-  Object.freeze({ owner: 'git', action: 'inspect-fixed-revisions' }),
-  Object.freeze({ owner: 'git', action: 'materialize-detached-worktrees-from-local-objects' }),
+  Object.freeze({ owner: 'git', action: 'inspect-fixed-revisions-and-local-source-objects' }),
   Object.freeze({ owner: 'docker', action: 'create-and-probe-ephemeral-postgresql' }),
   Object.freeze({ owner: 'node', action: 'start-controlled-gateway-runtime-once' }),
-  Object.freeze({ owner: 'tmux', action: 'run-six-client-turns' }),
+  Object.freeze({ owner: 'tmux', action: 'run-eight-client-attempts' }),
   Object.freeze({ owner: 'node', action: 'clean-all-owned-resources' }),
 ]);
 

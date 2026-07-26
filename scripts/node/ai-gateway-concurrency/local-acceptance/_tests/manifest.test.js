@@ -58,11 +58,13 @@ test('AC-028 controlled negative: checksum mismatch fails closed', () => {
 test('AC-028: the executable action inventory contains no network, install, or build action', () => {
   const serialized = JSON.stringify(LOCAL_ACTIONS).toLowerCase();
   for (const word of FORBIDDEN_ACTION_WORDS) assert.equal(serialized.includes(word), false, word);
+  assert.equal(serialized.includes('detached-worktree'), false);
+  assert.equal(serialized.includes('run-eight-client-attempts'), true);
 });
 
 test('AC-028: the repository default binds all three existing clients and local source repositories', () => {
   const manifest = loadManifest();
-  assert.equal(manifest.artifacts.codex.path.includes('/tmp/test-governance/'), true);
+  assert.equal(manifest.artifacts.codex.path, '/home/linuxbrew/.linuxbrew/bin/codex');
   assert.equal(manifest.artifacts.claude.path, '/home/taichuy/.nvm/versions/node/v24.18.0/bin/claude');
   assert.equal(manifest.artifacts.opencode.path, '/home/taichuy/.local/bin/opencode');
   assert.equal(manifest.sources.codex.repository, '/home/taichuy/git/codex');
