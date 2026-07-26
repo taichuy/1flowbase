@@ -587,7 +587,19 @@ function validateDeniedCapabilities(
 function isIdentifierReference(source: string, token: SourceToken): boolean {
   for (let index = token.start - 1; index >= 0; index -= 1) {
     if (isWhitespace(source[index])) continue;
-    return source[index] !== '.';
+    if (source[index] === '.') return false;
+    break;
+  }
+  for (let index = token.end; index < source.length; index += 1) {
+    if (isWhitespace(source[index])) continue;
+    if (source[index] === ':' || source[index] === '=') return false;
+    if (source[index] === '?') {
+      for (index += 1; index < source.length; index += 1) {
+        if (isWhitespace(source[index])) continue;
+        return source[index] !== ':';
+      }
+    }
+    break;
   }
   return true;
 }

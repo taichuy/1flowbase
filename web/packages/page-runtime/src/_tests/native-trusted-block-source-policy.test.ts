@@ -163,7 +163,9 @@ describe('Native trusted block source static policy', () => {
 
   test('allows ordinary object properties named like an AntD global API', () => {
     const result = validateNativeTrustedBlockSource(
-      'const cause = new Error("failed"); return cause.message;'
+      `const cause = new Error('failed');
+       const props = { message: cause.message };
+       return <Alert message={props.message} />;`
     );
 
     expect(result).toMatchObject({ ok: true });
