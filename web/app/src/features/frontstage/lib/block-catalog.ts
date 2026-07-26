@@ -49,6 +49,15 @@ export interface NormalizedFrontstageBlockContextContract {
   inputSchema: Record<string, unknown>;
 }
 
+export interface NormalizedFrontstageBlockCodeModule {
+  source: string;
+  version: string;
+  browser_asset: {
+    sha256: string;
+  };
+  type_declarations: string;
+}
+
 export interface NormalizedFrontstageBlockCatalogEntry {
   id: string;
   runtimeKind: FrontstageBlockRuntimeKind;
@@ -62,6 +71,7 @@ export interface NormalizedFrontstageBlockCatalogEntry {
   permissions: NormalizedFrontstageBlockPermissions;
   contextContract: NormalizedFrontstageBlockContextContract;
   uiCapabilities: FrontstageBlockUiCapability[];
+  codeModules?: NormalizedFrontstageBlockCodeModule[];
   codeCapabilities?: ReturnType<typeof createFrontendBlockCodeCapabilities>;
   raw: FrontstageBlockCatalogEntry;
 }
@@ -127,7 +137,27 @@ export function normalizeFrontstageBlockCatalog(
       }
     ) as FrontstageBlockUiCapability[];
 
-    const codeCapabilities = createFrontendBlockCodeCapabilities(entry);
+    const codeModules = (entry.code_modules ?? []).map((codeModule) => ({
+      source: codeModule.source,
+      version: codeModule.version,
+      browser_asset: { sha256: codeModule.browser_asset.sha256 },
+      type_declarations: codeModule.type_declarations
+    }));
+    const codeCapabilities = createFrontendBlockCodeCapabilities({
+      code_template: entry.code_template,
+      code_template_version: entry.code_template_version,
+      code_template_language: entry.code_template_language,
+      code_modules: codeModules.flatMap((codeModule) =>
+        codeModule.source === '@1flowbase/block-sdk'
+          ? [
+              {
+                source: codeModule.source,
+                type_declarations: codeModule.type_declarations
+              }
+            ]
+          : []
+      )
+    });
     items.push({
       id: `${entry.provider_code}:${entry.contribution_code}`,
       runtimeKind,
@@ -148,6 +178,7 @@ export function normalizeFrontstageBlockCatalog(
         inputSchema: entry.context_contract.input_schema
       },
       uiCapabilities: capabilities,
+      codeModules,
       ...(codeCapabilities.template || codeCapabilities.allowedImports.length > 0
         ? { codeCapabilities }
         : {}),

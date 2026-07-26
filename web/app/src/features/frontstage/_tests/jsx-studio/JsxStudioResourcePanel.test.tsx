@@ -115,39 +115,43 @@ const projection: FrontstageJsxEditorProjection = {
   monacoExtraLibs: []
 };
 
-const buttonComponent = {
-  component_id: 'installation-1:frontstage.js-ui-block:button',
+const surfaceComponent = {
+  component_id: 'installation-1:frontstage.js-ui-block:surface',
   installation_id: 'installation-1',
   provider_code: '1flowbase',
   plugin_id: '1flowbase@1.0.0',
   plugin_version: '1.0.0',
   contribution_code: 'frontstage.js-ui-block',
-  module_source: '@1flowbase/block-renderer/antd-facade',
-  export_name: 'Button',
-  implementation_kind: 'antd_facade',
-  upstream: { package: 'antd', component: 'Button', version: '5.x' },
-  description:
-    'Ant Design Button 的受控 facade；支持 actionId，不支持 onClick。',
-  insert_snippet:
-    '<Button type="primary" actionId="save">保存</Button>',
+  module_source: '@1flowbase/native-components',
+  module_version: '1.0.0',
+  browser_asset: {
+    sha256:
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  },
+  export_name: 'Surface',
+  upstream: null,
+  description: 'Native React surface with standard DOM props.',
+  insert_snippet: '<Surface className="card">Content</Surface>',
   props: [
     {
-      name: 'actionId',
+      name: 'className',
       type: 'string',
       required: false,
-      description: '点击后发送的区块 action 标识。'
+      description: 'Standard DOM class name.'
     }
   ],
-  limitations: ['不支持 React onClick。'],
+  limitations: ['Only registered module exports are available.'],
   examples: [
     {
       title: '触发保存操作',
-      code: '<Button actionId="save">保存</Button>'
+      code: '<Surface onClick={() => undefined}>Open</Surface>'
     }
   ],
-  typescript_declaration: 'export interface ButtonProps {}',
+  typescript_declaration:
+    "declare module '@1flowbase/native-components' { export interface SurfaceProps extends import('react').HTMLAttributes<HTMLElement> {} export const Surface: import('react').ComponentType<SurfaceProps>; }",
   api_documentation:
-    "import { Button } from '@1flowbase/block-renderer/antd-facade';"
+    "import { Surface } from '@1flowbase/native-components';\n\ndeclare module '@1flowbase/native-components' { export const Surface: import('react').ComponentType<SurfaceProps>; }"
 } satisfies ConsoleFrontstageComponentCapability;
 
 const createInsertCodeMock = () =>
@@ -405,21 +409,20 @@ describe('TSX Studio insertion descriptors', () => {
     componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
       {
         data: {
-          items: [buttonComponent],
+          items: [surfaceComponent],
           total: 1,
           offset: 0,
           limit: 10,
           has_more: false,
           next_offset: null,
-          module_sources: [buttonComponent.module_source],
-          implementation_kinds: ['antd_facade']
+          module_sources: [surfaceComponent.module_source]
         },
         loading: false,
         error: null
       }
     );
     componentCapabilitiesApi.fetchFrontstageComponentCapability.mockResolvedValue(
-      buttonComponent
+      surfaceComponent
     );
     clipboard.copyTextToClipboard.mockResolvedValue(undefined);
   });
@@ -519,7 +522,7 @@ describe('TSX Studio insertion descriptors', () => {
     expect(screen.queryByText('ctx.currentUser')).not.toBeInTheDocument();
   });
 
-  test('AC-004 and AC-005 render the API table, insert the registered snippet, and copy the real API', async () => {
+  test('D2-AC-002 renders three columns, inserts the registered React snippet, and copies the on-demand API', async () => {
     const onInsertCode = createInsertCodeMock();
     render(
       <JsxStudioResourcePanel
@@ -543,21 +546,84 @@ describe('TSX Studio insertion descriptors', () => {
     expect(
       screen.getByRole('columnheader', { name: '操作' })
     ).toBeInTheDocument();
-    expect(screen.getByText(buttonComponent.description)).toBeInTheDocument();
+    expect(screen.getByText(surfaceComponent.description)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '插入' }));
 
     expect(onInsertCode).toHaveBeenCalledWith({
       kind: 'component',
-      name: 'Button',
-      moduleSource: '@1flowbase/block-renderer/antd-facade',
-      source: buttonComponent.insert_snippet
+      name: 'Surface',
+      moduleSource: '@1flowbase/native-components',
+      source: surfaceComponent.insert_snippet
     });
 
     fireEvent.click(screen.getByRole('button', { name: '复制 API' }));
     await waitFor(() =>
       expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith(
-        buttonComponent.api_documentation
+        surfaceComponent.api_documentation
+      )
+    );
+    expect(
+      componentCapabilitiesApi.fetchFrontstageComponentCapability
+    ).toHaveBeenCalledWith('workspace-1', surfaceComponent.component_id);
+    expect(surfaceComponent.typescript_declaration).toContain(
+      "import('react').ComponentType<SurfaceProps>"
+    );
+    expect(surfaceComponent.api_documentation).toContain(
+      "import { Surface } from '@1flowbase/native-components';"
+    );
+  });
+
+  test('D2-AC-001 keeps component search and server pagination in the catalog query', async () => {
+    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
+      {
+        data: {
+          items: [surfaceComponent],
+          total: 21,
+          offset: 0,
+          limit: 10,
+          has_more: true,
+          next_offset: 10,
+          module_sources: [surfaceComponent.module_source]
+        },
+        loading: false,
+        error: null
+      }
+    );
+    render(
+      <JsxStudioResourcePanel
+        block={block}
+        codeSource=""
+        pageBlocks={[block]}
+        workspaceId="workspace-1"
+        projection={projection}
+        section="components"
+        onInsertCode={createInsertCodeMock()}
+        onSaveBlock={createSaveBlockMock()}
+      />
+    );
+
+    const search = screen.getByRole('textbox', { name: '搜索组件' });
+    fireEvent.change(search, { target: { value: 'surface' } });
+    fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+    await waitFor(() =>
+      expect(
+        componentCapabilitiesHook.useFrontstageComponentCapabilities
+      ).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.objectContaining({ query: 'surface', offset: 0, limit: 10 }),
+        true
+      )
+    );
+
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() =>
+      expect(
+        componentCapabilitiesHook.useFrontstageComponentCapabilities
+      ).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.objectContaining({ query: 'surface', offset: 10, limit: 10 }),
+        true
       )
     );
   });

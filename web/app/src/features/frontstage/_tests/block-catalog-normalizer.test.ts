@@ -80,6 +80,7 @@ describe('frontstage block catalog normalizer', () => {
           }
         },
         uiCapabilities: ['responsive', 'data_binding'],
+        codeModules: [],
         raw: expect.any(Object)
       }
     ]);
@@ -92,6 +93,39 @@ describe('frontstage block catalog normalizer', () => {
     expect(hasFrontstageBlockDataPermission(block)).toBe(true);
     expect(hasFrontstageBlockActionPermission(block)).toBe(true);
     expect(hasFrontstageBlockEventPermission(block)).toBe(false);
+  });
+
+  test('D2-AC-001 retains canonical module version, digest, and declarations', () => {
+    const { items } = normalizeFrontstageBlockCatalog([
+      createCatalogEntry({
+        code_modules: [
+          {
+            source: '@1flowbase/native-components',
+            version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            type_declarations:
+              "declare module '@1flowbase/native-components' { export const Surface: import('react').ComponentType<SurfaceProps>; }"
+          }
+        ]
+      })
+    ]);
+
+    expect(items[0]?.codeModules).toEqual([
+      {
+        source: '@1flowbase/native-components',
+        version: '1.0.0',
+        browser_asset: {
+          sha256:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        },
+        type_declarations: expect.stringContaining(
+          "import('react').ComponentType<SurfaceProps>"
+        )
+      }
+    ]);
   });
 
   test('filters unknown runtime entries and reports diagnostics', () => {

@@ -19,7 +19,11 @@ export function createFrontstageJsxEditorProjection({
 }): FrontstageJsxEditorProjection {
   const monacoExtraLibs = [
     ...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS,
-    ...(catalogEntry?.codeCapabilities?.monacoExtraLibs ?? [])
+    ...(catalogEntry?.codeModules ?? []).map((codeModule) => ({
+      source: codeModule.source,
+      filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
+      content: codeModule.type_declarations
+    }))
   ];
   return {
     componentCatalogQuery: catalogEntry

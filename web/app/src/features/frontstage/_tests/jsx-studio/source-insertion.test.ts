@@ -7,7 +7,7 @@ import {
 } from '../../lib/jsx-studio/source-insertion';
 
 const sdkSource = '@1flowbase/block-sdk';
-const facadeSource = '@1flowbase/block-renderer/antd-facade';
+const componentSource = '@1flowbase/native-components';
 
 function insertBeforeReturn(source: string) {
   const offset = source.indexOf('  return');
@@ -28,10 +28,10 @@ function sourceDiagnostics(source: string): string[] {
   }
   export interface BlockModule { readonly main: unknown; }
 }
-declare module '${facadeSource}' {
+declare module '${componentSource}' {
   export const Stack: (props?: { children?: unknown }) => unknown;
   export interface ButtonProps {
-    readonly actionId?: string;
+    readonly onClick?: () => void;
     readonly children?: unknown;
   }
   export const Button: (props?: ButtonProps) => unknown;
@@ -87,7 +87,7 @@ async function main(_ctx: BlockContext) {
     );
   });
 
-  test('AC-002 adds a component value import and plans snippet/import as one edit batch', () => {
+  test('D2-AC-002 adds a standard React component import and snippet as one edit batch', () => {
     const source = `import type { BlockContext } from '${sdkSource}';
 
 async function main(ctx: BlockContext) {
@@ -99,23 +99,23 @@ async function main(ctx: BlockContext) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource,
-        source: '<Button type="primary" actionId="save">保存</Button>'
+        moduleSource: componentSource,
+        source: '<Button onClick={() => undefined}>保存</Button>'
       }
     });
     const nextSource = applyFrontstageJsxInsertionPlan(source, plan);
 
     expect(plan.edits).toHaveLength(2);
-    expect(nextSource).toContain(`import { Button } from '${facadeSource}';`);
+    expect(nextSource).toContain(`import { Button } from '${componentSource}';`);
     expect(nextSource).toContain(
-      '<Button type="primary" actionId="save">保存</Button>'
+      '<Button onClick={() => undefined}>保存</Button>'
     );
   });
 
   test('AC-002 and AC-004 merge and deduplicate an existing multiline component import', () => {
     const source = `import {
   Stack
-} from '${facadeSource}';
+} from '${componentSource}';
 
 async function main(ctx: unknown) {
   return { view: null, outputs: {} };
@@ -126,7 +126,7 @@ async function main(ctx: unknown) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource,
+        moduleSource: componentSource,
         source: '<Button></Button>'
       }
     });
@@ -137,7 +137,7 @@ async function main(ctx: unknown) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource,
+        moduleSource: componentSource,
         source: '<Button></Button>'
       }
     });
@@ -146,7 +146,7 @@ async function main(ctx: unknown) {
       secondPlan
     );
 
-    expect(secondSource.match(new RegExp(facadeSource, 'g'))).toHaveLength(1);
+    expect(secondSource.match(new RegExp(componentSource, 'g'))).toHaveLength(1);
     expect(secondSource.match(/\bButton\b/g)).toHaveLength(5);
     expect(secondPlan.edits).toHaveLength(1);
   });
@@ -184,7 +184,7 @@ export default {} satisfies BlockModule;`;
 
   test('AC-006 leaves valid variable, component, and interface insertions without TypeScript diagnostics', () => {
     const baseSource = `import type { BlockContext, BlockModule } from '${sdkSource}';
-import { Stack } from '${facadeSource}';
+import { Stack } from '${componentSource}';
 
 function main(_ctx: BlockContext) {
   return { view: null, outputs: {} };
@@ -208,7 +208,7 @@ export default { main } satisfies BlockModule;`;
         insertion: {
           kind: 'component',
           name: 'Button',
-          moduleSource: facadeSource,
+          moduleSource: componentSource,
           source: '<Button></Button>'
         }
       })
@@ -239,13 +239,11 @@ export default { main } satisfies BlockModule;`;
     expect(sourceDiagnostics(interfaceSource)).toEqual([]);
   });
 
-  test('AC-006 rejects unsupported React props that are outside the facade contract', () => {
-    const source = `import { Button } from '${facadeSource}';
+  test('D2-AC-002 accepts standard React props from the registered declaration', () => {
+    const source = `import { Button } from '${componentSource}';
 
 const view = <Button onClick={() => undefined}>保存</Button>;`;
 
-    expect(sourceDiagnostics(source)).toContain(
-      "Type '{ onClick: () => undefined; }' is not assignable to type 'ButtonProps'.\n  Property 'onClick' does not exist on type 'ButtonProps'."
-    );
+    expect(sourceDiagnostics(source)).toEqual([]);
   });
 });

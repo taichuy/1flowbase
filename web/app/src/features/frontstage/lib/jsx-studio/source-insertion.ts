@@ -1,9 +1,7 @@
-import type { FrontendBlockCodeModuleSource } from '@1flowbase/page-protocol';
-
 export interface FrontstageJsxRequiredImport {
   kind: 'type' | 'value';
   name: string;
-  moduleSource: FrontendBlockCodeModuleSource;
+  moduleSource: string;
 }
 
 export type FrontstageJsxInsertion =
@@ -14,7 +12,7 @@ export type FrontstageJsxInsertion =
   | {
       kind: 'component';
       name: string;
-      moduleSource: FrontendBlockCodeModuleSource;
+      moduleSource: string;
       source: string;
     }
   | {

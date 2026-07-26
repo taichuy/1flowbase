@@ -12,9 +12,11 @@ export interface ConsoleFrontendBlockPermissions {
 }
 
 export interface ConsoleFrontendBlockCodeModule {
-  source:
-    | '@1flowbase/block-sdk'
-    | '@1flowbase/block-renderer/antd-facade';
+  source: string;
+  version: string;
+  browser_asset: {
+    sha256: string;
+  };
   type_declarations: string;
 }
 

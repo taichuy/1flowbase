@@ -164,12 +164,6 @@ export interface ConsoleFrontstageInterfaceCapabilityQuery {
   limit?: number;
 }
 
-export type ConsoleFrontendComponentImplementationKind =
-  | 'antd_facade'
-  | 'custom';
-export type ConsoleFrontendComponentModuleSource =
-  '@1flowbase/block-renderer/antd-facade';
-
 export interface ConsoleFrontendComponentUpstream {
   package: string;
   component: string;
@@ -188,6 +182,11 @@ export interface ConsoleFrontendComponentExample {
   code: string;
 }
 
+export interface ConsoleFrontendModuleBrowserAsset {
+  sha256: string;
+  url: string;
+}
+
 export interface ConsoleFrontstageComponentCapabilitySummary {
   component_id: string;
   installation_id: string;
@@ -195,9 +194,10 @@ export interface ConsoleFrontstageComponentCapabilitySummary {
   plugin_id: string;
   plugin_version: string;
   contribution_code: string;
-  module_source: ConsoleFrontendComponentModuleSource;
+  module_source: string;
+  module_version: string;
+  browser_asset: ConsoleFrontendModuleBrowserAsset;
   export_name: string;
-  implementation_kind: ConsoleFrontendComponentImplementationKind;
   upstream: ConsoleFrontendComponentUpstream | null;
   description: string;
   insert_snippet: string;
@@ -220,7 +220,6 @@ export interface ConsoleFrontstageComponentCapabilityPage {
   has_more: boolean;
   next_offset: number | null;
   module_sources: string[];
-  implementation_kinds: ConsoleFrontendComponentImplementationKind[];
 }
 
 export interface ConsoleFrontstageComponentCapabilityQuery {
@@ -228,7 +227,6 @@ export interface ConsoleFrontstageComponentCapabilityQuery {
   contribution_code?: string;
   query?: string;
   module_source?: string;
-  implementation_kind?: ConsoleFrontendComponentImplementationKind;
   offset?: number;
   limit?: number;
 }
@@ -321,9 +319,6 @@ export function listFrontstageComponentCapabilities(
   }
   if (query.query) params.set('query', query.query);
   if (query.module_source) params.set('module_source', query.module_source);
-  if (query.implementation_kind) {
-    params.set('implementation_kind', query.implementation_kind);
-  }
   if (query.offset !== undefined) params.set('offset', String(query.offset));
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   const suffix = params.size > 0 ? `?${params.toString()}` : '';

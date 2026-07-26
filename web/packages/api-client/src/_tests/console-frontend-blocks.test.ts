@@ -32,6 +32,11 @@ describe('console-frontend-blocks client', () => {
       code_modules: [
         {
           source: '@1flowbase/block-sdk',
+          version: '1.0.0',
+          browser_asset: {
+            sha256:
+              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          },
           type_declarations: 'export declare function defineBlock(): unknown;'
         }
       ],
@@ -40,6 +45,13 @@ describe('console-frontend-blocks client', () => {
       ui_capabilities: ['responsive']
     } satisfies ConsoleFrontendBlockCatalogEntry;
 
-    expect(entry.code_template).toContain('HeroBanner');
+    expect(entry.code_modules?.[0]).toMatchObject({
+      source: '@1flowbase/block-sdk',
+      version: '1.0.0',
+      browser_asset: {
+        sha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      }
+    });
   });
 });

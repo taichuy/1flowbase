@@ -14,8 +14,7 @@ const emptyPage: FrontstageComponentCapabilityPage = {
   limit: 20,
   has_more: false,
   next_offset: null,
-  module_sources: [],
-  implementation_kinds: []
+  module_sources: []
 };
 
 export function useFrontstageComponentCapabilities(
