@@ -332,8 +332,7 @@ pub(crate) async fn start_openai_response_stream(
     previous_response_id: Option<String>,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id)
-        .with_native_passthrough(provider_transport_slot.is_some());
+    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
     start_compatible_turn_stream(
         state,
         run,

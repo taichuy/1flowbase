@@ -8,191 +8,9 @@ use crate::routes::application_public_api::stream_terminal_fallback::{
     TerminalAnswerDeltaKind,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OpenAiResponseOutputItemKind {
-    Reasoning,
-    Message,
-}
-
-pub(super) struct OpenAiResponseStreamMapper {
-    model: String,
-    previous_response_id: Option<String>,
-    active_output_item: Option<OpenAiResponseOutputItemKind>,
-    active_output_item_text: String,
-    output_item_index: usize,
-    native_passthrough_active: bool,
-    native_terminal_seen: bool,
-}
-
-impl OpenAiResponseStreamMapper {
-    pub(super) fn new(model: String, previous_response_id: Option<String>) -> Self {
-        Self {
-            model,
-            previous_response_id,
-            active_output_item: None,
-            active_output_item_text: String::new(),
-            output_item_index: 0,
-            native_passthrough_active: false,
-            native_terminal_seen: false,
-        }
-    }
-
-    pub(super) fn with_native_passthrough(mut self, active: bool) -> Self {
-        self.native_passthrough_active = active;
-        self
-    }
-
-    fn open_output_item(
-        &mut self,
-        initial_run: &NativeRunResult,
-        kind: OpenAiResponseOutputItemKind,
-        events: &mut Vec<Result<Event, Infallible>>,
-    ) {
-        if self.active_output_item == Some(kind) {
-            return;
-        }
-        self.close_output_item(initial_run, events);
-        events.push(event_json_sse(
-            "response.output_item.added",
-            json!({
-                "type": "response.output_item.added",
-                "response_id": response_id_from_run_id(initial_run.id),
-                "output_index": self.output_item_index,
-                "item": openai_response_output_item_payload(initial_run, kind, None)
-            }),
-        ));
-        self.active_output_item = Some(kind);
-        self.active_output_item_text = String::new();
-    }
-
-    fn close_output_item(
-        &mut self,
-        initial_run: &NativeRunResult,
-        events: &mut Vec<Result<Event, Infallible>>,
-    ) {
-        let Some(kind) = self.active_output_item.take() else {
-            return;
-        };
-        let text = std::mem::take(&mut self.active_output_item_text);
-        events.push(event_json_sse(
-            "response.output_item.done",
-            json!({
-                "type": "response.output_item.done",
-                "response_id": response_id_from_run_id(initial_run.id),
-                "output_index": self.output_item_index,
-                "item": openai_response_output_item_payload(initial_run, kind, Some(text))
-            }),
-        ));
-        self.output_item_index += 1;
-    }
-
-    pub(super) fn runtime_event_to_sse(
-        &mut self,
-        initial_run: &NativeRunResult,
-        event: impl Into<CompatibleRuntimeEventView>,
-    ) -> Vec<Result<Event, Infallible>> {
-        let event = event.into();
-        let envelope = event.envelope();
-        if envelope.event_type == "provider_native_event"
-            && envelope.payload["protocol"] == "openai_responses"
-        {
-            self.native_passthrough_active = true;
-            let provider_event = externalize_openai_response_identity(
-                initial_run,
-                self.previous_response_id.as_deref(),
-                envelope.payload["event"].clone(),
-            );
-            let event_type = provider_event
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            self.native_terminal_seen |= matches!(
-                event_type.as_str(),
-                "response.completed" | "response.done" | "response.failed" | "response.incomplete"
-            );
-            return if event_type.is_empty()
-                || event_type.contains('\n')
-                || event_type.contains('\r')
-            {
-                vec![json_sse(provider_event)]
-            } else {
-                vec![event_json_sse(&event_type, provider_event)]
-            };
-        }
-        if self.native_passthrough_active
-            && (event.terminal().is_none() || self.native_terminal_seen)
-        {
-            return Vec::new();
-        }
-        let mut events = Vec::new();
-        match event.answer_delta() {
-            Some(CompatibleAnswerDeltaKind::Reasoning) => {
-                self.open_output_item(
-                    initial_run,
-                    OpenAiResponseOutputItemKind::Reasoning,
-                    &mut events,
-                );
-                if let Some(text) = envelope.text.as_deref().filter(|text| !text.is_empty()) {
-                    self.active_output_item_text.push_str(text);
-                }
-            }
-            Some(CompatibleAnswerDeltaKind::Text) => {
-                self.open_output_item(
-                    initial_run,
-                    OpenAiResponseOutputItemKind::Message,
-                    &mut events,
-                );
-                if let Some(text) = envelope.text.as_deref().filter(|text| !text.is_empty()) {
-                    self.active_output_item_text.push_str(text);
-                }
-            }
-            _ => {}
-        }
-
-        if event.terminal().is_some() {
-            self.close_output_item(initial_run, &mut events);
-        }
-        events.extend(openai_response_runtime_event_to_sse(
-            initial_run,
-            &self.model,
-            self.previous_response_id.as_deref(),
-            event.into_envelope(),
-        ));
-        events
-    }
-}
-
-fn externalize_openai_response_identity(
-    initial_run: &NativeRunResult,
-    previous_response_id: Option<&str>,
-    mut provider_event: Value,
-) -> Value {
-    let external_response_id = response_id_from_run_id(initial_run.id);
-    let Some(event) = provider_event.as_object_mut() else {
-        return provider_event;
-    };
-    if event.contains_key("response_id") {
-        event.insert(
-            "response_id".to_string(),
-            Value::String(external_response_id.clone()),
-        );
-    }
-    if let Some(response) = event.get_mut("response").and_then(Value::as_object_mut) {
-        if response.contains_key("id") {
-            response.insert("id".to_string(), Value::String(external_response_id));
-        }
-        if response.contains_key("previous_response_id") {
-            response.insert(
-                "previous_response_id".to_string(),
-                previous_response_id
-                    .map(|value| Value::String(value.to_string()))
-                    .unwrap_or(Value::Null),
-            );
-        }
-    }
-    provider_event
-}
+mod openai_responses;
+use openai_responses::OpenAiResponseOutputItemKind;
+pub(super) use openai_responses::OpenAiResponseStreamMapper;
 
 fn openai_response_output_item_payload(
     initial_run: &NativeRunResult,
@@ -286,7 +104,7 @@ fn openai_response_runtime_event_to_sse(
             json!({
                 "type": "response.reasoning_text.delta",
                 "response_id": response_id_from_run_id(initial_run.id),
-                "item_id": format!("msg_{}", initial_run.id),
+                "item_id": format!("rs_{}", initial_run.id),
                 "output_index": 0,
                 "content_index": 0,
                 "delta": envelope.text.unwrap_or_default()
@@ -735,9 +553,10 @@ mod openai_chat;
 #[cfg(test)]
 pub(super) use anthropic_stream::anthropic_delta_payload;
 pub(super) use anthropic_stream::AnthropicStreamMapper;
+pub(super) use openai_chat::OpenAiChatStreamMapper;
+#[cfg(test)]
 pub(super) use openai_chat::{
     openai_delta_chunk_payload, openai_finish_chunk_payload, openai_tool_call_chunk_payload,
-    OpenAiChatStreamMapper,
 };
 
 pub(super) fn canonical_runtime_error_message(run: &NativeRunResult) -> &str {

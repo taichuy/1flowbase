@@ -1,0 +1,166 @@
+use super::*;
+
+#[derive(Default)]
+struct DecodedResponsesStream {
+    text_deltas: Vec<String>,
+    completed_count: usize,
+}
+
+fn decode_responses_sse(body: &str) -> DecodedResponsesStream {
+    let mut decoded = DecodedResponsesStream::default();
+    let mut event_name = None;
+    for line in body.lines() {
+        if let Some(name) = line.strip_prefix("event: ") {
+            event_name = Some(name);
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data: ") else {
+            continue;
+        };
+        let payload: serde_json::Value =
+            serde_json::from_str(data).expect("Responses SSE data must be valid JSON");
+        match event_name.take() {
+            Some("response.output_text.delta") => decoded
+                .text_deltas
+                .push(payload["delta"].as_str().unwrap_or_default().to_string()),
+            Some("response.completed") => decoded.completed_count += 1,
+            _ => {}
+        }
+    }
+    decoded
+}
+
+#[tokio::test]
+async fn ac_001_ac_002_responses_decoder_preserves_ordered_text_deltas_exactly() {
+    let mut run = native_run();
+    run.answer = Some("terminal answer must not be reconstructed".to_string());
+    let fixture = [
+        "A",
+        " ",
+        " ",
+        "\n",
+        "\n",
+        "`",
+        "`",
+        "---",
+        "---",
+        "中文🙂",
+        "\r\n",
+        "",
+        "Z",
+    ];
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
+    let mut events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+    );
+
+    for (index, text) in fixture.iter().enumerate() {
+        let projected = mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 2,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    (*text).to_string(),
+                    index,
+                    Some("node-llm"),
+                    None,
+                    Some("text"),
+                ),
+            ),
+        );
+        assert!(
+            !projected.is_empty(),
+            "every canonical delta projects immediately"
+        );
+        events.extend(projected);
+    }
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            fixture.len() as i64 + 2,
+            debug_stream_events::flow_finished(
+                run.id,
+                json!({ "answer": "terminal answer must not be reconstructed" }),
+            ),
+        ),
+    ));
+
+    let response = test_projected_events_response(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Responses SSE body should be readable");
+    let body = String::from_utf8(body.to_vec()).expect("Responses SSE must be UTF-8");
+    let decoded = decode_responses_sse(&body);
+
+    assert_eq!(decoded.text_deltas, fixture.map(str::to_string));
+    assert_eq!(decoded.text_deltas.concat(), fixture.concat());
+    assert_eq!(decoded.completed_count, 1);
+    assert!(!body.contains("terminal answer must not be reconstructed"));
+}
+
+#[test]
+fn ac_003_responses_terminal_is_absorbing() {
+    let run = native_run();
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
+    let terminal = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_finished(run.id, json!({})),
+        ),
+    );
+    assert_eq!(terminal.len(), 1);
+    assert!(mapper
+        .runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                2,
+                debug_stream_events::answer_text_delta(
+                    "node-answer",
+                    "late".to_string(),
+                    0,
+                    Some("node-llm"),
+                    None,
+                    Some("text"),
+                ),
+            ),
+        )
+        .is_empty());
+    assert!(mapper
+        .runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                3,
+                debug_stream_events::flow_finished(run.id, json!({})),
+            ),
+        )
+        .is_empty());
+}
+
+#[test]
+fn ac_006_provider_native_events_are_not_a_public_response_truth() {
+    let run = native_run();
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
+    let native = RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::provider_native_event(
+            "node-llm",
+            Uuid::new_v4(),
+            "openai_responses".to_string(),
+            json!({
+                "type": "response.output_text.delta",
+                "delta": "must-not-escape"
+            }),
+        ),
+    );
+
+    assert!(mapper.runtime_event_to_sse(&run, native).is_empty());
+}

@@ -17,6 +17,7 @@ mod anthropic_resume;
 mod anthropic_streaming;
 mod openai_chat;
 mod openai_live_text;
+mod openai_responses;
 mod openai_resume;
 mod openai_terminal;
 mod responses_callback;
