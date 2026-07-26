@@ -1,10 +1,8 @@
-import type { FrontstageArtifactCacheStore } from './artifact-cache';
+export const FRONTSTAGE_RUNTIME_RECORD_DATABASE =
+  '1flowbase-frontstage-runtime-records';
+export const FRONTSTAGE_RUNTIME_RECORD_OBJECT_STORE = 'records';
 
-export const FRONTSTAGE_ARTIFACT_CACHE_DATABASE =
-  '1flowbase-frontstage-compiled-artifacts';
-export const FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE = 'artifacts';
-
-export interface IndexedDbArtifactCacheStoreOptions {
+export interface IndexedDbRecordStoreOptions {
   indexedDB?: IDBFactory | null;
   databaseName?: string;
   objectStoreName?: string;
@@ -34,24 +32,18 @@ export class IndexedDbUnavailableError extends Error {
   }
 }
 
-export function createIndexedDbArtifactCacheStore(
-  options: IndexedDbArtifactCacheStoreOptions = {}
-): FrontstageArtifactCacheStore {
-  return createIndexedDbRecordStore(options);
-}
-
 export function createIndexedDbRecordStore<
   TRecord extends FrontstageIndexedDbRecord
 >(
-  options: IndexedDbArtifactCacheStoreOptions = {}
+  options: IndexedDbRecordStoreOptions = {}
 ): FrontstageIndexedDbRecordStore<TRecord> {
   const factory = Object.hasOwn(options, 'indexedDB')
     ? (options.indexedDB ?? null)
     : readGlobalIndexedDb();
   const databaseName =
-    options.databaseName ?? FRONTSTAGE_ARTIFACT_CACHE_DATABASE;
+    options.databaseName ?? FRONTSTAGE_RUNTIME_RECORD_DATABASE;
   const objectStoreName =
-    options.objectStoreName ?? FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE;
+    options.objectStoreName ?? FRONTSTAGE_RUNTIME_RECORD_OBJECT_STORE;
   let databasePromise: Promise<IDBDatabase> | null = null;
 
   const open = () => {
@@ -173,7 +165,7 @@ async function runRequest<T>(
   objectStoreName: string,
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore) => IDBRequest<T>,
-  onRequestSuccess?: IndexedDbArtifactCacheStoreOptions['onRequestSuccess']
+  onRequestSuccess?: IndexedDbRecordStoreOptions['onRequestSuccess']
 ): Promise<T> {
   let database: IDBDatabase;
   try {

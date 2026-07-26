@@ -24,7 +24,6 @@ import {
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -43,8 +42,6 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
     preparations: [],
     retryBlock: vi.fn()
@@ -75,10 +72,6 @@ vi.mock(
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
-vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
-  () => runtimeSessionsHook
-);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
@@ -489,17 +482,6 @@ function mockFrontstageBlockCode() {
   });
 }
 
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
-) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
-}
 describe('FrontStagePage - page tree CRUD', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -508,7 +490,6 @@ describe('FrontStagePage - page tree CRUD', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
-    mockRuntimeSessions();
     blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',

@@ -4,10 +4,7 @@ import type {
   NativeTrustedBlockImportBinding,
   NativeTrustedBlockInjectedModule
 } from '../native-trusted-block/source-evaluator';
-import {
-  sha256Text,
-  type JsonValue
-} from '../js-block-runtime/compiled-artifact';
+import { sha256Text } from './sha256';
 import { transformNativeReactComponentSource } from './component-transform';
 import {
   canonicalizeNativeReactCatalogDependencyLock,
@@ -15,6 +12,15 @@ import {
   type NativeReactCatalogDependencyLock
 } from './module-registry/contracts';
 import { diagnoseLegacyBlockModuleSource } from './source-contract';
+
+export { sha256Text } from './sha256';
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export const NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT =
   '1flowbase/native-react-component' as const;

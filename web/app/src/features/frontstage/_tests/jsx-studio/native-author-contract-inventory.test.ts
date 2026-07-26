@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from '../../lib/jsx-studio/native-react-editor-contract';
@@ -44,5 +46,37 @@ describe('D4 Native React author contract inventory', () => {
     expect(manifest).toContain('export default function ExampleBlock');
     expect(builtInTemplate).toContain('export default function Block');
     expect(monacoDeclarations).toContain('interface NativeReactBlockProps');
+  });
+
+  test('D4-P4 has no production entrypoint for the retired code-block runtime', () => {
+    const repoRoot = fileURLToPath(
+      new URL('../../../../../../../', import.meta.url)
+    );
+    const retiredEntrypoints = [
+      'web/packages/page-runtime/src/js-block-worker-executor.ts',
+      'web/packages/page-runtime/src/js-block-worker-runtime.ts',
+      'web/packages/page-runtime/src/js-block-host-effect-bridge.ts',
+      'web/packages/page-runtime/src/js-block-runtime/compiled-artifact.ts',
+      'web/app/src/features/frontstage/components/RestrictedBlockRuntimePreview.tsx',
+      'web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-runtime-sessions.ts',
+      'web/app/src/shared/code-block/default-js-block-runtime.worker.ts',
+      'web/packages/antd-facade/src/index.ts'
+    ];
+
+    for (const retiredEntrypoint of retiredEntrypoints) {
+      expect(existsSync(resolve(repoRoot, retiredEntrypoint))).toBe(false);
+    }
+
+    const currentSurfaces = [
+      'web/packages/page-runtime/src/index.ts',
+      'web/packages/block-sdk/src/index.ts',
+      'web/app/src/features/frontstage/components/JsBlockTrialPanel.tsx',
+      'web/app/src/features/frontstage/components/PageCanvas.tsx',
+      'web/app/src/features/auth/components/public-auth-block-host.ts'
+    ].map((file) => readFileSync(resolve(repoRoot, file), 'utf8'));
+
+    expect(currentSurfaces.join('\n')).not.toMatch(
+      /BlockModule|BlockResult|JsBlockWorker|RestrictedBlockRuntime|runtimeSessionEntries|createPublicAuthRunRequest|formValues/u
+    );
   });
 });

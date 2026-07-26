@@ -7,7 +7,9 @@ import {
 } from '../console/frontend-blocks';
 
 describe('console-frontend-blocks client', () => {
-  vi.spyOn(transport, 'apiFetch').mockImplementation(async (input) => input as never);
+  vi.spyOn(transport, 'apiFetch').mockImplementation(
+    async (input) => input as never
+  );
 
   test('lists frontend block catalog entries from console endpoint', async () => {
     await expect(listConsoleFrontendBlocks()).resolves.toMatchObject({
@@ -24,9 +26,10 @@ describe('console-frontend-blocks client', () => {
       plugin_version: '0.1.0',
       contribution_code: 'hero_banner',
       title: 'Hero Banner',
-      runtime: 'iframe',
+      runtime: 'native_react',
       entry: 'blocks/hero/index.html',
-      code_template: 'export default function HeroBanner() { return <section>Hero</section>; }',
+      code_template:
+        'export default function HeroBanner() { return <section>Hero</section>; }',
       code_template_version: '1.0.0',
       code_template_language: 'tsx',
       code_modules: [

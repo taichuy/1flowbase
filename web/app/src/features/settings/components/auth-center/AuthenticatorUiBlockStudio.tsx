@@ -7,8 +7,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 import {
   createPublicAuthInputs,
   createPublicAuthNativeBlockContextCapabilities,
-  createPublicAuthPreviewCapabilityHandlers,
-  PUBLIC_AUTH_RUNTIME_LIMITS
+  createPublicAuthPreviewCapabilityHandlers
 } from '../../../auth/components/public-auth-block-host';
 import {
   JsBlockTrialPanel,
@@ -94,13 +93,6 @@ export function AuthenticatorUiBlockStudio({
     }),
     [authoringCatalogEntry]
   );
-  const authorContextVariables = useMemo(
-    () =>
-      contextVariables?.filter(
-        ({ member_path }) => member_path !== 'inputs.auth_event'
-      ) ?? null,
-    [contextVariables]
-  );
   const [draft, setDraft] = useState(source);
   const legacyDiagnostic = useMemo(
     () => diagnoseLegacyBlockModuleSource(draft),
@@ -130,10 +122,7 @@ export function AuthenticatorUiBlockStudio({
         ...unavailable,
         workspace: { id: workspaceId },
         application: null,
-        inputs: createPublicAuthInputs(
-          authenticatorId,
-          publicVariables ?? {}
-        ),
+        inputs: createPublicAuthInputs(authenticatorId, publicVariables ?? {}),
         ...createPublicAuthNativeBlockContextCapabilities({
           requestId,
           instanceEpoch,
@@ -244,7 +233,7 @@ export function AuthenticatorUiBlockStudio({
         <JsxStudioResourcePanel
           block={authoringBlock}
           codeSource={draft}
-          contextVariables={authorContextVariables}
+          contextVariables={contextVariables}
           interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
@@ -255,10 +244,7 @@ export function AuthenticatorUiBlockStudio({
                 block={authoringBlock}
                 catalogEntry={authoringCatalogEntry}
                 code={previewRequest.source}
-                contextSnapshot={{}}
                 createBlockContext={createPreviewBlockContext}
-                handlers={previewCapabilities}
-                limits={PUBLIC_AUTH_RUNTIME_LIMITS}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}
                 onRevokeDraftRun={previewCapabilities.revokeDraftRun}
                 revision={previewRequest.revision}

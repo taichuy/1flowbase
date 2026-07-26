@@ -1,12 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  createFrontstageBlockBindingRuntimeLimits,
   readFrontstageBlockDataBindings,
   writeFrontstageBlockDataBindings
 } from '../../lib/jsx-studio/block-data-binding';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
-import type { RestrictedBlockLoaderLimits } from '../../lib/restricted-block-loader';
 
 function createBlock(): FrontstageBlockInstance {
   return {
@@ -51,26 +49,15 @@ function createBlock(): FrontstageBlockInstance {
     layout: { order: 0 },
     order: 0,
     runtime: {
-      kind: 'iframe',
+      kind: 'native_react',
       entry: 'index.js',
-      hint: 'iframe'
+      hint: 'native_react'
     }
   };
 }
 
-const baseLimits: RestrictedBlockLoaderLimits = {
-  timeoutMs: 1000,
-  maxRenderDepth: 8,
-  maxRenderNodes: 250,
-  maxEventChainDepth: 4,
-  allowedQueries: ['stale.query'],
-  allowedActions: ['stale.action'],
-  allowedEvents: [],
-  allowedDataOperations: []
-};
-
 describe('frontstage JSX Studio block data binding', () => {
-  test('uses persisted bindings as the runtime query/action allowlist', () => {
+  test('reads persisted query and action bindings', () => {
     const block = createBlock();
 
     expect(readFrontstageBlockDataBindings(block.props)).toEqual([
@@ -87,14 +74,6 @@ describe('frontstage JSX Studio block data binding', () => {
         params: { model: 'orders' }
       }
     ]);
-
-    expect(
-      createFrontstageBlockBindingRuntimeLimits(block, baseLimits)
-    ).toMatchObject({
-      timeoutMs: 1000,
-      allowedQueries: ['frontstage.data_model.record.list'],
-      allowedActions: ['frontstage.data_model.record.create']
-    });
   });
 
   test('updates dataBinding without replacing unrelated block props', () => {

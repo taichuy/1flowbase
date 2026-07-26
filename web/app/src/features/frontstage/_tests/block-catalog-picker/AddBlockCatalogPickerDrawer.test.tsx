@@ -9,7 +9,7 @@ function createCatalogEntry(
 ): NormalizedFrontstageBlockCatalogEntry {
   return {
     id: '1flowbase:frontstage.js-ui-block',
-    runtimeKind: 'iframe',
+    runtimeKind: 'native_react',
     installationId: 'builtin-installation',
     providerCode: '1flowbase',
     pluginId: 'builtin-frontstage',
@@ -34,8 +34,7 @@ function createCatalogEntry(
         language: 'tsx'
       },
       allowedImports: [],
-      monacoExtraLibs: [],
-      workerModuleSources: []
+      monacoExtraLibs: []
     },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw'],
     ...overrides
@@ -53,7 +52,9 @@ describe('AddBlockCatalogPickerDrawer', () => {
       />
     );
 
-    expect(screen.getByRole('dialog', { name: '新增区块' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: '新增区块' })
+    ).toBeInTheDocument();
     expect(
       screen.getByText('当前没有可用区块目录项，暂时无法新增区块。')
     ).toBeInTheDocument();

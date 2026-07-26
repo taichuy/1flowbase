@@ -121,12 +121,12 @@ const block: FrontstageBlockInstance = {
   presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },
   order: 0,
-  runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+  runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
 };
 
 const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   id: '1flowbase:frontstage.js-ui-block',
-  runtimeKind: 'iframe',
+  runtimeKind: 'native_react',
   installationId: 'builtin-installation',
   providerCode: '1flowbase',
   pluginId: 'builtin-frontstage',
@@ -143,11 +143,12 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
     monacoExtraLibs: [
       {
         source: '@1flowbase/native-components',
-        filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts',
-        content: "declare module '@1flowbase/native-components' { export const Button: unknown; }"
+        filePath:
+          'file:///node_modules/@1flowbase/native-components/index.d.ts',
+        content:
+          "declare module '@1flowbase/native-components' { export const Button: unknown; }"
       }
-    ],
-    workerModuleSources: []
+    ]
   },
   raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
 };

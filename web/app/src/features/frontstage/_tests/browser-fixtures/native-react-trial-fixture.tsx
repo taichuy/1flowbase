@@ -251,7 +251,7 @@ function fixtureBlock(
     renderer_version: 'v1',
     codeRef: `${id}-code`,
     contributionCode: `qa.native.${id}`,
-    runtime: { kind: 'iframe', entry: `blocks/${id}.js` },
+    runtime: { kind: 'native_react', entry: `blocks/${id}.js` },
     layout: { order, region: 'main', span: 12 },
     props,
     ports

@@ -25,7 +25,6 @@ import {
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstagePageTab } from '../../api/page-tabs';
-import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -47,8 +46,6 @@ const dataCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageDataCapabilities: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
     preparations: [],
     retryBlock: vi.fn()
@@ -101,10 +98,6 @@ vi.mock(
   () => dataCapabilitiesHook
 );
 vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
-  () => runtimeSessionsHook
-);
-vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
@@ -119,15 +112,9 @@ vi.mock('../../components/JsBlockTrialPanel', () => ({
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
 const PLUGIN_CODE_TEMPLATE = `
-import { Text } from '@1flowbase/block-renderer/antd-facade';
-
-async function main() {
-  return {
-    view: Text({ children: 'Plugin template ready' }),
-    outputs: {}
-  };
+export default function PluginBlock() {
+  return <p>Plugin template ready</p>;
 }
-export default { main };
 `.trim();
 
 vi.setConfig({ testTimeout: SLOW_FRONTSTAGE_TEST_TIMEOUT });
@@ -384,7 +371,7 @@ function createCatalogEntry(
 ): NormalizedFrontstageBlockCatalogEntry {
   return {
     id: '1flowbase:frontstage.js-ui-block',
-    runtimeKind: 'iframe',
+    runtimeKind: 'native_react',
     installationId: 'builtin-installation',
     providerCode: '1flowbase',
     pluginId: 'builtin-frontstage',
@@ -409,8 +396,7 @@ function createCatalogEntry(
         language: 'tsx'
       },
       allowedImports: [],
-      monacoExtraLibs: [],
-      workerModuleSources: []
+      monacoExtraLibs: []
     },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw'],
     ...overrides
@@ -450,18 +436,6 @@ function mockFrontstageDataCapabilities() {
   });
 }
 
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
-) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
-}
-
 function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
   const payload = input.payload;
   if (typeof payload !== 'object' || payload === null) {
@@ -485,7 +459,6 @@ describe('FrontStagePage - design controls', () => {
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
     mockFrontstageDataCapabilities();
-    mockRuntimeSessions();
     pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
       {
         id: 'tab-1',
@@ -738,7 +711,7 @@ describe('FrontStagePage - design controls', () => {
       },
       props: { title: 'Orders' },
       'x-layout': { order: 0, region: 'main' },
-      runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+      runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
     };
 
     render(
@@ -825,7 +798,7 @@ describe('FrontStagePage - design controls', () => {
       },
       props: {},
       'x-layout': { order: 0, region: 'main' },
-      runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+      runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
     };
 
     render(
@@ -997,9 +970,9 @@ describe('FrontStagePage - design controls', () => {
         region: 'main'
       },
       runtime: {
-        kind: 'iframe',
+        kind: 'native_react',
         entry: 'index.js',
-        hint: 'iframe',
+        hint: 'native_react',
         code_template_version: '2.4.0',
         code_template_language: 'tsx'
       }

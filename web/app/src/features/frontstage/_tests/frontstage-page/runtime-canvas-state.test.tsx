@@ -14,7 +14,6 @@ import {
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -33,8 +32,6 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
     preparations: [],
     retryBlock: vi.fn()
@@ -65,10 +62,6 @@ vi.mock(
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
-vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
-  () => runtimeSessionsHook
-);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
@@ -325,7 +318,7 @@ function createCatalogEntry(
 ): NormalizedFrontstageBlockCatalogEntry {
   return {
     id: '1flowbase:frontstage.js-ui-block',
-    runtimeKind: 'iframe',
+    runtimeKind: 'native_react',
     installationId: 'builtin-installation',
     providerCode: '1flowbase',
     pluginId: 'builtin-frontstage',
@@ -372,9 +365,9 @@ function createCatalogMatchedBlockPayload(
       region: 'main'
     },
     runtime: {
-      kind: 'iframe',
+      kind: 'native_react',
       entry: 'index.js',
-      hint: 'iframe'
+      hint: 'native_react'
     },
     ...overrides
   };
@@ -405,17 +398,6 @@ function mockFrontstageBlockCode() {
   });
 }
 
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
-) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
-}
 describe('FrontStagePage - runtime canvas state', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -424,7 +406,6 @@ describe('FrontStagePage - runtime canvas state', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
-    mockRuntimeSessions();
     blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',
@@ -521,9 +502,6 @@ describe('FrontStagePage - runtime canvas state', () => {
       await screen.findByTestId('block-slot-frontstage-js-block-1')
     ).toBeInTheDocument();
     expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
-    expect(
-      runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions
-    ).not.toHaveBeenCalled();
   });
 
   test('keeps the empty page tree free of placeholder content', () => {

@@ -1,8 +1,10 @@
 import { frontstageComponentModuleAssetPath } from '@1flowbase/api-client';
 import {
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES,
+  FRONTEND_BLOCK_CODE_MODULE_SOURCES,
   FRONTEND_BLOCK_RUNTIMES,
   FRONTEND_BLOCK_UI_CAPABILITIES,
+  type FrontendBlockCodeModuleSource,
   type FrontendBlockContextPrimitive,
   type FrontendBlockRuntime,
   type FrontendBlockUiCapability
@@ -18,8 +20,7 @@ import type { FrontstageBlockCatalogEntry } from '../api/block-catalog';
 export const FRONTSTAGE_BLOCK_RUNTIME_KINDS = FRONTEND_BLOCK_RUNTIMES;
 export const FRONTSTAGE_BLOCK_CONTEXT_PRIMITIVES =
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES;
-export const FRONTSTAGE_BLOCK_UI_CAPABILITIES =
-  FRONTEND_BLOCK_UI_CAPABILITIES;
+export const FRONTSTAGE_BLOCK_UI_CAPABILITIES = FRONTEND_BLOCK_UI_CAPABILITIES;
 
 export type FrontstageBlockRuntimeKind = FrontendBlockRuntime;
 export type FrontstageBlockContextPrimitive = FrontendBlockContextPrimitive;
@@ -161,10 +162,12 @@ export function normalizeFrontstageBlockCatalog(
       code_template_version: entry.code_template_version,
       code_template_language: entry.code_template_language,
       code_modules: (codeModules ?? []).flatMap((codeModule) =>
-        codeModule.source === '@1flowbase/block-sdk'
+        FRONTEND_BLOCK_CODE_MODULE_SOURCES.includes(
+          codeModule.source as FrontendBlockCodeModuleSource
+        )
           ? [
               {
-                source: codeModule.source,
+                source: codeModule.source as FrontendBlockCodeModuleSource,
                 type_declarations: codeModule.type_declarations
               }
             ]
@@ -192,7 +195,8 @@ export function normalizeFrontstageBlockCatalog(
       },
       uiCapabilities: capabilities,
       codeModules,
-      ...(codeCapabilities.template || codeCapabilities.allowedImports.length > 0
+      ...(codeCapabilities.template ||
+      codeCapabilities.allowedImports.length > 0
         ? { codeCapabilities }
         : {}),
       raw: entry
@@ -246,16 +250,10 @@ export function resolveFrontstageNativeDependencyLock({
       };
 }
 
-export function isFrontstageBlockIframeRuntime(
+export function isFrontstageBlockNativeRuntime(
   entry: NormalizedFrontstageBlockCatalogEntry | FrontstageBlockRuntimeKind
 ): boolean {
-  return getRuntimeKind(entry) === 'iframe';
-}
-
-export function isFrontstageBlockRestrictedRuntime(
-  entry: NormalizedFrontstageBlockCatalogEntry | FrontstageBlockRuntimeKind
-): boolean {
-  return isFrontstageBlockIframeRuntime(entry);
+  return getRuntimeKind(entry) === 'native_react';
 }
 
 export function supportsFrontstageBlockCapability(

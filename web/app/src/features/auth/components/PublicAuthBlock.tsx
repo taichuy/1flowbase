@@ -12,8 +12,7 @@ import type { PublicLoginInstance } from '../api/session';
 import {
   createPublicAuthInputs,
   createPublicAuthNativeBlockContextCapabilities,
-  dispatchPublicAuthApi,
-  PUBLIC_AUTH_RUNTIME_LIMITS
+  dispatchPublicAuthApi
 } from './public-auth-block-host';
 
 export interface PublicAuthSession {
@@ -35,7 +34,10 @@ export function PublicAuthBlock({
   nativeCompiler,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: PublicAuthBlockProps) {
-  const block = useMemo(() => createPublicAuthNativeBlock(instance), [instance]);
+  const block = useMemo(
+    () => createPublicAuthNativeBlock(instance),
+    [instance]
+  );
   const createBlockContext = useCallback(
     ({
       requestId,
@@ -68,10 +70,7 @@ export function PublicAuthBlock({
         ...unavailable,
         workspace: { id: 'public-auth' },
         application: null,
-        inputs: createPublicAuthInputs(
-          instance.id,
-          instance.public_variables
-        ),
+        inputs: createPublicAuthInputs(instance.id, instance.public_variables),
         ...capabilities
       };
     },
@@ -83,14 +82,11 @@ export function PublicAuthBlock({
       block={block}
       catalogEntry={null}
       code={instance.public_ui_block}
-      contextSnapshot={{}}
-      limits={PUBLIC_AUTH_RUNTIME_LIMITS}
       revision={`public-auth:${instance.id}`}
       createBlockContext={createBlockContext}
       nativeCompiler={nativeCompiler}
       nativeDependencyLock={[]}
       nativeModuleRegistryFactory={nativeModuleRegistryFactory}
-      surfaceOnly
     />
   );
 }
@@ -127,8 +123,7 @@ function createPublicAuthNativeBlock(
 
 function isAuthenticationCompletionPath(path: string): boolean {
   return (
-    path === '/api/public/auth/sign-in' ||
-    path === '/api/public/auth/sign-up'
+    path === '/api/public/auth/sign-in' || path === '/api/public/auth/sign-up'
   );
 }
 

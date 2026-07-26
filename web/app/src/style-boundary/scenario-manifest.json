@@ -159,7 +159,6 @@
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",
       "web/app/src/features/frontstage/components/PageCanvas.tsx",
       "web/app/src/features/frontstage/components/page-canvas.css",
-      "web/app/src/features/frontstage/components/RestrictedBlockRuntimePreview.tsx",
       "web/app/src/features/frontstage/components/BlockHoverToolbar.tsx",
       "web/app/src/features/frontstage/components/FrontstagePageTabs.tsx",
       "web/app/src/features/frontstage/components/frontstage-page-tabs.css",

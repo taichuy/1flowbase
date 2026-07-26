@@ -8,7 +8,6 @@
     "noEmit": false,
     "emitDeclarationOnly": true,
     "paths": {
-      "@1flowbase/antd-facade": ["../antd-facade/dist/index.d.ts"],
       "@1flowbase/page-protocol": ["../page-protocol/dist/index.d.ts"]
     }
   },

@@ -6,11 +6,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { useFrontstageRuntimeCacheLifecycle } from '../../hooks/use-frontstage-runtime-cache-lifecycle';
 import {
-  clearFrontstageRuntimeSessionCache,
-  frontstageRuntimeResultCache,
-  readFrontstageRuntimeSessionCacheSize
-} from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
-import {
   FrontstageRuntimeObservationBuffer,
   readFrontstageRuntimeObservations,
   recordFrontstageRuntimeObservation,
@@ -34,23 +29,13 @@ function seedActorScopedRuntimeState(
   queryClient: QueryClient,
   actorId: string
 ) {
-  frontstageRuntimeResultCache.set(`runtime:${actorId}`, {
-    view: { primitive: 'Text', props: { children: actorId } },
-    outputs: { actorId },
-    schemaValidationOptions: {
-      maxDepth: 8,
-      maxNodes: 250,
-      allowedDataPermissions: [],
-      allowedEvents: []
-    }
-  });
   queryClient.setQueryData(
     ['frontstage', actorId, 'workspace-1', 'pages', 'page-1'],
     { actorId }
   );
   recordFrontstageRuntimeObservation({
     stage: 'present',
-    cacheTier: 'l1',
+    cacheTier: 'l2',
     actorId,
     workspaceId: 'workspace-1',
     pageId: 'page-1',
@@ -62,11 +47,10 @@ function seedActorScopedRuntimeState(
 describe('frontstage runtime cache lifecycle', () => {
   beforeEach(() => {
     resetAuthStore();
-    clearFrontstageRuntimeSessionCache();
     resetFrontstageRuntimeObservations();
   });
 
-  test('keeps removed L1 storage empty while clearing queries and observations on actor transitions', async () => {
+  test('clears frontstage queries and observations on actor transitions', async () => {
     const queryClient = new QueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -75,7 +59,6 @@ describe('frontstage runtime cache lifecycle', () => {
     renderHook(() => useFrontstageRuntimeCacheLifecycle(), { wrapper });
 
     seedActorScopedRuntimeState(queryClient, 'actor-a');
-    expect(readFrontstageRuntimeSessionCacheSize()).toBe(0);
     expect(
       queryClient.getQueryCache().findAll({ queryKey: ['frontstage'] })
     ).toHaveLength(1);
@@ -83,7 +66,6 @@ describe('frontstage runtime cache lifecycle', () => {
 
     act(() => useAuthStore.getState().setAnonymous());
     await waitFor(() => {
-      expect(readFrontstageRuntimeSessionCacheSize()).toBe(0);
       expect(
         queryClient.getQueryCache().findAll({ queryKey: ['frontstage'] })
       ).toHaveLength(0);
@@ -93,7 +75,6 @@ describe('frontstage runtime cache lifecycle', () => {
     seedActorScopedRuntimeState(queryClient, 'anonymous');
     act(() => authenticate('actor-b'));
     await waitFor(() => {
-      expect(readFrontstageRuntimeSessionCacheSize()).toBe(0);
       expect(
         queryClient.getQueryCache().findAll({ queryKey: ['frontstage'] })
       ).toHaveLength(0);
@@ -111,7 +92,7 @@ describe('frontstage runtime cache lifecycle', () => {
       tabId: 'tab-1',
       blockId: 'block-1'
     };
-    observations.record({ ...base, stage: 'worker_boot' });
+    observations.record({ ...base, stage: 'compile' });
     observations.record({ ...base, stage: 'present' });
     observations.record({ ...base, stage: 'present' });
 
@@ -123,16 +104,6 @@ describe('frontstage runtime cache lifecycle', () => {
 
   test('AC-022 starts non-blocking persistent prune and purges the previous actor on logout/switch', async () => {
     const queryClient = new QueryClient();
-    const artifactCache = {
-      deleteActor: vi.fn(async () => ({
-        status: 'completed' as const,
-        deleted: 0
-      })),
-      pruneWorkspace: vi.fn(async () => ({
-        status: 'completed' as const,
-        deleted: 0
-      }))
-    };
     const nativeReactArtifactCache = {
       deleteActor: vi.fn(async () => ({
         status: 'completed' as const,
@@ -150,18 +121,11 @@ describe('frontstage runtime cache lifecycle', () => {
     renderHook(
       () =>
         useFrontstageRuntimeCacheLifecycle({
-          artifactCache,
           nativeReactArtifactCache,
-          runtimeFingerprint: 'runtime-a',
           nativeReactRuntimeFingerprint: 'native-runtime-a'
         }),
       { wrapper }
     );
-    expect(artifactCache.pruneWorkspace).toHaveBeenCalledWith({
-      actorId: 'actor-a',
-      workspaceId: 'workspace-1',
-      runtimeFingerprint: 'runtime-a'
-    });
     expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenCalledWith({
       actorId: 'actor-a',
       workspaceId: 'workspace-1',
@@ -170,15 +134,9 @@ describe('frontstage runtime cache lifecycle', () => {
 
     act(() => authenticate('actor-b'));
     await waitFor(() => {
-      expect(artifactCache.deleteActor).toHaveBeenCalledWith('actor-a');
       expect(nativeReactArtifactCache.deleteActor).toHaveBeenCalledWith(
         'actor-a'
       );
-      expect(artifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
-        actorId: 'actor-b',
-        workspaceId: 'workspace-1',
-        runtimeFingerprint: 'runtime-a'
-      });
       expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
         actorId: 'actor-b',
         workspaceId: 'workspace-1',
@@ -186,11 +144,10 @@ describe('frontstage runtime cache lifecycle', () => {
       });
     });
     act(() => useAuthStore.getState().setAnonymous());
-    await waitFor(() =>
-      expect(artifactCache.deleteActor).toHaveBeenLastCalledWith('actor-b')
-    );
-    expect(nativeReactArtifactCache.deleteActor).toHaveBeenLastCalledWith(
-      'actor-b'
-    );
+    await waitFor(() => {
+      expect(nativeReactArtifactCache.deleteActor).toHaveBeenLastCalledWith(
+        'actor-b'
+      );
+    });
   });
 });

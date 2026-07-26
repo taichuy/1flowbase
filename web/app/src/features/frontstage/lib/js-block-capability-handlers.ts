@@ -8,8 +8,8 @@ import {
   type FrontstageCallableRequest
 } from '@1flowbase/api-client';
 import type {
-  JsBlockHostEffectHandler,
-  JsBlockHostInterfaceEffect
+  BlockHostEffectHandler,
+  BlockHostInterfaceEffect
 } from '@1flowbase/page-runtime';
 
 export interface FrontstageJsBlockCapabilityClient {
@@ -44,7 +44,7 @@ interface DraftRunAuthorization {
 }
 
 export interface FrontstageJsBlockCapabilityHandlers {
-  interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  interface: BlockHostEffectHandler<BlockHostInterfaceEffect>;
   disposeRequest(requestId?: string): void;
   prepareDraftRun(input: {
     blockId: string;
@@ -226,7 +226,7 @@ function isFrontstageWriteMethod(method: string): boolean {
 }
 
 function createDispatchInput(
-  effect: JsBlockHostInterfaceEffect,
+  effect: BlockHostInterfaceEffect,
   blockId: string,
   draftRun: DraftRunAuthorization | undefined,
   writeGrant?: string

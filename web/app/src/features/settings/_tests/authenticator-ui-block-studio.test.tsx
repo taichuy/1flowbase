@@ -117,7 +117,7 @@ describe('AuthenticatorUiBlockStudio', () => {
       items: [
         {
           id: '1flowbase:frontstage.js-ui-block',
-          runtimeKind: 'iframe',
+          runtimeKind: 'native_react',
           installationId: 'builtin-installation',
           providerCode: '1flowbase',
           pluginId: 'builtin-frontstage',
@@ -141,11 +141,6 @@ describe('AuthenticatorUiBlockStudio', () => {
             label: 'ctx.inputs.authenticator_id',
             member_path: 'inputs.authenticator_id',
             schema: { type: 'string' }
-          },
-          {
-            label: 'ctx.inputs.auth_event',
-            member_path: 'inputs.auth_event',
-            schema: { type: 'object' }
           }
         ]}
         description={null}
@@ -210,7 +205,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         readOnly={false}
         saving={false}
         selfRegistrationEnabled
-        source="export default { main };"
+        source="export default function AuthBlock() { return null; }"
         workspaceId="workspace-1"
         onClose={vi.fn()}
         onSave={vi.fn()}
@@ -239,7 +234,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         readOnly={false}
         saving={false}
         selfRegistrationEnabled={false}
-        source="export default { main };"
+        source="export default function AuthBlock() { return null; }"
         workspaceId="workspace-1"
         onClose={vi.fn()}
         onSave={vi.fn()}
@@ -275,7 +270,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         readOnly={false}
         saving={false}
         selfRegistrationEnabled={false}
-        source="export default { main };"
+        source="export default function AuthBlock() { return null; }"
         workspaceId="workspace-1"
         onClose={vi.fn()}
         onSave={onSave}
@@ -372,7 +367,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         readOnly={false}
         saving={false}
         selfRegistrationEnabled={false}
-        source="export default { main };"
+        source="export default function AuthBlock() { return null; }"
         workspaceId="workspace-1"
         onClose={vi.fn()}
         onSave={vi.fn()}

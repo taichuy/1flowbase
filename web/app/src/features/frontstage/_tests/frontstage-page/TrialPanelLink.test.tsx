@@ -27,8 +27,6 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
     preparations: [],
     retryBlock: vi.fn()
@@ -43,10 +41,6 @@ vi.mock(
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
-vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
-  () => runtimeSessionsHook
-);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
@@ -169,7 +163,7 @@ describe('FrontStagePage trial panel link', () => {
       items: [
         {
           id: '1flowbase:frontstage.js-ui-block',
-          runtimeKind: 'iframe',
+          runtimeKind: 'native_react',
           installationId: 'builtin-installation',
           providerCode: '1flowbase',
           pluginId: 'builtin-frontstage',
@@ -186,9 +180,8 @@ describe('FrontStagePage trial panel link', () => {
           uiCapabilities: ['configurable', 'data_binding'],
           codeCapabilities: {
             template: null,
-            allowedImports: ['@1flowbase/block-renderer/antd-facade'],
-            monacoExtraLibs: [],
-            workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
+            allowedImports: ['@1flowbase/native-components'],
+            monacoExtraLibs: []
           },
           raw: {}
         }
@@ -213,12 +206,6 @@ describe('FrontStagePage trial panel link', () => {
       data: { queries: [], actions: [], models: [] },
       loading: false,
       error: null
-    });
-    runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-      entries: [],
-      snapshotsBySlot: {},
-      running: false,
-      hasError: false
     });
   });
 

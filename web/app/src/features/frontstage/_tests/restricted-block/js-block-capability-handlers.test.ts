@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import { ApiClientError } from '@1flowbase/api-client';
-import type { JsBlockHostInterfaceEffect } from '@1flowbase/page-runtime';
+import type { BlockHostInterfaceEffect } from '@1flowbase/page-runtime';
 import {
   createFrontstageJsBlockCapabilityHandlers,
   type FrontstageJsBlockCapabilityClient
@@ -24,8 +24,8 @@ function createClient(): FrontstageJsBlockCapabilityClient {
 }
 
 function effect(
-  overrides: Partial<JsBlockHostInterfaceEffect> = {}
-): JsBlockHostInterfaceEffect {
+  overrides: Partial<BlockHostInterfaceEffect> = {}
+): BlockHostInterfaceEffect {
   return {
     type: 'interface',
     requestId: 'run-1',

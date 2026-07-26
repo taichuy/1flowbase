@@ -38,12 +38,12 @@ const block = {
   presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },
   order: 0,
-  runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+  runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
 } satisfies FrontstageBlockInstance;
 
 const catalog = {
   id: 'official:tsx',
-  runtimeKind: 'iframe',
+  runtimeKind: 'native_react',
   installationId: 'installation-1',
   providerCode: 'official',
   pluginId: 'official.blocks',
@@ -90,8 +90,6 @@ function renderPanel({
       block={currentBlock}
       catalogEntry={catalog}
       code={code}
-      contextSnapshot={{}}
-      limits={{ timeoutMs: 1_000 }}
       revision={revision}
       nativeCompiler={nativeCompiler}
       nativeDependencyLock={nativeDependencyLock}
@@ -143,8 +141,6 @@ describe('JsBlockTrialPanel Native React run revision', () => {
         block={block}
         catalogEntry={catalog}
         code={source('edited without run')}
-        contextSnapshot={{}}
-        limits={{ timeoutMs: 1_000 }}
         revision="run:1"
         nativeCompiler={compiler}
       />
@@ -160,8 +156,6 @@ describe('JsBlockTrialPanel Native React run revision', () => {
         block={block}
         catalogEntry={catalog}
         code={source('second')}
-        contextSnapshot={{}}
-        limits={{ timeoutMs: 1_000 }}
         revision="run:2"
         nativeCompiler={compiler}
       />
@@ -213,9 +207,7 @@ describe('JsBlockTrialPanel Native React run revision', () => {
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /\[compile\/import_denied\] catalog\.code_modules/u
-      )
+      screen.getByText(/\[compile\/import_denied\] catalog\.code_modules/u)
     ).toBeInTheDocument();
     expect(compiler).not.toHaveBeenCalled();
   });
@@ -283,8 +275,6 @@ describe('JsBlockTrialPanel Native React run revision', () => {
           block={crashingBlock}
           catalogEntry={catalog}
           code="export default function Block() { throw new Error('render exploded'); }"
-          contextSnapshot={{}}
-          limits={{ timeoutMs: 1_000 }}
           revision="run:crash"
           nativeCompiler={compiler}
         />
@@ -292,8 +282,6 @@ describe('JsBlockTrialPanel Native React run revision', () => {
           block={stableBlock}
           catalogEntry={catalog}
           code={source('stable')}
-          contextSnapshot={{}}
-          limits={{ timeoutMs: 1_000 }}
           revision="run:stable"
           nativeCompiler={compiler}
         />
@@ -336,8 +324,6 @@ describe('JsBlockTrialPanel Native React run revision', () => {
         block={block}
         catalogEntry={catalog}
         code={code}
-        contextSnapshot={{}}
-        limits={{ timeoutMs: 1_000 }}
         revision="run:auth-studio"
         nativeCompiler={compiler}
         onPrepareDraftRun={prepareDraftRun}
@@ -378,8 +364,6 @@ export default { main } satisfies BlockModule;`;
         block={block}
         catalogEntry={catalog}
         code={legacySource}
-        contextSnapshot={{}}
-        limits={{ timeoutMs: 1_000 }}
         revision="run:legacy"
         nativeCompiler={compiler}
         onPrepareDraftRun={prepareDraftRun}

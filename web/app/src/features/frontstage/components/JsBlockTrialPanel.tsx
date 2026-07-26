@@ -1,13 +1,9 @@
-import {
-  BlockUiLoadingShell,
-  type BlockRendererActionEvent
-} from '@1flowbase/block-renderer';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import {
   createNativeTrustedBlockHost,
   evaluateNativeReactComponentArtifactWithRegistry,
-  hashJsBlockDraft,
+  sha256Text,
   diagnoseLegacyBlockModuleSource,
-  type JsBlockHostEffectHandlers,
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
   type NativeReactCatalogDependencyLock,
@@ -31,9 +27,6 @@ import {
 } from '../lib/native-trusted-block-react-adapter';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../lib/page-document';
-import type { RestrictedBlockLoaderLimits } from '../lib/restricted-block-loader';
-import type { createFrontstageRestrictedBlockRuntimeSession } from '../lib/frontstage-restricted-block-runtime-host';
-import { JsBlockPreviewConsole } from './JsBlockPreviewConsole';
 
 type NativeTrialDiagnostic =
   | NativeReactCompileDiagnostic
@@ -43,7 +36,6 @@ const EMPTY_NATIVE_REACT_DEPENDENCY_LOCK: NativeReactCatalogDependencyLock = [];
 interface NativeTrialSnapshot {
   status: 'compiling' | 'ready' | 'failed';
   requestId: string;
-  logs: [];
   diagnostics: NativeTrialDiagnostic[];
 }
 
@@ -68,11 +60,6 @@ export interface JsBlockTrialPanelProps {
   block: FrontstageBlockInstance;
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   code: string;
-  contextSnapshot: Record<string, unknown>;
-  createRunInputs?: (
-    event?: BlockRendererActionEvent
-  ) => Record<string, unknown>;
-  handlers?: JsBlockHostEffectHandlers;
   onPrepareDraftRun?: (input: {
     blockId: string;
     runId: string;
@@ -80,16 +67,13 @@ export interface JsBlockTrialPanelProps {
     confirmWrite: () => Promise<boolean>;
   }) => Promise<void>;
   onRevokeDraftRun?: (runId: string) => void;
-  limits: RestrictedBlockLoaderLimits;
   revision: string;
-  runtimeSessionFactory?: typeof createFrontstageRestrictedBlockRuntimeSession;
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
   nativeDependencyLockError?: string | null;
   nativeModuleRegistryFactory?: typeof createFrontstageNativeReactModuleRegistry;
   createBlockContext?(input: NativeTrialBlockContextInput): BlockContext;
-  surfaceOnly?: boolean;
 }
 
 export function JsBlockTrialPanel({
@@ -102,7 +86,6 @@ export function JsBlockTrialPanel({
   nativeDependencyLockError = null,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
   createBlockContext,
-  surfaceOnly = false,
   onPrepareDraftRun,
   onRevokeDraftRun
 }: JsBlockTrialPanelProps) {
@@ -178,7 +161,6 @@ export function JsBlockTrialPanel({
       setSnapshot({
         status: 'compiling',
         requestId,
-        logs: [],
         diagnostics: []
       });
 
@@ -187,7 +169,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: [legacyDiagnostic]
         });
         return;
@@ -197,7 +178,7 @@ export function JsBlockTrialPanel({
         await onPrepareDraftRun?.({
           blockId: frozenBlock.id,
           runId: requestId,
-          draftHash: hashJsBlockDraft(frozenSource),
+          draftHash: sha256Text(frozenSource),
           confirmWrite: confirmWriteRun
         });
       } catch (error) {
@@ -205,7 +186,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: [
             {
               phase: 'runtime',
@@ -222,7 +202,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: [
             {
               phase: 'compile',
@@ -248,7 +227,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: compiled.diagnostics
         });
         return;
@@ -263,7 +241,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: evaluated.diagnostics
         });
         return;
@@ -277,7 +254,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: [error]
         });
       };
@@ -300,7 +276,6 @@ export function JsBlockTrialPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          logs: [],
           diagnostics: [
             {
               phase: 'runtime',
@@ -314,7 +289,7 @@ export function JsBlockTrialPanel({
         });
         return;
       }
-      setSnapshot({ status: 'ready', requestId, logs: [], diagnostics: [] });
+      setSnapshot({ status: 'ready', requestId, diagnostics: [] });
     },
     [
       disposeActiveRun,
@@ -363,7 +338,6 @@ export function JsBlockTrialPanel({
     setSnapshot({
       status: 'compiling',
       requestId: active.requestId,
-      logs: [],
       diagnostics: []
     });
     active.runtimeFailed = false;
@@ -375,7 +349,6 @@ export function JsBlockTrialPanel({
         ? {
             status: 'failed',
             requestId: active.requestId,
-            logs: [],
             diagnostics: [
               {
                 phase: 'runtime',
@@ -390,7 +363,6 @@ export function JsBlockTrialPanel({
         : {
             status: 'ready',
             requestId: active.requestId,
-            logs: [],
             diagnostics: []
           }
     );
@@ -420,13 +392,7 @@ export function JsBlockTrialPanel({
       ) : null}
     </Space>
   );
-  if (surfaceOnly) return preview;
-  return (
-    <JsBlockPreviewConsole
-      snapshot={snapshot}
-      preview={preview}
-    />
-  );
+  return preview;
 }
 
 function confirmWriteRun(): Promise<boolean> {

@@ -40,7 +40,6 @@ import {
 import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
-import { createFrontstageBlockBindingRuntimeLimits } from '../lib/jsx-studio/block-data-binding';
 import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
@@ -70,7 +69,6 @@ import {
   resolveSelectedPageId
 } from '../lib/page-tree';
 import type { FrontStageTreeNode } from '../lib/page-tree';
-import type { RestrictedBlockLoaderLimits } from '../lib/restricted-block-loader';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   createCatalogBlockInput,
@@ -80,10 +78,7 @@ import {
   requireCsrfToken,
   toDisplayErrorMessage
 } from './frontstage-page/page-action-helpers';
-import {
-  DEFAULT_JS_BLOCK_TRIAL_LIMITS,
-  DESIGN_MODE_PERMISSION
-} from './frontstage-page/page-constants';
+import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import {
   PageTreeFormModal,
@@ -151,10 +146,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
-  const [jsBlockTrialContextSnapshot, setJsBlockTrialContextSnapshot] =
-    useState<Record<string, unknown>>({});
-  const [jsBlockTrialLimits, setJsBlockTrialLimits] =
-    useState<RestrictedBlockLoaderLimits>(DEFAULT_JS_BLOCK_TRIAL_LIMITS);
   const [savedPageContent, setSavedPageContent] =
     useState<FrontstagePageContent | null>(null);
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
@@ -402,27 +393,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       }),
     [matchingJsBlockCatalogEntry, workspaceId]
   );
-  const defaultJsBlockTrialContextSnapshot = useMemo(
-    () => ({
-      workspaceId,
-      pageId: activePageContent?.page.id ?? selectedPageId,
-      pageTitle: activePageContent?.page.title ?? null,
-      blockId: selectedBlock?.id ?? null,
-      blockCodeRef: selectedBlock?.codeRef ?? null,
-      props: selectedBlock?.props ?? {}
-    }),
-    [activePageContent, selectedBlock, selectedPageId, workspaceId]
-  );
-  const selectedBlockRuntimeLimits = useMemo(
-    () =>
-      selectedBlock
-        ? createFrontstageBlockBindingRuntimeLimits(
-            selectedBlock,
-            jsBlockTrialLimits
-          )
-        : jsBlockTrialLimits,
-    [jsBlockTrialLimits, selectedBlock]
-  );
   useEffect(() => {
     const resolution =
       !pageId && !autoSelectFirstPage
@@ -509,11 +479,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       setIsJsxStudioOpen(false);
     }
   }, [canEnterDesignMode, isDesignMode]);
-
-  useEffect(() => {
-    setJsBlockTrialContextSnapshot(defaultJsBlockTrialContextSnapshot);
-    setJsBlockTrialLimits(DEFAULT_JS_BLOCK_TRIAL_LIMITS);
-  }, [defaultJsBlockTrialContextSnapshot]);
 
   useEffect(() => {
     if (!pageTreeFormDialog) {
@@ -1433,11 +1398,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   block={selectedBlock}
                   catalogEntry={matchingJsBlockCatalogEntry}
                   code={code}
-                  contextSnapshot={jsBlockTrialContextSnapshot}
-                  handlers={jsBlockCapabilityHandlers}
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
-                  limits={selectedBlockRuntimeLimits}
                   nativeDependencyLock={
                     nativeDependencyLockResolution.dependencyLock
                   }

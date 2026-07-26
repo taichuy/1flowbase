@@ -7,7 +7,7 @@ import {
   evaluateNativeTrustedBlockSource,
   createNativeReactModuleRegistry,
   nativeReactCatalogDependencyLockIdentity,
-  type JsBlockRunError,
+  type NativeTrustedBlockRunError,
   type NativeReactCatalogDependencyLock,
   type NativeReactModuleRegistry,
   type NativeTrustedBlockInjectedModuleMap
@@ -36,10 +36,10 @@ export interface FrontstageNativeTrustedBlockRuntimeFactoryOptions {
 }
 
 export class FrontstageNativeTrustedBlockRuntimeError extends Error {
-  readonly kind: JsBlockRunError['kind'];
-  readonly errors: JsBlockRunError['errors'];
+  readonly kind: NativeTrustedBlockRunError['kind'];
+  readonly errors: NativeTrustedBlockRunError['errors'];
 
-  constructor(error: JsBlockRunError) {
+  constructor(error: NativeTrustedBlockRunError) {
     super(error.message);
     this.name = 'FrontstageNativeTrustedBlockRuntimeError';
     this.kind = error.kind;

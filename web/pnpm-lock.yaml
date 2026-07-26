@@ -204,12 +204,6 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@24.12.3)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@8.0.16(@types/node@24.12.3)(yaml@2.8.4))
 
-  packages/antd-facade:
-    dependencies:
-      '@1flowbase/page-protocol':
-        specifier: workspace:*
-        version: link:../page-protocol
-
   packages/api-client:
     dependencies:
       '@1flowbase/flow-schema':
@@ -221,9 +215,6 @@ importers:
 
   packages/block-renderer:
     dependencies:
-      '@1flowbase/antd-facade':
-        specifier: workspace:*
-        version: link:../antd-facade
       '@1flowbase/page-protocol':
         specifier: workspace:*
         version: link:../page-protocol
@@ -256,12 +247,6 @@ importers:
 
   packages/page-runtime:
     dependencies:
-      '@1flowbase/block-renderer':
-        specifier: workspace:*
-        version: link:../block-renderer
-      '@1flowbase/block-sdk':
-        specifier: workspace:*
-        version: link:../block-sdk
       '@1flowbase/page-protocol':
         specifier: workspace:*
         version: link:../page-protocol

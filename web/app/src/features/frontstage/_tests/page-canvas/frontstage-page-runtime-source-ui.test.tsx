@@ -100,7 +100,7 @@ function createPageContent(): FrontstagePageContent {
             renderer_version: 'v1',
             codeRef: 'hero-code',
             contributionCode: 'official.hero',
-            runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
+            runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
             layout: { order: 0, region: 'main' }
           }
         ]
@@ -145,7 +145,7 @@ function createCatalogMatchedPageContent(): FrontstagePageContent {
               pluginVersion: '1.0.0',
               code: 'hero'
             },
-            runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
+            runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
             layout: { order: 0, region: 'main' }
           }
         ]
@@ -157,7 +157,7 @@ function createCatalogMatchedPageContent(): FrontstagePageContent {
 function createCatalogEntry(): NormalizedFrontstageBlockCatalogEntry {
   return {
     id: 'official:hero',
-    runtimeKind: 'iframe',
+    runtimeKind: 'native_react',
     installationId: 'installation-1',
     providerCode: 'official',
     pluginId: 'official.blocks',

@@ -171,7 +171,9 @@ describe('PageCanvas Native Signal context', () => {
           <button
             data-testid="native-api-second"
             onClick={() =>
-              void ctx.api.get('/api/console/records/second').catch(() => undefined)
+              void ctx.api
+                .get('/api/console/records/second')
+                .catch(() => undefined)
             }
           >
             second
@@ -203,11 +205,15 @@ describe('PageCanvas Native Signal context', () => {
     expect(renderCount).toBeGreaterThanOrEqual(initialRenderCount);
     expect(producerRoot.host.shadowRoot).not.toBeNull();
     await waitFor(() => expect(diagnostics).toEqual(['record query failed']));
-    expect(observations.filter((status) => status === 'pending')).toHaveLength(2);
+    expect(observations.filter((status) => status === 'pending')).toHaveLength(
+      2
+    );
 
     first.resolve({ items: [] });
     await waitFor(() =>
-      expect(observations.filter((status) => status === 'succeeded')).toHaveLength(1)
+      expect(
+        observations.filter((status) => status === 'succeeded')
+      ).toHaveLength(1)
     );
     expect(localState).toHaveTextContent('1');
     expect(producerRoot.host.shadowRoot).not.toBeNull();
@@ -277,7 +283,7 @@ function pageContent(): FrontstagePageContent {
       pluginVersion: '1.0.0',
       code: id
     },
-    runtime: { kind: 'iframe', entry: `blocks/${id}.js` },
+    runtime: { kind: 'native_react', entry: `blocks/${id}.js` },
     layout: { order, region: 'main' },
     ports
   });

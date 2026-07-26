@@ -1,5 +1,4 @@
 import type { FrontstageBlockInstance } from '../page-document';
-import type { RestrictedBlockLoaderLimits } from '../restricted-block-loader';
 
 export type FrontstageBlockDataBindingKind = 'query' | 'action';
 
@@ -28,9 +27,8 @@ export function readFrontstageBlockDataBindings(
     const key = readRequiredString(value.key);
     const id = readRequiredString(value.id);
     const model = readRequiredString(value.params.model);
-    const kind = value.kind === 'query' || value.kind === 'action'
-      ? value.kind
-      : null;
+    const kind =
+      value.kind === 'query' || value.kind === 'action' ? value.kind : null;
 
     if (!key || !id || !model || !kind || seenKeys.has(key)) {
       continue;
@@ -67,30 +65,6 @@ export function writeFrontstageBlockDataBindings(
       }))
     }
   };
-}
-
-export function createFrontstageBlockBindingRuntimeLimits(
-  block: FrontstageBlockInstance,
-  baseLimits: RestrictedBlockLoaderLimits
-): RestrictedBlockLoaderLimits {
-  const bindings = readFrontstageBlockDataBindings(block.props);
-
-  return {
-    ...baseLimits,
-    allowedQueries: uniqueBindingIds(bindings, 'query'),
-    allowedActions: uniqueBindingIds(bindings, 'action')
-  };
-}
-
-function uniqueBindingIds(
-  bindings: readonly FrontstageBlockDataBinding[],
-  kind: FrontstageBlockDataBindingKind
-): string[] {
-  return [...new Set(
-    bindings
-      .filter((binding) => binding.kind === kind)
-      .map((binding) => binding.id)
-  )];
 }
 
 function readRequiredString(value: unknown): string | null {

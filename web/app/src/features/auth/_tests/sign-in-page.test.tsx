@@ -30,11 +30,13 @@ vi.mock('../components/PublicAuthBlock', () => ({
     renderedBlocks(props.instance);
     return (
       <button
-        onClick={() => void props.onAuthenticated({
-          csrf_token: 'csrf-123',
-          effective_display_role: 'member',
-          current_workspace_id: 'workspace-1'
-        })}
+        onClick={() =>
+          void props.onAuthenticated({
+            csrf_token: 'csrf-123',
+            effective_display_role: 'member',
+            current_workspace_id: 'workspace-1'
+          })
+        }
       >
         Run {props.instance.id}
       </button>
@@ -52,7 +54,7 @@ const passwordInstance = {
   title: 'Password',
   description: 'Local password login',
   sort_order: 0,
-  public_ui_block: 'export default { main };',
+  public_ui_block: 'export default function AuthBlock() { return null; }',
   public_variables: { self_registration_enabled: false }
 };
 
@@ -70,16 +72,29 @@ describe('SignInPage', () => {
       login_instances: [passwordInstance]
     });
     fetchCurrentMe.mockResolvedValue({
-      id: 'user-1', account: 'root', email: 'root@example.com', phone: null,
-      nickname: 'Root', name: 'Root', avatar_url: null, introduction: '',
-      effective_display_role: 'member', permissions: []
+      id: 'user-1',
+      account: 'root',
+      email: 'root@example.com',
+      phone: null,
+      nickname: 'Root',
+      name: 'Root',
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: 'member',
+      permissions: []
     });
   });
 
   test('mounts the only authenticator Block directly and accepts its session', async () => {
-    render(<AppProviders><SignInPage /></AppProviders>);
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Run auth-password-local' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Run auth-password-local' })
+    );
 
     expect(renderedBlocks).toHaveBeenCalledWith(passwordInstance);
     await waitFor(() => expect(fetchCurrentMe).toHaveBeenCalled());
@@ -101,12 +116,22 @@ describe('SignInPage', () => {
       login_instances: [passwordInstance, qrInstance]
     });
 
-    render(<AppProviders><SignInPage /></AppProviders>);
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
 
-    expect(await screen.findByRole('button', { name: 'Password' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Password' })
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'QR code' }));
-    expect(await screen.findByRole('button', { name: 'Run auth-qr' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Run auth-password-local' })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Run auth-qr' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Run auth-password-local' })
+    ).not.toBeInTheDocument();
   });
 
   test('shows a formal unavailable state and no fallback form when none are enabled', async () => {
@@ -115,16 +140,26 @@ describe('SignInPage', () => {
       login_instances: []
     });
 
-    render(<AppProviders><SignInPage /></AppProviders>);
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('No sign-in option is available.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No sign-in option is available.'
+    );
     expect(screen.queryByRole('form')).not.toBeInTheDocument();
     expect(renderedBlocks).not.toHaveBeenCalled();
   });
 
   test('shows a stable error and no fallback form when discovery fails', async () => {
     fetchLoginInstances.mockRejectedValue(new Error('network failed'));
-    render(<AppProviders><SignInPage /></AppProviders>);
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Failed to load sign-in options. Please refresh the page and try again.'

@@ -20,7 +20,11 @@ function manualChunks(id: string) {
     return 'flow-vendor';
   }
 
-  if (id.includes('/antd/') || id.includes('/@ant-design/') || id.includes('/rc-')) {
+  if (
+    id.includes('/antd/') ||
+    id.includes('/@ant-design/') ||
+    id.includes('/rc-')
+  ) {
     return 'antd-vendor';
   }
 
@@ -117,7 +121,10 @@ export default defineConfig(({ mode }) => {
             }
           }
         : {}),
-      port: Number.isInteger(devServerPort) && devServerPort > 0 ? devServerPort : 3100,
+      port:
+        Number.isInteger(devServerPort) && devServerPort > 0
+          ? devServerPort
+          : 3100,
       strictPort: true,
       fs: {
         allow: [
@@ -152,17 +159,14 @@ export default defineConfig(({ mode }) => {
         '@1flowbase/api-client': fileURLToPath(
           new URL('../packages/api-client/src/index.ts', import.meta.url)
         ),
-        '@1flowbase/antd-facade': fileURLToPath(
-          new URL('../packages/antd-facade/src/index.ts', import.meta.url)
-        ),
-        '@1flowbase/block-renderer/antd-facade': fileURLToPath(
-          new URL('../packages/block-renderer/src/antd-facade.ts', import.meta.url)
-        ),
         '@1flowbase/block-renderer': fileURLToPath(
           new URL('../packages/block-renderer/src/index.tsx', import.meta.url)
         ),
         '@1flowbase/model-provider-contracts': fileURLToPath(
-          new URL('../../scripts/node/testing/contracts/model-providers', import.meta.url)
+          new URL(
+            '../../scripts/node/testing/contracts/model-providers',
+            import.meta.url
+          )
         ),
         '@1flowbase/ui': fileURLToPath(
           new URL('../packages/ui/src/index.tsx', import.meta.url)
@@ -189,8 +193,8 @@ export default defineConfig(({ mode }) => {
       coverage: {
         provider: 'v8',
         reporter: ['text-summary', 'json-summary', 'html'],
-        reportsDirectory: '../../tmp/test-governance/coverage/frontend',
-      },
+        reportsDirectory: '../../tmp/test-governance/coverage/frontend'
+      }
     }
   };
 });

@@ -19,15 +19,11 @@ import './page-canvas.css';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
-import { RestrictedBlockRuntimePreview } from './RestrictedBlockRuntimePreview';
-import type { FrontstagePageCanvasRuntimeSessionEntry } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { createFrontstagePageDocument } from '../lib/page-document';
 import {
   createFrontstagePageRenderPlan,
   type FrontstageBlockRenderPlanItem
 } from '../lib/page-canvas/render-plan';
-import type { FrontstagePageCanvasRuntimeSourceState } from '../lib/page-canvas/runtime-source';
-import type { FrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
 import { i18nText } from '../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
@@ -81,11 +77,6 @@ type PageCanvasProps = {
   selectedBlockId?: string | null;
   onSelectBlock?: (blockId: string | null) => void;
   onRetry?: () => void;
-  runtimeSourceState?: FrontstagePageCanvasRuntimeSourceState | null;
-  runtimeRunPlanState?: FrontstagePageCanvasRuntimeRunPlanState | null;
-  runtimeSessionEntries?:
-    | readonly FrontstagePageCanvasRuntimeSessionEntry[]
-    | null;
   runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
@@ -130,33 +121,6 @@ function formatPageTitle(content: FrontstagePageContent): string {
   );
 }
 
-function findRuntimeSessionEntryForSlot({
-  item,
-  slotIndex,
-  runtimeSessionEntries
-}: {
-  item: { blockId: string; codeRef: string; sourceIndex: number };
-  slotIndex: number;
-  runtimeSessionEntries?:
-    | readonly FrontstagePageCanvasRuntimeSessionEntry[]
-    | null;
-}): FrontstagePageCanvasRuntimeSessionEntry | null {
-  if (!runtimeSessionEntries || runtimeSessionEntries.length === 0) {
-    return null;
-  }
-
-  return (
-    runtimeSessionEntries.find(
-      (entry) =>
-        entry.slotIndex === slotIndex &&
-        entry.blockId === item.blockId &&
-        entry.codeRef === item.codeRef
-    ) ??
-    runtimeSessionEntries.find((entry) => entry.slotIndex === slotIndex) ??
-    null
-  );
-}
-
 // ─── RenderPlanSlot ─────────────────────────────────────────────────
 
 type RenderPlanSlotProps = {
@@ -168,7 +132,6 @@ type RenderPlanSlotProps = {
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
   onSignalRevision(revision: number): void;
-  runtimeSessionEntry?: FrontstagePageCanvasRuntimeSessionEntry | null;
   isSelected: boolean;
   onSelectBlock?: (blockId: string | null) => void;
   isDesignMode?: boolean;
@@ -438,7 +401,6 @@ function RenderPlanSlot({
   nativeContextHost,
   pageContent,
   onSignalRevision,
-  runtimeSessionEntry,
   isSelected,
   onSelectBlock,
   isDesignMode,
@@ -570,52 +532,6 @@ function RenderPlanSlot({
       );
     }
 
-    if (runtimeSessionEntry && 'snapshot' in runtimeSessionEntry) {
-      return (
-        <div style={contentViewportStyle}>
-          <RestrictedBlockRuntimePreview
-            snapshot={runtimeSessionEntry.snapshot}
-            onRetry={
-              onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
-            }
-          />
-        </div>
-      );
-    }
-
-    if (runtimeSessionEntry?.status === 'factory_failed') {
-      return (
-        <div style={contentViewportStyle}>
-          <Alert
-            type="error"
-            showIcon
-            message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
-            description={i18nText(
-              'frontstage',
-              'auto.restricted_runtime_session_create_failed'
-            )}
-          />
-        </div>
-      );
-    }
-
-    const isSourceLoading =
-      runtimeSessionEntry?.status === 'skipped' &&
-      (runtimeSessionEntry.skipReason === 'artifact_lookup_pending' ||
-        (runtimeSessionEntry.skipReason === 'source_not_ready' &&
-          (runtimeSessionEntry.sourceStatus === 'loading' ||
-            runtimeSessionEntry.sourceStatus === 'dormant')));
-
-    if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
-      return (
-        <div style={contentViewportStyle}>
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            {i18nText('frontstage', 'auto.block_skipped_run')}
-          </Typography.Text>
-        </div>
-      );
-    }
-
     return (
       <div style={contentViewportStyle}>
         <BlockUiLoadingShell />
@@ -686,7 +602,6 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   selectedBlockId = null,
   onSelectBlock,
   onRetry,
-  runtimeSessionEntries,
   runtimePreparations,
   runtimeContext,
   nativeContextHost,
@@ -943,7 +858,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
               );
             }}
           >
-            {renderItems.map((item, slotIndex) => (
+            {renderItems.map((item) => (
               <div key={item.blockId}>
                 <RenderPlanSlot
                   item={item}
@@ -958,11 +873,6 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   nativeContextHost={nativeContextHost}
                   pageContent={content}
                   onSignalRevision={handleSignalRevision}
-                  runtimeSessionEntry={findRuntimeSessionEntryForSlot({
-                    item,
-                    slotIndex,
-                    runtimeSessionEntries
-                  })}
                   isSelected={item.blockId === selectedBlockId}
                   onSelectBlock={onSelectBlock}
                   isDesignMode={isDesignMode}

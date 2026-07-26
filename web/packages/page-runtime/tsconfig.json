@@ -3,10 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@1flowbase/block-renderer/antd-facade": [
-        "../block-renderer/dist/antd-facade.d.ts"
-      ],
-      "@1flowbase/block-sdk": ["../block-sdk/dist/index.d.ts"],
       "@1flowbase/page-protocol": ["../page-protocol/dist/index.d.ts"]
     },
     "rootDir": "src",

@@ -7,8 +7,7 @@ import {
   hasFrontstageBlockActionPermission,
   hasFrontstageBlockDataPermission,
   hasFrontstageBlockEventPermission,
-  isFrontstageBlockIframeRuntime,
-  isFrontstageBlockRestrictedRuntime,
+  isFrontstageBlockNativeRuntime,
   normalizeFrontstageBlockCatalog,
   resolveFrontstageNativeDependencyLock,
   supportsFrontstageBlockCapability,
@@ -25,7 +24,7 @@ function createCatalogEntry(
     plugin_version: '1.0.0',
     contribution_code: 'hero_banner',
     title: 'Hero Banner',
-    runtime: 'iframe',
+    runtime: 'native_react',
     entry: 'blocks/hero/index.html',
     code_modules: [],
     context_contract: {
@@ -61,7 +60,7 @@ describe('frontstage block catalog normalizer', () => {
     expect(result.items).toEqual([
       {
         id: 'official:hero_banner',
-        runtimeKind: 'iframe',
+        runtimeKind: 'native_react',
         installationId: 'installation-1',
         providerCode: 'official',
         pluginId: 'official.blocks',
@@ -88,8 +87,7 @@ describe('frontstage block catalog normalizer', () => {
     ]);
 
     const [block] = result.items;
-    expect(isFrontstageBlockIframeRuntime(block)).toBe(true);
-    expect(isFrontstageBlockRestrictedRuntime(block)).toBe(true);
+    expect(isFrontstageBlockNativeRuntime(block)).toBe(true);
     expect(supportsFrontstageBlockCapability(block, 'data_binding')).toBe(true);
     expect(supportsFrontstageBlockPrimitive(block, 'button')).toBe(true);
     expect(hasFrontstageBlockDataPermission(block)).toBe(true);
@@ -272,7 +270,7 @@ describe('frontstage block catalog normalizer', () => {
     ]);
 
     expect(
-      filterFrontstageBlockCatalogByRuntime(items, 'iframe').map(
+      filterFrontstageBlockCatalogByRuntime(items, 'native_react').map(
         (item) => item.contributionCode
       )
     ).toEqual(['hero_banner', 'product_grid']);

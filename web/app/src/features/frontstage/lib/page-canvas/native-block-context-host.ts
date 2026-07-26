@@ -4,14 +4,14 @@ import type {
 } from '@1flowbase/page-protocol';
 import {
   createNativeBlockContextCapabilities,
-  type JsBlockHostEffectHandler,
-  type JsBlockHostInterfaceEffect,
+  type BlockHostEffectHandler,
+  type BlockHostInterfaceEffect,
   type NativeBlockContextApiCallObservation,
   type NativeBlockContextEventInput
 } from '@1flowbase/page-runtime';
 
 export interface FrontstageNativeBlockContextHost {
-  interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  interface: BlockHostEffectHandler<BlockHostInterfaceEffect>;
   emitEvent?(event: NativeBlockContextEventInput): void;
   observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
   reportDiagnostic?(diagnostic: BlockRuntimeDiagnostic): void;

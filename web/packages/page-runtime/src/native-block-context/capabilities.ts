@@ -10,9 +10,9 @@ import type {
 } from '@1flowbase/page-protocol';
 
 import type {
-  JsBlockHostInterfaceEffect,
-  JsBlockHostEffectHandler
-} from '../js-block-host-effect-bridge';
+  BlockHostEffectHandler,
+  BlockHostInterfaceEffect
+} from './effects';
 
 export type NativeBlockContextApiCallStatus =
   | 'pending'
@@ -49,7 +49,7 @@ export interface CreateNativeBlockContextCapabilitiesOptions {
   requestId: string;
   instanceEpoch: string;
   isCurrentInstance(): boolean;
-  interfaceHandler: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  interfaceHandler: BlockHostEffectHandler<BlockHostInterfaceEffect>;
   outputs: BlockContextOutputs;
   emitEvent?(event: NativeBlockContextEventInput): void;
   observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
@@ -72,7 +72,7 @@ export function createNativeBlockContextCapabilities(
     method: BlockApiMethod,
     path: string,
     request?: BlockApiRequest,
-    operation: JsBlockHostInterfaceEffect['operation'] = 'call',
+    operation: BlockHostInterfaceEffect['operation'] = 'call',
     streamId?: string
   ): Promise<TResponse> => {
     const callId = `${options.requestId}:call-${++nextCallSequence}`;
@@ -181,13 +181,7 @@ export function createNativeBlockContextCapabilities(
           },
           async return() {
             if (!done && streamId) {
-              await call(
-                method,
-                path,
-                undefined,
-                'stream_cancel',
-                streamId
-              );
+              await call(method, path, undefined, 'stream_cancel', streamId);
             }
             done = true;
             return { done: true, value: undefined };
@@ -231,9 +225,7 @@ export function createNativeBlockContextCapabilities(
         const published = options.outputs.publish(values);
         if (isPromiseLike<BlockContextOutputPublishResult>(published)) {
           return Promise.resolve(published).then((result) =>
-            options.isCurrentInstance()
-              ? result
-              : { ok: false, stale: true }
+            options.isCurrentInstance() ? result : { ok: false, stale: true }
           );
         }
         return options.isCurrentInstance()
@@ -250,7 +242,9 @@ function requireCurrentInstance(
   path: string
 ): void {
   if (options.isCurrentInstance()) return;
-  const error = new Error('Native Block capability belongs to a stale instance.');
+  const error = new Error(
+    'Native Block capability belongs to a stale instance.'
+  );
   report(options, capability, {
     code: capability === 'events' ? 'event_denied' : 'interface_denied',
     path,

@@ -8,23 +8,12 @@ export type FrontstageNativeRuntimeObservationStage =
   | 'api_wait'
   | 'present';
 
-export type FrontstageRestrictedRuntimeObservationStage =
-  | 'source_fetch'
-  | 'worker_boot'
-  | 'compile'
-  | 'api_wait'
-  | 'main'
-  | 'schema_validate'
-  | 'present';
-
 export type FrontstageRuntimeObservationStage =
-  | FrontstageNativeRuntimeObservationStage
-  | FrontstageRestrictedRuntimeObservationStage;
+  FrontstageNativeRuntimeObservationStage;
 
 export type FrontstageRuntimeObservationCacheTier =
   | 'network'
   | 'runtime'
-  | 'l1'
   | 'l2'
   | 'miss';
 
@@ -40,7 +29,7 @@ export interface FrontstageRuntimeObservation {
   pageId: string;
   tabId: string | null;
   blockId: string;
-  runtimeKind?: 'restricted' | 'native';
+  runtimeKind?: 'native';
   generation?: number;
   instanceEpoch?: string;
   callId?: string;
@@ -112,13 +101,9 @@ export class FrontstageRuntimeObservationBuffer {
       ...(input.generation === undefined
         ? {}
         : { generation: input.generation }),
-      ...(input.instanceEpoch
-        ? { instanceEpoch: input.instanceEpoch }
-        : {}),
+      ...(input.instanceEpoch ? { instanceEpoch: input.instanceEpoch } : {}),
       ...(input.callId ? { callId: input.callId } : {}),
-      ...(input.apiCallStatus
-        ? { apiCallStatus: input.apiCallStatus }
-        : {}),
+      ...(input.apiCallStatus ? { apiCallStatus: input.apiCallStatus } : {}),
       ...(input.method ? { method: input.method } : {}),
       ...(input.path ? { path: input.path } : {}),
       ...(input.error ? { error: input.error } : {})
