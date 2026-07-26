@@ -48,12 +48,25 @@ const source = `
   }
 `;
 
+const legacySource = `
+import type { BlockContext, BlockModule, BlockResult } from '@1flowbase/block-sdk';
+async function main(ctx: BlockContext): Promise<BlockResult> {
+  return { view: { type: 'text', value: String(ctx.inputs) }, outputs: {} };
+}
+export default { main } satisfies BlockModule;
+`;
+
 function Fixture() {
   const [completion, setCompletion] = useState('idle');
+  const [showLegacy, setShowLegacy] = useState(false);
+  const activeSource = showLegacy ? legacySource : source;
   return (
     <main
       data-testid="public-auth-native-fixture"
       data-viewport={window.innerWidth <= 390 ? 'mobile-390' : 'desktop'}
+      data-legacy-source-preserved={
+        showLegacy && activeSource === legacySource ? 'true' : 'false'
+      }
       style={{ width: 'min(100% - 32px, 440px)', margin: '40px auto' }}
     >
       <PublicAuthBlock
@@ -63,11 +76,14 @@ function Fixture() {
           title: 'Password',
           description: null,
           sort_order: 0,
-          public_ui_block: source,
+          public_ui_block: activeSource,
           public_variables: { self_registration_enabled: true }
         }}
         onAuthenticated={() => setCompletion('authenticated')}
       />
+      <button type="button" onClick={() => setShowLegacy((value) => !value)}>
+        {showLegacy ? 'show native source' : 'show legacy source'}
+      </button>
       <output data-testid="public-auth-completion">{completion}</output>
     </main>
   );

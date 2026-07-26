@@ -176,6 +176,7 @@ describe('AuthenticatorUiBlockStudio', () => {
       expect.stringContaining('interface NativeReactBlockContext'),
       'file:///1flowbase/native-react-context.d.ts'
     );
+    fireEvent.click(screen.getByRole('button', { name: '变量' }));
     expect(resourcePanelHook.render).toHaveBeenCalledWith(
       expect.objectContaining({
         contextVariables: [
@@ -214,7 +215,7 @@ describe('AuthenticatorUiBlockStudio', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '变量' }));
     expect(resourcePanelHook.render).toHaveBeenCalledWith(
-      expect.objectContaining({ contextVariables: null })
+      expect.objectContaining({ contextVariables: undefined })
     );
   });
 

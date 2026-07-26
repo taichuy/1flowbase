@@ -73,7 +73,10 @@ describe('FrontstagePageNativeModuleRegistryCache', () => {
       {
         module_source: '@example/components',
         module_version: '1.0.0',
-        browser_asset: { sha256: sha256Text(source), url: '/module.js' },
+        browser_asset: {
+          sha256: sha256Text(source),
+          url: `/api/console/frontstage/workspace-a/component-module-assets/${sha256Text(source)}`
+        },
         exports: ['Widget']
       }
     ];
@@ -343,6 +346,5 @@ function deferred<T = FrontstageNativePreparedRuntime>() {
 }
 
 async function tick(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 5; index += 1) await Promise.resolve();
 }

@@ -868,7 +868,7 @@ describe('frontstage native trusted block React adapter', () => {
     ).rejects.toThrow('resolver unavailable');
   });
 
-  test('is consumed only by the shared TrialPanel and native runtime factory', () => {
+  test('is consumed only by the shared Native preview and instance hosts', () => {
     const frontstageDir = join(process.cwd(), 'src/features/frontstage');
     const matches = collectSourceFiles([
       join(frontstageDir, 'pages'),
@@ -888,7 +888,9 @@ describe('frontstage native trusted block React adapter', () => {
     );
 
     expect(matches).toEqual([
-      expect.stringMatching(/components\/JsBlockTrialPanel\.tsx$/u)
+      expect.stringMatching(/components\/JsBlockTrialPanel\.tsx$/u),
+      expect.stringMatching(/components\/PageCanvas\.tsx$/u),
+      expect.stringMatching(/hooks\/use-frontstage-native-block-instance\.ts$/u)
     ]);
   });
 });

@@ -1,7 +1,10 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { compileNativeReactComponent } from '@1flowbase/page-runtime';
+import {
+  compileNativeReactComponent,
+  createNativeReactRuntimeFingerprint
+} from '@1flowbase/page-runtime';
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock('@1flowbase/api-client', async () => {
@@ -122,7 +125,11 @@ function instance(publicUiBlock: string) {
 }
 
 function compiler(source: string) {
-  const compiled = compileNativeReactComponent(source, [], 'auth-test-runtime');
+  const compiled = compileNativeReactComponent(
+    source,
+    [],
+    createNativeReactRuntimeFingerprint('/auth-test-worker.js')
+  );
   if (!compiled.ok) throw new Error(compiled.diagnostics[0]?.message);
   return vi.fn().mockResolvedValue({
     ok: true,
@@ -132,12 +139,12 @@ function compiler(source: string) {
 }
 
 async function publicAuthShadow(): Promise<HTMLElement> {
-  await waitFor(() =>
-    expect(
-      document.querySelector('[data-testid="native-react-trial-root"]')
-        ?.shadowRoot
-    ).not.toBeNull()
-  );
+  await waitFor(() => {
+    const shadow = document.querySelector(
+      '[data-testid="native-react-trial-root"]'
+    )?.shadowRoot;
+    expect(shadow?.textContent).toContain('Sign in');
+  });
   return document.querySelector('[data-testid="native-react-trial-root"]')!
     .shadowRoot as unknown as HTMLElement;
 }

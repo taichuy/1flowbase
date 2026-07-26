@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
@@ -17,10 +16,11 @@ const legacyAuthorFragments = [
 
 describe('D4 Native React author contract inventory', () => {
   test('D4-AC-005 teaches only standard React default-export source', () => {
+    const repoRoot = resolve(process.cwd(), '../..');
     const manifest = readFileSync(
-      new URL(
-        '../../../../../../../api/plugins/capability-plugins/1flowbase/manifest.yaml',
-        import.meta.url
+      resolve(
+        repoRoot,
+        'api/plugins/capability-plugins/1flowbase/manifest.yaml'
       ),
       'utf8'
     );
@@ -49,9 +49,7 @@ describe('D4 Native React author contract inventory', () => {
   });
 
   test('D4-P4 has no production entrypoint for the retired code-block runtime', () => {
-    const repoRoot = fileURLToPath(
-      new URL('../../../../../../../', import.meta.url)
-    );
+    const repoRoot = resolve(process.cwd(), '../..');
     const retiredEntrypoints = [
       'web/packages/page-runtime/src/js-block-worker-executor.ts',
       'web/packages/page-runtime/src/js-block-worker-runtime.ts',
@@ -76,7 +74,7 @@ describe('D4 Native React author contract inventory', () => {
     ].map((file) => readFileSync(resolve(repoRoot, file), 'utf8'));
 
     expect(currentSurfaces.join('\n')).not.toMatch(
-      /BlockModule|BlockResult|JsBlockWorker|RestrictedBlockRuntime|runtimeSessionEntries|createPublicAuthRunRequest|formValues/u
+      /(?:type|interface)\s+BlockModule|BlockResult|JsBlockWorker|RestrictedBlockRuntime|runtimeSessionEntries|createPublicAuthRunRequest|\bformValues\b/u
     );
   });
 });

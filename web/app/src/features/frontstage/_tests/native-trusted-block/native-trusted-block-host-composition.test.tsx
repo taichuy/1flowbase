@@ -295,7 +295,7 @@ export default function CapabilityViolationBlock() {
     }
   });
 
-  test('is not statically imported by existing FrontStage UI, catalog, route, or app code', () => {
+  test('is consumed only by the shared Native Frontstage host paths', () => {
     const frontstageDir = join(process.cwd(), 'src/features/frontstage');
     const matches = collectSourceFiles([
       join(frontstageDir, 'pages'),
@@ -319,7 +319,14 @@ export default function CapabilityViolationBlock() {
         ].some((marker) => readFileSync(filePath, 'utf8').includes(marker))
       );
 
-    expect(matches).toEqual([]);
+    expect(matches).toEqual([
+      expect.stringMatching(/components\/JsBlockTrialPanel\.tsx$/u),
+      expect.stringMatching(/components\/PageCanvas\.tsx$/u),
+      expect.stringMatching(/hooks\/use-frontstage-native-block-instance\.ts$/u),
+      expect.stringMatching(
+        /hooks\/use-frontstage-page-canvas-native-preparations\.ts$/u
+      )
+    ]);
   });
 });
 

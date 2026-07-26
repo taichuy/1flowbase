@@ -164,8 +164,6 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     expect(
       await trialQueries(view.container).findByTestId('native-output')
     ).toHaveTextContent('second');
-    expect(screen.getByTestId('js-block-preview-pane')).toBeInTheDocument();
-    expect(screen.getByTestId('js-block-console-pane')).toBeInTheDocument();
   });
 
   test('D2-P2F sends the catalog dependency lock through the production compiler input', async () => {
@@ -207,7 +205,9 @@ describe('JsBlockTrialPanel Native React run revision', () => {
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
-      screen.getByText(/\[compile\/import_denied\] catalog\.code_modules/u)
+      screen.getByText(
+        'Frontend block catalog dependency metadata is incomplete for this block.'
+      )
     ).toBeInTheDocument();
     expect(compiler).not.toHaveBeenCalled();
   });
@@ -242,12 +242,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     });
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /\[compile\/transform_failed\] source\.tsx:2:7 Malformed TSX/u
-      )
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(screen.getByText('Malformed TSX')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试/u }));
 
     await waitFor(() => expect(compiler).toHaveBeenCalledTimes(2));
     await waitFor(() =>

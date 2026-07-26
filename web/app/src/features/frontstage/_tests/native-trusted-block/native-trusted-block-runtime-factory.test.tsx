@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { ComponentType, ReactNode } from 'react';
@@ -126,15 +126,19 @@ describe('frontstage native trusted block runtime factory', () => {
 
   test('evaluates valid non-JSX source through host modules and mounts through the React adapter', async () => {
     const testingRoot = createTestingRoot();
+    const root = createBlockRoot();
     const adapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: testingRoot.createRoot,
       resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
     });
 
-    await adapter.mount({ plan: createPlan(), root: createBlockRoot() });
+    await adapter.mount({ plan: createPlan(), root });
 
     expect(
-      await screen.findByRole('button', { name: 'Native runtime ready' })
+      await within(root.shadowRoot as unknown as HTMLElement).findByRole(
+        'button',
+        { name: 'Native runtime ready' }
+      )
     ).toBeInTheDocument();
     expect(testingRoot.renderSpy).toHaveBeenCalledTimes(1);
   });
@@ -220,6 +224,7 @@ export default function Block() {
     );
 
     const overrideRoot = createTestingRoot();
+    const overrideElement = createBlockRoot();
     const overrideAdapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: overrideRoot.createRoot,
       resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory({
@@ -231,14 +236,17 @@ export default function Block() {
 
     await overrideAdapter.mount({
       plan: createPlan({ props: { title: 'Scoped override' } }),
-      root: createBlockRoot()
+      root: overrideElement
     });
 
-    expect(await screen.findByTestId('override-button')).toHaveTextContent(
-      'Override: Scoped override'
-    );
+    expect(
+      await within(
+        overrideElement.shadowRoot as unknown as HTMLElement
+      ).findByTestId('override-button')
+    ).toHaveTextContent('Override: Scoped override');
 
     const defaultRoot = createTestingRoot();
+    const defaultElement = createBlockRoot();
     const defaultAdapter = createFrontstageNativeTrustedBlockReactAdapter({
       createRoot: defaultRoot.createRoot,
       resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
@@ -246,14 +254,18 @@ export default function Block() {
 
     await defaultAdapter.mount({
       plan: createPlan({ props: { title: 'Default modules' } }),
-      root: createBlockRoot()
+      root: defaultElement
     });
 
     expect(
-      await screen.findByRole('button', { name: 'Default modules' })
+      await within(
+        defaultElement.shadowRoot as unknown as HTMLElement
+      ).findByRole('button', { name: 'Default modules' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByText('Override: Default modules')
+      within(
+        defaultElement.shadowRoot as unknown as HTMLElement
+      ).queryByText('Override: Default modules')
     ).not.toBeInTheDocument();
   });
 
