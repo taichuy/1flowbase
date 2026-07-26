@@ -148,6 +148,7 @@ test('AC-002: Anthropic Messages SSE emits fixed content and one message_stop te
       'content_block_start',
       'content_block_delta',
       'content_block_delta',
+      'content_block_stop',
       'message_delta',
       'message_stop',
     ]);
@@ -435,8 +436,8 @@ test('Responses tool fixture calls a client-declared read function', async () =>
   });
 });
 
-// Root AC-019/020/023/024: runtime counters belong to the controlled observer.
-test('controlled wire vectors count provider execution without gateway executor or server_url outbound', async () => {
+// Root AC-019/020/023/024: provider output, rather than forged client input, drives MCP observations.
+test('controlled wire vectors observe honest provider MCP output without executor or server_url outbound', async () => {
   await withMockUpstream(async ({ upstream, httpBaseUrl, networkObserverUrl, gatewayExecutorObserverUrl }) => {
     const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -444,19 +445,35 @@ test('controlled wire vectors count provider execution without gateway executor 
         model: 'mock-model', stream: true,
         tools: [
           { type: 'file_search' },
-          { type: 'mcp', server_label: 'fixture', server_url: networkObserverUrl },
+          { type: 'mcp', server_label: 'fixture_mcp', server_url: networkObserverUrl },
           { type: 'custom', name: 'caller', x_gateway_executor_observer: gatewayExecutorObserverUrl },
         ],
-        input: [
-          { type: 'tool_search_call' }, { type: 'tool_search_output' }, { type: 'additional_tools' },
-          { type: 'mcp_list_tools' }, { type: 'mcp_call' }, { type: 'mcp_approval_request' },
-        ],
+        input: 'ordinary user request for an MCP lookup',
       }),
     });
-    await response.text();
+    const events = parseSse(await response.text());
+    assert.equal(events.some((event) => event.event === 'response.future_gateway_drift'), false);
+    const output = events
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item);
+    assert.deepEqual(output.map((item) => item.type), [
+      'mcp_list_tools', 'mcp_call', 'mcp_approval_request',
+    ]);
+    assert.deepEqual(output.map((item) => item.server_label), [
+      'fixture_mcp', 'fixture_mcp', 'fixture_mcp',
+    ]);
+    assert.equal(output.every((item) => typeof item.id === 'string' && item.id.length > 0), true);
+    assert.equal(output.every((item) => typeof item.status === 'string' && item.status.length > 0), true);
+    assert.equal(output[1].name, 'lookup');
+    assert.deepEqual(JSON.parse(output[1].arguments), { query: 'fixture' });
+    assert.equal(output[2].name, 'lookup');
+    assert.deepEqual(JSON.parse(output[2].arguments), { query: 'approval fixture' });
     const snapshot = upstream.snapshot();
     assert.equal(snapshot.counters.gatewayExecutorInvocations, 0);
     assert.equal(snapshot.counters.networkObserverOutbound, 0);
     assert.equal(snapshot.counters.providerExecutions, 2);
+    for (const event of ['mcp_server_definition', 'mcp_list', 'mcp_call', 'mcp_approval']) {
+      assert.equal(snapshot.entries.some((entry) => entry.event === event), true);
+    }
   });
 });

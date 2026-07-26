@@ -61,6 +61,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
         ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(stream_events, Vec::new()),
     );
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
     let state = Arc::new(ApiState {
         test_database: base_state.test_database.clone(),
         store: base_state.store.clone(),
@@ -95,7 +96,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
     });
     let (sender, mut receiver) = mpsc::channel(32);
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
 
     tokio::time::timeout(
         Duration::from_secs(2),
@@ -148,7 +149,7 @@ async fn openai_chat_waiting_internal_llm_tool_callback_is_explicitly_unsupporte
     ]));
 
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
@@ -188,51 +189,6 @@ async fn openai_chat_waiting_internal_llm_tool_callback_is_explicitly_unsupporte
     assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
     assert!(!body.contains("\"finish_reason\":\"length\""), "{body}");
     assert!(!body.contains("[DONE]"), "{body}");
-}
-
-#[tokio::test]
-async fn terminal_answer_recovery_prefers_durable_answer_presentation() {
-    let run = native_run();
-    let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
-    append_compat_sse_runtime_event(
-        &base_state,
-        run.id,
-        "text_delta",
-        json!({
-            "type": "text_delta",
-            "event_type": "text_delta",
-            "node_id": "node-answer",
-            "text": "durable presentation answer",
-            "presentation": {
-                "kind": "answer",
-                "answer_node_id": "node-answer",
-                "source_node_id": "node-llm",
-                "source_output_key": "text",
-                "segment_index": 0
-            }
-        }),
-    )
-    .await;
-    append_compat_sse_runtime_event(
-        &base_state,
-        run.id,
-        "flow_finished",
-        json!({
-            "type": "flow_finished",
-            "run_id": run.id,
-            "status": "succeeded",
-            "output": { "answer": "terminal output answer" }
-        }),
-    )
-    .await;
-
-    let deltas =
-        recover_terminal_answer_deltas_from_durable_runtime_events(&base_state, &run).await;
-
-    assert_eq!(deltas.len(), 1);
-    assert_eq!(deltas[0].kind, TerminalAnswerDeltaKind::Text);
-    assert_eq!(deltas[0].text, "durable presentation answer");
 }
 
 #[tokio::test]
@@ -384,7 +340,7 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
     });
     let (sender, mut receiver) = mpsc::channel(32);
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
 
     tokio::time::timeout(
         Duration::from_secs(2),

@@ -33,7 +33,7 @@ use crate::stdio_runtime::{
 
 type ProviderWorkerHandle = Arc<Mutex<ProviderWorker>>;
 type ProviderWorkerRegistry = Arc<StdMutex<HashMap<String, ProviderWorkerHandle>>>;
-type ProviderLiveEvents = Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>;
+type ProviderLiveEvents = Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedProviderSummary {
@@ -193,7 +193,8 @@ struct PreparedProviderStreamInvocation {
     invocation_id: String,
     plugin_id: String,
     input: ProviderInvocationInput,
-    live_events: ProviderLiveEvents,
+    required_live_events: ProviderLiveEvents,
+    diagnostic_live_events: ProviderLiveEvents,
 }
 
 impl Drop for ActiveProviderInvocationLease {
@@ -568,24 +569,31 @@ impl ProviderHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
-        self.invoke_stream_with_live_events_operation(plugin_id, input, None)
+        self.invoke_stream_with_live_events_operation(plugin_id, input, None, None)
     }
 
     pub async fn invoke_stream_with_live_events(
         &self,
         plugin_id: &str,
         input: ProviderInvocationInput,
-        live_events: ProviderLiveEvents,
+        required_live_events: ProviderLiveEvents,
+        diagnostic_live_events: ProviderLiveEvents,
     ) -> FrameworkResult<ProviderInvokeStreamOutput> {
-        self.invoke_stream_with_live_events_operation(plugin_id, input, live_events)?
-            .await
+        self.invoke_stream_with_live_events_operation(
+            plugin_id,
+            input,
+            required_live_events,
+            diagnostic_live_events,
+        )?
+        .await
     }
 
     pub fn invoke_stream_with_live_events_operation(
         &self,
         plugin_id: &str,
         input: ProviderInvocationInput,
-        live_events: ProviderLiveEvents,
+        required_live_events: ProviderLiveEvents,
+        diagnostic_live_events: ProviderLiveEvents,
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
@@ -607,7 +615,8 @@ impl ProviderHost {
                 invocation_id,
                 plugin_id,
                 input,
-                live_events,
+                required_live_events,
+                diagnostic_live_events,
             })
             .await
         })
@@ -746,7 +755,8 @@ impl ProviderHost {
             invocation_id,
             plugin_id,
             input,
-            live_events,
+            required_live_events,
+            diagnostic_live_events,
         } = invocation;
 
         let wire_input = current_provider_wire_input(&loaded, &input)?;
@@ -773,7 +783,8 @@ impl ProviderHost {
                     &loaded.runtime_executable,
                     &request,
                     &invocation_limits,
-                    live_events,
+                    required_live_events,
+                    diagnostic_live_events,
                     event_observer,
                 )
                 .await
@@ -785,7 +796,8 @@ impl ProviderHost {
                     .call_streaming_with_limits(
                         &request,
                         &invocation_limits,
-                        live_events,
+                        required_live_events,
+                        diagnostic_live_events,
                         event_observer,
                     )
                     .await

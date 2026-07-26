@@ -1416,6 +1416,12 @@ pub struct ProviderRuntimeInvocationOutput {
     pub result: ProviderInvocationResult,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProviderLiveEventSenders {
+    pub required: tokio::sync::mpsc::Sender<ProviderStreamEvent>,
+    pub diagnostic: tokio::sync::mpsc::Sender<ProviderStreamEvent>,
+}
+
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
     async fn ensure_loaded(
@@ -1468,7 +1474,7 @@ pub trait ProviderRuntimePort: Send + Sync {
         &self,
         installation: &domain::PluginInstallationRecord,
         input: ProviderInvocationInput,
-        live_events: Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>,
+        live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
         let _ = live_events;
         self.invoke_stream(installation, input).await

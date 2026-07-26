@@ -964,6 +964,8 @@ pub enum ProviderRuntimeErrorKind {
     AuthFailed,
     EndpointUnreachable,
     ModelNotFound,
+    ProviderAffinityMismatch,
+    ProviderTransportUnavailable,
     RateLimited,
     ProviderUpstreamError,
     ProviderInvalidResponse,
@@ -1118,34 +1120,98 @@ impl std::error::Error for ProviderCompactError {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderStreamEvent {
-    NativeEvent { protocol: String, event: Value },
-    TextDelta { delta: String },
-    ReasoningDelta { delta: String },
-    ToolCallDelta { call_id: String, delta: Value },
-    ToolCallCommit { call: ProviderToolCall },
-    McpCallDelta { call_id: String, delta: Value },
-    McpCallCommit { call: ProviderMcpCall },
-    UsageDelta { usage: ProviderUsage },
-    UsageSnapshot { usage: ProviderUsage },
-    Finish { reason: ProviderFinishReason },
-    Error { error: ProviderRuntimeError },
+    NativeEvent {
+        protocol: String,
+        event: Value,
+    },
+    TextDelta {
+        delta: String,
+    },
+    ReasoningDelta {
+        delta: String,
+    },
+    ToolCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    ToolCallCommit {
+        call: ProviderToolCall,
+    },
+    McpCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    McpCallCommit {
+        call: ProviderMcpCall,
+    },
+    OutputItem {
+        phase: ProviderOutputItemPhase,
+        output_index: usize,
+        #[serde(deserialize_with = "deserialize_provider_output_item")]
+        item: Value,
+    },
+    UsageDelta {
+        usage: ProviderUsage,
+    },
+    UsageSnapshot {
+        usage: ProviderUsage,
+    },
+    Finish {
+        reason: ProviderFinishReason,
+    },
+    Error {
+        error: ProviderRuntimeError,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRuntimeLine {
-    NativeEvent { protocol: String, event: Value },
-    TextDelta { delta: String },
-    ReasoningDelta { delta: String },
-    ToolCallDelta { call_id: String, delta: Value },
-    ToolCallCommit { call: ProviderToolCall },
-    McpCallDelta { call_id: String, delta: Value },
-    McpCallCommit { call: ProviderMcpCall },
-    UsageDelta { usage: ProviderUsage },
-    UsageSnapshot { usage: ProviderUsage },
-    Finish { reason: ProviderFinishReason },
-    Error { error: ProviderRuntimeError },
-    Result { result: ProviderInvocationResult },
+    NativeEvent {
+        protocol: String,
+        event: Value,
+    },
+    TextDelta {
+        delta: String,
+    },
+    ReasoningDelta {
+        delta: String,
+    },
+    ToolCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    ToolCallCommit {
+        call: ProviderToolCall,
+    },
+    McpCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    McpCallCommit {
+        call: ProviderMcpCall,
+    },
+    OutputItem {
+        phase: ProviderOutputItemPhase,
+        output_index: usize,
+        #[serde(deserialize_with = "deserialize_provider_output_item")]
+        item: Value,
+    },
+    UsageDelta {
+        usage: ProviderUsage,
+    },
+    UsageSnapshot {
+        usage: ProviderUsage,
+    },
+    Finish {
+        reason: ProviderFinishReason,
+    },
+    Error {
+        error: ProviderRuntimeError,
+    },
+    Result {
+        result: ProviderInvocationResult,
+    },
 }
 
 impl ProviderRuntimeLine {
@@ -1164,6 +1230,15 @@ impl ProviderRuntimeLine {
                 Some(ProviderStreamEvent::McpCallDelta { call_id, delta })
             }
             Self::McpCallCommit { call } => Some(ProviderStreamEvent::McpCallCommit { call }),
+            Self::OutputItem {
+                phase,
+                output_index,
+                item,
+            } => Some(ProviderStreamEvent::OutputItem {
+                phase,
+                output_index,
+                item,
+            }),
             Self::UsageDelta { usage } => Some(ProviderStreamEvent::UsageDelta { usage }),
             Self::UsageSnapshot { usage } => Some(ProviderStreamEvent::UsageSnapshot { usage }),
             Self::Finish { reason } => Some(ProviderStreamEvent::Finish { reason }),
@@ -1171,4 +1246,61 @@ impl ProviderRuntimeLine {
             Self::Result { .. } => None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderOutputItemPhase {
+    Added,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProviderOutputItemValidationError {
+    #[error("provider output item must be an object")]
+    NotObject,
+    #[error("provider output item id must be a non-empty string")]
+    InvalidId,
+    #[error("provider output item type is not supported by the typed Responses projection")]
+    InvalidType,
+}
+
+pub fn validate_provider_output_item(
+    item: &Value,
+) -> Result<(), ProviderOutputItemValidationError> {
+    let object = item
+        .as_object()
+        .ok_or(ProviderOutputItemValidationError::NotObject)?;
+    if !matches!(
+        object.get("id").and_then(Value::as_str),
+        Some(id) if !id.trim().is_empty()
+    ) {
+        return Err(ProviderOutputItemValidationError::InvalidId);
+    }
+    if !matches!(
+        object.get("type").and_then(Value::as_str),
+        Some(
+            "tool_search_call"
+                | "tool_search_output"
+                | "additional_tools"
+                | "file_search_call"
+                | "program"
+                | "shell_call"
+                | "mcp_list_tools"
+                | "mcp_call"
+                | "mcp_approval_request"
+        )
+    ) {
+        return Err(ProviderOutputItemValidationError::InvalidType);
+    }
+    Ok(())
+}
+
+fn deserialize_provider_output_item<'de, D>(deserializer: D) -> Result<Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let item = Value::deserialize(deserializer)?;
+    validate_provider_output_item(&item).map_err(serde::de::Error::custom)?;
+    Ok(item)
 }

@@ -8,6 +8,8 @@ const { createGatewayFixture } = require('../gateway-fixture');
 const { createMockUpstream } = require('../mock-upstream');
 const { loadPinnedInventory } = require('../wire-audit/inventory');
 const { runWireAudit } = require('../wire-audit/runner');
+const { PROTOCOL_TRANSPORT_ORACLES } = require('../protocol-oracle/oracle-matrix');
+const { runGatewayWebSocketAcceptance } = require('./gateway-websocket');
 const { normalizeRunInputs } = require('./inputs');
 const {
   prepareEvidence,
@@ -17,6 +19,22 @@ const {
 } = require('./evidence');
 
 const SECRET_CANARY = 'sk-1flowbase-controlled-secret-canary';
+const BLOCKING_TRANSPORTS = Object.freeze([
+  Object.freeze({ id: TRANSPORT.CHAT_COMPLETIONS_SSE, label: 'OpenAI Chat' }),
+  Object.freeze({ id: TRANSPORT.ANTHROPIC_SSE, label: 'Anthropic' }),
+  Object.freeze({ id: TRANSPORT.RESPONSES_SSE, label: 'Responses SSE' }),
+  Object.freeze({ id: TRANSPORT.RESPONSES_WEBSOCKET, label: 'Responses WebSocket' }),
+]);
+
+function protocolOracleInventory() {
+  const expected = BLOCKING_TRANSPORTS.map((transport) => transport.id);
+  const observed = new Set(PROTOCOL_TRANSPORT_ORACLES.map((oracle) => oracle.providerTransport));
+  for (const transport of expected) {
+    if (!observed.has(transport)) throw new Error(`protocol oracle omitted blocking transport ${transport}`);
+  }
+  if (PROTOCOL_TRANSPORT_ORACLES.length !== 16) throw new Error('protocol oracle must contain the approved 4 x 4 matrix');
+  return { rows: PROTOCOL_TRANSPORT_ORACLES.length, blocking_transports: BLOCKING_TRANSPORTS };
+}
 
 function requireReadyEndpoint(value, provider, pathname) {
   let url;
@@ -133,24 +151,29 @@ function wireAuditManifest(ready) {
 }
 
 function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot }) {
+  const openaiGatewayOrigin = new URL(ready.targets.openai.gateway.responses_url).origin;
   return {
     repoRoot,
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
       [TRANSPORT.RESPONSES_WEBSOCKET]: `${websocketBaseUrl}/v1/responses`,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: `${openaiGatewayOrigin}/v1/chat/completions`,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.gateway.anthropic_messages_url,
     },
     authorizationTokenByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.api_key,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai.api_key,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.api_key,
     },
     modelByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.model,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai.model,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.model,
     },
     mockSnapshot,
     durableTargetsByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
     },
     anthropicTargetPool: ready.pools.anthropic,
@@ -168,8 +191,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   let fixture = null;
   let ready = null;
   let wireAudit = null;
+  let gatewayWebSocket = null;
   let characterizeResult = null;
   let executionError = null;
+  const blockingFailures = [];
   const cleanupErrors = [];
 
   try {
@@ -188,23 +213,44 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     ready = readReadyManifest(paths.readyFile);
     const compatibilityManifest = wireAuditManifest(ready);
     writeJson(path.join(paths.root, 'wire-inventory.json'), loadPinnedInventory());
-    wireAudit = await wireAuditRunner({ manifest: compatibilityManifest }, {
-      secretCanary: SECRET_CANARY,
-    });
-    writeJson(path.join(paths.root, 'wire-audit.json'), wireAudit);
-
-    characterizeResult = await characterize(characterizeOptions({
-      repoRoot: inputs.repoRoot,
-      ready,
-      websocketBaseUrl: mockEndpoints.websocketBaseUrl,
-      mockSnapshot: mock.snapshot,
-    }));
-    if (characterizeResult.summary.verdict !== 'PASS') {
-      throw new Error(`gateway characterize verdict was ${characterizeResult.summary.verdict}`);
+    const checks = [
+      ['wire-audit', async () => {
+        wireAudit = await wireAuditRunner({ manifest: compatibilityManifest }, { secretCanary: SECRET_CANARY });
+        writeJson(path.join(paths.root, 'wire-audit.json'), wireAudit);
+      }],
+      ['responses-websocket', async () => {
+        gatewayWebSocket = await (dependencies.runGatewayWebSocketAcceptance || runGatewayWebSocketAcceptance)({
+          ready,
+          mockSnapshot: mock.snapshot,
+        });
+        writeJson(path.join(paths.root, 'responses-websocket.json'), gatewayWebSocket);
+      }],
+      ['characterize', async () => {
+        characterizeResult = await characterize(characterizeOptions({
+          repoRoot: inputs.repoRoot,
+          ready,
+          websocketBaseUrl: mockEndpoints.websocketBaseUrl,
+          mockSnapshot: mock.snapshot,
+        }));
+        if (characterizeResult.summary.verdict !== 'PASS') {
+          throw new Error(`gateway characterize verdict was ${characterizeResult.summary.verdict}`);
+        }
+      }],
+    ];
+    for (const [name, check] of checks) {
+      try { await check(); }
+      catch (error) { blockingFailures.push({ name, error }); }
+    }
+    if (blockingFailures.length) {
+      throw new AggregateError(
+        blockingFailures.map((failure) => failure.error),
+        blockingFailures.map((failure) => `${failure.name}: ${failure.error.message}`).join('; '),
+      );
     }
   } catch (error) {
     executionError = error;
   } finally {
+    fs.rmSync(paths.readyFile, { force: true });
     try {
       await fixture?.close();
     } catch (error) {
@@ -215,7 +261,6 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     } catch (error) {
       cleanupErrors.push(error);
     }
-    fs.rmSync(paths.readyFile, { force: true });
   }
 
   const secrets = [
@@ -227,7 +272,16 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   const result = {
     ...workflowResultBase(inputs),
     status: finalError ? 'fail' : 'pass',
-    protocol_conformance: wireAudit ? { status: 'pass', wire_audit: wireAudit } : null,
+    protocol_conformance: {
+      status: finalError ? 'fail' : 'pass',
+      oracle: protocolOracleInventory(),
+      wire_audit: wireAudit,
+      responses_websocket: gatewayWebSocket,
+      failures: blockingFailures.map((failure) => ({
+        name: failure.name,
+        ...publicError(failure.error, secrets),
+      })),
+    },
     targets: ready ? {
       openai: {
         model: ready.targets.openai.model,
@@ -264,7 +318,9 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
 }
 
 module.exports = {
+  BLOCKING_TRANSPORTS,
   characterizeOptions,
+  protocolOracleInventory,
   readReadyManifest,
   requireReadyEndpoint,
   runWorkflowContract,

@@ -643,7 +643,7 @@ async fn llm_node_retries_protocol_only_empty_response() {
 }
 
 #[tokio::test]
-async fn native_responses_terminal_persists_provider_response_id_without_semantic_output() {
+async fn native_responses_terminal_persists_only_ephemeral_continuation_marker() {
     let plan = base_plan();
     let (invoker, _) = sequential_tool_output_invoker(vec![ProviderInvocationOutput {
         events: vec![ProviderStreamEvent::Finish {
@@ -685,9 +685,10 @@ async fn native_responses_terminal_persists_provider_response_id_without_semanti
         .iter()
         .find(|trace| trace.node_id == "node-llm")
         .expect("llm trace should exist");
+    assert!(llm_trace.output_payload.get("response_id").is_none());
     assert_eq!(
-        llm_trace.output_payload["response_id"],
-        json!("resp_provider_owned")
+        llm_trace.output_payload["provider_continuation"]["storage"],
+        json!("ephemeral")
     );
     assert_eq!(
         llm_trace.metrics_payload["attempts"][0]["status"],

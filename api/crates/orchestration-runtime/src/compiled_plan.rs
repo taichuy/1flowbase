@@ -1,37 +1,7 @@
 use std::collections::BTreeMap;
 
-use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use uuid::Uuid;
-
-pub const COMPACT_SOURCE_HANDLE_ID: &str = "compact";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum StartCompactDispatch {
-    #[default]
-    Transparent,
-    ApplicationFlow,
-}
-
-impl StartCompactDispatch {
-    /// Older documents did not persist this field. Their established behavior
-    /// is transparent provider routing, so absence remains transparent.
-    pub fn from_start_config(config: &Value) -> Result<Self> {
-        match config.get("compact_dispatch") {
-            None => Ok(Self::Transparent),
-            Some(Value::String(value)) => match value.as_str() {
-                "transparent" => Ok(Self::Transparent),
-                "application_flow" => Ok(Self::ApplicationFlow),
-                _ => bail!("start config.compact_dispatch must be transparent or application_flow"),
-            },
-            Some(_) => {
-                bail!("start config.compact_dispatch must be transparent or application_flow")
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledPlan {

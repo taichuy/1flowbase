@@ -180,7 +180,7 @@ impl RuntimeEventStream for FakeInfrastructure {
 
         Ok(RuntimeEventSubscription {
             replay: vec![],
-            live_events: receiver,
+            live_events: crate::ports::RuntimeEventReceiver::from_unbounded(receiver),
             closure,
         })
     }

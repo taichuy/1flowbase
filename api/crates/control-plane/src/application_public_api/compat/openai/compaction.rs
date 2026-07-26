@@ -1,7 +1,8 @@
+use domain::AiNativeOperation;
 use serde_json::{Map, Value};
 
 use crate::application_public_api::{
-    native::{CompactionIntent, CompactionProfile, NativeExecutionOperation},
+    native::{CompactionIntent, CompactionProfile},
     protocol_translation::{
         TranslationDecisionKind, TranslationReport, TranslationSafeRepresentation,
     },
@@ -81,7 +82,7 @@ pub(super) fn classify_response_operation(
     object: &Map<String, Value>,
     context: &OpenAiResponsesRequestContext,
     report: &mut TranslationReport,
-) -> Result<NativeExecutionOperation, OpenAiCompatError> {
+) -> Result<AiNativeOperation, OpenAiCompatError> {
     let request_kind = context
         .captured_codex_turn_metadata
         .as_ref()
@@ -168,7 +169,7 @@ pub(super) fn classify_response_operation(
     };
 
     let Some(intent) = profile.map(CompactionIntent::new) else {
-        return Ok(NativeExecutionOperation::default());
+        return Ok(AiNativeOperation::default());
     };
     let operation = intent.execution_operation();
     record_compaction_evidence(context, has_compaction_trigger, report);

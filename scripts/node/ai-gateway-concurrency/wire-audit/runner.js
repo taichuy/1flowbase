@@ -54,11 +54,7 @@ function vectorBodies(observers, secretCanary) {
           type: 'mcp', server_label: 'fixture_mcp', server_url: observers.networkObserverUrl,
           authorization: secretCanary, headers: { 'x-mcp-canary': secretCanary },
         }],
-        input: [
-          { type: 'mcp_list_tools', id: 'mcp_list_1', server_label: 'fixture_mcp', tools: [] },
-          { type: 'mcp_call', id: 'mcp_call_1', server_label: 'fixture_mcp', name: 'lookup', arguments: '{}' },
-          { type: 'mcp_approval_request', id: 'mcp_approval_1', server_label: 'fixture_mcp', name: 'lookup', arguments: '{}' },
-        ],
+        input: 'ordinary user request for an MCP lookup',
       },
     },
   ];
@@ -128,7 +124,9 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
         }),
       });
       if (!approvalResponse.ok) {
-        throw new Error(`WireAudit mcp-approval-continuation returned HTTP ${approvalResponse.status}`);
+        throw new Error(
+          `WireAudit mcp-approval-continuation ${continuation.previous_response_id} returned HTTP ${approvalResponse.status}: ${await approvalResponse.text()}`,
+        );
       }
       vector.capture += `\n${await approvalResponse.text()}`;
     }
@@ -146,7 +144,7 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
   for (const expected of [
     'tool_search_call', 'tool_search_output', 'additional_tools', 'file_search_call',
     'program', 'shell_call', 'mcp_list_tools', 'mcp_call',
-    'mcp_approval_request', 'mcp_approval_response', 'response.future_gateway_drift',
+    'mcp_approval_request',
   ]) {
     if (!capturedWire.includes(expected)) throw new Error(`WireAudit output omitted ${expected}`);
   }

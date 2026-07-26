@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  COMPACT_SOURCE_HANDLE_ID,
   DEFAULT_LLM_NODE_OUTPUTS,
-  DEFAULT_START_COMPACT_DISPATCH,
   DEFAULT_WORKFLOW_START_NODE_CONFIG,
   FLOW_SCHEMA_VERSION,
   NODE_CONTRIBUTION_SCHEMA_VERSION,
   createDefaultAgentFlowDocument,
   createDefaultWorkflowDocument,
-  getStartCompactDispatch,
   getLlmNodeOutputs,
   validatePublicOutputKey,
   type FlowLlmVisibleInternalToolDocument,
@@ -121,32 +118,6 @@ describe('workflow authoring defaults', () => {
       DEFAULT_WORKFLOW_START_NODE_CONFIG
     );
     expect(document.graph.nodes[1]?.outputs).toEqual([]);
-  });
-});
-
-describe('compact dispatch authoring defaults', () => {
-  it('AC-008 seeds Start config with the explicit transparent compact dispatch default', () => {
-    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
-    const startNode = document.graph.nodes.find(
-      (node) => node.type === 'start'
-    );
-
-    expect(DEFAULT_START_COMPACT_DISPATCH).toBe('transparent');
-    expect(COMPACT_SOURCE_HANDLE_ID).toBe('compact');
-    expect(startNode?.config).toEqual({
-      input_fields: [],
-      model_list: [],
-      compact_dispatch: 'transparent'
-    });
-  });
-
-  it('keeps legacy Start documents transparent when compact dispatch is absent', () => {
-    expect(getStartCompactDispatch({ input_fields: [], model_list: [] })).toBe(
-      'transparent'
-    );
-    expect(
-      getStartCompactDispatch({ compact_dispatch: 'application_flow' })
-    ).toBe('application_flow');
   });
 });
 

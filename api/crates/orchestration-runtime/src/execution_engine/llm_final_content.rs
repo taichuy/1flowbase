@@ -211,12 +211,26 @@ pub(super) fn durable_provider_error_message(kind: ProviderRuntimeErrorKind) -> 
         ProviderRuntimeErrorKind::AuthFailed => "provider authentication failed",
         ProviderRuntimeErrorKind::EndpointUnreachable => "provider endpoint is unreachable",
         ProviderRuntimeErrorKind::ModelNotFound => "provider model was not found",
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch => {
+            "selected LLM Provider does not own the opaque continuation"
+        }
+        ProviderRuntimeErrorKind::ProviderTransportUnavailable => {
+            "opaque Provider continuation is temporarily unavailable"
+        }
         ProviderRuntimeErrorKind::RateLimited => "provider rate limit exceeded",
         ProviderRuntimeErrorKind::ProviderUpstreamError => "provider upstream request failed",
         ProviderRuntimeErrorKind::ProviderInvalidResponse => {
             "provider returned an invalid response"
         }
     }
+}
+
+pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {
+    !matches!(
+        error.kind,
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch
+            | ProviderRuntimeErrorKind::ProviderTransportUnavailable
+    )
 }
 
 fn provider_status_code(details: Option<&Value>) -> Option<u16> {
@@ -233,7 +247,9 @@ pub(super) fn durable_provider_events(
     events
         .into_iter()
         .filter_map(|event| match event {
-            ProviderStreamEvent::NativeEvent { .. } => None,
+            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. } => {
+                None
+            }
             ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
                 error: ProviderRuntimeError::new(
                     error.kind,
@@ -330,6 +346,16 @@ fn redact_provider_diagnostic_token(text: &str, prefix: &str) -> String {
 pub(super) fn provider_runtime_error_from_anyhow(error: &anyhow::Error) -> ProviderRuntimeError {
     if let Some(PluginFrameworkError::RuntimeContract { error }) =
         error.downcast_ref::<PluginFrameworkError>()
+    {
+        return normalize_runtime_contract_error(error);
+    }
+    if let Some(ProviderCompactError::Runtime { error }) =
+        error.downcast_ref::<ProviderCompactError>()
+    {
+        return normalize_runtime_contract_error(error);
+    }
+    if let Some(ProviderCountTokensError::Runtime { error }) =
+        error.downcast_ref::<ProviderCountTokensError>()
     {
         return normalize_runtime_contract_error(error);
     }

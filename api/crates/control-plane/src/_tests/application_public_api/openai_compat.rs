@@ -4,13 +4,12 @@ use control_plane::application_public_api::compat::openai::{
     OpenAiResponsesEndpoint, OpenAiResponsesRequestContext,
 };
 use control_plane::application_public_api::native::{
-    CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
-    RemoteCompactionProfile,
+    compaction_intent, CompactionProfile, CompactionResultRequirement,
 };
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationSafeRepresentation,
 };
-use control_plane::application_public_api::run_service::GenerateExecutionProfile;
+use domain::{AiNativeCompactProfile, AiNativeGenerateProfile, AiNativeOperation};
 use serde_json::{json, Value};
 
 fn base_request() -> Value {
@@ -49,10 +48,7 @@ fn assert_compaction_intent(
     profile: CompactionProfile,
     result_requirement: CompactionResultRequirement,
 ) {
-    let intent = request
-        .execution
-        .execution_operation()
-        .compaction_intent()
+    let intent = compaction_intent(*request.execution.execution_operation())
         .expect("Codex compaction evidence must select a compaction intent");
     assert_eq!(intent.profile(), profile);
     assert_eq!(intent.result_requirement(), result_requirement);
@@ -1115,7 +1111,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
     .expect("Codex local compaction metadata should be explicit enough to classify");
     assert_eq!(
         local.request.execution.execution_operation(),
-        &NativeExecutionOperation::Generate(GenerateExecutionProfile::LocalSummary)
+        &AiNativeOperation::Generate(AiNativeGenerateProfile::LocalSummary)
     );
     assert_compaction_intent(
         &local.request,
@@ -1131,7 +1127,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
     .expect("Codex legacy compact endpoint should select its dedicated profile");
     assert_eq!(
         legacy.request.execution.execution_operation(),
-        &NativeExecutionOperation::Compact(RemoteCompactionProfile::ResponsesCompact)
+        &AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompact)
     );
     assert_compaction_intent(
         &legacy.request,
@@ -1152,7 +1148,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
     .expect("Codex V2 trigger and metadata should select the opaque V2 profile");
     assert_eq!(
         v2.request.execution.execution_operation(),
-        &NativeExecutionOperation::Compact(RemoteCompactionProfile::ResponsesCompactionV2)
+        &AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompactionV2)
     );
     assert_compaction_intent(
         &v2.request,
@@ -1169,7 +1165,7 @@ fn k1_ordinary_summary_and_uncaptured_client_compaction_stay_generate() {
     .expect("ordinary summarization text remains a Generate request");
     assert_eq!(
         ordinary_summary.request.execution.execution_operation(),
-        &NativeExecutionOperation::Generate(GenerateExecutionProfile::Standard)
+        &AiNativeOperation::Generate(AiNativeGenerateProfile::Standard)
     );
 
     let regular_metadata = translate_response_request(json!({
@@ -1180,7 +1176,7 @@ fn k1_ordinary_summary_and_uncaptured_client_compaction_stay_generate() {
     .expect("regular OpenAI metadata is not captured Codex compaction evidence");
     assert_eq!(
         regular_metadata.request.execution.execution_operation(),
-        &NativeExecutionOperation::Generate(GenerateExecutionProfile::Standard)
+        &AiNativeOperation::Generate(AiNativeGenerateProfile::Standard)
     );
 }
 

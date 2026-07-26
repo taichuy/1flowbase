@@ -111,6 +111,7 @@ function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persist
     events,
     dependencies: {
       reserveLoopbackPort: async () => ports.shift(),
+      assertLoopbackPortAvailable: async (port) => events.push(`assert-port:${port}`),
       spawnOwned(binary, env) {
         const output = [
           env.API_DATABASE_URL,
@@ -261,25 +262,10 @@ test('publication source binds Generate for Responses, Chat Completions, and Ant
   ];
   for (const [protocol, publication] of protocolPublications) {
     assert.ok(publication, `${protocol} publication write must exist`);
-    const draft = FakeOwnerClient.calls.find(
-      (call) => call.kind === 'write'
-        && call.pathname.startsWith(publication.pathname.replace('/api-publications', ''))
-        && call.pathname.endsWith('/orchestration/draft')
-    );
-    const generateTargetNodeId = draft.body.document.graph.nodes.find(
-      (node) => node.type === 'llm'
-    ).id;
-    assert.deepEqual(
-      publication.body.mapping.operation_bindings,
-      {
-        generate: { target_node_id: generateTargetNodeId },
-        count_tokens: null,
-        compact: {
-          responses_compact: null,
-          responses_compaction_v2: null,
-        },
-      },
-      `${protocol} must publish the backend Generate operation target`
+    assert.equal(
+      Object.hasOwn(publication.body.mapping, 'operation_bindings'),
+      false,
+      `${protocol} must route through the published workflow without a second target`
     );
   }
 });
@@ -307,6 +293,35 @@ test('controlled bootstrap failure terminates both owned children and removes sc
     }
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
+  } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('explicit API port is asserted before either child starts and is not randomly reserved', async () => {
+  class FailingOwnerClient extends FakeOwnerClient {
+    async signIn() {
+      throw new Error('controlled sign-in failure');
+    }
+  }
+  const files = fixtureFiles();
+  const fake = fakeDependencies({ OwnerClient: FailingOwnerClient });
+  const originalSpawn = fake.dependencies.spawnOwned;
+  fake.dependencies.spawnOwned = (...args) => {
+    fake.events.push(`spawn:${path.basename(args[0])}`);
+    return originalSpawn(...args);
+  };
+  try {
+    await assert.rejects(
+      createGatewayFixture({ ...files.options, apiPort: 7800 }, fake.dependencies),
+      /controlled sign-in failure/u,
+    );
+    assert.equal(fake.spawned[1].env.API_SERVER_ADDR, '127.0.0.1:7800');
+    assert.deepEqual(fake.events.slice(0, 3), [
+      'assert-port:7800',
+      'spawn:plugin-runner',
+      'spawn:api-server',
+    ]);
   } finally {
     fs.rmSync(files.root, { recursive: true, force: true });
   }

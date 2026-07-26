@@ -17,10 +17,6 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     ),
     helpHref: '/docs/agentflow/nodes/answer'
   },
-  compact_response: {
-    summary: i18nText('agentFlow', 'auto.compact_response_description'),
-    helpHref: null
-  },
   llm: {
     summary: i18nText(
       'agentFlow',

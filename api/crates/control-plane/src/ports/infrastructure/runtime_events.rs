@@ -165,8 +165,76 @@ pub struct RuntimeEventClosure {
 
 pub struct RuntimeEventSubscription {
     pub replay: Vec<RuntimeEventEnvelope>,
-    pub live_events: mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
+    pub live_events: RuntimeEventReceiver,
     pub closure: watch::Receiver<Option<RuntimeEventClosure>>,
+}
+
+pub struct RuntimeEventReceiver {
+    required: RuntimeEventRequiredReceiver,
+    diagnostic: mpsc::Receiver<RuntimeEventEnvelope>,
+    required_open: bool,
+    diagnostic_open: bool,
+}
+
+enum RuntimeEventRequiredReceiver {
+    Bounded(mpsc::Receiver<RuntimeEventEnvelope>),
+    Unbounded(mpsc::UnboundedReceiver<RuntimeEventEnvelope>),
+}
+
+impl RuntimeEventRequiredReceiver {
+    async fn recv(&mut self) -> Option<RuntimeEventEnvelope> {
+        match self {
+            Self::Bounded(receiver) => receiver.recv().await,
+            Self::Unbounded(receiver) => receiver.recv().await,
+        }
+    }
+}
+
+impl RuntimeEventReceiver {
+    pub fn new(
+        required: mpsc::Receiver<RuntimeEventEnvelope>,
+        diagnostic: mpsc::Receiver<RuntimeEventEnvelope>,
+    ) -> Self {
+        Self {
+            required: RuntimeEventRequiredReceiver::Bounded(required),
+            diagnostic,
+            required_open: true,
+            diagnostic_open: true,
+        }
+    }
+
+    pub fn from_unbounded(required: mpsc::UnboundedReceiver<RuntimeEventEnvelope>) -> Self {
+        let (_diagnostic_sender, diagnostic) = mpsc::channel(1);
+        Self {
+            required: RuntimeEventRequiredReceiver::Unbounded(required),
+            diagnostic,
+            required_open: true,
+            diagnostic_open: false,
+        }
+    }
+
+    pub async fn recv(&mut self) -> Option<RuntimeEventEnvelope> {
+        loop {
+            match (self.required_open, self.diagnostic_open) {
+                (true, true) => {
+                    tokio::select! {
+                        biased;
+                        event = self.required.recv() => match event {
+                            Some(event) => return Some(event),
+                            None => self.required_open = false,
+                        },
+                        event = self.diagnostic.recv() => match event {
+                            Some(event) => return Some(event),
+                            None => self.diagnostic_open = false,
+                        },
+                    }
+                }
+                (true, false) => return self.required.recv().await,
+                (false, true) => return self.diagnostic.recv().await,
+                (false, false) => return None,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

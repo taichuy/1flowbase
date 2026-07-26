@@ -58,3 +58,19 @@ test('controlled negative refuses a write before CSRF is established', async () 
   });
   await assert.rejects(client.write('/api/console/example'), /CSRF token is unavailable/u);
 });
+
+test('owner client reports the safe API error message for fixture diagnostics', async () => {
+  const client = new OwnerHttpClient('http://127.0.0.1:9000', async () => new Response(
+    JSON.stringify({
+      status: 400,
+      code: 'provider_package',
+      message: 'package host contract is incompatible',
+    }),
+    { status: 400 },
+  ));
+
+  await assert.rejects(
+    client.read('/api/console/example'),
+    /400 provider_package: package host contract is incompatible/u,
+  );
+});

@@ -181,7 +181,7 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
         }
         Ok(RuntimeEventSubscription {
             replay,
-            live_events,
+            live_events: crate::ports::RuntimeEventReceiver::from_unbounded(live_events),
             closure: closure_receiver,
         })
     }
@@ -709,6 +709,101 @@ async fn answer_template_static_text_is_projected_as_answer_presentation_delta()
         presentation_text.contains("\n----\n"),
         "Answer Presentation should include static template text: {presentation_text}"
     );
+}
+
+#[tokio::test]
+async fn ac_005_success_materializes_answer_after_durable_terminal_without_durable_deltas() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service.seed_application_with_flow("Support Agent").await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "hello" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let detail = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await
+        .unwrap();
+
+    let durable_events = service.list_runtime_events(detail.flow_run.id, 0).await;
+    assert!(durable_events
+        .iter()
+        .any(|event| event.event_type == "flow_finished"));
+    assert!(!durable_events
+        .iter()
+        .any(|event| { event.payload["presentation"]["kind"].as_str() == Some("answer") }));
+
+    let live_events = stream.events();
+    let presentation_text = live_events
+        .iter()
+        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .filter(|event| event.event_type == "text_delta")
+        .filter_map(|event| event.payload["text"].as_str())
+        .collect::<String>();
+    let answer_terminal_position = live_events
+        .iter()
+        .rposition(|event| event.event_type == "flow_finished")
+        .unwrap();
+    let last_presentation_position = live_events
+        .iter()
+        .rposition(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
+        .unwrap();
+
+    assert_eq!(presentation_text, detail.flow_run.output_payload["answer"]);
+    assert!(last_presentation_position < answer_terminal_position);
+}
+
+#[tokio::test]
+async fn success_persistence_failure_never_projects_a_success_terminal() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("Terminal persistence barrier")
+        .await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "hello" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .expect("run should start");
+    service.fail_next_runtime_event_append().await;
+
+    let _ = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await;
+
+    assert!(stream
+        .events()
+        .iter()
+        .all(|event| event.event_type != "flow_finished"));
+    assert!(service
+        .list_runtime_events(started.flow_run.id, 0)
+        .await
+        .iter()
+        .all(|event| event.event_type != "flow_finished"));
 }
 
 #[tokio::test]

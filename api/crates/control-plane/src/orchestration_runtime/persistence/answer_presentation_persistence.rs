@@ -1,6 +1,10 @@
 use super::*;
-use crate::orchestration_runtime::answer_presentation;
-use std::collections::HashMap;
+use crate::orchestration_runtime::{
+    answer_presentation,
+    provider_invoker::{CanonicalProviderDelta, RuntimeCanonicalStreamWriter},
+};
+use serde_json::Map;
+use std::collections::BTreeMap;
 
 pub(super) async fn materialize_ready_answer_node_run<R>(
     repository: &R,
@@ -19,7 +23,8 @@ where
         .checkpoint_snapshot
         .as_ref()
         .ok_or_else(|| anyhow!("waiting Answer Presentation is missing checkpoint state"))?;
-    let variable_pool = &checkpoint.variable_pool;
+    let projection = canonical_flow_projection(outcome, &checkpoint.variable_pool)?;
+    let variable_pool = &projection.variable_pool;
     let waiting_node_id = waiting_node_id(outcome)?;
     let Some(ready) = answer_presentation::ready_waiting_answer_output_from_variable_pool(
         compiled_plan,
@@ -44,7 +49,7 @@ where
                 "presentation": {
                     "kind": "answer",
                     "complete": ready.complete,
-                    "materialized_from": "waiting_prefix"
+                    "materialized_from": "canonical_stream_state"
                 }
             }),
             debug_payload: json!({}),
@@ -66,13 +71,13 @@ where
                 "preview_mode": true,
                 "answer_presentation": {
                     "partial": !ready.complete,
-                    "materialized_from": "waiting_prefix"
+                    "materialized_from": "canonical_stream_state"
                 }
             }),
             debug_payload: json!({
                 "answer_presentation": {
                     "partial": !ready.complete,
-                    "materialized_from": "waiting_prefix"
+                    "materialized_from": "canonical_stream_state"
                 }
             }),
             finished_at: Some(started_at),
@@ -86,46 +91,42 @@ where
     }
 }
 
-/// Builds only the live suffix after a terminal candidate has been computed. The caller discards
-/// it on a CAS loss; durable replay reads the answer from the committed terminal payload.
-pub(super) async fn answer_presentation_suffix_events<R>(
-    repository: &R,
-    flow_run_id: Uuid,
+pub(super) fn answer_presentation_terminal_events(
     compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     prepared_node_runs: Option<&PreparedNodeRuns>,
     answer_node_id: &str,
     output_payload: &Value,
-) -> Result<Vec<crate::ports::RuntimeEventPayload>>
-where
-    R: OrchestrationRuntimeRepository,
-{
+) -> Result<Vec<crate::ports::RuntimeEventPayload>> {
+    if let Some(compiled_plan) = compiled_plan {
+        let projection = canonical_flow_projection(outcome, &outcome.variable_pool)?;
+        if let Some(events) = presentation_events_from_canonical_pool(
+            compiled_plan,
+            &projection,
+            prepared_node_runs,
+            answer_node_id,
+        ) {
+            if !events.is_empty() {
+                return Ok(events);
+            }
+        }
+    }
+
     let Some(answer) = output_payload.get("answer").and_then(Value::as_str) else {
         return Ok(Vec::new());
     };
-    if answer.is_empty() {
+    let mut writer = RuntimeCanonicalStreamWriter::new(answer_node_id);
+    writer.write(&ProviderStreamEvent::TextDelta {
+        delta: answer.to_string(),
+    })?;
+    writer.complete()?;
+    let text = writer.state().accumulated().text().as_str();
+    if text.is_empty() {
         return Ok(Vec::new());
     }
-
-    if let Some(candidate_events) =
-        final_answer_presentation_events(compiled_plan, outcome, prepared_node_runs, answer_node_id)
-            .filter(|events| !events.is_empty())
-    {
-        return missing_answer_presentation_events(repository, flow_run_id, candidate_events).await;
-    }
-
-    let visible_answer = answer_presentation::visible_answer_text(answer);
-    let existing = existing_answer_presentation_text(repository, flow_run_id, "text_delta").await?;
-    let suffix = visible_answer
-        .strip_prefix(&existing)
-        .unwrap_or(&visible_answer);
-    if suffix.is_empty() {
-        return Ok(Vec::new());
-    }
-
     Ok(vec![debug_stream_events::answer_text_delta(
         answer_node_id,
-        suffix.to_string(),
+        text.to_string(),
         0,
         None,
         None,
@@ -133,13 +134,74 @@ where
     )])
 }
 
-fn final_answer_presentation_events(
+pub(super) fn waiting_answer_presentation_events(
     compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     prepared_node_runs: Option<&PreparedNodeRuns>,
+) -> Result<Vec<crate::ports::RuntimeEventPayload>> {
+    let Some(compiled_plan) = compiled_plan else {
+        return Ok(Vec::new());
+    };
+    let checkpoint = outcome
+        .checkpoint_snapshot
+        .as_ref()
+        .ok_or_else(|| anyhow!("waiting Answer Presentation is missing checkpoint state"))?;
+    let projection = canonical_flow_projection(outcome, &checkpoint.variable_pool)?;
+    let variable_pool = &projection.variable_pool;
+    let waiting_node_id = waiting_node_id(outcome)?;
+    let Some(ready) = answer_presentation::ready_waiting_answer_output_from_variable_pool(
+        compiled_plan,
+        variable_pool,
+        &checkpoint.active_node_ids,
+        waiting_node_id,
+    ) else {
+        return Ok(Vec::new());
+    };
+    Ok(presentation_events_from_canonical_pool(
+        compiled_plan,
+        &projection,
+        prepared_node_runs,
+        &ready.answer_node_id,
+    )
+    .unwrap_or_default())
+}
+
+pub(super) fn canonical_terminal_output_payload(
+    compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+) -> Result<Value> {
+    let mut output_payload = final_flow_output_payload(outcome);
+    if outcome.operation_terminal.is_some() {
+        return Ok(output_payload);
+    }
+    let events = answer_presentation_terminal_events(
+        compiled_plan,
+        outcome,
+        None,
+        answer_node_id(outcome),
+        &output_payload,
+    )?;
+    let answer = events
+        .iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| debug_stream_events::is_answer_presentation_delta_payload(&event.payload))
+        .filter_map(|event| event.payload.get("text").and_then(Value::as_str))
+        .collect::<String>();
+    if !answer.is_empty() {
+        answer_presentation::mark_canonical_answer_presentation_output(&mut output_payload);
+        if let Some(output) = output_payload.as_object_mut() {
+            output.insert("answer".to_string(), Value::String(answer));
+        }
+    }
+    Ok(output_payload)
+}
+
+fn presentation_events_from_canonical_pool(
+    compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
+    projection: &CanonicalFlowProjection,
+    prepared_node_runs: Option<&PreparedNodeRuns>,
     answer_node_id: &str,
 ) -> Option<Vec<crate::ports::RuntimeEventPayload>> {
-    let compiled_plan = compiled_plan?;
     let presentation =
         orchestration_runtime::answer_presentation::AnswerPresentationPlan::candidates_from_plan(
             compiled_plan,
@@ -150,72 +212,99 @@ fn final_answer_presentation_events(
     let mut events = Vec::new();
 
     for node_id in &compiled_plan.topological_order {
-        let Some(output_payload) = outcome.variable_pool.get(node_id) else {
+        let Some(output_payload) = projection.variable_pool.get(node_id) else {
             continue;
         };
         let node_run_id = prepared_node_runs
             .and_then(|node_runs| node_runs.get(node_id))
             .map(|node_run| node_run.id);
-        events.extend(cursor.complete_node_with_run_id(node_id, node_run_id, output_payload));
+        let belongs_to_current_segment =
+            prepared_node_runs.is_none_or(|node_runs| node_runs.contains_key(node_id));
+        if belongs_to_current_segment {
+            if let Some(deltas) = projection.deltas_by_node.get(node_id) {
+                let source_node_run_id = node_run_id.unwrap_or_else(Uuid::nil);
+                for delta in deltas {
+                    let event = match delta.kind {
+                        super::super::canonical_stream::CanonicalContentKind::Text => {
+                            ProviderStreamEvent::TextDelta {
+                                delta: delta.text.clone(),
+                            }
+                        }
+                        super::super::canonical_stream::CanonicalContentKind::Reasoning => {
+                            ProviderStreamEvent::ReasoningDelta {
+                                delta: delta.text.clone(),
+                            }
+                        }
+                    };
+                    events.extend(cursor.push_provider_event(node_id, source_node_run_id, &event));
+                }
+            }
+            events.extend(cursor.complete_node_with_run_id(node_id, node_run_id, output_payload));
+        } else {
+            let _ = cursor.complete_node_with_run_id(node_id, node_run_id, output_payload);
+        }
     }
 
     Some(events)
 }
 
-pub(super) async fn append_ready_answer_presentation_prefix<R>(
-    repository: &R,
-    flow_run_id: Uuid,
-    compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
-    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
-    prepared_node_runs: Option<&PreparedNodeRuns>,
-) -> Result<Vec<crate::ports::RuntimeEventPayload>>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    let Some(compiled_plan) = compiled_plan else {
-        return Ok(Vec::new());
-    };
-    let checkpoint = outcome
-        .checkpoint_snapshot
-        .as_ref()
-        .ok_or_else(|| anyhow!("waiting Answer Presentation is missing checkpoint state"))?;
-    let variable_pool = &checkpoint.variable_pool;
-    let waiting_node_id = waiting_node_id(outcome)?;
-    let Some(ready) = answer_presentation::ready_waiting_answer_output_from_variable_pool(
-        compiled_plan,
-        variable_pool,
-        &checkpoint.active_node_ids,
-        waiting_node_id,
-    ) else {
-        return Ok(Vec::new());
-    };
-    let Some(presentation) =
-        orchestration_runtime::answer_presentation::AnswerPresentationPlan::candidates_from_plan(
-            compiled_plan,
-        )
-        .into_iter()
-        .find(|presentation| presentation.answer_node_id == ready.answer_node_id)
-    else {
-        return Ok(Vec::new());
-    };
-    let mut cursor = answer_presentation::AnswerPresentationCursor::from_presentation(presentation);
-    let mut candidate_events = Vec::new();
+struct CanonicalFlowProjection {
+    variable_pool: Map<String, Value>,
+    deltas_by_node: BTreeMap<String, Vec<CanonicalProviderDelta>>,
+}
 
-    for node_id in &compiled_plan.topological_order {
-        let Some(output_payload) = variable_pool.get(node_id) else {
+fn canonical_flow_projection(
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    base: &Map<String, Value>,
+) -> Result<CanonicalFlowProjection> {
+    let mut variable_pool = base.clone();
+    let mut deltas_by_node = BTreeMap::new();
+    for trace in &outcome.node_traces {
+        if trace.node_type != "llm" {
+            continue;
+        }
+        let (text, deltas) = canonical_trace_projection(trace)?;
+        deltas_by_node.insert(trace.node_id.clone(), deltas);
+        let Some(text) = text else {
             continue;
         };
-        let node_run_id = prepared_node_runs
-            .and_then(|node_runs| node_runs.get(node_id))
-            .map(|node_run| node_run.id);
-        candidate_events.extend(cursor.complete_node_with_run_id(
-            node_id,
-            node_run_id,
-            output_payload,
-        ));
+        let output_payload = variable_pool
+            .entry(trace.node_id.clone())
+            .or_insert_with(|| trace.output_payload.clone());
+        if let Some(output) = output_payload.as_object_mut() {
+            output.insert("text".to_string(), Value::String(text));
+        }
     }
+    Ok(CanonicalFlowProjection {
+        variable_pool,
+        deltas_by_node,
+    })
+}
 
-    append_missing_answer_presentation_events(repository, flow_run_id, candidate_events).await
+fn canonical_trace_projection(
+    trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
+) -> Result<(Option<String>, Vec<CanonicalProviderDelta>)> {
+    let mut writer = RuntimeCanonicalStreamWriter::new(trace.node_id.clone());
+    let mut deltas = Vec::new();
+    let has_content_event = trace.provider_events.iter().any(|event| {
+        matches!(
+            event,
+            ProviderStreamEvent::TextDelta { .. } | ProviderStreamEvent::ReasoningDelta { .. }
+        )
+    });
+    if !has_content_event {
+        if let Some(text) = trace.output_payload.get("text").and_then(Value::as_str) {
+            deltas.extend(writer.write(&ProviderStreamEvent::TextDelta {
+                delta: text.to_string(),
+            })?);
+        }
+    }
+    for event in &trace.provider_events {
+        deltas.extend(writer.write(event)?);
+    }
+    deltas.extend(writer.complete()?);
+    let text = writer.state().accumulated().text().as_str();
+    Ok(((!text.is_empty()).then(|| text.to_string()), deltas))
 }
 
 fn waiting_node_id(
@@ -232,184 +321,6 @@ fn waiting_node_id(
             "waiting Answer Presentation requires a waiting execution outcome"
         )),
     }
-}
-
-async fn append_missing_answer_presentation_events<R>(
-    repository: &R,
-    flow_run_id: Uuid,
-    events: Vec<crate::ports::RuntimeEventPayload>,
-) -> Result<Vec<crate::ports::RuntimeEventPayload>>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    let appended = missing_answer_presentation_events(repository, flow_run_id, events).await?;
-    for event in &appended {
-        runtime_event_persister::persist_runtime_event_payload(repository, flow_run_id, event)
-            .await?;
-    }
-    Ok(appended)
-}
-
-async fn missing_answer_presentation_events<R>(
-    repository: &R,
-    flow_run_id: Uuid,
-    events: Vec<crate::ports::RuntimeEventPayload>,
-) -> Result<Vec<crate::ports::RuntimeEventPayload>>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    let existing_events = repository
-        .list_runtime_events(flow_run_id, 0)
-        .await?
-        .into_iter()
-        .filter(|event| debug_stream_events::is_answer_presentation_delta_payload(&event.payload))
-        .collect::<Vec<_>>();
-    let mut candidate_text_by_identity = HashMap::<AnswerPresentationDeltaIdentity, String>::new();
-    for event in &events {
-        let Some(identity) =
-            AnswerPresentationDeltaIdentity::from_payload(&event.event_type, &event.payload)
-        else {
-            continue;
-        };
-        if let Some(text) = event.payload.get("text").and_then(Value::as_str) {
-            candidate_text_by_identity
-                .entry(identity)
-                .or_default()
-                .push_str(text);
-        }
-    }
-    let mut skip_bytes_by_identity = candidate_text_by_identity
-        .iter()
-        .map(|(identity, candidate_text)| {
-            let existing_text = existing_events
-                .iter()
-                .filter(|event| identity.matches_existing(&event.event_type, &event.payload))
-                .filter_map(|event| event.payload.get("text").and_then(Value::as_str))
-                .collect::<String>();
-            let skip_bytes = if candidate_text.starts_with(&existing_text) {
-                existing_text.len()
-            } else {
-                0
-            };
-            (identity.clone(), skip_bytes)
-        })
-        .collect::<HashMap<_, _>>();
-    let mut appended = Vec::new();
-
-    for mut event in events {
-        let Some(text) = event.payload.get("text").and_then(Value::as_str) else {
-            continue;
-        };
-        let Some(identity) =
-            AnswerPresentationDeltaIdentity::from_payload(&event.event_type, &event.payload)
-        else {
-            continue;
-        };
-        let Some(skip_bytes) = skip_bytes_by_identity.get_mut(&identity) else {
-            continue;
-        };
-        let missing = missing_answer_delta_text(skip_bytes, text);
-        if missing.is_empty() {
-            continue;
-        }
-        if let Some(payload) = event.payload.as_object_mut() {
-            payload.insert("text".to_string(), Value::String(missing));
-        }
-        appended.push(event);
-    }
-
-    Ok(appended)
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-struct AnswerPresentationDeltaIdentity {
-    event_type: String,
-    answer_node_id: Option<String>,
-    segment_index: Option<String>,
-    source_node_id: Option<String>,
-    source_node_run_id: Option<String>,
-    source_output_key: Option<String>,
-}
-
-impl AnswerPresentationDeltaIdentity {
-    fn from_payload(event_type: &str, payload: &Value) -> Option<Self> {
-        debug_stream_events::is_answer_presentation_delta_payload(payload).then(|| Self {
-            event_type: event_type.to_string(),
-            answer_node_id: presentation_identity_field(payload, "answer_node_id"),
-            segment_index: presentation_identity_field(payload, "segment_index"),
-            source_node_id: presentation_identity_field(payload, "source_node_id"),
-            source_node_run_id: presentation_identity_field(payload, "source_node_run_id"),
-            source_output_key: presentation_identity_field(payload, "source_output_key"),
-        })
-    }
-
-    fn matches_existing(&self, event_type: &str, payload: &Value) -> bool {
-        let Some(existing) = Self::from_payload(event_type, payload) else {
-            return false;
-        };
-        self.event_type == existing.event_type
-            && self.answer_node_id == existing.answer_node_id
-            && self.segment_index == existing.segment_index
-            && self.source_node_id == existing.source_node_id
-            && self.source_output_key == existing.source_output_key
-            && self
-                .source_node_run_id
-                .as_ref()
-                .is_none_or(|source_node_run_id| {
-                    existing.source_node_run_id.as_ref() == Some(source_node_run_id)
-                })
-    }
-}
-
-fn presentation_identity_field(payload: &Value, key: &str) -> Option<String> {
-    payload
-        .get("presentation")
-        .and_then(Value::as_object)
-        .and_then(|presentation| presentation.get(key))
-        .map(|value| match value {
-            Value::String(text) => text.clone(),
-            other => other.to_string(),
-        })
-}
-
-async fn existing_answer_presentation_text<R>(
-    repository: &R,
-    flow_run_id: Uuid,
-    event_type: &str,
-) -> Result<String>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    Ok(repository
-        .list_runtime_events(flow_run_id, 0)
-        .await?
-        .into_iter()
-        .filter(|event| event.event_type == event_type)
-        .filter(|event| debug_stream_events::is_answer_presentation_delta_payload(&event.payload))
-        .filter_map(|event| {
-            event
-                .payload
-                .get("text")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-        .collect::<String>())
-}
-
-fn missing_answer_delta_text(skip_bytes: &mut usize, next_delta: &str) -> String {
-    if *skip_bytes >= next_delta.len() {
-        *skip_bytes -= next_delta.len();
-        return String::new();
-    }
-    if *skip_bytes == 0 {
-        return next_delta.to_string();
-    }
-    let missing = next_delta
-        .get(*skip_bytes..)
-        .unwrap_or(next_delta)
-        .to_string();
-    *skip_bytes = 0;
-    missing
 }
 
 pub(super) fn answer_node_id(
@@ -448,6 +359,12 @@ pub(super) fn final_flow_output_payload(
             .find(|trace| trace.error_payload.is_none() && !is_empty_object(&trace.output_payload))
             .map(|trace| trace.output_payload.clone())
             .unwrap_or_else(|| json!({}));
+    }
+
+    if let Some(terminal) = &outcome.operation_terminal {
+        return terminal
+            .as_payload()
+            .expect("runtime-owned Native operation terminal must serialize");
     }
 
     outcome

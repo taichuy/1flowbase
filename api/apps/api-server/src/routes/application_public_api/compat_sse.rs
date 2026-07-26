@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    convert::Infallible,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, convert::Infallible, sync::Arc, time::Duration};
 
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
@@ -39,10 +34,9 @@ use crate::{
     routes::application_public_api::{
         native::{service_error, NativeApiError},
         stream_terminal_fallback::{
-            enrich_terminal_runtime_event_with_durable_answer,
-            load_latest_native_run_for_terminal_fallback, recover_missing_stream_terminal_winner,
-            terminal_answer_deltas_from_payload, terminal_answer_text_from_payload,
-            terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
+            durable_canonical_partial_runtime_events_from_native_run,
+            durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
+            recover_missing_stream_terminal_winner, terminal_runtime_event_from_native_run,
         },
     },
 };
@@ -52,18 +46,16 @@ mod protocol_mappers;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-use event_forwarding::send_compatible_runtime_event_stream;
 use event_forwarding::{
     append_compatible_resume_terminal_event, is_answer_presentation_delta,
-    send_subscribed_compatible_runtime_event_stream, SubscribedCompatibleRuntimeEventStream,
+    send_subscribed_compatible_runtime_event_stream, send_subscribed_compatible_typed_event_stream,
+    SubscribedCompatibleRuntimeEventStream, SubscribedCompatibleTypedEventStream,
 };
 #[cfg(test)]
+use event_forwarding::{send_compatible_runtime_event_stream, take_ordered_compatible_event};
+#[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
-use protocol_mappers::{
-    terminal_answer_deltas_from_run_or_payload, AnthropicStreamMapper, OpenAiChatStreamMapper,
-    OpenAiResponseStreamMapper,
-};
+use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
 type CompatRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;
 
@@ -79,6 +71,70 @@ pub(crate) struct CompatibleResumePlan {
 enum CompatibleTurnAction {
     Start,
     Resume(ResumePublishedCallbackCommand),
+}
+
+pub(crate) struct PreparedCompatibleTurn {
+    initial_run: NativeRunResult,
+    action: CompatibleTurnAction,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+}
+
+impl PreparedCompatibleTurn {
+    pub(crate) fn start(
+        initial_run: NativeRunResult,
+        provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    ) -> Self {
+        Self {
+            initial_run,
+            action: CompatibleTurnAction::Start,
+            provider_transport_slot,
+        }
+    }
+
+    pub(crate) fn resume(
+        initial_run: NativeRunResult,
+        command: ResumePublishedCallbackCommand,
+    ) -> Self {
+        Self {
+            initial_run,
+            action: CompatibleTurnAction::Resume(command),
+            provider_transport_slot: None,
+        }
+    }
+}
+
+/// One cursor-ordered runtime fact. Payload identity never participates in
+/// admission; a terminal fact carries the latest durable run snapshot.
+#[derive(Debug)]
+pub(crate) struct CompatibleProjectionInput {
+    run_snapshot: NativeRunResult,
+    envelope: RuntimeEventEnvelope,
+}
+
+pub(crate) struct CompatibleTypedTurnStream {
+    initial_run: NativeRunResult,
+    events: mpsc::Receiver<CompatibleProjectionInput>,
+}
+
+impl CompatibleProjectionInput {
+    pub(crate) fn into_parts(self) -> (NativeRunResult, RuntimeEventEnvelope) {
+        (self.run_snapshot, self.envelope)
+    }
+}
+
+impl CompatibleTypedTurnStream {
+    pub(crate) fn into_parts(self) -> (NativeRunResult, mpsc::Receiver<CompatibleProjectionInput>) {
+        (self.initial_run, self.events)
+    }
+}
+
+struct OpenedCompatibleTurn {
+    initial_run: NativeRunResult,
+    from_sequence: Option<i64>,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    subscription: control_plane::ports::RuntimeEventSubscription,
+    turn_action: &'static str,
+    execution: tokio::task::JoinHandle<()>,
 }
 
 impl CompatibleTurnAction {
@@ -226,12 +282,7 @@ pub(crate) async fn prepare_compatible_resume(
 struct CompatibleStreamStats {
     emitted_public_event: bool,
     emitted_content_bytes: usize,
-    emitted_text_content: bool,
-    emitted_reasoning_content: bool,
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
-    forwarded_answer_chunks: HashSet<CompatiblePublicEventChunkIdentity>,
-    forwarded_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
-    durable_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -245,74 +296,26 @@ struct CompatiblePublicEventIdentity {
     source_output_key: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct CompatiblePublicEventChunkIdentity {
-    projection: CompatiblePublicEventIdentity,
-    text: String,
-}
-
 impl CompatibleStreamStats {
     fn emitted_content(&self) -> bool {
         self.emitted_content_bytes > 0
     }
 
-    fn claim_runtime_event(&mut self, event: &mut RuntimeEventEnvelope) -> bool {
+    fn claim_runtime_event(&mut self, event: &RuntimeEventEnvelope) -> bool {
         let Some(identity) = compatible_public_event_identity(event) else {
             return true;
         };
-        if !is_answer_presentation_delta(event) {
-            return self.forwarded_event_identities.insert(identity);
-        }
-        let Some(text) = event.text.as_deref().filter(|text| !text.is_empty()) else {
+        if is_answer_presentation_delta(event) {
+            // Presentation deltas are ordered facts. Equal text is valid and must never
+            // participate in identity, deduplication, or durable-prefix reconciliation.
             return true;
-        };
-        let is_batched_durable_delta = event
-            .payload
-            .get("event_ids")
-            .and_then(Value::as_array)
-            .is_some();
-        let forwarded = self
-            .forwarded_answer_text
-            .entry(identity.clone())
-            .or_default();
-        if is_batched_durable_delta {
-            // Durable batches can split the live stream at different boundaries. Reconcile the
-            // cumulative durable prefix instead of comparing each batch with the full live text.
-            let durable = self
-                .durable_answer_text
-                .entry(identity.clone())
-                .or_default();
-            durable.push_str(text);
-            if forwarded.starts_with(durable.as_str()) {
-                return false;
-            }
-            if durable.starts_with(forwarded.as_str()) {
-                let suffix = durable[forwarded.len()..].to_string();
-                if suffix.is_empty() {
-                    return false;
-                }
-                forwarded.push_str(&suffix);
-                event.text = Some(suffix.clone());
-                if let Some(payload) = event.payload.as_object_mut() {
-                    payload.insert("text".to_string(), Value::String(suffix));
-                }
-                return true;
-            }
         }
-        let chunk = CompatiblePublicEventChunkIdentity {
-            projection: identity,
-            text: text.to_string(),
-        };
-        if !self.forwarded_answer_chunks.insert(chunk) {
-            return false;
-        }
-        forwarded.push_str(text);
-        true
+        self.forwarded_event_identities.insert(identity)
     }
 
     fn record_sent_runtime_event(
         &mut self,
-        run: &NativeRunResult,
+        _run: &NativeRunResult,
         event: &RuntimeEventEnvelope,
         emitted_public_event: bool,
     ) {
@@ -324,41 +327,8 @@ impl CompatibleStreamStats {
             let Some(text) = event.text.as_deref().filter(|text| !text.is_empty()) else {
                 return;
             };
-            match event.event_type.as_str() {
-                "reasoning_delta" => self.record_reasoning_content(text),
-                "text_delta" => self.record_text_content(text),
-                _ => {}
-            }
-            return;
+            self.emitted_content_bytes += text.len();
         }
-
-        if !matches!(
-            event.event_type.as_str(),
-            "flow_finished" | "flow_incomplete"
-        ) {
-            return;
-        }
-        for delta in terminal_answer_deltas_from_run_or_payload(run, &event.payload) {
-            match delta.kind {
-                TerminalAnswerDeltaKind::Reasoning if !self.emitted_reasoning_content => {
-                    self.record_reasoning_content(&delta.text);
-                }
-                TerminalAnswerDeltaKind::Text if !self.emitted_text_content => {
-                    self.record_text_content(&delta.text);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn record_text_content(&mut self, text: &str) {
-        self.emitted_text_content = true;
-        self.emitted_content_bytes += text.len();
-    }
-
-    fn record_reasoning_content(&mut self, text: &str) {
-        self.emitted_reasoning_content = true;
-        self.emitted_content_bytes += text.len();
     }
 }
 
@@ -410,8 +380,7 @@ pub(crate) async fn start_openai_run_stream(
     run: NativeRunResult,
     model: String,
 ) -> Result<Response, NativeApiError> {
-    let mapper =
-        OpenAiChatStreamMapper::new(model, openai_chat_completion_id_from_run_id(run.id), true);
+    let mapper = OpenAiChatStreamMapper::new(model, openai_chat_completion_id_from_run_id(run.id));
     start_compatible_turn_stream(
         state,
         run,
@@ -429,8 +398,7 @@ pub(crate) async fn start_openai_response_stream(
     previous_response_id: Option<String>,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id, true)
-        .with_native_passthrough(provider_transport_slot.is_some());
+    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
     start_compatible_turn_stream(
         state,
         run,
@@ -477,7 +445,7 @@ pub(crate) async fn start_openai_chat_resume_stream(
     chat_completion_id: String,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiChatStreamMapper::new(model, chat_completion_id, true);
+    let mapper = OpenAiChatStreamMapper::new(model, chat_completion_id);
     start_compatible_turn_stream(
         state,
         run,
@@ -495,7 +463,7 @@ pub(crate) async fn start_openai_response_resume_stream(
     previous_response_id: Option<String>,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id, true);
+    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
     start_compatible_turn_stream(
         state,
         run,
@@ -557,56 +525,36 @@ async fn start_compatible_turn_stream(
     mut projection: CompatibleProtocolProjection,
 ) -> Result<Response, NativeApiError> {
     let sse_projection = projection.name();
-    let turn_action = action.name();
-    if let Err(error) = state
-        .runtime_event_stream
-        .open_run(
-            run.id,
-            control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
-        )
-        .await
-    {
-        warn!(
-            flow_run_id = %run.id,
-            application_id = %run.application_id,
-            error = %error,
-            "failed to open compatible public API runtime event stream"
-        );
-        return Err(service_error(error));
-    }
-
-    let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
-    let from_sequence = if ignored_waiting_callback_task_id.is_some() {
-        let resume_started = state
-            .runtime_event_stream
-            .append(run.id, debug_stream_events::flow_started(run.id))
-            .await
-            .map_err(service_error)?;
-        Some(resume_started.sequence.saturating_sub(1))
-    } else {
-        None
-    };
-    let subscription = state
-        .runtime_event_stream
-        .subscribe(run.id, from_sequence)
-        .await
-        .map_err(|error| {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                turn_action,
-                error = %error,
-                "failed to subscribe compatible public API runtime event stream"
-            );
-            service_error(error)
-        })?;
+    let opened = open_compatible_turn(
+        state.clone(),
+        PreparedCompatibleTurn {
+            initial_run: run,
+            action,
+            provider_transport_slot,
+        },
+    )
+    .await?;
+    let OpenedCompatibleTurn {
+        initial_run,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        subscription,
+        turn_action,
+        execution,
+    } = opened;
 
     let (sender, receiver) = mpsc::channel(32);
     let execution_sender_guard = sender.clone();
+    tokio::spawn(async move {
+        let _execution_sender_guard = execution_sender_guard;
+        if let Err(error) = execution.await {
+            warn!(error = %error, "compatible public API turn task did not exit cleanly");
+        }
+    });
     tokio::spawn(send_subscribed_compatible_runtime_event_stream(
         SubscribedCompatibleRuntimeEventStream {
             state: state.clone(),
-            initial_run: run.clone(),
+            initial_run: initial_run.clone(),
             sse_projection,
             from_sequence,
             ignored_waiting_callback_task_id,
@@ -618,10 +566,121 @@ async fn start_compatible_turn_stream(
         },
     ));
 
-    let background_state = state.clone();
-    let background_run = run.clone();
+    info!(
+        flow_run_id = %initial_run.id,
+        application_id = %initial_run.application_id,
+        sse_projection = %sse_projection,
+        turn_action,
+        heartbeat_interval_secs = 10_u64,
+        heartbeat_text = "heartbeat",
+        "compatible public API stream opened"
+    );
+
+    Ok(Sse::new(CompatRunSseStream::new(receiver))
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(10))
+                .text("heartbeat"),
+        )
+        .into_response())
+}
+
+pub(crate) async fn start_compatible_typed_turn_stream(
+    state: Arc<ApiState>,
+    prepared: PreparedCompatibleTurn,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    let opened = open_compatible_turn(state.clone(), prepared).await?;
+    let OpenedCompatibleTurn {
+        initial_run,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        subscription,
+        turn_action: _,
+        execution,
+    } = opened;
+    let (sender, events) = mpsc::channel(32);
+    let execution_sender_guard = sender.clone();
     tokio::spawn(async move {
         let _execution_sender_guard = execution_sender_guard;
+        if let Err(error) = execution.await {
+            warn!(error = %error, "compatible typed turn task did not exit cleanly");
+        }
+    });
+    tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            state,
+            initial_run: initial_run.clone(),
+            from_sequence,
+            ignored_waiting_callback_task_id,
+            subscription,
+            sender,
+        },
+    ));
+    Ok(CompatibleTypedTurnStream {
+        initial_run,
+        events,
+    })
+}
+
+async fn open_compatible_turn(
+    state: Arc<ApiState>,
+    prepared: PreparedCompatibleTurn,
+) -> Result<OpenedCompatibleTurn, NativeApiError> {
+    let PreparedCompatibleTurn {
+        initial_run,
+        action,
+        provider_transport_slot,
+    } = prepared;
+    let turn_action = action.name();
+    if let Err(error) = state
+        .runtime_event_stream
+        .open_run(
+            initial_run.id,
+            control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
+        )
+        .await
+    {
+        warn!(
+            flow_run_id = %initial_run.id,
+            application_id = %initial_run.application_id,
+            error = %error,
+            "failed to open compatible public API runtime event stream"
+        );
+        return Err(service_error(error));
+    }
+
+    let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
+    let from_sequence = if ignored_waiting_callback_task_id.is_some() {
+        let resume_started = state
+            .runtime_event_stream
+            .append(
+                initial_run.id,
+                debug_stream_events::flow_started(initial_run.id),
+            )
+            .await
+            .map_err(service_error)?;
+        Some(resume_started.sequence.saturating_sub(1))
+    } else {
+        None
+    };
+    let subscription = state
+        .runtime_event_stream
+        .subscribe(initial_run.id, from_sequence)
+        .await
+        .map_err(|error| {
+            warn!(
+                flow_run_id = %initial_run.id,
+                application_id = %initial_run.application_id,
+                turn_action,
+                error = %error,
+                "failed to subscribe compatible public API runtime event stream"
+            );
+            service_error(error)
+        })?;
+
+    let background_state = state.clone();
+    let background_run = initial_run.clone();
+    let execution = tokio::spawn(async move {
         let runtime_service = OrchestrationRuntimeService::new(
             background_state.store.clone(),
             ApiProviderRuntime::new(background_state.provider_runtime.clone()),
@@ -701,23 +760,14 @@ async fn start_compatible_turn_stream(
         }
     });
 
-    info!(
-        flow_run_id = %run.id,
-        application_id = %run.application_id,
-        sse_projection = %sse_projection,
+    Ok(OpenedCompatibleTurn {
+        initial_run,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        subscription,
         turn_action,
-        heartbeat_interval_secs = 10_u64,
-        heartbeat_text = "heartbeat",
-        "compatible public API stream opened"
-    );
-
-    Ok(Sse::new(CompatRunSseStream::new(receiver))
-        .keep_alive(
-            KeepAlive::new()
-                .interval(Duration::from_secs(10))
-                .text("heartbeat"),
-        )
-        .into_response())
+        execution,
+    })
 }
 
 fn callback_task_id_from_resume_command(command: &ResumePublishedCallbackCommand) -> uuid::Uuid {

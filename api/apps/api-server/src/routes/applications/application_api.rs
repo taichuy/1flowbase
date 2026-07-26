@@ -19,10 +19,9 @@ use control_plane::{
         },
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
-            ApplicationApiMappingService, ApplicationCompactOperationBindings,
-            ApplicationOperationBindings, ApplicationOperationTargetBinding,
-            GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
-            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
+            ApplicationApiMappingService, GetApplicationApiMappingCommand,
+            ReplaceApplicationApiMappingCommand, WorkflowExtensionApiConfig,
+            WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, ApplicationPublicationVersionRecord,
@@ -63,18 +62,6 @@ use crate::{
 };
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
-
-pub(crate) mod operation_bindings;
-
-pub use operation_bindings::{
-    get_application_operation_bindings, ApplicationDraftOperationBindingProjectionResponse,
-    ApplicationOperationBindingOperationResponse, ApplicationOperationBindingOptionsResponse,
-    ApplicationOperationBindingProjectionResponse, ApplicationOperationBindingTargetOptionResponse,
-    ApplicationOperationBindingUnsupportedReasonResponse,
-    ApplicationPublishedOperationBindingProjectionResponse,
-    ApplicationPublishedOperationBindingStatusResponse,
-    ApplicationPublishedOperationBindingsProjectionResponse,
-};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApplicationApiKeyBody {
@@ -132,36 +119,6 @@ pub struct ApplicationApiMappingBody {
     pub output: ApplicationApiMappingOutputBody,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extension: Option<WorkflowExtensionApiBody>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(inline)]
-    pub operation_bindings: Option<ApplicationOperationBindingsBody>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ApplicationOperationTargetBindingBody {
-    pub target_node_id: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ApplicationCompactOperationBindingsBody {
-    #[schema(inline)]
-    pub responses_compact: Option<ApplicationOperationTargetBindingBody>,
-    #[schema(inline)]
-    pub responses_compaction_v2: Option<ApplicationOperationTargetBindingBody>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ApplicationOperationBindingsBody {
-    #[schema(inline)]
-    pub generate: Option<ApplicationOperationTargetBindingBody>,
-    #[schema(inline)]
-    pub count_tokens: Option<ApplicationOperationTargetBindingBody>,
-    #[serde(default)]
-    #[schema(inline)]
-    pub compact: ApplicationCompactOperationBindingsBody,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
@@ -292,8 +249,6 @@ pub struct ApplicationPublicationResponse {
     pub mapping_snapshot: ApplicationApiMappingBody,
     #[schema(inline)]
     pub operation: Option<PublishedWorkflowOperationResponse>,
-    #[schema(inline)]
-    pub operation_bindings: ApplicationOperationBindingsBody,
     pub dependency_snapshot: Vec<ApplicationPublicationJsDependencySnapshotResponse>,
     pub public_url: String,
     pub created_by: Uuid,
@@ -347,13 +302,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .put(
                 replace_application_api_mapping,
                 ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
-            ),
-        )
-        .route(
-            "/applications/:application_id/api-operation-bindings",
-            console_get(
-                get_application_operation_bindings,
-                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
             ),
         )
         .route(
@@ -489,14 +437,8 @@ fn to_created_api_key_response(
     }
 }
 
-fn to_mapping_config(
-    body: ApplicationApiMappingBody,
-) -> (
-    ApplicationApiMappingConfig,
-    Option<ApplicationOperationBindings>,
-) {
-    let operation_bindings = body.operation_bindings.map(to_operation_bindings);
-    let mapping = ApplicationApiMappingConfig {
+fn to_mapping_config(body: ApplicationApiMappingBody) -> ApplicationApiMappingConfig {
+    ApplicationApiMappingConfig {
         input: ApplicationApiMappingInput {
             query_target: body.input.query_target,
             model_target: body.input.model_target,
@@ -511,14 +453,10 @@ fn to_mapping_config(
             error_selector: body.output.error_selector,
         },
         extension: body.extension.map(to_extension_config),
-    };
-    (mapping, operation_bindings)
+    }
 }
 
-fn to_mapping_body(
-    mapping: ApplicationApiMappingConfig,
-    operation_bindings: Option<ApplicationOperationBindings>,
-) -> ApplicationApiMappingBody {
+fn to_mapping_body(mapping: ApplicationApiMappingConfig) -> ApplicationApiMappingBody {
     ApplicationApiMappingBody {
         input: ApplicationApiMappingInputBody {
             query_target: mapping.input.query_target,
@@ -534,59 +472,6 @@ fn to_mapping_body(
             error_selector: mapping.output.error_selector,
         },
         extension: mapping.extension.map(to_extension_body),
-        operation_bindings: operation_bindings.map(to_operation_bindings_body),
-    }
-}
-
-fn to_operation_bindings(body: ApplicationOperationBindingsBody) -> ApplicationOperationBindings {
-    ApplicationOperationBindings {
-        generate: body.generate.map(to_operation_target_binding),
-        count_tokens: body.count_tokens.map(to_operation_target_binding),
-        compact: ApplicationCompactOperationBindings {
-            responses_compact: body
-                .compact
-                .responses_compact
-                .map(to_operation_target_binding),
-            responses_compaction_v2: body
-                .compact
-                .responses_compaction_v2
-                .map(to_operation_target_binding),
-        },
-    }
-}
-
-fn to_operation_target_binding(
-    body: ApplicationOperationTargetBindingBody,
-) -> ApplicationOperationTargetBinding {
-    ApplicationOperationTargetBinding {
-        target_node_id: body.target_node_id,
-    }
-}
-
-fn to_operation_bindings_body(
-    bindings: ApplicationOperationBindings,
-) -> ApplicationOperationBindingsBody {
-    ApplicationOperationBindingsBody {
-        generate: bindings.generate.map(to_operation_target_binding_body),
-        count_tokens: bindings.count_tokens.map(to_operation_target_binding_body),
-        compact: ApplicationCompactOperationBindingsBody {
-            responses_compact: bindings
-                .compact
-                .responses_compact
-                .map(to_operation_target_binding_body),
-            responses_compaction_v2: bindings
-                .compact
-                .responses_compaction_v2
-                .map(to_operation_target_binding_body),
-        },
-    }
-}
-
-fn to_operation_target_binding_body(
-    binding: ApplicationOperationTargetBinding,
-) -> ApplicationOperationTargetBindingBody {
-    ApplicationOperationTargetBindingBody {
-        target_node_id: binding.target_node_id,
     }
 }
 
@@ -644,9 +529,8 @@ fn to_publication_response(
         active: publication.active,
         api_enabled: publication.api_enabled,
         public_url: publication_public_url(&publication),
-        mapping_snapshot: to_mapping_body(publication.mapping_snapshot, None),
+        mapping_snapshot: to_mapping_body(publication.mapping_snapshot),
         operation,
-        operation_bindings: to_operation_bindings_body(publication.operation_bindings),
         dependency_snapshot: publication
             .dependency_snapshot
             .into_iter()
@@ -886,10 +770,7 @@ pub async fn get_application_api_mapping(
         })
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_mapping_body(
-        draft.mapping,
-        Some(draft.operation_bindings),
-    ))))
+    Ok(Json(ApiSuccess::new(to_mapping_body(draft.mapping))))
 }
 
 #[utoipa::path(
@@ -913,22 +794,16 @@ pub async fn replace_application_api_mapping(
 ) -> Result<Json<ApiSuccess<ApplicationApiMappingBody>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let (mapping, operation_bindings) = to_mapping_config(body);
+    let mapping = to_mapping_config(body);
     let draft = ApplicationApiMappingService::new(state.store.clone())
-        .replace_mapping_draft(
-            ReplaceApplicationApiMappingCommand {
-                actor_user_id: context.user.id,
-                application_id,
-                mapping,
-            },
-            operation_bindings,
-        )
+        .replace_mapping_draft(ReplaceApplicationApiMappingCommand {
+            actor_user_id: context.user.id,
+            application_id,
+            mapping,
+        })
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_mapping_body(
-        draft.mapping,
-        Some(draft.operation_bindings),
-    ))))
+    Ok(Json(ApiSuccess::new(to_mapping_body(draft.mapping))))
 }
 
 #[utoipa::path(
@@ -980,17 +855,14 @@ pub async fn publish_application_api(
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationPublicationResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let (mapping, operation_bindings) = to_mapping_config(body.mapping);
+    let mapping = to_mapping_config(body.mapping);
     let publication = ApplicationPublicationService::new(state.store.clone())
-        .publish_active_version_with_operation_bindings(
-            PublishApplicationCommand {
-                actor_user_id: context.user.id,
-                application_id,
-                mapping,
-                api_enabled: body.api_enabled,
-            },
-            operation_bindings,
-        )
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: context.user.id,
+            application_id,
+            mapping,
+            api_enabled: body.api_enabled,
+        })
         .await?;
 
     Ok((

@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-use plugin_framework::provider_contract::{
-    semantic_required_capabilities, ProviderInvocationCapability,
-};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -17,16 +14,13 @@ use super::{
     },
     native::{
         CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
-        NativeRunValidationError, ResponsesTransportRequirement,
+        NativeRunValidationError,
     },
     publications::ApplicationPublicationVersionRecord,
 };
-mod compact;
 mod conversation_history;
-mod count_tokens;
 mod native_results;
 mod repository_contracts;
-mod resolved_route;
 mod run_input;
 
 use crate::{
@@ -38,18 +32,9 @@ use crate::{
     },
     state_transition::ensure_flow_run_transition,
 };
-pub use compact::{
-    ApplicationPublishedCompactService, CompactCommand, PublishedCompactError,
-    PublishedCompactResult,
-};
 use conversation_history::application_public_conversation_messages_to_native_history;
-pub use count_tokens::{
-    ApplicationPublishedCountTokensService, CountTokensCommand, PublishedCountTokensError,
-    PublishedCountTokensResult,
-};
 pub use native_results::{
-    native_compact_result_from_run_detail, native_result_from_flow_run,
-    native_result_from_run_detail, native_result_from_run_stream_state, NativeCompactRunResult,
+    native_result_from_flow_run, native_result_from_run_detail, native_result_from_run_stream_state,
 };
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
@@ -57,15 +42,9 @@ pub use repository_contracts::{
     ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
     PublishedRunStreamState,
 };
-pub use resolved_route::{
-    GenerateExecutionProfile, PublishedProviderManifestCapabilityRepository,
-    PublishedRouteDispatch, PublishedRouteResolutionError, PublishedRouteResolver,
-    ResolvedCompactProviderRoute, ResolvedCountTokensProviderRoute, ResolvedProviderRoute,
-    ResolvedPublishedRoute,
-};
 use run_input::{
-    compiled_plan_start_node_id, freeze_run_input_environment, generate_external_conversation_id,
-    validate_external_model_parameters,
+    compiled_plan_start_node_id, enrich_anthropic_context_beta_from_start_model,
+    freeze_run_input_environment, generate_external_conversation_id,
 };
 pub(crate) use run_input::{
     compiled_plan_start_node_id as public_compiled_plan_start_node_id,
@@ -95,7 +74,6 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
-        + PublishedProviderManifestCapabilityRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {
@@ -114,34 +92,12 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        self.start_native_run_for_dispatch(command, PublishedRouteDispatch::OperationBinding)
-            .await
+        self.start_agentflow_run(command).await
     }
 
-    /// Creates the durable shell for a Compact request that has already been
-    /// admitted to the application-flow terminal. Provider ingress remains
-    /// transient and is supplied only when the runtime starts this run.
-    pub async fn start_application_flow_compact_run(
+    async fn start_agentflow_run(
         &self,
         command: CreateNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        if command
-            .request
-            .execution
-            .execution_operation()
-            .compaction_intent()
-            .is_none()
-        {
-            return Err(NativeRunValidationError::InvalidMapping);
-        }
-        self.start_native_run_for_dispatch(command, PublishedRouteDispatch::ApplicationFlow)
-            .await
-    }
-
-    async fn start_native_run_for_dispatch(
-        &self,
-        command: CreateNativeRunCommand,
-        route_dispatch: PublishedRouteDispatch,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let mut api_key_service = ApplicationApiKeyService::new(self.repository.clone());
         if let Some(cache) = &self.last_used_cache {
@@ -154,25 +110,14 @@ where
         self.ensure_application_exists(&actor).await?;
 
         let publication = self.load_enabled_publication(&actor).await?;
-        let client_request = command.request;
-        let generate_profile = client_request
-            .execution
-            .execution_operation()
-            .generate_profile()
-            .unwrap_or(GenerateExecutionProfile::Standard);
-        let mut required_provider_capabilities =
-            semantic_required_capabilities(&client_request.system, &client_request.request_context);
-        if client_request.metadata.responses_transport_requirement()
-            == ResponsesTransportRequirement::NativePassthrough
-        {
-            required_provider_capabilities
-                .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
-        }
-        let external_model_parameters = validate_external_model_parameters(
-            client_request.execution.model_parameters(),
-            client_request.model.as_deref(),
+        let mut client_request = command.request;
+        enrich_anthropic_context_beta_from_start_model(
+            &mut client_request,
             &publication.document_snapshot,
-        )?;
+        );
+        // The request model is workflow input. Only the LLM node selected by the
+        // graph owns provider/model capability validation.
+        let external_model_parameters = client_request.execution.model_parameters().cloned();
         let idempotency_key = client_request
             .execution
             .idempotency_key()
@@ -192,26 +137,6 @@ where
             .await
             .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
-        let resolved_route = PublishedRouteResolver::new(&self.repository)
-            .resolve_generate(
-                actor.workspace_id,
-                &publication,
-                &compiled_plan,
-                route_dispatch,
-                generate_profile,
-                &required_provider_capabilities,
-            )
-            .await
-            .map_err(NativeRunValidationError::RouteUnavailable)?;
-        let (target_node_id, provider_transport_summary) = match resolved_route {
-            ResolvedPublishedRoute::ApplicationFlow { .. } => (None, provider_transport_summary),
-            ResolvedPublishedRoute::Provider(route) => {
-                let summary =
-                    with_provider_transport_pin(provider_transport_summary, &route.llm_runtime);
-                (Some(route.target_node_id), summary)
-            }
-        };
-
         let mapped = NativeInputMapper::map(&request, &publication.mapping_snapshot)
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let metadata = mapped.metadata;
@@ -265,7 +190,7 @@ where
                 flow_schema_version: publication.flow_schema_version.clone(),
                 document_hash: publication.document_hash.clone(),
                 run_mode: domain::FlowRunMode::PublishedApiRun,
-                target_node_id,
+                target_node_id: None,
                 title: build_flow_run_title(request.title.as_deref(), &request.query),
                 status: domain::FlowRunStatus::Queued,
                 input_payload,
@@ -319,9 +244,10 @@ where
             .cancel_published_flow_run(&CancelPublishedFlowRunInput {
                 flow_run_id: flow_run.id,
                 from_status: flow_run.status,
-                // Cancellation owns a failed terminal result. Do not retain a
-                // stale answer/error payload that could make it look successful.
-                output_payload: json!({}),
+                // Cancellation changes the terminal status, not the canonical content already
+                // produced by the run. The public projection keeps this partial output and still
+                // terminates honestly as cancelled.
+                output_payload: flow_run.output_payload.clone(),
                 error_payload: Some(json!({
                     "code": PUBLISHED_RUN_CANCELLED_ERROR_CODE,
                     "message": PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE,
@@ -594,26 +520,6 @@ fn with_public_provider_transport_summary(
     input_payload
 }
 
-fn with_provider_transport_pin(
-    summary: Option<Value>,
-    runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
-) -> Option<Value> {
-    let mut summary = summary?;
-    summary
-        .as_object_mut()
-        .expect("provider transport summary")
-        .insert(
-            "provider_pin".to_string(),
-            json!({
-                "provider_instance_id": runtime.provider_instance_id,
-                "provider_code": runtime.provider_code,
-                "protocol": runtime.protocol,
-                "upstream_model_id": runtime.model,
-            }),
-        );
-    Some(summary)
-}
-
 fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {
     match value {
         Value::Object(object) => {
@@ -694,7 +600,6 @@ fn ensure_idempotency_fingerprint_matches(
 mod tests {
     use super::super::conversations::ApplicationPublicConversationMessageRecord;
     use super::*;
-    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderInvocationResult};
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;
@@ -807,38 +712,6 @@ mod tests {
                 { "kind": "message", "text": "结构化回答" }
             ])
         );
-    }
-
-    #[test]
-    fn native_compact_projection_reads_only_a_successful_durable_receipt() {
-        let result = ProviderInvocationResult {
-            final_content: Some("typed local compact summary".to_string()),
-            finish_reason: Some(ProviderFinishReason::Stop),
-            ..ProviderInvocationResult::default()
-        };
-        let receipt_payload = json!({
-            "semantic_terminal": "compact_response",
-            "profile": "local_summary",
-            "result": serde_json::to_value(result).expect("fixture receipt should serialize"),
-        });
-        let mut detail = domain::ApplicationRunDetail {
-            flow_run: test_flow_run(receipt_payload),
-            node_runs: Vec::new(),
-            checkpoints: Vec::new(),
-            callback_tasks: Vec::new(),
-            events: Vec::new(),
-            stitched_trace: Vec::new(),
-            subagent_traces: Vec::new(),
-        };
-
-        let projected = native_compact_result_from_run_detail(&detail, json!({}));
-        assert!(projected.receipt.is_some());
-        assert!(projected.run.answer.is_none());
-
-        detail.flow_run.status = domain::FlowRunStatus::Failed;
-        let failed = native_compact_result_from_run_detail(&detail, json!({}));
-        assert!(failed.receipt.is_none());
-        assert!(failed.run.answer.is_none());
     }
 
     #[test]

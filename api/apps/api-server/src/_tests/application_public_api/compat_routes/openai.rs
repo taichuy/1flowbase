@@ -41,7 +41,7 @@ async fn opencode_chat_stream_options_cross_the_request_boundary() {
 }
 
 #[tokio::test]
-async fn codex_native_reasoning_include_reaches_provider_capability_boundary() {
+async fn codex_native_reasoning_include_reaches_the_selected_provider_capability_boundary() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Codex Reasoning Include App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -64,13 +64,10 @@ async fn codex_native_reasoning_include_reaches_provider_capability_boundary() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     let payload = response_json(response).await;
-    assert_eq!(
-        payload["error"]["code"],
-        json!("provider_capability_mismatch")
-    );
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(payload["error"]["code"], json!("provider_invalid_response"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]
@@ -336,7 +333,7 @@ async fn openai_responses_function_call_output_resolves_callback_before_run_crea
 }
 
 #[tokio::test]
-async fn d4_ac_016_openai_responses_input_file_reaches_provider_capability_boundary() {
+async fn d4_ac_016_openai_responses_input_file_reaches_the_selected_provider_capability_boundary() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Responses Nested Input File App").await;
     let before = flow_run_count(state.as_ref()).await;
@@ -357,13 +354,10 @@ async fn d4_ac_016_openai_responses_input_file_reaches_provider_capability_bound
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     let payload = response_json(response).await;
-    assert_eq!(
-        payload["error"]["code"],
-        json!("provider_capability_mismatch")
-    );
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(payload["error"]["code"], json!("provider_invalid_response"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]

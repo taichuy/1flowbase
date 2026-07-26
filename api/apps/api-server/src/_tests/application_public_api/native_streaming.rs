@@ -119,14 +119,6 @@ async fn publish_native_application(app: &Router, cookie: &str, csrf: &str, appl
                                 "usage_selector": null,
                                 "files_selector": null,
                                 "error_selector": null
-                            },
-                            "operation_bindings": {
-                                "generate": { "target_node_id": "node-llm" },
-                                "count_tokens": null,
-                                "compact": {
-                                    "responses_compact": null,
-                                    "responses_compaction_v2": null
-                                }
                             }
                         },
                         "api_enabled": true
@@ -140,11 +132,7 @@ async fn publish_native_application(app: &Router, cookie: &str, csrf: &str, appl
 
     assert_eq!(response.status(), StatusCode::CREATED);
     let payload = response_json(response).await;
-    assert_eq!(
-        payload["data"]["operation_bindings"]["generate"]["target_node_id"],
-        json!("node-llm"),
-        "publication must preserve the explicit Generate target: {payload}"
-    );
+    assert!(payload["data"].get("operation_bindings").is_none());
 }
 
 async fn test_app_with_state() -> (Router, std::sync::Arc<crate::app_state::ApiState>) {

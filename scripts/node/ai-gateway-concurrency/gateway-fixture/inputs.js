@@ -77,6 +77,13 @@ function requireLoopbackUrl(value) {
   return parsed.href.replace(/\/$/, '');
 }
 
+function requirePort(value, label) {
+  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+    fixtureError(`${label} must be an integer between 1 and 65535`);
+  }
+  return value;
+}
+
 function normalizeOptions(options) {
   const artifactRoot = options.artifactRoot
     ? requireString(options.artifactRoot, 'governance artifact root')
@@ -89,6 +96,9 @@ function normalizeOptions(options) {
     openaiPackage: requireFile(options.openaiPackage, 'official OpenAI package archive'),
     anthropicPackage: requireFile(options.anthropicPackage, 'official Anthropic package archive'),
     upstreamBaseUrl: requireLoopbackUrl(options.upstreamBaseUrl),
+    apiPort: options.apiPort === undefined || options.apiPort === null
+      ? null
+      : requirePort(options.apiPort, 'api-server port'),
     readyFile: options.readyFile ? path.resolve(options.readyFile) : null,
     artifactRoot,
   };
@@ -98,5 +108,6 @@ module.exports = {
   GatewayFixtureError,
   normalizeOptions,
   requireLoopbackUrl,
+  requirePort,
   requirePostgresUrl,
 };

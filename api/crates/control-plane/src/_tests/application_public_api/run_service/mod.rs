@@ -2,30 +2,20 @@ use control_plane::application_public_api::{
     api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
     mapping::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
-        ApplicationApiMappingService, ApplicationCompactOperationBindings,
-        ApplicationOperationBindings, ApplicationOperationTargetBinding,
-        ReplaceApplicationApiMappingCommand,
     },
     native::{
         translate_native_run_request, CreateNativeRunCommand, NativeRunRequest,
         NativeRunValidationError,
     },
     publications::{ApplicationPublicationService, PublishApplicationCommand},
-    run_service::{
-        ApplicationPublishedRunControlRepository, ApplicationPublishedRunService,
-        GenerateExecutionProfile, PublishedRouteDispatch, PublishedRouteResolutionError,
-        PublishedRouteResolver, ResolvedPublishedRoute,
-    },
+    run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use control_plane::ports::{
-    ApplicationCompiledPlanRepository, ApplicationEnvironmentVariableInput,
-    ApplicationPublicationRepository, ApplicationRepository, FlowRepository,
-    ReplaceApplicationEnvironmentVariablesInput,
+    ApplicationEnvironmentVariableInput, ApplicationPublicationRepository, ApplicationRepository,
+    FlowRepository, ReplaceApplicationEnvironmentVariablesInput,
 };
-use plugin_framework::provider_contract::{
-    NativePromptBlock, ProviderCompactProfile, ProviderWireOperation,
-};
+use plugin_framework::provider_contract::NativePromptBlock;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -223,6 +213,11 @@ async fn save_start_model_catalog(
         {
             "id": "plain-model",
             "name": "Plain model"
+        },
+        {
+            "id": "claude-opus-4-8",
+            "name": "Claude Opus 4.8",
+            "context_window": 1000000
         }
     ]);
     FlowRepository::save_draft(

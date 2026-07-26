@@ -1,4 +1,5 @@
 use super::*;
+use domain::AiNativeOperation;
 use plugin_framework::provider_contract::{
     ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext,
     ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
@@ -6,17 +7,15 @@ use plugin_framework::provider_contract::{
 };
 use std::sync::Arc;
 
-use crate::execution_state::{ApplicationFlowExecutionIntent, CompactResponseIngress};
-
 #[derive(Clone, Default)]
 pub struct ExecutionRuntimeContext {
+    operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
     pub(super) client_protocol_envelope: Option<ClientProtocolEnvelope>,
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
-    pub(super) compact_response_ingress: Option<CompactResponseIngress>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
 }
 
@@ -26,6 +25,7 @@ impl ExecutionRuntimeContext {
         variable_pool: &Map<String, Value>,
     ) -> Result<Self> {
         Ok(Self {
+            operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools: run_level_provider_tools(plan, variable_pool),
             client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool)?,
             native_model_prompt_context: native_model_prompt_context_from_variable_pool(
@@ -36,9 +36,12 @@ impl ExecutionRuntimeContext {
             )?,
             llm_routing_counter_store: None,
             http_response_file_persister: None,
-            compact_response_ingress: None,
             provider_invocation_capabilities: BTreeSet::new(),
         })
+    }
+
+    pub fn operation(&self) -> AiNativeOperation {
+        self.operation
     }
 
     pub fn with_llm_routing_counter_store(
@@ -65,28 +68,6 @@ impl ExecutionRuntimeContext {
         self
     }
 
-    /// Callers use this only after the published route has explicitly chosen
-    /// application-flow dispatch and admitted one successful typed Compact
-    /// result. Transparent Compact routing bypasses this runtime entirely.
-    pub fn with_application_flow_compact_ingress(
-        mut self,
-        ingress: CompactResponseIngress,
-    ) -> Self {
-        self.compact_response_ingress = Some(ingress);
-        self
-    }
-
-    pub fn execution_intent(&self) -> ApplicationFlowExecutionIntent {
-        self.compact_response_ingress
-            .as_ref()
-            .map(CompactResponseIngress::intent)
-            .unwrap_or(ApplicationFlowExecutionIntent::Ordinary)
-    }
-
-    pub(super) fn compact_response_ingress(&self) -> Option<&CompactResponseIngress> {
-        self.compact_response_ingress.as_ref()
-    }
-
     pub(super) async fn next_llm_routing_counter(
         &self,
         key: &str,
@@ -98,6 +79,29 @@ impl ExecutionRuntimeContext {
             .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
         store.increment_counter(key, 1, ttl).await
     }
+}
+
+fn ai_native_operation_from_variable_pool(
+    plan: &CompiledPlan,
+    variable_pool: &Map<String, Value>,
+) -> Result<AiNativeOperation> {
+    let Some(start) = plan.nodes.values().find(|node| node.node_type == "start") else {
+        return Ok(AiNativeOperation::default());
+    };
+    let Some(operation) = variable_pool
+        .get(&start.node_id)
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("operation"))
+    else {
+        return Ok(AiNativeOperation::default());
+    };
+
+    serde_json::from_value(operation.clone()).map_err(|error| {
+        anyhow!(
+            "invalid AI Native operation at {}.operation: {error}",
+            start.node_id
+        )
+    })
 }
 
 fn native_model_prompt_context_from_variable_pool(
@@ -215,6 +219,12 @@ pub(super) fn start_node_execution_input(
 }
 
 pub(crate) fn materialize_start_builtin_defaults(start_payload: &mut Map<String, Value>) {
+    start_payload
+        .entry("operation".to_string())
+        .or_insert_with(|| {
+            serde_json::to_value(AiNativeOperation::default())
+                .expect("the canonical AI Native operation must serialize")
+        });
     start_payload
         .entry("system".to_string())
         .or_insert_with(|| Value::Array(Vec::new()));

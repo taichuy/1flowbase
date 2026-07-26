@@ -1,7 +1,4 @@
-import {
-  COMPACT_SOURCE_HANDLE_ID,
-  type FlowAuthoringDocument
-} from '@1flowbase/flow-schema';
+import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import type {
   AgentFlowCanvasNode,
@@ -15,11 +12,6 @@ import {
   getLlmVisibleInternalTools,
   getLlmVisibleInternalToolsEnabled
 } from '../llm-node-config';
-import {
-  isApplicationFlowStart,
-  isFlowTerminalNode
-} from '../compact-dispatch';
-import { getNodePickerOptionsForSource } from '../plugin-node-definitions';
 import { i18nText } from '../../../../shared/i18n/text';
 
 const CANVAS_NODE_WIDTH = 196;
@@ -87,20 +79,6 @@ export function toCanvasNodes(
           : [];
       const toolSourceHandles =
         node.type === 'llm' ? llmToolSourceHandles(node.config) : [];
-      const compactSourceHandle = isApplicationFlowStart(node)
-        ? {
-            id: COMPACT_SOURCE_HANDLE_ID,
-            title: i18nText('agentFlow', 'auto.compact_handle')
-          }
-        : null;
-      const compactSourceHandleOccupied = compactSourceHandle
-        ? document.graph.edges.some(
-            (edge) =>
-              edge.source === node.id &&
-              edge.sourceHandle === COMPACT_SOURCE_HANDLE_ID
-          )
-        : false;
-
       return {
         id: node.id,
         type: 'agentFlowNode',
@@ -125,26 +103,13 @@ export function toCanvasNodes(
           pickerOpen: pickerNodeId === node.id,
           pickerSourceHandleId,
           showTargetHandle: node.type !== 'start',
-          showSourceHandle: !isFlowTerminalNode(node),
+          showSourceHandle: node.type !== 'answer',
           branchSourceHandles,
-          compactSourceHandle,
-          compactSourceHandleOccupied,
-          compactNodePickerOptions: getNodePickerOptionsForSource(
-            actions.nodePickerOptions,
-            node,
-            COMPACT_SOURCE_HANDLE_ID
-          ),
           toolSourceHandles,
           isContainer: node.type === 'iteration' || node.type === 'loop',
           workflowTriggerContext: actions.workflowTriggerContext ?? null,
           ...actions,
-          nodePickerOptions: getNodePickerOptionsForSource(
-            actions.nodePickerOptions,
-            node,
-            null
-          ),
-          onRunNode:
-            node.type === 'compact_response' ? undefined : actions.onRunNode
+          nodePickerOptions: actions.nodePickerOptions
         }
       };
     });

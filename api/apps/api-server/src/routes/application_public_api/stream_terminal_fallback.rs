@@ -1,9 +1,8 @@
 use control_plane::{
     application_public_api::{
         native::{
-            answer_segments_from_text, answer_segments_from_value, answer_segments_value,
-            AnswerProjectionSegment, AnswerProjectionSegmentKind, NativeRunResult, NativeRunStatus,
-            ANSWER_SEGMENTS_KEY,
+            answer_segments_from_value, answer_segments_value, AnswerProjectionSegment,
+            AnswerProjectionSegmentKind, NativeRunResult, NativeRunStatus, ANSWER_SEGMENTS_KEY,
         },
         run_service::{
             native_result_from_run_stream_state, ApplicationPublishedRunControlRepository,
@@ -14,13 +13,11 @@ use control_plane::{
         FinalizePublishedRunMissingStreamTerminalCommand, OrchestrationRuntimeService,
     },
     ports::{
-        FileManagementRepository, GetRuntimeDebugArtifactInput, OrchestrationRuntimeRepository,
         RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventSource,
     },
 };
 use serde_json::{json, Value};
 use tracing::warn;
-use uuid::Uuid;
 
 use crate::{app_state::ApiState, provider_runtime::ApiProviderRuntime};
 
@@ -36,22 +33,28 @@ pub(crate) struct TerminalAnswerDelta {
     pub text: String,
 }
 
-pub(crate) async fn load_latest_native_run_for_terminal_fallback(
+/// A public terminal may only be projected from a durable run snapshot. A load
+/// failure is therefore a barrier failure, not permission to reuse the stale
+/// pre-execution snapshot.
+pub(crate) async fn load_durable_native_run_for_terminal_projection(
     state: &ApiState,
     initial_run: &NativeRunResult,
-) -> NativeRunResult {
-    match load_latest_native_run_strict(state, initial_run).await {
-        Ok(run) => run,
-        Err(error) => {
-            warn!(
-                flow_run_id = %initial_run.id,
-                application_id = %initial_run.application_id,
-                error = %error,
-                "failed to load durable run state for stream terminal fallback"
-            );
-            initial_run.clone()
-        }
-    }
+) -> anyhow::Result<NativeRunResult> {
+    load_latest_native_run_strict(state, initial_run).await
+}
+
+pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_type: &str) -> bool {
+    matches!(
+        (run.status, event_type),
+        (NativeRunStatus::Succeeded, "flow_finished")
+            | (NativeRunStatus::Incomplete, "flow_incomplete")
+            | (NativeRunStatus::Failed, "flow_failed")
+            | (NativeRunStatus::Cancelled, "flow_cancelled")
+            | (
+                NativeRunStatus::Waiting,
+                "waiting_human" | "waiting_callback"
+            )
+    )
 }
 
 /// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
@@ -141,7 +144,7 @@ pub(crate) fn terminal_runtime_event_from_native_run(
             debug_stream_events::flow_failed(run.id, terminal_error_payload(run))
         }
         NativeRunStatus::Cancelled => debug_stream_events::flow_cancelled(run.id),
-        NativeRunStatus::Waiting => waiting_callback_payload(run)?,
+        NativeRunStatus::Waiting => waiting_terminal_payload(run),
         NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running => {
             return None;
         }
@@ -149,104 +152,41 @@ pub(crate) fn terminal_runtime_event_from_native_run(
     Some(RuntimeEventEnvelope::new(run.id, 0, payload))
 }
 
-pub(crate) async fn enrich_terminal_runtime_event_with_durable_answer(
-    state: &ApiState,
+pub(crate) fn durable_canonical_partial_runtime_events_from_native_run(
     run: &NativeRunResult,
-    mut event: RuntimeEventEnvelope,
-) -> RuntimeEventEnvelope {
+) -> Vec<RuntimeEventEnvelope> {
     if !matches!(
-        event.event_type.as_str(),
-        "flow_finished" | "flow_incomplete" | "flow_failed"
+        run.status,
+        NativeRunStatus::Incomplete
+            | NativeRunStatus::Failed
+            | NativeRunStatus::Cancelled
+            | NativeRunStatus::Waiting
     ) {
-        return event;
+        return Vec::new();
     }
-    if !terminal_answer_deltas_from_payload(&event.payload).is_empty()
-        || run
-            .answer
-            .as_deref()
-            .is_some_and(|answer| !answer.is_empty())
-    {
-        return event;
-    }
-
-    let deltas = recover_terminal_answer_deltas_from_durable_runtime_events(state, run).await;
-    if deltas.is_empty() {
-        return event;
-    }
-
-    put_terminal_answer_in_payload(
-        event.event_type.as_str(),
-        &mut event.payload,
-        terminal_answer_deltas_to_answer_text(&deltas),
-    );
-    event
-}
-
-pub(crate) async fn recover_terminal_answer_deltas_from_durable_runtime_events(
-    state: &ApiState,
-    run: &NativeRunResult,
-) -> Vec<TerminalAnswerDelta> {
-    let records = match state.store.list_runtime_events(run.id, 0).await {
-        Ok(records) => records,
-        Err(error) => {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                error = %error,
-                "failed to load durable runtime events for terminal answer fallback"
-            );
-            return Vec::new();
-        }
-    };
-
-    let presentation_deltas = terminal_answer_deltas_from_runtime_records(&records);
-    if !presentation_deltas.is_empty() {
-        return presentation_deltas;
-    }
-
-    for record in records.iter().rev() {
-        if !matches!(
-            record.event_type.as_str(),
-            "flow_finished" | "flow_incomplete" | "flow_failed"
-        ) {
-            continue;
-        }
-        let deltas =
-            terminal_answer_deltas_from_payload_resolving_artifacts(state, run, &record.payload)
-                .await;
-        if !deltas.is_empty() {
-            return deltas;
-        }
-    }
-
-    Vec::new()
-}
-
-fn terminal_answer_deltas_from_runtime_records(
-    records: &[domain::RuntimeEventRecord],
-) -> Vec<TerminalAnswerDelta> {
-    records
-        .iter()
-        .filter(|record| {
-            matches!(record.event_type.as_str(), "text_delta" | "reasoning_delta")
-                && debug_stream_events::is_answer_presentation_delta_payload(&record.payload)
-        })
-        .filter_map(|record| {
-            let text = record
-                .payload
-                .get("text")
-                .or_else(|| record.payload.get("delta"))
-                .and_then(Value::as_str)
-                .filter(|text| !text.is_empty())?;
-            let kind = if record.event_type == "reasoning_delta" {
-                TerminalAnswerDeltaKind::Reasoning
-            } else {
-                TerminalAnswerDeltaKind::Text
+    terminal_answer_deltas_from_payload(&terminal_output_payload(run))
+        .into_iter()
+        .enumerate()
+        .map(|(index, delta)| {
+            let payload = match delta.kind {
+                TerminalAnswerDeltaKind::Reasoning => debug_stream_events::answer_reasoning_delta(
+                    "assistant",
+                    delta.text,
+                    index,
+                    None,
+                    None,
+                    None,
+                ),
+                TerminalAnswerDeltaKind::Text => debug_stream_events::answer_text_delta(
+                    "assistant",
+                    delta.text,
+                    index,
+                    None,
+                    None,
+                    None,
+                ),
             };
-            Some(TerminalAnswerDelta {
-                kind,
-                text: text.to_string(),
-            })
+            RuntimeEventEnvelope::new(run.id, index as i64 + 1, payload)
         })
         .collect()
 }
@@ -275,19 +215,47 @@ fn terminal_error_payload(run: &NativeRunResult) -> Value {
         .unwrap_or_else(|| json!({ "message": "published run failed" }))
 }
 
-fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload> {
-    let action = run.required_action.as_ref()?;
-    let callback_task_id = action
+fn waiting_terminal_payload(run: &NativeRunResult) -> RuntimeEventPayload {
+    let Some(action) = run.required_action.as_ref() else {
+        return RuntimeEventPayload {
+            event_type: "waiting_human".to_string(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: true,
+            trace_visible: true,
+            payload: json!({
+                "type": "waiting_human",
+                "run_id": run.id,
+                "status": "waiting_human",
+            }),
+        };
+    };
+    let Some(callback_task_id) = action
         .payload
         .get("callback_task_id")
         .cloned()
-        .unwrap_or(Value::Null);
+        .filter(|value| !value.is_null())
+    else {
+        return RuntimeEventPayload {
+            event_type: "waiting_human".to_string(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: true,
+            trace_visible: true,
+            payload: json!({
+                "type": "waiting_human",
+                "run_id": run.id,
+                "status": "waiting_human",
+                "required_action": action,
+            }),
+        };
+    };
     let callback_kind = action
         .payload
         .get("callback_kind")
         .cloned()
         .unwrap_or(Value::Null);
-    Some(RuntimeEventPayload {
+    RuntimeEventPayload {
         event_type: "waiting_callback".to_string(),
         source: RuntimeEventSource::Runtime,
         durability: RuntimeEventDurability::DurableRequired,
@@ -306,7 +274,7 @@ fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload
                 .unwrap_or(Value::Null),
             "required_action": action,
         }),
-    })
+    }
 }
 
 pub(crate) fn terminal_answer_deltas_from_payload(payload: &Value) -> Vec<TerminalAnswerDelta> {
@@ -400,170 +368,6 @@ fn push_terminal_answer_delta(deltas: &mut Vec<TerminalAnswerDelta>, reasoning: 
     });
 }
 
-async fn terminal_answer_deltas_from_payload_resolving_artifacts(
-    state: &ApiState,
-    run: &NativeRunResult,
-    payload: &Value,
-) -> Vec<TerminalAnswerDelta> {
-    let direct_deltas = terminal_answer_deltas_from_payload(payload);
-    if !direct_deltas.is_empty() {
-        return direct_deltas;
-    }
-
-    for artifact_id in terminal_answer_artifact_ids_from_payload(payload) {
-        let Some(value) = load_runtime_debug_artifact_json_value(state, run, artifact_id).await
-        else {
-            continue;
-        };
-        let deltas = terminal_answer_deltas_from_payload(&value);
-        if !deltas.is_empty() {
-            return deltas;
-        }
-        let Some(answer) = terminal_answer_text_from_value(&value, 0) else {
-            continue;
-        };
-        let deltas = split_terminal_answer_deltas(&answer);
-        if !deltas.is_empty() {
-            return deltas;
-        }
-    }
-
-    Vec::new()
-}
-
-async fn load_runtime_debug_artifact_json_value(
-    state: &ApiState,
-    run: &NativeRunResult,
-    artifact_id: Uuid,
-) -> Option<Value> {
-    let workspace_id = runtime_debug_artifact_workspace_id(state, run, artifact_id).await?;
-    let artifact = match state
-        .store
-        .get_runtime_debug_artifact(&GetRuntimeDebugArtifactInput {
-            workspace_id,
-            application_id: run.application_id,
-            artifact_id,
-        })
-        .await
-    {
-        Ok(Some(artifact)) => artifact,
-        Ok(None) => return None,
-        Err(error) => {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                artifact_id = %artifact_id,
-                error = %error,
-                "failed to load runtime debug artifact metadata for terminal answer fallback"
-            );
-            return None;
-        }
-    };
-
-    let storage = match state.store.get_file_storage(artifact.storage_id).await {
-        Ok(Some(storage)) => storage,
-        Ok(None) => return None,
-        Err(error) => {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                artifact_id = %artifact_id,
-                error = %error,
-                "failed to load runtime debug artifact storage for terminal answer fallback"
-            );
-            return None;
-        }
-    };
-    if !storage.enabled {
-        warn!(
-            flow_run_id = %run.id,
-            application_id = %run.application_id,
-            artifact_id = %artifact_id,
-            storage_id = %storage.id,
-            "runtime debug artifact storage is disabled for terminal answer fallback"
-        );
-        return None;
-    }
-    let Some(driver) = state.file_storage_registry.get(&storage.driver_type) else {
-        warn!(
-            flow_run_id = %run.id,
-            application_id = %run.application_id,
-            artifact_id = %artifact_id,
-            storage_id = %storage.id,
-            driver_type = %storage.driver_type,
-            "runtime debug artifact storage driver is not registered for terminal answer fallback"
-        );
-        return None;
-    };
-    let object = match driver
-        .open_read(storage_object::OpenReadInput {
-            config_json: &storage.config_json,
-            object_path: &artifact.storage_ref,
-        })
-        .await
-    {
-        Ok(object) => object,
-        Err(error) => {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                artifact_id = %artifact_id,
-                error = %error,
-                "failed to read runtime debug artifact object for terminal answer fallback"
-            );
-            return None;
-        }
-    };
-
-    match serde_json::from_slice(&object.bytes) {
-        Ok(value) => Some(value),
-        Err(error) => {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                artifact_id = %artifact_id,
-                error = %error,
-                "runtime debug artifact object is not JSON for terminal answer fallback"
-            );
-            None
-        }
-    }
-}
-
-async fn runtime_debug_artifact_workspace_id(
-    state: &ApiState,
-    run: &NativeRunResult,
-    artifact_id: Uuid,
-) -> Option<Uuid> {
-    match sqlx::query_scalar::<_, Uuid>(
-        r#"
-        select workspace_id
-        from runtime_debug_artifacts
-        where id = $1
-          and application_id = $2
-          and (flow_run_id = $3 or flow_run_id is null)
-        "#,
-    )
-    .bind(artifact_id)
-    .bind(run.application_id)
-    .bind(run.id)
-    .fetch_optional(state.store.pool())
-    .await
-    {
-        Ok(workspace_id) => workspace_id,
-        Err(error) => {
-            warn!(
-                flow_run_id = %run.id,
-                application_id = %run.application_id,
-                artifact_id = %artifact_id,
-                error = %error,
-                "failed to resolve runtime debug artifact workspace for terminal answer fallback"
-            );
-            None
-        }
-    }
-}
-
 fn terminal_answer_text_from_value(value: &Value, depth: usize) -> Option<String> {
     if depth > 8 {
         return None;
@@ -593,48 +397,6 @@ fn terminal_answer_text_from_value(value: &Value, depth: usize) -> Option<String
     }
 }
 
-fn terminal_answer_artifact_ids_from_payload(payload: &Value) -> Vec<Uuid> {
-    let mut artifact_ids = Vec::new();
-    if let Some(answer) = payload
-        .get("output")
-        .and_then(|output| output.get("answer"))
-    {
-        collect_terminal_answer_artifact_ids(answer, &mut artifact_ids, 0);
-    }
-    if let Some(answer) = payload.get("answer") {
-        collect_terminal_answer_artifact_ids(answer, &mut artifact_ids, 0);
-    }
-    if let Some(output) = payload.get("output") {
-        collect_terminal_answer_artifact_ids(output, &mut artifact_ids, 0);
-    }
-    artifact_ids.dedup();
-    artifact_ids
-}
-
-fn collect_terminal_answer_artifact_ids(value: &Value, artifact_ids: &mut Vec<Uuid>, depth: usize) {
-    if depth > 8 {
-        return;
-    }
-    let Some(object) = value.as_object() else {
-        return;
-    };
-    if is_runtime_debug_artifact_preview(value) {
-        if let Some(artifact_id) = object
-            .get("artifact_ref")
-            .and_then(Value::as_str)
-            .and_then(|value| Uuid::parse_str(value).ok())
-        {
-            artifact_ids.push(artifact_id);
-        }
-        return;
-    }
-    for key in ["answer", "text", "output"] {
-        if let Some(value) = object.get(key) {
-            collect_terminal_answer_artifact_ids(value, artifact_ids, depth + 1);
-        }
-    }
-}
-
 fn decode_runtime_debug_artifact_preview(payload: &Value) -> Option<Value> {
     if !is_runtime_debug_artifact_preview(payload) {
         return None;
@@ -649,45 +411,6 @@ fn decode_runtime_debug_artifact_preview(payload: &Value) -> Option<Value> {
     })
 }
 
-fn terminal_answer_deltas_to_answer_text(deltas: &[TerminalAnswerDelta]) -> String {
-    let mut answer = String::new();
-    for delta in deltas {
-        match delta.kind {
-            TerminalAnswerDeltaKind::Reasoning => {
-                answer.push_str("<think>");
-                answer.push_str(&delta.text);
-                answer.push_str("</think>");
-            }
-            TerminalAnswerDeltaKind::Text => answer.push_str(&delta.text),
-        }
-    }
-    answer
-}
-
-fn put_terminal_answer_in_payload(event_type: &str, payload: &mut Value, answer: String) {
-    let answer_segments = answer_segments_value(&answer_segments_from_text(&answer));
-    let Some(object) = payload.as_object_mut() else {
-        return;
-    };
-    if matches!(event_type, "flow_finished" | "flow_incomplete") {
-        let output = object.entry("output").or_insert_with(|| json!({}));
-        if !output.is_object() {
-            *output = json!({});
-        }
-        if let Some(output) = output.as_object_mut() {
-            output.insert("answer".to_string(), Value::String(answer));
-            if let Some(answer_segments) = answer_segments {
-                output.insert(ANSWER_SEGMENTS_KEY.to_string(), answer_segments);
-            }
-        }
-    } else {
-        object.insert("answer".to_string(), Value::String(answer));
-        if let Some(answer_segments) = answer_segments {
-            object.insert(ANSWER_SEGMENTS_KEY.to_string(), answer_segments);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use control_plane::application_public_api::native::{
@@ -698,8 +421,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        split_terminal_answer_deltas, terminal_answer_deltas_from_payload,
-        terminal_runtime_event_from_native_run, TerminalAnswerDeltaKind,
+        durable_canonical_partial_runtime_events_from_native_run,
+        durable_native_run_matches_terminal, split_terminal_answer_deltas,
+        terminal_answer_deltas_from_payload, terminal_runtime_event_from_native_run,
+        TerminalAnswerDeltaKind,
     };
 
     fn native_run(status: NativeRunStatus) -> NativeRunResult {
@@ -717,6 +442,7 @@ mod tests {
             tool_calls: None,
             usage: None,
             error: None,
+            operation_terminal: None,
             created_at: OffsetDateTime::UNIX_EPOCH,
         }
     }
@@ -749,6 +475,22 @@ mod tests {
     }
 
     #[test]
+    fn success_terminal_requires_a_matching_durable_success_status() {
+        assert!(durable_native_run_matches_terminal(
+            &native_run(NativeRunStatus::Succeeded),
+            "flow_finished"
+        ));
+        assert!(!durable_native_run_matches_terminal(
+            &native_run(NativeRunStatus::Running),
+            "flow_finished"
+        ));
+        assert!(!durable_native_run_matches_terminal(
+            &native_run(NativeRunStatus::Failed),
+            "flow_finished"
+        ));
+    }
+
+    #[test]
     fn terminal_fallback_maps_waiting_native_run_to_callback_event() {
         let mut run = native_run(NativeRunStatus::Waiting);
         run.required_action = Some(NativeRequiredAction {
@@ -770,6 +512,42 @@ mod tests {
         assert_eq!(
             event.payload["required_action"]["payload"]["tool_calls"][0]["name"],
             json!("Read")
+        );
+    }
+
+    #[test]
+    fn terminal_fallback_maps_waiting_without_callback_to_human_terminal() {
+        let event = terminal_runtime_event_from_native_run(&native_run(NativeRunStatus::Waiting))
+            .expect("waiting human run should synthesize a terminal event");
+
+        assert_eq!(event.event_type, "waiting_human");
+        assert_eq!(event.payload["status"], json!("waiting_human"));
+    }
+
+    #[test]
+    fn non_success_terminals_recover_canonical_partial_before_honest_terminal() {
+        for status in [
+            NativeRunStatus::Incomplete,
+            NativeRunStatus::Failed,
+            NativeRunStatus::Cancelled,
+            NativeRunStatus::Waiting,
+        ] {
+            let events =
+                durable_canonical_partial_runtime_events_from_native_run(&native_run(status));
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_type, "text_delta");
+            assert_eq!(events[0].payload["text"], json!("done"));
+            assert_eq!(events[0].payload["presentation"]["kind"], json!("answer"));
+        }
+    }
+
+    #[test]
+    fn succeeded_terminal_never_recovers_answer_content_from_durable_snapshot() {
+        assert!(
+            durable_canonical_partial_runtime_events_from_native_run(&native_run(
+                NativeRunStatus::Succeeded
+            ))
+            .is_empty()
         );
     }
 

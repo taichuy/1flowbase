@@ -1,5 +1,12 @@
 use super::*;
-use plugin_framework::provider_contract::ProviderMessageRole;
+use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
+
+use super::canonical_stream::{
+    CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
+    CanonicalStreamState, CanonicalStreamTransitionError,
+};
+
+const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
@@ -15,34 +22,51 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn compact(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        mut input: ProviderInvocationInput,
+    ) -> Result<plugin_framework::provider_contract::ProviderCompactResult> {
+        self.apply_provider_transport(runtime, &mut input)?;
+        let instance = self.resolve_llm_instance(runtime).await?;
+        let installation = self.ready_installation(instance.installation_id).await?;
+        let package = load_provider_package(&installation.installed_path)?;
+        input.provider_config = build_provider_runtime_config(
+            &self.repository,
+            &self.provider_secret_master_key,
+            &package,
+            &instance,
+        )
+        .await?;
+
+        self.runtime.compact(&installation, input).await
+    }
+
+    async fn count_tokens(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        mut input: plugin_framework::provider_contract::ProviderCountTokensInput,
+    ) -> Result<plugin_framework::provider_contract::ProviderCountTokensResult> {
+        let instance = self.resolve_llm_instance(runtime).await?;
+        let installation = self.ready_installation(instance.installation_id).await?;
+        let package = load_provider_package(&installation.installed_path)?;
+        input.provider_config = build_provider_runtime_config(
+            &self.repository,
+            &self.provider_secret_master_key,
+            &package,
+            &instance,
+        )
+        .await?;
+
+        self.runtime.count_tokens(&installation, input).await
+    }
+
     async fn invoke_llm(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
-        let native_transport_capability =
-            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
-        if let Some(payload) = self.provider_transport_payload.as_ref() {
-            input
-                .required_capabilities
-                .insert(native_transport_capability.clone());
-            let protocol = match payload.protocol() {
-                crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
-            };
-            input.native_transport = Some(
-                plugin_framework::provider_contract::ProviderNativeTransport {
-                    protocol: protocol.to_string(),
-                    wire_body: payload.wire_body().clone(),
-                    digest: payload.digest().to_string(),
-                    size_bytes: payload.size_bytes() as u64,
-                },
-            );
-        } else if input
-            .required_capabilities
-            .contains(&native_transport_capability)
-        {
-            return Err(anyhow!("ephemeral_transport_missing"));
-        }
+        self.apply_provider_transport(runtime, &mut input)?;
         let provider_resolve_started = std::time::Instant::now();
         let instance = self.resolve_llm_instance(runtime).await?;
         tracing::debug!(
@@ -106,7 +130,8 @@ where
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
-        let mut live_forward_handle = None;
+        let mut required_forward_handle = None;
+        let mut diagnostic_forward_handle = None;
         let active_node = self
             .flow_execution_context
             .as_ref()
@@ -124,32 +149,17 @@ where
         {
             let live_sender = self.live_provider_events.clone();
             let runtime_event_stream = self.runtime_event_stream.clone();
-            let answer_presentation = self.answer_presentation.clone();
-            let repository = self.repository.clone();
             let flow_run_id = self.flow_run_id;
             let first_token_timing_for_task = first_token_timing.clone();
             let canonical_tool_registry_for_task = canonical_tool_registry.clone();
-            let (provider_sender, mut provider_receiver) =
-                mpsc::unbounded_channel::<ProviderStreamEvent>();
-            live_forward_handle = Some(tokio::spawn(async move {
-                let mut think_tag_splitter = ThinkTagStreamSplitter::default();
-                let (mut answer_persistence_sender, answer_persistence_handle) =
-                    if answer_presentation.is_some()
-                        && runtime_event_stream.is_some()
-                        && flow_run_id.is_some()
-                    {
-                        let (sender, receiver) = mpsc::channel(
-                            runtime_event_persister::RUNTIME_EVENT_PERSISTENCE_QUEUE_CAPACITY,
-                        );
-                        let handle = runtime_event_persister::spawn_batched_runtime_event_persister(
-                            repository.clone(),
-                            receiver,
-                        );
-                        (Some(sender), Some(handle))
-                    } else {
-                        (None, None)
-                    };
-                while let Some(mut event) = provider_receiver.recv().await {
+            let (required_sender, mut required_receiver) =
+                mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
+            let (diagnostic_sender, mut diagnostic_receiver) =
+                mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
+            let diagnostic_node_id = node_id.clone();
+            required_forward_handle = Some(tokio::spawn(async move {
+                let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
+                while let Some(mut event) = required_receiver.recv().await {
                     orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
                             &canonical_tool_registry_for_task,
@@ -160,105 +170,85 @@ where
                         provider_invoke_started_at,
                         provider_invoke_started,
                     );
+                    let canonical_deltas = canonical_writer.write(&event)?;
                     if let Some(sender) = &live_sender {
-                        let _ = sender.send(LiveProviderStreamEvent {
-                            node_id: node_id.clone(),
-                            node_run_id,
-                            event: event.clone(),
-                        });
+                        sender
+                            .send(LiveProviderStreamEvent {
+                                node_id: node_id.clone(),
+                                node_run_id,
+                                event: event.clone(),
+                            })
+                            .await
+                            .map_err(|_| anyhow!("required live provider event writer closed"))?;
                     }
                     if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
                     {
                         let runtime_events = match &event {
-                            ProviderStreamEvent::NativeEvent { protocol, event } => {
-                                vec![debug_stream_events::provider_native_event(
-                                    &node_id,
-                                    node_run_id,
-                                    protocol.clone(),
-                                    event.clone(),
-                                )]
-                            }
-                            ProviderStreamEvent::TextDelta { delta } => {
+                            ProviderStreamEvent::TextDelta { .. }
+                            | ProviderStreamEvent::ReasoningDelta { .. }
+                            | ProviderStreamEvent::Finish { .. }
+                            | ProviderStreamEvent::Error { .. } => {
                                 let mut runtime_events = Vec::new();
-                                let parts = think_tag_splitter.split(delta);
-                                for part in parts {
-                                    let provider_event = match part.kind {
-                                        DebugDeltaKind::Text => {
+                                for delta in canonical_deltas {
+                                    match delta.kind {
+                                        CanonicalContentKind::Text => {
                                             runtime_events.push(debug_stream_events::text_delta(
                                                 &node_id,
                                                 node_run_id,
-                                                part.text.clone(),
+                                                delta.text,
                                             ));
-                                            ProviderStreamEvent::TextDelta { delta: part.text }
                                         }
-                                        DebugDeltaKind::Reasoning => {
+                                        CanonicalContentKind::Reasoning => {
                                             runtime_events.push(
                                                 debug_stream_events::reasoning_delta(
                                                     &node_id,
                                                     node_run_id,
-                                                    part.text.clone(),
+                                                    delta.text,
                                                 ),
                                             );
-                                            ProviderStreamEvent::ReasoningDelta { delta: part.text }
                                         }
-                                    };
-                                    if let Some(answer_presentation) = &answer_presentation {
-                                        runtime_events.extend(
-                                            answer_presentation.lock().await.push_provider_event(
-                                                &node_id,
-                                                node_run_id,
-                                                &provider_event,
-                                            ),
-                                        );
                                     }
                                 }
                                 runtime_events
                             }
-                            ProviderStreamEvent::ReasoningDelta { delta } => {
-                                let mut runtime_events =
-                                    vec![debug_stream_events::reasoning_delta(
+                            ProviderStreamEvent::OutputItem {
+                                phase,
+                                output_index,
+                                item,
+                            } => vec![match phase {
+                                ProviderOutputItemPhase::Added => {
+                                    debug_stream_events::provider_output_item_added(
                                         &node_id,
                                         node_run_id,
-                                        delta.clone(),
-                                    )];
-                                if let Some(answer_presentation) = &answer_presentation {
-                                    runtime_events.extend(
-                                        answer_presentation.lock().await.push_provider_event(
-                                            &node_id,
-                                            node_run_id,
-                                            &event,
-                                        ),
-                                    );
+                                        *output_index,
+                                        item.clone(),
+                                    )
                                 }
-                                runtime_events
-                            }
+                                ProviderOutputItemPhase::Done => {
+                                    debug_stream_events::provider_output_item_done(
+                                        &node_id,
+                                        node_run_id,
+                                        *output_index,
+                                        item.clone(),
+                                    )
+                                }
+                            }],
                             _ => Vec::new(),
                         };
                         if runtime_events.is_empty() {
                             continue;
                         };
                         for runtime_event in runtime_events {
-                            let is_answer_presentation =
-                                debug_stream_events::is_answer_presentation_delta_payload(
-                                    &runtime_event.payload,
-                                );
-                            let persistence_fallback =
-                                is_answer_presentation.then(|| runtime_event.clone());
                             let event_type = runtime_event.event_type.clone();
                             let source = runtime_event.source;
                             let mut stream_event = runtime_event;
-                            if is_answer_presentation {
+                            if debug_stream_events::is_answer_presentation_delta_payload(
+                                &stream_event.payload,
+                            ) {
                                 stream_event.persist_required = false;
                             }
-                            let event_for_persistence = match stream
-                                .append(flow_run_id, stream_event)
-                                .await
-                            {
-                                Ok(mut envelope) if is_answer_presentation => {
-                                    envelope.persist_required = true;
-                                    Some(envelope)
-                                }
-                                Ok(_) => None,
+                            match stream.append(flow_run_id, stream_event).await {
+                                Ok(_) => {}
                                 Err(error) => {
                                     if is_expected_runtime_event_stream_closed_error(&error) {
                                         tracing::debug!(
@@ -277,47 +267,42 @@ where
                                             "failed to append provider runtime event"
                                         );
                                     }
-                                    persistence_fallback.map(|event| {
-                                        RuntimeEventEnvelope::new(flow_run_id, 0, event)
-                                    })
-                                }
-                            };
-                            if let (Some(sender), Some(event)) =
-                                (answer_persistence_sender.as_ref(), event_for_persistence)
-                            {
-                                if let Err(error) = sender.try_send(event) {
-                                    tracing::warn!(
-                                        flow_run_id = %flow_run_id,
-                                        event_type = %event_type,
-                                        error = %error,
-                                        "answer presentation persistence queue stopped accepting events; durable suffix recovery will preserve the final answer"
-                                    );
-                                    // Stop at a durable prefix. Persisting later deltas after a gap
-                                    // would make terminal suffix recovery duplicate the final answer.
-                                    answer_persistence_sender = None;
                                 }
                             }
                         }
                     }
                 }
-                drop(answer_persistence_sender);
-                if let Some(handle) = answer_persistence_handle {
-                    match handle.await {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => tracing::warn!(
-                            flow_run_id = ?flow_run_id,
-                            error = %error,
-                            "failed to flush answer presentation runtime event batch"
-                        ),
-                        Err(error) => tracing::warn!(
-                            flow_run_id = ?flow_run_id,
-                            error = %error,
-                            "answer presentation runtime event persister panicked"
-                        ),
+                canonical_writer.complete()?;
+                Ok::<_, anyhow::Error>(canonical_writer.into_state())
+            }));
+            let diagnostic_stream = self.runtime_event_stream.clone();
+            let diagnostic_flow_run_id = self.flow_run_id;
+            diagnostic_forward_handle = Some(tokio::spawn(async move {
+                while let Some(event) = diagnostic_receiver.recv().await {
+                    let ProviderStreamEvent::NativeEvent { protocol, event } = event else {
+                        continue;
+                    };
+                    if let (Some(stream), Some(flow_run_id)) =
+                        (&diagnostic_stream, diagnostic_flow_run_id)
+                    {
+                        let _ = stream
+                            .append(
+                                flow_run_id,
+                                debug_stream_events::provider_native_event(
+                                    &diagnostic_node_id,
+                                    node_run_id,
+                                    protocol,
+                                    event,
+                                ),
+                            )
+                            .await;
                     }
                 }
             }));
-            Some(provider_sender)
+            Some(crate::ports::ProviderLiveEventSenders {
+                required: required_sender,
+                diagnostic: diagnostic_sender,
+            })
         } else {
             None
         };
@@ -330,15 +315,19 @@ where
             provider_invoke_ms = provider_invoke_started.elapsed().as_millis() as u64,
             "provider invoke finished"
         );
-        if let Some(handle) = live_forward_handle {
-            if let Err(error) = handle.await {
-                tracing::warn!(
-                    error = %error,
-                    "provider live event forwarding task panicked"
-                );
-            }
-        }
         let invocation_output = invocation_result?;
+        if let Some(handle) = required_forward_handle {
+            handle.await.map_err(|error| {
+                anyhow!("provider live event forwarding task panicked: {error}")
+            })??;
+        }
+        if let Some(handle) = diagnostic_forward_handle {
+            handle.await.map_err(|error| {
+                anyhow!("provider diagnostic event forwarding task panicked: {error}")
+            })?;
+        }
+        self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
+            .await?;
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
         let mut output = orchestration_runtime::execution_engine::ProviderInvocationOutput {
             events: invocation_output.events,
@@ -353,6 +342,164 @@ where
         );
         Ok(output)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CanonicalProviderDelta {
+    pub(super) kind: CanonicalContentKind,
+    pub(super) text: String,
+}
+
+pub(super) struct RuntimeCanonicalStreamWriter {
+    item_id: CanonicalItemId,
+    text_block_id: CanonicalBlockId,
+    reasoning_block_id: CanonicalBlockId,
+    state: CanonicalStreamState,
+    think_tag_splitter: ThinkTagStreamSplitter,
+}
+
+impl RuntimeCanonicalStreamWriter {
+    pub(super) fn new(item_id: impl Into<String>) -> Self {
+        let item_id = CanonicalItemId::new(item_id);
+        Self {
+            text_block_id: CanonicalBlockId::new(item_id.clone(), "text"),
+            reasoning_block_id: CanonicalBlockId::new(item_id.clone(), "reasoning"),
+            item_id,
+            state: CanonicalStreamState::default(),
+            think_tag_splitter: ThinkTagStreamSplitter::default(),
+        }
+    }
+
+    pub(super) fn write(
+        &mut self,
+        event: &ProviderStreamEvent,
+    ) -> Result<Vec<CanonicalProviderDelta>> {
+        if self.state.terminal().is_some() {
+            return Err(CanonicalStreamTransitionError::StreamAlreadyTerminal.into());
+        }
+
+        match event {
+            ProviderStreamEvent::TextDelta { delta } => {
+                let parts = self.think_tag_splitter.split(delta);
+                self.append_content_parts(parts)
+            }
+            ProviderStreamEvent::ReasoningDelta { delta } => {
+                self.append_content_parts(vec![DebugDeltaPart {
+                    kind: DebugDeltaKind::Reasoning,
+                    text: delta.clone(),
+                }])
+            }
+            ProviderStreamEvent::ToolCallDelta { call_id, delta } => {
+                if let Some(arguments) = tool_argument_delta(delta) {
+                    self.state.apply(CanonicalStreamEvent::ToolArgumentsDelta {
+                        call_id: CanonicalCallId::new(self.item_id.clone(), call_id.clone()),
+                        delta: arguments.to_string(),
+                    })?;
+                }
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::UsageDelta { usage } => {
+                self.state.apply(CanonicalStreamEvent::UsageDelta {
+                    usage: usage.clone(),
+                })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::UsageSnapshot { usage } => {
+                self.state.apply(CanonicalStreamEvent::UsageSnapshot {
+                    usage: usage.clone(),
+                })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::OutputItem {
+                phase,
+                output_index,
+                item,
+            } => {
+                self.state.apply(CanonicalStreamEvent::OutputItem {
+                    phase: *phase,
+                    output_index: *output_index,
+                    item: item.clone(),
+                })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::Finish { reason } => {
+                let deltas = self.flush_pending_content()?;
+                self.state.apply(CanonicalStreamEvent::Finish {
+                    reason: reason.clone(),
+                })?;
+                Ok(deltas)
+            }
+            ProviderStreamEvent::Error { error } => {
+                let deltas = self.flush_pending_content()?;
+                self.state.apply(CanonicalStreamEvent::Fail {
+                    error: error.clone(),
+                })?;
+                Ok(deltas)
+            }
+            ProviderStreamEvent::NativeEvent { .. }
+            | ProviderStreamEvent::ToolCallCommit { .. }
+            | ProviderStreamEvent::McpCallDelta { .. }
+            | ProviderStreamEvent::McpCallCommit { .. } => Ok(Vec::new()),
+        }
+    }
+
+    pub(super) fn complete(&mut self) -> Result<Vec<CanonicalProviderDelta>> {
+        if self.state.terminal().is_some() {
+            return Ok(Vec::new());
+        }
+        self.flush_pending_content()
+    }
+
+    pub(super) fn state(&self) -> &CanonicalStreamState {
+        &self.state
+    }
+
+    pub(super) fn into_state(self) -> CanonicalStreamState {
+        self.state
+    }
+
+    fn flush_pending_content(&mut self) -> Result<Vec<CanonicalProviderDelta>> {
+        let parts = self.think_tag_splitter.finish();
+        self.append_content_parts(parts)
+    }
+
+    fn append_content_parts(
+        &mut self,
+        parts: Vec<DebugDeltaPart>,
+    ) -> Result<Vec<CanonicalProviderDelta>> {
+        let mut deltas = Vec::with_capacity(parts.len());
+        for part in parts {
+            let (kind, event) = match part.kind {
+                DebugDeltaKind::Text => (
+                    CanonicalContentKind::Text,
+                    CanonicalStreamEvent::TextDelta {
+                        block_id: self.text_block_id.clone(),
+                        delta: part.text.clone(),
+                    },
+                ),
+                DebugDeltaKind::Reasoning => (
+                    CanonicalContentKind::Reasoning,
+                    CanonicalStreamEvent::ReasoningDelta {
+                        block_id: self.reasoning_block_id.clone(),
+                        delta: part.text.clone(),
+                    },
+                ),
+            };
+            self.state.apply(event)?;
+            deltas.push(CanonicalProviderDelta {
+                kind,
+                text: part.text,
+            });
+        }
+        Ok(deltas)
+    }
+}
+
+fn tool_argument_delta(delta: &Value) -> Option<&str> {
+    delta
+        .pointer("/function/arguments")
+        .or_else(|| delta.get("arguments"))
+        .and_then(Value::as_str)
 }
 
 fn record_first_token_timing(
@@ -499,6 +646,70 @@ where
     R: PluginRepository + Clone + Send + Sync,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    fn apply_provider_transport(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<()> {
+        if let Some(continuation) = self.provider_continuation.as_ref() {
+            self.ensure_provider_affinity(runtime, continuation.affinity())?;
+            input.previous_response_id = Some(continuation.response_id().to_string());
+        }
+        let native_transport_capability =
+            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
+        let Some(payload) = self.provider_transport_payload.as_ref() else {
+            if input
+                .required_capabilities
+                .contains(&native_transport_capability)
+            {
+                return Err(anyhow!("ephemeral_transport_missing"));
+            }
+            return Ok(());
+        };
+
+        if let Some(affinity) = payload.affinity() {
+            self.ensure_provider_affinity(runtime, affinity)?;
+        }
+
+        input
+            .required_capabilities
+            .insert(native_transport_capability);
+        let protocol = match payload.protocol() {
+            crate::ports::ProviderTransportProtocol::OpenAiResponses => "openai_responses",
+        };
+        input.native_transport = Some(
+            plugin_framework::provider_contract::ProviderNativeTransport {
+                protocol: protocol.to_string(),
+                wire_body: payload.wire_body().clone(),
+                digest: payload.digest().to_string(),
+                size_bytes: payload.size_bytes() as u64,
+            },
+        );
+        Ok(())
+    }
+
+    fn ensure_provider_affinity(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        affinity: &crate::ports::ProviderTransportAffinity,
+    ) -> Result<()> {
+        if affinity.matches(
+            &runtime.provider_instance_id,
+            &runtime.provider_code,
+            &runtime.protocol,
+            &runtime.model,
+        ) {
+            return Ok(());
+        }
+        Err(plugin_framework::PluginFrameworkError::runtime(
+            plugin_framework::provider_contract::ProviderRuntimeError::new(
+                plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                "selected LLM Provider does not own the opaque continuation",
+            ),
+        )
+        .into())
+    }
+
     async fn ready_installation(
         &self,
         installation_id: Uuid,
@@ -542,6 +753,8 @@ where
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
             provider_transport_payload: self.provider_transport_payload.clone(),
+            provider_transport_store: self.provider_transport_store.clone(),
+            provider_continuation: self.provider_continuation.clone(),
         }
     }
 
@@ -570,6 +783,56 @@ where
         let mut invoker = self.clone();
         invoker.provider_transport_payload = provider_transport_payload;
         invoker
+    }
+
+    pub(super) fn with_provider_continuation(
+        &self,
+        provider_continuation: Option<crate::ports::ProviderContinuation>,
+    ) -> Self {
+        let mut invoker = self.clone();
+        invoker.provider_continuation = provider_continuation;
+        invoker
+    }
+
+    async fn stage_provider_continuation(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        response_id: Option<&str>,
+    ) -> Result<()> {
+        let Some(response_id) = response_id.filter(|value| !value.trim().is_empty()) else {
+            return Ok(());
+        };
+        let (Some(store), Some(flow_run_id)) =
+            (self.provider_transport_store.as_ref(), self.flow_run_id)
+        else {
+            return Ok(());
+        };
+        if self.provider_transport_payload.is_none() && self.provider_continuation.is_none() {
+            return Ok(());
+        }
+        let continuation = crate::ports::ProviderContinuation::new(
+            response_id,
+            crate::ports::ProviderTransportAffinity::new(
+                &runtime.provider_instance_id,
+                &runtime.provider_code,
+                &runtime.protocol,
+                &runtime.model,
+            ),
+        )?;
+        store
+            .put_continuation(
+                crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id),
+                continuation,
+            )
+            .await
+            .map_err(|_| {
+                anyhow::Error::from(plugin_framework::PluginFrameworkError::runtime(
+                    plugin_framework::provider_contract::ProviderRuntimeError::new(
+                        plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                        "opaque Provider continuation could not be staged",
+                    ),
+                ))
+            })
     }
 
     pub(super) async fn resolve_llm_instance(
@@ -1192,6 +1455,156 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod canonical_writer_tests {
+    use super::*;
+    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
+
+    #[test]
+    fn ac_001_runtime_writer_preserves_partitioned_text_and_reasoning() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+
+        for event in [
+            ProviderStreamEvent::TextDelta {
+                delta: "<think>same ".to_string(),
+            },
+            ProviderStreamEvent::TextDelta {
+                delta: "same</think>answer  ".to_string(),
+            },
+            ProviderStreamEvent::TextDelta {
+                delta: "\n`code`answer  ".to_string(),
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Stop,
+            },
+        ] {
+            writer.write(&event).unwrap();
+        }
+
+        assert_eq!(
+            writer.state().accumulated().reasoning().as_str(),
+            "same same"
+        );
+        assert_eq!(
+            writer.state().accumulated().text().as_str(),
+            "answer  \n`code`answer  "
+        );
+    }
+
+    #[test]
+    fn ac_003_runtime_writer_accumulates_tool_arguments_and_usage() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+        for delta in ["{\"query\":\"", "same", "same", "\"}"] {
+            writer
+                .write(&ProviderStreamEvent::ToolCallDelta {
+                    call_id: " call-1 ".to_string(),
+                    delta: json!({ "function": { "arguments": delta } }),
+                })
+                .unwrap();
+        }
+        writer
+            .write(&ProviderStreamEvent::UsageDelta {
+                usage: ProviderUsage {
+                    input_tokens: Some(2),
+                    total_tokens: Some(2),
+                    ..ProviderUsage::default()
+                },
+            })
+            .unwrap();
+        writer
+            .write(&ProviderStreamEvent::UsageSnapshot {
+                usage: ProviderUsage {
+                    input_tokens: Some(5),
+                    output_tokens: Some(3),
+                    total_tokens: Some(8),
+                    ..ProviderUsage::default()
+                },
+            })
+            .unwrap();
+
+        let call_id = CanonicalCallId::new(CanonicalItemId::new("item-1"), " call-1 ");
+        assert_eq!(
+            writer
+                .state()
+                .accumulated()
+                .tool_call(&call_id)
+                .unwrap()
+                .arguments()
+                .as_str(),
+            "{\"query\":\"samesame\"}"
+        );
+        assert_eq!(
+            writer.state().accumulated().usage().value(),
+            &ProviderUsage {
+                input_tokens: Some(5),
+                output_tokens: Some(3),
+                total_tokens: Some(8),
+                ..ProviderUsage::default()
+            }
+        );
+    }
+
+    #[test]
+    fn ac_006_runtime_writer_rejects_every_post_terminal_provider_event() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+        writer
+            .write(&ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Stop,
+            })
+            .unwrap();
+
+        for event in [
+            ProviderStreamEvent::TextDelta {
+                delta: "late".to_string(),
+            },
+            ProviderStreamEvent::NativeEvent {
+                protocol: "fixture".to_string(),
+                event: json!({}),
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Length,
+            },
+        ] {
+            assert!(writer
+                .write(&event)
+                .unwrap_err()
+                .to_string()
+                .contains("already terminal"));
+        }
+        assert!(writer.state().accumulated().text().is_empty());
+    }
+
+    #[test]
+    fn runtime_canonical_writer_applies_verified_provider_output_item_phases() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+        let item = json!({
+            "id": "approval_1",
+            "type": "mcp_approval_request",
+            "name": "delete_record"
+        });
+        writer
+            .write(&ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Added,
+                output_index: 1,
+                item: item.clone(),
+            })
+            .unwrap();
+        writer
+            .write(&ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Done,
+                output_index: 1,
+                item: item.clone(),
+            })
+            .unwrap();
+
+        let phases = writer.state().accumulated().output_items();
+        assert_eq!(phases.len(), 2);
+        assert_eq!(phases[0].phase(), ProviderOutputItemPhase::Added);
+        assert_eq!(phases[1].phase(), ProviderOutputItemPhase::Done);
+        assert_eq!(phases[1].item(), &item);
+    }
 }
 
 #[cfg(test)]

@@ -33,6 +33,7 @@ const EXPECTED_OUTCOME = Object.freeze({
 });
 const AUTHORIZED_HTTP_TRANSPORTS = Object.freeze([
   TRANSPORT.RESPONSES_SSE,
+  TRANSPORT.CHAT_COMPLETIONS_SSE,
   TRANSPORT.ANTHROPIC_SSE,
 ]);
 
@@ -67,6 +68,15 @@ function requestBody(transport, scenario, clientNonce, model = 'mock-model') {
       model,
       max_tokens: 32,
       stream: true,
+      metadata,
+      messages: [{ role: 'user', content: prompt }],
+    };
+  }
+  if (transport === TRANSPORT.CHAT_COMPLETIONS_SSE) {
+    return {
+      model,
+      stream: true,
+      stream_options: { include_usage: true },
       metadata,
       messages: [{ role: 'user', content: prompt }],
     };
@@ -383,7 +393,7 @@ function runWebSocketRequest({
     }, timeoutMs);
     socket.addEventListener('open', () => socket.send(JSON.stringify({
       type: 'response.create',
-      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
+      ...requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
     })));
     socket.addEventListener('message', (message) => {
       let event;
@@ -851,6 +861,15 @@ async function runGatewayCharacterize({
       providerInstanceId: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].provider_instance_id,
       durableTarget: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
       activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].plugin_runner_active_streams,
+    }],
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: [{
+      endpoint: endpointUrl(endpointSet, TRANSPORT.CHAT_COMPLETIONS_SSE),
+      headers: headersByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE],
+      model: publishedModels[TRANSPORT.CHAT_COMPLETIONS_SSE],
+      applicationId: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].application_id,
+      providerInstanceId: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].provider_instance_id,
+      durableTarget: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE],
+      activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].plugin_runner_active_streams,
     }],
   };
   const result = await executeCharacterizePlan({

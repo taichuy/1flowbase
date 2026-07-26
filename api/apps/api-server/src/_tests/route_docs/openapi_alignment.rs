@@ -513,7 +513,6 @@ async fn openapi_contains_application_console_routes() {
         "/api/console/applications",
         "/api/console/applications/{id}",
         "/api/console/applications/{id}/environment-variables",
-        "/api/console/applications/{application_id}/api-operation-bindings",
         "/api/console/applications/{id}/orchestration",
         "/api/console/applications/{id}/orchestration/draft",
         "/api/console/applications/{id}/orchestration/versions/{version_id}",

@@ -332,6 +332,44 @@ async fn local_runtime_event_stream_backfills_retained_events_after_live_lag() {
 }
 
 #[tokio::test]
+async fn local_runtime_event_stream_required_lane_preserves_duplicates_at_capacity_one() {
+    let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
+
+    stream.append(run_id, required_text_delta(7)).await.unwrap();
+    stream.append(run_id, required_text_delta(7)).await.unwrap();
+
+    let first = subscription.live_events.recv().await.unwrap();
+    let second = subscription.live_events.recv().await.unwrap();
+    assert_eq!((first.sequence, second.sequence), (1, 2));
+    assert_eq!(first.payload, second.payload);
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_diagnostic_saturation_does_not_block_required_lane() {
+    let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
+
+    stream.append(run_id, heartbeat()).await.unwrap();
+    stream.append(run_id, heartbeat()).await.unwrap();
+    stream.append(run_id, required_text_delta(1)).await.unwrap();
+
+    let required = subscription.live_events.recv().await.unwrap();
+    assert_eq!(required.event_type, "text_delta");
+    assert_eq!(required.sequence, 3);
+}
+
+#[tokio::test]
 async fn local_runtime_event_stream_rejects_append_after_close() {
     let stream = LocalRuntimeEventStream::new();
     let run_id = Uuid::now_v7();

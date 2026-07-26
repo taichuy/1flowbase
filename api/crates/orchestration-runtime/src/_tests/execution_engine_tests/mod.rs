@@ -8,9 +8,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
-        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage,
+        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderFinishReason, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation,
     },
 };
 use serde_json::{json, Value};
@@ -27,7 +29,10 @@ use crate::{
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
         ExecutionRuntimeContext, LlmRoutingCounterStore, ProviderInvocationOutput, ProviderInvoker,
     },
-    execution_state::ExecutionStopReason,
+    execution_state::{
+        compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
+        ExecutionStopReason,
+    },
 };
 
 struct StubProviderInvoker {
@@ -1112,7 +1117,6 @@ fn provider_output(result: ProviderInvocationResult) -> ProviderInvocationOutput
 
 mod answer_and_failover;
 mod branches;
-mod compact_response;
 mod failures_and_parameters;
 mod http_request;
 mod human_and_tool_resume;

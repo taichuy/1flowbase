@@ -2,13 +2,53 @@ use serde_json::{json, Map, Value};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
+use super::super::native::NativeExecutionModelParameters;
 use super::super::{
+    client_protocol_envelope::{
+        anthropic_messages_envelope_with_beta, merge_anthropic_messages_envelopes,
+        ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
+    },
     model_catalog::{extract_agent_model_catalog_from_start_node, find_agent_model},
-    native::{NativeExecutionModelParameters, NativeRunValidationError},
+    native::NativeRunRequest,
 };
+
+const ANTHROPIC_CONTEXT_1M_TOKENS: u64 = 1_000_000;
 
 pub(super) fn generate_external_conversation_id() -> String {
     format!("conv_{}", Uuid::now_v7().simple())
+}
+
+pub(super) fn enrich_anthropic_context_beta_from_start_model(
+    request: &mut NativeRunRequest,
+    document_snapshot: &Value,
+) {
+    let Some(envelope) = request.client_protocol_envelope.as_ref() else {
+        return;
+    };
+    if envelope.source_protocol != "anthropic_messages" {
+        return;
+    }
+    let Some(model_id) = request
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    else {
+        return;
+    };
+    let catalog = extract_agent_model_catalog_from_start_node(document_snapshot);
+    let Some(model) = find_agent_model(&catalog, model_id) else {
+        return;
+    };
+    if model.context_window.unwrap_or_default() < ANTHROPIC_CONTEXT_1M_TOKENS {
+        return;
+    }
+    request.client_protocol_envelope = merge_anthropic_messages_envelopes(
+        request.client_protocol_envelope.take(),
+        Some(anthropic_messages_envelope_with_beta(
+            ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
+        )),
+    );
 }
 
 pub(crate) fn freeze_run_input_environment(
@@ -123,87 +163,6 @@ fn insert_start_model_parameters(
             start_payload.insert("max_output_tokens".to_string(), json!(max_output_tokens));
         }
     }
-}
-
-pub(super) fn validate_external_model_parameters(
-    model_parameters: Option<&NativeExecutionModelParameters>,
-    model: Option<&str>,
-    document_snapshot: &Value,
-) -> std::result::Result<Option<NativeExecutionModelParameters>, NativeRunValidationError> {
-    let Some(model_parameters) = model_parameters else {
-        return Ok(None);
-    };
-    let max_output_tokens = model_parameters.max_output_tokens();
-    let reasoning = model_parameters.reasoning();
-    let enabled = reasoning.map(|reasoning| reasoning.effective_enabled());
-    let effort = reasoning.and_then(|reasoning| reasoning.effort());
-    let budget_tokens = reasoning.and_then(|reasoning| reasoning.budget_tokens());
-
-    let needs_model = max_output_tokens.is_some()
-        || enabled.unwrap_or(false)
-        || effort.is_some()
-        || budget_tokens.is_some();
-    let models =
-        needs_model.then(|| extract_agent_model_catalog_from_start_node(document_snapshot));
-    let model = if let Some(models) = models.as_ref() {
-        let model_id = model
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or(NativeRunValidationError::InvalidModelParameters("model"))?;
-        Some(
-            find_agent_model(models, model_id)
-                .ok_or(NativeRunValidationError::InvalidModelParameters("model"))?,
-        )
-    } else {
-        None
-    };
-
-    if let (Some(max_output_tokens), Some(context_limit)) = (
-        max_output_tokens,
-        model.and_then(|model| model.max_context_window.or(model.context_window)),
-    ) {
-        if max_output_tokens > context_limit {
-            return Err(NativeRunValidationError::InvalidModelParameters(
-                "execution.model_parameters.max_output_tokens",
-            ));
-        }
-    }
-
-    if enabled.unwrap_or(false) || effort.is_some() || budget_tokens.is_some() {
-        let model = model.ok_or(NativeRunValidationError::InvalidModelParameters("model"))?;
-        let supports_reasoning = model.capabilities.reasoning
-            || model.reasoning.as_ref().is_some_and(|reasoning| {
-                reasoning.default_effort.is_some() || !reasoning.supported_efforts.is_empty()
-            });
-        if !supports_reasoning {
-            return Err(NativeRunValidationError::InvalidModelParameters(
-                "execution.model_parameters.reasoning",
-            ));
-        }
-        if let Some(effort) = effort {
-            if let Some(reasoning) = model.reasoning.as_ref() {
-                if !reasoning.supported_efforts.is_empty()
-                    && !reasoning
-                        .supported_efforts
-                        .iter()
-                        .any(|supported| supported == effort)
-                {
-                    return Err(NativeRunValidationError::InvalidModelParameters(
-                        "execution.model_parameters.reasoning.effort",
-                    ));
-                }
-            }
-        }
-        if let (Some(budget_tokens), Some(model_limit)) = (budget_tokens, model.max_output_tokens) {
-            if budget_tokens > model_limit {
-                return Err(NativeRunValidationError::InvalidModelParameters(
-                    "execution.model_parameters.reasoning.budget_tokens",
-                ));
-            }
-        }
-    }
-
-    Ok(Some(model_parameters.clone()))
 }
 
 fn application_environment_variable_payload(

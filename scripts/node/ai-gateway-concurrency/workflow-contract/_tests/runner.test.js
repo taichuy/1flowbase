@@ -79,6 +79,9 @@ function fixtureManifest() {
 
 test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready-manifest keys once', async () => {
   const inputs = fixtureInputs();
+  const staleArtifact = path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/stale-secret.json');
+  fs.mkdirSync(path.dirname(staleArtifact), { recursive: true });
+  fs.writeFileSync(staleArtifact, 'stale secret from a prior cycle');
   const calls = [];
   const result = await runWorkflowContract(inputs, {
     createMockUpstream() {
@@ -90,12 +93,26 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       };
     },
     async createGatewayFixture(options) {
+      assert.equal(fs.existsSync(staleArtifact), false);
       calls.push(['fixture:create', options.upstreamBaseUrl, options.artifactRoot]);
-      return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
+      return {
+        result: fixtureManifest(),
+        async close() {
+          assert.equal(
+            fs.existsSync(path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/gateway-ready.json')),
+            false,
+          );
+          calls.push('fixture:close');
+        },
+      };
     },
     async runWireAudit(options) {
       calls.push(['wire-audit', options.manifest.gatewayBaseUrl]);
       return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } };
+    },
+    async runGatewayWebSocketAcceptance() {
+      calls.push('responses-websocket');
+      return { trace: { terminal_count: 1 }, durable: { run: { status: 'succeeded' } }, wire_audit: { verdict: 'PASS' } };
     },
     async runGatewayCharacterize(options) {
       calls.push(['characterize', options]);
@@ -125,20 +142,27 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   assert.equal(result.characterize.performance_requests, 196);
   assert.equal(result.characterize.performance_and_observability_advisories, 2);
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
-    'mock:create', 'mock:start', 'fixture:create', 'wire-audit', 'characterize', 'fixture:close', 'mock:stop',
+    'mock:create', 'mock:start', 'fixture:create', 'wire-audit', 'responses-websocket', 'characterize', 'fixture:close', 'mock:stop',
   ]);
   const characterize = calls.find((call) => Array.isArray(call) && call[0] === 'characterize')[1];
   assert.deepEqual(characterize.authorizationTokenByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'openai-application-key-1',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'openai-application-key-1',
     [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-application-key-1',
   });
   assert.deepEqual(characterize.modelByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'published-openai-model',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'published-openai-model',
     [TRANSPORT.ANTHROPIC_SSE]: 'published-anthropic-model',
   });
   assert.equal(characterize.endpointSet[TRANSPORT.RESPONSES_WEBSOCKET], 'ws://127.0.0.1:4000/v1/responses');
+  assert.equal(characterize.endpointSet[TRANSPORT.CHAT_COMPLETIONS_SSE], 'http://127.0.0.1:4100/v1/chat/completions');
   assert.deepEqual(
     characterize.durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
+    fixtureManifest().targets.openai,
+  );
+  assert.deepEqual(
+    characterize.durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE],
     fixtureManifest().targets.openai,
   );
   assert.deepEqual(characterize.anthropicTargetPool, fixtureManifest().pools.anthropic);
@@ -164,11 +188,14 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
       return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
     },
     async runWireAudit() { throw new Error('wire audit failed with anthropic-application-key-2'); },
+    async runGatewayWebSocketAcceptance() { return { wire_audit: { verdict: 'PASS' } }; },
+    async runGatewayCharacterize() { throw new Error('characterize also failed'); },
   });
   assert.equal(result.status, 'fail');
   assert.deepEqual(calls, ['fixture:close', 'mock:stop']);
   assert.equal(result.error.message.includes('anthropic-application-key-2'), false);
   assert.match(result.error.message, /<redacted>/u);
+  assert.deepEqual(result.protocol_conformance.failures.map((failure) => failure.name), ['wire-audit', 'characterize']);
 });
 
 test('AC service logs: cleanup persistence failure makes the workflow and cleanup fail', async () => {
@@ -189,6 +216,7 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
       };
     },
     async runWireAudit() { return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } }; },
+    async runGatewayWebSocketAcceptance() { return { wire_audit: { verdict: 'PASS' } }; },
     async runGatewayCharacterize() {
       return {
         summary: {

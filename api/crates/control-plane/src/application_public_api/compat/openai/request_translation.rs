@@ -1,5 +1,6 @@
 use std::num::NonZeroU64;
 
+use domain::{AiNativeGenerateProfile, AiNativeOperation};
 use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromptBlock};
 use serde_json::{Map, Value};
 
@@ -13,8 +14,8 @@ use super::{
     OpenAiCompatError, OpenAiPreviousResponseContext, OpenAiResponsesRequestContext,
 };
 use crate::application_public_api::native::{
-    CompactionProfile, NativeExecution, NativeExecutionOperation, NativeObject,
-    NativeRequestMetadata, NativeRunRequest,
+    compaction_intent, CompactionProfile, NativeExecution, NativeObject, NativeRequestMetadata,
+    NativeRunRequest,
 };
 use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -171,9 +172,7 @@ pub fn translate_chat_completion_request(
     let execution = native_execution(
         chat_max_output_tokens(object, &mut report)?,
         openai_reasoning(object, true, &mut report)?,
-        NativeExecutionOperation::Generate(
-            crate::application_public_api::run_service::GenerateExecutionProfile::Standard,
-        ),
+        AiNativeOperation::Generate(AiNativeGenerateProfile::Standard),
     );
     let request = NativeRunRequest {
         query,
@@ -230,12 +229,11 @@ pub fn translate_response_request_with_context_and_previous(
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
     let operation = classify_response_operation(object, &context, &mut report)?;
-    let is_v2_compaction = operation
-        .compaction_intent()
+    let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
     let uses_native_transport = transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
-        && operation.compaction_intent().is_none();
+        && compaction_intent(operation).is_none();
     let input_mapping = if uses_native_transport {
         validate_native_mcp_approval_continuation(input, previous_response.as_ref(), &mut report)?;
         validate_native_responses_input(input, &mut report)?;
@@ -584,7 +582,7 @@ fn openai_metadata(
 fn native_execution(
     max_output_tokens: Option<u64>,
     reasoning: Option<crate::application_public_api::native::NativeReasoningParameters>,
-    operation: NativeExecutionOperation,
+    operation: AiNativeOperation,
 ) -> NativeExecution {
     let mut execution = NativeExecution::with_model_parameters(
         max_output_tokens.and_then(NonZeroU64::new),

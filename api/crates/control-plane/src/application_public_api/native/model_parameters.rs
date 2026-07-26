@@ -1,15 +1,13 @@
 use std::num::NonZeroU64;
 
+use domain::{AiNativeGenerateProfile, AiNativeOperation};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
-use super::{NativeExecutionOperation, NativeObject};
-use crate::application_public_api::{
-    protocol_translation::{
-        anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReport,
-        TranslationSafeRepresentation,
-    },
-    run_service::GenerateExecutionProfile,
+use super::NativeObject;
+use crate::application_public_api::protocol_translation::{
+    anonymous_unknown_source_paths, TranslationDecisionKind, TranslationReport,
+    TranslationSafeRepresentation,
 };
 
 const MODEL_PARAMETERS_PATH: &str = "$.execution.model_parameters";
@@ -22,7 +20,7 @@ pub struct NativeExecution {
     opaque: NativeObject,
     idempotency_key: Option<String>,
     model_parameters: Option<NativeExecutionModelParameters>,
-    execution_operation: NativeExecutionOperation,
+    execution_operation: AiNativeOperation,
 }
 
 impl NativeExecution {
@@ -32,7 +30,7 @@ impl NativeExecution {
         let mut opaque = Map::new();
         let mut idempotency_key = None;
         let mut model_parameters = None;
-        let mut execution_operation = NativeExecutionOperation::default();
+        let mut execution_operation = AiNativeOperation::default();
         for (field, value) in object {
             match field.as_str() {
                 "idempotency_key" => {
@@ -47,8 +45,12 @@ impl NativeExecution {
                     model_parameters = Some(NativeExecutionModelParameters::from_value(value)?);
                 }
                 "operation" => {
-                    execution_operation = NativeExecutionOperation::from_value(value)
-                        .ok_or_else(NativeExecutionParseError::operation)?;
+                    let parsed_operation: AiNativeOperation = serde_json::from_value(value.clone())
+                        .map_err(|_| NativeExecutionParseError::operation())?;
+                    if parsed_operation == AiNativeOperation::CountTokens {
+                        return Err(NativeExecutionParseError::operation());
+                    }
+                    execution_operation = parsed_operation;
                 }
                 "compatibility_mode" => {
                     return Err(NativeExecutionParseError::compatibility_mode());
@@ -80,7 +82,7 @@ impl NativeExecution {
                 max_output_tokens,
                 reasoning,
             }),
-            execution_operation: NativeExecutionOperation::default(),
+            execution_operation: AiNativeOperation::default(),
         }
     }
 
@@ -92,18 +94,18 @@ impl NativeExecution {
         self.idempotency_key.as_deref()
     }
 
-    pub fn execution_operation(&self) -> &NativeExecutionOperation {
+    pub fn execution_operation(&self) -> &AiNativeOperation {
         &self.execution_operation
     }
 
-    pub(crate) fn set_execution_operation(&mut self, operation: NativeExecutionOperation) {
+    pub fn set_execution_operation(&mut self, operation: AiNativeOperation) {
         self.execution_operation = operation;
     }
 
     fn has_explicit_execution_operation(&self) -> bool {
         !matches!(
             &self.execution_operation,
-            NativeExecutionOperation::Generate(GenerateExecutionProfile::Standard)
+            AiNativeOperation::Generate(AiNativeGenerateProfile::Standard)
         )
     }
 
@@ -122,7 +124,11 @@ impl NativeExecution {
             );
         }
         if self.has_explicit_execution_operation() {
-            execution.insert("operation".to_string(), self.execution_operation.as_value());
+            execution.insert(
+                "operation".to_string(),
+                serde_json::to_value(self.execution_operation)
+                    .expect("canonical AI Native operation must serialize"),
+            );
         }
         Value::Object(execution)
     }
@@ -142,7 +148,11 @@ impl NativeExecution {
             );
         }
         if self.has_explicit_execution_operation() {
-            execution.insert("operation".to_string(), self.execution_operation.as_value());
+            execution.insert(
+                "operation".to_string(),
+                serde_json::to_value(self.execution_operation)
+                    .expect("canonical AI Native operation must serialize"),
+            );
         }
         Value::Object(execution)
     }

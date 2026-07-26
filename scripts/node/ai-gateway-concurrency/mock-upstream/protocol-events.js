@@ -197,6 +197,10 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
           delta: { type: 'text_delta', text: secondText },
         },
       },
+      {
+        event: 'content_block_stop',
+        data: { type: 'content_block_stop', index: 0 },
+      },
     ],
     terminal: [
       {
@@ -307,27 +311,112 @@ function chatTextEvents(nonce) {
   };
 }
 
+const LOSSLESS_SENTINEL_SEGMENTS = Object.freeze([
+  'same  same',
+  '  ',
+  '\n',
+  '\n',
+  '```markdown\n',
+  '`same`  **same**',
+  '\n```\n',
+  '中文边界',
+  '🙂🚀',
+  '',
+  '  same  same  ',
+]);
+
+const LOSSLESS_LONG_TEXT = '长文本🙂 `markdown`  repeated\n'.repeat(256);
+
+function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_SEGMENTS) {
+  const deltas = [...segments];
+  if (transport === 'responses-sse' || transport === 'responses-websocket') {
+    const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
+    return {
+      chunks: [
+        { type: 'response.created', sequence_number: 0, response },
+        ...deltas.map((delta, index) => ({
+          type: 'response.output_text.delta',
+          sequence_number: index + 1,
+          item_id: `item_${nonce}`,
+          output_index: 0,
+          content_index: 0,
+          delta,
+        })),
+      ],
+      terminal: {
+        type: 'response.completed',
+        sequence_number: deltas.length + 1,
+        response: { ...response, status: 'completed' },
+      },
+    };
+  }
+  if (transport === 'chat-completions-sse') {
+    return {
+      doneSentinel: true,
+      chunks: deltas.map((content) => ({
+        id: `chatcmpl_${nonce}`,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content }, finish_reason: null }],
+      })),
+      terminal: {
+        id: `chatcmpl_${nonce}`,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      },
+    };
+  }
+  if (transport === 'anthropic-sse') {
+    return {
+      chunks: deltas.map((text) => ({
+        event: 'content_block_delta',
+        data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+      })),
+      terminal: [
+        {
+          event: 'message_delta',
+          data: { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+        },
+        { event: 'message_stop', data: { type: 'message_stop' } },
+      ],
+    };
+  }
+  throw new Error(`unsupported lossless fixture transport: ${transport}`);
+}
+
 function responsesWireEvents(nonce, vector) {
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
-  const types = {
-    'tool-search-additional-tools': ['tool_search_call'],
-    'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
-    'hosted-tools': ['file_search_call', 'program', 'shell_call'],
-    'mcp-list-call-approval': ['mcp_list_tools', 'mcp_call', 'mcp_approval_request'],
-    'mcp-approval-continuation': ['mcp_approval_response'],
-  }[vector] ?? ['future_gateway_drift'];
-  const output = types.map((type, index) => ({
-    id: `wire_${index}_${nonce}`, type, status: 'completed',
-    x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
-  }));
+  const output = vector === 'mcp-list-call-approval'
+    ? [
+      {
+        id: `mcp_list_${nonce}`, type: 'mcp_list_tools', server_label: 'fixture_mcp', status: 'completed',
+        tools: [{ name: 'lookup', description: 'Look up a fixture value', input_schema: { type: 'object' } }],
+      },
+      {
+        id: `mcp_call_${nonce}`, type: 'mcp_call', server_label: 'fixture_mcp', status: 'completed',
+        name: 'lookup', arguments: JSON.stringify({ query: 'fixture' }), output: 'fixture result',
+      },
+      {
+        id: `mcp_approval_${nonce}`, type: 'mcp_approval_request', server_label: 'fixture_mcp', status: 'in_progress',
+        name: 'lookup', arguments: JSON.stringify({ query: 'approval fixture' }),
+      },
+    ]
+    : ({
+      'tool-search-additional-tools': ['tool_search_call'],
+      'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
+      'hosted-tools': ['file_search_call', 'program', 'shell_call'],
+      'mcp-approval-continuation': [],
+    }[vector] ?? ['future_gateway_drift']).map((type, index) => ({
+      id: `wire_${index}_${nonce}`, type, status: 'completed',
+      x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
+    }));
   const chunks = [{ type: 'response.created', sequence_number: 0, response }];
   for (const [index, item] of output.entries()) {
     chunks.push({ type: 'response.output_item.added', sequence_number: chunks.length, output_index: index, item });
     chunks.push({ type: 'response.output_item.done', sequence_number: chunks.length, output_index: index, item });
   }
-  chunks.push({ type: 'response.future_gateway_drift', sequence_number: chunks.length, preserve: { opaque: true } });
   return {
     chunks,
+    providerOutputTypes: output.map((item) => item.type),
     terminal: {
       type: 'response.completed', sequence_number: chunks.length,
       response: { ...response, status: 'completed', output },
@@ -337,10 +426,13 @@ function responsesWireEvents(nonce, vector) {
 
 module.exports = {
   DEFAULT_BARRIER_MARKERS,
+  LOSSLESS_LONG_TEXT,
+  LOSSLESS_SENTINEL_SEGMENTS,
   anthropicEvents,
   anthropicToolEvents,
   chatTextEvents,
   chatToolEvents,
+  losslessProtocolEvents,
   responsesEvents,
   responsesToolEvents,
   responsesWireEvents,

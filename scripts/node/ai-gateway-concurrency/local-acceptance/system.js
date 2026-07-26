@@ -208,14 +208,14 @@ function writeResult(evidenceRoot, result) {
     .join('\n');
   fs.writeFileSync(path.join(evidenceRoot, 'artifact-checksums.sha256'), `${checksums}\n`, { mode: 0o600 });
   fs.writeFileSync(path.join(evidenceRoot, 'local-acceptance-report.md'), [
-    '# Local AI Gateway Client Diagnostics',
+    '# Local AI Gateway Client Acceptance',
     '',
     `- Status: ${result.status.toUpperCase()}`,
     `- Gate role: ${result.gate_role}`,
     `- Runtime attempts: ${result.runtime_attempts}`,
     `- Database attempts: ${result.database_attempts}`,
     `- Protocol gate: ${result.protocol?.status || 'not-run'}`,
-    `- Client diagnostic: ${result.clients?.status || 'not-run'} (non-blocking)`,
+    `- Client acceptance: ${result.clients?.status || 'not-run'}`,
     `- Cleanup: ${result.cleanup.status}`,
     `- Error: ${result.error?.message || 'none'}`,
     '',

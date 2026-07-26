@@ -9,10 +9,10 @@ use plugin_framework::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
         ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderOutputItemPhase,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
+        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -665,4 +665,47 @@ fn provider_runtime_line_tool_commit_preserves_arguments() {
         }
         other => panic!("expected tool call commit stream event, got {other:?}"),
     }
+}
+
+#[test]
+fn provider_runtime_line_provider_output_item_preserves_verified_item() {
+    let encoded = json!({
+        "type": "output_item",
+        "phase": "added",
+        "output_index": 2,
+        "item": {
+            "id": "tool_search_1",
+            "type": "tool_search_call",
+            "arguments": "{}"
+        }
+    });
+
+    let line: ProviderRuntimeLine = serde_json::from_value(encoded).unwrap();
+    assert_eq!(
+        line.into_stream_event(),
+        Some(ProviderStreamEvent::OutputItem {
+            phase: ProviderOutputItemPhase::Added,
+            output_index: 2,
+            item: json!({
+                "id": "tool_search_1",
+                "type": "tool_search_call",
+                "arguments": "{}"
+            }),
+        })
+    );
+}
+
+#[test]
+fn provider_runtime_line_rejects_unknown_provider_output_item_type() {
+    let error = serde_json::from_value::<ProviderRuntimeLine>(json!({
+        "type": "output_item",
+        "phase": "done",
+        "output_index": 0,
+        "item": { "id": "unknown_1", "type": "computer_call" }
+    }))
+    .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("provider output item type is not supported by the typed Responses projection"));
 }

@@ -1,5 +1,6 @@
 use super::*;
 use axum::body::Bytes;
+use control_plane::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
@@ -22,6 +23,7 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         tool_calls: None,
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
 }
@@ -77,6 +79,7 @@ fn anthropic_response_projects_native_tool_calls() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -95,7 +98,7 @@ fn anthropic_response_projects_native_tool_calls() {
 }
 
 #[test]
-fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
+fn anthropic_resume_rejects_mixed_callback_groups() {
     let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
     let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
     let request = json!({
@@ -128,18 +131,7 @@ fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
         ]
     });
 
-    let resume = anthropic_tool_resume_request(&request)
-        .expect("accumulated tool results should be valid")
-        .expect("the latest callback should resume");
-
-    assert_eq!(resume.callback_task_id, latest_callback);
-    assert_eq!(resume.tool_results.as_array().map(Vec::len), Some(1));
-    assert_eq!(
-        resume.tool_results[0]["tool_call_id"],
-        json!("toolu_latest")
-    );
-    assert_eq!(resume.tool_results[0]["content"], json!("LATEST"));
-    assert_eq!(resume.tool_results[0]["is_error"], json!(true));
+    assert!(correlate_anthropic_callback(&request).is_err());
 }
 
 #[test]
@@ -174,7 +166,7 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
         ]
     });
 
-    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
+    let resume = correlate_anthropic_callback(&request).expect("request should parse");
 
     assert!(
         resume.is_none(),
@@ -183,7 +175,7 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
 }
 
 #[test]
-fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
+fn ac_002_anthropic_orphan_tool_result_is_invalid() {
     let callback_task_id = Uuid::from_u128(0x44444444444444444444444444444444);
     let request = json!({
         "messages": [{
@@ -196,12 +188,7 @@ fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
         }]
     });
 
-    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
-
-    assert!(
-        resume.is_none(),
-        "orphan tool results must not resume callbacks"
-    );
+    assert!(correlate_anthropic_callback(&request).is_err());
 }
 
 #[test]
@@ -234,6 +221,7 @@ fn anthropic_response_filters_internal_visible_llm_tool_calls() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -274,6 +262,7 @@ fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
             tool_calls: None,
             usage: None,
             error: None,
+            operation_terminal: None,
             created_at: OffsetDateTime::UNIX_EPOCH,
         };
 
@@ -286,38 +275,6 @@ fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
         payload["content"][0]["text"],
         json!("<think>private reasoning</think>raw draft<tool_call>{}</tool_call>\n\n---\n\n下面是美化后内容\n\nVisible answer")
     );
-}
-
-#[test]
-fn c1_count_tokens_projects_typed_unsupported_and_malformed_provider_errors() {
-    let unsupported = token_count::anthropic_count_tokens_error(
-        control_plane::application_public_api::run_service::PublishedCountTokensError::Provider(
-            plugin_framework::provider_contract::ProviderCountTokensError::Unsupported {
-                capabilities: vec!["count_tokens"],
-            },
-        ),
-    );
-    let AnthropicRouteError::Native(unsupported) = unsupported else {
-        panic!("CountTokens capability rejection must stay a typed native error");
-    };
-    assert_eq!(unsupported.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(unsupported.code, "provider_count_tokens_unsupported");
-
-    let malformed = token_count::anthropic_count_tokens_error(
-        control_plane::application_public_api::run_service::PublishedCountTokensError::Provider(
-            plugin_framework::provider_contract::ProviderCountTokensError::Runtime {
-                error: plugin_framework::provider_contract::ProviderRuntimeError::new(
-                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
-                    "malformed upstream CountTokens result",
-                ),
-            },
-        ),
-    );
-    let AnthropicRouteError::Native(malformed) = malformed else {
-        panic!("malformed upstream CountTokens result must stay a typed native error");
-    };
-    assert_eq!(malformed.status, StatusCode::BAD_GATEWAY);
-    assert_eq!(malformed.code, "provider_invalid_response");
 }
 
 #[test]
@@ -400,6 +357,7 @@ fn anthropic_response_encodes_callback_task_id_into_tool_use_ids() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 

@@ -2,10 +2,6 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import type { AgentFlowCanvasEdge } from '../../components/canvas/node-types';
 import { MAIN_SOURCE_HANDLE_ID } from '../canvas/handle-ids';
-import {
-  isFlowTerminalNode,
-  isStartCompactHandle
-} from '../compact-dispatch';
 import type { NodePickerOption } from '../plugin-node-definitions';
 
 export function toCanvasEdges(
@@ -34,9 +30,7 @@ export function toCanvasEdges(
       const sourceNode = document.graph.nodes.find(
         (node) => node.id === edge.source
       );
-      const canInsertNode =
-        !isFlowTerminalNode(sourceNode) &&
-        !isStartCompactHandle(sourceNode, edge.sourceHandle);
+      const canInsertNode = sourceNode?.type !== 'answer';
 
       return {
         id: edge.id,

@@ -4,7 +4,7 @@ use super::*;
 async fn openai_responses_waiting_callback_projects_client_function_call() {
     let run = native_run();
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, false);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -78,7 +78,7 @@ async fn openai_responses_waiting_internal_llm_tool_callback_is_explicitly_unsup
         }
     ]));
 
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),

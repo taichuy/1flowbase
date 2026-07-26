@@ -409,7 +409,6 @@ async fn publish_application_with_provider(
             },
             "deepseek-v4-flash"
         ]),
-        None,
     )
     .await;
 }
@@ -428,14 +427,6 @@ async fn publish_unbound_application_with_provider(
         application_id,
         provider_instance_id,
         json!([COMPAT_ROUTE_PROVIDER_MODEL]),
-        Some(json!({
-            "generate": null,
-            "count_tokens": null,
-            "compact": {
-                "responses_compact": null,
-                "responses_compaction_v2": null
-            }
-        })),
     )
     .await;
 }
@@ -447,7 +438,6 @@ async fn publish_application_with_provider_and_mapping(
     application_id: &str,
     provider_instance_id: &str,
     advertised_models: Value,
-    operation_bindings: Option<Value>,
 ) {
     let state = app
         .clone()
@@ -510,7 +500,7 @@ async fn publish_application_with_provider_and_mapping(
         .unwrap();
     assert_eq!(save.status(), StatusCode::OK);
 
-    let mut mapping = json!({
+    let mapping = json!({
         "input": {
             "query_target": "node-start.query",
             "model_target": null,
@@ -525,10 +515,6 @@ async fn publish_application_with_provider_and_mapping(
             "error_selector": null
         }
     });
-    if let Some(operation_bindings) = operation_bindings {
-        mapping["operation_bindings"] = operation_bindings;
-    }
-
     let response = app
         .clone()
         .oneshot(

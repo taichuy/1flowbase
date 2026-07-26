@@ -11,6 +11,24 @@ use crate::ports::RuntimeEventPayload;
 
 use super::{debug_stream_events, DebugDeltaKind, ThinkTagStreamSplitter};
 
+const CANONICAL_ANSWER_PRESENTATION_KEY: &str = "__canonical_answer_presentation";
+
+pub(crate) fn is_canonical_answer_presentation_output(payload: &Value) -> bool {
+    payload
+        .get(CANONICAL_ANSWER_PRESENTATION_KEY)
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+pub(super) fn mark_canonical_answer_presentation_output(payload: &mut Value) {
+    if let Some(payload) = payload.as_object_mut() {
+        payload.insert(
+            CANONICAL_ANSWER_PRESENTATION_KEY.to_string(),
+            Value::Bool(true),
+        );
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct AnswerPresentationCursor {
     candidates: Vec<AnswerPresentationCandidateCursor>,
@@ -125,6 +143,10 @@ pub(super) fn ready_answer_output_payload(
     if let Some(conversation) = variable_pool.get("conversation") {
         payload.insert("conversation".to_string(), conversation.clone());
     }
+    payload.insert(
+        CANONICAL_ANSWER_PRESENTATION_KEY.to_string(),
+        Value::Bool(true),
+    );
     Value::Object(payload)
 }
 
