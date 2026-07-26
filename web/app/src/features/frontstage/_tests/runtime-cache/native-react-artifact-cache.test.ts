@@ -20,11 +20,13 @@ import { createIndexedDbRecordStore } from '../../lib/runtime-cache/indexeddb-st
 const runtimeFingerprint = createNativeReactRuntimeFingerprint('/worker-a.js');
 
 describe('Native React Artifact V2 IndexedDB cache', () => {
-  test('D2-AC-005 returns a canonical L2 hit without invoking the compiler and isolates actor/workspace', async () => {
-    const { cache } = subject('native-l2-hit');
+  test('D3R-AC-006 reopens a full-identity L2 hit without invoking the compiler', async () => {
+    const indexedDB = new IDBFactory();
+    const { cache } = subject('native-l2-reopen', indexedDB);
     const currentIdentity = identity('source-a');
     const currentArtifact = artifact('source-a');
     await cache.put(currentIdentity, currentArtifact);
+    const reopened = subject('native-l2-reopen', indexedDB).cache;
     const compile = vi.fn(async () => ({
       ok: true as const,
       artifact: currentArtifact,
@@ -33,18 +35,74 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
 
     await expect(
       resolveFrontstageNativeReactArtifact({
-        cache,
+        cache: reopened,
         identity: currentIdentity,
         compile
       })
     ).resolves.toEqual({ status: 'hit', artifact: currentArtifact });
     expect(compile).not.toHaveBeenCalled();
     await expect(
-      cache.get({ ...currentIdentity, actorId: 'actor-b' })
+      reopened.get({ ...currentIdentity, actorId: 'actor-b' })
     ).resolves.toEqual({ status: 'miss', reason: 'not_found' });
     await expect(
-      cache.get({ ...currentIdentity, workspaceId: 'workspace-b' })
+      reopened.get({ ...currentIdentity, workspaceId: 'workspace-b' })
     ).resolves.toEqual({ status: 'miss', reason: 'not_found' });
+  });
+
+  test('D3R-AC-006 same source with any Artifact identity mismatch compiles instead of source-only reuse', async () => {
+    const { cache } = subject('native-full-identity-mismatch');
+    const currentIdentity = identity('same-source');
+    const currentArtifact = artifact('same-source');
+    await cache.put(currentIdentity, currentArtifact);
+    const mismatches: Array<{
+      field: string;
+      identity: FrontstageNativeReactArtifactCacheIdentity;
+    }> = [
+      {
+        field: 'compiler_abi',
+        identity: {
+          ...currentIdentity,
+          compiler_abi: '1flowbase/native-react-compiler@previous'
+        } as unknown as FrontstageNativeReactArtifactCacheIdentity
+      },
+      {
+        field: 'runtime_abi',
+        identity: {
+          ...currentIdentity,
+          runtime_abi: '1flowbase/native-react-runtime@previous'
+        } as unknown as FrontstageNativeReactArtifactCacheIdentity
+      },
+      {
+        field: 'runtime_fingerprint',
+        identity: identity(
+          'same-source',
+          createNativeReactRuntimeFingerprint('/worker-b.js')
+        )
+      },
+      {
+        field: 'dependency_lock_sha256',
+        identity: {
+          ...currentIdentity,
+          dependency_lock_sha256: 'f'.repeat(64)
+        } as unknown as FrontstageNativeReactArtifactCacheIdentity
+      }
+    ];
+
+    for (const mismatch of mismatches) {
+      const compile = vi.fn(async () => ({
+        ok: true as const,
+        artifact: currentArtifact,
+        diagnostics: [] as []
+      }));
+      const resolution = await resolveFrontstageNativeReactArtifact({
+        cache,
+        identity: mismatch.identity,
+        compile
+      });
+
+      expect(compile, mismatch.field).toHaveBeenCalledOnce();
+      expect(resolution, mismatch.field).toMatchObject({ status: 'compiled' });
+    }
   });
 
   test('D2-AC-006 stores only canonical artifact bytes and management metadata', async () => {
@@ -81,35 +139,78 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
     ]);
   });
 
-  test('D2-AC-006 removes corrupt, identity-mismatched and old-fingerprint records for cold recovery', async () => {
-    const { cache, store } = subject('native-recovery');
+  test('D3R-AC-006 fails closed and compiles after identity, integrity, or structural corruption', async () => {
+    const identitySubject = subject('native-identity-recovery');
     const sourceBIdentity = identity('source-b');
-    await cache.put(sourceBIdentity, artifact('source-b'));
+    await identitySubject.cache.put(sourceBIdentity, artifact('source-b'));
     const record = (
-      await store.list()
+      await identitySubject.store.list()
     )[0] as FrontstageNativeReactArtifactCacheRecord;
-    await store.delete(record.key);
-    await store.put({
+    await identitySubject.store.delete(record.key);
+    await identitySubject.store.put({
       ...record,
       key: createFrontstageNativeReactArtifactCacheKey(identity('source-a'))
     });
-    await expect(cache.get(identity('source-a'))).resolves.toEqual({
-      status: 'miss',
-      reason: 'identity_mismatch'
-    });
+    const identityCompile = compileFixture('source-a');
+    await expect(
+      resolveFrontstageNativeReactArtifact({
+        cache: identitySubject.cache,
+        identity: identity('source-a'),
+        compile: identityCompile
+      })
+    ).resolves.toMatchObject({ status: 'compiled' });
+    expect(identityCompile).toHaveBeenCalledOnce();
 
-    await store.put({
-      ...record,
-      key: createFrontstageNativeReactArtifactCacheKey(sourceBIdentity),
+    const integritySubject = subject('native-integrity-recovery');
+    await integritySubject.cache.put(sourceBIdentity, artifact('source-b'));
+    const integrityRecord = (
+      await integritySubject.store.list()
+    )[0] as FrontstageNativeReactArtifactCacheRecord;
+    await integritySubject.store.put({
+      ...integrityRecord,
       artifact: {
-        ...record.artifact,
-        program: { ...record.artifact.program, executableBody: 'corrupt' }
+        ...integrityRecord.artifact,
+        integritySha256: '0'.repeat(64)
       }
     });
-    await expect(cache.get(sourceBIdentity)).resolves.toEqual({
-      status: 'miss',
-      reason: 'corrupt'
+    const integrityCompile = compileFixture('source-b');
+    await expect(
+      resolveFrontstageNativeReactArtifact({
+        cache: integritySubject.cache,
+        identity: sourceBIdentity,
+        compile: integrityCompile
+      })
+    ).resolves.toMatchObject({ status: 'compiled' });
+    expect(integrityCompile).toHaveBeenCalledOnce();
+
+    const corruptSubject = subject('native-structural-recovery');
+    await corruptSubject.cache.put(sourceBIdentity, artifact('source-b'));
+    const corruptRecord = (
+      await corruptSubject.store.list()
+    )[0] as FrontstageNativeReactArtifactCacheRecord;
+    await corruptSubject.store.put({
+      ...corruptRecord,
+      artifact: {
+        ...corruptRecord.artifact,
+        program: {
+          ...corruptRecord.artifact.program,
+          executablePreambleLines: -1
+        }
+      }
     });
+    const corruptCompile = compileFixture('source-b');
+    await expect(
+      resolveFrontstageNativeReactArtifact({
+        cache: corruptSubject.cache,
+        identity: sourceBIdentity,
+        compile: corruptCompile
+      })
+    ).resolves.toMatchObject({ status: 'compiled' });
+    expect(corruptCompile).toHaveBeenCalledOnce();
+  });
+
+  test('D2-AC-006 removes old-fingerprint records for cold recovery', async () => {
+    const { cache } = subject('native-old-fingerprint-recovery');
 
     const oldRuntimeFingerprint =
       createNativeReactRuntimeFingerprint('/worker-old.js');
@@ -249,16 +350,25 @@ function componentSource(label: string): string {
   return `export default function Block() { return ${JSON.stringify(label)}; }`;
 }
 
-function subject(name: string) {
+function subject(name: string, indexedDB = new IDBFactory()) {
   const store =
     createIndexedDbRecordStore<FrontstageNativeReactArtifactCacheRecord>({
-      indexedDB: new IDBFactory(),
+      indexedDB,
       databaseName: name
     });
   return {
     store,
     cache: new FrontstageNativeReactArtifactCache({ store })
   };
+}
+
+function compileFixture(source: string) {
+  const currentArtifact = artifact(source);
+  return vi.fn(async () => ({
+    ok: true as const,
+    artifact: currentArtifact,
+    diagnostics: [] as []
+  }));
 }
 
 function quotaStore(

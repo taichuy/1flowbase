@@ -1,8 +1,9 @@
 import '@ant-design/v5-patch-for-react-19';
 import { ConfigProvider } from 'antd';
-import { StrictMode, useState } from 'react';
+import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import type { PublicLoginInstance } from '../../api/session';
 import { PublicAuthBlock } from '../../components/PublicAuthBlock';
 
 const source = `
@@ -11,6 +12,7 @@ const source = `
   export default function PublicAuthFixture({ ctx }) {
     const [mode, setMode] = useState('sign_in');
     const [error, setError] = useState(null);
+    const [localCount, setLocalCount] = useState(0);
     const submit = async (values) => {
       setError(null);
       try {
@@ -24,9 +26,19 @@ const source = `
         setError(cause instanceof Error ? cause.message : 'Authentication failed');
       }
     };
-    return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    return <Space
+      data-testid="public-auth-native-content"
+      data-local-count={localCount}
+      direction="vertical"
+      size="middle"
+      style={{ width: '100%' }}
+    >
+      <style>{\`:host { --auth-fixture-accent: rgb(22, 119, 255); }
+        .auth-fixture-heading { color: var(--auth-fixture-accent); }\`}</style>
       <h2>
-        {mode === 'sign_in' ? 'Sign in' : 'Create an account'}
+        <span className="auth-fixture-heading">
+          {mode === 'sign_in' ? 'Sign in' : 'Create an account'}
+        </span>
       </h2>
       {error ? <Alert type="error" showIcon message={error} /> : null}
       <form onSubmit={(event) => { event.preventDefault(); void submit({}); }}>
@@ -44,6 +56,9 @@ const source = `
           {mode === 'sign_in' ? 'Create an account' : 'Back to sign in'}
         </Button>
       ) : null}
+      <Button onClick={() => setLocalCount((value) => value + 1)}>
+        local state {localCount}
+      </Button>
     </Space>;
   }
 `;
@@ -56,33 +71,50 @@ async function main(ctx: BlockContext): Promise<BlockResult> {
 export default { main } satisfies BlockModule;
 `;
 
+let fixtureRenderCount = 0;
+
 function Fixture() {
+  fixtureRenderCount += 1;
   const [completion, setCompletion] = useState('idle');
   const [showLegacy, setShowLegacy] = useState(false);
+  const [pageMounted, setPageMounted] = useState(true);
   const activeSource = showLegacy ? legacySource : source;
+  const instance = useMemo<PublicLoginInstance>(
+    () => ({
+      id: 'auth-password-local',
+      auth_type: 'password-local',
+      title: 'Password',
+      description: null,
+      sort_order: 0,
+      public_ui_block: activeSource,
+      public_variables: { self_registration_enabled: true }
+    }),
+    [activeSource]
+  );
   return (
     <main
       data-testid="public-auth-native-fixture"
       data-viewport={window.innerWidth <= 390 ? 'mobile-390' : 'desktop'}
+      data-source-mode={showLegacy ? 'legacy' : 'native'}
+      data-page-mounted={pageMounted ? 'true' : 'false'}
+      data-fixture-render-count={fixtureRenderCount}
+      data-auth-completion={completion}
       data-legacy-source-preserved={
         showLegacy && activeSource === legacySource ? 'true' : 'false'
       }
       style={{ width: 'min(100% - 32px, 440px)', margin: '40px auto' }}
     >
-      <PublicAuthBlock
-        instance={{
-          id: 'auth-password-local',
-          auth_type: 'password-local',
-          title: 'Password',
-          description: null,
-          sort_order: 0,
-          public_ui_block: activeSource,
-          public_variables: { self_registration_enabled: true }
-        }}
-        onAuthenticated={() => setCompletion('authenticated')}
-      />
+      {pageMounted ? (
+        <PublicAuthBlock
+          instance={instance}
+          onAuthenticated={() => setCompletion('authenticated')}
+        />
+      ) : null}
       <button type="button" onClick={() => setShowLegacy((value) => !value)}>
         {showLegacy ? 'show native source' : 'show legacy source'}
+      </button>
+      <button type="button" onClick={() => setPageMounted((value) => !value)}>
+        {pageMounted ? 'exit auth page' : 'enter auth page'}
       </button>
       <output data-testid="public-auth-completion">{completion}</output>
     </main>
