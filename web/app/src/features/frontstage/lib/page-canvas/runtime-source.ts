@@ -1,3 +1,8 @@
+import {
+  sha256Text,
+  type CompiledBlockArtifact
+} from '@1flowbase/page-runtime';
+
 import type {
   FrontstageBlockCatalogRef,
   FrontstageBlockContributionRef,
@@ -11,7 +16,6 @@ import type {
   FrontstagePageRenderPlanFallbackReason,
   FrontstagePageRenderMode
 } from './render-plan';
-import type { CompiledBlockArtifact } from '@1flowbase/page-runtime';
 
 export interface FrontstagePageCanvasBlockCodeReadRequest {
   requestId: string;
@@ -63,6 +67,7 @@ export type FrontstagePageCanvasBlockCodeReadResult =
     };
 
 export interface FrontstagePageCanvasRuntimeSourceError {
+  stage: 'source_fetch';
   name?: string;
   code?: string;
   message: string;
@@ -132,6 +137,13 @@ export interface FrontstagePageCanvasRuntimeSourceState {
   workspaceId: string;
   pageId: string;
   sources: FrontstagePageCanvasRuntimeSource[];
+}
+
+export function frontstageRuntimeSourceMatchesDigest(
+  code: string,
+  sourceSha256: string
+): boolean {
+  return sha256Text(code) === sourceSha256.toLowerCase();
 }
 
 export function createFrontstagePageCanvasBlockCodeReadPlan({
@@ -440,6 +452,7 @@ function summarizeReadError(
   const message = normalizeOptionalString(result.message);
 
   return {
+    stage: 'source_fetch',
     ...errorSummary,
     message:
       message ??

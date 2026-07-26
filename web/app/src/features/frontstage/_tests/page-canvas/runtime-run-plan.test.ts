@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { sha256Text, type CompiledBlockArtifact } from '@1flowbase/page-runtime';
+import {
+  sha256Text,
+  type CompiledBlockArtifact
+} from '@1flowbase/page-runtime';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type {
@@ -28,7 +31,10 @@ function createBlock(
       code: 'hero.banner'
     },
     props: { title: 'Hello' },
-    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
+    presentation: overrides.presentation ?? {
+      heightMode: 'auto',
+      height: null
+    },
     layout: { order: 10 },
     order: 10,
     runtime: {
@@ -186,7 +192,11 @@ function createNotReadySource(
         ...base,
         status,
         request,
-        error: { name: 'Error', message: 'Read failed.' }
+        error: {
+          stage: 'source_fetch',
+          name: 'Error',
+          message: 'Read failed.'
+        }
       };
     case 'skipped':
       return {
@@ -237,16 +247,15 @@ describe('frontstage page canvas runtime run plan model', () => {
       program: {
         injectedModules: [],
         importBindings: [],
-        executableBody: 'return { main: async () => ({ view: {}, outputs: {} }) };',
+        executableBody:
+          'return { main: async () => ({ view: {}, outputs: {} }) };',
         executablePreambleLines: 0,
         moduleMapIdentifier: '__modules',
         defaultExportIdentifier: '__default'
       },
       manifest: { allowedImports: [] }
     } satisfies CompiledBlockArtifact;
-    const createState = (
-      source: FrontstagePageCanvasRuntimeSource
-    ) =>
+    const createState = (source: FrontstagePageCanvasRuntimeSource) =>
       createFrontstagePageCanvasRuntimeRunPlanState({
         sourceState: createSourceState([source]),
         catalogEntries: [createCatalogEntry()],
@@ -555,9 +564,7 @@ describe('frontstage page canvas runtime run plan model', () => {
       limits
     });
 
-    expect(runPlanState.items.map((item) => item.slotIndex)).toEqual([
-      2, 0, 1
-    ]);
+    expect(runPlanState.items.map((item) => item.slotIndex)).toEqual([2, 0, 1]);
     expect(sourceState).toEqual(originalSourceState);
     expect(catalogEntries).toEqual(originalCatalogEntries);
     expect(limits).toEqual(originalLimits);

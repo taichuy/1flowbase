@@ -1,3 +1,8 @@
+import {
+  nativeReactCatalogDependencyLockIdentity,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
+
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
 import {
   createRestrictedBlockRunPlan,
@@ -10,6 +15,70 @@ import type {
   FrontstagePageCanvasRuntimeSource,
   FrontstagePageCanvasRuntimeSourceState
 } from './runtime-source';
+
+export type FrontstagePageCanvasNativePreparationPlanItem =
+  | {
+      status: 'native_plan_ready';
+      blockId: string;
+      slotIndex: number;
+      codeRef: string;
+      sourceSha256: string;
+      source: string;
+      dependencyLock: NativeReactCatalogDependencyLock;
+      dependencyLockIdentity: string;
+    }
+  | {
+      status: 'source_not_ready';
+      blockId: string;
+      slotIndex: number;
+      codeRef: string;
+      sourceStatus: FrontstagePageCanvasRuntimeSource['status'];
+    };
+
+export interface FrontstagePageCanvasNativePreparationPlanState {
+  workspaceId: string;
+  pageId: string;
+  items: FrontstagePageCanvasNativePreparationPlanItem[];
+}
+
+/** Native plan contains immutable preparation inputs only; instance payloads belong to P2. */
+export function createFrontstagePageCanvasNativePreparationPlanState({
+  sourceState,
+  dependencyLocksByBlockId
+}: {
+  sourceState: FrontstagePageCanvasRuntimeSourceState;
+  dependencyLocksByBlockId: Readonly<
+    Record<string, NativeReactCatalogDependencyLock>
+  >;
+}): FrontstagePageCanvasNativePreparationPlanState {
+  return {
+    workspaceId: sourceState.workspaceId,
+    pageId: sourceState.pageId,
+    items: sourceState.sources.map((source) => {
+      if (source.status === 'ready') {
+        const dependencyLock = dependencyLocksByBlockId[source.blockId] ?? [];
+        return {
+          status: 'native_plan_ready',
+          blockId: source.blockId,
+          slotIndex: source.slotIndex,
+          codeRef: source.codeRef,
+          sourceSha256: source.source_sha256,
+          source: source.code,
+          dependencyLock,
+          dependencyLockIdentity:
+            nativeReactCatalogDependencyLockIdentity(dependencyLock)
+        };
+      }
+      return {
+        status: 'source_not_ready',
+        blockId: source.blockId,
+        slotIndex: source.slotIndex,
+        codeRef: source.codeRef,
+        sourceStatus: source.status
+      };
+    })
+  };
+}
 
 export type FrontstagePageCanvasRuntimeRunPlanStatus =
   | 'run_plan_ready'
@@ -152,7 +221,6 @@ function createRuntimeRunPlanItem({
       reason: createSourceNotReadyReason(source, sourceIndex)
     };
   }
-
 
   if (source.artifactLookupStatus === 'pending') {
     return {
