@@ -1,10 +1,15 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
-import { WindowWorkspaceProvider } from '../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import type {
   FrontstageRestrictedBlockRuntimeHostOptions,
@@ -152,50 +157,35 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     vi.useRealTimers();
   });
 
-  test('AC-008 runs the unsaved draft without exposing raw context or limits editors', async () => {
-    const runtimeSessionFactory = vi.fn(() => createSession());
+  test('AC-001/002/003 renders one preview and console without debugger controls', async () => {
+    const runtimeSessionFactory = vi.fn(() => createReadyActionSession());
+
     render(
       <JsBlockTrialPanel
         block={block}
         catalogEntry={catalog}
-        code={
-          'async function main(){return {view:{primitive:"Text"},outputs:{}}}\nexport default {main};'
-        }
-        contextSnapshot={{ pageId: 'page-1' }}
+        code="current draft"
+        contextSnapshot={{}}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'debugger' }}
+        revision="run:1"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
-    expect(screen.queryByText('Runtime limits')).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /运\s*行/ }));
+
     await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('预览')).toBeInTheDocument();
-    expect(screen.getByText('控制台')).toBeInTheDocument();
-    expect(screen.getByText('接口调用')).toBeInTheDocument();
-    expect(screen.getByText('问题')).toBeInTheDocument();
-  });
-
-  test('AC-010 opens Draft Run surfaces as independent child windows in Studio', () => {
-    render(
-      <WindowWorkspaceProvider>
-        <JsBlockTrialPanel
-          block={block}
-          catalogEntry={catalog}
-          code="async function main(){return {view:{primitive:'Text'},outputs:{}}} export default {main};"
-          contextSnapshot={{ pageId: 'page-1' }}
-          limits={{ timeoutMs: 1_000 }}
-          presentation={{ mode: 'debugger' }}
-          runtimeSessionFactory={() => createSession()}
-        />
-      </WindowWorkspaceProvider>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /预\s*览/ }));
-    fireEvent.click(screen.getByRole('button', { name: '控制台' }));
-    expect(screen.getByRole('dialog', { name: '预览' })).toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: '控制台' })).toBeInTheDocument();
+    expect(screen.getByTestId('js-block-preview-pane')).toBeInTheDocument();
+    expect(screen.getByTestId('js-block-console-pane')).toBeInTheDocument();
+    for (const name of [
+      /运\s*行/,
+      '停止',
+      '预览',
+      '控制台',
+      '变量',
+      '接口调用',
+      '问题'
+    ]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
   });
 
   test('AC-032 reruns the current draft with host inputs derived from an action event', async () => {
@@ -226,12 +216,11 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'debugger' }}
+        revision="run:1"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /运\s*行/ }));
     await screen.findByRole('button', { name: 'Register' });
     fireEvent.click(screen.getByRole('button', { name: 'Register' }));
 
@@ -248,7 +237,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     });
   });
 
-  test('AC-047 automatically runs debugger presentation only for a new run revision', async () => {
+  test('AC-047 automatically runs only for a new run revision', async () => {
     const runtimeSessionFactory = vi.fn(() => createSession());
     const { rerender } = render(
       <JsBlockTrialPanel
@@ -257,7 +246,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         code="first draft"
         contextSnapshot={{}}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'debugger', revision: 'run:1' }}
+        revision="run:1"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -270,7 +259,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         code="edited draft"
         contextSnapshot={{}}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'debugger', revision: 'run:1' }}
+        revision="run:1"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -284,14 +273,14 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         code="edited draft"
         contextSnapshot={{}}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'debugger', revision: 'run:2' }}
+        revision="run:2"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
     await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
   });
 
-  test('AC-039/040/041 refreshes direct preview only when the saved revision changes', async () => {
+  test('AC-039/040/041 refreshes preview only when the revision changes', async () => {
     const sessions = [
       createReadyActionSession(),
       createReadyActionSession(),
@@ -321,7 +310,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'direct-preview', revision: 'saved:v1' }}
+        revision="saved:v1"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -340,7 +329,9 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
 
     await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
     expect(runSources).toEqual(['first saved source']);
-    expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Register' })
+    ).toBeInTheDocument();
     expect(screen.getByText('hello {"id":1}')).toBeInTheDocument();
     expect(screen.getByText('check input')).toBeInTheDocument();
     expect(screen.getByText(/"id": 1/u)).toBeInTheDocument();
@@ -348,12 +339,12 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
     expect(screen.getByTestId('js-block-console-prompt')).toHaveTextContent(
       '>'
     );
-    expect(screen.getByTestId('js-block-console-gutter-info')).toHaveTextContent(
-      '>'
-    );
-    expect(screen.getByTestId('js-block-console-gutter-warn')).toHaveTextContent(
-      '!'
-    );
+    expect(
+      screen.getByTestId('js-block-console-gutter-info')
+    ).toHaveTextContent('>');
+    expect(
+      screen.getByTestId('js-block-console-gutter-warn')
+    ).toHaveTextContent('!');
     expect(screen.getByTestId('js-block-preview-pane')).toHaveClass(
       'frontstage-js-block-preview-console__preview'
     );
@@ -392,7 +383,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'direct-preview', revision: 'saved:v1' }}
+        revision="saved:v1"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );
@@ -410,7 +401,7 @@ describe('JsBlockTrialPanel Draft Run Console', () => {
         contextSnapshot={{}}
         createRunInputs={createRunInputs}
         limits={{ timeoutMs: 1_000 }}
-        presentation={{ mode: 'direct-preview', revision: 'saved:v2' }}
+        revision="saved:v2"
         runtimeSessionFactory={runtimeSessionFactory}
       />
     );

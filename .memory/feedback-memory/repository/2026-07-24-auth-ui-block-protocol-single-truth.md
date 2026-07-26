@@ -12,8 +12,8 @@ match_when:
   - 设计认证、支付或其他后端插件安装后需要新增前端交互的扩展协议
   - 在 Schema UI、TSX 复用、代码区块和 Core 硬编码之间选择职责边界
 created_at: 2026-07-24 14
-updated_at: 2026-07-24 14
-last_verified_at: 2026-07-24 14
+updated_at: 2026-07-26 00
+last_verified_at: 2026-07-26 00
 decision_policy: direct_reference
 scope:
   - api/crates/plugin-framework
@@ -49,3 +49,5 @@ scope:
 ## 备注
 
 允许 Auth Center 的后台配置表单继续使用后端 `config_schema`；该 schema 是后台配置入口，不是公开登录/注册 UI 的第二真值。
+
+`2026-07-26 00` 用户补充：认证中心当前 Studio UI 更接近期望；普通区块既然复用同一 Studio，就不应再因调用方选择不同 presentation 而出现另一套运行预览交互。用户进一步纠正统一基线：顶部只有“运行”，不新增“停止”；预览区只复用认证中心现有的“实际区块预览 + 单一输出控制台”，不增加变量、接口调用或问题标签。配置字段可因领域 owner 不同而不同，但共享壳层、动作层级与运行预览基准应一致。

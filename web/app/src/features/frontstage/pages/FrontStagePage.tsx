@@ -1369,27 +1369,21 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             diagnostics={[]}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
-            runPanel={({ code, onCodeChange, runRevision }) => (
-              <JsBlockTrialPanel
-                block={selectedBlock}
-                catalogEntry={matchingJsBlockCatalogEntry}
-                code={code}
-                contextSnapshot={jsBlockTrialContextSnapshot}
-                handlers={jsBlockCapabilityHandlers}
-                onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
-                onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
-                limits={selectedBlockRuntimeLimits}
-                onCodeChange={onCodeChange}
-                onContextSnapshotChange={setJsBlockTrialContextSnapshot}
-                onLimitsChange={setJsBlockTrialLimits}
-                presentation={{
-                  mode: 'debugger',
-                  ...(runRevision === null
-                    ? {}
-                    : { revision: `run:${runRevision}` })
-                }}
-              />
-            )}
+            runPanel={({ code, runRevision }) =>
+              runRevision === null ? undefined : (
+                <JsBlockTrialPanel
+                  block={selectedBlock}
+                  catalogEntry={matchingJsBlockCatalogEntry}
+                  code={code}
+                  contextSnapshot={jsBlockTrialContextSnapshot}
+                  handlers={jsBlockCapabilityHandlers}
+                  onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
+                  onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
+                  limits={selectedBlockRuntimeLimits}
+                  revision={`run:${runRevision}`}
+                />
+              )
+            }
           />
         ) : null}
       </>

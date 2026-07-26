@@ -1,5 +1,4 @@
 import type { OnMount } from '@monaco-editor/react';
-import { Descriptions } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
@@ -14,6 +13,7 @@ import {
   JsxStudioResourcePanel,
   type JsxStudioContextVariable
 } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
+import { JsxStudioConfigurationPanel } from '../../../frontstage/components/jsx-studio/JsxStudioConfigurationPanel';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
@@ -73,11 +73,12 @@ export function AuthenticatorUiBlockStudio({
   workspaceId
 }: AuthenticatorUiBlockStudioProps) {
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
-  const authoringCatalogEntry = blockCatalog.items.find(
-    (entry) =>
-      entry.providerCode === '1flowbase' &&
-      entry.contributionCode === 'frontstage.js-ui-block'
-  ) ?? null;
+  const authoringCatalogEntry =
+    blockCatalog.items.find(
+      (entry) =>
+        entry.providerCode === '1flowbase' &&
+        entry.contributionCode === 'frontstage.js-ui-block'
+    ) ?? null;
   const editorProjection = useMemo(
     () => ({
       ...createFrontstageJsxEditorProjection({
@@ -221,62 +222,52 @@ export function AuthenticatorUiBlockStudio({
                 limits={PUBLIC_AUTH_RUNTIME_LIMITS}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}
                 onRevokeDraftRun={previewCapabilities.revokeDraftRun}
-                presentation={{
-                  mode: 'direct-preview',
-                  revision: previewRequest.revision
-                }}
+                revision={previewRequest.revision}
               />
             ) : undefined
           }
           section={section}
           workspaceId={workspaceId}
-          configurationPanel={(
-            <div className="frontstage-jsx-studio__resource-scroll">
-              <Descriptions
-                column={1}
-                size="small"
-                items={[
-                  {
-                    key: 'title',
-                    label: i18nText('settings', 'auto.name'),
-                    children: authenticatorTitle
-                  },
-                  {
-                    key: 'type',
-                    label: i18nText(
-                      'settings',
-                      'auto.auth_center_auth_type'
-                    ),
-                    children: authType
-                  },
-                  {
-                    key: 'description',
-                    label: i18nText('settings', 'auto.description'),
-                    children: description || '-'
-                  },
-                  {
-                    key: 'enabled',
-                    label: i18nText('settings', 'auto.enabled'),
-                    children: i18nText(
-                      'settings',
-                      enabled ? 'auto.yes' : 'auto.no'
-                    )
-                  },
-                  {
-                    key: 'registration',
-                    label: i18nText(
-                      'settings',
-                      'auto.auth_center_self_registration'
-                    ),
-                    children: i18nText(
-                      'settings',
-                      selfRegistrationEnabled ? 'auto.yes' : 'auto.no'
-                    )
-                  }
-                ]}
-              />
-            </div>
-          )}
+          configurationPanel={
+            <JsxStudioConfigurationPanel
+              items={[
+                {
+                  key: 'title',
+                  label: i18nText('settings', 'auto.name'),
+                  children: authenticatorTitle
+                },
+                {
+                  key: 'type',
+                  label: i18nText('settings', 'auto.auth_center_auth_type'),
+                  children: authType
+                },
+                {
+                  key: 'description',
+                  label: i18nText('settings', 'auto.description'),
+                  children: description || '-'
+                },
+                {
+                  key: 'enabled',
+                  label: i18nText('settings', 'auto.enabled'),
+                  children: i18nText(
+                    'settings',
+                    enabled ? 'auto.yes' : 'auto.no'
+                  )
+                },
+                {
+                  key: 'registration',
+                  label: i18nText(
+                    'settings',
+                    'auto.auth_center_self_registration'
+                  ),
+                  children: i18nText(
+                    'settings',
+                    selfRegistrationEnabled ? 'auto.yes' : 'auto.no'
+                  )
+                }
+              ]}
+            />
+          }
           onInsertCode={insertCode}
           onSaveBlock={async (block) => {
             setAuthoringBlock(block);

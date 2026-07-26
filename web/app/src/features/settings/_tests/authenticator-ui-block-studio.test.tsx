@@ -18,20 +18,32 @@ const trialPanelHook = vi.hoisted(() => ({
   render: vi.fn()
 }));
 
-vi.mock('../../frontstage/hooks/use-frontstage-block-catalog', () =>
-  blockCatalogHook
+vi.mock(
+  '../../frontstage/hooks/use-frontstage-block-catalog',
+  () => blockCatalogHook
 );
-vi.mock('../../frontstage/components/jsx-studio/JsxStudioResourcePanel', () => ({
-  JsxStudioResourcePanel: (props: {
-    configurationPanel: ReactNode;
-    contextVariables?: unknown;
-    runPanel?: ReactNode;
-    section: string;
-  }) => {
-    resourcePanelHook.render(props);
-    return <>{props.section === 'run' ? props.runPanel : props.configurationPanel}</>;
-  }
-}));
+vi.mock(
+  '../../frontstage/components/jsx-studio/JsxStudioResourcePanel',
+  () => ({
+    JsxStudioResourcePanel: (props: {
+      configurationPanel: ReactNode;
+      contextVariables?: unknown;
+      runPanel?: ReactNode;
+      section: string;
+    }) => {
+      resourcePanelHook.render(props);
+      return (
+        <>
+          {props.section === 'run'
+            ? props.runPanel
+            : props.section === 'configuration'
+              ? props.configurationPanel
+              : null}
+        </>
+      );
+    }
+  })
+);
 vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
   JsBlockTrialPanel: (props: {
     block: {
@@ -39,9 +51,7 @@ vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
       contribution: { pluginId: string; pluginVersion: string; code: string };
     };
     code: string;
-    presentation:
-      | { mode: 'debugger' }
-      | { mode: 'direct-preview'; revision: string };
+    revision: string;
     createRunInputs: (event?: {
       actionId: string;
       formValues?: Record<string, unknown>;
@@ -115,7 +125,8 @@ describe('AuthenticatorUiBlockStudio', () => {
             monacoExtraLibs: [
               {
                 source: '@1flowbase/block-sdk',
-                filePath: 'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
+                filePath:
+                  'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
                 content: "declare module '@1flowbase/block-sdk' {}"
               },
               {
@@ -165,7 +176,9 @@ describe('AuthenticatorUiBlockStudio', () => {
       />
     );
 
-    await waitFor(() => expect(monacoHook.addExtraLib).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(monacoHook.addExtraLib).toHaveBeenCalledTimes(2)
+    );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       1,
       "declare module '@1flowbase/block-sdk' {}",
@@ -209,6 +222,37 @@ describe('AuthenticatorUiBlockStudio', () => {
     expect(resourcePanelHook.render).toHaveBeenCalledWith(
       expect.objectContaining({ contextVariables: null })
     );
+  });
+
+  test('AC-004 uses the shared Studio configuration panel', () => {
+    render(
+      <AuthenticatorUiBlockStudio
+        authenticatorId="password-local"
+        authenticatorTitle="Password"
+        authType="password_local"
+        contextVariables={[]}
+        description={null}
+        enabled
+        errorMessage={null}
+        interfacePathPrefixes={['/api/public/']}
+        publicVariables={{ title: 'Password', enabled: true }}
+        open
+        readOnly={false}
+        saving={false}
+        selfRegistrationEnabled={false}
+        source="export default { main };"
+        workspaceId="workspace-1"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '区块设置' }));
+    expect(
+      screen
+        .getByText('Password')
+        .closest('.frontstage-jsx-studio__configuration-panel')
+    ).not.toBeNull();
   });
 
   test('AC-043/044/045 runs the current draft from the header without saving it', async () => {
@@ -260,11 +304,8 @@ describe('AuthenticatorUiBlockStudio', () => {
       }
     });
     expect(trialProps.code).toBe('first unsaved draft');
-    expect(trialProps.presentation).toEqual({
-      mode: 'direct-preview',
-      revision: expect.any(String)
-    });
-    const firstRevision = trialProps.presentation.revision;
+    expect(trialProps.revision).toEqual(expect.any(String));
+    const firstRevision = trialProps.revision;
     expect(onSave).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByRole('textbox', { name: 'TSX source' }), {
@@ -273,16 +314,18 @@ describe('AuthenticatorUiBlockStudio', () => {
     expect(trialPanelHook.render.mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({
         code: 'first unsaved draft',
-        presentation: { mode: 'direct-preview', revision: firstRevision }
+        revision: firstRevision
       })
     );
 
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith('second unsaved draft'));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith('second unsaved draft')
+    );
     expect(trialPanelHook.render.mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({
         code: 'first unsaved draft',
-        presentation: { mode: 'direct-preview', revision: firstRevision }
+        revision: firstRevision
       })
     );
     expect(trialProps.createRunInputs()).toEqual({

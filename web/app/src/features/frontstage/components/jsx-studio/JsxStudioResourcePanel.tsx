@@ -25,6 +25,7 @@ import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-inserti
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
+import { JsxStudioConfigurationPanel } from './JsxStudioConfigurationPanel';
 
 export type FrontstageJsxStudioSection =
   | 'code'
@@ -106,8 +107,10 @@ export function JsxStudioResourcePanel({
   }
 
   if (section === 'configuration') {
-    return configurationPanel ?? (
-      <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />
+    return (
+      configurationPanel ?? (
+        <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />
+      )
     );
   }
 
@@ -739,80 +742,102 @@ function ConfigurationPanel({
   };
 
   return (
-    <div className="frontstage-jsx-studio__resource-scroll">
-      <ResourceHeading
-        title={i18nText('frontstage', 'auto.configuration')}
-        description={i18nText(
-          'frontstage',
-          'auto.structured_configuration_description'
-        )}
-      />
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <label className="frontstage-jsx-studio__field">
-          <span>{i18nText('frontstage', 'auto.title')}</span>
-          <Input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
-        <label className="frontstage-jsx-studio__field">
-          <span>{i18nText('frontstage', 'auto.description')}</span>
-          <Input.TextArea
-            autoSize={{ minRows: 3, maxRows: 6 }}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </label>
-        <label className="frontstage-jsx-studio__field">
-          <span>{i18nText('frontstage', 'auto.height_mode')}</span>
-          <Select
-            aria-label={i18nText('frontstage', 'auto.height_mode')}
-            value={heightMode}
-            options={[
-              {
-                value: 'auto',
-                label: i18nText('frontstage', 'auto.auto_height')
-              },
-              {
-                value: 'fixed',
-                label: i18nText('frontstage', 'auto.fixed_height')
-              }
-            ]}
-            onChange={(value) => setHeightMode(value)}
-          />
-        </label>
-        {heightMode === 'fixed' ? (
-          <label className="frontstage-jsx-studio__field">
-            <span>{i18nText('frontstage', 'auto.fixed_height')}</span>
-            <InputNumber
-              aria-label={i18nText('frontstage', 'auto.fixed_height')}
-              min={120}
-              max={2400}
-              step={20}
-              value={fixedHeight}
-              onChange={(value) => setFixedHeight(value ?? 320)}
+    <JsxStudioConfigurationPanel
+      items={[
+        {
+          key: 'title',
+          label: i18nText('frontstage', 'auto.title'),
+          children: (
+            <Input
+              aria-label={i18nText('frontstage', 'auto.title')}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          )
+        },
+        {
+          key: 'description',
+          label: i18nText('frontstage', 'auto.description'),
+          children: (
+            <Input.TextArea
+              aria-label={i18nText('frontstage', 'auto.description')}
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          )
+        },
+        {
+          key: 'height-mode',
+          label: i18nText('frontstage', 'auto.height_mode'),
+          children: (
+            <Select
+              aria-label={i18nText('frontstage', 'auto.height_mode')}
+              value={heightMode}
+              options={[
+                {
+                  value: 'auto',
+                  label: i18nText('frontstage', 'auto.auto_height')
+                },
+                {
+                  value: 'fixed',
+                  label: i18nText('frontstage', 'auto.fixed_height')
+                }
+              ]}
+              onChange={(value) => setHeightMode(value)}
               style={{ width: '100%' }}
             />
-          </label>
-        ) : null}
-        <Divider style={{ margin: '4px 0' }} />
-        <Typography.Text type="secondary">Block ID</Typography.Text>
-        <Typography.Text code copyable>
-          {block.id}
-        </Typography.Text>
-        <Typography.Text type="secondary">codeRef</Typography.Text>
-        <Typography.Text code copyable>
-          {block.codeRef}
-        </Typography.Text>
+          )
+        },
+        ...(heightMode === 'fixed'
+          ? [
+              {
+                key: 'fixed-height',
+                label: i18nText('frontstage', 'auto.fixed_height'),
+                children: (
+                  <InputNumber
+                    aria-label={i18nText('frontstage', 'auto.fixed_height')}
+                    min={120}
+                    max={2400}
+                    step={20}
+                    value={fixedHeight}
+                    onChange={(value) => setFixedHeight(value ?? 320)}
+                    style={{ width: '100%' }}
+                  />
+                )
+              }
+            ]
+          : []),
+        {
+          key: 'block-id',
+          label: 'Block ID',
+          children: (
+            <Typography.Text code copyable>
+              {block.id}
+            </Typography.Text>
+          )
+        },
+        {
+          key: 'code-ref',
+          label: 'codeRef',
+          children: (
+            <Typography.Text code copyable>
+              {block.codeRef}
+            </Typography.Text>
+          )
+        }
+      ]}
+      actions={
         <Button
+          block
           type="primary"
           loading={saving}
           onClick={() => void saveConfiguration()}
         >
           {i18nText('frontstage', 'auto.save_configuration')}
         </Button>
-      </Space>
-    </div>
+      }
+    />
   );
 }
 

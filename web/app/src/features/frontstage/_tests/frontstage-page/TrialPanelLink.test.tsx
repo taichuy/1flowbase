@@ -214,7 +214,7 @@ describe('FrontStagePage trial panel link', () => {
     });
   });
 
-  test('opens the run preview inside the shared JSX Studio', async () => {
+  test('AC-001/002/003 runs from the header into the shared preview and console', async () => {
     authenticate();
     renderFrontStagePage();
 
@@ -222,17 +222,22 @@ describe('FrontStagePage trial panel link', () => {
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '预览' }));
+    fireEvent.click(within(studio).getByRole('button', { name: /^运\s*行$/ }));
 
     const resourcePanel = studio.querySelector(
       '.frontstage-jsx-studio__resource-panel'
     );
     expect(resourcePanel).not.toBeNull();
     expect(
-      within(resourcePanel as HTMLElement).getByRole('button', {
-        name: /^运\s*行$/
-      })
+      within(resourcePanel as HTMLElement).getByTestId(
+        'js-block-preview-console'
+      )
     ).toBeInTheDocument();
+    expect(
+      within(resourcePanel as HTMLElement).queryByRole('button', {
+        name: '停止'
+      })
+    ).not.toBeInTheDocument();
   }, 10000);
 
   test('closes the whole JSX Studio when exiting design mode', async () => {
@@ -243,16 +248,16 @@ describe('FrontStagePage trial panel link', () => {
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '预览' }));
+    fireEvent.click(within(studio).getByRole('button', { name: /^运\s*行$/ }));
 
     const resourcePanel = studio.querySelector(
       '.frontstage-jsx-studio__resource-panel'
     );
     expect(resourcePanel).not.toBeNull();
     expect(
-      within(resourcePanel as HTMLElement).getByRole('button', {
-        name: /^运\s*行$/
-      })
+      within(resourcePanel as HTMLElement).getByTestId(
+        'js-block-preview-console'
+      )
     ).toBeInTheDocument();
 
     // Exit design mode — Drawer should close

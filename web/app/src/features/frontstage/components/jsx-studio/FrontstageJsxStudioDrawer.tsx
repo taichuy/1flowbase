@@ -38,11 +38,7 @@ export interface FrontstageJsxStudioDrawerProps {
   diagnostics: BlockRuntimeDiagnostic[];
   runPanel?:
     | ReactNode
-    | ((context: {
-        code: string;
-        onCodeChange: (code: string) => void;
-        runRevision: number | null;
-      }) => ReactNode);
+    | ((context: { code: string; runRevision: number | null }) => ReactNode);
   onClose: () => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
@@ -151,7 +147,7 @@ export function FrontstageJsxStudioDrawer({
   };
   const resolvedRunPanel =
     typeof runPanel === 'function'
-      ? runPanel({ code: draft, onCodeChange: setDraft, runRevision })
+      ? runPanel({ code: draft, runRevision })
       : runPanel;
 
   return (
@@ -175,11 +171,11 @@ export function FrontstageJsxStudioDrawer({
       testId={`frontstage-jsx-studio-${block.codeRef}`}
       windowId={`frontstage-jsx-studio:${block.codeRef}`}
       editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
-      editorFooter={(
+      editorFooter={
         <div className="frontstage-jsx-studio__problems">
           <BlockRuntimeDiagnostics diagnostics={selectedDiagnostics} />
         </div>
-      )}
+      }
       onChange={setDraft}
       onClose={onClose}
       onEditorMount={(editor) => {

@@ -264,7 +264,11 @@ describe('FrontstageJsxStudioDrawer', () => {
       'data-edit-context',
       'false'
     );
-    expect(screen.getByText('区块设置')).toBeInTheDocument();
+    expect(
+      screen
+        .getByLabelText('标题')
+        .closest('.frontstage-jsx-studio__configuration-panel')
+    ).not.toBeNull();
     expect(
       interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
     ).not.toHaveBeenCalled();
@@ -523,9 +527,9 @@ async function main(ctx: unknown) {
       'button'
     );
     expect(
-      headerButtons.slice(0, 4).map((button) =>
-        button.textContent?.replace(/\s+/gu, '')
-      )
+      headerButtons
+        .slice(0, 4)
+        .map((button) => button.textContent?.replace(/\s+/gu, ''))
     ).toEqual(['上下文', '重置', '保存', '运行']);
     expect(
       within(windowHeader as HTMLElement).getByRole('button', {
@@ -546,7 +550,9 @@ async function main(ctx: unknown) {
       expect.stringContaining('@1flowbase-context')
     );
     fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
-    expect(screen.getByText('Preview 1: export default {}')).toBeInTheDocument();
+    expect(
+      screen.getByText('Preview 1: export default {}')
+    ).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
