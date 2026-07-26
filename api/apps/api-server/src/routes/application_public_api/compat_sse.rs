@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    convert::Infallible,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, convert::Infallible, sync::Arc, time::Duration};
 
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
@@ -39,10 +34,8 @@ use crate::{
     routes::application_public_api::{
         native::{service_error, NativeApiError},
         stream_terminal_fallback::{
-            enrich_terminal_runtime_event_with_durable_answer,
             load_latest_native_run_for_terminal_fallback, recover_missing_stream_terminal_winner,
-            terminal_answer_deltas_from_payload, terminal_answer_text_from_payload,
-            terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
+            terminal_runtime_event_from_native_run,
         },
     },
 };
@@ -60,10 +53,7 @@ use event_forwarding::{
 };
 #[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
-use protocol_mappers::{
-    terminal_answer_deltas_from_run_or_payload, AnthropicStreamMapper, OpenAiChatStreamMapper,
-    OpenAiResponseStreamMapper,
-};
+use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
 type CompatRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;
 
@@ -226,12 +216,7 @@ pub(crate) async fn prepare_compatible_resume(
 struct CompatibleStreamStats {
     emitted_public_event: bool,
     emitted_content_bytes: usize,
-    emitted_text_content: bool,
-    emitted_reasoning_content: bool,
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
-    forwarded_answer_chunks: HashSet<CompatiblePublicEventChunkIdentity>,
-    forwarded_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
-    durable_answer_text: HashMap<CompatiblePublicEventIdentity, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -245,74 +230,26 @@ struct CompatiblePublicEventIdentity {
     source_output_key: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct CompatiblePublicEventChunkIdentity {
-    projection: CompatiblePublicEventIdentity,
-    text: String,
-}
-
 impl CompatibleStreamStats {
     fn emitted_content(&self) -> bool {
         self.emitted_content_bytes > 0
     }
 
-    fn claim_runtime_event(&mut self, event: &mut RuntimeEventEnvelope) -> bool {
+    fn claim_runtime_event(&mut self, event: &RuntimeEventEnvelope) -> bool {
         let Some(identity) = compatible_public_event_identity(event) else {
             return true;
         };
-        if !is_answer_presentation_delta(event) {
-            return self.forwarded_event_identities.insert(identity);
-        }
-        let Some(text) = event.text.as_deref().filter(|text| !text.is_empty()) else {
+        if is_answer_presentation_delta(event) {
+            // Presentation deltas are ordered facts. Equal text is valid and must never
+            // participate in identity, deduplication, or durable-prefix reconciliation.
             return true;
-        };
-        let is_batched_durable_delta = event
-            .payload
-            .get("event_ids")
-            .and_then(Value::as_array)
-            .is_some();
-        let forwarded = self
-            .forwarded_answer_text
-            .entry(identity.clone())
-            .or_default();
-        if is_batched_durable_delta {
-            // Durable batches can split the live stream at different boundaries. Reconcile the
-            // cumulative durable prefix instead of comparing each batch with the full live text.
-            let durable = self
-                .durable_answer_text
-                .entry(identity.clone())
-                .or_default();
-            durable.push_str(text);
-            if forwarded.starts_with(durable.as_str()) {
-                return false;
-            }
-            if durable.starts_with(forwarded.as_str()) {
-                let suffix = durable[forwarded.len()..].to_string();
-                if suffix.is_empty() {
-                    return false;
-                }
-                forwarded.push_str(&suffix);
-                event.text = Some(suffix.clone());
-                if let Some(payload) = event.payload.as_object_mut() {
-                    payload.insert("text".to_string(), Value::String(suffix));
-                }
-                return true;
-            }
         }
-        let chunk = CompatiblePublicEventChunkIdentity {
-            projection: identity,
-            text: text.to_string(),
-        };
-        if !self.forwarded_answer_chunks.insert(chunk) {
-            return false;
-        }
-        forwarded.push_str(text);
-        true
+        self.forwarded_event_identities.insert(identity)
     }
 
     fn record_sent_runtime_event(
         &mut self,
-        run: &NativeRunResult,
+        _run: &NativeRunResult,
         event: &RuntimeEventEnvelope,
         emitted_public_event: bool,
     ) {
@@ -324,41 +261,8 @@ impl CompatibleStreamStats {
             let Some(text) = event.text.as_deref().filter(|text| !text.is_empty()) else {
                 return;
             };
-            match event.event_type.as_str() {
-                "reasoning_delta" => self.record_reasoning_content(text),
-                "text_delta" => self.record_text_content(text),
-                _ => {}
-            }
-            return;
+            self.emitted_content_bytes += text.len();
         }
-
-        if !matches!(
-            event.event_type.as_str(),
-            "flow_finished" | "flow_incomplete"
-        ) {
-            return;
-        }
-        for delta in terminal_answer_deltas_from_run_or_payload(run, &event.payload) {
-            match delta.kind {
-                TerminalAnswerDeltaKind::Reasoning if !self.emitted_reasoning_content => {
-                    self.record_reasoning_content(&delta.text);
-                }
-                TerminalAnswerDeltaKind::Text if !self.emitted_text_content => {
-                    self.record_text_content(&delta.text);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn record_text_content(&mut self, text: &str) {
-        self.emitted_text_content = true;
-        self.emitted_content_bytes += text.len();
-    }
-
-    fn record_reasoning_content(&mut self, text: &str) {
-        self.emitted_reasoning_content = true;
-        self.emitted_content_bytes += text.len();
     }
 }
 
@@ -410,8 +314,7 @@ pub(crate) async fn start_openai_run_stream(
     run: NativeRunResult,
     model: String,
 ) -> Result<Response, NativeApiError> {
-    let mapper =
-        OpenAiChatStreamMapper::new(model, openai_chat_completion_id_from_run_id(run.id), true);
+    let mapper = OpenAiChatStreamMapper::new(model, openai_chat_completion_id_from_run_id(run.id));
     start_compatible_turn_stream(
         state,
         run,
@@ -429,7 +332,7 @@ pub(crate) async fn start_openai_response_stream(
     previous_response_id: Option<String>,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id, true)
+    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id)
         .with_native_passthrough(provider_transport_slot.is_some());
     start_compatible_turn_stream(
         state,
@@ -477,7 +380,7 @@ pub(crate) async fn start_openai_chat_resume_stream(
     chat_completion_id: String,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiChatStreamMapper::new(model, chat_completion_id, true);
+    let mapper = OpenAiChatStreamMapper::new(model, chat_completion_id);
     start_compatible_turn_stream(
         state,
         run,
@@ -495,7 +398,7 @@ pub(crate) async fn start_openai_response_resume_stream(
     previous_response_id: Option<String>,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id, true);
+    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
     start_compatible_turn_stream(
         state,
         run,

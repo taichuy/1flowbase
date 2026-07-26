@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn openai_responses_live_text_stream_wraps_deltas_in_output_items() {
     let run = native_run();
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, false);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let mut events = Vec::new();
     events.extend(mapper.runtime_event_to_sse(
         &run,
@@ -97,7 +97,7 @@ async fn openai_responses_live_text_stream_wraps_deltas_in_output_items() {
 #[tokio::test]
 async fn d4_ac_026_native_responses_stream_forwards_unknown_events_without_synthetic_duplicates() {
     let run = native_run();
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true)
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None)
         .with_native_passthrough(true);
     let mut events = Vec::new();
 
@@ -198,7 +198,7 @@ async fn d5_ac_006_native_failed_and_incomplete_terminals_are_not_reprojected() 
         } else {
             debug_stream_events::flow_incomplete(run.id, json!({"answer": "synthetic partial"}))
         };
-        let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true)
+        let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None)
             .with_native_passthrough(true);
         let mut events = mapper.runtime_event_to_sse(
             &run,

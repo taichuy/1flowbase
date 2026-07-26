@@ -519,12 +519,12 @@ async fn forward_single_compatible_runtime_event<F>(
     sender: &mpsc::Sender<Result<Event, Infallible>>,
     mapper: &mut F,
     stats: &mut CompatibleStreamStats,
-    mut event: RuntimeEventEnvelope,
+    event: RuntimeEventEnvelope,
 ) -> CompatibleForwardOutcome
 where
     F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>,
 {
-    if !stats.claim_runtime_event(&mut event) {
+    if !stats.claim_runtime_event(&event) {
         return CompatibleForwardOutcome::Open;
     }
     let is_terminal = is_public_terminal_runtime_event(&event.event_type);
@@ -534,11 +534,6 @@ where
         &terminal_run
     } else {
         initial_run
-    };
-    let event = if is_terminal {
-        enrich_terminal_runtime_event_with_durable_answer(state, run, event).await
-    } else {
-        event
     };
     let event_type = event.event_type.clone();
     let events = mapper(run, event.clone());
@@ -762,8 +757,6 @@ where
         }
         stats.record_sent_runtime_event(&latest_run, &started_event, emitted_public_event);
     }
-    let terminal_event =
-        enrich_terminal_runtime_event_with_durable_answer(state, &latest_run, terminal_event).await;
     let event_type = terminal_event.event_type.clone();
     let events = mapper(&latest_run, terminal_event.clone());
     let emitted_public_event = !events.is_empty();

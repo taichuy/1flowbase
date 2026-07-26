@@ -136,7 +136,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
     });
     let (sender, mut receiver) = mpsc::channel(32);
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
 
     tokio::time::timeout(
         Duration::from_secs(2),
@@ -173,9 +173,9 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
 }
 
 #[test]
-fn openai_responses_resume_terminal_answer_fallback_emits_output_delta() {
+fn openai_responses_terminal_does_not_reconstruct_output_delta() {
     let run = native_run();
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -185,8 +185,7 @@ fn openai_responses_resume_terminal_answer_fallback_emits_output_delta() {
         ),
     );
 
-    // output_item.added + output_text.delta + output_item.done + response.completed
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 1);
 }
 
 #[tokio::test]
@@ -200,7 +199,7 @@ async fn d2_ac_008_openai_chat_failed_terminal_with_partial_output_remains_error
         details: json!({}),
     });
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -255,7 +254,7 @@ async fn d2_ac_008_openai_responses_failed_terminal_with_partial_output_remains_
         message: "safe canonical failure".to_string(),
         details: json!({}),
     });
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -307,7 +306,7 @@ async fn d2_ac_008_openai_chat_incomplete_terminal_uses_length_and_done() {
     run.status = NativeRunStatus::Incomplete;
     run.answer = Some("output limit partial".to_string());
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -337,7 +336,7 @@ async fn d2_ac_008_openai_responses_incomplete_terminal_uses_response_incomplete
     let mut run = native_run();
     run.status = NativeRunStatus::Incomplete;
     run.answer = Some("output limit partial".to_string());
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -368,7 +367,7 @@ async fn d2_ac_004_openai_chat_cancelled_terminal_is_error_without_done() {
     run.status = NativeRunStatus::Cancelled;
     run.answer = Some("must-not-replay".to_string());
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
@@ -391,7 +390,7 @@ async fn d2_ac_004_openai_responses_cancelled_terminal_is_failed_without_complet
     let mut run = native_run();
     run.status = NativeRunStatus::Cancelled;
     run.answer = Some("must-not-replay".to_string());
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_cancelled(run.id)),
@@ -426,7 +425,7 @@ async fn d2_ac_004_openai_waiting_terminal_projects_client_tool_callback() {
         }),
     };
     let mut chat =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let chat_body = {
         let response = test_projected_events_response(
             chat.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, 1, waiting.clone())),
@@ -447,7 +446,7 @@ async fn d2_ac_004_openai_waiting_terminal_projects_client_tool_callback() {
         "{chat_body}"
     );
 
-    let mut responses = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut responses = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let response = test_projected_events_response(
         responses.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, 1, waiting)),
     );

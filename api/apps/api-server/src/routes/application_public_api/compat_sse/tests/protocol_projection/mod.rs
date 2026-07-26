@@ -4,7 +4,6 @@ use super::super::protocol_mappers::{
 };
 use super::super::*;
 use super::support::*;
-use crate::routes::application_public_api::stream_terminal_fallback::recover_terminal_answer_deltas_from_durable_runtime_events;
 use control_plane::{
     application_public_api::native::{NativeError, NativeRequiredAction, NativeRunStatus},
     ports::{RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource},

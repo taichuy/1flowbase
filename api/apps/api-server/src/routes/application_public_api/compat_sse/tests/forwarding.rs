@@ -312,7 +312,7 @@ async fn d2_ac_008_compatible_eof_fallback_projects_recovered_failed_winner() {
 }
 
 #[test]
-fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
+fn equal_answer_chunks_are_ordered_facts_and_are_all_claimed() {
     let run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
     let mut first = RuntimeEventEnvelope::new(
@@ -320,7 +320,7 @@ fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
         1,
         debug_stream_events::answer_text_delta(
             "node-answer",
-            "最终".to_string(),
+            " ".to_string(),
             0,
             Some("node-llm"),
             Some(node_run_id),
@@ -332,7 +332,7 @@ fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
         2,
         debug_stream_events::answer_text_delta(
             "node-answer",
-            "回答".to_string(),
+            " ".to_string(),
             0,
             Some("node-llm"),
             Some(node_run_id),
@@ -344,7 +344,7 @@ fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
         3,
         debug_stream_events::answer_text_delta(
             "node-answer",
-            "最终回答".to_string(),
+            " ".to_string(),
             0,
             Some("node-llm"),
             Some(node_run_id),
@@ -354,141 +354,9 @@ fn live_answer_chunks_claim_the_same_coalesced_durable_delta_once() {
     durable.payload["event_ids"] = json!([format!("{}:1", run.id), format!("{}:2", run.id)]);
     let mut stats = CompatibleStreamStats::default();
 
-    assert!(stats.claim_runtime_event(&mut first));
-    assert!(stats.claim_runtime_event(&mut second));
-    assert!(!stats.claim_runtime_event(&mut durable));
-}
-
-#[test]
-fn live_answer_chunks_claim_multiple_coalesced_durable_deltas_once() {
-    let run = native_run();
-    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
-    let chunks = [
-        "现在三层",
-        "的现状清楚了。关键发现：",
-        "\n- 页面层已接 DesignHoverFrame，需换",
-        "蓝。\n- 区块层：#66e",
-        "0ad / #00c875，",
-        "统一重构。",
-    ];
-    let mut live = chunks
-        .iter()
-        .enumerate()
-        .map(|(index, text)| {
-            RuntimeEventEnvelope::new(
-                run.id,
-                index as i64 + 1,
-                debug_stream_events::answer_text_delta(
-                    "node-answer",
-                    (*text).to_string(),
-                    0,
-                    Some("node-llm"),
-                    Some(node_run_id),
-                    Some("text"),
-                ),
-            )
-        })
-        .collect::<Vec<_>>();
-    let mut stats = CompatibleStreamStats::default();
-
-    for event in &mut live {
-        assert!(stats.claim_runtime_event(event));
-    }
-
-    let durable_batches = [
-        (vec![0], chunks[0].to_string()),
-        (vec![1, 2], format!("{}{}", chunks[1], chunks[2])),
-        (vec![3], chunks[3].to_string()),
-        (vec![4, 5], format!("{}{}", chunks[4], chunks[5])),
-    ];
-    let replayed = durable_batches
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, (source_indexes, text))| {
-            let mut durable = RuntimeEventEnvelope::new(
-                run.id,
-                index as i64 + 100,
-                debug_stream_events::answer_text_delta(
-                    "node-answer",
-                    text,
-                    0,
-                    Some("node-llm"),
-                    Some(node_run_id),
-                    Some("text"),
-                ),
-            );
-            durable.payload["event_ids"] = json!(source_indexes
-                .into_iter()
-                .map(|source_index| live[source_index].event_id.clone())
-                .collect::<Vec<_>>());
-            stats
-                .claim_runtime_event(&mut durable)
-                .then_some(durable.text.unwrap_or_default())
-        })
-        .collect::<String>();
-
-    assert!(replayed.is_empty(), "durable replay leaked: {replayed}");
-}
-
-#[test]
-fn live_answer_prefix_claims_only_missing_suffix_across_durable_batches() {
-    let run = native_run();
-    let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
-    let chunks = ["实时", "前缀", "补齐", "完成"];
-    let mut source_events = chunks
-        .iter()
-        .enumerate()
-        .map(|(index, text)| {
-            RuntimeEventEnvelope::new(
-                run.id,
-                index as i64 + 1,
-                debug_stream_events::answer_text_delta(
-                    "node-answer",
-                    (*text).to_string(),
-                    0,
-                    Some("node-llm"),
-                    Some(node_run_id),
-                    Some("text"),
-                ),
-            )
-        })
-        .collect::<Vec<_>>();
-    let mut stats = CompatibleStreamStats::default();
-    assert!(stats.claim_runtime_event(&mut source_events[0]));
-    assert!(stats.claim_runtime_event(&mut source_events[1]));
-
-    let durable_batches = [
-        (vec![0], chunks[0].to_string()),
-        (vec![1, 2], format!("{}{}", chunks[1], chunks[2])),
-        (vec![3], chunks[3].to_string()),
-    ];
-    let reconciled = durable_batches
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, (source_indexes, text))| {
-            let mut durable = RuntimeEventEnvelope::new(
-                run.id,
-                index as i64 + 100,
-                debug_stream_events::answer_text_delta(
-                    "node-answer",
-                    text,
-                    0,
-                    Some("node-llm"),
-                    Some(node_run_id),
-                    Some("text"),
-                ),
-            );
-            durable.payload["event_ids"] = json!(source_indexes
-                .into_iter()
-                .map(|source_index| source_events[source_index].event_id.clone())
-                .collect::<Vec<_>>());
-            stats
-                .claim_runtime_event(&mut durable)
-                .then_some(durable.text.unwrap_or_default())
-        })
-        .collect::<String>();
-
-    assert_eq!(reconciled, "补齐完成");
+    assert!(stats.claim_runtime_event(&first));
+    assert!(stats.claim_runtime_event(&second));
+    assert!(stats.claim_runtime_event(&durable));
 }
 
 #[test]
@@ -521,8 +389,8 @@ fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
     );
     let mut stats = CompatibleStreamStats::default();
 
-    assert!(stats.claim_runtime_event(&mut first));
-    assert!(stats.claim_runtime_event(&mut second));
+    assert!(stats.claim_runtime_event(&first));
+    assert!(stats.claim_runtime_event(&second));
     assert_eq!(second.text.as_deref(), Some("ab"));
 }
 
@@ -838,18 +706,15 @@ fn openai_delta_chunk_maps_reasoning_to_reasoning_content() {
 }
 
 #[tokio::test]
-async fn openai_terminal_fallback_projects_structured_answer_segments() {
+async fn openai_terminal_does_not_reconstruct_structured_answer_segments() {
     let mut run = native_run();
     run.answer = Some("<think>旧思考</think>旧回答".to_string());
     run.answer_segments = Some(vec![
         AnswerProjectionSegment::reasoning("结构化思考"),
         AnswerProjectionSegment::message("结构化回答"),
     ]);
-    let mut mapper = OpenAiChatStreamMapper::new(
-        "deepseek-v4-pro".to_string(),
-        "chatcmpl-test".to_string(),
-        true,
-    );
+    let mut mapper =
+        OpenAiChatStreamMapper::new("deepseek-v4-pro".to_string(), "chatcmpl-test".to_string());
 
     let events = mapper.runtime_event_to_sse(
         &run,
@@ -865,11 +730,8 @@ async fn openai_terminal_fallback_projects_structured_answer_segments() {
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(
-        body.contains("\"reasoning_content\":\"结构化思考\""),
-        "{body}"
-    );
-    assert!(body.contains("\"content\":\"结构化回答\""), "{body}");
+    assert!(!body.contains("结构化思考"), "{body}");
+    assert!(!body.contains("结构化回答"), "{body}");
     assert!(!body.contains("旧思考"), "{body}");
     assert!(!body.contains("旧回答"), "{body}");
 }
@@ -1014,7 +876,7 @@ fn anthropic_projects_answer_presentation_delta_not_provider_raw_delta() {
 }
 
 #[tokio::test]
-async fn anthropic_terminal_answer_fallback_emits_text_before_stop() {
+async fn anthropic_terminal_does_not_reconstruct_answer_text() {
     let run = native_run();
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
     let events = mapper.runtime_event_to_sse(
@@ -1032,8 +894,8 @@ async fn anthropic_terminal_answer_fallback_emits_text_before_stop() {
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("\"type\":\"text_delta\""), "{body}");
-    assert!(body.contains("\"text\":\"最终回答\""), "{body}");
+    assert!(!body.contains("\"type\":\"text_delta\""), "{body}");
+    assert!(!body.contains("最终回答"), "{body}");
     assert!(body.contains("event: message_stop"), "{body}");
 }
 
@@ -1273,10 +1135,10 @@ fn openai_finish_chunk_uses_deepseek_compatible_terminal_shape() {
 }
 
 #[test]
-fn openai_chat_resume_terminal_answer_fallback_emits_content_before_finish() {
+fn openai_chat_terminal_emits_only_finish_without_live_content() {
     let run = native_run();
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -1286,14 +1148,14 @@ fn openai_chat_resume_terminal_answer_fallback_emits_content_before_finish() {
         ),
     );
 
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 2);
 }
 
 #[tokio::test]
-async fn openai_chat_resume_terminal_answer_fallback_projects_thinking_delta() {
+async fn openai_chat_terminal_does_not_reconstruct_thinking_or_text() {
     let run = native_run();
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
 
     let events = mapper.runtime_event_to_sse(
         &run,
@@ -1313,16 +1175,16 @@ async fn openai_chat_resume_terminal_answer_fallback_projects_thinking_delta() {
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("\"reasoning_content\":\"先分析\""), "{body}");
-    assert!(body.contains("\"content\":\"\\n最终回答\""), "{body}");
+    assert!(!body.contains("先分析"), "{body}");
+    assert!(!body.contains("最终回答"), "{body}");
     assert!(!body.contains("<think>"), "{body}");
     assert!(body.contains("[DONE]"), "{body}");
 }
 
 #[tokio::test]
-async fn openai_responses_resume_terminal_answer_fallback_projects_thinking_delta() {
+async fn openai_responses_terminal_does_not_reconstruct_thinking_or_text() {
     let run = native_run();
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -1341,13 +1203,10 @@ async fn openai_responses_resume_terminal_answer_fallback_projects_thinking_delt
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(
-        body.contains("event: response.reasoning_text.delta"),
-        "{body}"
-    );
-    assert!(body.contains("\"delta\":\"先分析\""), "{body}");
-    assert!(body.contains("event: response.output_text.delta"), "{body}");
-    assert!(body.contains("\"delta\":\"\\n最终回答\""), "{body}");
+    assert!(!body.contains("response.reasoning_text.delta"), "{body}");
+    assert!(!body.contains("response.output_text.delta"), "{body}");
+    assert!(!body.contains("先分析"), "{body}");
+    assert!(!body.contains("最终回答"), "{body}");
     assert!(!body.contains("<think>"), "{body}");
     assert!(body.contains("event: response.completed"), "{body}");
 }
@@ -1361,7 +1220,7 @@ async fn openai_response_completed_event_includes_usage() {
         total_tokens: Some(18),
         ..Default::default()
     });
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None, true);
+    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -1414,10 +1273,10 @@ async fn anthropic_completed_stream_includes_usage_for_claude_code_cost_and_cont
 }
 
 #[tokio::test]
-async fn openai_chat_terminal_answer_fallback_decodes_artifact_preview_answer() {
+async fn openai_chat_terminal_does_not_decode_artifact_preview_answer() {
     let run = native_run();
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -1443,16 +1302,16 @@ async fn openai_chat_terminal_answer_fallback_decodes_artifact_preview_answer() 
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("\"content\":\"最终回答\""), "{body}");
+    assert!(!body.contains("最终回答"), "{body}");
     assert!(body.contains("\"finish_reason\":\"stop\""), "{body}");
     assert!(body.contains("[DONE]"), "{body}");
 }
 
 #[test]
-fn openai_chat_terminal_answer_fallback_ignores_provider_raw_delta() {
+fn openai_chat_terminal_ignores_provider_raw_delta_without_reconstruction() {
     let run = native_run();
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let text_events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -1471,11 +1330,11 @@ fn openai_chat_terminal_answer_fallback_ignores_provider_raw_delta() {
     );
 
     assert!(text_events.is_empty());
-    assert_eq!(terminal_events.len(), 3);
+    assert_eq!(terminal_events.len(), 2);
 }
 
 #[test]
-fn compatible_stream_stats_count_answer_content_bytes_once_for_terminal_fallback() {
+fn compatible_stream_stats_count_only_emitted_answer_deltas() {
     let run = native_run();
     let mut stats = CompatibleStreamStats::default();
     let answer_delta = RuntimeEventEnvelope::new(
@@ -1507,7 +1366,7 @@ fn compatible_stream_stats_count_answer_content_bytes_once_for_terminal_fallback
 fn openai_chat_projects_answer_presentation_delta_not_provider_raw_delta() {
     let run = native_run();
     let mut mapper =
-        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string(), true);
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
     let provider_events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(

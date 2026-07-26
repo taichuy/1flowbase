@@ -25,8 +25,6 @@ pub(in crate::routes::application_public_api::compat_sse) struct AnthropicStream
     model: String,
     next_content_index: u32,
     active_content: Option<AnthropicContentBlockKind>,
-    emitted_reasoning_delta: bool,
-    emitted_text_delta: bool,
     terminal_stop_reason: AnthropicMessageStopReason,
 }
 
@@ -36,8 +34,6 @@ impl AnthropicStreamMapper {
             model,
             next_content_index: 0,
             active_content: None,
-            emitted_reasoning_delta: false,
-            emitted_text_delta: false,
             terminal_stop_reason: AnthropicMessageStopReason::EndTurn,
         }
     }
@@ -55,14 +51,12 @@ impl AnthropicStreamMapper {
             .is_some_and(|text| !text.is_empty());
         match event.answer_delta() {
             Some(CompatibleAnswerDeltaKind::Reasoning) if visible_text => {
-                self.emitted_reasoning_delta = true;
                 return self.anthropic_delta_events(
                     "reasoning_delta",
                     envelope.text.clone().unwrap_or_default(),
                 );
             }
             Some(CompatibleAnswerDeltaKind::Text) if visible_text => {
-                self.emitted_text_delta = true;
                 let mut events =
                     self.ensure_anthropic_content_block(AnthropicContentBlockKind::Text);
                 let (event_name, payload) = anthropic_delta_payload(
@@ -126,9 +120,9 @@ impl AnthropicStreamMapper {
     fn anthropic_terminal_events(
         &mut self,
         initial_run: &NativeRunResult,
-        payload: &Value,
+        _payload: &Value,
     ) -> Vec<Result<Event, Infallible>> {
-        let mut events = self.anthropic_terminal_content_events(initial_run, payload);
+        let mut events = self.close_active_anthropic_content_block();
         events.extend(self.anthropic_stop_events(initial_run.usage.as_ref()));
         events
     }
@@ -164,30 +158,6 @@ impl AnthropicStreamMapper {
                 }
             }),
         ));
-        events
-    }
-
-    fn anthropic_terminal_content_events(
-        &mut self,
-        initial_run: &NativeRunResult,
-        payload: &Value,
-    ) -> Vec<Result<Event, Infallible>> {
-        let mut events = Vec::new();
-        let had_reasoning_delta = self.emitted_reasoning_delta;
-        let had_text_delta = self.emitted_text_delta;
-        for delta in terminal_answer_deltas_from_run_or_payload(initial_run, payload) {
-            match delta.kind {
-                TerminalAnswerDeltaKind::Reasoning if !had_reasoning_delta => {
-                    events.extend(self.anthropic_delta_events("reasoning_delta", delta.text));
-                    self.emitted_reasoning_delta = true;
-                }
-                TerminalAnswerDeltaKind::Text if !had_text_delta => {
-                    events.extend(self.anthropic_delta_events("text_delta", delta.text));
-                    self.emitted_text_delta = true;
-                }
-                _ => {}
-            }
-        }
         events
     }
 

@@ -1,27 +1,24 @@
+// Protocol-specific projectors live below this registry so later packets can
+// evolve them without putting the compatible bridge back in charge of text.
 use super::event_forwarding::is_answer_presentation_delta;
 use super::*;
 use crate::routes::application_public_api::llm_tool_visibility::external_llm_tool_call_values;
+#[cfg(test)]
+use crate::routes::application_public_api::stream_terminal_fallback::{
+    terminal_answer_deltas_from_payload, terminal_answer_text_from_payload, TerminalAnswerDelta,
+    TerminalAnswerDeltaKind,
+};
 
 pub(super) struct OpenAiChatStreamMapper {
     model: String,
     chat_completion_id: String,
-    terminal_answer_fallback: bool,
-    emitted_reasoning_delta: bool,
-    emitted_text_delta: bool,
 }
 
 impl OpenAiChatStreamMapper {
-    pub(super) fn new(
-        model: String,
-        chat_completion_id: String,
-        terminal_answer_fallback: bool,
-    ) -> Self {
+    pub(super) fn new(model: String, chat_completion_id: String) -> Self {
         Self {
             model,
             chat_completion_id,
-            terminal_answer_fallback,
-            emitted_reasoning_delta: false,
-            emitted_text_delta: false,
         }
     }
 
@@ -31,69 +28,7 @@ impl OpenAiChatStreamMapper {
         event: impl Into<CompatibleRuntimeEventView>,
     ) -> Vec<Result<Event, Infallible>> {
         let event = event.into();
-        let envelope = event.envelope();
-        match event.answer_delta() {
-            Some(CompatibleAnswerDeltaKind::Reasoning)
-                if envelope
-                    .text
-                    .as_deref()
-                    .is_some_and(|text| !text.is_empty()) =>
-            {
-                self.emitted_reasoning_delta = true;
-            }
-            Some(CompatibleAnswerDeltaKind::Text)
-                if envelope
-                    .text
-                    .as_deref()
-                    .is_some_and(|text| !text.is_empty()) =>
-            {
-                self.emitted_text_delta = true;
-            }
-            _ => {}
-        }
-
-        let terminal_deltas = if self.terminal_answer_fallback
-            && matches!(
-                event.terminal(),
-                Some(CompatibleTerminalKind::Finished | CompatibleTerminalKind::Incomplete)
-            ) {
-            terminal_answer_deltas_from_run_or_payload(initial_run, &envelope.payload)
-        } else {
-            Vec::new()
-        };
-
         let mut events = Vec::new();
-        let had_reasoning_delta = self.emitted_reasoning_delta;
-        let had_text_delta = self.emitted_text_delta;
-        for delta in terminal_deltas {
-            match delta.kind {
-                TerminalAnswerDeltaKind::Reasoning if !had_reasoning_delta => {
-                    if let Some(payload) = openai_delta_chunk_payload(
-                        initial_run,
-                        &self.model,
-                        &self.chat_completion_id,
-                        "reasoning_delta",
-                        delta.text,
-                    ) {
-                        events.push(json_sse(payload));
-                        self.emitted_reasoning_delta = true;
-                    }
-                }
-                TerminalAnswerDeltaKind::Text if !had_text_delta => {
-                    if let Some(payload) = openai_delta_chunk_payload(
-                        initial_run,
-                        &self.model,
-                        &self.chat_completion_id,
-                        "text_delta",
-                        delta.text,
-                    ) {
-                        events.push(json_sse(payload));
-                        self.emitted_text_delta = true;
-                    }
-                }
-                _ => {}
-            }
-        }
         events.extend(openai_runtime_event_to_sse(
             initial_run,
             &self.model,
@@ -113,9 +48,6 @@ enum OpenAiResponseOutputItemKind {
 pub(super) struct OpenAiResponseStreamMapper {
     model: String,
     previous_response_id: Option<String>,
-    terminal_answer_fallback: bool,
-    emitted_reasoning_delta: bool,
-    emitted_text_delta: bool,
     active_output_item: Option<OpenAiResponseOutputItemKind>,
     active_output_item_text: String,
     output_item_index: usize,
@@ -124,17 +56,10 @@ pub(super) struct OpenAiResponseStreamMapper {
 }
 
 impl OpenAiResponseStreamMapper {
-    pub(super) fn new(
-        model: String,
-        previous_response_id: Option<String>,
-        terminal_answer_fallback: bool,
-    ) -> Self {
+    pub(super) fn new(model: String, previous_response_id: Option<String>) -> Self {
         Self {
             model,
             previous_response_id,
-            terminal_answer_fallback,
-            emitted_reasoning_delta: false,
-            emitted_text_delta: false,
             active_output_item: None,
             active_output_item_text: String::new(),
             output_item_index: 0,
@@ -241,7 +166,6 @@ impl OpenAiResponseStreamMapper {
                 );
                 if let Some(text) = envelope.text.as_deref().filter(|text| !text.is_empty()) {
                     self.active_output_item_text.push_str(text);
-                    self.emitted_reasoning_delta = true;
                 }
             }
             Some(CompatibleAnswerDeltaKind::Text) => {
@@ -252,55 +176,11 @@ impl OpenAiResponseStreamMapper {
                 );
                 if let Some(text) = envelope.text.as_deref().filter(|text| !text.is_empty()) {
                     self.active_output_item_text.push_str(text);
-                    self.emitted_text_delta = true;
                 }
             }
             _ => {}
         }
 
-        let terminal_deltas = if self.terminal_answer_fallback
-            && matches!(
-                event.terminal(),
-                Some(CompatibleTerminalKind::Finished | CompatibleTerminalKind::Incomplete)
-            ) {
-            terminal_answer_deltas_from_run_or_payload(initial_run, &envelope.payload)
-        } else {
-            Vec::new()
-        };
-
-        let had_reasoning_delta = self.emitted_reasoning_delta;
-        let had_text_delta = self.emitted_text_delta;
-        for delta in terminal_deltas {
-            match delta.kind {
-                TerminalAnswerDeltaKind::Reasoning if !had_reasoning_delta => {
-                    self.open_output_item(
-                        initial_run,
-                        OpenAiResponseOutputItemKind::Reasoning,
-                        &mut events,
-                    );
-                    self.active_output_item_text.push_str(&delta.text);
-                    events.push(event_json_sse(
-                        "response.reasoning_text.delta",
-                        openai_response_reasoning_text_delta_payload(initial_run, delta.text),
-                    ));
-                    self.emitted_reasoning_delta = true;
-                }
-                TerminalAnswerDeltaKind::Text if !had_text_delta => {
-                    self.open_output_item(
-                        initial_run,
-                        OpenAiResponseOutputItemKind::Message,
-                        &mut events,
-                    );
-                    self.active_output_item_text.push_str(&delta.text);
-                    events.push(event_json_sse(
-                        "response.output_text.delta",
-                        openai_response_output_text_delta_payload(initial_run, delta.text),
-                    ));
-                    self.emitted_text_delta = true;
-                }
-                _ => {}
-            }
-        }
         if event.terminal().is_some() {
             self.close_output_item(initial_run, &mut events);
         }
@@ -371,6 +251,7 @@ fn openai_response_output_item_payload(
     }
 }
 
+#[cfg(test)]
 fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String> {
     terminal_answer_text_from_payload(payload).or_else(|| {
         run.answer
@@ -380,6 +261,7 @@ fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String
     })
 }
 
+#[cfg(test)]
 pub(super) fn terminal_answer_deltas_from_run_or_payload(
     run: &NativeRunResult,
     payload: &Value,
@@ -671,20 +553,6 @@ fn openai_responses_usage_payload(usage: Option<&NativeUsage>) -> Value {
 fn openai_response_output_text_delta_payload(initial_run: &NativeRunResult, text: String) -> Value {
     json!({
         "type": "response.output_text.delta",
-        "response_id": response_id_from_run_id(initial_run.id),
-        "item_id": format!("msg_{}", initial_run.id),
-        "output_index": 0,
-        "content_index": 0,
-        "delta": text
-    })
-}
-
-fn openai_response_reasoning_text_delta_payload(
-    initial_run: &NativeRunResult,
-    text: String,
-) -> Value {
-    json!({
-        "type": "response.reasoning_text.delta",
         "response_id": response_id_from_run_id(initial_run.id),
         "item_id": format!("msg_{}", initial_run.id),
         "output_index": 0,
