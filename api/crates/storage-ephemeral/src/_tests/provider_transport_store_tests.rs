@@ -20,6 +20,19 @@ fn responses_payload() -> ProviderTransportPayload {
     .expect("fixture payload must be valid")
 }
 
+fn responses_continuation() -> ProviderContinuation {
+    ProviderContinuation::new(
+        "provider-response-secret",
+        ProviderTransportAffinity::new(
+            "provider-instance-a",
+            "openai",
+            "openai_responses",
+            "gpt-test",
+        ),
+    )
+    .expect("fixture continuation must be valid")
+}
+
 #[test]
 fn d4_ac_027_provider_transport_digest_is_canonical_across_object_key_order() {
     let left = ProviderTransportPayload::openai_responses(
@@ -86,16 +99,7 @@ async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_eph
     let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
     let previous_run_id = Uuid::now_v7();
     let slot = ProviderContinuationSlotId::for_flow_run(previous_run_id);
-    let continuation = ProviderContinuation::new(
-        "provider-response-secret",
-        ProviderTransportAffinity::new(
-            "provider-instance-a",
-            "openai",
-            "openai_responses",
-            "gpt-test",
-        ),
-    )
-    .unwrap();
+    let continuation = responses_continuation();
     store.put_continuation(slot, continuation).await.unwrap();
 
     let restored = store
@@ -118,4 +122,138 @@ async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_eph
     );
     assert!(payload.affinity().is_some());
     assert!(!format!("{payload:?}").contains("provider-response-secret"));
+}
+
+#[tokio::test]
+async fn wp12_sealed_request_and_continuation_are_consumed_once() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+    let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    store.put(request_slot, responses_payload()).await.unwrap();
+    store
+        .put_continuation(continuation_slot, responses_continuation())
+        .await
+        .unwrap();
+
+    store.consume(request_slot).await.unwrap();
+    store.consume_continuation(continuation_slot).await.unwrap();
+
+    assert_eq!(
+        store.consume(request_slot).await.unwrap_err().to_string(),
+        "ephemeral_transport_missing"
+    );
+    assert_eq!(
+        store
+            .consume_continuation(continuation_slot)
+            .await
+            .err()
+            .expect("consumed continuation must be unavailable")
+            .to_string(),
+        "ephemeral_continuation_missing"
+    );
+}
+
+#[tokio::test]
+async fn wp12_consumed_request_remains_owned_by_the_invocation_for_retries() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
+    store.put(slot, responses_payload()).await.unwrap();
+
+    let invocation_payload = store.consume(slot).await.unwrap();
+
+    assert_eq!(invocation_payload.wire_body()["model"], json!("gpt-test"));
+    assert_eq!(invocation_payload.wire_body()["model"], json!("gpt-test"));
+    assert_eq!(store.get(slot).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn wp12_terminal_or_confirmed_no_retry_clears_all_flow_run_secrets() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+    let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    store.put(request_slot, responses_payload()).await.unwrap();
+    store
+        .put_continuation(continuation_slot, responses_continuation())
+        .await
+        .unwrap();
+
+    store.clear_flow_run(flow_run_id).await.unwrap();
+
+    assert_eq!(store.get(request_slot).await.unwrap(), None);
+    assert_eq!(
+        store.get_continuation(continuation_slot).await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn wp12_expiry_eagerly_clears_request_and_continuation() {
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+    let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    store.put(request_slot, responses_payload()).await.unwrap();
+    store
+        .put_continuation(continuation_slot, responses_continuation())
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+    assert_eq!(store.clear_expired().await.unwrap(), 2);
+    assert_eq!(store.get(request_slot).await.unwrap(), None);
+    assert_eq!(
+        store.get_continuation(continuation_slot).await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn wp12_early_loss_is_an_explicit_failure() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+    let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    store.put(request_slot, responses_payload()).await.unwrap();
+    store
+        .put_continuation(continuation_slot, responses_continuation())
+        .await
+        .unwrap();
+    store.clear_flow_run(flow_run_id).await.unwrap();
+
+    assert_eq!(
+        store.consume(request_slot).await.unwrap_err().to_string(),
+        "ephemeral_transport_missing"
+    );
+    assert_eq!(
+        store
+            .consume_continuation(continuation_slot)
+            .await
+            .err()
+            .expect("cleared continuation must be unavailable")
+            .to_string(),
+        "ephemeral_continuation_missing"
+    );
+}
+
+#[tokio::test]
+async fn wp12_sealed_body_and_token_do_not_enter_debug_or_error_text() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let request_slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
+    let continuation_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
+
+    let request_debug = format!("{:?}", responses_payload());
+    let request_error = store.consume(request_slot).await.unwrap_err().to_string();
+    let continuation_error = store
+        .consume_continuation(continuation_slot)
+        .await
+        .err()
+        .expect("missing continuation must fail explicitly")
+        .to_string();
+
+    for safe_text in [request_debug, request_error, continuation_error] {
+        assert!(!safe_text.contains("Bearer transport-secret"));
+        assert!(!safe_text.contains("provider-response-secret"));
+    }
 }

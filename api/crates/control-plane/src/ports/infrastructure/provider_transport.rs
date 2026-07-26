@@ -248,6 +248,23 @@ pub trait ProviderTransportStore: Send + Sync {
         slot_id: ProviderTransportSlotId,
     ) -> anyhow::Result<Option<ProviderTransportPayload>>;
 
+    /// Atomically transfers a sealed request payload into one execution segment.
+    ///
+    /// The returned value is owned by that segment and may be reused for Provider retries. The
+    /// slot itself must no longer be observable after this call succeeds. Concurrent production
+    /// adapters must override the compatibility implementation with one atomic storage action.
+    async fn consume(
+        &self,
+        slot_id: ProviderTransportSlotId,
+    ) -> anyhow::Result<ProviderTransportPayload> {
+        let payload = self
+            .get(slot_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("ephemeral_transport_missing"))?;
+        anyhow::ensure!(self.delete(slot_id).await?, "ephemeral_transport_missing");
+        Ok(payload)
+    }
+
     async fn delete(&self, slot_id: ProviderTransportSlotId) -> anyhow::Result<bool>;
 
     async fn put_continuation(
@@ -261,8 +278,41 @@ pub trait ProviderTransportStore: Send + Sync {
         slot_id: ProviderContinuationSlotId,
     ) -> anyhow::Result<Option<ProviderContinuation>>;
 
+    /// Atomically transfers a sealed continuation into one resumed execution segment.
+    /// Concurrent production adapters must override the compatibility implementation with one
+    /// atomic storage action.
+    async fn consume_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let continuation = self
+            .get_continuation(slot_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+        anyhow::ensure!(
+            self.delete_continuation(slot_id).await?,
+            "ephemeral_continuation_missing"
+        );
+        Ok(continuation)
+    }
+
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,
     ) -> anyhow::Result<bool>;
+
+    /// Clears every sealed Provider value owned by a terminal flow run, or by an execution
+    /// segment that has confirmed it will not retry.
+    async fn clear_flow_run(&self, flow_run_id: Uuid) -> anyhow::Result<()> {
+        self.delete(ProviderTransportSlotId::for_flow_run(flow_run_id))
+            .await?;
+        self.delete_continuation(ProviderContinuationSlotId::for_flow_run(flow_run_id))
+            .await?;
+        Ok(())
+    }
+
+    /// Eagerly removes expired sealed values. Implementations may also clean them lazily on read.
+    async fn clear_expired(&self) -> anyhow::Result<usize> {
+        Ok(0)
+    }
 }

@@ -45,6 +45,18 @@ impl MemoryProviderTransportStore {
         );
         Ok(())
     }
+
+    fn take_unexpired<K, V>(
+        entries: &mut HashMap<K, V>,
+        key: &K,
+        expires_at: impl FnOnce(&V) -> OffsetDateTime,
+    ) -> Option<V>
+    where
+        K: Eq + std::hash::Hash,
+    {
+        let entry = entries.remove(key)?;
+        (expires_at(&entry) > OffsetDateTime::now_utc()).then_some(entry)
+    }
 }
 
 #[async_trait]
@@ -84,6 +96,17 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         Ok(Some(entry.payload))
     }
 
+    async fn consume(
+        &self,
+        slot_id: ProviderTransportSlotId,
+    ) -> anyhow::Result<ProviderTransportPayload> {
+        let entry = Self::take_unexpired(&mut self.entries.write().await, &slot_id, |entry| {
+            entry.expires_at
+        })
+        .ok_or_else(|| anyhow::anyhow!("ephemeral_transport_missing"))?;
+        Ok(entry.payload)
+    }
+
     async fn delete(&self, slot_id: ProviderTransportSlotId) -> anyhow::Result<bool> {
         Ok(self.entries.write().await.remove(&slot_id).is_some())
     }
@@ -119,10 +142,36 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         Ok(Some(entry.continuation))
     }
 
+    async fn consume_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let entry =
+            Self::take_unexpired(&mut self.continuations.write().await, &slot_id, |entry| {
+                entry.expires_at
+            })
+            .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+        Ok(entry.continuation)
+    }
+
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,
     ) -> anyhow::Result<bool> {
         Ok(self.continuations.write().await.remove(&slot_id).is_some())
+    }
+
+    async fn clear_expired(&self) -> anyhow::Result<usize> {
+        let now = OffsetDateTime::now_utc();
+        let mut entries = self.entries.write().await;
+        let request_count = entries.len();
+        entries.retain(|_, entry| entry.expires_at > now);
+        let removed_requests = request_count - entries.len();
+        drop(entries);
+
+        let mut continuations = self.continuations.write().await;
+        let continuation_count = continuations.len();
+        continuations.retain(|_, entry| entry.expires_at > now);
+        Ok(removed_requests + continuation_count - continuations.len())
     }
 }
