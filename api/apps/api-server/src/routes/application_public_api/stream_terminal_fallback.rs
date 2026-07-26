@@ -152,9 +152,18 @@ pub(crate) fn terminal_runtime_event_from_native_run(
     Some(RuntimeEventEnvelope::new(run.id, 0, payload))
 }
 
-pub(crate) fn terminal_answer_runtime_events_from_native_run(
+pub(crate) fn durable_canonical_partial_runtime_events_from_native_run(
     run: &NativeRunResult,
 ) -> Vec<RuntimeEventEnvelope> {
+    if !matches!(
+        run.status,
+        NativeRunStatus::Incomplete
+            | NativeRunStatus::Failed
+            | NativeRunStatus::Cancelled
+            | NativeRunStatus::Waiting
+    ) {
+        return Vec::new();
+    }
     terminal_answer_deltas_from_payload(&terminal_output_payload(run))
         .into_iter()
         .enumerate()
@@ -412,9 +421,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
+        durable_canonical_partial_runtime_events_from_native_run,
         durable_native_run_matches_terminal, split_terminal_answer_deltas,
-        terminal_answer_deltas_from_payload, terminal_answer_runtime_events_from_native_run,
-        terminal_runtime_event_from_native_run, TerminalAnswerDeltaKind,
+        terminal_answer_deltas_from_payload, terminal_runtime_event_from_native_run,
+        TerminalAnswerDeltaKind,
     };
 
     fn native_run(status: NativeRunStatus) -> NativeRunResult {
@@ -515,18 +525,30 @@ mod tests {
     }
 
     #[test]
-    fn failed_cancelled_and_waiting_terminals_recover_canonical_partial_before_terminal() {
+    fn non_success_terminals_recover_canonical_partial_before_honest_terminal() {
         for status in [
+            NativeRunStatus::Incomplete,
             NativeRunStatus::Failed,
             NativeRunStatus::Cancelled,
             NativeRunStatus::Waiting,
         ] {
-            let events = terminal_answer_runtime_events_from_native_run(&native_run(status));
+            let events =
+                durable_canonical_partial_runtime_events_from_native_run(&native_run(status));
             assert_eq!(events.len(), 1);
             assert_eq!(events[0].event_type, "text_delta");
             assert_eq!(events[0].payload["text"], json!("done"));
             assert_eq!(events[0].payload["presentation"]["kind"], json!("answer"));
         }
+    }
+
+    #[test]
+    fn succeeded_terminal_never_recovers_answer_content_from_durable_snapshot() {
+        assert!(
+            durable_canonical_partial_runtime_events_from_native_run(&native_run(
+                NativeRunStatus::Succeeded
+            ))
+            .is_empty()
+        );
     }
 
     #[test]

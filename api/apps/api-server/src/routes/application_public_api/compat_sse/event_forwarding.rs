@@ -97,7 +97,7 @@ async fn forward_ordered_typed_events(
                 continue;
             }
             if !*emitted_answer_delta {
-                for answer_event in terminal_answer_runtime_events_from_native_run(&run) {
+                for answer_event in durable_canonical_partial_runtime_events_from_native_run(&run) {
                     if sender
                         .send(CompatibleProjectionInput {
                             run_snapshot: run.clone(),
@@ -705,7 +705,7 @@ where
         initial_run
     };
     if is_terminal && !stats.emitted_content() {
-        for answer_event in terminal_answer_runtime_events_from_native_run(run) {
+        for answer_event in durable_canonical_partial_runtime_events_from_native_run(run) {
             let events = mapper(run, answer_event.clone());
             let emitted_public_event = !events.is_empty();
             if !send_compatible_sse_events(sender, events).await {
@@ -937,7 +937,7 @@ where
         stats.record_sent_runtime_event(&latest_run, &started_event, emitted_public_event);
     }
     if !stats.emitted_content() {
-        for answer_event in terminal_answer_runtime_events_from_native_run(&latest_run) {
+        for answer_event in durable_canonical_partial_runtime_events_from_native_run(&latest_run) {
             let events = mapper(&latest_run, answer_event.clone());
             let emitted_public_event = !events.is_empty();
             if !send_compatible_sse_events(sender, events).await {

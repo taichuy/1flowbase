@@ -15,10 +15,11 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     routes::application_public_api::stream_terminal_fallback::{
+        durable_canonical_partial_runtime_events_from_native_run,
         durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
         recover_missing_stream_terminal_winner, terminal_answer_deltas_from_payload,
-        terminal_answer_runtime_events_from_native_run, terminal_answer_text_from_payload,
-        terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
+        terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
+        TerminalAnswerDelta, TerminalAnswerDeltaKind,
     },
 };
 
@@ -683,9 +684,12 @@ fn terminal_answer_delta_sse_events(
     include_workflow_events: IncludeWorkflowEvents,
     terminal_event: &RuntimeEventEnvelope,
 ) -> Vec<Result<Event, Infallible>> {
+    if run.status == control_plane::application_public_api::native::NativeRunStatus::Succeeded {
+        return Vec::new();
+    }
     let payload_deltas = terminal_answer_deltas_from_payload(&terminal_event.payload);
     if payload_deltas.is_empty() {
-        return terminal_answer_runtime_events_from_native_run(run)
+        return durable_canonical_partial_runtime_events_from_native_run(run)
             .into_iter()
             .filter_map(|event| runtime_event_to_native_sse(run, include_workflow_events, event))
             .collect();
@@ -887,10 +891,8 @@ mod tests {
         assert!(!failed_payload.to_string().contains("provider raw secret"));
     }
 
-    #[tokio::test]
-    async fn native_terminal_answer_delta_sse_events_project_thinking_before_completed() {
-        use axum::response::{sse::Sse, IntoResponse};
-
+    #[test]
+    fn native_succeeded_terminal_does_not_reconstruct_answer_deltas() {
         let run = native_run();
         let terminal_event = RuntimeEventEnvelope::new(
             run.id,
@@ -902,17 +904,8 @@ mod tests {
         );
         let events =
             terminal_answer_delta_sse_events(&run, IncludeWorkflowEvents::None, &terminal_event);
-        let response = Sse::new(tokio_stream::iter(events)).into_response();
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(body.contains("event: reasoning.delta"), "{body}");
-        assert!(body.contains("\"delta\":\"先分析\""), "{body}");
-        assert!(body.contains("event: message.delta"), "{body}");
-        assert!(body.contains("\"delta\":\"\\n最终回答\""), "{body}");
-        assert!(!body.contains("<think>"), "{body}");
+        assert!(events.is_empty());
     }
 
     #[test]
