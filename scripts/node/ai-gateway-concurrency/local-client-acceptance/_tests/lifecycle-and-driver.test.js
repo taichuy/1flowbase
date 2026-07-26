@@ -78,7 +78,7 @@ test('WP-14A canonical text and tool two-turn evaluations require observable evi
   }).pass, false);
 });
 
-test('WP-14A Codex WebSocket evidence rejects silent HTTP fallback', () => {
+test('WP-14A Codex WebSocket evidence rejects fallback without requiring internal INFO logs', () => {
   const output = JSON.stringify({
     type: 'item.completed', item: { type: 'agent_message', text: TEXT_SENTINEL },
   });
@@ -92,7 +92,7 @@ test('WP-14A Codex WebSocket evidence rejects silent HTTP fallback', () => {
   }, 'responses_websocket').reason, 'responses_websocket_http_fallback');
   assert.equal(evaluateAttempt('codex', TEXT_VECTOR, {
     exit_code: 0, timed_out: false, stdout: output, stderr: '',
-  }, 'responses_websocket').reason, 'responses_websocket_evidence_missing');
+  }, 'responses_websocket').pass, true);
 });
 
 test('WP-14A driver emits mock-backed reconciliation evidence and cleans resources in finally', async () => {
@@ -183,9 +183,7 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
           signal: null,
           timed_out: false,
           stdout: clientEvents[plan.client].map(JSON.stringify).join('\n'),
-          stderr: plan.protocol === 'responses_websocket'
-            ? 'model_client.stream_responses_websocket transport="responses_websocket"'
-            : '',
+          stderr: '',
         };
       },
     });

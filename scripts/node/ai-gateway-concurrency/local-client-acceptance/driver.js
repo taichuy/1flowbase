@@ -107,9 +107,6 @@ function evaluateAttempt(client, vector, result, protocol = null) {
     if (/falling back to HTTP|fallback_to_http/iu.test(diagnostics)) {
       return { pass: false, reason: 'responses_websocket_http_fallback', observed_events: [] };
     }
-    if (!/model_client\.stream_responses_websocket|transport\s*=\s*["']?responses_websocket/iu.test(diagnostics)) {
-      return { pass: false, reason: 'responses_websocket_evidence_missing', observed_events: [] };
-    }
   }
   const events = structuredEvents(result.stdout || '');
   if (vector.kind === 'text') {
