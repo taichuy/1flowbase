@@ -73,9 +73,9 @@ pub(crate) fn correlate_openai_chat_callback(
     correlate_openai_results(results, "messages", Some(&assistant_ids))
 }
 
-/// Responses callbacks are correlated by all three public markers: the prior
-/// response cursor, the callback task encoded in each call_id, and the
-/// original provider call id encoded alongside it.
+/// Responses callbacks resume from either a prior response cursor or a
+/// complete function-call turn carried in the request. Every result still
+/// carries the callback task and original provider call id in its call_id.
 pub(crate) fn correlate_openai_responses_callback(
     request: &Value,
     previous_response_id: Option<&str>,
@@ -91,14 +91,33 @@ pub(crate) fn correlate_openai_responses_callback(
     if trailing.is_empty() || !contains_encoded_responses_tool_result(trailing) {
         return Ok(None);
     }
-    previous_response_id
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            CallbackCorrelationError::new(
-                "previous_response_id",
-                "callback function_call_output requires previous_response_id",
-            )
-        })?;
+    let paired_ids = if previous_response_id.is_some_and(|value| !value.trim().is_empty()) {
+        None
+    } else {
+        let function_call_ids = items[..trailing_start]
+            .iter()
+            .rev()
+            .take_while(|item| item.get("type").and_then(Value::as_str) == Some("function_call"))
+            .map(|item| {
+                item.get("call_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        CallbackCorrelationError::new(
+                            "input",
+                            "preceding function_call call_id is required",
+                        )
+                    })
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        if function_call_ids.is_empty() {
+            return Err(CallbackCorrelationError::new(
+                "input",
+                "callback function_call_output requires previous_response_id or immediately preceding function calls",
+            ));
+        }
+        Some(function_call_ids)
+    };
     let results = trailing.iter().map(|item| {
         let external_id = item.get("call_id").and_then(Value::as_str).ok_or_else(|| {
             CallbackCorrelationError::new(
@@ -113,7 +132,7 @@ pub(crate) fn correlate_openai_responses_callback(
         };
         Ok((external_id, output))
     });
-    correlate_openai_results(results, "input", None)
+    correlate_openai_results(results, "input", paired_ids.as_ref())
 }
 
 pub(crate) fn correlate_anthropic_callback(

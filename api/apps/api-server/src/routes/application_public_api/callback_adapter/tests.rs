@@ -72,7 +72,7 @@ fn chat_orphan_callback_marker_is_invalid_but_paired_stale_history_with_new_text
 }
 
 #[test]
-fn responses_requires_previous_response_and_preserves_only_current_parallel_results() {
+fn responses_previous_response_preserves_only_current_parallel_results() {
     let task = callback(3);
     let first = encode_openai_callback_tool_call_id(task, "call_a");
     let second = encode_openai_callback_tool_call_id(task, "call_b");
@@ -80,13 +80,6 @@ fn responses_requires_previous_response_and_preserves_only_current_parallel_resu
         {"type": "function_call_output", "call_id": first, "output": "A"},
         {"type": "function_call_output", "call_id": second, "output": {"value": "B"}}
     ]});
-    assert_eq!(
-        correlate_openai_responses_callback(&request, None)
-            .expect_err("orphan Responses output must fail")
-            .param,
-        "previous_response_id"
-    );
-
     let correlated = correlate_openai_responses_callback(&request, Some("resp_first"))
         .expect("Responses callback should be valid")
         .expect("Responses callback should resume");
@@ -97,6 +90,67 @@ fn responses_requires_previous_response_and_preserves_only_current_parallel_resu
             {"tool_call_id": "call_a", "content": "A"},
             {"tool_call_id": "call_b", "content": "{\"value\":\"B\"}"}
         ])
+    );
+}
+
+#[test]
+fn responses_complete_history_without_previous_response_correlates_parallel_results() {
+    let task = callback(9);
+    let first = encode_openai_callback_tool_call_id(task, "call_a");
+    let second = encode_openai_callback_tool_call_id(task, "call_b");
+    let request = json!({"input": [
+        {"role": "user", "content": "run both"},
+        {"type": "function_call", "call_id": first, "name": "a", "arguments": "{}"},
+        {"type": "function_call", "call_id": second, "name": "b", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": first, "output": "A"},
+        {"type": "function_call_output", "call_id": second, "output": "B"}
+    ]});
+
+    let correlated = correlate_openai_responses_callback(&request, None)
+        .expect("complete Responses history should be valid")
+        .expect("complete Responses history should resume");
+    assert_eq!(correlated.callback_task_id, task);
+    assert_eq!(
+        correlated.tool_results,
+        json!([
+            {"tool_call_id": "call_a", "content": "A"},
+            {"tool_call_id": "call_b", "content": "B"}
+        ])
+    );
+}
+
+#[test]
+fn responses_complete_history_without_previous_response_must_match_outputs_exactly() {
+    let task = callback(10);
+    let first = encode_openai_callback_tool_call_id(task, "call_a");
+    let second = encode_openai_callback_tool_call_id(task, "call_b");
+    let mismatched = encode_openai_callback_tool_call_id(task, "call_other");
+    let request = json!({"input": [
+        {"type": "function_call", "call_id": first},
+        {"type": "function_call", "call_id": second},
+        {"type": "function_call_output", "call_id": mismatched, "output": "other"}
+    ]});
+
+    assert_eq!(
+        correlate_openai_responses_callback(&request, None)
+            .expect_err("mismatched Responses history must fail")
+            .message,
+        "callback tool results must cover the preceding assistant tool calls exactly"
+    );
+}
+
+#[test]
+fn responses_orphan_output_without_previous_response_is_invalid() {
+    let call_id = encode_openai_callback_tool_call_id(callback(11), "call_orphan");
+    let request = json!({"input": [
+        {"type": "function_call_output", "call_id": call_id, "output": "isolated"}
+    ]});
+
+    assert_eq!(
+        correlate_openai_responses_callback(&request, None)
+            .expect_err("orphan Responses output must fail")
+            .param,
+        "input"
     );
 }
 
