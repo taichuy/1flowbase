@@ -12,6 +12,12 @@ enum AnthropicMessageStopReason {
     MaxTokens,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AnthropicStreamState {
+    Open,
+    Terminal,
+}
+
 impl AnthropicMessageStopReason {
     fn as_str(self) -> &'static str {
         match self {
@@ -26,6 +32,8 @@ pub(in crate::routes::application_public_api::compat_sse) struct AnthropicStream
     next_content_index: u32,
     active_content: Option<AnthropicContentBlockKind>,
     terminal_stop_reason: AnthropicMessageStopReason,
+    stream_state: AnthropicStreamState,
+    message_start_emitted: bool,
 }
 
 impl AnthropicStreamMapper {
@@ -35,6 +43,8 @@ impl AnthropicStreamMapper {
             next_content_index: 0,
             active_content: None,
             terminal_stop_reason: AnthropicMessageStopReason::EndTurn,
+            stream_state: AnthropicStreamState::Open,
+            message_start_emitted: false,
         }
     }
 
@@ -45,28 +55,19 @@ impl AnthropicStreamMapper {
     ) -> Vec<Result<Event, Infallible>> {
         let event = event.into();
         let envelope = event.envelope();
-        let visible_text = envelope
-            .text
-            .as_deref()
-            .is_some_and(|text| !text.is_empty());
+        if self.stream_state == AnthropicStreamState::Terminal {
+            return Vec::new();
+        }
         match event.answer_delta() {
-            Some(CompatibleAnswerDeltaKind::Reasoning) if visible_text => {
-                return self.anthropic_delta_events(
-                    "reasoning_delta",
-                    envelope.text.clone().unwrap_or_default(),
-                );
+            Some(CompatibleAnswerDeltaKind::Reasoning) => {
+                if let Some(text) = envelope.text.clone() {
+                    return self.anthropic_delta_events("reasoning_delta", text);
+                }
             }
-            Some(CompatibleAnswerDeltaKind::Text) if visible_text => {
-                let mut events =
-                    self.ensure_anthropic_content_block(AnthropicContentBlockKind::Text);
-                let (event_name, payload) = anthropic_delta_payload(
-                    self.active_content_index(),
-                    "text_delta",
-                    envelope.text.clone().unwrap_or_default(),
-                )
-                .expect("text_delta should map to Anthropic text_delta");
-                events.push(event_json_sse(event_name, payload));
-                return events;
+            Some(CompatibleAnswerDeltaKind::Text) => {
+                if let Some(text) = envelope.text.clone() {
+                    return self.anthropic_delta_events("text_delta", text);
+                }
             }
             _ => {}
         }
@@ -80,11 +81,18 @@ impl AnthropicStreamMapper {
                 return self.anthropic_terminal_events(initial_run, &envelope.payload);
             }
             Some(CompatibleTerminalKind::WaitingCallback) => {
-                return self
+                return match self
                     .anthropic_tool_use_events(&envelope.payload, initial_run.usage.as_ref())
-                    .unwrap_or_else(required_action_not_supported_anthropic_sse);
+                {
+                    Some(events) => events,
+                    None => {
+                        self.stream_state = AnthropicStreamState::Terminal;
+                        required_action_not_supported_anthropic_sse()
+                    }
+                };
             }
             Some(CompatibleTerminalKind::WaitingHuman) => {
+                self.stream_state = AnthropicStreamState::Terminal;
                 return required_action_not_supported_anthropic_sse();
             }
             Some(CompatibleTerminalKind::Failed) => {
@@ -96,21 +104,24 @@ impl AnthropicStreamMapper {
             None => {}
         }
         match envelope.event_type.as_str() {
-            "flow_started" => vec![event_json_sse(
-                "message_start",
-                json!({
-                    "type": "message_start",
-                    "message": {
-                        "id": format!("msg_{}", initial_run.id),
-                        "type": "message",
-                        "role": "assistant",
-                        "model": self.model,
-                        "content": [],
-                        "stop_reason": null,
-                        "usage": anthropic_message_start_usage_payload(initial_run.usage.as_ref())
-                    }
-                }),
-            )],
+            "flow_started" if !self.message_start_emitted => {
+                self.message_start_emitted = true;
+                vec![event_json_sse(
+                    "message_start",
+                    json!({
+                        "type": "message_start",
+                        "message": {
+                            "id": format!("msg_{}", initial_run.id),
+                            "type": "message",
+                            "role": "assistant",
+                            "model": self.model,
+                            "content": [],
+                            "stop_reason": null,
+                            "usage": anthropic_message_start_usage_payload(initial_run.usage.as_ref())
+                        }
+                    }),
+                )]
+            }
             "text_delta" | "reasoning_delta" => Vec::new(),
             "finish" => Vec::new(),
             _ => Vec::new(),
@@ -143,6 +154,7 @@ impl AnthropicStreamMapper {
                 }
             }),
         ));
+        self.stream_state = AnthropicStreamState::Terminal;
         events
     }
 
@@ -158,6 +170,7 @@ impl AnthropicStreamMapper {
                 }
             }),
         ));
+        self.stream_state = AnthropicStreamState::Terminal;
         events
     }
 
@@ -183,6 +196,9 @@ impl AnthropicStreamMapper {
         &mut self,
         usage: Option<&NativeUsage>,
     ) -> Vec<Result<Event, Infallible>> {
+        if self.stream_state == AnthropicStreamState::Terminal {
+            return Vec::new();
+        }
         let mut events = Vec::new();
         let stop_reason = self.terminal_stop_reason.as_str();
         if self.active_content.is_none() && self.next_content_index == 0 {
@@ -201,6 +217,7 @@ impl AnthropicStreamMapper {
             "message_stop",
             json!({"type": "message_stop"}),
         ));
+        self.stream_state = AnthropicStreamState::Terminal;
         events
     }
 
@@ -209,6 +226,9 @@ impl AnthropicStreamMapper {
         payload: &Value,
         usage: Option<&NativeUsage>,
     ) -> Option<Vec<Result<Event, Infallible>>> {
+        if self.stream_state == AnthropicStreamState::Terminal {
+            return Some(Vec::new());
+        }
         let blocks = anthropic_tool_use_blocks_from_waiting_payload(payload)?;
         let mut events = self.close_active_anthropic_content_block();
         for block in blocks {
@@ -258,6 +278,7 @@ impl AnthropicStreamMapper {
             "message_stop",
             json!({"type": "message_stop"}),
         ));
+        self.stream_state = AnthropicStreamState::Terminal;
         Some(events)
     }
 
