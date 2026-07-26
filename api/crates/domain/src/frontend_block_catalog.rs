@@ -18,25 +18,17 @@ pub struct FrontendBlockContextContract {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontendBlockCodeModule {
     pub source: String,
+    pub version: String,
+    pub browser_asset: FrontendModuleBrowserAsset,
     pub type_declarations: String,
     #[serde(default)]
     pub components: Vec<FrontendComponentContract>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FrontendComponentImplementationKind {
-    AntdFacade,
-    Custom,
-}
-
-impl FrontendComponentImplementationKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::AntdFacade => "antd_facade",
-            Self::Custom => "custom",
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrontendModuleBrowserAsset {
+    pub path: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,12 +36,6 @@ pub struct FrontendComponentUpstream {
     pub package: String,
     pub component: String,
     pub version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FrontendComponentImplementation {
-    pub kind: FrontendComponentImplementationKind,
-    pub upstream: Option<FrontendComponentUpstream>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,7 +57,7 @@ pub struct FrontendComponentExample {
 pub struct FrontendComponentContract {
     pub component_code: String,
     pub export_name: String,
-    pub implementation: FrontendComponentImplementation,
+    pub upstream: Option<FrontendComponentUpstream>,
     pub description: String,
     pub props: Vec<FrontendComponentProp>,
     pub limitations: Vec<String>,
@@ -87,7 +73,7 @@ impl FrontendComponentContract {
         declaration.push_str("' {\n");
         declaration.push_str("  export interface ");
         declaration.push_str(&self.export_name);
-        declaration.push_str("Props extends FacadeCommonProps {\n");
+        declaration.push_str("Props {\n");
         for prop in &self.props {
             declaration.push_str("    /** ");
             declaration.push_str(&jsdoc_text(&prop.description));
@@ -119,7 +105,7 @@ impl FrontendComponentContract {
             }
             declaration.push_str("   * ```\n");
         }
-        if let Some(upstream) = self.implementation.upstream.as_ref() {
+        if let Some(upstream) = self.upstream.as_ref() {
             declaration.push_str("   *\n   * @see ");
             declaration.push_str(&jsdoc_text(&upstream.package));
             declaration.push('@');
@@ -130,7 +116,7 @@ impl FrontendComponentContract {
         }
         declaration.push_str("   */\n  export const ");
         declaration.push_str(&self.export_name);
-        declaration.push_str(": FacadeComponent<");
+        declaration.push_str(": import('react').ComponentType<");
         declaration.push_str(&self.export_name);
         declaration.push_str("Props>;\n}\n");
         declaration

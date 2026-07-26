@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::{Component, Path},
+};
 
 use crate::{
     capability_kind::PluginConsumptionKind,
@@ -160,16 +163,18 @@ pub struct FrontendBlockContextContractManifest {
 #[serde(deny_unknown_fields)]
 pub struct FrontendBlockCodeModuleManifest {
     pub source: String,
+    pub version: String,
+    pub browser_asset: FrontendModuleBrowserAssetManifest,
     pub type_declarations: String,
     #[serde(default)]
     pub components: Vec<FrontendComponentContractManifest>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FrontendComponentImplementationKindManifest {
-    AntdFacade,
-    Custom,
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendModuleBrowserAssetManifest {
+    pub path: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -178,14 +183,6 @@ pub struct FrontendComponentUpstreamManifest {
     pub package: String,
     pub component: String,
     pub version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FrontendComponentImplementationManifest {
-    pub kind: FrontendComponentImplementationKindManifest,
-    #[serde(default)]
-    pub upstream: Option<FrontendComponentUpstreamManifest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -211,7 +208,8 @@ pub struct FrontendComponentExampleManifest {
 pub struct FrontendComponentContractManifest {
     pub component_code: String,
     pub export_name: String,
-    pub implementation: FrontendComponentImplementationManifest,
+    #[serde(default)]
+    pub upstream: Option<FrontendComponentUpstreamManifest>,
     pub description: String,
     #[serde(default)]
     pub props: Vec<FrontendComponentPropManifest>,
@@ -513,7 +511,7 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
     Ok(())
 }
 
-const FRONTEND_BLOCK_ALLOWED_RUNTIMES: &[&str] = &["iframe"];
+const FRONTEND_BLOCK_ALLOWED_RUNTIMES: &[&str] = &["native_react"];
 const FRONTEND_BLOCK_ALLOWED_PRIMITIVES: &[&str] = &[
     "text",
     "image",
@@ -534,6 +532,7 @@ fn validate_frontend_block_contributions(
         ));
     }
 
+    let mut registered_module_identities = HashSet::new();
     for contribution in contributions {
         validate_non_empty(
             &contribution.contribution_code,
@@ -582,14 +581,23 @@ fn validate_frontend_block_contributions(
         }
         let mut contribution_component_codes = HashSet::new();
         for code_module in &contribution.code_modules {
-            validate_allowed(
+            validate_non_empty(
                 &code_module.source,
                 "block_contributions[].code_modules[].source",
-                &[
-                    "@1flowbase/block-sdk",
-                    "@1flowbase/block-renderer/antd-facade",
-                ],
             )?;
+            validate_non_empty(
+                &code_module.version,
+                "block_contributions[].code_modules[].version",
+            )?;
+            if !registered_module_identities
+                .insert((code_module.source.as_str(), code_module.version.as_str()))
+            {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "block_contributions[].code_modules[] source/version must be unique",
+                ));
+            }
+            validate_registered_asset_path(&code_module.browser_asset.path)?;
+            validate_sha256(&code_module.browser_asset.sha256)?;
             validate_non_empty(
                 &code_module.type_declarations,
                 "block_contributions[].code_modules[].type_declarations",
@@ -636,14 +644,6 @@ fn validate_frontend_block_contributions(
 fn validate_frontend_component_contracts(
     code_module: &FrontendBlockCodeModuleManifest,
 ) -> FrameworkResult<()> {
-    if !code_module.components.is_empty()
-        && code_module.source != "@1flowbase/block-renderer/antd-facade"
-    {
-        return Err(PluginFrameworkError::invalid_provider_package(
-            "frontend component contracts require @1flowbase/block-renderer/antd-facade",
-        ));
-    }
-
     let mut component_codes = HashSet::new();
     let mut export_names = HashSet::new();
     for component in &code_module.components {
@@ -678,35 +678,19 @@ fn validate_frontend_component_contracts(
             ));
         }
 
-        match (
-            component.implementation.kind,
-            component.implementation.upstream.as_ref(),
-        ) {
-            (FrontendComponentImplementationKindManifest::AntdFacade, Some(upstream)) => {
-                validate_non_empty(
-                    &upstream.package,
-                    "block_contributions[].code_modules[].components[].implementation.upstream.package",
-                )?;
-                validate_non_empty(
-                    &upstream.component,
-                    "block_contributions[].code_modules[].components[].implementation.upstream.component",
-                )?;
-                validate_non_empty(
-                    &upstream.version,
-                    "block_contributions[].code_modules[].components[].implementation.upstream.version",
-                )?;
-            }
-            (FrontendComponentImplementationKindManifest::AntdFacade, None) => {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "antd_facade component contract requires implementation.upstream",
-                ));
-            }
-            (FrontendComponentImplementationKindManifest::Custom, Some(_)) => {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "custom component contract cannot declare implementation.upstream",
-                ));
-            }
-            (FrontendComponentImplementationKindManifest::Custom, None) => {}
+        if let Some(upstream) = component.upstream.as_ref() {
+            validate_non_empty(
+                &upstream.package,
+                "block_contributions[].code_modules[].components[].upstream.package",
+            )?;
+            validate_non_empty(
+                &upstream.component,
+                "block_contributions[].code_modules[].components[].upstream.component",
+            )?;
+            validate_non_empty(
+                &upstream.version,
+                "block_contributions[].code_modules[].components[].upstream.version",
+            )?;
         }
 
         let mut prop_names = HashSet::new();
@@ -758,6 +742,37 @@ fn validate_frontend_component_contracts(
                 "block_contributions[].code_modules[].components[].examples[].code",
             )?;
         }
+    }
+    Ok(())
+}
+
+fn validate_registered_asset_path(value: &str) -> FrameworkResult<()> {
+    validate_non_empty(
+        value,
+        "block_contributions[].code_modules[].browser_asset.path",
+    )?;
+    let path = Path::new(value);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "block_contributions[].code_modules[].browser_asset.path must stay within the plugin package",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_sha256(value: &str) -> FrameworkResult<()> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "block_contributions[].code_modules[].browser_asset.sha256 must be a lowercase SHA-256 digest",
+        ));
     }
     Ok(())
 }

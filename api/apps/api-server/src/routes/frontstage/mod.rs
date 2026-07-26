@@ -317,6 +317,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/frontstage/:workspace_id/component-module-assets/:sha256",
+            console_get(
+                component_capabilities::get_frontstage_component_module_asset,
+                Authenticated,
+            ),
+        )
+        .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/write-grants",
             console_post(
                 callable_interfaces::issue_frontstage_callable_write_grant,

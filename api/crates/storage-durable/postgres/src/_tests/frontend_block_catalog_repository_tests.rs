@@ -194,6 +194,12 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
                 code_template_language: Some("tsx".into()),
                 code_modules: vec![domain::FrontendBlockCodeModule {
                     source: "@1flowbase/block-sdk".into(),
+                    version: "1.0.0".into(),
+                    browser_asset: domain::FrontendModuleBrowserAsset {
+                        path: "browser-assets/block-sdk.js".into(),
+                        sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+                            .into(),
+                    },
                     type_declarations: "export declare function defineBlock(): unknown;".into(),
                     components: vec![],
                 }],
@@ -328,4 +334,17 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     .execute(store.pool())
     .await;
     assert!(unsupported_language.is_err());
+
+    sqlx::query("update plugin_installations set verification_status = 'invalid' where id = $1")
+        .bind(installation.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(
+        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "D2-AC-004: unverified installations must not publish registered module assets"
+    );
 }

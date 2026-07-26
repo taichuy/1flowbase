@@ -790,14 +790,15 @@ async fn plugin_management_service_syncs_frontend_block_catalog_and_requires_ass
     assert_eq!(entries[0].installation_id, installation.id);
     assert_eq!(entries[0].provider_code, "fixture_frontend_blocks");
     assert_eq!(entries[0].contribution_code, "hero_banner");
-    assert_eq!(entries[0].runtime, "iframe");
+    assert_eq!(entries[0].runtime, "native_react");
     assert_eq!(entries[0].entry, "blocks/hero/index.html");
     assert_eq!(entries[0].code_template_version.as_deref(), Some("1.0.0"));
     assert!(entries[0]
         .code_template
         .as_deref()
-        .is_some_and(|template| template.contains("defineBlock")));
+        .is_some_and(|template| template.contains("export default function Hero")));
     assert_eq!(entries[0].code_modules[0].source, "@1flowbase/block-sdk");
+    assert_eq!(entries[0].code_modules[0].version, "1.0.0");
     assert_eq!(
         entries[0].context_contract.primitives,
         vec!["text", "image"]

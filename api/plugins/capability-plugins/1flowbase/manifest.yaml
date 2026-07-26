@@ -3,15 +3,13 @@ plugin_id: 1flowbase@1.0.0
 version: 1.0.0
 vendor: 1flowbase
 display_name: 1flowbase Built-in Frontstage Blocks
-description: System-owned frontend block containers available in every workspace.
+description: System-owned Native React blocks available in every workspace.
 source_kind: builtin
 trust_level: verified_official
 consumption_kind: capability_plugin
 execution_mode: declarative_only
-slot_codes:
-  - frontend_block
-binding_targets:
-  - workspace
+slot_codes: [frontend_block]
+binding_targets: [workspace]
 selection_mode: auto_activate
 minimum_host_version: 0.2.6
 contract_version: 1flowbase.capability/v1
@@ -28,45 +26,33 @@ runtime:
 block_contributions:
   - contribution_code: frontstage.js-ui-block
     title: 代码区块
-    runtime: iframe
+    runtime: native_react
     entry: index.js
     code_template: |
-      import type {
-        BlockContext,
-        BlockModule,
-        BlockResult
-      } from '@1flowbase/block-sdk';
+      import React, { useState } from 'react';
+      import type { BlockComponentProps } from '@1flowbase/block-sdk';
+      import { Surface } from '@1flowbase/native-components';
 
-      import {
-        Stack,
-        Text,
-        Title
-      } from '@1flowbase/block-renderer/antd-facade';
-
-      async function main(_ctx: BlockContext): Promise<BlockResult> {
-        return {
-          view: (
-            <Stack>
-              <Title>代码示例区块</Title>
-              <Text>从接口连接器插入函数，然后在 main 中调用。</Text>
-            </Stack>
-          ),
-          outputs: {}
-        };
+      export default function ExampleBlock({ ctx }: BlockComponentProps) {
+        const [count, setCount] = useState(0);
+        return (
+          <Surface className="example-block" style={{ padding: 16 }}>
+            <h2>代码示例区块</h2>
+            <p>Workspace: {ctx.workspace.name ?? ctx.workspace.id}</p>
+            <button type="button" onClick={() => setCount((value) => value + 1)}>
+              Clicked {count} times
+            </button>
+          </Surface>
+        );
       }
-
-      /**
-       * @1flowbase-context
-       * inputs: 无
-       * outputs: 无
-       */
-      export default {
-        main
-      } satisfies BlockModule;
-    code_template_version: 3.0.0
+    code_template_version: 4.0.0
     code_template_language: tsx
     code_modules:
       - source: "@1flowbase/block-sdk"
+        version: "1.0.0"
+        browser_asset:
+          path: "browser-assets/block-sdk.js"
+          sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
         type_declarations: |
           declare module '@1flowbase/block-sdk' {
             export type BlockContextRecord = Record<string, unknown>;
@@ -83,503 +69,59 @@ block_contributions:
               readonly route: string;
               readonly title?: string;
             }
-            export interface BlockApiRequest {
-              readonly path?: BlockContextRecord;
-              readonly query?: BlockContextRecord;
-              readonly headers?: BlockContextRecord;
-              readonly body?: unknown;
-            }
-            export type BlockApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
-            export interface BlockContextApi {
-              get<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              post<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              put<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              patch<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              delete<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              head<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              options<TResponse = never>(path: string, request?: BlockApiRequest): Promise<TResponse>;
-              stream<TEvent = never>(method: BlockApiMethod, path: string, request?: BlockApiRequest): AsyncIterable<TEvent>;
-            }
-            export interface BlockContextEvents {
-              emit(event: string, payload?: BlockContextRecord): void;
-            }
-            export interface BlockContextTheme {
-              readonly mode: 'light' | 'dark';
-              readonly tokens: BlockContextRecord;
-            }
-            export interface BlockContextUi {
-              readonly locale?: string;
-              readonly density?: 'compact' | 'comfortable';
-            }
-            export interface BlockContext<TInputs extends BlockContextRecord = BlockContextRecord> {
+            export interface BlockContext {
               readonly currentUser: BlockContextIdentity | null;
               readonly workspace: BlockContextEntity;
               readonly application: BlockContextEntity;
               readonly page: BlockContextPage;
-              readonly inputs: Readonly<TInputs>;
-              readonly params: BlockContextRecord;
-              readonly props: BlockContextRecord;
-              readonly state: BlockContextRecord;
-              patch(patch: BlockContextRecord): void | Promise<void>;
-              readonly api: BlockContextApi;
-              readonly events: BlockContextEvents;
-              readonly theme: BlockContextTheme;
-              readonly ui: BlockContextUi;
+              readonly inputs: Readonly<BlockContextRecord>;
+              readonly params: Readonly<BlockContextRecord>;
+              readonly props: Readonly<BlockContextRecord>;
+              readonly theme: Readonly<BlockContextRecord>;
+              readonly ui: Readonly<BlockContextRecord>;
             }
-            export interface BlockResult<TOutputs extends BlockContextRecord = BlockContextRecord> {
-              readonly view: unknown;
-              readonly outputs: TOutputs;
-            }
-            export type BlockMain<
-              TInputs extends BlockContextRecord = BlockContextRecord,
-              TOutputs extends BlockContextRecord = BlockContextRecord
-            > = (ctx: BlockContext<TInputs>) => BlockResult<TOutputs> | Promise<BlockResult<TOutputs>>;
-            export interface BlockModule<
-              TInputs extends BlockContextRecord = BlockContextRecord,
-              TOutputs extends BlockContextRecord = BlockContextRecord
-            > {
-              readonly main: BlockMain<TInputs, TOutputs>;
+            export interface BlockComponentProps {
+              readonly ctx: BlockContext;
             }
           }
-      - source: "@1flowbase/block-renderer/antd-facade"
+      - source: "@1flowbase/native-components"
+        version: "1.0.0"
+        browser_asset:
+          path: "browser-assets/native-components.js"
+          sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"
         type_declarations: |
-          declare module '@1flowbase/block-renderer/antd-facade' {
-            export type FacadeScalar = string | number | boolean | null;
-            export type FacadeStyleToken = string | number | boolean | null;
-            export interface FacadeStyle {
-              readonly spacing?: Readonly<Record<string, FacadeStyleToken>>;
-              readonly color?: Readonly<Record<string, FacadeStyleToken>>;
-              readonly typography?: Readonly<Record<string, FacadeStyleToken>>;
-              readonly border?: Readonly<Record<string, FacadeStyleToken>>;
-              readonly radius?: Readonly<Record<string, FacadeStyleToken>>;
-              readonly layout?: Readonly<Record<string, FacadeStyleToken>>;
+          declare module '@1flowbase/native-components' {
+            import type { ComponentType, HTMLAttributes, ReactNode } from 'react';
+            export interface SurfaceProps extends HTMLAttributes<HTMLElement> {
+              readonly as?: string;
+              readonly children?: ReactNode;
             }
-            export interface FacadePermissions {
-              readonly data?: readonly ('query' | 'create' | 'update' | 'delete')[];
-              readonly actions?: readonly string[];
-              readonly events?: readonly string[];
-            }
-            export interface FacadeCommonProps {
-              readonly key?: string;
-              readonly style?: FacadeStyle;
-              readonly permissions?: FacadePermissions;
-            }
-            export type FacadeComponent<TProps extends FacadeCommonProps> = (props?: TProps) => unknown;
+            export const Surface: ComponentType<SurfaceProps>;
           }
         components:
-          - component_code: stack
-            export_name: Stack
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义纵向布局组件；支持受控 style、permissions 和嵌套 facade children。"
+          - component_code: surface
+            export_name: Surface
+            description: "Native React surface that forwards standard DOM className, style, event, aria and data props."
             props:
-              - name: children
-                type: unknown
-                description: "按纵向顺序渲染的 facade 子组件。"
-            limitations: ["不支持 DOM className、事件处理器或任意 HTML 属性。"]
-            examples:
-              - title: "纵向内容"
-                code: "<Stack><Title>标题</Title><Text>正文</Text></Stack>"
-            insert_snippet: "<Stack><Text>内容</Text></Stack>"
-          - component_code: inline
-            export_name: Inline
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义横向布局组件；支持受控 style、permissions 和嵌套 facade children。"
-            props:
-              - name: children
-                type: unknown
-                description: "按横向顺序渲染的 facade 子组件。"
-            limitations: ["不支持 DOM className、事件处理器或任意 HTML 属性。"]
-            examples:
-              - title: "横向内容"
-                code: "<Inline><Text>名称</Text><Badge status=\"success\">正常</Badge></Inline>"
-            insert_snippet: "<Inline><Text>内容</Text></Inline>"
-          - component_code: grid
-            export_name: Grid
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义等宽网格；支持 columns、受控 style、permissions 和嵌套 facade children。"
-            props:
-              - name: columns
-                type: number
-                description: "等宽列数量；省略时不设置 grid-template-columns。"
-              - name: children
-                type: unknown
-                description: "网格内的 facade 子组件。"
-            limitations: ["不支持响应式断点对象、render 回调或任意 CSS 字符串。"]
-            examples:
-              - title: "两列网格"
-                code: "<Grid columns={2}><Text>左</Text><Text>右</Text></Grid>"
-            insert_snippet: "<Grid columns={2}><Text>左</Text><Text>右</Text></Grid>"
-          - component_code: divider
-            export_name: Divider
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Divider, version: "5.x" }
-            description: "Ant Design Divider 的受控 facade；仅支持通用 style 和 permissions。"
-            limitations: ["不支持 orientation、variant、children 等未声明的 Ant Design DividerProps。"]
-            examples:
-              - title: "内容分隔"
-                code: "<Divider />"
-            insert_snippet: "<Divider />"
-          - component_code: text
-            export_name: Text
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Typography.Text, version: "5.x" }
-            description: "Ant Design Typography.Text 的受控 facade；支持标量 children 与受控 style。"
-            props:
-              - name: children
-                type: FacadeScalar
-                description: "显示的字符串、数字或布尔值。"
-            limitations: ["不支持 editable、copyable、ellipsis 对象或嵌套任意 ReactNode。"]
-            examples:
-              - title: "正文文本"
-                code: "<Text>订单已创建</Text>"
-            insert_snippet: "<Text>文本</Text>"
-          - component_code: title
-            export_name: Title
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Typography.Title, version: "5.x" }
-            description: "Ant Design Typography.Title 的受控 facade；支持 level 1-5、标量 children 与受控 style。"
-            props:
-              - name: level
-                type: "1 | 2 | 3 | 4 | 5"
-                description: "标题级别；缺省为 4。"
-              - name: children
-                type: FacadeScalar
-                description: "标题内容。"
-            limitations: ["不支持 editable、copyable、ellipsis 对象或任意 Typography.TitleProps。"]
-            examples:
-              - title: "二级标题"
-                code: "<Title level={2}>订单详情</Title>"
-            insert_snippet: "<Title level={3}>标题</Title>"
-          - component_code: caption
-            export_name: Caption
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Typography.Paragraph, version: "5.x" }
-            description: "Ant Design Typography.Paragraph 的次要文本 facade；支持标量 children 与受控 style。"
-            props:
-              - name: children
-                type: FacadeScalar
-                description: "次要说明文本。"
-            limitations: ["固定使用次要文本样式，不支持 Paragraph 的 editable、copyable 或 ellipsis API。"]
-            examples:
-              - title: "辅助说明"
-                code: "<Caption>数据每五分钟更新</Caption>"
-            insert_snippet: "<Caption>说明</Caption>"
-          - component_code: badge
-            export_name: Badge
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Badge, version: "5.x" }
-            description: "Ant Design Badge 状态点 facade；支持 status 与标量 children。"
-            props:
-              - name: status
-                type: "'success' | 'processing' | 'default' | 'error' | 'warning'"
-                description: "状态点语义。"
-              - name: children
-                type: FacadeScalar
-                description: "状态文本。"
-            limitations: ["不支持 count、dot、offset、color 或任意 BadgeProps。"]
-            examples:
-              - title: "成功状态"
-                code: "<Badge status=\"success\">正常</Badge>"
-            insert_snippet: "<Badge status=\"default\">状态</Badge>"
-          - component_code: table
-            export_name: Table
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义只读表格；支持 columns、dataSource/data 和 rowKey，单元格仅渲染标量值。"
-            props:
-              - name: columns
-                type: "readonly Array<{ key?: string; title?: string; dataIndex: string }>"
-                description: "列定义；dataIndex 对应行字段。"
-              - name: dataSource
-                type: "readonly Readonly<Record<string, FacadeScalar>>[]"
-                description: "表格行数据。"
-              - name: data
-                type: "readonly Readonly<Record<string, FacadeScalar>>[]"
-                description: "dataSource 的等价输入。"
-              - name: rowKey
+              - name: as
                 type: string
-                description: "行唯一键字段；缺省为 key。"
-            limitations: ["不是 Ant Design Table；不支持 render、pagination、selection、sorter 或 onChange。"]
-            examples:
-              - title: "基础表格"
-                code: "<Table columns={[{ dataIndex: 'name', title: '名称' }]} dataSource={[{ key: '1', name: '示例' }]} />"
-            insert_snippet: "<Table columns={[{ dataIndex: 'name', title: '名称' }]} dataSource={[]} />"
-          - component_code: descriptions
-            export_name: Descriptions
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义键值说明列表；支持 items，每项包含 key、label 和标量 children。"
-            props:
-              - name: items
-                type: "readonly Array<{ key?: string; label?: string; children?: FacadeScalar }>"
-                description: "说明项列表。"
-            limitations: ["不是 Ant Design Descriptions；不支持 columns、layout、bordered 或嵌套 ReactNode。"]
-            examples:
-              - title: "详情字段"
-                code: "<Descriptions items={[{ key: 'status', label: '状态', children: '正常' }]} />"
-            insert_snippet: "<Descriptions items={[{ key: 'field', label: '字段', children: '值' }]} />"
-          - component_code: empty
-            export_name: Empty
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Empty, version: "5.x" }
-            description: "Ant Design Empty 的受控 facade；支持 description 与受控 style。"
-            props:
-              - name: description
+                description: "HTML element name; defaults to section."
+              - name: className
                 type: string
-                description: "空状态文案；缺省为 No data。"
-            limitations: ["不支持 image、imageStyle、children 或任意 EmptyProps。"]
-            examples:
-              - title: "无记录"
-                code: "<Empty description=\"暂无记录\" />"
-            insert_snippet: "<Empty description=\"暂无数据\" />"
-          - component_code: alert
-            export_name: Alert
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Alert, version: "5.x" }
-            description: "Ant Design Alert 的受控 facade；支持 type、message、description 和 showIcon。"
-            props:
-              - name: type
-                type: "'success' | 'info' | 'warning' | 'error'"
-                description: "提示类型；缺省为 info。"
-              - name: message
-                type: FacadeScalar
-                description: "提示标题。"
-              - name: description
-                type: FacadeScalar
-                description: "提示详情。"
-              - name: showIcon
-                type: boolean
-                description: "是否显示状态图标。"
-            limitations: ["不支持 action、closable、onClose、banner 或任意 AlertProps。"]
-            examples:
-              - title: "警告提示"
-                code: "<Alert type=\"warning\" message=\"请检查输入\" showIcon />"
-            insert_snippet: "<Alert type=\"info\" message=\"提示\" showIcon />"
-          - component_code: form
-            export_name: Form
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义表单容器；收集 FormItem 内受控字段值并随 Button action 一起提交。"
-            props:
+                description: "Standard DOM class name scoped by the block ShadowRoot."
+              - name: style
+                type: "import('react').CSSProperties"
+                description: "Standard React inline style object."
               - name: children
-                type: unknown
-                description: "FormItem、输入组件和操作按钮。"
-            limitations: ["不是 Ant Design Form；不支持 form instance、rules、onFinish 或动态列表。"]
+                type: "import('react').ReactNode"
+                description: "Native React children."
+            limitations: ["The host controls the React singleton and ShadowRoot lifecycle."]
             examples:
-              - title: "表单布局"
-                code: "<Form><FormItem name=\"name\" label=\"名称\"><Input /></FormItem><Button actionId=\"save\">保存</Button></Form>"
-            insert_snippet: "<Form><FormItem name=\"field\" label=\"字段\"><Input /></FormItem></Form>"
-          - component_code: form_item
-            export_name: FormItem
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义表单字段容器；支持 id、name、label 和单个受控输入 child。"
-            props:
-              - name: id
-                type: string
-                description: "输入元素 id；name 缺失时也作为字段名。"
-              - name: name
-                type: string
-                description: "表单值字段名。"
-              - name: label
-                type: string
-                description: "字段标签。"
-              - name: children
-                type: unknown
-                description: "Input、Textarea、Select、Checkbox、Switch、DatePicker 或 NumberInput。"
-            limitations: ["不支持校验 rules、help、dependencies、valuePropName 或任意 Ant Design Form.Item API。"]
-            examples:
-              - title: "文本字段"
-                code: "<FormItem name=\"name\" label=\"名称\"><Input placeholder=\"请输入\" /></FormItem>"
-            insert_snippet: "<FormItem name=\"field\" label=\"字段\"><Input /></FormItem>"
-          - component_code: input
-            export_name: Input
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Input, version: "5.x" }
-            description: "Ant Design Input 的受控 facade；支持 id、placeholder、type、value、disabled 和 readOnly。"
-            props:
-              - { name: id, type: string, description: "输入元素 id。" }
-              - { name: placeholder, type: string, description: "占位文案。" }
-              - { name: type, type: string, description: "原生 input type。" }
-              - { name: value, type: "string | number", description: "初始或受控字段值。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - { name: readOnly, type: boolean, description: "是否只读。" }
-            limitations: ["不支持 onChange、allowClear、prefix、suffix、addon 或任意未声明 InputProps。"]
-            examples:
-              - title: "文本输入"
-                code: "<Input id=\"name\" placeholder=\"请输入名称\" />"
-            insert_snippet: "<Input placeholder=\"请输入\" />"
-          - component_code: textarea
-            export_name: Textarea
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Input.TextArea, version: "5.x" }
-            description: "Ant Design Input.TextArea 的受控 facade；支持 id、placeholder、value、disabled 和 readOnly。"
-            props:
-              - { name: id, type: string, description: "输入元素 id。" }
-              - { name: placeholder, type: string, description: "占位文案。" }
-              - { name: value, type: "string | number", description: "初始或受控字段值。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - { name: readOnly, type: boolean, description: "是否只读。" }
-            limitations: ["不支持 rows、autoSize、showCount、onChange 或任意未声明 TextAreaProps。"]
-            examples:
-              - title: "多行输入"
-                code: "<Textarea id=\"remark\" placeholder=\"请输入备注\" />"
-            insert_snippet: "<Textarea placeholder=\"请输入\" />"
-          - component_code: select
-            export_name: Select
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Select, version: "5.x" }
-            description: "Ant Design Select 的受控 facade；支持 id、placeholder、value、disabled 和静态 options。"
-            props:
-              - { name: id, type: string, description: "选择器 id。" }
-              - { name: placeholder, type: string, description: "占位文案。" }
-              - { name: value, type: "string | number", description: "初始或受控字段值。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - name: options
-                type: "readonly Array<{ label: string; value: string | number }>"
-                description: "静态选项。"
-            limitations: ["不支持 mode、filterOption、optionRender、onChange 或任意未声明 SelectProps。"]
-            examples:
-              - title: "状态选择"
-                code: "<Select options={[{ label: '启用', value: 'enabled' }]} />"
-            insert_snippet: "<Select options={[{ label: '选项', value: 'value' }]} />"
-          - component_code: checkbox
-            export_name: Checkbox
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Checkbox, version: "5.x" }
-            description: "Ant Design Checkbox 的受控 facade；支持 id、checked、disabled 和标量 children。"
-            props:
-              - { name: id, type: string, description: "复选框 id。" }
-              - { name: checked, type: boolean, description: "初始或受控选中值。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - { name: children, type: FacadeScalar, description: "复选框文本。" }
-            limitations: ["不支持 indeterminate、onChange、group 或任意未声明 CheckboxProps。"]
-            examples:
-              - title: "确认选项"
-                code: "<Checkbox id=\"confirmed\">已确认</Checkbox>"
-            insert_snippet: "<Checkbox>选项</Checkbox>"
-          - component_code: switch
-            export_name: Switch
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Switch, version: "5.x" }
-            description: "Ant Design Switch 的受控 facade；支持 id、checked 和 disabled。"
-            props:
-              - { name: id, type: string, description: "开关 id。" }
-              - { name: checked, type: boolean, description: "初始或受控开关值。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-            limitations: ["不支持 checkedChildren、unCheckedChildren、loading、onChange 或任意未声明 SwitchProps。"]
-            examples:
-              - title: "启用开关"
-                code: "<Switch id=\"enabled\" checked />"
-            insert_snippet: "<Switch />"
-          - component_code: date_picker
-            export_name: DatePicker
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: DatePicker, version: "5.x" }
-            description: "Ant Design DatePicker 的受控 facade；支持 id、placeholder 和 disabled，字段值写入日期字符串。"
-            props:
-              - { name: id, type: string, description: "日期字段 id。" }
-              - { name: placeholder, type: string, description: "占位文案。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-            limitations: ["不支持 value/defaultValue、picker、format、disabledDate、onChange 或任意未声明 DatePickerProps。"]
-            examples:
-              - title: "选择日期"
-                code: "<DatePicker id=\"dueDate\" placeholder=\"请选择日期\" />"
-            insert_snippet: "<DatePicker placeholder=\"请选择日期\" />"
-          - component_code: number_input
-            export_name: NumberInput
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: InputNumber, version: "5.x" }
-            description: "Ant Design InputNumber 的受控 facade；支持 id、placeholder、value、min、max、disabled 和 readOnly。"
-            props:
-              - { name: id, type: string, description: "数字字段 id。" }
-              - { name: placeholder, type: string, description: "占位文案。" }
-              - { name: value, type: number, description: "初始或受控数字值。" }
-              - { name: min, type: number, description: "最小值。" }
-              - { name: max, type: number, description: "最大值。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - { name: readOnly, type: boolean, description: "是否只读。" }
-            limitations: ["不支持 formatter、parser、precision、step、onChange 或任意未声明 InputNumberProps。"]
-            examples:
-              - title: "数量输入"
-                code: "<NumberInput id=\"quantity\" min={0} max={100} />"
-            insert_snippet: "<NumberInput min={0} />"
-          - component_code: button
-            export_name: Button
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Button, version: "5.x" }
-            description: "Ant Design Button 的受控 facade；支持 type、danger、disabled、actionId、actionPayload 和标量 children。"
-            props:
-              - { name: type, type: "'primary' | 'default' | 'dashed' | 'link' | 'text'", description: "按钮视觉类型；缺省为 default。" }
-              - { name: danger, type: boolean, description: "是否使用危险操作样式。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - { name: actionId, type: string, description: "点击后发送的区块 action 标识。" }
-              - { name: actionPayload, type: unknown, description: "随 action 发送的 JSON 安全载荷。" }
-              - { name: children, type: FacadeScalar, description: "按钮文本。" }
-            limitations: ["不支持 React onClick、href、loading、htmlType、icon 或任意未声明 ButtonProps。"]
-            examples:
-              - title: "触发保存操作"
-                code: "<Button type=\"primary\" actionId=\"save\">保存</Button>"
-            insert_snippet: "<Button type=\"primary\" actionId=\"save\">保存</Button>"
-          - component_code: icon_button
-            export_name: IconButton
-            implementation:
-              kind: antd_facade
-              upstream: { package: antd, component: Button, version: "5.x" }
-            description: "Ant Design Button 的受控图标按钮 facade；使用 icon/label 文本标识并通过 actionId 触发区块 action。"
-            props:
-              - { name: type, type: "'primary' | 'default' | 'dashed' | 'link' | 'text'", description: "按钮视觉类型；缺省为 default。" }
-              - { name: danger, type: boolean, description: "是否使用危险操作样式。" }
-              - { name: disabled, type: boolean, description: "是否禁用。" }
-              - { name: actionId, type: string, description: "点击后发送的区块 action 标识。" }
-              - { name: actionPayload, type: unknown, description: "随 action 发送的 JSON 安全载荷。" }
-              - { name: icon, type: string, description: "当前显示的文本图标标识。" }
-              - { name: label, type: string, description: "无 icon 时的可访问标签。" }
-            limitations: ["当前 icon 只接受字符串，不支持 React icon node、onClick、loading 或任意未声明 ButtonProps。"]
-            examples:
-              - title: "刷新操作"
-                code: "<IconButton icon=\"↻\" label=\"刷新\" actionId=\"refresh\" />"
-            insert_snippet: "<IconButton icon=\"↻\" label=\"刷新\" actionId=\"refresh\" />"
-          - component_code: modal
-            export_name: Modal
-            implementation:
-              kind: custom
-            description: "1flowbase 自定义内联对话区块；支持 open、title 和嵌套 facade children。"
-            props:
-              - { name: open, type: boolean, description: "是否渲染对话内容。" }
-              - { name: title, type: string, description: "对话标题；缺省为 Dialog。" }
-              - { name: children, type: unknown, description: "对话内的 facade 子组件。" }
-            limitations: ["不是 Ant Design Modal；不支持 portal、mask、footer、onOk、onCancel 或关闭动画。"]
-            examples:
-              - title: "确认内容"
-                code: "<Modal open title=\"确认\"><Text>请确认操作</Text></Modal>"
-            insert_snippet: "<Modal open title=\"标题\"><Text>内容</Text></Modal>"
+              - title: "Interactive surface"
+                code: "<Surface className=\"card\" onClick={() => setOpen(true)}>Open</Surface>"
+            insert_snippet: "<Surface className=\"card\">Content</Surface>"
     context_contract:
-      primitives:
-        - text
-        - image
-        - link
-        - button
-        - rich_text
-        - data_record
+      primitives: [text, image, link, button, rich_text, data_record]
       input_schema:
         type: object
         additionalProperties: true
@@ -587,8 +129,4 @@ block_contributions:
       network: none
       storage: none
       secrets: none
-    ui_capabilities:
-      - responsive
-      - configurable
-      - theming
-      - data_binding
+    ui_capabilities: [responsive, configurable, theming, data_binding]
