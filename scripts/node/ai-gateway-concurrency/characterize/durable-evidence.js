@@ -15,7 +15,9 @@ function unwrapData(payload) {
 function runUuidFromProtocolId(transport, protocolId) {
   const prefix = transport === TRANSPORT.RESPONSES_SSE
     ? 'resp_'
-    : transport === TRANSPORT.ANTHROPIC_SSE ? 'msg_' : null;
+    : transport === TRANSPORT.ANTHROPIC_SSE
+      ? 'msg_'
+      : transport === TRANSPORT.CHAT_COMPLETIONS_SSE ? 'chatcmpl-' : null;
   if (!prefix || typeof protocolId !== 'string' || !protocolId.startsWith(prefix)) return null;
   const runId = protocolId.slice(prefix.length);
   return UUID_PATTERN.test(runId) ? runId : null;
@@ -165,7 +167,11 @@ async function collectDurableConvergence({
   const startedAt = new Date().toISOString();
   const started = performance.now();
   const requests = requestEvents
-    .filter((event) => [TRANSPORT.RESPONSES_SSE, TRANSPORT.ANTHROPIC_SSE].includes(event.transport))
+    .filter((event) => [
+      TRANSPORT.RESPONSES_SSE,
+      TRANSPORT.CHAT_COMPLETIONS_SSE,
+      TRANSPORT.ANTHROPIC_SSE,
+    ].includes(event.transport))
     .map((event) => ({
       clientNonce: event.clientNonce,
       transport: event.transport,

@@ -43,6 +43,7 @@ test('AC durable controlled negatives fail direct query, duplicate UUID, running
   assert.match(evaluateSnapshot([request()], snapshot({ runtimeActiveTotals: { [TRANSPORT.RESPONSES_SSE]: 1 } })).join('\n'), /active\.total was 1/u);
   assert.match(evaluateSnapshot([request()], snapshot({ pluginStreams: { streams: [{ invocation_id: 'secret-free-id' }] } })).join('\n'), /contained 1 active stream/u);
   assert.equal(runUuidFromProtocolId(TRANSPORT.ANTHROPIC_SSE, `msg_${RUN_ID}`), RUN_ID);
+  assert.equal(runUuidFromProtocolId(TRANSPORT.CHAT_COMPLETIONS_SSE, `chatcmpl-${RUN_ID}`), RUN_ID);
   assert.equal(runUuidFromProtocolId(TRANSPORT.RESPONSES_SSE, `msg_${RUN_ID}`), null);
 });
 

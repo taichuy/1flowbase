@@ -84,9 +84,7 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
         },
       };
     }
-    if (inputTypes.includes('mcp_approval_response')) {
-      data = { ...data, fixture: 'mcp_approval_response' };
-    }
+    if (inputTypes.includes('mcp_approval_response')) data = { ...data, fixture: 'approval-accepted' };
     return new Response(`data: ${JSON.stringify(data)}\n\n`, {
       status: 200, headers: { 'content-type': 'text/event-stream' },
     });

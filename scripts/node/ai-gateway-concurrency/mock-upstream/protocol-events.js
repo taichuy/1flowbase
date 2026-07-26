@@ -404,7 +404,7 @@ function responsesWireEvents(nonce, vector) {
       'tool-search-additional-tools': ['tool_search_call'],
       'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
       'hosted-tools': ['file_search_call', 'program', 'shell_call'],
-      'mcp-approval-continuation': ['mcp_approval_response'],
+      'mcp-approval-continuation': [],
     }[vector] ?? ['future_gateway_drift']).map((type, index) => ({
       id: `wire_${index}_${nonce}`, type, status: 'completed',
       x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,

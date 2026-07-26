@@ -144,7 +144,7 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
   for (const expected of [
     'tool_search_call', 'tool_search_output', 'additional_tools', 'file_search_call',
     'program', 'shell_call', 'mcp_list_tools', 'mcp_call',
-    'mcp_approval_request', 'mcp_approval_response',
+    'mcp_approval_request',
   ]) {
     if (!capturedWire.includes(expected)) throw new Error(`WireAudit output omitted ${expected}`);
   }
