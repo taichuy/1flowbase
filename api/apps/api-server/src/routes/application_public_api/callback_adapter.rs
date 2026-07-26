@@ -48,7 +48,7 @@ pub(crate) fn correlate_openai_chat_callback(
         .filter(|message| message.get("role").and_then(Value::as_str) == Some("assistant"))
         .and_then(|message| message.get("tool_calls"))
         .and_then(Value::as_array)
-        .map(openai_chat_assistant_tool_ids)
+        .map(|tool_calls| openai_chat_assistant_tool_ids(tool_calls))
         .filter(|ids| !ids.is_empty())
         .ok_or_else(|| {
             CallbackCorrelationError::new(

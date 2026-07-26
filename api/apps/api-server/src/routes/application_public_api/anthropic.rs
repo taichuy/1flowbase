@@ -143,7 +143,6 @@ pub struct AnthropicCountTokensResponse {
     pub input_tokens: u64,
 }
 
-#[derive(Debug)]
 #[utoipa::path(
     post,
     path = "/v1/messages",
