@@ -652,12 +652,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     );
     if (signalRevisionScheduledRef.current) return;
     signalRevisionScheduledRef.current = true;
-    queueMicrotask(() => {
+    setTimeout(() => {
       signalRevisionScheduledRef.current = false;
       const pendingRevision = pendingSignalRevisionRef.current;
       pendingSignalRevisionRef.current = null;
       if (pendingRevision !== null) setSignalRevision(pendingRevision);
-    });
+    }, 0);
   }, []);
   const { width: measuredWidth, containerRef } = useContainerWidth({
     initialWidth: 1280
