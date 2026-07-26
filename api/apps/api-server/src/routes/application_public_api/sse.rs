@@ -893,7 +893,8 @@ mod tests {
 
     #[test]
     fn native_succeeded_terminal_does_not_reconstruct_answer_deltas() {
-        let run = native_run();
+        let mut run = native_run();
+        run.status = NativeRunStatus::Succeeded;
         let terminal_event = RuntimeEventEnvelope::new(
             run.id,
             1,

@@ -61,6 +61,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
         ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(stream_events, Vec::new()),
     );
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
     let state = Arc::new(ApiState {
         test_database: base_state.test_database.clone(),
         store: base_state.store.clone(),

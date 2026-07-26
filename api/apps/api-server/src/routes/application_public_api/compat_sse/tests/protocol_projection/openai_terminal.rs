@@ -301,7 +301,7 @@ async fn d2_ac_008_openai_responses_failed_terminal_with_partial_output_remains_
 }
 
 #[tokio::test]
-async fn d2_ac_008_openai_chat_incomplete_terminal_uses_length_and_done() {
+async fn d2_ac_008_openai_chat_incomplete_terminal_does_not_reconstruct_text() {
     let mut run = native_run();
     run.status = NativeRunStatus::Incomplete;
     run.answer = Some("output limit partial".to_string());
@@ -325,14 +325,14 @@ async fn d2_ac_008_openai_chat_incomplete_terminal_uses_length_and_done() {
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("output limit partial"), "{body}");
+    assert!(!body.contains("output limit partial"), "{body}");
     assert!(body.contains("\"finish_reason\":\"length\""), "{body}");
     assert!(body.contains("[DONE]"), "{body}");
     assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
 }
 
 #[tokio::test]
-async fn d2_ac_008_openai_responses_incomplete_terminal_uses_response_incomplete() {
+async fn d2_ac_008_openai_responses_incomplete_terminal_does_not_reconstruct_text() {
     let mut run = native_run();
     run.status = NativeRunStatus::Incomplete;
     run.answer = Some("output limit partial".to_string());
@@ -355,7 +355,7 @@ async fn d2_ac_008_openai_responses_incomplete_terminal_uses_response_incomplete
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("output limit partial"), "{body}");
+    assert!(!body.contains("output limit partial"), "{body}");
     assert!(body.contains("event: response.incomplete"), "{body}");
     assert!(body.contains("\"status\":\"incomplete\""), "{body}");
     assert!(!body.contains("event: response.completed"), "{body}");

@@ -465,6 +465,21 @@ async fn d1_ac_007_native_sse_initial_and_durable_replay_keep_incomplete_distinc
     let mut run = native_run();
     run.status = NativeRunStatus::Incomplete;
     run.answer = Some("partial output at the limit".to_string());
+    seed_flow_run_for_compat_sse_test(&base_state, &run).await;
+    base_state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Incomplete,
+            output_payload: json!({
+                "answer": "partial output at the limit",
+                "__canonical_answer_presentation": true
+            }),
+            error_payload: None,
+            finished_at: Some(time::OffsetDateTime::now_utc()),
+        })
+        .await
+        .expect("seed the durable incomplete winner before terminal projection");
 
     let initial_stream = native_sse_body_from_replay(
         &base_state,
@@ -1021,7 +1036,7 @@ async fn d2_ac_008_anthropic_failed_terminal_with_partial_output_remains_error()
 }
 
 #[tokio::test]
-async fn d2_ac_008_anthropic_incomplete_terminal_uses_max_tokens_and_message_stop() {
+async fn d2_ac_008_anthropic_incomplete_terminal_does_not_reconstruct_text() {
     let mut run = native_run();
     run.status = NativeRunStatus::Incomplete;
     run.answer = Some("output limit partial".to_string());
@@ -1044,7 +1059,7 @@ async fn d2_ac_008_anthropic_incomplete_terminal_uses_max_tokens_and_message_sto
         .unwrap();
     let body = String::from_utf8(body.to_vec()).unwrap();
 
-    assert!(body.contains("output limit partial"), "{body}");
+    assert!(!body.contains("output limit partial"), "{body}");
     assert!(body.contains("\"stop_reason\":\"max_tokens\""), "{body}");
     assert!(body.contains("event: message_stop"), "{body}");
     assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
