@@ -15,6 +15,7 @@ use control_plane::application_public_api::{
     run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness,
 };
+use control_plane::ports::{OrchestrationRuntimeRepository, UpdateFlowRunInput};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -828,7 +829,6 @@ async fn native_run_read_rejects_run_created_by_different_application_api_key() 
         })
         .await
         .unwrap();
-
     let error = service
         .get_native_run(GetNativeRunCommand {
             bearer_token: second_token,
@@ -947,7 +947,8 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         other_user_id(),
     )
     .await;
-    let service = ApplicationNativeRunService::new(harness.repository());
+    let repository = harness.repository();
+    let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
         .create_native_run(CreateNativeRunCommand {
             bearer_token: first_token.clone(),
@@ -955,6 +956,26 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         })
         .await
         .unwrap();
+    let durable_run = repository
+        .get_published_flow_run(run.id)
+        .await
+        .unwrap()
+        .expect("created run should be durable");
+    OrchestrationRuntimeRepository::update_flow_run(
+        &repository,
+        &UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: durable_run.status,
+            output_payload: json!({
+                "answer": "canonical partial before cancellation",
+                "__canonical_answer_presentation": true
+            }),
+            error_payload: None,
+            finished_at: None,
+        },
+    )
+    .await
+    .expect("canonical partial should be durable before cancellation");
 
     let forbidden = service
         .cancel_native_run(CancelNativeRunCommand {
@@ -974,9 +995,9 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         .unwrap();
 
     assert_eq!(cancelled.status, NativeRunStatus::Cancelled);
-    assert!(
-        cancelled.answer.is_none(),
-        "cancelled runs never expose an Answer"
+    assert_eq!(
+        cancelled.answer.as_deref(),
+        Some("canonical partial before cancellation")
     );
     let error = cancelled
         .error

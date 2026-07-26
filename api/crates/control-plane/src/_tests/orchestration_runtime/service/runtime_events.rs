@@ -767,6 +767,46 @@ async fn ac_005_success_materializes_answer_after_durable_terminal_without_durab
 }
 
 #[tokio::test]
+async fn success_persistence_failure_never_projects_a_success_terminal() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("Terminal persistence barrier")
+        .await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "hello" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .expect("run should start");
+    service.fail_next_runtime_event_append().await;
+
+    let _ = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await;
+
+    assert!(stream
+        .events()
+        .iter()
+        .all(|event| event.event_type != "flow_finished"));
+    assert!(service
+        .list_runtime_events(started.flow_run.id, 0)
+        .await
+        .iter()
+        .all(|event| event.event_type != "flow_finished"));
+}
+
+#[tokio::test]
 async fn live_provider_reasoning_delta_is_appended_to_runtime_event_stream() {
     let service = OrchestrationRuntimeService::for_tests_with_provider_events(vec![
         plugin_framework::provider_contract::ProviderStreamEvent::ReasoningDelta {

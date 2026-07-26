@@ -40,6 +40,7 @@ use crate::{
 };
 
 mod answer_presentation;
+pub(crate) use answer_presentation::is_canonical_answer_presentation_output;
 pub mod canonical_stream;
 pub(crate) mod compile_context;
 mod data_model_runtime;

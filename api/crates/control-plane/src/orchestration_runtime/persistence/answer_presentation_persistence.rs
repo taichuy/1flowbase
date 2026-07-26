@@ -171,12 +171,7 @@ pub(super) fn canonical_terminal_output_payload(
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
 ) -> Result<Value> {
     let mut output_payload = final_flow_output_payload(outcome);
-    if outcome.operation_terminal.is_some()
-        || matches!(
-            outcome.stop_reason,
-            orchestration_runtime::execution_state::ExecutionStopReason::Failed(_)
-        )
-    {
+    if outcome.operation_terminal.is_some() {
         return Ok(output_payload);
     }
     let events = answer_presentation_terminal_events(
@@ -193,6 +188,7 @@ pub(super) fn canonical_terminal_output_payload(
         .filter_map(|event| event.payload.get("text").and_then(Value::as_str))
         .collect::<String>();
     if !answer.is_empty() {
+        answer_presentation::mark_canonical_answer_presentation_output(&mut output_payload);
         if let Some(output) = output_payload.as_object_mut() {
             output.insert("answer".to_string(), Value::String(answer));
         }

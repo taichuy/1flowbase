@@ -77,7 +77,10 @@ async fn running_run_with_closed_stream() -> (NativeRunResult, Arc<ApiState>) {
         .update_flow_run(&UpdateFlowRunInput {
             flow_run_id: run.id,
             status: domain::FlowRunStatus::Running,
-            output_payload: json!({ "answer": "partial output" }),
+            output_payload: json!({
+                "answer": "partial output",
+                "__canonical_answer_presentation": true
+            }),
             error_payload: None,
             finished_at: None,
         })
@@ -254,6 +257,7 @@ async fn d2_ac_008_native_eof_fallback_finalizes_running_winner_before_projectio
         "EOF recovery must write one durable canonical failure"
     );
     assert!(body.contains("event: run.failed"), "{body}");
+    assert!(body.contains("partial output"), "{body}");
     assert!(!body.contains("event: run.completed"), "{body}");
 }
 
@@ -309,6 +313,18 @@ async fn d2_ac_008_compatible_eof_fallback_projects_recovered_failed_winner() {
             .any(|(status, event_type)| status == "Failed" && event_type == "flow_failed"),
         "compatible mapper must receive the reloaded durable failed winner"
     );
+    let seen = seen
+        .lock()
+        .expect("mapper observation lock should be available");
+    let partial_position = seen
+        .iter()
+        .position(|(_, event_type)| event_type == "text_delta")
+        .expect("canonical partial should be recovered before failure");
+    let terminal_position = seen
+        .iter()
+        .position(|(_, event_type)| event_type == "flow_failed")
+        .expect("failed terminal should be projected");
+    assert!(partial_position < terminal_position);
 }
 
 #[test]

@@ -23,10 +23,10 @@ pub fn native_result_from_flow_run(
         status,
         node_input_payload: flow_run.input_payload.clone(),
         metadata,
-        answer: native_status_exposes_answer(status)
+        answer: native_status_exposes_answer(status, &flow_run.output_payload)
             .then(|| extract_answer(&flow_run.output_payload))
             .flatten(),
-        answer_segments: native_status_exposes_answer(status)
+        answer_segments: native_status_exposes_answer(status, &flow_run.output_payload)
             .then(|| extract_answer_segments(&flow_run.output_payload))
             .flatten(),
         required_action: None,
@@ -128,12 +128,13 @@ pub fn native_result_from_run_stream_state(
 ) -> NativeRunResult {
     let mut result = initial_run.clone();
     result.status = native_status(stream_state.status);
-    result.answer = native_status_exposes_answer(result.status)
+    result.answer = native_status_exposes_answer(result.status, &stream_state.output_payload)
         .then(|| extract_answer(&stream_state.output_payload))
         .flatten();
-    result.answer_segments = native_status_exposes_answer(result.status)
-        .then(|| extract_answer_segments(&stream_state.output_payload))
-        .flatten();
+    result.answer_segments =
+        native_status_exposes_answer(result.status, &stream_state.output_payload)
+            .then(|| extract_answer_segments(&stream_state.output_payload))
+            .flatten();
     result.required_action = None;
     result.tool_calls = native_status_exposes_tool_calls(result.status)
         .then(|| extract_tool_calls(&stream_state.output_payload))
@@ -442,11 +443,16 @@ fn native_status(status: domain::FlowRunStatus) -> NativeRunStatus {
     }
 }
 
-fn native_status_exposes_answer(status: NativeRunStatus) -> bool {
+fn native_status_exposes_answer(status: NativeRunStatus, output_payload: &Value) -> bool {
     matches!(
         status,
         NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
-    )
+    ) || (matches!(
+        status,
+        NativeRunStatus::Failed | NativeRunStatus::Cancelled | NativeRunStatus::Waiting
+    ) && crate::orchestration_runtime::is_canonical_answer_presentation_output(
+        output_payload,
+    ))
 }
 
 fn native_status_exposes_tool_calls(status: NativeRunStatus) -> bool {

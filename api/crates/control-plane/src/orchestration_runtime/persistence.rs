@@ -43,8 +43,7 @@ use super::{
 };
 use answer_presentation_persistence::{
     answer_node_id, answer_presentation_terminal_events, canonical_terminal_output_payload,
-    final_flow_output_payload, materialize_ready_answer_node_run,
-    waiting_answer_presentation_events,
+    materialize_ready_answer_node_run, waiting_answer_presentation_events,
 };
 pub(in crate::orchestration_runtime) use checkpoint_locator::{
     checkpoint_node_id, checkpoint_snapshot_from_record, CheckpointLocatorPayload,
@@ -450,7 +449,7 @@ where
                 domain::FlowRunStatus::Failed,
                 "persist_flow_failed",
             )?;
-            let output_payload = final_flow_output_payload(outcome);
+            let output_payload = canonical_terminal_output_payload(compiled_plan, outcome)?;
             let error_payload = failure.error_payload.clone();
             let terminal_event =
                 debug_stream_events::flow_failed(flow_run.id, error_payload.clone());

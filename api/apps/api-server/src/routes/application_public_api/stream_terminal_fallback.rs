@@ -33,22 +33,28 @@ pub(crate) struct TerminalAnswerDelta {
     pub text: String,
 }
 
-pub(crate) async fn load_latest_native_run_for_terminal_fallback(
+/// A public terminal may only be projected from a durable run snapshot. A load
+/// failure is therefore a barrier failure, not permission to reuse the stale
+/// pre-execution snapshot.
+pub(crate) async fn load_durable_native_run_for_terminal_projection(
     state: &ApiState,
     initial_run: &NativeRunResult,
-) -> NativeRunResult {
-    match load_latest_native_run_strict(state, initial_run).await {
-        Ok(run) => run,
-        Err(error) => {
-            warn!(
-                flow_run_id = %initial_run.id,
-                application_id = %initial_run.application_id,
-                error = %error,
-                "failed to load durable run state for stream terminal fallback"
-            );
-            initial_run.clone()
-        }
-    }
+) -> anyhow::Result<NativeRunResult> {
+    load_latest_native_run_strict(state, initial_run).await
+}
+
+pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_type: &str) -> bool {
+    matches!(
+        (run.status, event_type),
+        (NativeRunStatus::Succeeded, "flow_finished")
+            | (NativeRunStatus::Incomplete, "flow_incomplete")
+            | (NativeRunStatus::Failed, "flow_failed")
+            | (NativeRunStatus::Cancelled, "flow_cancelled")
+            | (
+                NativeRunStatus::Waiting,
+                "waiting_human" | "waiting_callback"
+            )
+    )
 }
 
 /// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
@@ -138,12 +144,42 @@ pub(crate) fn terminal_runtime_event_from_native_run(
             debug_stream_events::flow_failed(run.id, terminal_error_payload(run))
         }
         NativeRunStatus::Cancelled => debug_stream_events::flow_cancelled(run.id),
-        NativeRunStatus::Waiting => waiting_callback_payload(run)?,
+        NativeRunStatus::Waiting => waiting_terminal_payload(run),
         NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running => {
             return None;
         }
     };
     Some(RuntimeEventEnvelope::new(run.id, 0, payload))
+}
+
+pub(crate) fn terminal_answer_runtime_events_from_native_run(
+    run: &NativeRunResult,
+) -> Vec<RuntimeEventEnvelope> {
+    terminal_answer_deltas_from_payload(&terminal_output_payload(run))
+        .into_iter()
+        .enumerate()
+        .map(|(index, delta)| {
+            let payload = match delta.kind {
+                TerminalAnswerDeltaKind::Reasoning => debug_stream_events::answer_reasoning_delta(
+                    "assistant",
+                    delta.text,
+                    index,
+                    None,
+                    None,
+                    None,
+                ),
+                TerminalAnswerDeltaKind::Text => debug_stream_events::answer_text_delta(
+                    "assistant",
+                    delta.text,
+                    index,
+                    None,
+                    None,
+                    None,
+                ),
+            };
+            RuntimeEventEnvelope::new(run.id, index as i64 + 1, payload)
+        })
+        .collect()
 }
 
 fn terminal_output_payload(run: &NativeRunResult) -> Value {
@@ -170,19 +206,47 @@ fn terminal_error_payload(run: &NativeRunResult) -> Value {
         .unwrap_or_else(|| json!({ "message": "published run failed" }))
 }
 
-fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload> {
-    let action = run.required_action.as_ref()?;
-    let callback_task_id = action
+fn waiting_terminal_payload(run: &NativeRunResult) -> RuntimeEventPayload {
+    let Some(action) = run.required_action.as_ref() else {
+        return RuntimeEventPayload {
+            event_type: "waiting_human".to_string(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: true,
+            trace_visible: true,
+            payload: json!({
+                "type": "waiting_human",
+                "run_id": run.id,
+                "status": "waiting_human",
+            }),
+        };
+    };
+    let Some(callback_task_id) = action
         .payload
         .get("callback_task_id")
         .cloned()
-        .unwrap_or(Value::Null);
+        .filter(|value| !value.is_null())
+    else {
+        return RuntimeEventPayload {
+            event_type: "waiting_human".to_string(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: true,
+            trace_visible: true,
+            payload: json!({
+                "type": "waiting_human",
+                "run_id": run.id,
+                "status": "waiting_human",
+                "required_action": action,
+            }),
+        };
+    };
     let callback_kind = action
         .payload
         .get("callback_kind")
         .cloned()
         .unwrap_or(Value::Null);
-    Some(RuntimeEventPayload {
+    RuntimeEventPayload {
         event_type: "waiting_callback".to_string(),
         source: RuntimeEventSource::Runtime,
         durability: RuntimeEventDurability::DurableRequired,
@@ -201,7 +265,7 @@ fn waiting_callback_payload(run: &NativeRunResult) -> Option<RuntimeEventPayload
                 .unwrap_or(Value::Null),
             "required_action": action,
         }),
-    })
+    }
 }
 
 pub(crate) fn terminal_answer_deltas_from_payload(payload: &Value) -> Vec<TerminalAnswerDelta> {
@@ -348,7 +412,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        split_terminal_answer_deltas, terminal_answer_deltas_from_payload,
+        durable_native_run_matches_terminal, split_terminal_answer_deltas,
+        terminal_answer_deltas_from_payload, terminal_answer_runtime_events_from_native_run,
         terminal_runtime_event_from_native_run, TerminalAnswerDeltaKind,
     };
 
@@ -400,6 +465,22 @@ mod tests {
     }
 
     #[test]
+    fn success_terminal_requires_a_matching_durable_success_status() {
+        assert!(durable_native_run_matches_terminal(
+            &native_run(NativeRunStatus::Succeeded),
+            "flow_finished"
+        ));
+        assert!(!durable_native_run_matches_terminal(
+            &native_run(NativeRunStatus::Running),
+            "flow_finished"
+        ));
+        assert!(!durable_native_run_matches_terminal(
+            &native_run(NativeRunStatus::Failed),
+            "flow_finished"
+        ));
+    }
+
+    #[test]
     fn terminal_fallback_maps_waiting_native_run_to_callback_event() {
         let mut run = native_run(NativeRunStatus::Waiting);
         run.required_action = Some(NativeRequiredAction {
@@ -422,6 +503,30 @@ mod tests {
             event.payload["required_action"]["payload"]["tool_calls"][0]["name"],
             json!("Read")
         );
+    }
+
+    #[test]
+    fn terminal_fallback_maps_waiting_without_callback_to_human_terminal() {
+        let event = terminal_runtime_event_from_native_run(&native_run(NativeRunStatus::Waiting))
+            .expect("waiting human run should synthesize a terminal event");
+
+        assert_eq!(event.event_type, "waiting_human");
+        assert_eq!(event.payload["status"], json!("waiting_human"));
+    }
+
+    #[test]
+    fn failed_cancelled_and_waiting_terminals_recover_canonical_partial_before_terminal() {
+        for status in [
+            NativeRunStatus::Failed,
+            NativeRunStatus::Cancelled,
+            NativeRunStatus::Waiting,
+        ] {
+            let events = terminal_answer_runtime_events_from_native_run(&native_run(status));
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_type, "text_delta");
+            assert_eq!(events[0].payload["text"], json!("done"));
+            assert_eq!(events[0].payload["presentation"]["kind"], json!("answer"));
+        }
     }
 
     #[test]

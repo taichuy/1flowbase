@@ -244,9 +244,10 @@ where
             .cancel_published_flow_run(&CancelPublishedFlowRunInput {
                 flow_run_id: flow_run.id,
                 from_status: flow_run.status,
-                // Cancellation owns a failed terminal result. Do not retain a
-                // stale answer/error payload that could make it look successful.
-                output_payload: json!({}),
+                // Cancellation changes the terminal status, not the canonical content already
+                // produced by the run. The public projection keeps this partial output and still
+                // terminates honestly as cancelled.
+                output_payload: flow_run.output_payload.clone(),
                 error_payload: Some(json!({
                     "code": PUBLISHED_RUN_CANCELLED_ERROR_CODE,
                     "message": PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE,

@@ -139,6 +139,29 @@ fn d1_ac_001_failed_native_result_never_projects_an_answer_or_success_artifact()
 }
 
 #[test]
+fn terminal_non_success_result_exposes_only_marked_canonical_partial_output() {
+    for status in [
+        domain::FlowRunStatus::Failed,
+        domain::FlowRunStatus::Cancelled,
+        domain::FlowRunStatus::WaitingCallback,
+    ] {
+        let mut flow_run = failed_published_flow_run(json!({"message": "terminal"}));
+        flow_run.status = status;
+        flow_run.output_payload = json!({
+            "answer": "canonical partial",
+            "__canonical_answer_presentation": true
+        });
+        if status != domain::FlowRunStatus::Failed {
+            flow_run.error_payload = None;
+        }
+
+        let result = native_result_from_flow_run(&flow_run, json!({}));
+        assert_eq!(result.answer.as_deref(), Some("canonical partial"));
+        assert_ne!(result.status, NativeRunStatus::Succeeded);
+    }
+}
+
+#[test]
 fn d1_ac_007_durable_incomplete_run_projects_the_same_non_success_terminal() {
     let mut flow_run = failed_published_flow_run(json!({}));
     flow_run.status = domain::FlowRunStatus::Incomplete;

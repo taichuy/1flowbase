@@ -292,6 +292,20 @@ fn ac_005_terminal_answer_presentation_is_materialized_from_canonical_provider_e
         canonical_terminal_output_payload(Some(&plan), &outcome).unwrap()["answer"],
         json!("same  \n`code`same  ")
     );
+
+    let mut failed_outcome = outcome;
+    failed_outcome.stop_reason = ExecutionStopReason::Failed(NodeExecutionFailure {
+        node_id: "node-answer".to_string(),
+        node_alias: "Answer".to_string(),
+        error_payload: json!({"message": "failed after canonical partial"}),
+    });
+    let failed_partial = canonical_terminal_output_payload(Some(&plan), &failed_outcome)
+        .expect("failed outcome should retain canonical partial output");
+    assert_eq!(failed_partial["answer"], json!("same  \n`code`same  "));
+    assert_eq!(
+        failed_partial["__canonical_answer_presentation"],
+        json!(true)
+    );
 }
 
 #[test]

@@ -12,9 +12,8 @@ pub(super) struct SubscribedCompatibleTypedEventStream {
 pub(super) async fn send_subscribed_compatible_typed_event_stream(
     stream: SubscribedCompatibleTypedEventStream,
 ) {
-    // This lane ends at the runtime stream boundary. SSE-only identity claims,
-    // durable-prefix reconciliation, and terminal fallback stay downstream of
-    // the HTTP compatibility consumer and never rewrite typed facts here.
+    // The only synthesized typed facts are canonical answer deltas recovered
+    // from a durable terminal snapshot when the live lane did not deliver them.
     let SubscribedCompatibleTypedEventStream {
         state,
         initial_run,
@@ -24,12 +23,14 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
         sender,
     } = stream;
     let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
+    let mut emitted_answer_delta = false;
     if forward_ordered_typed_events(
         state.as_ref(),
         &initial_run,
         &sender,
         ignored_waiting_callback_task_id,
         &mut last_forwarded_sequence,
+        &mut emitted_answer_delta,
         subscription.replay,
     )
     .await
@@ -44,6 +45,7 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
             &sender,
             ignored_waiting_callback_task_id,
             &mut last_forwarded_sequence,
+            &mut emitted_answer_delta,
             vec![event],
         )
         .await
@@ -59,6 +61,7 @@ async fn forward_ordered_typed_events(
     sender: &mpsc::Sender<CompatibleProjectionInput>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     last_forwarded_sequence: &mut i64,
+    emitted_answer_delta: &mut bool,
     events: Vec<RuntimeEventEnvelope>,
 ) -> bool {
     for event in events {
@@ -71,10 +74,48 @@ async fn forward_ordered_typed_events(
         };
         let terminal = is_public_terminal_runtime_event(&event.event_type);
         let run = if terminal {
-            load_latest_native_run_for_terminal_fallback(state, initial_run).await
+            let run =
+                match load_durable_native_run_for_terminal_projection(state, initial_run).await {
+                    Ok(run) => run,
+                    Err(error) => {
+                        warn!(
+                            flow_run_id = %initial_run.id,
+                            application_id = %initial_run.application_id,
+                            error = %error,
+                            "typed public terminal blocked because durable run reload failed"
+                        );
+                        continue;
+                    }
+                };
+            if !durable_native_run_matches_terminal(&run, &event.event_type) {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    durable_status = ?run.status,
+                    event_type = %event.event_type,
+                    "typed public terminal blocked because durable status does not match"
+                );
+                continue;
+            }
+            if !*emitted_answer_delta {
+                for answer_event in terminal_answer_runtime_events_from_native_run(&run) {
+                    if sender
+                        .send(CompatibleProjectionInput {
+                            run_snapshot: run.clone(),
+                            envelope: answer_event,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        return true;
+                    }
+                    *emitted_answer_delta = true;
+                }
+            }
+            run
         } else {
             initial_run.clone()
         };
+        *emitted_answer_delta |= is_answer_presentation_delta(&event);
         if sender
             .send(CompatibleProjectionInput {
                 run_snapshot: run,
@@ -637,11 +678,42 @@ where
     let is_terminal = is_public_terminal_runtime_event(&event.event_type);
     let terminal_run;
     let run = if is_terminal {
-        terminal_run = load_latest_native_run_for_terminal_fallback(state, initial_run).await;
+        terminal_run =
+            match load_durable_native_run_for_terminal_projection(state, initial_run).await {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        application_id = %initial_run.application_id,
+                        error = %error,
+                        "compatible public terminal blocked because durable run reload failed"
+                    );
+                    return CompatibleForwardOutcome::Open;
+                }
+            };
+        if !durable_native_run_matches_terminal(&terminal_run, &event.event_type) {
+            warn!(
+                flow_run_id = %initial_run.id,
+                durable_status = ?terminal_run.status,
+                event_type = %event.event_type,
+                "compatible public terminal blocked because durable status does not match"
+            );
+            return CompatibleForwardOutcome::Open;
+        }
         &terminal_run
     } else {
         initial_run
     };
+    if is_terminal && !stats.emitted_content() {
+        for answer_event in terminal_answer_runtime_events_from_native_run(run) {
+            let events = mapper(run, answer_event.clone());
+            let emitted_public_event = !events.is_empty();
+            if !send_compatible_sse_events(sender, events).await {
+                return CompatibleForwardOutcome::ClientDisconnected;
+            }
+            stats.record_sent_runtime_event(run, &answer_event, emitted_public_event);
+        }
+    }
     let event_type = event.event_type.clone();
     let events = mapper(run, event.clone());
     let emitted_public_event = !events.is_empty();
@@ -863,6 +935,16 @@ where
             return CompatibleTerminalFallbackOutcome::ClientDisconnected { event_type: None };
         }
         stats.record_sent_runtime_event(&latest_run, &started_event, emitted_public_event);
+    }
+    if !stats.emitted_content() {
+        for answer_event in terminal_answer_runtime_events_from_native_run(&latest_run) {
+            let events = mapper(&latest_run, answer_event.clone());
+            let emitted_public_event = !events.is_empty();
+            if !send_compatible_sse_events(sender, events).await {
+                return CompatibleTerminalFallbackOutcome::ClientDisconnected { event_type: None };
+            }
+            stats.record_sent_runtime_event(&latest_run, &answer_event, emitted_public_event);
+        }
     }
     let event_type = terminal_event.event_type.clone();
     let events = mapper(&latest_run, terminal_event.clone());

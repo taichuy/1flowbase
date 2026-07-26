@@ -34,7 +34,8 @@ use crate::{
     routes::application_public_api::{
         native::{service_error, NativeApiError},
         stream_terminal_fallback::{
-            load_latest_native_run_for_terminal_fallback, recover_missing_stream_terminal_winner,
+            durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
+            recover_missing_stream_terminal_winner, terminal_answer_runtime_events_from_native_run,
             terminal_runtime_event_from_native_run,
         },
     },

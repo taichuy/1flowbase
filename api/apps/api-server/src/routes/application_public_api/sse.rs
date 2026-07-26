@@ -15,9 +15,10 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     routes::application_public_api::stream_terminal_fallback::{
+        durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
         recover_missing_stream_terminal_winner, terminal_answer_deltas_from_payload,
-        terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
-        TerminalAnswerDelta, TerminalAnswerDeltaKind,
+        terminal_answer_runtime_events_from_native_run, terminal_answer_text_from_payload,
+        terminal_runtime_event_from_native_run, TerminalAnswerDelta, TerminalAnswerDeltaKind,
     },
 };
 
@@ -373,15 +374,45 @@ pub async fn send_native_runtime_event_stream(
         let event_type = event.event_type.clone();
         let is_terminal = is_public_terminal_runtime_event(&event_type);
         let is_answer_delta = is_answer_presentation_delta(&event);
+        let terminal_run;
+        let projection_run = if is_terminal {
+            terminal_run =
+                match load_durable_native_run_for_terminal_projection(state.as_ref(), &initial_run)
+                    .await
+                {
+                    Ok(run) => run,
+                    Err(error) => {
+                        warn!(
+                            flow_run_id = %initial_run.id,
+                            application_id = %initial_run.application_id,
+                            error = %error,
+                            "native public terminal blocked because durable run reload failed"
+                        );
+                        continue;
+                    }
+                };
+            if !durable_native_run_matches_terminal(&terminal_run, &event_type) {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    durable_status = ?terminal_run.status,
+                    event_type = %event_type,
+                    "native public terminal blocked because durable status does not match"
+                );
+                continue;
+            }
+            &terminal_run
+        } else {
+            &initial_run
+        };
         if is_terminal && !emitted_answer_delta {
             let answer_events =
-                terminal_answer_delta_sse_events(&initial_run, include_workflow_events, &event);
+                terminal_answer_delta_sse_events(projection_run, include_workflow_events, &event);
             emitted_answer_delta |= !answer_events.is_empty();
             if !send_native_sse_events(&sender, answer_events).await {
                 return;
             }
         }
-        let sse = runtime_event_to_native_sse(&initial_run, include_workflow_events, event);
+        let sse = runtime_event_to_native_sse(projection_run, include_workflow_events, event);
         emitted_public_event |= sse.is_some();
         emitted_answer_delta |= is_answer_delta && sse.is_some();
         if !send_native_sse_event(&sender, sse).await {
@@ -399,15 +430,45 @@ pub async fn send_native_runtime_event_stream(
         let event_type = event.event_type.clone();
         let is_terminal = is_public_terminal_runtime_event(&event_type);
         let is_answer_delta = is_answer_presentation_delta(&event);
+        let terminal_run;
+        let projection_run = if is_terminal {
+            terminal_run =
+                match load_durable_native_run_for_terminal_projection(state.as_ref(), &initial_run)
+                    .await
+                {
+                    Ok(run) => run,
+                    Err(error) => {
+                        warn!(
+                            flow_run_id = %initial_run.id,
+                            application_id = %initial_run.application_id,
+                            error = %error,
+                            "native public terminal blocked because durable run reload failed"
+                        );
+                        continue;
+                    }
+                };
+            if !durable_native_run_matches_terminal(&terminal_run, &event_type) {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    durable_status = ?terminal_run.status,
+                    event_type = %event_type,
+                    "native public terminal blocked because durable status does not match"
+                );
+                continue;
+            }
+            &terminal_run
+        } else {
+            &initial_run
+        };
         if is_terminal && !emitted_answer_delta {
             let answer_events =
-                terminal_answer_delta_sse_events(&initial_run, include_workflow_events, &event);
+                terminal_answer_delta_sse_events(projection_run, include_workflow_events, &event);
             emitted_answer_delta |= !answer_events.is_empty();
             if !send_native_sse_events(&sender, answer_events).await {
                 return;
             }
         }
-        let sse = runtime_event_to_native_sse(&initial_run, include_workflow_events, event);
+        let sse = runtime_event_to_native_sse(projection_run, include_workflow_events, event);
         emitted_public_event |= sse.is_some();
         emitted_answer_delta |= is_answer_delta && sse.is_some();
         if !send_native_sse_event(&sender, sse).await {
@@ -622,7 +683,14 @@ fn terminal_answer_delta_sse_events(
     include_workflow_events: IncludeWorkflowEvents,
     terminal_event: &RuntimeEventEnvelope,
 ) -> Vec<Result<Event, Infallible>> {
-    terminal_answer_deltas_from_payload(&terminal_event.payload)
+    let payload_deltas = terminal_answer_deltas_from_payload(&terminal_event.payload);
+    if payload_deltas.is_empty() {
+        return terminal_answer_runtime_events_from_native_run(run)
+            .into_iter()
+            .filter_map(|event| runtime_event_to_native_sse(run, include_workflow_events, event))
+            .collect();
+    }
+    payload_deltas
         .into_iter()
         .enumerate()
         .filter_map(|(index, delta)| {
