@@ -6,7 +6,7 @@ import {
   within
 } from '@testing-library/react';
 import { useState, type ComponentType } from 'react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import type {
   BlockContext,
@@ -22,6 +22,7 @@ import type {
   FrontstageNativePreparationSnapshot,
   FrontstageNativePreparedRuntime
 } from '../../../lib/page-canvas/native-runtime-preparation';
+import type { FrontstageNativeBlockContextHost } from '../../../lib/page-canvas/native-block-context-host';
 import { createFrontstagePageContentFixture } from '../../frontstage-page-content-fixtures';
 
 describe('PageCanvas Native Signal context', () => {
@@ -135,7 +136,91 @@ describe('PageCanvas Native Signal context', () => {
     });
     await waitFor(() => expect(consumerButton).toHaveTextContent('1:4'));
   });
+
+  test('D4-AC-001/003 keeps the Native React instance mounted while concurrent API calls are pending or fail', async () => {
+    const first = deferred<unknown>();
+    const interfaceHandler = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockRejectedValueOnce(new Error('record query failed'));
+    const observations: string[] = [];
+    const diagnostics: string[] = [];
+    const host: FrontstageNativeBlockContextHost = {
+      interface: interfaceHandler,
+      observeApiCall: ({ status }) => observations.push(status),
+      reportDiagnostic: ({ message }) => diagnostics.push(message)
+    };
+    let renderCount = 0;
+    const ApiBlock = ({ ctx }: { ctx: BlockContext }) => {
+      const [localCount, setLocalCount] = useState(0);
+      renderCount += 1;
+      return (
+        <div>
+          <button
+            data-testid="native-local-state"
+            onClick={() => setLocalCount((value) => value + 1)}
+          >
+            {localCount}
+          </button>
+          <button
+            data-testid="native-api-first"
+            onClick={() => void ctx.api.get('/api/console/records/first')}
+          >
+            first
+          </button>
+          <button
+            data-testid="native-api-second"
+            onClick={() =>
+              void ctx.api.get('/api/console/records/second').catch(() => undefined)
+            }
+          >
+            second
+          </button>
+        </div>
+      );
+    };
+    render(
+      <PageCanvas
+        content={pageContent()}
+        runtimePreparations={[preparation('producer', 0, ApiBlock)]}
+        nativeContextHost={host}
+      />
+    );
+    const producerRoot = await nativeRoot('producer');
+    const localState = await within(producerRoot.shadow).findByTestId(
+      'native-local-state'
+    );
+    const initialRenderCount = renderCount;
+    fireEvent.click(
+      within(producerRoot.shadow).getByTestId('native-api-first')
+    );
+    fireEvent.click(
+      within(producerRoot.shadow).getByTestId('native-api-second')
+    );
+    fireEvent.click(localState);
+
+    expect(localState).toHaveTextContent('1');
+    expect(renderCount).toBeGreaterThanOrEqual(initialRenderCount);
+    expect(producerRoot.host.shadowRoot).not.toBeNull();
+    await waitFor(() => expect(diagnostics).toEqual(['record query failed']));
+    expect(observations.filter((status) => status === 'pending')).toHaveLength(2);
+
+    first.resolve({ items: [] });
+    await waitFor(() =>
+      expect(observations.filter((status) => status === 'succeeded')).toHaveLength(1)
+    );
+    expect(localState).toHaveTextContent('1');
+    expect(producerRoot.host.shadowRoot).not.toBeNull();
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 async function nativeRoot(blockId: string): Promise<{
   host: HTMLElement;

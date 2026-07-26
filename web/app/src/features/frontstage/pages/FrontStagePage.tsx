@@ -9,6 +9,7 @@ import {
 } from 'antd';
 import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
@@ -52,6 +53,8 @@ import type {
   FrontstageRuntimeDemandByBlockId,
   FrontstageRuntimeDemandPriority
 } from '../lib/page-canvas/runtime-demand';
+import type { FrontstageNativeBlockContextHost } from '../lib/page-canvas/native-block-context-host';
+import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -156,6 +159,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState<FrontstagePageContent | null>(null);
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
+  const [nativeRuntimeDiagnostics, setNativeRuntimeDiagnostics] = useState<
+    BlockRuntimeDiagnostic[]
+  >([]);
   const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(() =>
     normalizePageTree(initialPageTree ?? [])
   );
@@ -210,6 +216,45 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : undefined,
     [csrfToken, displayedPageDocument, selectedPageId, tabId, workspaceId]
   );
+  const nativeContextHost = useMemo<
+    FrontstageNativeBlockContextHost | undefined
+  >(
+    () =>
+      jsBlockCapabilityHandlers && selectedPageId && tabId
+        ? {
+            interface: jsBlockCapabilityHandlers.interface,
+            observeApiCall: (observation) =>
+              recordFrontstageRuntimeObservation({
+                actorId: actor?.id ?? 'anonymous',
+                workspaceId,
+                pageId: selectedPageId,
+                tabId,
+                blockId: observation.requestId.split(':')[1] ?? '',
+                runtimeKind: 'native',
+                stage: 'api_wait',
+                instanceEpoch: observation.instanceEpoch,
+                callId: observation.callId,
+                apiCallStatus: observation.status,
+                method: observation.method,
+                path: observation.path,
+                durationMs: observation.durationMs,
+                error: observation.error
+              }),
+            reportDiagnostic: (diagnostic) =>
+              setNativeRuntimeDiagnostics((current) => [
+                ...current.filter(
+                  (item) =>
+                    item.blockId !== diagnostic.blockId ||
+                    item.phase !== diagnostic.phase ||
+                    item.message !== diagnostic.message
+                ),
+                diagnostic
+              ])
+          }
+        : undefined,
+    [actor?.id, jsBlockCapabilityHandlers, selectedPageId, tabId, workspaceId]
+  );
+  useEffect(() => setNativeRuntimeDiagnostics([]), [selectedPageId, tabId]);
   const activePageRenderPlan = useMemo(
     () =>
       displayedPageDocument
@@ -1216,6 +1261,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         onRetry={onRetryLoadPageContent}
         runtimePreparations={pageCanvasNativePreparations.preparations}
         runtimeContext={nativeBlockRuntimeContext}
+        nativeContextHost={nativeContextHost}
         onRuntimeDemandChange={handleRuntimeDemandChange}
         onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
@@ -1378,7 +1424,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             block={selectedBlock}
             pageBlocks={displayedPageDocument?.blocks}
             catalogEntry={matchingJsBlockCatalogEntry}
-            diagnostics={[]}
+            diagnostics={nativeRuntimeDiagnostics}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
             runPanel={({ code, runRevision }) =>

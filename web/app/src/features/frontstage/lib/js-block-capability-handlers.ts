@@ -73,6 +73,7 @@ export function createFrontstageJsBlockCapabilityHandlers(
     options.baseUrl ??
     getFrontstageJsBlockCapabilityApiBaseUrl(options.locationLike);
   const draftRuns = new Map<string, DraftRunAuthorization>();
+  const revokedDraftRuns = new Set<string>();
   const streams = new Map<
     string,
     {
@@ -97,6 +98,7 @@ export function createFrontstageJsBlockCapabilityHandlers(
   return {
     async prepareDraftRun({ blockId, runId, draftHash, confirmWrite }) {
       requireCsrfToken(options.csrfToken);
+      revokedDraftRuns.delete(runId);
       draftRuns.set(runId, {
         blockId,
         draftHash,
@@ -107,10 +109,14 @@ export function createFrontstageJsBlockCapabilityHandlers(
     },
     revokeDraftRun(runId) {
       draftRuns.delete(runId);
+      revokedDraftRuns.add(runId);
       disposeStreams(runId);
     },
     disposeRequest: disposeStreams,
     interface: async (effect) => {
+      if (revokedDraftRuns.has(effect.requestId)) {
+        throw new Error('Draft run capability has been revoked.');
+      }
       const blockId = options.resolveBlockId(effect.requestId);
       if (!blockId)
         throw new Error('Interface source block is not registered.');
@@ -178,6 +184,16 @@ export function createFrontstageJsBlockCapabilityHandlers(
           baseUrl
         );
       };
+      if (
+        draftRun &&
+        isFrontstageWriteMethod(effect.method) &&
+        !(await confirmDraftRunWrite(draftRun))
+      ) {
+        throw new Error('Write interface call was cancelled.');
+      }
+      if (revokedDraftRuns.has(effect.requestId)) {
+        throw new Error('Draft run capability has been revoked.');
+      }
       try {
         return await dispatch();
       } catch (error) {
@@ -203,6 +219,10 @@ export function createFrontstageJsBlockCapabilityHandlers(
       }
     }
   };
+}
+
+function isFrontstageWriteMethod(method: string): boolean {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
 }
 
 function createDispatchInput(

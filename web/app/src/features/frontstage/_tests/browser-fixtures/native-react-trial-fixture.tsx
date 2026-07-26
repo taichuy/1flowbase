@@ -14,7 +14,8 @@ import type {
 import {
   readFrontstageRuntimeObservations,
   resetFrontstageRuntimeObservations,
-  subscribeFrontstageRuntimeObservations
+  subscribeFrontstageRuntimeObservations,
+  type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
 
 type FixtureBlockProps = {
@@ -150,9 +151,9 @@ function NativeReactTrialFixture() {
     ],
     [demands.first, demands.second, preparationFailure, sourceRevision]
   );
-  const [observations, setObservations] = useState(() =>
-    readFrontstageRuntimeObservations()
-  );
+  const [observations, setObservations] = useState<
+    readonly FrontstageRuntimeObservation[]
+  >(() => readFrontstageRuntimeObservations());
   useEffect(() => subscribeFrontstageRuntimeObservations(setObservations), []);
 
   const retryPreparation = (blockId: string) => {

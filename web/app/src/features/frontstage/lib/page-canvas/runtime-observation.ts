@@ -5,6 +5,7 @@ export type FrontstageNativeRuntimeObservationStage =
   | 'module_resolve'
   | 'shadow_attach'
   | 'react_mount'
+  | 'api_wait'
   | 'present';
 
 export type FrontstageRestrictedRuntimeObservationStage =
@@ -42,6 +43,11 @@ export interface FrontstageRuntimeObservation {
   runtimeKind?: 'restricted' | 'native';
   generation?: number;
   instanceEpoch?: string;
+  callId?: string;
+  apiCallStatus?: 'pending' | 'succeeded' | 'failed';
+  method?: string;
+  path?: string;
+  error?: string;
 }
 
 export interface FrontstageRuntimeObservationContext {
@@ -101,7 +107,21 @@ export class FrontstageRuntimeObservationBuffer {
       workspaceId: input.workspaceId,
       pageId: input.pageId,
       tabId: input.tabId,
-      blockId: input.blockId
+      blockId: input.blockId,
+      ...(input.runtimeKind ? { runtimeKind: input.runtimeKind } : {}),
+      ...(input.generation === undefined
+        ? {}
+        : { generation: input.generation }),
+      ...(input.instanceEpoch
+        ? { instanceEpoch: input.instanceEpoch }
+        : {}),
+      ...(input.callId ? { callId: input.callId } : {}),
+      ...(input.apiCallStatus
+        ? { apiCallStatus: input.apiCallStatus }
+        : {}),
+      ...(input.method ? { method: input.method } : {}),
+      ...(input.path ? { path: input.path } : {}),
+      ...(input.error ? { error: input.error } : {})
     };
 
     if (this.maxEntries > 0) {

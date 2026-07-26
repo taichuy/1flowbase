@@ -3,8 +3,13 @@ import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
 import type {
   JsBlockHostEffectHandler,
   JsBlockHostInterfaceEffect,
-  JsBlockRunRequest
+  JsBlockRunRequest,
+  NativeBlockContextApiCallObservation,
+  NativeBlockContextCapabilityDiagnostic,
+  NativeBlockContextEventInput
 } from '@1flowbase/page-runtime';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
+import type { BlockContextOutputs } from '@1flowbase/page-protocol';
 
 import { getAuthApiBaseUrl, type PublicLoginInstance } from '../api/session';
 
@@ -73,6 +78,31 @@ export interface PublicAuthPreviewCapabilityHandlers {
   revokeDraftRun(runId: string): void;
 }
 
+export function createPublicAuthNativeBlockContextCapabilities(input: {
+  requestId: string;
+  instanceEpoch: string;
+  isCurrentInstance(): boolean;
+  outputs: BlockContextOutputs;
+  interfaceHandler?: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  emitEvent?(event: NativeBlockContextEventInput): void;
+  observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
+  reportDiagnostic?(diagnostic: NativeBlockContextCapabilityDiagnostic): void;
+}) {
+  return createNativeBlockContextCapabilities({
+    requestId: input.requestId,
+    instanceEpoch: input.instanceEpoch,
+    isCurrentInstance: input.isCurrentInstance,
+    outputs: input.outputs,
+    interfaceHandler:
+      input.interfaceHandler ??
+      ((effect) =>
+        dispatchPublicAuthApi(effect.method, effect.path, effect.request)),
+    emitEvent: input.emitEvent,
+    observeApiCall: input.observeApiCall,
+    reportDiagnostic: input.reportDiagnostic
+  });
+}
+
 export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCapabilityHandlers {
   const draftRuns = new Map<string, PublicAuthPreviewRunAuthorization>();
 
@@ -99,6 +129,11 @@ export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCa
         const confirmed = await confirmPublicAuthPreviewWrite(draftRun);
         if (!confirmed) {
           throw new Error('Public authentication preview write was cancelled.');
+        }
+        if (draftRuns.get(effect.requestId) !== draftRun) {
+          throw new Error(
+            'Public authentication preview run is not registered.'
+          );
         }
       }
       return dispatchPublicAuthApi(effect.method, effect.path, effect.request);

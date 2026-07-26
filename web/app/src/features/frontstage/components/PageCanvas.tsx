@@ -58,6 +58,10 @@ import {
   createFrontstagePageSignalSession,
   FrontstageSignalRuntimeCoordinator
 } from '../lib/page-canvas/signal-runtime';
+import {
+  createFrontstageNativeBlockContextCapabilities,
+  type FrontstageNativeBlockContextHost
+} from '../lib/page-canvas/native-block-context-host';
 
 export type FrontstagePageCanvasRuntimeContext = Pick<
   BlockContext,
@@ -84,6 +88,7 @@ type PageCanvasProps = {
     | null;
   runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
   /** Actions triggered from the design mode hover toolbar */
@@ -160,6 +165,7 @@ type RenderPlanSlotProps = {
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   signalRevision: number;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
   onSignalRevision(revision: number): void;
   runtimeSessionEntry?: FrontstagePageCanvasRuntimeSessionEntry | null;
@@ -239,6 +245,7 @@ function NativeRuntimeSlotSurface({
   signalCoordinator,
   signalRevision,
   runtimeContext,
+  nativeContextHost,
   pageContent,
   onSignalRevision,
   contentViewportStyle,
@@ -251,10 +258,13 @@ function NativeRuntimeSlotSurface({
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   signalRevision: number;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
   onSignalRevision(revision: number): void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const currentInstanceEpochRef = useRef<string | null>(null);
+  const nextStandaloneEpochRef = useRef(0);
   const readyPreparation = preparation.status === 'ready' ? preparation : null;
   const plan = useMemo<NativeTrustedBlockPreparePlan>(() => {
     const preparedSource = readyPreparation
@@ -276,14 +286,21 @@ function NativeRuntimeSlotSurface({
     readyPreparation?.prepared.identityInput.sourceSha256
   ]);
   const instanceEpochOwner = useMemo(
-    () =>
-      signalCoordinator
-        ? {
-            begin: () => signalCoordinator.beginInstance(item.blockId),
-            end: (instanceEpoch: string) =>
-              signalCoordinator.endInstance(item.blockId, instanceEpoch)
-          }
-        : undefined,
+    () => ({
+      begin: () => {
+        const instanceEpoch =
+          signalCoordinator?.beginInstance(item.blockId) ??
+          `${item.blockId}:native-${++nextStandaloneEpochRef.current}`;
+        currentInstanceEpochRef.current = instanceEpoch;
+        return instanceEpoch;
+      },
+      end: (instanceEpoch: string) => {
+        if (currentInstanceEpochRef.current === instanceEpoch) {
+          currentInstanceEpochRef.current = null;
+        }
+        signalCoordinator?.endInstance(item.blockId, instanceEpoch);
+      }
+    }),
     [item.blockId, signalCoordinator]
   );
   const createRuntimeInput = useCallback(
@@ -296,6 +313,18 @@ function NativeRuntimeSlotSurface({
             onSignalRevision
           )
         : unavailable.outputs;
+      const capabilities = nativeContextHost
+        ? createFrontstageNativeBlockContextCapabilities({
+            host: nativeContextHost,
+            pageId: pageContent?.page.id ?? unavailable.page.id,
+            tabId: pageContent?.tab.id ?? '',
+            blockId: item.blockId,
+            instanceEpoch,
+            isCurrentInstance: () =>
+              currentInstanceEpochRef.current === instanceEpoch,
+            outputs
+          })
+        : { api: unavailable.api, events: unavailable.events, outputs };
       return {
         plan,
         context: {
@@ -312,13 +341,14 @@ function NativeRuntimeSlotSurface({
               : {})
           },
           inputs: signalCoordinator?.inputsFor(item.blockId) ?? {},
-          outputs,
+          ...capabilities,
           props: { ...plan.props }
         }
       };
     },
     [
       item.blockId,
+      nativeContextHost,
       onSignalRevision,
       pageContent,
       plan,
@@ -400,6 +430,7 @@ function RenderPlanSlot({
   signalCoordinator,
   signalRevision,
   runtimeContext,
+  nativeContextHost,
   pageContent,
   onSignalRevision,
   runtimeSessionEntry,
@@ -523,6 +554,7 @@ function RenderPlanSlot({
           signalCoordinator={signalCoordinator}
           signalRevision={signalRevision}
           runtimeContext={runtimeContext}
+          nativeContextHost={nativeContextHost}
           pageContent={pageContent}
           onSignalRevision={onSignalRevision}
           contentViewportStyle={contentViewportStyle}
@@ -652,6 +684,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   runtimeSessionEntries,
   runtimePreparations,
   runtimeContext,
+  nativeContextHost,
   isDesignMode = false,
   designActions,
   toolbarDisabled = false,
@@ -917,6 +950,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   signalCoordinator={signalCoordinator}
                   signalRevision={signalRevision}
                   runtimeContext={runtimeContext}
+                  nativeContextHost={nativeContextHost}
                   pageContent={content}
                   onSignalRevision={handleSignalRevision}
                   runtimeSessionEntry={findRuntimeSessionEntryForSlot({

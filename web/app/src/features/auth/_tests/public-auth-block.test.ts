@@ -11,6 +11,7 @@ vi.mock('@1flowbase/api-client', async () => {
 
 import {
   createPublicAuthPreviewCapabilityHandlers,
+  createPublicAuthNativeBlockContextCapabilities,
   createPublicAuthRunRequest,
   dispatchPublicAuthApi
 } from '../components/public-auth-block-host';
@@ -83,6 +84,50 @@ describe('public Auth Block host adapter', () => {
       dispatchPublicAuthApi('GET', '/api/public/%2e%2e/console/users', {})
     ).rejects.toThrow('forbidden API path');
     expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('D4-AC-001/002 binds the shared Native ctx.api contract to the public fail-closed dispatcher', async () => {
+    apiFetch.mockResolvedValue({ state: 'ready' });
+    const context = createPublicAuthNativeBlockContextCapabilities({
+      requestId: 'public-auth:auth-password-local:1',
+      instanceEpoch: 'auth-epoch-1',
+      isCurrentInstance: () => true,
+      outputs: { publish: () => ({ ok: true, stale: false }) }
+    });
+
+    await expect(
+      context.api.get('/api/public/auth/status')
+    ).resolves.toEqual({ state: 'ready' });
+    await expect(context.api.get('/api/console/users')).rejects.toThrow(
+      'forbidden API path'
+    );
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('D4-AC-002/003 keeps cancelled and revoked Native preview writes away from the network', async () => {
+    const preview = createPublicAuthPreviewCapabilityHandlers();
+    const confirmWrite = vi.fn().mockResolvedValue(false);
+    const runId = 'draft:auth-password-local:native';
+    await preview.prepareDraftRun({ runId, confirmWrite });
+    const context = createPublicAuthNativeBlockContextCapabilities({
+      requestId: runId,
+      instanceEpoch: 'auth-preview-epoch-1',
+      isCurrentInstance: () => true,
+      interfaceHandler: preview.interface,
+      outputs: { publish: () => ({ ok: true, stale: false }) }
+    });
+
+    await expect(
+      context.api.post('/api/public/auth/sign-up', {
+        body: { account: 'alice' }
+      })
+    ).rejects.toThrow('cancelled');
+    preview.revokeDraftRun(runId);
+    await expect(
+      context.api.post('/api/public/auth/sign-up')
+    ).rejects.toThrow('not registered');
+    expect(confirmWrite).toHaveBeenCalledOnce();
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   test('AC-033 confirms preview writes before dispatch and cancels without side effects', async () => {
