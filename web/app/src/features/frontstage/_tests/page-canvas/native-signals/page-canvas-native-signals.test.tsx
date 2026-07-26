@@ -26,13 +26,16 @@ import type { FrontstageNativeBlockContextHost } from '../../../lib/page-canvas/
 import { createFrontstagePageContentFixture } from '../../frontstage-page-content-fixtures';
 
 describe('PageCanvas Native Signal context', () => {
-  test('D3-AC-003/005 publishes repeatedly, updates downstream without remount, and rejects the old remounted epoch', async () => {
+  test('D3R-AC-002/004 publishes synchronously, updates only the DAG downstream, preserves Hooks, and rejects the old epoch', async () => {
     const producerContexts: BlockContext[] = [];
+    let consumerRenders = 0;
+    let unrelatedRenders = 0;
     const Producer = ({ ctx }: { ctx: BlockContext }) => {
       producerContexts.push(ctx);
       return <div data-testid="producer-ready">Producer</div>;
     };
     const Consumer = ({ ctx }: { ctx: BlockContext }) => {
+      consumerRenders += 1;
       const [localCount, setLocalCount] = useState(0);
       return (
         <button
@@ -42,6 +45,10 @@ describe('PageCanvas Native Signal context', () => {
           {localCount}:{String(ctx.inputs.total ?? 'none')}
         </button>
       );
+    };
+    const Unrelated = () => {
+      unrelatedRenders += 1;
+      return <div data-testid="unrelated-ready">Unrelated</div>;
     };
     const content = pageContent();
     const runtimeContext: FrontstagePageCanvasRuntimeContext = {
@@ -53,7 +60,8 @@ describe('PageCanvas Native Signal context', () => {
     };
     const mountedPreparations = [
       preparation('producer', 0, Producer),
-      preparation('consumer', 1, Consumer)
+      preparation('consumer', 1, Consumer),
+      preparation('unrelated', 2, Unrelated)
     ];
     const view = render(
       <PageCanvas
@@ -77,6 +85,8 @@ describe('PageCanvas Native Signal context', () => {
       theme: { mode: 'light' },
       ui: { locale: 'en_US' }
     });
+    const consumerRendersBeforePublish = consumerRenders;
+    const unrelatedRendersBeforePublish = unrelatedRenders;
 
     const oldPublish = producerContexts.at(-1)!.outputs.publish;
     let firstPublish!: BlockContextOutputPublishResult;
@@ -87,6 +97,8 @@ describe('PageCanvas Native Signal context', () => {
     });
     expect(firstPublish).toMatchObject({ ok: true, stale: false });
     await waitFor(() => expect(consumerButton).toHaveTextContent('1:1'));
+    expect(consumerRenders).toBe(consumerRendersBeforePublish + 1);
+    expect(unrelatedRenders).toBe(unrelatedRendersBeforePublish);
     act(() => {
       expect(oldPublish({ total: 2 })).toMatchObject({
         ok: true,
@@ -102,16 +114,15 @@ describe('PageCanvas Native Signal context', () => {
         runtimeContext={runtimeContext}
         runtimePreparations={[
           { ...mountedPreparations[0], mountIntent: null },
-          mountedPreparations[1]
+          mountedPreparations[1],
+          mountedPreparations[2]
         ]}
       />
     );
     await waitFor(() =>
       expect(producerRoot.host.shadowRoot?.childNodes.length ?? 0).toBe(0)
     );
-    await expect(
-      Promise.resolve().then(() => oldPublish({ total: 3 }))
-    ).resolves.toEqual({
+    expect(oldPublish({ total: 3 })).toEqual({
       ok: false,
       stale: true
     });
@@ -308,6 +319,10 @@ function pageContent(): FrontstagePageContent {
                 }
               }
             ],
+            outputs: []
+          }),
+          block('unrelated', 2, {
+            inputs: [],
             outputs: []
           })
         ]

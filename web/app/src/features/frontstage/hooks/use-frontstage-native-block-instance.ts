@@ -1,318 +1,115 @@
-import type {
-  BlockContext,
-  BlockProtocolError
-} from '@1flowbase/page-protocol';
 import {
-  createNativeTrustedBlockHost,
-  type NativeTrustedBlockHost,
-  type NativeTrustedBlockPreparePlan
-} from '@1flowbase/page-runtime';
-import type { ConfigProviderProps } from 'antd/es/config-provider';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState
+} from 'react';
 
-import {
-  createFrontstageNativeTrustedBlockReactAdapter,
-  type FrontstageNativeTrustedBlockReactComponent
-} from '../lib/native-trusted-block-react-adapter';
-import type {
-  FrontstageNativeInstanceMountIntent,
-  FrontstageNativePreparedRuntime
-} from '../lib/page-canvas/native-runtime-preparation';
+import type { FrontstageNativeInstanceMountIntent } from '../lib/page-canvas/native-runtime-preparation';
 import {
   recordFrontstageRuntimeObservation,
-  type FrontstageNativeRuntimeObservationStage,
+  type FrontstageRuntimeObservationCacheTier,
   type FrontstageRuntimeObservationContext
 } from '../lib/page-canvas/runtime-observation';
-
-export type FrontstageNativeBlockInstanceStatus =
-  | 'unmounted'
-  | 'mounting'
-  | 'mounted'
-  | 'updating'
-  | 'failed'
-  | 'disposing';
-
-export interface FrontstageNativeBlockInstanceState {
-  status: FrontstageNativeBlockInstanceStatus;
-  instanceEpoch?: string;
-  error?: BlockProtocolError;
-  retry(): void;
-}
-
-export interface FrontstageNativeBlockInstanceRuntimeInput {
-  plan: NativeTrustedBlockPreparePlan;
-  context: BlockContext;
-  providerScope?: {
-    theme?: ConfigProviderProps['theme'];
-    locale?: ConfigProviderProps['locale'];
-  };
-}
-
-export type FrontstageNativeBlockInstanceHostFactory = (input: {
-  prepared: FrontstageNativePreparedRuntime;
-  readRuntimeInput(): FrontstageNativeBlockInstanceRuntimeInput;
-  onRuntimeError(error: BlockProtocolError): void;
-}) => NativeTrustedBlockHost;
+import type { FrontstageSignalRuntimeCoordinator } from '../lib/page-canvas/signal-runtime';
 
 export interface UseFrontstageNativeBlockInstanceInput {
-  root: Element | null;
-  mountIntent: FrontstageNativeInstanceMountIntent | null;
-  prepared: FrontstageNativePreparedRuntime | null;
-  createRuntimeInput(
-    instanceEpoch: string
-  ): FrontstageNativeBlockInstanceRuntimeInput;
-  runtimeInputRevision: unknown;
-  instanceEpochOwner?: FrontstageNativeInstanceEpochOwner;
-  hostFactory?: FrontstageNativeBlockInstanceHostFactory;
+  blockId: string;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   observationContext?: FrontstageRuntimeObservationContext;
+  cacheTier?: FrontstageRuntimeObservationCacheTier;
   preparationGeneration?: number;
 }
 
-interface ActiveNativeBlockInstance {
-  identity: string;
+export interface FrontstageNativeBlockInstance {
   instanceEpoch: string;
-  host: NativeTrustedBlockHost;
-  mountedPlan: NativeTrustedBlockPreparePlan;
-  mountedRuntimeInputRevision: unknown;
-  epochEnded: boolean;
-}
-
-export interface FrontstageNativeInstanceEpochOwner {
-  begin(): string;
-  end(instanceEpoch: string): void;
+  isCurrentInstance(): boolean;
 }
 
 let nextStandaloneInstanceEpoch = 0;
 
+/**
+ * Registers the epoch owned by one declaratively mounted Portal instance.
+ * React owns component/portal lifecycle; this hook only mirrors that lifecycle
+ * into the page-scoped Signal coordinator.
+ */
 export function useFrontstageNativeBlockInstance({
-  root,
-  mountIntent,
-  prepared,
-  createRuntimeInput,
-  runtimeInputRevision,
-  instanceEpochOwner,
-  hostFactory = createFrontstageNativeBlockInstanceHost,
+  blockId,
+  signalCoordinator,
   observationContext,
+  cacheTier,
   preparationGeneration
-}: UseFrontstageNativeBlockInstanceInput): FrontstageNativeBlockInstanceState {
-  const [state, setState] = useState<
-    Omit<FrontstageNativeBlockInstanceState, 'retry'>
-  >({
-    status: 'unmounted'
-  });
-  const [retryGeneration, setRetryGeneration] = useState(0);
-  const activeRef = useRef<ActiveNativeBlockInstance | null>(null);
-  const createRuntimeInputRef = useRef(createRuntimeInput);
-  createRuntimeInputRef.current = createRuntimeInput;
-  const runtimeInputRevisionRef = useRef(runtimeInputRevision);
-  runtimeInputRevisionRef.current = runtimeInputRevision;
-  const observationContextRef = useRef(observationContext);
-  observationContextRef.current = observationContext;
-  const observationMetadataRef = useRef({
-    cacheTier: prepared?.artifactCacheTier,
+}: UseFrontstageNativeBlockInstanceInput): FrontstageNativeBlockInstance {
+  const [instanceEpoch] = useState(
+    () => `${blockId}:portal-${++nextStandaloneInstanceEpoch}`
+  );
+  const currentInstanceEpochRef = useRef<string | null>(null);
+  const observationRef = useRef({
+    context: observationContext,
+    cacheTier,
     generation: preparationGeneration
   });
-  observationMetadataRef.current = {
-    cacheTier: prepared?.artifactCacheTier,
+  observationRef.current = {
+    context: observationContext,
+    cacheTier,
     generation: preparationGeneration
   };
-  const lifecycleGenerationRef = useRef(0);
-  const disposalRef = useRef<Promise<unknown>>(Promise.resolve());
-  const identity = useMemo(
-    () =>
-      mountIntent ? nativeInstanceIdentity(mountIntent.identityInput) : null,
-    [mountIntent]
-  );
-  const retry = useCallback(() => {
-    setState({ status: 'unmounted' });
-    setRetryGeneration((current) => current + 1);
-  }, []);
-  const observe = useCallback(
-    (stage: FrontstageNativeRuntimeObservationStage, instanceEpoch: string) => {
-      const currentObservationContext = observationContextRef.current;
-      const metadata = observationMetadataRef.current;
-      if (!currentObservationContext || !metadata.cacheTier) return;
-      recordFrontstageRuntimeObservation({
-        ...currentObservationContext,
-        stage,
-        runtimeKind: 'native',
-        cacheTier: metadata.cacheTier,
-        generation: metadata.generation,
-        instanceEpoch
-      });
-    },
-    []
-  );
 
-  useEffect(() => {
-    const generation = ++lifecycleGenerationRef.current;
-    if (!root || !identity || !prepared || !mountIntent) {
-      setState({ status: 'unmounted' });
-      return;
+  useLayoutEffect(() => {
+    const registeredEpoch =
+      signalCoordinator?.beginInstance(blockId, instanceEpoch) ?? instanceEpoch;
+    currentInstanceEpochRef.current = registeredEpoch;
+    const observation = observationRef.current;
+    if (observation.context && observation.cacheTier) {
+      recordFrontstageRuntimeObservation({
+        ...observation.context,
+        stage: 'shadow_attach',
+        runtimeKind: 'native',
+        cacheTier: observation.cacheTier,
+        generation: observation.generation,
+        instanceEpoch: registeredEpoch
+      });
     }
 
-    let cancelled = false;
-    const mount = async () => {
-      await disposalRef.current;
-      if (cancelled || lifecycleGenerationRef.current !== generation) return;
-      setState({ status: 'mounting' });
-      const instanceEpoch =
-        instanceEpochOwner?.begin() ??
-        `standalone:${++nextStandaloneInstanceEpoch}`;
-      let host: NativeTrustedBlockHost;
-      let runtimeError: BlockProtocolError | undefined;
-      const onRuntimeError = (error: BlockProtocolError) => {
-        if (
-          cancelled ||
-          lifecycleGenerationRef.current !== generation ||
-          activeRef.current?.host !== host
-        )
-          return;
-        runtimeError = error;
-        setState({ status: 'failed', instanceEpoch, error });
-      };
-      host = hostFactory({
-        prepared,
-        readRuntimeInput: () => createRuntimeInputRef.current(instanceEpoch),
-        onRuntimeError
-      });
-      const mountedRuntimeInputRevision = runtimeInputRevisionRef.current;
-      const plan = createRuntimeInputRef.current(instanceEpoch).plan;
-      activeRef.current = {
-        identity,
-        instanceEpoch,
-        host,
-        mountedPlan: plan,
-        mountedRuntimeInputRevision,
-        epochEnded: false
-      };
-      observe('shadow_attach', instanceEpoch);
-      const hostState = await host.mount(plan, root);
-      if (
-        cancelled ||
-        lifecycleGenerationRef.current !== generation ||
-        activeRef.current?.host !== host
-      ) {
-        await host.dispose();
-        return;
-      }
-      if (hostState.status === 'failed') {
-        endInstanceEpoch(activeRef.current, instanceEpochOwner);
-        setState({ status: 'failed', instanceEpoch, error: hostState.error });
-        return;
-      }
-      if (runtimeError) return;
-      observe('react_mount', instanceEpoch);
-      setState({ status: 'mounted', instanceEpoch });
-      observe('present', instanceEpoch);
-      const latestRuntimeInputRevision = runtimeInputRevisionRef.current;
-      if (latestRuntimeInputRevision !== mountedRuntimeInputRevision) {
-        const latestPlan = createRuntimeInputRef.current(instanceEpoch).plan;
-        setState({ status: 'updating', instanceEpoch });
-        const updated = await host.update(latestPlan);
-        if (
-          !cancelled &&
-          lifecycleGenerationRef.current === generation &&
-          activeRef.current?.host === host
-        ) {
-          activeRef.current.mountedPlan = latestPlan;
-          activeRef.current.mountedRuntimeInputRevision =
-            latestRuntimeInputRevision;
-          if (updated.status === 'failed') {
-            setState({ status: 'failed', instanceEpoch, error: updated.error });
-          } else {
-            setState({ status: 'mounted', instanceEpoch });
-            observe('present', instanceEpoch);
-          }
-        }
-      }
-    };
-    void mount();
-
     return () => {
-      cancelled = true;
-      const active = activeRef.current;
-      if (!active || active.identity !== identity) return;
-      activeRef.current = null;
-      endInstanceEpoch(active, instanceEpochOwner);
-      setState({ status: 'disposing', instanceEpoch: active.instanceEpoch });
-      disposalRef.current = Promise.resolve().then(() =>
-        active.host.dispose()
-      );
+      if (currentInstanceEpochRef.current === registeredEpoch) {
+        currentInstanceEpochRef.current = null;
+      }
+      signalCoordinator?.endInstance(blockId, registeredEpoch);
     };
-  }, [
-    hostFactory,
-    identity,
-    instanceEpochOwner,
-    observe,
-    retryGeneration,
-    root
-  ]);
+  }, [blockId, instanceEpoch, signalCoordinator]);
 
   useEffect(() => {
-    const active = activeRef.current;
-    if (!active || active.identity !== identity) return;
-    if (active.mountedRuntimeInputRevision === runtimeInputRevision) return;
-    const runtimeInput = createRuntimeInputRef.current(active.instanceEpoch);
-    active.mountedPlan = runtimeInput.plan;
-    active.mountedRuntimeInputRevision = runtimeInputRevision;
-    let cancelled = false;
-    setState({ status: 'updating', instanceEpoch: active.instanceEpoch });
-    void active.host.update(runtimeInput.plan).then((hostState) => {
-      if (cancelled || activeRef.current !== active) return;
-      if (hostState.status === 'failed') {
-        setState({
-          status: 'failed',
-          instanceEpoch: active.instanceEpoch,
-          error: hostState.error
-        });
-      } else {
-        setState({ status: 'mounted', instanceEpoch: active.instanceEpoch });
-        observe('present', active.instanceEpoch);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [identity, observe, runtimeInputRevision]);
+    const observation = observationRef.current;
+    if (!observation.context || !observation.cacheTier) return;
+    for (const stage of ['react_mount', 'present'] as const) {
+      recordFrontstageRuntimeObservation({
+        ...observation.context,
+        stage,
+        runtimeKind: 'native',
+        cacheTier: observation.cacheTier,
+        generation: observation.generation,
+        instanceEpoch
+      });
+    }
+  }, [instanceEpoch]);
 
-  return { ...state, retry };
+  const isCurrentInstance = useCallback(
+    () => currentInstanceEpochRef.current === instanceEpoch,
+    [instanceEpoch]
+  );
+
+  return { instanceEpoch, isCurrentInstance };
 }
 
-function endInstanceEpoch(
-  active: ActiveNativeBlockInstance | null,
-  owner: FrontstageNativeInstanceEpochOwner | undefined
-): void {
-  if (!active || active.epochEnded) return;
-  active.epochEnded = true;
-  owner?.end(active.instanceEpoch);
-}
-
-function nativeInstanceIdentity(
-  identity: FrontstageNativeInstanceMountIntent['identityInput']
+export function frontstageNativeInstanceRenderKey(
+  mountIntent: FrontstageNativeInstanceMountIntent
 ): string {
+  const { identityInput } = mountIntent;
   return JSON.stringify({
-    sourceSha256: identity.sourceSha256,
-    runtimeFingerprint: identity.runtimeFingerprint,
-    dependencyLockIdentity: identity.dependencyLockIdentity
+    sourceSha256: identityInput.sourceSha256,
+    runtimeFingerprint: identityInput.runtimeFingerprint,
+    dependencyLockIdentity: identityInput.dependencyLockIdentity
   });
-}
-
-function createFrontstageNativeBlockInstanceHost({
-  prepared,
-  readRuntimeInput,
-  onRuntimeError
-}: {
-  prepared: FrontstageNativePreparedRuntime;
-  readRuntimeInput(): FrontstageNativeBlockInstanceRuntimeInput;
-  onRuntimeError(error: BlockProtocolError): void;
-}): NativeTrustedBlockHost {
-  const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-    resolveComponent: () =>
-      prepared.component as FrontstageNativeTrustedBlockReactComponent,
-    resolveBlockContext: () => readRuntimeInput().context,
-    resolveProviderScope: () => readRuntimeInput().providerScope,
-    onRuntimeError
-  });
-  return createNativeTrustedBlockHost({ adapter });
 }

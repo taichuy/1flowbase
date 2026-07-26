@@ -1,13 +1,23 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type {
+  BlockContext,
+  BlockProtocolError
+} from '@1flowbase/page-protocol';
 import {
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
@@ -48,8 +58,14 @@ import {
 } from '../lib/page-canvas/frontstage-block-interaction';
 import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
-import { useFrontstageNativeBlockInstance } from '../hooks/use-frontstage-native-block-instance';
-import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
+import {
+  frontstageNativeInstanceRenderKey,
+  useFrontstageNativeBlockInstance
+} from '../hooks/use-frontstage-native-block-instance';
+import {
+  createFrontstageUnavailableBlockContext,
+  FrontstageNativeTrustedBlockPortalHost
+} from '../lib/native-trusted-block-react-adapter';
 import {
   createFrontstagePageSignalSession,
   FrontstageSignalRuntimeCoordinator
@@ -127,11 +143,9 @@ type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
   runtimePreparation?: FrontstageNativePreparationSnapshot | null;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
-  signalRevision: number;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
-  onSignalRevision(revision: number): void;
   isSelected: boolean;
   onSelectBlock?: (blockId: string | null) => void;
   isDesignMode?: boolean;
@@ -206,11 +220,9 @@ function NativeRuntimeSlotSurface({
   item,
   preparation,
   signalCoordinator,
-  signalRevision,
   runtimeContext,
   nativeContextHost,
   pageContent,
-  onSignalRevision,
   contentViewportStyle,
   onRetry
 }: {
@@ -219,16 +231,20 @@ function NativeRuntimeSlotSurface({
   contentViewportStyle: CSSProperties;
   onRetry?: () => void;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
-  signalRevision: number;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
-  onSignalRevision(revision: number): void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  const currentInstanceEpochRef = useRef<string | null>(null);
-  const nextStandaloneEpochRef = useRef(0);
+  const [runtimeError, setRuntimeError] = useState<BlockProtocolError | null>(
+    null
+  );
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const readyPreparation = preparation.status === 'ready' ? preparation : null;
+  const renderIdentity = readyPreparation?.mountIntent
+    ? frontstageNativeInstanceRenderKey(readyPreparation.mountIntent)
+    : null;
+  useEffect(() => setRuntimeError(null), [renderIdentity]);
   const plan = useMemo<NativeTrustedBlockPreparePlan>(() => {
     const preparedSource = readyPreparation
       ? `/* prepared:${readyPreparation.prepared.identityInput.sourceSha256} */`
@@ -248,104 +264,16 @@ function NativeRuntimeSlotSurface({
     item.runtime.entry,
     readyPreparation?.prepared.identityInput.sourceSha256
   ]);
-  const instanceEpochOwner = useMemo(
-    () => ({
-      begin: () => {
-        const instanceEpoch =
-          signalCoordinator?.beginInstance(item.blockId) ??
-          `${item.blockId}:native-${++nextStandaloneEpochRef.current}`;
-        currentInstanceEpochRef.current = instanceEpoch;
-        return instanceEpoch;
-      },
-      end: (instanceEpoch: string) => {
-        if (currentInstanceEpochRef.current === instanceEpoch) {
-          currentInstanceEpochRef.current = null;
-        }
-        signalCoordinator?.endInstance(item.blockId, instanceEpoch);
-      }
-    }),
-    [item.blockId, signalCoordinator]
-  );
-  const createRuntimeInput = useCallback(
-    (instanceEpoch: string) => {
-      const unavailable = createFrontstageUnavailableBlockContext(plan);
-      const outputs = signalCoordinator
-        ? signalCoordinator.outputsFor(
-            item.blockId,
-            instanceEpoch,
-            onSignalRevision
-          )
-        : unavailable.outputs;
-      const capabilities = nativeContextHost
-        ? createFrontstageNativeBlockContextCapabilities({
-            host: nativeContextHost,
-            pageId: pageContent?.page.id ?? unavailable.page.id,
-            tabId: pageContent?.tab.id ?? '',
-            blockId: item.blockId,
-            instanceEpoch,
-            isCurrentInstance: () =>
-              currentInstanceEpochRef.current === instanceEpoch,
-            outputs
-          })
-        : { api: unavailable.api, events: unavailable.events, outputs };
-      return {
-        plan,
-        context: {
-          ...unavailable,
-          ...(runtimeContext ?? {}),
-          page: {
-            id: pageContent?.page.id ?? unavailable.page.id,
-            route:
-              pageContent?.tab.routeSegment ??
-              pageContent?.page.id ??
-              unavailable.page.route,
-            ...(pageContent?.page.title
-              ? { title: pageContent.page.title }
-              : {})
-          },
-          inputs: signalCoordinator?.inputsFor(item.blockId) ?? {},
-          ...capabilities,
-          props: { ...plan.props }
-        }
-      };
-    },
-    [
-      item.blockId,
-      nativeContextHost,
-      onSignalRevision,
-      pageContent,
-      plan,
-      runtimeContext,
-      signalCoordinator,
-      signalRevision
-    ]
-  );
-  const instanceState = useFrontstageNativeBlockInstance({
-    root,
-    mountIntent: readyPreparation?.mountIntent ?? null,
-    prepared: readyPreparation?.prepared ?? null,
-    createRuntimeInput,
-    runtimeInputRevision: createRuntimeInput,
-    instanceEpochOwner,
-    observationContext: preparation.observationContext,
-    preparationGeneration: preparation.generation
-  });
-
-  if (preparation.status === 'failed' || instanceState.status === 'failed') {
-    const retry =
-      preparation.status === 'failed' ? onRetry : instanceState.retry;
+  if (preparation.status === 'failed' || runtimeError) {
+    const retry = preparation.status === 'failed' ? onRetry : () => {
+      setRuntimeError(null);
+      setRetryGeneration((current) => current + 1);
+    };
     return (
       <div
         className="frontstage-native-block-state frontstage-native-block-state--error"
         style={contentViewportStyle}
       >
-        {instanceState.status === 'failed' ? (
-          <div
-            ref={setRoot}
-            data-testid={`frontstage-native-block-root-${item.blockId}`}
-            hidden
-          />
-        ) : null}
         <Alert
           type="error"
           showIcon
@@ -353,7 +281,7 @@ function NativeRuntimeSlotSurface({
           description={
             preparation.status === 'failed'
               ? preparation.error.message
-              : instanceState.error?.message
+              : runtimeError?.message
           }
           action={
             retry ? (
@@ -385,11 +313,119 @@ function NativeRuntimeSlotSurface({
         data-testid={`frontstage-native-block-root-${item.blockId}`}
         style={{ width: '100%', minWidth: 0 }}
       />
-      {instanceState.status === 'unmounted' ||
-      instanceState.status === 'mounting' ? (
+      {root ? (
+        <FrontstageNativeRuntimeInstance
+          key={`${renderIdentity}:${retryGeneration}`}
+          root={root}
+          item={item}
+          plan={plan}
+          preparation={readyPreparation}
+          signalCoordinator={signalCoordinator}
+          runtimeContext={runtimeContext}
+          nativeContextHost={nativeContextHost}
+          pageContent={pageContent}
+          onRuntimeError={setRuntimeError}
+        />
+      ) : (
         <BlockUiLoadingShell />
-      ) : null}
+      )}
     </div>
+  );
+}
+
+const EMPTY_BLOCK_SIGNAL_SNAPSHOT = Object.freeze({
+  revision: 0,
+  inputs: Object.freeze({})
+});
+
+function FrontstageNativeRuntimeInstance({
+  root,
+  item,
+  plan,
+  preparation,
+  signalCoordinator,
+  runtimeContext,
+  nativeContextHost,
+  pageContent,
+  onRuntimeError
+}: {
+  root: Element;
+  item: FrontstageBlockRenderPlanItem;
+  plan: NativeTrustedBlockPreparePlan;
+  preparation: Extract<
+    FrontstageNativePreparationSnapshot,
+    { status: 'ready' }
+  >;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
+  pageContent?: FrontstagePageContent;
+  onRuntimeError(error: BlockProtocolError): void;
+}) {
+  const { instanceEpoch, isCurrentInstance } =
+    useFrontstageNativeBlockInstance({
+      blockId: item.blockId,
+      signalCoordinator,
+      observationContext: preparation.observationContext,
+      cacheTier: preparation.prepared.artifactCacheTier,
+      preparationGeneration: preparation.generation
+    });
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      signalCoordinator?.subscribeBlock(item.blockId, listener) ?? (() => {}),
+    [item.blockId, signalCoordinator]
+  );
+  const getSnapshot = useCallback(
+    () =>
+      signalCoordinator?.getBlockSnapshot(item.blockId) ??
+      EMPTY_BLOCK_SIGNAL_SNAPSHOT,
+    [item.blockId, signalCoordinator]
+  );
+  const signalSnapshot = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getSnapshot
+  );
+  const unavailable = createFrontstageUnavailableBlockContext(plan);
+  const outputs = signalCoordinator
+    ? signalCoordinator.outputsFor(item.blockId, instanceEpoch)
+    : unavailable.outputs;
+  const capabilities = nativeContextHost
+    ? createFrontstageNativeBlockContextCapabilities({
+        host: nativeContextHost,
+        pageId: pageContent?.page.id ?? unavailable.page.id,
+        tabId: pageContent?.tab.id ?? '',
+        blockId: item.blockId,
+        instanceEpoch,
+        isCurrentInstance,
+        outputs
+      })
+    : { api: unavailable.api, events: unavailable.events, outputs };
+  const context: BlockContext = {
+    ...unavailable,
+    ...(runtimeContext ?? {}),
+    page: {
+      id: pageContent?.page.id ?? unavailable.page.id,
+      route:
+        pageContent?.tab.routeSegment ??
+        pageContent?.page.id ??
+        unavailable.page.route,
+      ...(pageContent?.page.title ? { title: pageContent.page.title } : {})
+    },
+    inputs: signalSnapshot.inputs,
+    ...capabilities,
+    props: { ...plan.props }
+  };
+
+  return (
+    <FrontstageNativeTrustedBlockPortalHost
+      root={root}
+      renderEpoch={instanceEpoch}
+      plan={plan}
+      component={preparation.prepared.component}
+      ctx={context}
+      onRuntimeError={onRuntimeError}
+    />
   );
 }
 
@@ -397,11 +433,9 @@ function RenderPlanSlot({
   item,
   runtimePreparation,
   signalCoordinator,
-  signalRevision,
   runtimeContext,
   nativeContextHost,
   pageContent,
-  onSignalRevision,
   isSelected,
   onSelectBlock,
   isDesignMode,
@@ -520,11 +554,9 @@ function RenderPlanSlot({
           item={item}
           preparation={runtimePreparation}
           signalCoordinator={signalCoordinator}
-          signalRevision={signalRevision}
           runtimeContext={runtimeContext}
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
-          onSignalRevision={onSignalRevision}
           contentViewportStyle={contentViewportStyle}
           onRetry={
             onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
@@ -638,27 +670,10 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         : null,
     [content?.tab.id, document?.page.id, signalSession]
   );
-  const [signalRevision, setSignalRevision] = useState(0);
   useEffect(() => {
     signalCoordinator?.updateBlocks(document?.blocks ?? []);
-    setSignalRevision(signalCoordinator?.revision ?? 0);
   }, [document?.blocks, signalCoordinator]);
-  const pendingSignalRevisionRef = useRef<number | null>(null);
-  const signalRevisionScheduledRef = useRef(false);
-  const handleSignalRevision = useCallback((revision: number) => {
-    pendingSignalRevisionRef.current = Math.max(
-      pendingSignalRevisionRef.current ?? revision,
-      revision
-    );
-    if (signalRevisionScheduledRef.current) return;
-    signalRevisionScheduledRef.current = true;
-    setTimeout(() => {
-      signalRevisionScheduledRef.current = false;
-      const pendingRevision = pendingSignalRevisionRef.current;
-      pendingSignalRevisionRef.current = null;
-      if (pendingRevision !== null) setSignalRevision(pendingRevision);
-    }, 0);
-  }, []);
+  useEffect(() => () => signalCoordinator?.dispose(), [signalCoordinator]);
   const { width: measuredWidth, containerRef } = useContainerWidth({
     initialWidth: 1280
   });
@@ -882,11 +897,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                     ) ?? null
                   }
                   signalCoordinator={signalCoordinator}
-                  signalRevision={signalRevision}
                   runtimeContext={runtimeContext}
                   nativeContextHost={nativeContextHost}
                   pageContent={content}
-                  onSignalRevision={handleSignalRevision}
                   isSelected={item.blockId === selectedBlockId}
                   onSelectBlock={onSelectBlock}
                   isDesignMode={isDesignMode}

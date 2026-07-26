@@ -1,235 +1,311 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
+import { useEffect, useState, type ComponentType } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
-import type {
-  NativeTrustedBlockHost,
-  NativeTrustedBlockPreparePlan
-} from '@1flowbase/page-runtime';
-import type { BlockProtocolError } from '@1flowbase/page-protocol';
+import type { BlockContext } from '@1flowbase/page-protocol';
 
-import { useFrontstageNativeBlockInstance } from '../../hooks/use-frontstage-native-block-instance';
-import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block-react-adapter';
+import type { FrontstagePageContent } from '../../api/page-content';
+import {
+  PageCanvas,
+  type FrontstagePageCanvasRuntimeContext
+} from '../../components/PageCanvas';
 import type {
-  FrontstageNativeInstanceMountIntent,
+  FrontstageNativePreparationSnapshot,
   FrontstageNativePreparedRuntime
 } from '../../lib/page-canvas/native-runtime-preparation';
+import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
-describe('useFrontstageNativeBlockInstance', () => {
-  test('D3-AC-003 updates props on the same Host and remounts exactly once when identity changes', async () => {
-    const hosts = createHostFactory();
-    const epochs = createEpochOwner();
-    const root = document.createElement('div');
-    const initialPlan = plan({ title: 'Initial' });
-    const { rerender } = renderHook(
-      ({ mountIntent, runtimePlan }) =>
-        useFrontstageNativeBlockInstance({
-          root,
-          mountIntent,
-          prepared: prepared(),
-          createRuntimeInput: () => ({
-            plan: runtimePlan,
-            context: createFrontstageUnavailableBlockContext(runtimePlan)
-          }),
-          runtimeInputRevision: runtimePlan,
-          instanceEpochOwner: epochs.owner,
-          hostFactory: hosts.factory
-        }),
-      {
-        initialProps: {
-          mountIntent: intent('source-a'),
-          runtimePlan: initialPlan
-        }
-      }
+describe('PageCanvas declarative Native block lifecycle', () => {
+  test('D3R-AC-001/004 keeps Hooks across props and theme updates, then remounts once per source/runtime/dependency identity change', async () => {
+    let mounts = 0;
+    let unmounts = 0;
+    const StatefulBlock = ({
+      props,
+      ctx
+    }: {
+      props: Record<string, unknown>;
+      ctx: BlockContext;
+    }) => {
+      const [mountId] = useState(() => ++mounts);
+      const [localCount, setLocalCount] = useState(0);
+      useEffect(() => () => {
+        unmounts += 1;
+      }, []);
+      return (
+        <button
+          data-testid="stateful-native-block"
+          onClick={() => setLocalCount((current) => current + 1)}
+        >
+          {mountId}:{localCount}:{String(props.title)}:{ctx.theme.mode}
+        </button>
+      );
+    };
+    const initialPreparation = preparation('source-a', 1, StatefulBlock);
+    const view = render(
+      <PageCanvas
+        content={pageContent('Initial')}
+        runtimeContext={runtimeContext('light')}
+        runtimePreparations={[initialPreparation]}
+      />
     );
-    await waitFor(() => expect(hosts.mount).toHaveBeenCalledOnce());
+    const firstRoot = await nativeRoot();
+    const stateful = await within(firstRoot.shadow).findByTestId(
+      'stateful-native-block'
+    );
+    fireEvent.click(stateful);
+    expect(stateful).toHaveTextContent('1:1:Initial:light');
 
-    const changedPropsPlan = plan({ title: 'Changed' });
-    rerender({
-      mountIntent: intent('source-a'),
-      runtimePlan: changedPropsPlan
-    });
-    await waitFor(() => expect(hosts.update).toHaveBeenCalledOnce());
-    expect(hosts.factory).toHaveBeenCalledOnce();
-    expect(hosts.dispose).not.toHaveBeenCalled();
-    expect(epochs.begin).toHaveBeenCalledOnce();
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Changed')}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[initialPreparation]}
+      />
+    );
+    await waitFor(() =>
+      expect(stateful).toHaveTextContent('1:1:Changed:dark')
+    );
+    expect(mounts).toBe(1);
+    expect(unmounts).toBe(0);
 
-    rerender({
-      mountIntent: intent('source-b'),
-      runtimePlan: changedPropsPlan
-    });
-    await waitFor(() => expect(hosts.factory).toHaveBeenCalledTimes(2));
-    expect(hosts.dispose).toHaveBeenCalledOnce();
-    expect(hosts.mount).toHaveBeenCalledTimes(2);
-    expect(epochs.begin).toHaveBeenCalledTimes(2);
-    expect(epochs.end).toHaveBeenCalledWith('epoch-1');
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Changed')}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[
+          preparation('source-b', 1, StatefulBlock)
+        ]}
+      />
+    );
+    const remountedRoot = await nativeRoot();
+    await waitFor(() =>
+      expect(
+        within(remountedRoot.shadow).getByTestId('stateful-native-block')
+      ).toHaveTextContent('2:0:Changed:dark')
+    );
+    expect(mounts).toBe(2);
+    expect(unmounts).toBe(1);
+
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Changed')}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[
+          preparation('source-b', 1, StatefulBlock, true, {
+            runtimeFingerprint: 'runtime-b'
+          })
+        ]}
+      />
+    );
+    await waitFor(() => expect(mounts).toBe(3));
+    expect(unmounts).toBe(2);
+
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Changed')}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[
+          preparation('source-b', 1, StatefulBlock, true, {
+            runtimeFingerprint: 'runtime-b',
+            dependencyLockIdentity: 'lock-b'
+          })
+        ]}
+      />
+    );
+    await waitFor(() => expect(mounts).toBe(4));
+    expect(unmounts).toBe(3);
   });
 
-  test('D3-AC-004 unmounts for demand 1 to 2, remounts for 2 to 1, and disposes on page leave', async () => {
-    const hosts = createHostFactory();
-    const epochs = createEpochOwner();
-    const root = document.createElement('div');
-    const runtimePlan = plan({ title: 'Demand' });
-    const renderInstance = (
-      mountIntent: FrontstageNativeInstanceMountIntent | null
-    ) =>
-      useFrontstageNativeBlockInstance({
-        root,
-        mountIntent,
-        prepared: prepared(),
-        createRuntimeInput: () => ({
-          plan: runtimePlan,
-          context: createFrontstageUnavailableBlockContext(runtimePlan)
-        }),
-        runtimeInputRevision: runtimePlan,
-        instanceEpochOwner: epochs.owner,
-        hostFactory: hosts.factory
-      });
-    const { rerender, unmount } = renderHook(
-      ({
-        mountIntent
-      }: {
-        mountIntent: FrontstageNativeInstanceMountIntent | null;
-      }) => renderInstance(mountIntent),
-      {
-        initialProps: {
-          mountIntent: intent(
-            'source-a'
-          ) as FrontstageNativeInstanceMountIntent | null
-        }
-      }
+  test('D3R-AC-005/008 presents demand 0/1, unmounts 2/3, and disposes the page epoch', async () => {
+    const contexts: BlockContext[] = [];
+    let mounts = 0;
+    let unmounts = 0;
+    const LifecycleBlock = ({ ctx }: { ctx: BlockContext }) => {
+      contexts.push(ctx);
+      useState(() => ++mounts);
+      useEffect(() => () => {
+        unmounts += 1;
+      }, []);
+      return <div data-testid="lifecycle-native-block">ready</div>;
+    };
+    const view = render(
+      <PageCanvas
+        content={pageContent('Demand')}
+        runtimePreparations={[preparation('source-a', 0, LifecycleBlock)]}
+      />
     );
-    await waitFor(() => expect(hosts.mount).toHaveBeenCalledOnce());
+    const root = await nativeRoot();
+    await within(root.shadow).findByTestId('lifecycle-native-block');
+    const firstPublish = contexts.at(-1)!.outputs.publish;
 
-    rerender({ mountIntent: null });
-    await waitFor(() => expect(hosts.dispose).toHaveBeenCalledOnce());
-    rerender({ mountIntent: intent('source-a') });
-    await waitFor(() => expect(hosts.mount).toHaveBeenCalledTimes(2));
-    expect(epochs.begin).toHaveBeenNthCalledWith(1);
-    expect(epochs.begin).toHaveBeenNthCalledWith(2);
-    expect(epochs.end).toHaveBeenCalledWith('epoch-1');
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Demand')}
+        runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
+      />
+    );
+    expect(mounts).toBe(1);
 
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      value: 'hidden'
-    });
-    document.dispatchEvent(new Event('visibilitychange'));
-    expect(hosts.dispose).toHaveBeenCalledOnce();
+    for (const priority of [2, 3] as const) {
+      view.rerender(
+        <PageCanvas
+          content={pageContent('Demand')}
+          runtimePreparations={[
+            preparation('source-a', priority, LifecycleBlock, false)
+          ]}
+        />
+      );
+      await waitFor(() => expect(root.shadow.childNodes).toHaveLength(0));
+    }
+    expect(unmounts).toBe(1);
+    expect(firstPublish({})).toEqual({ ok: false, stale: true });
 
-    unmount();
-    await waitFor(() => expect(hosts.dispose).toHaveBeenCalledTimes(2));
-    expect(epochs.end).toHaveBeenCalledWith('epoch-2');
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Demand')}
+        runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
+      />
+    );
+    const remountedRoot = await nativeRoot();
+    await within(remountedRoot.shadow).findByTestId('lifecycle-native-block');
+    expect(mounts).toBe(2);
+
+    const secondPublish = contexts.at(-1)!.outputs.publish;
+    view.unmount();
+    await waitFor(() => expect(unmounts).toBe(2));
+    expect(secondPublish({})).toEqual({ ok: false, stale: true });
+    expect(remountedRoot.shadow.childNodes).toHaveLength(0);
   });
 
-  test('D3-AC-006 render retry remounts only the failed identity with a new epoch', async () => {
-    const hosts = createHostFactory();
-    const epochs = createEpochOwner();
-    const root = document.createElement('div');
-    const runtimePlan = plan({ title: 'Retry' });
-    const { result } = renderHook(() =>
-      useFrontstageNativeBlockInstance({
-        root,
-        mountIntent: intent('source-a'),
-        prepared: prepared(),
-        createRuntimeInput: () => ({
-          plan: runtimePlan,
-          context: createFrontstageUnavailableBlockContext(runtimePlan)
-        }),
-        runtimeInputRevision: runtimePlan,
-        instanceEpochOwner: epochs.owner,
-        hostFactory: hosts.factory
-      })
-    );
-    await waitFor(() => expect(hosts.mount).toHaveBeenCalledOnce());
-    hosts.fail({
-      code: 'runtime_error',
-      path: 'runtime.render',
-      message: 'controlled render failure'
-    });
-    await waitFor(() => expect(result.current.status).toBe('failed'));
+  test('D3R-AC-005 render retry replaces only the failed Portal epoch', async () => {
+    const contexts: BlockContext[] = [];
+    let shouldThrow = true;
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const RecoveringBlock = ({ ctx }: { ctx: BlockContext }) => {
+      contexts.push(ctx);
+      if (shouldThrow) {
+        shouldThrow = false;
+        throw new Error('controlled render failure');
+      }
+      return <div data-testid="recovered-native-block">recovered</div>;
+    };
 
-    result.current.retry();
-    await waitFor(() => expect(hosts.mount).toHaveBeenCalledTimes(2));
-    expect(hosts.dispose).toHaveBeenCalledOnce();
-    expect(hosts.factory).toHaveBeenCalledTimes(2);
-    expect(epochs.begin).toHaveBeenCalledTimes(2);
-    expect(epochs.end).toHaveBeenCalledWith('epoch-1');
+    try {
+      render(
+        <PageCanvas
+          content={pageContent('Retry')}
+          runtimePreparations={[
+            preparation('source-a', 1, RecoveringBlock)
+          ]}
+        />
+      );
+      const firstPublish = contexts.at(-1)!.outputs.publish;
+      fireEvent.click(await screen.findByRole('button', { name: /重\s*试/ }));
+
+      const root = await nativeRoot();
+      await within(root.shadow).findByTestId('recovered-native-block');
+      expect(contexts.at(-1)!.outputs.publish).not.toBe(firstPublish);
+      expect(firstPublish({})).toEqual({ ok: false, stale: true });
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
 
-function createHostFactory() {
-  let onRuntimeError: ((error: BlockProtocolError) => void) | undefined;
-  const mount = vi.fn(async (runtimePlan: NativeTrustedBlockPreparePlan) => ({
-    status: 'mounted' as const,
-    blockId: runtimePlan.blockId,
-    runtime: runtimePlan.runtime
-  }));
-  const update = vi.fn(async (runtimePlan: NativeTrustedBlockPreparePlan) => ({
-    status: 'mounted' as const,
-    blockId: runtimePlan.blockId,
-    runtime: runtimePlan.runtime
-  }));
-  const dispose = vi.fn(async () => ({ status: 'disposed' as const }));
-  const factory = vi.fn(
-    (input: {
-      onRuntimeError(error: BlockProtocolError): void;
-    }): NativeTrustedBlockHost => {
-      onRuntimeError = input.onRuntimeError;
-      return {
-        getState: () => ({ status: 'idle' }),
-        mount,
-        update,
-        retry: vi.fn(async () => ({ status: 'mounted' as const })),
-        dispose
-      };
-    }
-  );
-  return {
-    factory,
-    mount,
-    update,
-    dispose,
-    fail(error: BlockProtocolError) {
-      onRuntimeError?.(error);
-    }
+async function nativeRoot(): Promise<{
+  host: HTMLElement;
+  shadow: HTMLElement;
+}> {
+  const selector = '[data-testid="frontstage-native-block-root-block-1"]';
+  await waitFor(() => expect(document.querySelector(selector)).not.toBeNull());
+  const host = document.querySelector(selector) as HTMLElement;
+  await waitFor(() => expect(host.shadowRoot).not.toBeNull());
+  return { host, shadow: host.shadowRoot as unknown as HTMLElement };
+}
+
+function preparation(
+  sourceSha256: string,
+  priority: 0 | 1 | 2 | 3,
+  component: ComponentType<{
+    ctx: BlockContext;
+    props: Record<string, unknown>;
+  }>,
+  present = true,
+  identityOverrides: Partial<{
+    runtimeFingerprint: string;
+    dependencyLockIdentity: string;
+  }> = {}
+): Extract<FrontstageNativePreparationSnapshot, { status: 'ready' }> {
+  const identityInput = {
+    sourceSha256: sourceSha256.padEnd(64, '0'),
+    runtimeFingerprint: identityOverrides.runtimeFingerprint ?? 'runtime-a',
+    dependencyLockIdentity:
+      identityOverrides.dependencyLockIdentity ?? 'lock-a'
   };
-}
-
-function createEpochOwner() {
-  let nextEpoch = 0;
-  const begin = vi.fn(() => `epoch-${++nextEpoch}`);
-  const end = vi.fn();
-  return { owner: { begin, end }, begin, end };
-}
-
-function intent(sourceSha256: string): FrontstageNativeInstanceMountIntent {
   return {
+    status: 'ready',
     blockId: 'block-1',
     slotIndex: 0,
-    identityInput: {
-      sourceSha256,
-      runtimeFingerprint: 'runtime-a',
-      dependencyLockIdentity: 'lock-a'
+    priority,
+    generation: 0,
+    mountIntent: present
+      ? { blockId: 'block-1', slotIndex: 0, identityInput }
+      : null,
+    prepared: {
+      artifact: {} as FrontstageNativePreparedRuntime['artifact'],
+      component: component as FrontstageNativePreparedRuntime['component'],
+      identityInput,
+      artifactCacheTier: 'l2'
     }
   };
 }
 
-function prepared(): FrontstageNativePreparedRuntime {
+function runtimeContext(
+  mode: 'light' | 'dark'
+): FrontstagePageCanvasRuntimeContext {
   return {
-    artifact: {} as FrontstageNativePreparedRuntime['artifact'],
-    component: (() => null) as FrontstageNativePreparedRuntime['component'],
-    identityInput: intent('source-a').identityInput,
-    artifactCacheTier: 'l2'
+    currentUser: null,
+    workspace: { id: 'workspace-1' },
+    application: null,
+    theme: { mode, tokens: {} },
+    ui: { locale: 'en_US' }
   };
 }
 
-function plan(props: Record<string, unknown>): NativeTrustedBlockPreparePlan {
-  return {
-    runtime: 'native_trusted_block',
-    blockId: 'block-1',
-    entry: 'default',
-    source: '/* prepared */',
-    normalizedSource: '/* prepared */',
-    props,
-    requiredPermissions: ['ui_block.javascript.native']
-  };
+function pageContent(title: string): FrontstagePageContent {
+  return createFrontstagePageContentFixture({
+    root: {
+      uid: 'root-1',
+      payload: {
+        blocks: [
+          {
+            id: 'block-1',
+            renderer_version: 'v1',
+            codeRef: 'block-1-code',
+            catalog: {
+              providerCode: 'official',
+              installationId: 'installation-1'
+            },
+            contribution: {
+              pluginId: 'official.blocks',
+              pluginVersion: '1.0.0',
+              code: 'block-1'
+            },
+            runtime: { kind: 'native_react', entry: 'blocks/block-1.js' },
+            layout: { order: 0, region: 'main' },
+            props: { title },
+            ports: { inputs: [], outputs: [] }
+          }
+        ]
+      }
+    }
+  });
 }
