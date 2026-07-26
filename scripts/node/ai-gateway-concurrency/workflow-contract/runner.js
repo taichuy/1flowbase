@@ -150,26 +150,30 @@ function wireAuditManifest(ready) {
   };
 }
 
-function characterizeOptions({ repoRoot, ready, httpBaseUrl, websocketBaseUrl, mockSnapshot }) {
+function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot }) {
+  const openaiGatewayOrigin = new URL(ready.targets.openai.gateway.responses_url).origin;
   return {
     repoRoot,
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
       [TRANSPORT.RESPONSES_WEBSOCKET]: `${websocketBaseUrl}/v1/responses`,
-      [TRANSPORT.CHAT_COMPLETIONS_SSE]: `${httpBaseUrl}/v1/chat/completions`,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: `${openaiGatewayOrigin}/v1/chat/completions`,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.gateway.anthropic_messages_url,
     },
     authorizationTokenByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.api_key,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai.api_key,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.api_key,
     },
     modelByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.model,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai.model,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.model,
     },
     mockSnapshot,
     durableTargetsByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
     },
     anthropicTargetPool: ready.pools.anthropic,
@@ -225,7 +229,6 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         characterizeResult = await characterize(characterizeOptions({
           repoRoot: inputs.repoRoot,
           ready,
-          httpBaseUrl: mockEndpoints.httpBaseUrl,
           websocketBaseUrl: mockEndpoints.websocketBaseUrl,
           mockSnapshot: mock.snapshot,
         }));

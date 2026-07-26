@@ -147,16 +147,22 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   const characterize = calls.find((call) => Array.isArray(call) && call[0] === 'characterize')[1];
   assert.deepEqual(characterize.authorizationTokenByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'openai-application-key-1',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'openai-application-key-1',
     [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-application-key-1',
   });
   assert.deepEqual(characterize.modelByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'published-openai-model',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'published-openai-model',
     [TRANSPORT.ANTHROPIC_SSE]: 'published-anthropic-model',
   });
   assert.equal(characterize.endpointSet[TRANSPORT.RESPONSES_WEBSOCKET], 'ws://127.0.0.1:4000/v1/responses');
-  assert.equal(characterize.endpointSet[TRANSPORT.CHAT_COMPLETIONS_SSE], 'http://127.0.0.1:4000/v1/chat/completions');
+  assert.equal(characterize.endpointSet[TRANSPORT.CHAT_COMPLETIONS_SSE], 'http://127.0.0.1:4100/v1/chat/completions');
   assert.deepEqual(
     characterize.durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
+    fixtureManifest().targets.openai,
+  );
+  assert.deepEqual(
+    characterize.durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE],
     fixtureManifest().targets.openai,
   );
   assert.deepEqual(characterize.anthropicTargetPool, fixtureManifest().pools.anthropic);
