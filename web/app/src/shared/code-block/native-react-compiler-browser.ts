@@ -4,7 +4,8 @@ import {
   type NativeReactCompileDiagnostic,
   type NativeReactCompilerRequest,
   type NativeReactCompilerResponse,
-  type NativeReactComponentArtifact
+  type NativeReactComponentArtifact,
+  type NativeReactCatalogDependencyLock
 } from '@1flowbase/page-runtime';
 
 import nativeReactCompilerWorkerUrl from './native-react-compiler.worker?worker&url';
@@ -55,10 +56,12 @@ export function createNativeReactBrowserCompilerWorkerFactory({
 export function compileNativeReactComponentInBrowser({
   source,
   requestId,
+  dependencyLock = [],
   workerFactory = createNativeReactBrowserCompilerWorkerFactory()
 }: {
   source: string;
   requestId: string;
+  dependencyLock?: NativeReactCatalogDependencyLock;
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
 }): Promise<NativeReactBrowserCompileResult> {
   return new Promise((resolve) => {
@@ -89,7 +92,8 @@ export function compileNativeReactComponentInBrowser({
         direction: 'host_to_worker',
         type: 'compile_native_react_component',
         requestId,
-        source
+        source,
+        dependencyLock
       });
     } catch (error) {
       finish(compilerFailure(errorMessage(error)));

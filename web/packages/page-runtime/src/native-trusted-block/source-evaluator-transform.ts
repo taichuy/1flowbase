@@ -140,7 +140,8 @@ export function tokenizeSource(source: string): SourceToken[] {
 
 export function parseTopLevelModuleSyntax(
   source: string,
-  tokens: SourceToken[]
+  tokens: SourceToken[],
+  acceptedImportSources: ReadonlySet<string> = allowedImportSources
 ): ParseResult<{
   imports: ImportDeclaration[];
   defaultExport: DefaultExportDeclaration;
@@ -155,7 +156,12 @@ export function parseTopLevelModuleSyntax(
     }
 
     if (token.value === 'import') {
-      const importResult = parseImportDeclaration(source, tokens, index);
+      const importResult = parseImportDeclaration(
+        source,
+        tokens,
+        index,
+        acceptedImportSources
+      );
       if (!importResult.ok) {
         return importResult;
       }
@@ -322,7 +328,8 @@ export function applyEdits(source: string, edits: SourceEdit[]): string {
 function parseImportDeclaration(
   source: string,
   tokens: SourceToken[],
-  importTokenIndex: number
+  importTokenIndex: number,
+  acceptedImportSources: ReadonlySet<string>
 ): ParseResult<ImportDeclaration> {
   const importToken = tokens[importTokenIndex];
   const nextIndex = skipWhitespaceAndComments(source, importToken.end);
@@ -330,7 +337,7 @@ function parseImportDeclaration(
 
   if (nextChar === '"' || nextChar === "'") {
     const literal = readStringLiteral(source, nextIndex);
-    if (!literal || !isAllowedImportSource(literal.value)) {
+    if (!literal || !acceptedImportSources.has(literal.value)) {
       return parseError(
         'source.imports',
         'Native trusted block import source could not be transformed.'
@@ -371,7 +378,7 @@ function parseImportDeclaration(
 
   const literalStart = skipWhitespaceAndComments(source, fromToken.end);
   const literal = readStringLiteral(source, literalStart);
-  if (!literal || !isAllowedImportSource(literal.value)) {
+  if (!literal || !acceptedImportSources.has(literal.value)) {
     return parseError(
       'source.imports',
       'Native trusted block import source could not be transformed.'
@@ -1112,12 +1119,6 @@ function skipHorizontalWhitespace(source: string, start: number): number {
   }
 
   return index;
-}
-
-function isAllowedImportSource(
-  source: string
-): source is NativeTrustedBlockInjectedModuleSource {
-  return allowedImportSources.has(source);
 }
 
 function isImportName(value: string): boolean {

@@ -3,12 +3,14 @@ import {
   type NativeReactCompileDiagnostic,
   type NativeReactComponentArtifact
 } from './artifact';
+import type { NativeReactCatalogDependencyLock } from './module-registry/contracts';
 
 export interface NativeReactCompilerRequest {
   direction: 'host_to_worker';
   type: 'compile_native_react_component';
   requestId: string;
   source: string;
+  dependencyLock: NativeReactCatalogDependencyLock;
 }
 
 export type NativeReactCompilerResponse =
@@ -52,7 +54,10 @@ export function handleNativeReactCompilerRequest(
     };
   }
 
-  const result = compileNativeReactComponent(request.source);
+  const result = compileNativeReactComponent(
+    request.source,
+    request.dependencyLock
+  );
   return result.ok
     ? {
         direction: 'worker_to_host',
@@ -88,12 +93,15 @@ function readRequest(value: unknown): NativeReactCompilerRequest | null {
   return value.direction === 'host_to_worker' &&
     value.type === 'compile_native_react_component' &&
     isNonEmptyString(value.requestId) &&
-    typeof value.source === 'string'
+    typeof value.source === 'string' &&
+    (value.dependencyLock === undefined || Array.isArray(value.dependencyLock))
     ? {
         direction: value.direction,
         type: value.type,
         requestId: value.requestId,
-        source: value.source
+        source: value.source,
+        dependencyLock: (value.dependencyLock ??
+          []) as NativeReactCatalogDependencyLock
       }
     : null;
 }

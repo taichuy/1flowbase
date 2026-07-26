@@ -4,10 +4,11 @@ import {
 } from '@1flowbase/block-renderer';
 import {
   createNativeTrustedBlockHost,
-  evaluateNativeReactComponentArtifact,
+  evaluateNativeReactComponentArtifactWithRegistry,
   type JsBlockHostEffectHandlers,
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
+  type NativeReactCatalogDependencyLock,
   type NativeTrustedBlockHost,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
@@ -24,7 +25,7 @@ import {
   createFrontstageNativeTrustedBlockReactAdapter,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeTrustedBlockModuleMap } from '../lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../lib/page-document';
 import type { RestrictedBlockLoaderLimits } from '../lib/restricted-block-loader';
 import type { createFrontstageRestrictedBlockRuntimeSession } from '../lib/frontstage-restricted-block-runtime-host';
@@ -33,6 +34,7 @@ import { JsBlockPreviewConsole } from './JsBlockPreviewConsole';
 type NativeTrialDiagnostic =
   | NativeReactCompileDiagnostic
   | NativeReactRuntimeDiagnostic;
+const EMPTY_NATIVE_REACT_DEPENDENCY_LOCK: NativeReactCatalogDependencyLock = [];
 
 interface NativeTrialSnapshot {
   status: 'compiling' | 'ready' | 'failed';
@@ -72,6 +74,8 @@ export interface JsBlockTrialPanelProps {
   runtimeSessionFactory?: typeof createFrontstageRestrictedBlockRuntimeSession;
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
+  nativeDependencyLock?: NativeReactCatalogDependencyLock;
+  nativeModuleRegistryFactory?: typeof createFrontstageNativeReactModuleRegistry;
 }
 
 export function JsBlockTrialPanel({
@@ -79,7 +83,9 @@ export function JsBlockTrialPanel({
   code,
   revision,
   nativeCompiler = compileNativeReactComponentInBrowser,
-  nativeCompilerWorkerFactory
+  nativeCompilerWorkerFactory,
+  nativeDependencyLock = EMPTY_NATIVE_REACT_DEPENDENCY_LOCK,
+  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: JsBlockTrialPanelProps) {
   const previewRootRef = useRef<HTMLDivElement | null>(null);
   const generationRef = useRef(0);
@@ -153,7 +159,8 @@ export function JsBlockTrialPanel({
         requestId,
         ...(nativeCompilerWorkerFactory
           ? { workerFactory: nativeCompilerWorkerFactory }
-          : {})
+          : {}),
+        dependencyLock: nativeDependencyLock
       });
       if (generationRef.current !== generation) return;
       if (!compiled.ok) {
@@ -166,10 +173,11 @@ export function JsBlockTrialPanel({
         return;
       }
 
-      const evaluated = evaluateNativeReactComponentArtifact(
+      const evaluated = await evaluateNativeReactComponentArtifactWithRegistry(
         compiled.artifact,
-        createFrontstageNativeTrustedBlockModuleMap()
+        nativeModuleRegistryFactory(compiled.artifact.dependencyLock)
       );
+      if (generationRef.current !== generation) return;
       if (!evaluated.ok) {
         setSnapshot({
           status: 'failed',
@@ -220,7 +228,13 @@ export function JsBlockTrialPanel({
       }
       setSnapshot({ status: 'ready', requestId, logs: [], diagnostics: [] });
     },
-    [disposeActiveRun, nativeCompiler, nativeCompilerWorkerFactory]
+    [
+      disposeActiveRun,
+      nativeCompiler,
+      nativeCompilerWorkerFactory,
+      nativeDependencyLock,
+      nativeModuleRegistryFactory
+    ]
   );
 
   useEffect(() => {

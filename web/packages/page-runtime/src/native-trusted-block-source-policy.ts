@@ -34,6 +34,10 @@ export type ValidateNativeTrustedBlockSourceResult =
   | ValidateNativeTrustedBlockSourceSuccess
   | ValidateNativeTrustedBlockSourceFailure;
 
+export interface ValidateNativeTrustedBlockSourceOptions {
+  allowedImportSources?: ReadonlySet<string>;
+}
+
 interface SourceToken {
   value: string;
   start: number;
@@ -56,7 +60,8 @@ interface ScanResult {
 }
 
 export function validateNativeTrustedBlockSource(
-  source: unknown
+  source: unknown,
+  options: ValidateNativeTrustedBlockSourceOptions = {}
 ): ValidateNativeTrustedBlockSourceResult {
   try {
     if (typeof source !== 'string') {
@@ -73,7 +78,11 @@ export function validateNativeTrustedBlockSource(
     }
 
     const errors = [
-      ...validateImports(source, scan.tokens),
+      ...validateImports(
+        source,
+        scan.tokens,
+        options.allowedImportSources ?? allowedImports
+      ),
       ...validateDeniedCapabilities(source, scan.tokens)
     ];
 
@@ -303,7 +312,8 @@ function consumeTemplate(
 
 function validateImports(
   source: string,
-  tokens: SourceToken[]
+  tokens: SourceToken[],
+  acceptedImportSources: ReadonlySet<string>
 ): BlockProtocolError[] {
   const errors: BlockProtocolError[] = [];
   let importIndex = 0;
@@ -314,7 +324,8 @@ function validateImports(
         source,
         tokens,
         tokenIndex,
-        importIndex
+        importIndex,
+        acceptedImportSources
       );
       if (importError) {
         errors.push(importError);
@@ -325,7 +336,7 @@ function validateImports(
 
     if (token.value === 'export') {
       const exportedSource = readExportSource(source, tokens, tokenIndex);
-      if (exportedSource && !allowedImports.has(exportedSource.value)) {
+      if (exportedSource && !acceptedImportSources.has(exportedSource.value)) {
         errors.push(
           failureError(
             'import_denied',
@@ -347,7 +358,8 @@ function validateImportToken(
   source: string,
   tokens: SourceToken[],
   tokenIndex: number,
-  importIndex: number
+  importIndex: number,
+  acceptedImportSources: ReadonlySet<string>
 ): BlockProtocolError | undefined {
   const token = tokens[tokenIndex];
   const path = `source.imports[${importIndex}]`;
@@ -367,7 +379,7 @@ function validateImportToken(
     if (!sourceLiteral) {
       return failureError('syntax_invalid', 'source', 'Invalid import source.');
     }
-    return allowedImports.has(sourceLiteral.value)
+    return acceptedImportSources.has(sourceLiteral.value)
       ? undefined
       : failureError(
           'import_denied',
@@ -396,7 +408,7 @@ function validateImportToken(
     return failureError('syntax_invalid', 'source', 'Invalid import source.');
   }
 
-  return allowedImports.has(sourceLiteral.value)
+  return acceptedImportSources.has(sourceLiteral.value)
     ? undefined
     : failureError(
         'import_denied',

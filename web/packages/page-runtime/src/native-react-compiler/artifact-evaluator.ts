@@ -14,6 +14,10 @@ import {
   canonicalizeNativeReactComponentArtifact,
   type NativeReactComponentArtifact
 } from './artifact';
+import {
+  NativeReactModuleRegistryError,
+  type NativeReactModuleRegistry
+} from './module-registry/loader';
 
 export interface NativeReactRuntimeDiagnostic extends BlockProtocolError {
   phase: 'runtime';
@@ -80,6 +84,32 @@ export function evaluateNativeReactComponentArtifact(
         ? error.message
         : 'Native React artifact evaluation failed.'
     );
+  }
+}
+
+export async function evaluateNativeReactComponentArtifactWithRegistry(
+  value: unknown,
+  registry: NativeReactModuleRegistry
+): Promise<NativeReactArtifactEvaluationResult> {
+  const artifact = canonicalizeNativeReactComponentArtifact(value);
+  if (!artifact) {
+    return runtimeFailure(
+      'artifact',
+      'Native React component artifact is invalid.'
+    );
+  }
+  try {
+    const modules = await registry.resolveModuleMap(
+      artifact.program.injectedModules.map(({ source }) => source)
+    );
+    return evaluateNativeReactComponentArtifact(artifact, modules);
+  } catch (error) {
+    return error instanceof NativeReactModuleRegistryError
+      ? runtimeFailure(error.path, error.message)
+      : runtimeFailure(
+          'moduleRegistry',
+          'Native React module registry failed.'
+        );
   }
 }
 

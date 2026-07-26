@@ -18,6 +18,13 @@ import type {
 } from '../native-trusted-block/source-evaluator-types';
 import { transformNativeReactTsx } from './tsx-transform';
 
+const NATIVE_REACT_HOST_ABI_IMPORTS = new Set([
+  'react',
+  'react/jsx-runtime',
+  'antd',
+  '@1flowbase/ui'
+]);
+
 export type NativeReactComponentTransformResult =
   | {
       ok: true;
@@ -35,9 +42,16 @@ export type NativeReactComponentTransformResult =
   | { ok: false; errors: BlockProtocolError[] };
 
 export function transformNativeReactComponentSource(
-  source: unknown
+  source: unknown,
+  catalogModuleSources: ReadonlySet<string> = new Set()
 ): NativeReactComponentTransformResult {
-  const policy = validateNativeTrustedBlockSource(source);
+  const acceptedImportSources = new Set([
+    ...NATIVE_REACT_HOST_ABI_IMPORTS,
+    ...catalogModuleSources
+  ]);
+  const policy = validateNativeTrustedBlockSource(source, {
+    allowedImportSources: acceptedImportSources
+  });
   if (!policy.ok) return policy;
 
   const reservedToken = tokenizeSource(policy.source).find((token) =>
@@ -53,7 +67,11 @@ export function transformNativeReactComponentSource(
   const tsx = transformNativeReactTsx(policy.source);
   if (!tsx.ok) return tsx;
 
-  const parsed = parseTopLevelModuleSyntax(tsx.code, tokenizeSource(tsx.code));
+  const parsed = parseTopLevelModuleSyntax(
+    tsx.code,
+    tokenizeSource(tsx.code),
+    acceptedImportSources
+  );
   if (!parsed.ok) return { ok: false, errors: [parsed.error] };
   const bindings = collectInjectedModules(parsed.value.imports);
   if (!bindings.ok) return { ok: false, errors: [bindings.error] };

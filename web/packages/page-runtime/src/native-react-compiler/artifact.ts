@@ -1,16 +1,18 @@
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
-import { NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS } from '../native-trusted-block-source-policy';
 import type {
   NativeTrustedBlockImportBinding,
   NativeTrustedBlockInjectedModule
 } from '../native-trusted-block/source-evaluator';
-import { NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE } from '../native-trusted-block/source-evaluator-types';
 import {
   sha256Text,
   type JsonValue
 } from '../js-block-runtime/compiled-artifact';
 import { transformNativeReactComponentSource } from './component-transform';
+import {
+  canonicalizeNativeReactCatalogDependencyLock,
+  type NativeReactCatalogDependencyLock
+} from './module-registry/contracts';
 
 export const NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT =
   '1flowbase/native-react-component' as const;
@@ -24,6 +26,7 @@ export interface NativeReactComponentArtifact {
   format: typeof NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT;
   version: typeof NATIVE_REACT_COMPONENT_ARTIFACT_VERSION;
   sourceSha256: string;
+  dependencyLock: NativeReactCatalogDependencyLock;
   program: {
     injectedModules: NativeTrustedBlockInjectedModule[];
     importBindings: NativeTrustedBlockImportBinding[];
@@ -41,9 +44,21 @@ export type NativeReactComponentCompileResult =
   | { ok: false; diagnostics: NativeReactCompileDiagnostic[] };
 
 export function compileNativeReactComponent(
-  source: unknown
+  source: unknown,
+  dependencyLockValue: unknown = []
 ): NativeReactComponentCompileResult {
-  const transformed = transformNativeReactComponentSource(source);
+  const dependencyLock =
+    canonicalizeNativeReactCatalogDependencyLock(dependencyLockValue);
+  if (!dependencyLock) {
+    return compileFailure(
+      'dependencyLock',
+      'Native React Catalog dependency lock is invalid.'
+    );
+  }
+  const transformed = transformNativeReactComponentSource(
+    source,
+    new Set(dependencyLock.map((entry) => entry.module_source))
+  );
   if (!transformed.ok) {
     return {
       ok: false,
@@ -66,12 +81,19 @@ export function compileNativeReactComponent(
     };
   }
 
+  const lockedDependencies = selectImportedCatalogDependencies(
+    transformed.injectedModules,
+    dependencyLock
+  );
+  if (!lockedDependencies.ok) return lockedDependencies;
+
   return {
     ok: true,
     artifact: {
       format: NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT,
       version: NATIVE_REACT_COMPONENT_ARTIFACT_VERSION,
       sourceSha256: sha256Text(transformed.source),
+      dependencyLock: lockedDependencies.value,
       program: {
         injectedModules: transformed.injectedModules.map(cloneInjectedModule),
         importBindings: transformed.importBindings.map(cloneImportBinding),
@@ -97,12 +119,16 @@ export function canonicalizeNativeReactComponentArtifact(
     value.format !== NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT ||
     value.version !== NATIVE_REACT_COMPONENT_ARTIFACT_VERSION ||
     !isSha256(value.sourceSha256) ||
+    !('dependencyLock' in value) ||
     !isRecord(value.program)
   ) {
     return null;
   }
 
   const program = value.program;
+  const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+    value.dependencyLock
+  );
   const injectedModules = readInjectedModules(program.injectedModules);
   const importBindings = readImportBindings(program.importBindings);
   const guardIdentifiers = readStringArray(
@@ -110,6 +136,7 @@ export function canonicalizeNativeReactComponentArtifact(
   );
   const sourceMap = canonicalJsonValue(value.sourceMap);
   if (
+    !dependencyLock ||
     !injectedModules ||
     !importBindings ||
     !guardIdentifiers ||
@@ -127,6 +154,7 @@ export function canonicalizeNativeReactComponentArtifact(
     format: NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT,
     version: NATIVE_REACT_COMPONENT_ARTIFACT_VERSION,
     sourceSha256: value.sourceSha256,
+    dependencyLock,
     program: {
       injectedModules,
       importBindings,
@@ -151,7 +179,7 @@ function readInjectedModules(
 ): NativeTrustedBlockInjectedModule[] | null {
   if (!Array.isArray(value)) return null;
   const modules = value.map((item) => {
-    if (!isRecord(item) || !isAllowedImport(item.source)) return null;
+    if (!isRecord(item) || !isNonEmptyString(item.source)) return null;
     const bindings = readImportBindings(item.bindings);
     return bindings &&
       bindings.every((binding) => binding.source === item.source)
@@ -170,7 +198,7 @@ function readImportBindings(
   const bindings = value.map((item) => {
     if (
       !isRecord(item) ||
-      !isAllowedImport(item.source) ||
+      !isNonEmptyString(item.source) ||
       !isNonEmptyString(item.local)
     ) {
       return null;
@@ -216,16 +244,44 @@ function readStringArray(value: unknown): string[] | null {
     : null;
 }
 
-function isAllowedImport(
-  value: unknown
-): value is NativeTrustedBlockInjectedModule['source'] {
-  return (
-    typeof value === 'string' &&
-    ((NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS as readonly string[]).includes(
-      value
-    ) ||
-      value === NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE)
+function selectImportedCatalogDependencies(
+  injectedModules: NativeTrustedBlockInjectedModule[],
+  dependencyLock: NativeReactCatalogDependencyLock
+):
+  | { ok: true; value: NativeReactCatalogDependencyLock }
+  | { ok: false; diagnostics: NativeReactCompileDiagnostic[] } {
+  const registered = new Map(
+    dependencyLock.map((entry) => [entry.module_source, entry])
   );
+  for (const injectedModule of injectedModules) {
+    const registration = registered.get(injectedModule.source);
+    if (!registration) continue;
+    for (const binding of injectedModule.bindings) {
+      if (binding.kind === 'namespace') continue;
+      const exportName =
+        binding.kind === 'default' ? 'default' : binding.imported;
+      if (!registration.exports.includes(exportName)) {
+        return compileFailure(
+          `dependencyLock.${registration.module_source}.exports.${exportName}`,
+          `Catalog module export is not registered: ${registration.module_source}.${exportName}.`
+        );
+      }
+    }
+  }
+  // The import manifest stays exact in program.injectedModules. The complete
+  // lock is retained because a registered asset may import another locked
+  // Catalog asset at evaluation time.
+  return { ok: true, value: dependencyLock };
+}
+
+function compileFailure(
+  path: string,
+  message: string
+): { ok: false; diagnostics: NativeReactCompileDiagnostic[] } {
+  return {
+    ok: false,
+    diagnostics: [{ phase: 'compile', code: 'transform_failed', path, message }]
+  };
 }
 
 function canonicalJsonValue(

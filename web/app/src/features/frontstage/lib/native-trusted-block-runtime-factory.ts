@@ -5,7 +5,11 @@ import * as uiModule from '@1flowbase/ui';
 
 import {
   evaluateNativeTrustedBlockSource,
+  createNativeReactModuleRegistry,
+  nativeReactCatalogDependencyLockIdentity,
   type JsBlockRunError,
+  type NativeReactCatalogDependencyLock,
+  type NativeReactModuleRegistry,
   type NativeTrustedBlockInjectedModuleMap
 } from '@1flowbase/page-runtime';
 
@@ -22,6 +26,10 @@ export {
 } from './native-trusted-block-runtime-compatibility';
 
 type InjectedModule = Record<string, unknown>;
+const sharedNativeReactModuleRegistries = new Map<
+  string,
+  NativeReactModuleRegistry
+>();
 
 export interface FrontstageNativeTrustedBlockRuntimeFactoryOptions {
   modules?: NativeTrustedBlockInjectedModuleMap;
@@ -70,6 +78,26 @@ export function createFrontstageNativeTrustedBlockModuleMap(
     antd: mergeInjectedModule(antdModule, overrides.antd),
     '@1flowbase/ui': mergeInjectedModule(uiModule, overrides['@1flowbase/ui'])
   };
+}
+
+export function createFrontstageNativeReactModuleRegistry(
+  dependencyLock: NativeReactCatalogDependencyLock,
+  options: { fetchAsset?: typeof fetch } = {}
+): NativeReactModuleRegistry {
+  const sharedKey = options.fetchAsset
+    ? null
+    : nativeReactCatalogDependencyLockIdentity(dependencyLock);
+  const shared = sharedKey
+    ? sharedNativeReactModuleRegistries.get(sharedKey)
+    : undefined;
+  if (shared) return shared;
+  const registry = createNativeReactModuleRegistry({
+    dependencyLock,
+    hostModules: createFrontstageNativeTrustedBlockModuleMap(),
+    ...(options.fetchAsset ? { fetchAsset: options.fetchAsset } : {})
+  });
+  if (sharedKey) sharedNativeReactModuleRegistries.set(sharedKey, registry);
+  return registry;
 }
 
 function createReactModule(): InjectedModule {

@@ -128,4 +128,45 @@ describe('Native React compiler Worker contract', () => {
       ]
     });
   });
+
+  test('D2-AC-003 records the exact Catalog dependency lock and rejects an unlocked export', () => {
+    const dependencyLock = [
+      {
+        module_source: '@1flowbase/native-components',
+        module_version: '1.0.0',
+        browser_asset: {
+          sha256: '0'.repeat(64),
+          url: '/api/frontstage/component-modules/native-components.js'
+        },
+        exports: ['Surface']
+      }
+    ];
+    const response = handleNativeReactCompilerRequest({
+      direction: 'host_to_worker',
+      type: 'compile_native_react_component',
+      requestId: 'compile-catalog',
+      source:
+        "import { Surface } from '@1flowbase/native-components'; export default function Block() { return <Surface />; }",
+      dependencyLock
+    });
+
+    expect(response.type).toBe('native_react_component_compiled');
+    if (response.type === 'native_react_component_compiled') {
+      expect(response.artifact.dependencyLock).toEqual(dependencyLock);
+    }
+
+    expect(
+      handleNativeReactCompilerRequest({
+        direction: 'host_to_worker',
+        type: 'compile_native_react_component',
+        requestId: 'compile-missing-export',
+        source:
+          "import { Missing } from '@1flowbase/native-components'; export default Missing;",
+        dependencyLock
+      })
+    ).toMatchObject({
+      type: 'native_react_component_compile_failed',
+      diagnostics: [{ path: expect.stringContaining('Missing') }]
+    });
+  });
 });
