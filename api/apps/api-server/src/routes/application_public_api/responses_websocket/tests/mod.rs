@@ -89,11 +89,9 @@ fn decodes_response_create_envelope_without_renaming_response_fields() {
     let message = Message::Text(
         json!({
             "type": "response.create",
-            "response": {
-                "model": "published-model",
-                "input": "hello",
-                "previous_response_id": "resp_previous"
-            }
+            "model": "published-model",
+            "input": "hello",
+            "previous_response_id": "resp_previous"
         })
         .to_string()
         .into(),
@@ -113,15 +111,13 @@ fn responses_websocket_second_turn_uses_the_shared_callback_correlation_adapter(
     let message = Message::Text(
         json!({
             "type": "response.create",
-            "response": {
-                "model": "published-model",
-                "previous_response_id": previous_response_id,
-                "input": [{
-                    "type": "function_call_output",
-                    "call_id": call_id,
-                    "output": "sunny"
-                }]
-            }
+            "model": "published-model",
+            "previous_response_id": previous_response_id,
+            "input": [{
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": "sunny"
+            }]
         })
         .to_string()
         .into(),
@@ -168,6 +164,7 @@ fn binary_unknown_and_invalid_envelopes_have_explicit_close_contracts() {
         "not-json",
         r#"{"response":{}}"#,
         r#"{"type":"response.create"}"#,
+        r#"{"type":"response.create","response":{}}"#,
         r#"{"type":"response.create","response":[]}"#,
     ] {
         let error = decode_client_message(Message::Text(invalid.into())).unwrap_err();

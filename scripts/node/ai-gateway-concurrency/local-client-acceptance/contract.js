@@ -10,7 +10,7 @@ const TEXT_VECTOR = Object.freeze({
   id: 'text-canonical-sentinel',
   kind: 'text',
   prompt: `Reply with exactly: ${TEXT_SENTINEL}`,
-  expected: Object.freeze({ final_marker: TEXT_SENTINEL, durable_runs: 1 }),
+  expected: Object.freeze({ final_marker: TEXT_SENTINEL, durable_runs: 1, provider_requests: 1 }),
 });
 const TOOL_VECTOR = Object.freeze({
   id: 'tool-two-turn',
@@ -23,7 +23,8 @@ const TOOL_VECTOR = Object.freeze({
   ].join(' '),
   expected: Object.freeze({
     final_marker: TOOL_FINAL_SENTINEL,
-    durable_runs: 2,
+    durable_runs: 1,
+    provider_requests: 2,
     timeline: Object.freeze([
       'client_started', 'tool_call_observed', 'tool_result_observed',
       'second_turn_observed', 'final_marker_observed', 'client_exited',

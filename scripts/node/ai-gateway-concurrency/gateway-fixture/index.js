@@ -51,7 +51,7 @@ function providerTarget(baseUrl, pluginRunnerBaseUrl, client, provider) {
       },
       list_runs: {
         method: 'GET',
-        url: `${baseUrl}/api/console/applications/${provider.application_id}/logs/runs?page=1&page_size=100&cache_mode=bypass`,
+        url: `${baseUrl}/api/console/applications/${provider.application_id}/logs/runs?page=1&page_size=100&cache_mode=refresh`,
         headers: ownerHeaders,
       },
     },

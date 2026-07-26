@@ -393,7 +393,7 @@ function runWebSocketRequest({
     }, timeoutMs);
     socket.addEventListener('open', () => socket.send(JSON.stringify({
       type: 'response.create',
-      response: requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
+      ...requestBody(TRANSPORT.RESPONSES_WEBSOCKET, scenario, clientNonce, 'mock-model'),
     })));
     socket.addEventListener('message', (message) => {
       let event;

@@ -102,12 +102,10 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000 } = {}
       });
       socket.write(clientFrame(JSON.stringify({
         type: 'response.create',
-        response: {
-          model: target.model,
-          stream: true,
-          metadata: { trace_id: clientTraceId },
-          input: [{ role: 'user', content: [{ type: 'input_text', text: `gateway websocket ${clientTraceId}` }] }],
-        },
+        model: target.model,
+        stream: true,
+        metadata: { trace_id: clientTraceId },
+        input: [{ role: 'user', content: [{ type: 'input_text', text: `gateway websocket ${clientTraceId}` }] }],
       })));
     });
     request.end();

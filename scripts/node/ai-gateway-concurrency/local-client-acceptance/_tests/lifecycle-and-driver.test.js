@@ -117,6 +117,7 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
     config_path: `/machine/config/${client}`,
   }]));
   const reconciled = [];
+  const providerRequests = [];
   let toolBarrierReleases = 0;
   try {
     const result = await runLocalClientAcceptance({
@@ -143,7 +144,10 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
         reconciled.push(expectedRuns);
         return { runs: Array.from({ length: expectedRuns }, (_, index) => ({ id: `run-${index}`, status: 'succeeded' })) };
       },
-      evaluateMockAttempt: (_before, _after, expectedRuns) => ({ arrivals: expectedRuns, settled: expectedRuns }),
+      evaluateMockAttempt: (_before, _after, expectedRuns) => {
+        providerRequests.push(expectedRuns);
+        return { arrivals: expectedRuns, settled: expectedRuns };
+      },
       waitForBarrierWaiting: async ({ before }) => {
         assert.deepEqual(before, { entries: [] });
         return { sequence: 1, event: 'barrier_waiting' };
@@ -193,7 +197,8 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
     assert.deepEqual(result.clients.find((client) => client.name === 'codex').protocols, [
       'responses_sse', 'responses_websocket',
     ]);
-    assert.deepEqual(reconciled, [1, 2, 1, 2, 1, 2, 1, 2]);
+    assert.deepEqual(reconciled, [1, 1, 1, 1, 1, 1, 1, 1]);
+    assert.deepEqual(providerRequests, [1, 2, 1, 2, 1, 2, 1, 2]);
     assert.equal(toolBarrierReleases, 4);
     assert.deepEqual(result.final_reconciliation, { runtime_targets: 2, stream_targets: 1 });
   } finally {

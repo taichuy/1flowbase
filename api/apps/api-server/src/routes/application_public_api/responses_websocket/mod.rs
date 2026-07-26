@@ -2,7 +2,7 @@
 //!
 //! Clients connect with `GET /v1/responses`, an application API credential, and
 //! `openai-beta: responses_websockets=2026-02-06`. After the upgrade they send
-//! text JSON envelopes shaped as `{ "type": "response.create", "response": { ... } }`.
+//! flat text JSON envelopes shaped as `{ "type": "response.create", "model": "...", ... }`.
 //! Connection ownership and run lifecycle are assembled here. Canonical
 //! server-event projection is supplied by the following delivery packet.
 

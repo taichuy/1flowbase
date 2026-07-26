@@ -1,16 +1,16 @@
 use axum::extract::ws::Message;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 use utoipa::ToSchema;
 
 /// A client request accepted by the Responses WebSocket protocol.
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "type")]
 pub(crate) enum ResponsesWebSocketClientRequest {
     #[serde(rename = "response.create")]
     Create {
-        /// The regular OpenAI Responses request body, nested in the WebSocket envelope.
+        /// The regular OpenAI Responses request body decoded from the flat WebSocket envelope.
         response: Value,
     },
 }
@@ -69,12 +69,15 @@ fn decode_text_message(
         return Err(ResponsesWebSocketClientMessageError::UnknownRequestType);
     }
 
-    let request: ResponsesWebSocketClientRequest = serde_json::from_value(value)
-        .map_err(|_| ResponsesWebSocketClientMessageError::InvalidEnvelope)?;
-    match &request {
-        ResponsesWebSocketClientRequest::Create { response } if !response.is_object() => {
-            Err(ResponsesWebSocketClientMessageError::InvalidEnvelope)
-        }
-        ResponsesWebSocketClientRequest::Create { .. } => Ok(request),
+    let mut response = value
+        .as_object()
+        .cloned()
+        .ok_or(ResponsesWebSocketClientMessageError::InvalidEnvelope)?;
+    response.remove("type");
+    if response.is_empty() || response.contains_key("response") {
+        return Err(ResponsesWebSocketClientMessageError::InvalidEnvelope);
     }
+    Ok(ResponsesWebSocketClientRequest::Create {
+        response: Value::Object(response),
+    })
 }

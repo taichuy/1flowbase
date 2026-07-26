@@ -206,9 +206,9 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
     assert.equal(websocketCalls[0].length, 1);
     assert.equal(String(websocketCalls[0][0]).includes('key'), false);
     assert.equal(websocketRequests.length, 1);
-    assert.equal(websocketRequests[0].response.model, 'mock-model');
-    assert.deepEqual(websocketRequests[0].response.metadata, { trace_id: 'load-000002' });
-    assert.equal(JSON.stringify(websocketRequests[0].response).includes(mockScenarioSentinel(SCENARIO.NORMAL)), true);
+    assert.equal(websocketRequests[0].model, 'mock-model');
+    assert.deepEqual(websocketRequests[0].metadata, { trace_id: 'load-000002' });
+    assert.equal(JSON.stringify(websocketRequests[0]).includes(mockScenarioSentinel(SCENARIO.NORMAL)), true);
   });
 });
 

@@ -19,7 +19,7 @@ const target = {
   plugin_runner_active_streams: { url: 'http://fixture/streams' },
 };
 
-test('WP-14A reconciles exact text=1 and tool=2 terminal durable run deltas', async () => {
+test('WP-14A reconciles one terminal durable run for text and callback-resumed tool turns', async () => {
   const before = { ids: ['old-run'] };
   const payloads = {
     'http://fixture/runs': { items: [
@@ -31,8 +31,10 @@ test('WP-14A reconciles exact text=1 and tool=2 terminal durable run deltas', as
     'http://fixture/runs/new-2': { id: 'new-2', status: 'succeeded' },
   };
   const fetchImpl = async (url) => response(payloads[url]);
-  const tool = await reconcileAttempt({ target, before, expectedRuns: 2, fetchImpl, graceMs: 0 });
-  assert.deepEqual(tool.runs.map((run) => run.id), ['new-1', 'new-2']);
+  const tool = await reconcileAttempt({
+    target, before: { ids: ['old-run', 'new-2'] }, expectedRuns: 1, fetchImpl, graceMs: 0,
+  });
+  assert.deepEqual(tool.runs.map((run) => run.id), ['new-1']);
   const text = await reconcileAttempt({
     target, before: { ids: ['old-run', 'new-1'] }, expectedRuns: 1, fetchImpl, graceMs: 0,
   });

@@ -244,7 +244,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
             const expectedRuns = vector.expected.durable_runs;
             const mockAfter = await options.mockSnapshot();
             evidence = {
-              mock: evaluateMockAttempt(mockBefore, mockAfter, expectedRuns),
+              mock: evaluateMockAttempt(mockBefore, mockAfter, vector.expected.provider_requests),
               durable: await reconcileAttempt({
                 target,
                 before: durableBefore,
