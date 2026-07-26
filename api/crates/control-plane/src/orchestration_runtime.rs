@@ -40,6 +40,7 @@ use crate::{
 };
 
 mod answer_presentation;
+pub mod canonical_stream;
 pub(crate) mod compile_context;
 mod data_model_runtime;
 pub mod debug_artifacts;
