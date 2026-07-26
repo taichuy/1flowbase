@@ -14,6 +14,8 @@ use super::{
 };
 use crate::routes::application_public_api::openai::openai_credential;
 
+mod projector;
+
 #[test]
 fn reuses_openai_bearer_and_x_api_key_credential_semantics() {
     let mut bearer_headers = HeaderMap::new();

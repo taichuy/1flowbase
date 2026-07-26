@@ -22,6 +22,7 @@ use crate::{
 
 mod actor;
 mod auth;
+mod projector;
 pub(crate) mod schema;
 #[cfg(test)]
 mod tests;

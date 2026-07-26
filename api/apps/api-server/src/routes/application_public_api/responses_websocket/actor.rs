@@ -4,6 +4,7 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Map, Value};
 use thiserror::Error;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use super::{
@@ -187,11 +188,20 @@ pub(crate) async fn run_connection(
     let mut active: Option<(
         TurnId,
         JoinHandle<Result<(), super::turn_bridge::ResponsesTurnBridgeError>>,
+        mpsc::Receiver<String>,
     )> = None;
 
     loop {
-        if let Some((turn, mut task)) = active.take() {
+        if let Some((turn, mut task, mut frames)) = active.take() {
             tokio::select! {
+                biased;
+                Some(frame) = frames.recv() => {
+                    if sender.send(Message::Text(frame.into())).await.is_err() {
+                        task.abort();
+                        break;
+                    }
+                    active = Some((turn, task, frames));
+                }
                 result = &mut task => {
                     let completion = actor.complete_turn(turn);
                     if result.is_err() || matches!(result, Ok(Err(_))) {
@@ -230,9 +240,9 @@ pub(crate) async fn run_connection(
                                 task.abort();
                                 break;
                             }
-                            active = Some((turn, task));
+                            active = Some((turn, task, frames));
                         }
-                        Message::Pong(_) => active = Some((turn, task)),
+                        Message::Pong(_) => active = Some((turn, task, frames)),
                         Message::Close(frame) => {
                             task.abort();
                             let action = actor.begin_close();
@@ -246,7 +256,7 @@ pub(crate) async fn run_connection(
                             match decode_client_message(message) {
                                 Ok(Some(ResponsesWebSocketClientRequest::Create { response })) => {
                                     match actor.accept_response(response) {
-                                        Ok(_) => active = Some((turn, task)),
+                                        Ok(_) => active = Some((turn, task, frames)),
                                         Err(error) => {
                                             task.abort();
                                             let action = actor.begin_close();
@@ -258,7 +268,7 @@ pub(crate) async fn run_connection(
                                         }
                                     }
                                 }
-                                Ok(None) => active = Some((turn, task)),
+                                Ok(None) => active = Some((turn, task, frames)),
                                 Err(error) => {
                                     task.abort();
                                     let action = actor.begin_close();
@@ -305,9 +315,13 @@ pub(crate) async fn run_connection(
                         Ok(ConnectionAction::Prewarmed) => {}
                         Ok(ConnectionAction::StartTurn { turn, response }) => {
                             let bridge = bridge.clone();
+                            let (frame_sender, frame_receiver) = mpsc::channel(1);
                             active = Some((
                                 turn,
-                                tokio::spawn(async move { bridge.execute(response).await }),
+                                tokio::spawn(async move {
+                                    bridge.execute(response, frame_sender).await
+                                }),
+                                frame_receiver,
                             ));
                         }
                         Ok(ConnectionAction::CancelTurn { .. } | ConnectionAction::Close) => {}

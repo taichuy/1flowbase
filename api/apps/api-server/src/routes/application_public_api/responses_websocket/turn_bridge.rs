@@ -2,15 +2,17 @@ use std::sync::Arc;
 
 use axum::{
     body::Bytes,
-    extract::State,
     http::{header::AUTHORIZATION, HeaderMap, HeaderValue},
 };
-use futures_util::StreamExt;
 use serde_json::Value;
 use thiserror::Error;
+use tokio::sync::mpsc;
 
-use super::ResponsesWebSocketAuthorization;
-use crate::{app_state::ApiState, routes::application_public_api::openai};
+use super::{projector::ResponsesWebSocketProjector, ResponsesWebSocketAuthorization};
+use crate::{
+    app_state::ApiState,
+    routes::application_public_api::{compat_sse, openai},
+};
 
 #[derive(Debug, Error)]
 pub(crate) enum ResponsesTurnBridgeError {
@@ -18,8 +20,14 @@ pub(crate) enum ResponsesTurnBridgeError {
     InvalidAuthenticatedCredential,
     #[error("Responses ingress rejected the turn")]
     IngressRejected,
-    #[error("Responses ingress stream failed")]
-    IngressStreamFailed,
+    #[error("Responses typed runtime stream could not be opened")]
+    TypedStreamRejected,
+    #[error("Responses typed runtime event could not be projected")]
+    ProjectionFailed,
+    #[error("Responses WebSocket writer closed before the turn completed")]
+    SocketWriterClosed,
+    #[error("Responses typed runtime stream ended without one terminal event")]
+    MissingTerminal,
 }
 
 /// Bridges a generated WebSocket turn into the existing OpenAI Responses
@@ -41,7 +49,11 @@ impl ResponsesTurnBridge {
         }
     }
 
-    pub(crate) async fn execute(&self, response: Value) -> Result<(), ResponsesTurnBridgeError> {
+    pub(crate) async fn execute(
+        &self,
+        response: Value,
+        frames: mpsc::Sender<String>,
+    ) -> Result<(), ResponsesTurnBridgeError> {
         let mut headers = HeaderMap::new();
         let bearer = HeaderValue::from_str(&format!("Bearer {}", self.authorization.bearer_token))
             .map_err(|_| ResponsesTurnBridgeError::InvalidAuthenticatedCredential)?;
@@ -53,18 +65,30 @@ impl ResponsesTurnBridge {
         let body = serde_json::to_vec(&response)
             .map(Bytes::from)
             .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
-        let response = openai::create_response(State(self.state.clone()), headers, body)
+        let prepared = openai::prepare_typed_response_turn(self.state.clone(), headers, body)
             .await
             .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
-
-        // Consuming the existing ingress response keeps Active held until the
-        // run reaches its terminal stream boundary. WP-08 owns mapping these
-        // bytes to WebSocket server events; this packet intentionally does not
-        // establish a second canonical projector.
-        let mut body = response.into_body().into_data_stream();
-        while let Some(chunk) = body.next().await {
-            chunk.map_err(|_| ResponsesTurnBridgeError::IngressStreamFailed)?;
+        let (model, previous_response_id, runtime) = prepared.into_parts();
+        let stream = compat_sse::start_compatible_typed_turn_stream(self.state.clone(), runtime)
+            .await
+            .map_err(|_| ResponsesTurnBridgeError::TypedStreamRejected)?;
+        let (_initial_run, mut events) = stream.into_parts();
+        let mut projector = ResponsesWebSocketProjector::new(model, previous_response_id);
+        while let Some(input) = events.recv().await {
+            let (run_snapshot, envelope) = input.into_parts();
+            for frame in projector
+                .project(&run_snapshot, envelope)
+                .map_err(|_| ResponsesTurnBridgeError::ProjectionFailed)?
+            {
+                frames
+                    .send(frame)
+                    .await
+                    .map_err(|_| ResponsesTurnBridgeError::SocketWriterClosed)?;
+            }
+            if projector.has_terminal() {
+                return Ok(());
+            }
         }
-        Ok(())
+        Err(ResponsesTurnBridgeError::MissingTerminal)
     }
 }
