@@ -8,7 +8,10 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { compileNativeReactComponent } from '@1flowbase/page-runtime';
+import {
+  compileNativeReactComponent,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
@@ -69,11 +72,15 @@ function renderPanel({
   code,
   revision,
   nativeCompiler = createCompiler(),
+  nativeDependencyLock,
+  nativeDependencyLockError,
   currentBlock = block
 }: {
   code: string;
   revision: string;
   nativeCompiler?: ReturnType<typeof createCompiler>;
+  nativeDependencyLock?: NativeReactCatalogDependencyLock;
+  nativeDependencyLockError?: string | null;
   currentBlock?: FrontstageBlockInstance;
 }) {
   return render(
@@ -85,6 +92,8 @@ function renderPanel({
       limits={{ timeoutMs: 1_000 }}
       revision={revision}
       nativeCompiler={nativeCompiler}
+      nativeDependencyLock={nativeDependencyLock}
+      nativeDependencyLockError={nativeDependencyLockError}
     />
   );
 }
@@ -161,6 +170,52 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     ).toHaveTextContent('second');
     expect(screen.getByTestId('js-block-preview-pane')).toBeInTheDocument();
     expect(screen.getByTestId('js-block-console-pane')).toBeInTheDocument();
+  });
+
+  test('D2-P2F sends the catalog dependency lock through the production compiler input', async () => {
+    const compiler = createCompiler();
+    const dependencyLock: NativeReactCatalogDependencyLock = [
+      {
+        module_source: '@1flowbase/native-components',
+        module_version: '1.0.0',
+        browser_asset: {
+          sha256:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        },
+        exports: ['Surface']
+      }
+    ];
+    renderPanel({
+      code: "import { Surface } from '@1flowbase/native-components'; export default () => <Surface />;",
+      revision: 'run:catalog-lock',
+      nativeCompiler: compiler,
+      nativeDependencyLock: dependencyLock
+    });
+
+    await waitFor(() => expect(compiler).toHaveBeenCalledTimes(1));
+    expect(compiler).toHaveBeenCalledWith(
+      expect.objectContaining({ dependencyLock })
+    );
+  });
+
+  test('D2-P2F fails visibly before compilation when catalog metadata is incomplete', async () => {
+    const compiler = createCompiler();
+    renderPanel({
+      code: "import { Surface } from '@1flowbase/native-components'; export default () => <Surface />;",
+      revision: 'run:invalid-catalog-lock',
+      nativeCompiler: compiler,
+      nativeDependencyLockError:
+        'Frontend block catalog dependency metadata is incomplete for this block.'
+    });
+
+    expect(await screen.findByText('运行失败')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /\[compile\/import_denied\] catalog\.code_modules/u
+      )
+    ).toBeInTheDocument();
+    expect(compiler).not.toHaveBeenCalled();
   });
 
   test('D1-AC-004 shows stable compile diagnostics and retries only the frozen source', async () => {

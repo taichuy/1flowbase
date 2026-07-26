@@ -36,6 +36,7 @@ describe('Frontstage JSX editor projection', () => {
               sha256:
                 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
             },
+            exports: ['Surface'],
             type_declarations:
               "declare module '@1flowbase/native-components' { export interface SurfaceProps extends import('react').HTMLAttributes<HTMLElement> {} export const Surface: import('react').ComponentType<SurfaceProps>; }"
           }

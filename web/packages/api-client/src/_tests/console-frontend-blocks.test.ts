@@ -37,6 +37,7 @@ describe('console-frontend-blocks client', () => {
             sha256:
               'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
           },
+          exports: ['blockSdkVersion'],
           type_declarations: 'export declare function defineBlock(): unknown;'
         }
       ],
@@ -51,7 +52,8 @@ describe('console-frontend-blocks client', () => {
       browser_asset: {
         sha256:
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-      }
+      },
+      exports: ['blockSdkVersion']
     });
   });
 });

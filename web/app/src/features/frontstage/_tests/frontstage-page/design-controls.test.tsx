@@ -82,6 +82,9 @@ const pageTabsApi = vi.hoisted(() => ({
     'tabs'
   ])
 }));
+const trialPanel = vi.hoisted(() => ({
+  render: vi.fn()
+}));
 
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
@@ -99,6 +102,12 @@ vi.mock(
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
+vi.mock('../../components/JsBlockTrialPanel', () => ({
+  JsBlockTrialPanel: (props: unknown) => {
+    trialPanel.render(props);
+    return <div data-testid="captured-js-block-trial-panel" />;
+  }
+}));
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
 const PLUGIN_CODE_TEMPLATE = `
@@ -760,6 +769,106 @@ describe('FrontStagePage - design controls', () => {
     expect(
       screen.queryByRole('dialog', { name: '区块配置' })
     ).not.toBeInTheDocument();
+  });
+
+  test('D2-P2F wires an inserted Surface source and its catalog lock into the production trial path', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([
+      createCatalogEntry({
+        codeModules: [
+          {
+            source: '@1flowbase/native-components',
+            version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            exports: ['Surface'],
+            type_declarations:
+              "declare module '@1flowbase/native-components' { export const Surface: unknown; }"
+          }
+        ]
+      })
+    ]);
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: "import { Surface } from '@1flowbase/native-components';\nexport default () => <Surface className=\"card\" />;",
+      draft:
+        "import { Surface } from '@1flowbase/native-components';\nexport default () => <Surface className=\"card\" />;",
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn()
+    });
+    const blockPayload = {
+      id: 'surface-block',
+      renderer_version: 'v1',
+      codeRef: 'surface-code',
+      catalog: {
+        providerCode: '1flowbase',
+        installationId: 'builtin-installation'
+      },
+      contribution: {
+        pluginId: 'builtin-frontstage',
+        pluginVersion: '1.0.0',
+        code: 'frontstage.js-ui-block'
+      },
+      props: {},
+      'x-layout': { order: 0, region: 'main' },
+      runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+    };
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          onNavigateTab={vi.fn()}
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent({
+            schema: {
+              rootUid: 'root-1',
+              payload: { blocks: [blockPayload] }
+            },
+            root: {
+              uid: 'root-1',
+              payload: { blocks: [blockPayload] }
+            }
+          })}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    const blockSlot = await screen.findByTestId('block-slot-surface-block');
+    fireEvent.mouseEnter(blockSlot);
+    fireEvent.click(
+      within(blockSlot).getByRole('button', { name: '编辑区块' })
+    );
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    fireEvent.click(within(studio).getByRole('button', { name: '运行' }));
+
+    await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
+    expect(trialPanel.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        code: expect.stringContaining('<Surface className="card" />'),
+        nativeDependencyLock: [
+          {
+            module_source: '@1flowbase/native-components',
+            module_version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            exports: ['Surface']
+          }
+        ],
+        nativeDependencyLockError: null
+      })
+    );
   });
 
   test('shows real page tree operation states without local draft wording', () => {

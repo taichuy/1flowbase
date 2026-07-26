@@ -75,6 +75,7 @@ export interface JsBlockTrialPanelProps {
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
+  nativeDependencyLockError?: string | null;
   nativeModuleRegistryFactory?: typeof createFrontstageNativeReactModuleRegistry;
 }
 
@@ -85,6 +86,7 @@ export function JsBlockTrialPanel({
   nativeCompiler = compileNativeReactComponentInBrowser,
   nativeCompilerWorkerFactory,
   nativeDependencyLock = EMPTY_NATIVE_REACT_DEPENDENCY_LOCK,
+  nativeDependencyLockError = null,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: JsBlockTrialPanelProps) {
   const previewRootRef = useRef<HTMLDivElement | null>(null);
@@ -153,6 +155,23 @@ export function JsBlockTrialPanel({
         logs: [],
         diagnostics: []
       });
+
+      if (nativeDependencyLockError) {
+        setSnapshot({
+          status: 'failed',
+          requestId,
+          logs: [],
+          diagnostics: [
+            {
+              phase: 'compile',
+              code: 'import_denied',
+              path: 'catalog.code_modules',
+              message: nativeDependencyLockError
+            }
+          ]
+        });
+        return;
+      }
 
       const compiled = await nativeCompiler({
         source: frozenSource,
@@ -233,6 +252,7 @@ export function JsBlockTrialPanel({
       nativeCompiler,
       nativeCompilerWorkerFactory,
       nativeDependencyLock,
+      nativeDependencyLockError,
       nativeModuleRegistryFactory
     ]
   );

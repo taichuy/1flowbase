@@ -1,3 +1,4 @@
+import { frontstageComponentModuleAssetPath } from '@1flowbase/api-client';
 import {
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES,
   FRONTEND_BLOCK_RUNTIMES,
@@ -7,6 +8,10 @@ import {
   type FrontendBlockUiCapability
 } from '@1flowbase/page-protocol';
 import { createFrontendBlockCodeCapabilities } from '@1flowbase/page-protocol';
+import {
+  canonicalizeNativeReactCatalogDependencyLock,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
 
 import type { FrontstageBlockCatalogEntry } from '../api/block-catalog';
 
@@ -25,7 +30,8 @@ export type FrontstageBlockCatalogDiagnosticSeverity = 'warning' | 'error';
 export type FrontstageBlockCatalogDiagnosticCode =
   | 'unknown_runtime'
   | 'unknown_primitive'
-  | 'unknown_capability';
+  | 'unknown_capability'
+  | 'invalid_code_module';
 
 export interface FrontstageBlockCatalogDiagnostic {
   severity: FrontstageBlockCatalogDiagnosticSeverity;
@@ -55,6 +61,7 @@ export interface NormalizedFrontstageBlockCodeModule {
   browser_asset: {
     sha256: string;
   };
+  exports: string[];
   type_declarations: string;
 }
 
@@ -71,7 +78,7 @@ export interface NormalizedFrontstageBlockCatalogEntry {
   permissions: NormalizedFrontstageBlockPermissions;
   contextContract: NormalizedFrontstageBlockContextContract;
   uiCapabilities: FrontstageBlockUiCapability[];
-  codeModules?: NormalizedFrontstageBlockCodeModule[];
+  codeModules?: NormalizedFrontstageBlockCodeModule[] | null;
   codeCapabilities?: ReturnType<typeof createFrontendBlockCodeCapabilities>;
   raw: FrontstageBlockCatalogEntry;
 }
@@ -137,17 +144,23 @@ export function normalizeFrontstageBlockCatalog(
       }
     ) as FrontstageBlockUiCapability[];
 
-    const codeModules = (entry.code_modules ?? []).map((codeModule) => ({
-      source: codeModule.source,
-      version: codeModule.version,
-      browser_asset: { sha256: codeModule.browser_asset.sha256 },
-      type_declarations: codeModule.type_declarations
-    }));
+    const codeModules = normalizeCodeModules(entry.code_modules);
+    if (codeModules === null) {
+      diagnostics.push({
+        ...diagnosticBase,
+        severity: 'error',
+        code: 'invalid_code_module',
+        field: 'code_modules',
+        value: entry.contribution_code,
+        message:
+          'Frontend block catalog code_modules must include source, version, browser_asset.sha256, exports, and type_declarations.'
+      });
+    }
     const codeCapabilities = createFrontendBlockCodeCapabilities({
       code_template: entry.code_template,
       code_template_version: entry.code_template_version,
       code_template_language: entry.code_template_language,
-      code_modules: codeModules.flatMap((codeModule) =>
+      code_modules: (codeModules ?? []).flatMap((codeModule) =>
         codeModule.source === '@1flowbase/block-sdk'
           ? [
               {
@@ -187,6 +200,50 @@ export function normalizeFrontstageBlockCatalog(
   }
 
   return { items, diagnostics };
+}
+
+export interface FrontstageNativeDependencyLockResolution {
+  dependencyLock: NativeReactCatalogDependencyLock;
+  error: string | null;
+}
+
+export function resolveFrontstageNativeDependencyLock({
+  catalogEntry,
+  workspaceId
+}: {
+  catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
+  workspaceId: string;
+}): FrontstageNativeDependencyLockResolution {
+  if (!catalogEntry) return { dependencyLock: [], error: null };
+  if (!catalogEntry.codeModules) {
+    return {
+      dependencyLock: [],
+      error:
+        'Frontend block catalog dependency metadata is incomplete for this block.'
+    };
+  }
+
+  const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+    catalogEntry.codeModules.map((codeModule) => ({
+      module_source: codeModule.source,
+      module_version: codeModule.version,
+      browser_asset: {
+        sha256: codeModule.browser_asset.sha256,
+        url: frontstageComponentModuleAssetPath(
+          workspaceId,
+          codeModule.browser_asset.sha256
+        )
+      },
+      exports: codeModule.exports
+    }))
+  );
+  return dependencyLock
+    ? { dependencyLock, error: null }
+    : {
+        dependencyLock: [],
+        error:
+          'Frontend block catalog dependency metadata is invalid for this block.'
+      };
 }
 
 export function isFrontstageBlockIframeRuntime(
@@ -311,4 +368,47 @@ function getDiagnosticBase(entry: FrontstageBlockCatalogEntry) {
     pluginId: entry.plugin_id,
     contributionCode: entry.contribution_code
   };
+}
+
+function normalizeCodeModules(
+  value: unknown
+): NormalizedFrontstageBlockCodeModule[] | null {
+  if (!Array.isArray(value)) return null;
+  const modules: NormalizedFrontstageBlockCodeModule[] = [];
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      !isNonEmptyString(item.source) ||
+      !isNonEmptyString(item.version) ||
+      !isRecord(item.browser_asset) ||
+      !isSha256(item.browser_asset.sha256) ||
+      !Array.isArray(item.exports) ||
+      item.exports.length === 0 ||
+      !item.exports.every(isNonEmptyString) ||
+      new Set(item.exports).size !== item.exports.length ||
+      typeof item.type_declarations !== 'string'
+    ) {
+      return null;
+    }
+    modules.push({
+      source: item.source,
+      version: item.version,
+      browser_asset: { sha256: item.browser_asset.sha256 },
+      exports: [...item.exports],
+      type_declarations: item.type_declarations
+    });
+  }
+  return modules;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 }

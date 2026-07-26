@@ -17,6 +17,7 @@ export interface ConsoleFrontendBlockCodeModule {
   browser_asset: {
     sha256: string;
   };
+  exports: string[];
   type_declarations: string;
 }
 
@@ -32,7 +33,7 @@ export interface ConsoleFrontendBlockCatalogEntry {
   code_template?: string | null;
   code_template_version?: string | null;
   code_template_language?: 'jsx' | 'tsx' | null;
-  code_modules?: ConsoleFrontendBlockCodeModule[];
+  code_modules: ConsoleFrontendBlockCodeModule[];
   context_contract: ConsoleFrontendBlockContextContract;
   permissions: ConsoleFrontendBlockPermissions;
   ui_capabilities: string[];

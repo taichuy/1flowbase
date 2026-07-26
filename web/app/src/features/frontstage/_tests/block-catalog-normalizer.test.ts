@@ -10,6 +10,7 @@ import {
   isFrontstageBlockIframeRuntime,
   isFrontstageBlockRestrictedRuntime,
   normalizeFrontstageBlockCatalog,
+  resolveFrontstageNativeDependencyLock,
   supportsFrontstageBlockCapability,
   supportsFrontstageBlockPrimitive
 } from '../lib/block-catalog';
@@ -26,6 +27,7 @@ function createCatalogEntry(
     title: 'Hero Banner',
     runtime: 'iframe',
     entry: 'blocks/hero/index.html',
+    code_modules: [],
     context_contract: {
       primitives: ['text'],
       input_schema: { type: 'object' }
@@ -106,6 +108,7 @@ describe('frontstage block catalog normalizer', () => {
               sha256:
                 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
             },
+            exports: ['Surface'],
             type_declarations:
               "declare module '@1flowbase/native-components' { export const Surface: import('react').ComponentType<SurfaceProps>; }"
           }
@@ -121,11 +124,88 @@ describe('frontstage block catalog normalizer', () => {
           sha256:
             'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         },
+        exports: ['Surface'],
         type_declarations: expect.stringContaining(
           "import('react').ComponentType<SurfaceProps>"
         )
       }
     ]);
+  });
+
+  test('D2-P2F builds the runtime dependency lock from canonical catalog modules only', () => {
+    const { items } = normalizeFrontstageBlockCatalog([
+      createCatalogEntry({
+        code_modules: [
+          {
+            source: '@1flowbase/native-components',
+            version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            exports: ['Surface'],
+            type_declarations:
+              "declare module '@1flowbase/native-components' { export const Surface: unknown; }"
+          }
+        ]
+      })
+    ]);
+
+    expect(
+      resolveFrontstageNativeDependencyLock({
+        catalogEntry: items[0] ?? null,
+        workspaceId: 'workspace-1'
+      })
+    ).toEqual({
+      dependencyLock: [
+        {
+          module_source: '@1flowbase/native-components',
+          module_version: '1.0.0',
+          browser_asset: {
+            sha256:
+              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          },
+          exports: ['Surface']
+        }
+      ],
+      error: null
+    });
+  });
+
+  test('D2-P2F exposes incomplete catalog module metadata as a contract error', () => {
+    const result = normalizeFrontstageBlockCatalog([
+      createCatalogEntry({
+        code_modules: [
+          {
+            source: '@1flowbase/native-components',
+            version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            type_declarations: ''
+          }
+        ] as unknown as FrontstageBlockCatalogEntry['code_modules']
+      })
+    ]);
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        code: 'invalid_code_module',
+        field: 'code_modules'
+      })
+    );
+    expect(
+      resolveFrontstageNativeDependencyLock({
+        catalogEntry: result.items[0] ?? null,
+        workspaceId: 'workspace-1'
+      })
+    ).toMatchObject({
+      dependencyLock: [],
+      error: expect.stringContaining('incomplete')
+    });
   });
 
   test('filters unknown runtime entries and reports diagnostics', () => {

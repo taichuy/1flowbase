@@ -197,6 +197,7 @@ describe('useFrontstageBlockCatalog', () => {
         title: 'Hero Banner',
         runtime: 'iframe',
         entry: 'blocks/hero/index.html',
+        code_modules: [],
         context_contract: {
           primitives: ['text'],
           input_schema: { type: 'object' }

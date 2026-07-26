@@ -200,7 +200,7 @@ export default { main } satisfies BlockModule;`;
         insertion: { kind: 'context-reference', memberPath: 'currentUser' }
       })
     );
-    const componentSource = applyFrontstageJsxInsertionPlan(
+    const componentInsertedSource = applyFrontstageJsxInsertionPlan(
       baseSource,
       planFrontstageJsxInsertion({
         source: baseSource,
@@ -235,7 +235,7 @@ export default { main } satisfies BlockModule;`;
     );
 
     expect(sourceDiagnostics(variableSource)).toEqual([]);
-    expect(sourceDiagnostics(componentSource)).toEqual([]);
+    expect(sourceDiagnostics(componentInsertedSource)).toEqual([]);
     expect(sourceDiagnostics(interfaceSource)).toEqual([]);
   });
 

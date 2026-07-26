@@ -35,6 +35,7 @@ import {
   updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
+import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import { createFrontstageBlockBindingRuntimeLimits } from '../lib/jsx-studio/block-data-binding';
@@ -343,6 +344,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         blockCatalog.items
       ),
     [blockCatalog.items, selectedBlock]
+  );
+  const nativeDependencyLockResolution = useMemo(
+    () =>
+      resolveFrontstageNativeDependencyLock({
+        catalogEntry: matchingJsBlockCatalogEntry,
+        workspaceId
+      }),
+    [matchingJsBlockCatalogEntry, workspaceId]
   );
   const defaultJsBlockTrialContextSnapshot = useMemo(
     () => ({
@@ -1380,6 +1389,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
                   limits={selectedBlockRuntimeLimits}
+                  nativeDependencyLock={
+                    nativeDependencyLockResolution.dependencyLock
+                  }
+                  nativeDependencyLockError={
+                    nativeDependencyLockResolution.error
+                  }
                   revision={`run:${runRevision}`}
                 />
               )

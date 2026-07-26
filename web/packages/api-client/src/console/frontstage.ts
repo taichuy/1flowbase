@@ -341,6 +341,13 @@ export function getFrontstageComponentCapability(
   });
 }
 
+export function frontstageComponentModuleAssetPath(
+  workspaceId: string,
+  sha256: string
+): string {
+  return `/api/console/frontstage/${encodeURIComponent(workspaceId)}/component-module-assets/${encodeURIComponent(sha256)}`;
+}
+
 export function dispatchFrontstageCallable<T = unknown>(
   workspaceId: string,
   pageId: string,

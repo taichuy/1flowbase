@@ -556,6 +556,7 @@ describe('frontstage block catalog feature api', () => {
           title: 'Hero',
           runtime: 'iframe',
           entry: 'blocks/hero.html',
+          code_modules: [],
           context_contract: {
             primitives: ['record'],
             input_schema: {
@@ -585,6 +586,7 @@ describe('frontstage block catalog feature api', () => {
           title: 'Hero',
           runtime: 'iframe',
           entry: 'blocks/hero.html',
+          code_modules: [],
           context_contract: {
             primitives: ['record'],
             input_schema: {

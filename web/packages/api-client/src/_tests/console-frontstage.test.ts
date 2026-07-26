@@ -15,6 +15,7 @@ import {
   getFrontstageComponentCapability,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
+  frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
   listFrontstageInterfaceCapabilities,
   listFrontstageComponentCapabilities,
@@ -102,6 +103,17 @@ describe('console-frontstage client', () => {
       },
       export_name: 'Surface'
     });
+  });
+
+  test('D2-P2F builds the single same-origin component module asset route', () => {
+    expect(
+      frontstageComponentModuleAssetPath(
+        'workspace/one',
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      )
+    ).toBe(
+      '/api/console/frontstage/workspace%2Fone/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    );
   });
 
   test.each([
