@@ -48,7 +48,11 @@ const dataCapabilitiesHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -98,6 +102,10 @@ vi.mock(
 );
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  () => runtimeSessionsHook
+);
+vi.mock(
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
@@ -791,9 +799,9 @@ describe('FrontStagePage - design controls', () => {
       })
     ]);
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
-      code: "import { Surface } from '@1flowbase/native-components';\nexport default () => <Surface className=\"card\" />;",
+      code: 'import { Surface } from \'@1flowbase/native-components\';\nexport default () => <Surface className="card" />;',
       draft:
-        "import { Surface } from '@1flowbase/native-components';\nexport default () => <Surface className=\"card\" />;",
+        'import { Surface } from \'@1flowbase/native-components\';\nexport default () => <Surface className="card" />;',
       dirty: false,
       loading: false,
       saving: false,

@@ -66,7 +66,7 @@ describe('frontstage runtime cache lifecycle', () => {
     resetFrontstageRuntimeObservations();
   });
 
-  test('clears L1, frontstage queries, and observations for anonymous and actor transitions', async () => {
+  test('keeps removed L1 storage empty while clearing queries and observations on actor transitions', async () => {
     const queryClient = new QueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -75,7 +75,7 @@ describe('frontstage runtime cache lifecycle', () => {
     renderHook(() => useFrontstageRuntimeCacheLifecycle(), { wrapper });
 
     seedActorScopedRuntimeState(queryClient, 'actor-a');
-    expect(readFrontstageRuntimeSessionCacheSize()).toBe(1);
+    expect(readFrontstageRuntimeSessionCacheSize()).toBe(0);
     expect(
       queryClient.getQueryCache().findAll({ queryKey: ['frontstage'] })
     ).toHaveLength(1);

@@ -4,12 +4,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import type { FrontstagePageContent } from '../../api/page-content';
-import type {
-  FrontstagePageCanvasRuntimeSessionEntry,
-  UseFrontstagePageCanvasRuntimeSessionsResult
-} from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
+import type { FrontstageNativePreparationSnapshot } from '../../lib/page-canvas/native-runtime-preparation';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import type { RestrictedBlockRuntimeHostSnapshot } from '../../lib/restricted-block-runtime-host';
 import { FrontStagePage } from '../../pages/FrontStagePage';
 
 const pageContentSaveHook = vi.hoisted(() => ({
@@ -21,9 +17,8 @@ const blockCatalogHook = vi.hoisted(() => ({
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
-const runtimeSessionsHook = vi.hoisted(() => ({
-  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
-  clearFrontstageRuntimeSessionCache: vi.fn()
+const nativePreparationsHook = vi.hoisted(() => ({
+  useFrontstagePageCanvasNativePreparations: vi.fn()
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
@@ -48,8 +43,8 @@ vi.mock(
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
-  () => runtimeSessionsHook
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
+  () => nativePreparationsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 
@@ -184,37 +179,15 @@ function createCatalogEntry(): NormalizedFrontstageBlockCatalogEntry {
   };
 }
 
-function createRuntimeSnapshot(
-  overrides: Partial<RestrictedBlockRuntimeHostSnapshot> = {}
-): RestrictedBlockRuntimeHostSnapshot {
-  return {
-    status: 'ready',
-    requestId: 'restricted-block:hero:hero-code',
-    blockId: 'hero',
-    schemaValidationOptions: {
-      maxDepth: 8,
-      maxNodes: 250,
-      allowedActions: [],
-      allowedEvents: [],
-      allowedDataPermissions: []
-    },
-    logs: [],
-    effects: [],
-    rejections: [],
-    ...overrides
-  };
-}
-
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
+function mockNativePreparations(
+  preparations: FrontstageNativePreparationSnapshot[] = []
 ) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
+  nativePreparationsHook.useFrontstagePageCanvasNativePreparations.mockReturnValue(
+    {
+      preparations,
+      retryBlock: vi.fn()
+    }
+  );
 }
 
 describe('FrontStagePage PageCanvas runtime source UI', () => {
@@ -247,7 +220,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       reset: vi.fn(),
       save: vi.fn()
     });
-    mockRuntimeSessions();
+    mockNativePreparations();
     blockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero-code',
@@ -256,7 +229,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
     });
   });
 
-  test('queries block code for the active page render plan and shows ready status in canvas slots', async () => {
+  test('passes the active page read plan to Native preparation and shows local loading', async () => {
     render(
       <AppProviders>
         <FrontStagePage
@@ -269,10 +242,16 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
     );
 
     await waitFor(() => {
-      expect(blockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledWith(
-        'workspace-1',
-        'page-1',
-        'hero-code'
+      expect(
+        nativePreparationsHook.useFrontstagePageCanvasNativePreparations
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          readPlan: expect.objectContaining({
+            workspaceId: 'workspace-1',
+            pageId: 'page-1',
+            requests: [expect.objectContaining({ codeRef: 'hero-code' })]
+          })
+        })
       );
     });
 
@@ -282,43 +261,46 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       )
     ).toBeInTheDocument();
     const blockSlot = screen.getByTestId('block-slot-hero');
-    expect(within(blockSlot).getByTestId('block-ui-loading-shell')).toHaveAttribute(
-      'aria-busy',
-      'true'
-    );
+    expect(
+      within(blockSlot).getByTestId('block-ui-loading-shell')
+    ).toHaveAttribute('aria-busy', 'true');
     expect(blockSlot).not.toHaveTextContent('区块加载中...');
   });
 
-  test('connects mocked runtime session snapshots into the PageCanvas preview without creating real workers', async () => {
-    const runtimeSessionEntries = [
+  test('connects a ready Native preparation to the real PageCanvas Host surface', async () => {
+    mockNativePreparations([
       {
         status: 'ready',
         blockId: 'hero',
-        sourceBlockId: 'hero',
-        codeRef: 'hero-code',
-        sourceCodeRef: 'hero-code',
-        sourceIndex: 0,
         slotIndex: 0,
-        sourceStatus: 'ready',
-        runPlanStatus: 'run_plan_ready',
-        snapshot: createRuntimeSnapshot({
-          status: 'ready',
-          view: {
-            primitive: 'Title',
-            props: { children: 'FrontStage Runtime Snapshot' }
+        priority: 1,
+        generation: 0,
+        mountIntent: {
+          blockId: 'hero',
+          slotIndex: 0,
+          identityInput: {
+            sourceSha256: 'a'.repeat(64),
+            runtimeFingerprint: 'runtime-a',
+            dependencyLockIdentity: 'lock-a'
           }
-        })
+        },
+        prepared: {
+          artifact: {} as never,
+          component: () => <h1>FrontStage Runtime Snapshot</h1>,
+          artifactCacheTier: 'l2',
+          identityInput: {
+            sourceSha256: 'a'.repeat(64),
+            runtimeFingerprint: 'runtime-a',
+            dependencyLockIdentity: 'lock-a'
+          }
+        }
       }
-    ] satisfies FrontstagePageCanvasRuntimeSessionEntry[];
+    ]);
     blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
       items: [createCatalogEntry()],
       diagnostics: [],
       loading: false,
       error: null
-    });
-    mockRuntimeSessions({
-      entries: runtimeSessionEntries,
-      snapshotsBySlot: { 0: runtimeSessionEntries[0].snapshot }
     });
 
     render(
@@ -332,29 +314,25 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       </AppProviders>
     );
 
-    // No more "运行计划已就绪" text — canvas now shows actual block content instead
+    const nativeRoot = await screen.findByTestId(
+      'frontstage-native-block-root-hero'
+    );
+    await waitFor(() => expect(nativeRoot.shadowRoot).not.toBeNull());
     expect(
-      await screen.findByRole('heading', {
-        name: 'FrontStage Runtime Snapshot'
-      })
+      await within(nativeRoot.shadowRoot as unknown as HTMLElement).findByRole(
+        'heading',
+        {
+          name: 'FrontStage Runtime Snapshot'
+        }
+      )
     ).toBeInTheDocument();
 
     await waitFor(() => {
       expect(
-        runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions
+        nativePreparationsHook.useFrontstagePageCanvasNativePreparations
       ).toHaveBeenCalledWith(
         expect.objectContaining({
-          runtimeRunPlanState: expect.objectContaining({
-            workspaceId: 'workspace-1',
-            pageId: 'page-1',
-            items: [
-              expect.objectContaining({
-                status: 'run_plan_ready',
-                blockId: 'hero',
-                codeRef: 'hero-code'
-              })
-            ]
-          })
+          dependencyLocksByBlockId: expect.objectContaining({ hero: [] })
         })
       );
     });

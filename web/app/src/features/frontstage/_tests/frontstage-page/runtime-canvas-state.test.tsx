@@ -34,7 +34,11 @@ const blockCodeHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -63,6 +67,10 @@ vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  () => runtimeSessionsHook
+);
+vi.mock(
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
@@ -444,7 +452,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(screen.getAllByText('页面 page-1').length).toBeGreaterThan(0);
   });
 
-  test('connects ready runtime run plan state into the PageCanvas slot', async () => {
+  test('connects the page read plan and catalog lock into Native preparation', async () => {
     authenticate([]);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
 
@@ -469,14 +477,26 @@ describe('FrontStagePage - runtime canvas state', () => {
       await screen.findByTestId('block-slot-frontstage-js-block-1')
     ).toBeInTheDocument();
     expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
-    expect(blockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'frontstage-js-block-1-code'
+    expect(
+      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        readPlan: expect.objectContaining({
+          requests: [
+            expect.objectContaining({
+              blockId: 'frontstage-js-block-1',
+              codeRef: 'frontstage-js-block-1-code'
+            })
+          ]
+        }),
+        dependencyLocksByBlockId: expect.objectContaining({
+          'frontstage-js-block-1': []
+        })
+      })
     );
   });
 
-  test('surfaces catalog-missing runtime run plan state from the PageCanvas container', async () => {
+  test('keeps a catalog-missing block locally loading without Restricted fallback execution', async () => {
     authenticate([]);
     mockFrontstageBlockCatalog([]);
 
@@ -501,6 +521,9 @@ describe('FrontStagePage - runtime canvas state', () => {
       await screen.findByTestId('block-slot-frontstage-js-block-1')
     ).toBeInTheDocument();
     expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
+    expect(
+      runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions
+    ).not.toHaveBeenCalled();
   });
 
   test('keeps the empty page tree free of placeholder content', () => {

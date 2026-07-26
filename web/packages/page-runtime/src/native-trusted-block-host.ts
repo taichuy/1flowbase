@@ -10,6 +10,7 @@ export interface NativeTrustedBlockMountInput {
 }
 
 export interface NativeTrustedBlockMountedInstance {
+  update?: (plan: NativeTrustedBlockPreparePlan) => void | Promise<void>;
   dispose?: () => void | Promise<void>;
 }
 
@@ -44,6 +45,9 @@ export interface NativeTrustedBlockHost {
   mount(
     plan: NativeTrustedBlockPreparePlan,
     root: NativeTrustedBlockRootHandle
+  ): Promise<NativeTrustedBlockHostState>;
+  update(
+    plan: NativeTrustedBlockPreparePlan
   ): Promise<NativeTrustedBlockHostState>;
   retry(): Promise<NativeTrustedBlockHostState>;
   dispose(): Promise<NativeTrustedBlockHostState>;
@@ -146,6 +150,35 @@ export function createNativeTrustedBlockHost(
       }
 
       return mountAdapter(currentPlan, currentRoot);
+    },
+    async update(plan) {
+      if (
+        didDisposeHost ||
+        state.status !== 'mounted' ||
+        !mountedInstance?.update
+      ) {
+        return state;
+      }
+      currentPlan = plan;
+      try {
+        await mountedInstance.update(plan);
+        state = {
+          status: 'mounted',
+          blockId: plan.blockId,
+          runtime: plan.runtime
+        };
+      } catch (error) {
+        state = {
+          status: 'failed',
+          blockId: plan.blockId,
+          runtime: plan.runtime,
+          error: createRuntimeError(
+            'runtime.update',
+            `Native trusted block adapter update failed: ${getErrorMessage(error)}`
+          )
+        };
+      }
+      return state;
     },
     async dispose() {
       if (didDisposeHost) {

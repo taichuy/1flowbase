@@ -1,7 +1,7 @@
-import { render, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
@@ -187,6 +187,34 @@ describe('frontstage native trusted block React adapter', () => {
       await shadowQueries(root).findByTestId('native-block')
     ).toHaveTextContent('Ready');
     expect(resolvedComponent).toHaveBeenCalledTimes(1);
+  });
+
+  test('D3-AC-003 rerenders through the same React root and preserves component Hook state', async () => {
+    const root = createBlockRoot();
+    const StatefulBlock = ({ props }: { props: Record<string, unknown> }) => {
+      const [count, setCount] = useState(0);
+      return (
+        <button
+          data-testid="stateful-native-block"
+          onClick={() => setCount((value) => value + 1)}
+        >
+          {count}:{String(props.title)}
+        </button>
+      );
+    };
+    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
+      resolveComponent: () => StatefulBlock
+    });
+    const mounted = await adapter.mount({ plan: createPlan(), root });
+    const button = await shadowQueries(root).findByTestId(
+      'stateful-native-block'
+    );
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1:Quarterly plan');
+
+    await mounted?.update?.(createPlan({ props: { title: 'Updated title' } }));
+    await waitFor(() => expect(button).toHaveTextContent('1:Updated title'));
+    await mounted?.dispose?.();
   });
 
   test('scopes the default AntD popup container to the current block root', async () => {

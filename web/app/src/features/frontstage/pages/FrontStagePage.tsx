@@ -21,9 +21,7 @@ import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import { PageCanvas } from '../components/PageCanvas';
 import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
-import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
-import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
-import { useFrontstagePageCanvasCompiledArtifacts } from '../hooks/use-frontstage-page-canvas-compiled-artifacts';
+import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
 import {
   appendFrontstageBlock,
@@ -46,7 +44,7 @@ import {
   type FrontstagePageLayoutMode
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
-import { createFrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
+import { createFrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
 import type {
   FrontstageRuntimeDemandByBlockId,
   FrontstageRuntimeDemandPriority
@@ -231,56 +229,43 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     },
     []
   );
-  const pageCanvasRuntimeSources = useFrontstagePageCanvasRuntimeSources({
-    actorId: actor?.id,
-    actorWorkspaceId: actor?.current_workspace_id,
-    workspaceId,
-    tabId: activePageContent?.tab.id ?? null,
-    renderPlan: activePageRenderPlan,
-    demandsByBlockId: runtimeDemandsByBlockId
-  });
-  const pageCanvasCompiledArtifacts = useFrontstagePageCanvasCompiledArtifacts({
-    actorId: actor?.id,
-    workspaceId,
-    sourceState: pageCanvasRuntimeSources.sourceState,
-    demandsByBlockId: runtimeDemandsByBlockId
-  });
-  const pageCanvasRuntimeRunPlanState = useMemo(() => {
-    const sourceState = pageCanvasCompiledArtifacts.sourceState;
-    if (!sourceState) {
-      return null;
-    }
-
-    return createFrontstagePageCanvasRuntimeRunPlanState({
-      sourceState,
-      catalogEntries: blockCatalog.items,
-      contextSnapshot: (source) => ({
-        workspaceId,
-        pageId: activePageContent?.page.id ?? sourceState.pageId,
-        pageTitle: activePageContent?.page.title ?? null,
-        blockId: source.blockId,
-        codeRef: source.codeRef,
-        props: source.block.props
-      }),
-      limits: jsBlockTrialLimits
+  const pageCanvasCodeReadPlan = useMemo(
+    () =>
+      activePageRenderPlan
+        ? createFrontstagePageCanvasBlockCodeReadPlan({
+            workspaceId,
+            renderPlan: activePageRenderPlan
+          })
+        : null,
+    [activePageRenderPlan, workspaceId]
+  );
+  const nativeDependencyLocksByBlockId = useMemo(
+    () =>
+      Object.fromEntries(
+        (displayedPageDocument?.blocks ?? []).map((block) => {
+          const catalogEntry = findMatchingFrontstageBlockCatalogEntry(
+            block,
+            blockCatalog.items
+          );
+          return [
+            block.id,
+            resolveFrontstageNativeDependencyLock({
+              catalogEntry,
+              workspaceId
+            }).dependencyLock
+          ];
+        })
+      ),
+    [blockCatalog.items, displayedPageDocument?.blocks, workspaceId]
+  );
+  const pageCanvasNativePreparations =
+    useFrontstagePageCanvasNativePreparations({
+      actorId: actor?.id,
+      actorWorkspaceId: actor?.current_workspace_id,
+      readPlan: pageCanvasCodeReadPlan,
+      dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
+      demandsByBlockId: runtimeDemandsByBlockId
     });
-  }, [
-    activePageContent?.page.id,
-    activePageContent?.page.title,
-    blockCatalog.items,
-    jsBlockTrialLimits,
-    pageCanvasCompiledArtifacts.sourceState,
-    workspaceId
-  ]);
-  const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
-    actorId: actor?.id,
-    actorWorkspaceId: actor?.current_workspace_id,
-    runtimeRunPlanState: pageCanvasRuntimeRunPlanState,
-    handlers: jsBlockCapabilityHandlers,
-    demandsByBlockId: runtimeDemandsByBlockId,
-    blocks: displayedPageDocument?.blocks,
-    tabId: activePageContent?.tab.id
-  });
   const blockCompositionState = useMemo(
     () =>
       displayedPageDocument
@@ -1210,11 +1195,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             : undefined
         }
         onRetry={onRetryLoadPageContent}
-        runtimeSourceState={pageCanvasCompiledArtifacts.sourceState}
-        runtimeRunPlanState={pageCanvasRuntimeRunPlanState}
-        runtimeSessionEntries={pageCanvasRuntimeSessions.entries}
+        runtimePreparations={pageCanvasNativePreparations.preparations}
         onRuntimeDemandChange={handleRuntimeDemandChange}
-        onRuntimeRetry={pageCanvasRuntimeSessions.retryBlock}
+        onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
         designActions={designActions}
         toolbarDisabled={isPageContentSavePending}

@@ -87,6 +87,24 @@ describe('Native trusted block host lifecycle adapter', () => {
     expect(secondState).toBe(firstState);
   });
 
+  test('D3-AC-003 updates the mounted instance without a second adapter mount', async () => {
+    const update = vi.fn();
+    const adapter: NativeTrustedBlockHostAdapter = {
+      mount: vi.fn().mockReturnValue({ update, dispose: vi.fn() })
+    };
+    const host = createNativeTrustedBlockHost({ adapter });
+    const initial = createPreparePlan({ props: { count: 1 } });
+    const changed = createPreparePlan({ props: { count: 2 } });
+
+    await host.mount(initial, { handle: 'root-1' });
+    const state = await host.update(changed);
+
+    expect(adapter.mount).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledWith(changed);
+    expect(state).toMatchObject({ status: 'mounted', blockId: 'block-1' });
+  });
+
   test('D1-AC-004 retry disposes and remounts only the current block instance', async () => {
     const firstDispose = vi.fn();
     const secondDispose = vi.fn();

@@ -47,7 +47,8 @@ function compiledArtifact(
     program: {
       injectedModules: [],
       importBindings: [],
-      executableBody: 'return { main: async () => ({ view: {}, outputs: {} }) };',
+      executableBody:
+        'return { main: async () => ({ view: {}, outputs: {} }) };',
       executablePreambleLines: 0,
       moduleMapIdentifier: '__modules',
       defaultExportIdentifier: '__default'
@@ -735,8 +736,14 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         runtimeFingerprint: 'runtime-a'
       })
     );
-    await waitFor(() => expect(runtimeSession.session.run).toHaveBeenCalledTimes(1));
-    for (const phase of ['executing', 'waiting_effect', 'validating_schema'] as const) {
+    await waitFor(() =>
+      expect(runtimeSession.session.run).toHaveBeenCalledTimes(1)
+    );
+    for (const phase of [
+      'executing',
+      'waiting_effect',
+      'validating_schema'
+    ] as const) {
       act(() =>
         runtimeSession.emit(
           createSnapshot({
@@ -819,28 +826,37 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
           requestId: item.runPlan.request.requestId,
           blockId: item.blockId,
           compiledArtifact: artifact,
-          view: { primitive: 'Text', props: { children: 'runtime-secret-canary' } },
+          view: {
+            primitive: 'Text',
+            props: { children: 'runtime-secret-canary' }
+          },
           outputs: { response: 'runtime-secret-canary' },
-          logs: [{
-            requestId: item.runPlan.request.requestId,
-            level: 'info',
-            message: 'runtime-secret-canary'
-          }],
-          effects: [{
-            type: 'event',
-            requestId: item.runPlan.request.requestId,
-            name: 'runtime-secret-canary',
-            payload: { token: 'runtime-secret-canary' }
-          }],
-          interfaceCalls: [{
-            requestId: item.runPlan.request.requestId,
-            effectId: 'runtime-secret-canary',
-            method: 'GET',
-            path: '/runtime-secret-canary',
-            status: 'succeeded',
-            durationMs: 1,
-            response: { headers: 'runtime-secret-canary' }
-          }]
+          logs: [
+            {
+              requestId: item.runPlan.request.requestId,
+              level: 'info',
+              message: 'runtime-secret-canary'
+            }
+          ],
+          effects: [
+            {
+              type: 'event',
+              requestId: item.runPlan.request.requestId,
+              name: 'runtime-secret-canary',
+              payload: { token: 'runtime-secret-canary' }
+            }
+          ],
+          interfaceCalls: [
+            {
+              requestId: item.runPlan.request.requestId,
+              effectId: 'runtime-secret-canary',
+              method: 'GET',
+              path: '/runtime-secret-canary',
+              status: 'succeeded',
+              durationMs: 1,
+              response: { headers: 'runtime-secret-canary' }
+            }
+          ]
         })
       )
     );
@@ -1002,9 +1018,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     resetFrontstageRuntimeObservations();
 
     const baseline = Date.now();
-    const dateNow = vi
-      .spyOn(Date, 'now')
-      .mockReturnValue(baseline + 30_001);
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(baseline + 30_001);
     const revalidation = createFakeRuntimeSession();
     const revalidationFactory = vi.fn(() => revalidation.session);
     const persistentArtifactCache = {
@@ -1187,7 +1201,7 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
     ]);
   });
 
-  test('manual retry evicts the block result and runs that block exactly once', async () => {
+  test('does not restore serialized block results after a session unmount', async () => {
     const item = createReadyItem({ blockId: 'retry' });
     const first = createFakeRuntimeSession();
     const { unmount: unmountFirst } = renderHook(() =>
@@ -1219,16 +1233,15 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
         runtimeSessionFactory
       })
     );
-    await waitFor(() => expect(result.current.entries[0]?.status).toBe('ready'));
-    expect(runtimeSessionFactory).not.toHaveBeenCalled();
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
+    expect(retrySession.session.run).toHaveBeenCalledTimes(1);
 
     act(() => result.current.retryBlock('retry'));
 
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
-    expect(retrySession.session.run).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
   });
 
-  test('evicts deterministically by byte-weighted LRU under a hard budget', () => {
+  test('keeps the legacy result-cache compatibility shell storage-free', () => {
     const schemaValidationOptions = createSnapshot().schemaValidationOptions;
     const value = (label: string) => ({
       view: { primitive: 'Text', props: { children: label.repeat(64) } },
@@ -1236,19 +1249,15 @@ describe('useFrontstagePageCanvasRuntimeSessions', () => {
       schemaValidationOptions
     });
 
-    const probe = new FrontstageRuntimeResultCache(100_000);
-    probe.set('a', value('a'));
-    probe.set('b', value('b'));
-    const cache = new FrontstageRuntimeResultCache(probe.byteSize);
+    const cache = new FrontstageRuntimeResultCache(100_000);
     cache.set('a', value('a'));
     cache.set('b', value('b'));
-    expect(cache.get('a')).toBeDefined();
-
     cache.set('c', value('c'));
 
     expect(cache.get('b')).toBeUndefined();
-    expect(cache.get('a')).toBeDefined();
-    expect(cache.get('c')).toBeDefined();
-    expect(cache.byteSize).toBeLessThanOrEqual(cache.byteBudget);
+    expect(cache.get('a')).toBeUndefined();
+    expect(cache.get('c')).toBeUndefined();
+    expect(cache.byteSize).toBe(0);
+    expect(cache.size).toBe(0);
   });
 });

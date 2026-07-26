@@ -1,5 +1,10 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import {
+  NATIVE_TRUSTED_BLOCK_PERMISSION,
+  NATIVE_TRUSTED_BLOCK_RUNTIME,
+  type NativeTrustedBlockPreparePlan
+} from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -45,6 +50,9 @@ import {
   frontstageLayoutsEqualForCommit
 } from '../lib/page-canvas/frontstage-block-interaction';
 import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
+import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
+import { useFrontstageNativeBlockInstance } from '../hooks/use-frontstage-native-block-instance';
+import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
 
 type DesignBlockActions = {
   onEditCode: (blockId: string) => void;
@@ -64,6 +72,7 @@ type PageCanvasProps = {
   runtimeSessionEntries?:
     | readonly FrontstagePageCanvasRuntimeSessionEntry[]
     | null;
+  runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
   /** Actions triggered from the design mode hover toolbar */
@@ -136,6 +145,7 @@ function findRuntimeSessionEntryForSlot({
 
 type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
+  runtimePreparation?: FrontstageNativePreparationSnapshot | null;
   runtimeSessionEntry?: FrontstagePageCanvasRuntimeSessionEntry | null;
   isSelected: boolean;
   onSelectBlock?: (blockId: string | null) => void;
@@ -207,8 +217,97 @@ function resolveRendererVersionError(
   };
 }
 
+function NativeRuntimeSlotSurface({
+  item,
+  preparation,
+  contentViewportStyle,
+  onRetry
+}: {
+  item: FrontstageBlockRenderPlanItem;
+  preparation: FrontstageNativePreparationSnapshot;
+  contentViewportStyle: CSSProperties;
+  onRetry?: () => void;
+}) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const readyPreparation = preparation.status === 'ready' ? preparation : null;
+  const plan = useMemo<NativeTrustedBlockPreparePlan>(() => {
+    const preparedSource = readyPreparation
+      ? `/* prepared:${readyPreparation.prepared.identityInput.sourceSha256} */`
+      : '';
+    return {
+      runtime: NATIVE_TRUSTED_BLOCK_RUNTIME,
+      blockId: item.blockId,
+      entry: item.runtime.entry ?? 'default',
+      source: preparedSource,
+      normalizedSource: preparedSource,
+      props: { ...item.props },
+      requiredPermissions: [NATIVE_TRUSTED_BLOCK_PERMISSION]
+    };
+  }, [
+    item.blockId,
+    item.props,
+    item.runtime.entry,
+    readyPreparation?.prepared.identityInput.sourceSha256
+  ]);
+  const runtimeInput = useMemo(
+    () => ({
+      plan,
+      context: createFrontstageUnavailableBlockContext(plan)
+    }),
+    [plan]
+  );
+  const instanceState = useFrontstageNativeBlockInstance({
+    root,
+    mountIntent: readyPreparation?.mountIntent ?? null,
+    prepared: readyPreparation?.prepared ?? null,
+    runtimeInput
+  });
+
+  if (preparation.status === 'failed' || instanceState.status === 'failed') {
+    return (
+      <div style={contentViewportStyle}>
+        <Alert
+          type="error"
+          showIcon
+          message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+          action={
+            onRetry ? (
+              <Button size="small" onClick={onRetry}>
+                {i18nText('frontstage', 'auto.retry')}
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
+
+  if (!readyPreparation?.mountIntent) {
+    return (
+      <div style={contentViewportStyle}>
+        <BlockUiLoadingShell />
+      </div>
+    );
+  }
+
+  return (
+    <div style={contentViewportStyle}>
+      <div
+        ref={setRoot}
+        data-testid={`frontstage-native-block-root-${item.blockId}`}
+        style={{ width: '100%', minWidth: 0 }}
+      />
+      {instanceState.status === 'unmounted' ||
+      instanceState.status === 'mounting' ? (
+        <BlockUiLoadingShell />
+      ) : null}
+    </div>
+  );
+}
+
 function RenderPlanSlot({
   item,
+  runtimePreparation,
   runtimeSessionEntry,
   isSelected,
   onSelectBlock,
@@ -311,9 +410,7 @@ function RenderPlanSlot({
   const renderBlockContent = () => {
     if (rendererVersionError) {
       return (
-        <div
-          style={contentViewportStyle}
-        >
+        <div style={contentViewportStyle}>
           <Alert
             type="error"
             showIcon
@@ -324,11 +421,22 @@ function RenderPlanSlot({
       );
     }
 
+    if (runtimePreparation) {
+      return (
+        <NativeRuntimeSlotSurface
+          item={item}
+          preparation={runtimePreparation}
+          contentViewportStyle={contentViewportStyle}
+          onRetry={
+            onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
+          }
+        />
+      );
+    }
+
     if (runtimeSessionEntry && 'snapshot' in runtimeSessionEntry) {
       return (
-        <div
-          style={contentViewportStyle}
-        >
+        <div style={contentViewportStyle}>
           <RestrictedBlockRuntimePreview
             snapshot={runtimeSessionEntry.snapshot}
             onRetry={
@@ -341,9 +449,7 @@ function RenderPlanSlot({
 
     if (runtimeSessionEntry?.status === 'factory_failed') {
       return (
-        <div
-          style={contentViewportStyle}
-        >
+        <div style={contentViewportStyle}>
           <Alert
             type="error"
             showIcon
@@ -366,9 +472,7 @@ function RenderPlanSlot({
 
     if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
       return (
-        <div
-          style={contentViewportStyle}
-        >
+        <div style={contentViewportStyle}>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
             {i18nText('frontstage', 'auto.block_skipped_run')}
           </Typography.Text>
@@ -377,9 +481,7 @@ function RenderPlanSlot({
     }
 
     return (
-      <div
-        style={contentViewportStyle}
-      >
+      <div style={contentViewportStyle}>
         <BlockUiLoadingShell />
       </div>
     );
@@ -449,6 +551,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   onSelectBlock,
   onRetry,
   runtimeSessionEntries,
+  runtimePreparations,
   isDesignMode = false,
   designActions,
   toolbarDisabled = false,
@@ -587,9 +690,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         data-testid="page-canvas-render-slots"
       >
         {renderPlan.isEmpty && isDesignMode ? (
-          <div
-            data-testid="page-canvas-design-empty-state"
-          />
+          <div data-testid="page-canvas-design-empty-state" />
         ) : renderPlan.isEmpty ? (
           <div
             style={{
@@ -600,10 +701,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
               textAlign: 'center'
             }}
           >
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={false}
-            />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
           </div>
         ) : (
           <ResponsiveGridLayout
@@ -688,6 +786,11 @@ export const PageCanvas: FC<PageCanvasProps> = ({
               <div key={item.blockId}>
                 <RenderPlanSlot
                   item={item}
+                  runtimePreparation={
+                    runtimePreparations?.find(
+                      (preparation) => preparation.blockId === item.blockId
+                    ) ?? null
+                  }
                   runtimeSessionEntry={findRuntimeSessionEntryForSlot({
                     item,
                     slotIndex,

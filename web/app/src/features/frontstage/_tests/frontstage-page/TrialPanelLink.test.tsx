@@ -28,7 +28,11 @@ const blockCodeHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasRuntimeSessions: vi.fn(),
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const dataCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageDataCapabilities: vi.fn()
@@ -41,6 +45,10 @@ vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  () => runtimeSessionsHook
+);
+vi.mock(
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock(

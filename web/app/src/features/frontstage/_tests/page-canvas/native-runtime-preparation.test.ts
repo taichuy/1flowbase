@@ -2,9 +2,15 @@ import { describe, expect, test, vi } from 'vitest';
 
 import {
   FrontstageNativePreparationScheduler,
+  FrontstagePageNativeModuleRegistryCache,
   type FrontstageNativePreparedRuntime,
   type FrontstageNativePreparationTask
 } from '../../lib/page-canvas/native-runtime-preparation';
+import {
+  createNativeReactModuleRegistry,
+  sha256Text,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
 import {
   createFrontstageRuntimeDemandCandidates,
   resolveFrontstageRuntimePreparationKind
@@ -48,6 +54,39 @@ describe('Frontstage Native React preparation demand', () => {
         '0'.repeat(64)
       )
     ).toBe(false);
+  });
+});
+
+describe('FrontstagePageNativeModuleRegistryCache', () => {
+  test('D3-AC-004 fetches a shared module once for multiple blocks with the same page lock', async () => {
+    const cache = new FrontstagePageNativeModuleRegistryCache();
+    const source = 'export const Widget = 1;';
+    const fetchAsset = vi.fn(async () => new Response(source, { status: 200 }));
+    const createRegistry = vi.fn((lock: NativeReactCatalogDependencyLock) =>
+      createNativeReactModuleRegistry({
+        dependencyLock: lock,
+        hostModules: {},
+        fetchAsset
+      })
+    );
+    const dependencyLock = [
+      {
+        module_source: '@example/components',
+        module_version: '1.0.0',
+        browser_asset: { sha256: sha256Text(source), url: '/module.js' },
+        exports: ['Widget']
+      }
+    ];
+
+    const firstRegistry = cache.get(dependencyLock, createRegistry);
+    const secondRegistry = cache.get([...dependencyLock], createRegistry);
+    expect(firstRegistry).toBe(secondRegistry);
+    await Promise.all([
+      firstRegistry.load('@example/components'),
+      secondRegistry.load('@example/components')
+    ]);
+    expect(createRegistry).toHaveBeenCalledOnce();
+    expect(fetchAsset).toHaveBeenCalledOnce();
   });
 });
 

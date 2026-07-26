@@ -105,7 +105,6 @@ export function createFrontstageNativeTrustedBlockReactAdapter(
   return {
     async mount(input) {
       const rootElement = validateRootElement(input.root);
-      const Component = options.resolveComponent(input.plan);
       const shadowSurface = createNativeTrustedBlockShadowSurface(
         rootElement,
         input.plan.blockId,
@@ -126,41 +125,47 @@ export function createFrontstageNativeTrustedBlockReactAdapter(
         reactRoot = (options.createRoot ?? defaultCreateRoot)(
           shadowSurface.mountElement
         );
-        const providerContext = {
-          plan: input.plan,
-          root: rootElement,
-          shadowRoot: shadowSurface.shadowRoot,
-          mountElement: shadowSurface.mountElement,
-          portalContainment
-        };
-        const blockContext = resolveControlledBlockContext(
-          providerContext,
-          options.resolveBlockContext
-        );
-        reactRoot.render(
-          wrapWithHostProviders(
-            <FrontstageNativeTrustedBlockErrorBoundary
-              context={{
-                ...providerContext,
-                blockId: input.plan.blockId
-              }}
-              onRuntimeError={options.onRuntimeError}
-            >
-              <Component
-                plan={input.plan}
-                props={input.plan.props}
-                ctx={blockContext}
-                portalContainment={portalContainment}
-              />
-            </FrontstageNativeTrustedBlockErrorBoundary>,
+        const styleCache = createCache();
+        const renderPlan = (plan: NativeTrustedBlockPreparePlan) => {
+          const Component = options.resolveComponent(plan);
+          const providerContext = {
+            plan,
+            root: rootElement,
+            shadowRoot: shadowSurface.shadowRoot,
+            mountElement: shadowSurface.mountElement,
+            portalContainment
+          };
+          const blockContext = resolveControlledBlockContext(
             providerContext,
-            createCache(),
-            options.resolveProviderScope,
-            options.providerWrapper
-          )
-        );
+            options.resolveBlockContext
+          );
+          reactRoot?.render(
+            wrapWithHostProviders(
+              <FrontstageNativeTrustedBlockErrorBoundary
+                context={{ ...providerContext, blockId: plan.blockId }}
+                onRuntimeError={options.onRuntimeError}
+              >
+                <Component
+                  plan={plan}
+                  props={plan.props}
+                  ctx={blockContext}
+                  portalContainment={portalContainment}
+                />
+              </FrontstageNativeTrustedBlockErrorBoundary>,
+              providerContext,
+              styleCache,
+              options.resolveProviderScope,
+              options.providerWrapper
+            )
+          );
+        };
+        renderPlan(input.plan);
 
         return {
+          update(plan) {
+            if (didUnmount) return;
+            renderPlan(plan);
+          },
           dispose() {
             if (didUnmount) {
               return;
@@ -200,11 +205,11 @@ function resolveControlledBlockContext(
 ): BlockContext {
   return (
     resolveBlockContext?.(context) ??
-    createUnavailableBlockContext(context.plan)
+    createFrontstageUnavailableBlockContext(context.plan)
   );
 }
 
-function createUnavailableBlockContext(
+export function createFrontstageUnavailableBlockContext(
   plan: NativeTrustedBlockPreparePlan
 ): BlockContext {
   const state: Record<string, unknown> = {};

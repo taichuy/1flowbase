@@ -20,6 +20,7 @@ import {
 } from '../lib/runtime-cache';
 import {
   FrontstageNativePreparationScheduler,
+  FrontstagePageNativeModuleRegistryCache,
   type FrontstageNativePreparationSnapshot,
   type FrontstageNativePreparationTask
 } from '../lib/page-canvas/native-runtime-preparation';
@@ -85,6 +86,18 @@ export function useFrontstagePageCanvasNativePreparations({
   const [preparations, setPreparations] = useState<
     FrontstageNativePreparationSnapshot[]
   >([]);
+  const componentFactoryFlights = useMemo(
+    () =>
+      new Map<
+        string,
+        ReturnType<typeof evaluateNativeReactComponentArtifactWithRegistry>
+      >(),
+    []
+  );
+  const moduleRegistryCache = useMemo(
+    () => new FrontstagePageNativeModuleRegistryCache(),
+    []
+  );
   useEffect(
     () => scheduler.subscribe(() => setPreparations(scheduler.getSnapshots())),
     [scheduler]
@@ -158,13 +171,24 @@ export function useFrontstagePageCanvasNativePreparations({
           }
 
           enterStage('module_resolve');
-          const evaluated =
-            await evaluateNativeReactComponentArtifactWithRegistry(
-              artifact,
-              moduleRegistryFactory(dependencyLock)
+          const componentFactoryKey = JSON.stringify(artifact.identity);
+          let componentFactoryFlight =
+            componentFactoryFlights.get(componentFactoryKey);
+          if (!componentFactoryFlight) {
+            componentFactoryFlight =
+              evaluateNativeReactComponentArtifactWithRegistry(
+                artifact,
+                moduleRegistryCache.get(dependencyLock, moduleRegistryFactory)
+              );
+            componentFactoryFlights.set(
+              componentFactoryKey,
+              componentFactoryFlight
             );
+          }
+          const evaluated = await componentFactoryFlight;
           throwIfAborted(signal);
           if (!evaluated.ok) {
+            componentFactoryFlights.delete(componentFactoryKey);
             throw new Error(
               evaluated.diagnostics[0]?.message ??
                 'Native React module resolution failed.'
@@ -188,9 +212,11 @@ export function useFrontstagePageCanvasNativePreparations({
     actorWorkspaceId,
     artifactCache,
     compile,
+    componentFactoryFlights,
     dependencyLocksByBlockId,
     fetchSource,
     moduleRegistryFactory,
+    moduleRegistryCache,
     readPlan,
     runtimeFingerprint
   ]);
