@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import {
   JsBlockTrialPanel,
@@ -82,7 +83,7 @@ export function PublicAuthBlock({
       block={block}
       catalogEntry={null}
       code={instance.public_ui_block}
-      revision={`public-auth:${instance.id}`}
+      revision={`public-auth:${instance.id}:${sha256Text(instance.public_ui_block)}`}
       createBlockContext={createBlockContext}
       nativeCompiler={nativeCompiler}
       nativeDependencyLock={[]}

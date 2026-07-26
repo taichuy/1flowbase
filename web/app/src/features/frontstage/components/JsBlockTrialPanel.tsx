@@ -119,15 +119,21 @@ export function JsBlockTrialPanel({
   }
   const latestDraftRef = useRef({ block, code, revision });
   latestDraftRef.current = { block, code, revision };
+  const createBlockContextRef = useRef(createBlockContext);
+  createBlockContextRef.current = createBlockContext;
+  const onPrepareDraftRunRef = useRef(onPrepareDraftRun);
+  onPrepareDraftRunRef.current = onPrepareDraftRun;
+  const onRevokeDraftRunRef = useRef(onRevokeDraftRun);
+  onRevokeDraftRunRef.current = onRevokeDraftRun;
   const [snapshot, setSnapshot] = useState<NativeTrialSnapshot | null>(null);
 
   const disposeActiveRun = useCallback(() => {
     const active = activeRunRef.current;
     activeRunRef.current = null;
     blockContextRef.current = null;
-    if (active) onRevokeDraftRun?.(active.requestId);
+    if (active) onRevokeDraftRunRef.current?.(active.requestId);
     return active?.host?.dispose() ?? Promise.resolve();
-  }, [onRevokeDraftRun]);
+  }, []);
 
   const runFrozenRevision = useCallback(
     async ({
@@ -146,7 +152,7 @@ export function JsBlockTrialPanel({
       await disposeActiveRun();
       if (generationRef.current !== generation) return;
 
-      const requestId = onPrepareDraftRun
+      const requestId = onPrepareDraftRunRef.current
         ? `draft:${frozenBlock.id}:${generation}`
         : `native:${frozenBlock.id}:${frozenRevision}`;
       const instanceEpoch = `${requestId}:epoch`;
@@ -175,7 +181,7 @@ export function JsBlockTrialPanel({
       }
 
       try {
-        await onPrepareDraftRun?.({
+        await onPrepareDraftRunRef.current?.({
           blockId: frozenBlock.id,
           runId: requestId,
           draftHash: sha256Text(frozenSource),
@@ -259,7 +265,7 @@ export function JsBlockTrialPanel({
       };
       const plan = createNativeTrialPlan(frozenBlock, frozenSource);
       blockContextRef.current =
-        createBlockContext?.({
+        createBlockContextRef.current?.({
           requestId,
           instanceEpoch,
           plan,
@@ -297,9 +303,7 @@ export function JsBlockTrialPanel({
       nativeCompilerWorkerFactory,
       nativeDependencyLock,
       nativeDependencyLockError,
-      nativeModuleRegistryFactory,
-      createBlockContext,
-      onPrepareDraftRun
+      nativeModuleRegistryFactory
     ]
   );
 
