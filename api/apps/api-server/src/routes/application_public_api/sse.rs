@@ -894,7 +894,7 @@ mod tests {
     #[test]
     fn native_succeeded_terminal_does_not_reconstruct_answer_deltas() {
         let mut run = native_run();
-        run.status = NativeRunStatus::Succeeded;
+        run.status = control_plane::application_public_api::native::NativeRunStatus::Succeeded;
         let terminal_event = RuntimeEventEnvelope::new(
             run.id,
             1,
