@@ -3,7 +3,22 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';
-import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
+
+export interface JsBlockPreviewConsoleSnapshot {
+  logs: ReadonlyArray<{
+    requestId: string;
+    level: 'debug' | 'info' | 'warn' | 'error';
+    message: string;
+    data?: unknown;
+  }>;
+  diagnostics?: ReadonlyArray<{
+    phase: 'compile' | 'runtime';
+    code: string;
+    path: string;
+    message: string;
+    sourceLocation?: { line: number; column: number };
+  }>;
+}
 
 const DEFAULT_PREVIEW_PERCENT = 65;
 const MIN_PREVIEW_PERCENT = 20;
@@ -15,16 +30,14 @@ export function JsBlockPreviewConsole({
   snapshot
 }: {
   preview: ReactNode;
-  snapshot: RestrictedBlockRuntimeHostSnapshot | null;
+  snapshot: JsBlockPreviewConsoleSnapshot | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{
     percent: number;
     pointerY: number;
   } | null>(null);
-  const [previewPercent, setPreviewPercent] = useState(
-    DEFAULT_PREVIEW_PERCENT
-  );
+  const [previewPercent, setPreviewPercent] = useState(DEFAULT_PREVIEW_PERCENT);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -71,10 +84,7 @@ export function JsBlockPreviewConsole({
         {preview}
       </section>
       <div
-        aria-label={i18nText(
-          'frontstage',
-          'auto.resize_preview_console'
-        )}
+        aria-label={i18nText('frontstage', 'auto.resize_preview_console')}
         aria-orientation="horizontal"
         aria-valuemax={MAX_PREVIEW_PERCENT}
         aria-valuemin={MIN_PREVIEW_PERCENT}
@@ -126,6 +136,25 @@ export function JsBlockPreviewConsole({
             className="frontstage-js-block-preview-console__log-list"
             role="log"
           >
+            {snapshot?.diagnostics?.map((diagnostic, index) => (
+              <div
+                key={`${diagnostic.phase}:${diagnostic.path}:${index}`}
+                className="frontstage-js-block-preview-console__log-entry frontstage-js-block-preview-console__log-entry--error"
+              >
+                <span
+                  className="frontstage-js-block-preview-console__log-gutter"
+                  data-testid="js-block-console-gutter-error"
+                  title="error"
+                >
+                  ×
+                </span>
+                <div className="frontstage-js-block-preview-console__log-body">
+                  <Typography.Text code>
+                    {formatDiagnostic(diagnostic)}
+                  </Typography.Text>
+                </div>
+              </div>
+            ))}
             {snapshot?.logs.map((log, index) => (
               <div
                 key={`${log.requestId}:${index}`}
@@ -173,10 +202,19 @@ function formatConsoleData(value: unknown) {
 }
 
 function consoleGutter(
-  level: RestrictedBlockRuntimeHostSnapshot['logs'][number]['level']
+  level: JsBlockPreviewConsoleSnapshot['logs'][number]['level']
 ) {
   if (level === 'warn') return '!';
   if (level === 'error') return '×';
   if (level === 'debug') return '·';
   return '>';
+}
+
+function formatDiagnostic(
+  diagnostic: NonNullable<JsBlockPreviewConsoleSnapshot['diagnostics']>[number]
+): string {
+  const location = diagnostic.sourceLocation
+    ? `:${diagnostic.sourceLocation.line}:${diagnostic.sourceLocation.column}`
+    : '';
+  return `[${diagnostic.phase}/${diagnostic.code}] ${diagnostic.path}${location} ${diagnostic.message}`;
 }

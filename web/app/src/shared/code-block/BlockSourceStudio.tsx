@@ -1,5 +1,4 @@
 import type { OnMount } from '@monaco-editor/react';
-import type { FrontendBlockMonacoExtraLib } from '@1flowbase/page-protocol';
 import { Alert, Button, Modal } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -20,6 +19,7 @@ import {
   type WindowWorkspaceRect
 } from '../ui/window-workspace/window-workspace-state';
 import { BlockSourceEditor } from './BlockSourceEditor';
+import type { BlockSourceExtraLib } from './extra-lib';
 import {
   BlockStudioWorkspace,
   type BlockStudioSection
@@ -34,7 +34,7 @@ export interface BlockSourceStudioProps {
   editorFooter?: ReactNode;
   editorNotice?: ReactNode;
   errorMessage?: string | null;
-  extraLibs?: readonly FrontendBlockMonacoExtraLib[];
+  extraLibs?: readonly BlockSourceExtraLib[];
   initialSection: BlockStudioSection;
   loading: boolean;
   open: boolean;
@@ -52,9 +52,7 @@ export interface BlockSourceStudioProps {
   onReset: () => void;
   onRun: (source: string) => void;
   onSave: () => void;
-  renderResource: (
-    section: Exclude<BlockStudioSection, 'code'>
-  ) => ReactNode;
+  renderResource: (section: Exclude<BlockStudioSection, 'code'>) => ReactNode;
 }
 
 const INITIAL_WINDOW_RECT: WindowWorkspaceRect = {
@@ -208,7 +206,7 @@ function BlockSourceStudioWindow({
         restoreLabel={i18nText('frontstage', 'auto.restore_window')}
         status={status}
         title={i18nText('frontstage', 'auto.jsx_studio')}
-        toolbar={(
+        toolbar={
           <>
             <Button
               onClick={() => onChange(onInjectContext(source, contextComment))}
@@ -236,18 +234,16 @@ function BlockSourceStudioWindow({
               {i18nText('frontstage', 'auto.run')}
             </Button>
           </>
-        )}
-        onClose={requestClose}
-        onToggleMaximized={() =>
-          toggleMaximized(windowId, viewportRect())
         }
+        onClose={requestClose}
+        onToggleMaximized={() => toggleMaximized(windowId, viewportRect())}
       />
       <BlockStudioWorkspace
         activeSection={activeSection}
         onSectionChange={setActiveSection}
         renderResource={renderResource}
         windowWidth={windowEntry.rect.width}
-        editor={(
+        editor={
           <main className="frontstage-jsx-studio__editor-panel">
             <div className="frontstage-jsx-studio__editor-notice">
               {editorNotice}
@@ -269,7 +265,7 @@ function BlockSourceStudioWindow({
             </div>
             {editorFooter}
           </main>
-        )}
+        }
       />
     </WindowWorkspaceWindow>
   );

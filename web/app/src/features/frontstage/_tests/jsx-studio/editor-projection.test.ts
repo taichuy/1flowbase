@@ -12,11 +12,14 @@ describe('Frontstage JSX editor projection', () => {
       catalogEntry: null
     });
 
-    expect(projection).toEqual({
-      componentCatalogQuery: null,
-      contextComment: createFrontstageContextComment(),
-      monacoExtraLibs: []
-    });
+    expect(projection.componentCatalogQuery).toBeNull();
+    expect(projection.contextComment).toBe(createFrontstageContextComment());
+    expect(projection.monacoExtraLibs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'react' }),
+        expect.objectContaining({ source: '@1flowbase/native-react-context' })
+      ])
+    );
     expect(projection.contextComment).toContain('@1flowbase-context');
     expect(projection.contextComment).not.toContain('interfaces:');
     expect(projection.contextComment).not.toContain('ctx.data');
@@ -48,7 +51,7 @@ describe('Frontstage JSX editor projection', () => {
       installation_id: 'installation-1',
       contribution_code: 'frontstage.js-ui-block'
     });
-    expect(projection.monacoExtraLibs[0]?.content).toContain(
+    expect(projection.monacoExtraLibs.at(-1)?.content).toContain(
       'export const Button'
     );
   });

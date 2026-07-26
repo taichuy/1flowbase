@@ -3,20 +3,18 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
-import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { compileNativeReactComponent } from '@1flowbase/page-runtime';
 
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
-import type {
-  FrontstageRestrictedBlockRuntimeHostOptions,
-  FrontstageRestrictedBlockRuntimeSession
-} from '../lib/frontstage-restricted-block-runtime-host';
 import type { FrontstageBlockInstance } from '../lib/page-document';
-import type { RestrictedBlockRuntimeHostSnapshot } from '../lib/restricted-block-runtime-host';
+import type { NativeReactBrowserCompileResult } from '../../../shared/code-block/native-react-compiler-browser';
 
 const block = {
   id: 'block-1',
@@ -51,370 +49,211 @@ const catalog = {
   permissions: { network: 'none', storage: 'none', secrets: 'none' },
   contextContract: { primitives: [], inputSchema: {} },
   uiCapabilities: [],
-  codeCapabilities: {
-    template: null,
-    allowedImports: [],
-    monacoExtraLibs: [],
-    workerModuleSources: []
-  },
   raw: {}
 } as unknown as NormalizedFrontstageBlockCatalogEntry;
 
-function snapshot(
-  status: RestrictedBlockRuntimeHostSnapshot['status']
-): RestrictedBlockRuntimeHostSnapshot {
-  return {
-    status,
-    requestId: 'draft:block-1:run',
-    blockId: 'block-1',
-    schemaValidationOptions: {},
-    ...(status === 'ready'
-      ? {
-          view: { primitive: 'Text', props: { children: 'Ready' } },
-          outputs: { total: 2 }
-        }
-      : {}),
-    logs: [],
-    effects: [],
-    rejections: [],
-    interfaceCalls: []
-  };
+function source(label: string): string {
+  return `export default function Block() {
+    return <div data-testid="native-output">${label}</div>;
+  }`;
 }
 
-function createSession(): FrontstageRestrictedBlockRuntimeSession {
-  let current = snapshot('idle');
-  const listeners = new Set<
-    (value: RestrictedBlockRuntimeHostSnapshot) => void
-  >();
-  return {
-    run: vi.fn(() => {
-      current = snapshot('running');
-      return current;
-    }),
-    dispose: vi.fn(() => {
-      current = snapshot('disposed');
-      return current;
-    }),
-    getSnapshot: vi.fn(() => current),
-    getHostState: vi.fn(() => ({
-      workerStatus: 'idle' as const,
-      requests: {},
-      rejections: []
-    })),
-    subscribe: vi.fn((listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    })
-  };
+function createCompiler() {
+  return vi.fn(async ({ source: currentSource }: { source: string }) => {
+    const result = compileNativeReactComponent(currentSource);
+    return result as NativeReactBrowserCompileResult;
+  });
 }
 
-function createReadyActionSession(): FrontstageRestrictedBlockRuntimeSession {
-  const ready = {
-    ...snapshot('ready'),
-    logs: [
-      {
-        requestId: 'draft:block-1:run',
-        level: 'info',
-        message: 'hello {"id":1}',
-        data: ['hello', { id: 1 }]
-      },
-      {
-        requestId: 'draft:block-1:run',
-        level: 'warn',
-        message: 'check input'
-      }
-    ],
-    schemaValidationOptions: { allowedActions: ['sign_up'] },
-    view: {
-      primitive: 'Button',
-      props: { children: 'Register', actionId: 'sign_up' }
-    }
-  } satisfies RestrictedBlockRuntimeHostSnapshot;
-  const disposed = {
-    ...ready,
-    status: 'disposed'
-  } satisfies RestrictedBlockRuntimeHostSnapshot;
-  return {
-    run: vi.fn(() => ready),
-    dispose: vi.fn(() => disposed),
-    getSnapshot: vi.fn(() => ready),
-    getHostState: vi.fn(() => ({
-      workerStatus: 'idle' as const,
-      requests: {},
-      rejections: []
-    })),
-    subscribe: vi.fn(() => () => undefined)
-  };
+function renderPanel({
+  code,
+  revision,
+  nativeCompiler = createCompiler(),
+  currentBlock = block
+}: {
+  code: string;
+  revision: string;
+  nativeCompiler?: ReturnType<typeof createCompiler>;
+  currentBlock?: FrontstageBlockInstance;
+}) {
+  return render(
+    <JsBlockTrialPanel
+      block={currentBlock}
+      catalogEntry={catalog}
+      code={code}
+      contextSnapshot={{}}
+      limits={{ timeoutMs: 1_000 }}
+      revision={revision}
+      nativeCompiler={nativeCompiler}
+    />
+  );
 }
 
-describe('JsBlockTrialPanel Draft Run Console', () => {
+function trialShadowRoot(container: HTMLElement): ShadowRoot {
+  const host = container.querySelector<HTMLElement>(
+    '[data-testid="native-react-trial-root"]'
+  );
+  if (!host?.shadowRoot) throw new Error('Expected native trial ShadowRoot.');
+  return host.shadowRoot;
+}
+
+function trialQueries(container: HTMLElement) {
+  return within(trialShadowRoot(container) as unknown as HTMLElement);
+}
+
+describe('JsBlockTrialPanel Native React run revision', () => {
   beforeEach(async () => {
-    vi.clearAllMocks();
     await appI18n.changeLanguage('zh_Hans');
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  test('AC-001/002/003 renders one preview and console without debugger controls', async () => {
-    const runtimeSessionFactory = vi.fn(() => createReadyActionSession());
-
-    render(
-      <JsBlockTrialPanel
-        block={block}
-        catalogEntry={catalog}
-        code="current draft"
-        contextSnapshot={{}}
-        limits={{ timeoutMs: 1_000 }}
-        revision="run:1"
-        runtimeSessionFactory={runtimeSessionFactory}
-      />
-    );
-
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId('js-block-preview-pane')).toBeInTheDocument();
-    expect(screen.getByTestId('js-block-console-pane')).toBeInTheDocument();
-    for (const name of [
-      /运\s*行/,
-      '停止',
-      '预览',
-      '控制台',
-      '变量',
-      '接口调用',
-      '问题'
-    ]) {
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
-    }
-  });
-
-  test('AC-032 reruns the current draft with host inputs derived from an action event', async () => {
-    const createRunInputs = vi.fn((event?: BlockRendererActionEvent) => ({
-      authenticator_id: 'auth-password-local',
-      public_variables: { self_registration_enabled: true },
-      ...(event
-        ? {
-            auth_event: {
-              action_id: event.actionId,
-              values: event.formValues ?? {}
-            }
-          }
-        : {})
-    }));
-    const runInputs: Array<Record<string, unknown> | undefined> = [];
-    const runtimeSessionFactory = vi.fn(
-      (options: FrontstageRestrictedBlockRuntimeHostOptions) => {
-        runInputs.push(options.runPlan.request.inputs);
-        return createReadyActionSession();
-      }
-    );
-    render(
-      <JsBlockTrialPanel
-        block={block}
-        catalogEntry={catalog}
-        code="async function main(){return {view:{primitive:'Button'},outputs:{}}} export default {main};"
-        contextSnapshot={{}}
-        createRunInputs={createRunInputs}
-        limits={{ timeoutMs: 1_000 }}
-        revision="run:1"
-        runtimeSessionFactory={runtimeSessionFactory}
-      />
-    );
-
-    await screen.findByRole('button', { name: 'Register' });
-    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
-
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
-    expect(createRunInputs).toHaveBeenNthCalledWith(1, undefined);
-    expect(createRunInputs).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ actionId: 'sign_up' })
-    );
-    expect(runInputs[1]).toEqual({
-      authenticator_id: 'auth-password-local',
-      public_variables: { self_registration_enabled: true },
-      auth_event: { action_id: 'sign_up', values: {} }
+  test('D1-AC-001/005 freezes code per revision and remounts only for a new run revision', async () => {
+    const compiler = createCompiler();
+    const view = renderPanel({
+      code: source('first'),
+      revision: 'run:1',
+      nativeCompiler: compiler
     });
-  });
 
-  test('AC-047 automatically runs only for a new run revision', async () => {
-    const runtimeSessionFactory = vi.fn(() => createSession());
-    const { rerender } = render(
-      <JsBlockTrialPanel
-        block={block}
-        catalogEntry={catalog}
-        code="first draft"
-        contextSnapshot={{}}
-        limits={{ timeoutMs: 1_000 }}
-        revision="run:1"
-        runtimeSessionFactory={runtimeSessionFactory}
-      />
+    await waitFor(() =>
+      expect(
+        view.container.querySelector<HTMLElement>(
+          '[data-testid="native-react-trial-root"]'
+        )?.shadowRoot
+      ).not.toBeNull()
     );
+    await trialQueries(view.container).findByTestId('native-output');
+    expect(
+      trialQueries(view.container).getByTestId('native-output')
+    ).toHaveTextContent('first');
+    expect(compiler).toHaveBeenCalledTimes(1);
 
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
-    rerender(
+    view.rerender(
       <JsBlockTrialPanel
         block={block}
         catalogEntry={catalog}
-        code="edited draft"
+        code={source('edited without run')}
         contextSnapshot={{}}
         limits={{ timeoutMs: 1_000 }}
         revision="run:1"
-        runtimeSessionFactory={runtimeSessionFactory}
+        nativeCompiler={compiler}
       />
     );
     await act(async () => Promise.resolve());
-    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
+    expect(compiler).toHaveBeenCalledTimes(1);
+    expect(
+      trialQueries(view.container).getByTestId('native-output')
+    ).toHaveTextContent('first');
 
-    rerender(
+    view.rerender(
       <JsBlockTrialPanel
         block={block}
         catalogEntry={catalog}
-        code="edited draft"
+        code={source('second')}
         contextSnapshot={{}}
         limits={{ timeoutMs: 1_000 }}
         revision="run:2"
-        runtimeSessionFactory={runtimeSessionFactory}
+        nativeCompiler={compiler}
       />
     );
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(compiler).toHaveBeenCalledTimes(2));
+    expect(
+      await trialQueries(view.container).findByTestId('native-output')
+    ).toHaveTextContent('second');
+    expect(screen.getByTestId('js-block-preview-pane')).toBeInTheDocument();
+    expect(screen.getByTestId('js-block-console-pane')).toBeInTheDocument();
   });
 
-  test('AC-039/040/041 refreshes preview only when the revision changes', async () => {
-    const sessions = [
-      createReadyActionSession(),
-      createReadyActionSession(),
-      createReadyActionSession()
-    ];
-    let nextSession = 0;
-    const runSources: string[] = [];
-    const runtimeSessionFactory = vi.fn(
-      (options: FrontstageRestrictedBlockRuntimeHostOptions) => {
-        const program = options.runPlan.request.program;
-        runSources.push(
-          program.kind === 'source' ? program.source : program.fallback.source
-        );
-        const session = sessions[nextSession++];
-        if (!session) throw new Error('missing test session');
-        return session;
-      }
-    );
-    const createRunInputs = vi.fn((event?: BlockRendererActionEvent) => ({
-      ...(event ? { auth_event: { action_id: event.actionId } } : {})
-    }));
-    const { rerender } = render(
-      <JsBlockTrialPanel
-        block={block}
-        catalogEntry={catalog}
-        code="first saved source"
-        contextSnapshot={{}}
-        createRunInputs={createRunInputs}
-        limits={{ timeoutMs: 1_000 }}
-        revision="saved:v1"
-        runtimeSessionFactory={runtimeSessionFactory}
-      />
-    );
+  test('D1-AC-004 shows stable compile diagnostics and retries only the frozen source', async () => {
+    const successful = compileNativeReactComponent(source('recovered'));
+    if (!successful.ok)
+      throw new Error('Expected successful compiler fixture.');
+    const compiler = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        diagnostics: [
+          {
+            phase: 'compile',
+            code: 'transform_failed',
+            path: 'source.tsx',
+            message: 'Malformed TSX',
+            sourceLocation: { line: 2, column: 7 }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        artifact: successful.artifact,
+        diagnostics: []
+      });
+    const view = renderPanel({
+      code: source('frozen'),
+      revision: 'run:compile-error',
+      nativeCompiler: compiler
+    });
 
-    for (const name of [
-      /运\s*行/,
-      '停止',
-      '预览',
-      '控制台',
-      '变量',
-      '接口调用',
-      '问题'
-    ]) {
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
-    }
-
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(1));
-    expect(runSources).toEqual(['first saved source']);
+    expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Register' })
+      screen.getByText(
+        /\[compile\/transform_failed\] source\.tsx:2:7 Malformed TSX/u
+      )
     ).toBeInTheDocument();
-    expect(screen.getByText('hello {"id":1}')).toBeInTheDocument();
-    expect(screen.getByText('check input')).toBeInTheDocument();
-    expect(screen.getByText(/"id": 1/u)).toBeInTheDocument();
-    expect(screen.queryByText('暂无控制台输出')).not.toBeInTheDocument();
-    expect(screen.getByTestId('js-block-console-prompt')).toHaveTextContent(
-      '>'
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+
+    await waitFor(() => expect(compiler).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        view.container.querySelector<HTMLElement>(
+          '[data-testid="native-react-trial-root"]'
+        )?.shadowRoot
+      ).not.toBeNull()
     );
     expect(
-      screen.getByTestId('js-block-console-gutter-info')
-    ).toHaveTextContent('>');
+      await trialQueries(view.container).findByTestId('native-output')
+    ).toHaveTextContent('recovered');
+    expect(compiler.mock.calls[1]?.[0]).toMatchObject({
+      source: source('frozen')
+    });
+  });
+
+  test('D1-AC-004 confines render errors to the failing ShadowRoot', async () => {
+    const compiler = createCompiler();
+    const crashingBlock = { ...block, id: 'crashing-block' };
+    const stableBlock = { ...block, id: 'stable-block' };
+    const { container } = render(
+      <>
+        <JsBlockTrialPanel
+          block={crashingBlock}
+          catalogEntry={catalog}
+          code="export default function Block() { throw new Error('render exploded'); }"
+          contextSnapshot={{}}
+          limits={{ timeoutMs: 1_000 }}
+          revision="run:crash"
+          nativeCompiler={compiler}
+        />
+        <JsBlockTrialPanel
+          block={stableBlock}
+          catalogEntry={catalog}
+          code={source('stable')}
+          contextSnapshot={{}}
+          limits={{ timeoutMs: 1_000 }}
+          revision="run:stable"
+          nativeCompiler={compiler}
+        />
+      </>
+    );
+
+    const hosts = container.querySelectorAll<HTMLElement>(
+      '[data-testid="native-react-trial-root"]'
+    );
+    await waitFor(() => expect(compiler).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hosts[1]?.shadowRoot).not.toBeNull());
     expect(
-      screen.getByTestId('js-block-console-gutter-warn')
-    ).toHaveTextContent('!');
-    expect(screen.getByTestId('js-block-preview-pane')).toHaveClass(
-      'frontstage-js-block-preview-console__preview'
-    );
-    expect(screen.getByTestId('js-block-console-pane')).toHaveClass(
-      'frontstage-js-block-preview-console__console'
-    );
-    const splitLayout = screen.getByTestId('js-block-preview-console');
-    vi.spyOn(splitLayout, 'getBoundingClientRect').mockReturnValue({
-      bottom: 400,
-      height: 400,
-      left: 0,
-      right: 400,
-      top: 0,
-      width: 400,
-      x: 0,
-      y: 0,
-      toJSON: () => ({})
-    });
-    const splitter = screen.getByRole('separator', {
-      name: '调整预览和控制台高度'
-    });
-    expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
-    expect(splitter).toHaveAttribute('aria-valuenow', '65');
-    fireEvent.keyDown(splitter, { key: 'ArrowUp' });
-    expect(splitter).toHaveAttribute('aria-valuenow', '60');
-    fireEvent.mouseDown(splitter, { clientY: 240 });
-    fireEvent.mouseMove(document, { clientY: 280 });
-    fireEvent.mouseUp(document);
-    expect(splitter).toHaveAttribute('aria-valuenow', '70');
-
-    rerender(
-      <JsBlockTrialPanel
-        block={block}
-        catalogEntry={catalog}
-        code="unsaved draft"
-        contextSnapshot={{}}
-        createRunInputs={createRunInputs}
-        limits={{ timeoutMs: 1_000 }}
-        revision="saved:v1"
-        runtimeSessionFactory={runtimeSessionFactory}
-      />
-    );
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 350));
-    });
-    expect(runtimeSessionFactory).toHaveBeenCalledTimes(1);
-    expect(sessions[0]?.dispose).not.toHaveBeenCalled();
-
-    rerender(
-      <JsBlockTrialPanel
-        block={block}
-        catalogEntry={catalog}
-        code="second saved source"
-        contextSnapshot={{}}
-        createRunInputs={createRunInputs}
-        limits={{ timeoutMs: 1_000 }}
-        revision="saved:v2"
-        runtimeSessionFactory={runtimeSessionFactory}
-      />
-    );
-    await waitFor(() => expect(runtimeSessionFactory).toHaveBeenCalledTimes(2));
-    expect(runSources).toEqual(['first saved source', 'second saved source']);
-    expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/^draft:/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
-    await act(async () => Promise.resolve());
-    expect(runtimeSessionFactory).toHaveBeenCalledTimes(3);
-    expect(createRunInputs).toHaveBeenLastCalledWith(
-      expect.objectContaining({ actionId: 'sign_up' })
-    );
+      await within(hosts[1]!.shadowRoot as unknown as HTMLElement).findByTestId(
+        'native-output'
+      )
+    ).toHaveTextContent('stable');
+    expect(await screen.findByText(/render exploded/u)).toBeInTheDocument();
+    expect(hosts[0]!.shadowRoot).not.toBe(hosts[1]!.shadowRoot);
   });
 });

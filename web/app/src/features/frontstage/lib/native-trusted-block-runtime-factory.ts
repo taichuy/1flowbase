@@ -1,5 +1,6 @@
 import * as antdModule from 'antd';
 import * as ReactModule from 'react';
+import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
 import * as uiModule from '@1flowbase/ui';
 
 import {
@@ -62,6 +63,10 @@ export function createFrontstageNativeTrustedBlockModuleMap(
 ): NativeTrustedBlockInjectedModuleMap {
   return {
     react: mergeInjectedModule(createReactModule(), overrides.react),
+    'react/jsx-runtime': mergeInjectedModule(
+      ReactJsxRuntimeModule,
+      overrides['react/jsx-runtime']
+    ),
     antd: mergeInjectedModule(antdModule, overrides.antd),
     '@1flowbase/ui': mergeInjectedModule(uiModule, overrides['@1flowbase/ui'])
   };

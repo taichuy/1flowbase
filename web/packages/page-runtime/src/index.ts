@@ -6,6 +6,7 @@ export * from './native-trusted-block-portal';
 export * from './native-trusted-block/source-evaluator';
 export * from './native-trusted-block/jsx-transform';
 export * from './native-react-compiler/artifact';
+export * from './native-react-compiler/artifact-evaluator';
 export * from './native-react-compiler/worker-protocol';
 export * from './js-block-source-transform';
 export * from './js-block-source-evaluator';

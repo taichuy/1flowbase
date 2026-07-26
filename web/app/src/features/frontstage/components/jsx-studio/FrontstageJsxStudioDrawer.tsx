@@ -2,7 +2,7 @@ import type { OnMount } from '@monaco-editor/react';
 import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
-  validateJsBlockSource
+  validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -81,20 +81,16 @@ export function FrontstageJsxStudioDrawer({
   useEffect(() => {
     if (open) setRunRevision(null);
   }, [block.id, open]);
-  const allowedImports = useMemo(
-    () => catalogEntry?.codeCapabilities?.allowedImports ?? [],
-    [catalogEntry]
-  );
   const compileDiagnostics = useMemo(() => {
     if (!tabId || draft.trim().length === 0) return [];
-    const validation = validateJsBlockSource(draft, { allowedImports });
+    const validation = validateNativeTrustedBlockSource(draft);
     return validation.ok
       ? []
       : createJsBlockDiagnostics(
           { pageId, tabId, blockId: block.id },
           validation.errors
         );
-  }, [allowedImports, block.id, draft, pageId, tabId]);
+  }, [block.id, draft, pageId, tabId]);
   const selectedDiagnostics = [...diagnostics, ...compileDiagnostics].filter(
     (diagnostic) =>
       diagnostic.pageId === pageId &&

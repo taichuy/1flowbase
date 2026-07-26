@@ -838,7 +838,7 @@ describe('frontstage native trusted block React adapter', () => {
     ).rejects.toThrow('resolver unavailable');
   });
 
-  test('is not statically imported by existing frontstage pages, components, catalog, or route code', () => {
+  test('is consumed only by the shared TrialPanel and native runtime factory', () => {
     const frontstageDir = join(process.cwd(), 'src/features/frontstage');
     const matches = collectSourceFiles([
       join(frontstageDir, 'pages'),
@@ -857,7 +857,9 @@ describe('frontstage native trusted block React adapter', () => {
         )
     );
 
-    expect(matches).toEqual([]);
+    expect(matches).toEqual([
+      expect.stringMatching(/components\/JsBlockTrialPanel\.tsx$/u)
+    ]);
   });
 });
 

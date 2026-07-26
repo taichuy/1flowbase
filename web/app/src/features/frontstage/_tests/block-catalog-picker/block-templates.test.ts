@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  createDefaultJsBlockWorkerExecutor,
-  validateJsBlockSource
+  compileNativeReactComponent,
+  validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
 
 import {
@@ -20,10 +20,7 @@ const templateInput = {
   contributionCode: 'frontstage.js-ui-block'
 };
 
-const allowedImportSources = [
-  '@1flowbase/block-sdk',
-  '@1flowbase/block-renderer/antd-facade'
-];
+const allowedImportSources = ['react'];
 
 const forbiddenSourceFragments = [
   '@1flowbase/antd-facade',
@@ -82,14 +79,15 @@ describe('frontstage block templates', () => {
         templateId: template.id
       });
 
-      expect(code).toContain('@1flowbase/block-sdk');
-      expect(code).toContain('@1flowbase/block-renderer/antd-facade');
-      expect(code).toContain('async function main(');
-      expect(code).toContain('satisfies BlockModule');
-      expect(code).toContain('outputs: {}');
+      expect(code).toContain("from 'react'");
+      expect(code).toContain('export default function Block(');
+      expect(code).toContain('<style>');
+      expect(code).toContain('<button');
       expect(code).not.toContain('defineBlock');
       expect(code).not.toContain(templateInput.blockId);
-      expect(validateJsBlockSource(code)).toMatchObject({ ok: true });
+      expect(validateNativeTrustedBlockSource(code)).toMatchObject({
+        ok: true
+      });
     }
   });
 
@@ -147,77 +145,27 @@ describe('frontstage block templates', () => {
       contributionCode: 'frontstage.js-ui-block'
     });
 
-    expect(code).toContain('@1flowbase/block-sdk');
-    expect(code).toContain('@1flowbase/block-renderer/antd-facade');
-    expect(code).toContain('async function main(');
-    expect(code).toContain('satisfies BlockModule');
+    expect(code).toContain("import { useState } from 'react'");
+    expect(code).toContain('export default function Block(');
     expect(code).toContain('@1flowbase-context');
-    expect(code).toContain('<Title>代码示例区块</Title>');
+    expect(code).toContain('代码示例区块</div>');
     expect(code).not.toContain('ctx.data.query');
     expect(code).not.toContain('ctx.actions.invoke');
   });
 
-  test('runs the generated blank JS block through the default worker executor', async () => {
+  test('compiles the generated blank block as a standard Native React artifact', () => {
     const source = createBlankJsBlockTemplateCode({
       blockId: 'frontstage-js-block-1',
       codeRef: 'frontstage-js-block-1-code',
       contributionCode: 'frontstage.js-ui-block'
     });
 
-    const executor = createDefaultJsBlockWorkerExecutor();
-
-    const messages = await executor.handleMessage({
-      direction: 'host_to_worker',
-      type: 'run',
-      request: {
-        requestId: 'request-1',
-        blockId: 'frontstage-js-block-1',
-        program: { kind: 'source', source },
-        inputs: {},
-        props: {},
-        state: {},
-        contextSnapshot: {
-          workspace: { id: 'workspace-1' },
-          application: { id: 'application-1' },
-          page: { id: 'page-1', route: '/frontstage/page-1' }
-        },
-        limits: {
-          timeoutMs: 1000,
-          maxRenderDepth: 8,
-          maxRenderNodes: 250
-        }
-      }
-    });
-
-    expect(messages).toEqual([
-      {
-        direction: 'worker_to_host',
-        type: 'phase',
-        requestId: 'request-1',
-        phase: 'compiling'
-      },
-      {
-        direction: 'worker_to_host',
-        type: 'completed',
-        requestId: 'request-1',
-        view: {
-          primitive: 'Stack',
-          children: [
-            {
-              primitive: 'Title',
-              props: { children: '代码示例区块' }
-            },
-            {
-              primitive: 'Text',
-              props: {
-                children: '从最小、可运行的 TSX 示例开始。'
-              }
-            }
-          ]
-        },
-        outputs: {}
-      }
-    ]);
+    const compiled = compileNativeReactComponent(source);
+    expect(compiled.ok).toBe(true);
+    if (compiled.ok) {
+      expect(compiled.artifact.program.executableBody).toContain("'button'");
+      expect(compiled.artifact.sourceMap).toMatchObject({ version: 3 });
+    }
 
     expect(source).not.toContain('Card');
     expect(source).not.toContain('Space');

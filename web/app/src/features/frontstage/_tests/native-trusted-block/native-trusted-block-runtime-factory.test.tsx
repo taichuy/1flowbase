@@ -273,11 +273,12 @@ export default function Block() {
     expect(Object.keys(moduleMap).sort()).toEqual([
       '@1flowbase/ui',
       'antd',
-      'react'
+      'react',
+      'react/jsx-runtime'
     ]);
   });
 
-  test('is not statically imported by existing FrontStage pages, components, or catalog code', () => {
+  test('is consumed only by the shared TrialPanel and not by catalog code', () => {
     const frontstageDir = join(process.cwd(), 'src/features/frontstage');
     const scannedFiles = collectSourceFiles([
       join(frontstageDir, 'pages'),
@@ -296,7 +297,9 @@ export default function Block() {
       )
     );
 
-    expect(matches).toEqual([]);
+    expect(matches).toEqual([
+      expect.stringMatching(/components\/JsBlockTrialPanel\.tsx$/u)
+    ]);
   });
 });
 
