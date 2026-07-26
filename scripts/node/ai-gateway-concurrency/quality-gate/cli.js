@@ -96,6 +96,18 @@ function testFiles(repoRoot) {
   });
 }
 
+function conversationTestArgs(repoRoot, packageName) {
+  return [
+    "test",
+    "--manifest-path",
+    path.join(repoRoot, "api/Cargo.toml"),
+    "-p",
+    packageName,
+    "--lib",
+    "application_public_api",
+  ];
+}
+
 async function runQualityGate(rawOptions) {
   const repoRoot = path.resolve(rawOptions.repoRoot || process.cwd());
   const officialSourceRoot = path.resolve(rawOptions.officialSourceRoot);
@@ -150,22 +162,16 @@ async function runQualityGate(rawOptions) {
     "--test",
     ...testFiles(repoRoot),
   ]);
-  attempt("control-plane-conversation-tests", "cargo", [
-    "test",
-    "--manifest-path",
-    path.join(repoRoot, "api/Cargo.toml"),
-    "-p",
-    "control-plane",
-    "application_public_api",
-  ]);
-  attempt("api-server-conversation-tests", "cargo", [
-    "test",
-    "--manifest-path",
-    path.join(repoRoot, "api/Cargo.toml"),
-    "-p",
-    "api-server",
-    "application_public_api",
-  ]);
+  attempt(
+    "control-plane-conversation-tests",
+    "cargo",
+    conversationTestArgs(repoRoot, "control-plane"),
+  );
+  attempt(
+    "api-server-conversation-tests",
+    "cargo",
+    conversationTestArgs(repoRoot, "api-server"),
+  );
 
   for (const providerCode of ["openai", "anthropic"]) {
     const pluginRoot = path.join(
@@ -300,6 +306,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  conversationTestArgs,
   dockerDatabaseContract,
   main,
   parseArgs,

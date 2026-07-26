@@ -5,7 +5,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const { dockerDatabaseContract, parseArgs, testFiles } = require("../cli");
+const {
+  conversationTestArgs,
+  dockerDatabaseContract,
+  parseArgs,
+  testFiles,
+} = require("../cli");
 
 test("quality gate exposes one explicit command with local source and database inputs", () => {
   assert.deepEqual(
@@ -46,6 +51,23 @@ test("quality gate inventory contains the four blocking protocol harness suites"
     );
   }
   assert.equal(files.some((file) => file.includes("/local-client-acceptance/")), false);
+});
+
+test("quality gate limits conversation Cargo probes to library targets", () => {
+  for (const packageName of ["control-plane", "api-server"]) {
+    const args = conversationTestArgs("/repo", packageName);
+    assert.deepEqual(args, [
+      "test",
+      "--manifest-path",
+      path.join("/repo", "api/Cargo.toml"),
+      "-p",
+      packageName,
+      "--lib",
+      "application_public_api",
+    ]);
+    assert.equal(args.includes("--tests"), false);
+    assert.equal(args.includes("--all-targets"), false);
+  }
 });
 
 test("quality gate pins the four blocking transports without implicit enum expansion", () => {
