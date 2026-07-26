@@ -5,7 +5,10 @@ use axum::{
 use serde_json::json;
 
 use super::{
-    actor::{ConnectionAction, ConnectionState, ResponsesConnectionActor, TurnCompletion},
+    actor::{
+        prewarm_completion_frames, ConnectionAction, ConnectionState, ResponsesConnectionActor,
+        TurnCompletion,
+    },
     auth::{require_responses_websocket_beta, RESPONSES_WEBSOCKET_BETA},
     schema::{
         decode_client_message, ResponsesWebSocketClientMessageError,
@@ -188,7 +191,7 @@ fn control_frames_are_not_request_envelopes() {
 }
 
 #[test]
-fn prewarm_then_generate_reuses_one_connection_without_starting_two_turns() {
+fn prewarm_action_has_structural_completion_metadata_without_starting_a_turn() {
     let mut actor = ResponsesConnectionActor::new();
 
     let prewarm = actor
@@ -198,12 +201,43 @@ fn prewarm_then_generate_reuses_one_connection_without_starting_two_turns() {
             "generate": false
         }))
         .expect("a valid prewarm request must be accepted");
-    assert_eq!(prewarm, ConnectionAction::Prewarmed);
+    let ConnectionAction::Prewarmed { response_id } = prewarm else {
+        panic!("generate=false must return prewarm metadata");
+    };
+    assert_eq!(response_id, "resp_prewarm_1");
     assert_eq!(actor.state(), ConnectionState::Prewarming);
+
+    let [created, completed] = prewarm_completion_frames(&response_id).map(|frame| {
+        serde_json::from_str::<serde_json::Value>(&frame).expect("prewarm frame must be valid JSON")
+    });
+    assert_eq!(
+        created,
+        json!({
+            "type": "response.created",
+            "response": { "id": "resp_prewarm_1" }
+        })
+    );
+    assert_eq!(
+        completed,
+        json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_prewarm_1",
+                "usage": {
+                    "input_tokens": 0,
+                    "input_tokens_details": null,
+                    "output_tokens": 0,
+                    "output_tokens_details": null,
+                    "total_tokens": 0
+                }
+            }
+        })
+    );
 
     let generated = actor
         .accept_response(json!({
             "input": "first turn",
+            "previous_response_id": response_id,
             "generate": true
         }))
         .expect("the generated request must start the prewarmed turn");
@@ -213,6 +247,7 @@ fn prewarm_then_generate_reuses_one_connection_without_starting_two_turns() {
     assert_eq!(response["model"], json!("published-model"));
     assert_eq!(response["instructions"], json!("shared instructions"));
     assert_eq!(response["input"], json!("first turn"));
+    assert!(response.get("previous_response_id").is_none());
     assert!(response.get("generate").is_none());
     assert_eq!(actor.state(), ConnectionState::Active);
 
@@ -224,6 +259,43 @@ fn prewarm_then_generate_reuses_one_connection_without_starting_two_turns() {
         .expect("the same connection must accept a later sequential turn");
     assert!(matches!(second, ConnectionAction::StartTurn { .. }));
     assert_eq!(actor.state(), ConnectionState::Active);
+}
+
+#[test]
+fn prewarm_preserves_a_nonmatching_previous_response_id_for_the_gateway() {
+    let mut actor = ResponsesConnectionActor::new();
+    let prewarm = actor
+        .accept_response(json!({"model": "published-model", "generate": false}))
+        .expect("prewarm must be accepted");
+    assert!(matches!(prewarm, ConnectionAction::Prewarmed { .. }));
+
+    let generated = actor
+        .accept_response(json!({
+            "input": "continued turn",
+            "previous_response_id": "resp_real_previous"
+        }))
+        .expect("generated request must start");
+    let ConnectionAction::StartTurn { turn, response } = generated else {
+        panic!("generated request must start exactly one turn");
+    };
+    assert_eq!(
+        response["previous_response_id"],
+        json!("resp_real_previous")
+    );
+    assert_eq!(actor.complete_turn(turn), TurnCompletion::ReturnedToIdle);
+}
+
+#[test]
+fn closing_a_prewarmed_connection_discards_its_structural_cursor() {
+    let mut actor = ResponsesConnectionActor::new();
+    actor
+        .accept_response(json!({"generate": false}))
+        .expect("prewarm must be accepted");
+    assert_eq!(actor.prewarmed_response_id(), Some("resp_prewarm_1"));
+
+    assert_eq!(actor.begin_close(), ConnectionAction::Close);
+    assert_eq!(actor.state(), ConnectionState::Closed);
+    assert_eq!(actor.prewarmed_response_id(), None);
 }
 
 #[test]
