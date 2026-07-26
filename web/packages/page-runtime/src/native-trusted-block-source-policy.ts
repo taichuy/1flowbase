@@ -507,7 +507,10 @@ function validateDeniedCapabilities(
       return;
     }
 
-    if (deniedAntdGlobalIdentifiers.has(token.value)) {
+    if (
+      deniedAntdGlobalIdentifiers.has(token.value) &&
+      isIdentifierReference(source, token)
+    ) {
       addError(
         capabilityError(
           token.value,
@@ -579,6 +582,14 @@ function validateDeniedCapabilities(
   });
 
   return errors;
+}
+
+function isIdentifierReference(source: string, token: SourceToken): boolean {
+  for (let index = token.start - 1; index >= 0; index -= 1) {
+    if (isWhitespace(source[index])) continue;
+    return source[index] !== '.';
+  }
+  return true;
 }
 
 function collectAntdModalAliases(
