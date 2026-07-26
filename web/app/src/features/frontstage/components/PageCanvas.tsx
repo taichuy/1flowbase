@@ -643,8 +643,21 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     signalCoordinator?.updateBlocks(document?.blocks ?? []);
     setSignalRevision(signalCoordinator?.revision ?? 0);
   }, [document?.blocks, signalCoordinator]);
+  const pendingSignalRevisionRef = useRef<number | null>(null);
+  const signalRevisionScheduledRef = useRef(false);
   const handleSignalRevision = useCallback((revision: number) => {
-    setSignalRevision(revision);
+    pendingSignalRevisionRef.current = Math.max(
+      pendingSignalRevisionRef.current ?? revision,
+      revision
+    );
+    if (signalRevisionScheduledRef.current) return;
+    signalRevisionScheduledRef.current = true;
+    queueMicrotask(() => {
+      signalRevisionScheduledRef.current = false;
+      const pendingRevision = pendingSignalRevisionRef.current;
+      pendingSignalRevisionRef.current = null;
+      if (pendingRevision !== null) setSignalRevision(pendingRevision);
+    });
   }, []);
   const { width: measuredWidth, containerRef } = useContainerWidth({
     initialWidth: 1280

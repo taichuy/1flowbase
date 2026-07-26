@@ -132,7 +132,10 @@ export function JsBlockTrialPanel({
     activeRunRef.current = null;
     blockContextRef.current = null;
     if (active) onRevokeDraftRunRef.current?.(active.requestId);
-    return active?.host?.dispose() ?? Promise.resolve();
+    const host = active?.host;
+    return host
+      ? Promise.resolve().then(() => host.dispose())
+      : Promise.resolve();
   }, []);
 
   const runFrozenRevision = useCallback(

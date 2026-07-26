@@ -236,7 +236,9 @@ export function useFrontstageNativeBlockInstance({
       activeRef.current = null;
       endInstanceEpoch(active, instanceEpochOwner);
       setState({ status: 'disposing', instanceEpoch: active.instanceEpoch });
-      disposalRef.current = active.host.dispose();
+      disposalRef.current = Promise.resolve().then(() =>
+        active.host.dispose()
+      );
     };
   }, [
     hostFactory,
