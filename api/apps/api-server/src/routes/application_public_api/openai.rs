@@ -13,7 +13,6 @@ use control_plane::application_public_api::{
         ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
-    callback_tool_ids::decode_openai_callback_tool_call_id,
     client_protocol_envelope::{capture_client_protocol_envelope, ClientProtocolIngressPolicy},
     compat::openai::{
         extract_model_list_from_start_node, response_id_from_run_id, run_id_from_response_id,
@@ -51,7 +50,10 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
-        compat_sse, llm_tool_visibility::external_llm_tool_calls, native,
+        callback_adapter::{correlate_openai_chat_callback, correlate_openai_responses_callback},
+        compat_sse,
+        llm_tool_visibility::external_llm_tool_calls,
+        native,
         tool_callback_ids::encode_openai_callback_tool_call_id,
     },
 };
@@ -100,11 +102,6 @@ enum OpenAiResponseDelivery {
 enum OpenAiResponseDispatch {
     Http(Response),
     TypedEvents(PreparedOpenAiResponseTurn),
-}
-
-struct OpenAiToolResumeRequest {
-    callback_task_id: Uuid,
-    tool_results: Value,
 }
 
 #[utoipa::path(
@@ -158,7 +155,9 @@ pub async fn create_chat_completion(
         .and_then(Value::as_bool)
         .filter(|value| *value)
         .map(|_| "streaming".to_string());
-    if let Some(resume) = openai_chat_tool_resume_request(&value)? {
+    if let Some(resume) = correlate_openai_chat_callback(&value)
+        .map_err(|error| openai_invalid_request(error.param, error.message))?
+    {
         let callback_task_id = resume.callback_task_id;
         let command = openai_resume_command(
             &credential.token,
@@ -442,7 +441,10 @@ async fn dispatch_response_for_endpoint(
         .unwrap_or_default()
         .to_string();
     if endpoint == OpenAiResponsesEndpoint::Responses {
-        if let Some(resume) = openai_responses_tool_resume_request(&value)? {
+        if let Some(resume) =
+            correlate_openai_responses_callback(&value, previous_response_id.as_deref())
+                .map_err(|error| openai_invalid_request(error.param, error.message))?
+        {
             let command = openai_resume_command(
                 &credential.token,
                 resume.callback_task_id,
@@ -1013,90 +1015,6 @@ fn openai_resume_command(
         source,
         response_payload: json!({ "tool_results": tool_results }),
         response_mode,
-    }
-}
-
-fn openai_chat_tool_resume_request(
-    request: &Value,
-) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
-    let Some(messages) = request.get("messages").and_then(Value::as_array) else {
-        return Ok(None);
-    };
-    let mut trailing = messages
-        .iter()
-        .rev()
-        .take_while(|message| message.get("role").and_then(Value::as_str) == Some("tool"))
-        .collect::<Vec<_>>();
-    trailing.reverse();
-    decode_openai_tool_results(
-        trailing.into_iter().filter_map(|message| {
-            message
-                .get("tool_call_id")
-                .and_then(Value::as_str)
-                .map(|id| (id, openai_tool_message_content(message)))
-        }),
-        "messages",
-    )
-}
-
-fn openai_responses_tool_resume_request(
-    request: &Value,
-) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
-    let Some(items) = request.get("input").and_then(Value::as_array) else {
-        return Ok(None);
-    };
-    let trailing = items
-        .iter()
-        .rev()
-        .take_while(|item| item.get("type").and_then(Value::as_str) == Some("function_call_output"))
-        .collect::<Vec<_>>();
-    decode_openai_tool_results(
-        trailing.into_iter().rev().filter_map(|item| {
-            item.get("call_id").and_then(Value::as_str).map(|id| {
-                let output = match item.get("output") {
-                    Some(Value::String(output)) => output.clone(),
-                    Some(output) => output.to_string(),
-                    None => String::new(),
-                };
-                (id, output)
-            })
-        }),
-        "input",
-    )
-}
-
-fn decode_openai_tool_results<'a>(
-    results: impl Iterator<Item = (&'a str, String)>,
-    param: &'static str,
-) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
-    let mut callback_task_id = None;
-    let mut tool_results = Vec::new();
-    for (external_id, content) in results {
-        let Some((task_id, original_id)) = decode_openai_callback_tool_call_id(external_id) else {
-            continue;
-        };
-        if callback_task_id.is_some_and(|existing| existing != task_id) {
-            return Err(openai_invalid_request(
-                param,
-                "tool results must belong to one callback task",
-            ));
-        }
-        callback_task_id = Some(task_id);
-        tool_results.push(json!({ "tool_call_id": original_id, "content": content }));
-    }
-    Ok(
-        callback_task_id.map(|callback_task_id| OpenAiToolResumeRequest {
-            callback_task_id,
-            tool_results: Value::Array(tool_results),
-        }),
-    )
-}
-
-fn openai_tool_message_content(message: &Value) -> String {
-    match message.get("content") {
-        Some(Value::String(content)) => content.clone(),
-        Some(Value::Null) | None => String::new(),
-        Some(content) => content.to_string(),
     }
 }
 

@@ -615,11 +615,32 @@ pub(super) fn pending_llm_tool_callback_previous_response_id(
     if !pending_llm_tool_callback_uses_responses_websocket_cursor(state) {
         return None;
     }
-    state
+    correlated_responses_websocket_callback_cursor(state)
+}
+
+fn correlated_responses_websocket_callback_cursor(state: &Map<String, Value>) -> Option<String> {
+    let response_id = state
         .get("response_id")
         .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(ToOwned::to_owned)
+        .filter(|value| !value.trim().is_empty())?;
+    let delta_messages = state.get("delta_messages")?.as_array()?;
+    if delta_messages.is_empty() {
+        return None;
+    }
+    let mut call_ids = BTreeSet::new();
+    for message in delta_messages {
+        if message.get("role").and_then(Value::as_str) != Some("tool") {
+            return None;
+        }
+        let call_id = message
+            .get("tool_call_id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())?;
+        if !call_ids.insert(call_id) {
+            return None;
+        }
+    }
+    Some(response_id.to_string())
 }
 
 pub(super) fn pending_llm_tool_callback_uses_responses_websocket_cursor(
@@ -681,5 +702,99 @@ mod tests {
         assert_eq!(blocks[0]["source"]["type"], json!("base64"));
         assert_eq!(blocks[0]["source"]["media_type"], json!("image/png"));
         assert_eq!(blocks[0]["source"]["data"], json!("aW1hZ2U="));
+    }
+
+    #[test]
+    fn responses_websocket_cursor_requires_a_correlated_tool_result_delta() {
+        let state = json!({
+            "response_id": "resp_first",
+            "delta_messages": [
+                {"role": "tool", "tool_call_id": "call_a", "content": "A"},
+                {"role": "tool", "tool_call_id": "call_b", "content": "B"}
+            ]
+        })
+        .as_object()
+        .cloned()
+        .expect("callback state should be an object");
+        assert_eq!(
+            correlated_responses_websocket_callback_cursor(&state).as_deref(),
+            Some("resp_first")
+        );
+
+        let missing_delta = json!({"response_id": "resp_first"})
+            .as_object()
+            .cloned()
+            .expect("callback state should be an object");
+        assert_eq!(
+            correlated_responses_websocket_callback_cursor(&missing_delta),
+            None
+        );
+
+        let duplicate_call = json!({
+            "response_id": "resp_first",
+            "delta_messages": [
+                {"role": "tool", "tool_call_id": "call_a"},
+                {"role": "tool", "tool_call_id": "call_a"}
+            ]
+        })
+        .as_object()
+        .cloned()
+        .expect("callback state should be an object");
+        assert_eq!(
+            correlated_responses_websocket_callback_cursor(&duplicate_call),
+            None
+        );
+    }
+
+    #[test]
+    fn callback_resume_keeps_only_current_parallel_results_in_provider_delta() {
+        let node_id = "llm";
+        let mut variable_pool = json!({
+            "llm": {
+                "__llm_tool_callback": {
+                    "callback_kind": "llm_tool_calls",
+                    "response_id": "resp_first",
+                    "provider_metadata": {"transport": RESPONSES_WEBSOCKET_TRANSPORT},
+                    "pending_tool_calls": [
+                        {"id": "call_a", "name": "first"},
+                        {"id": "call_b", "name": "second"}
+                    ],
+                    "history": [
+                        {"role": "user", "content": "old body"},
+                        {"role": "assistant", "content": "old response", "tool_calls": [
+                            {"id": "call_a"}, {"id": "call_b"}
+                        ], "usage": {"total_tokens": 99}}
+                    ]
+                }
+            }
+        })
+        .as_object()
+        .cloned()
+        .expect("variable pool should be an object");
+
+        append_llm_tool_result_messages(
+            &mut variable_pool,
+            node_id,
+            &json!({"tool_results": [
+                {"tool_call_id": "call_b", "content": "B"},
+                {"tool_call_id": "call_a", "content": "A"}
+            ]}),
+        )
+        .expect("parallel results should correlate by call id");
+
+        let state = pending_llm_tool_callback_state(&variable_pool, node_id)
+            .expect("callback state should remain available");
+        assert_eq!(state["response_id"], json!("resp_first"));
+        assert_eq!(
+            state["delta_messages"],
+            json!([
+                {"role": "tool", "tool_call_id": "call_a", "content": "A", "name": "first"},
+                {"role": "tool", "tool_call_id": "call_b", "content": "B", "name": "second"}
+            ])
+        );
+        let delta = state["delta_messages"].to_string();
+        assert!(!delta.contains("old body"));
+        assert!(!delta.contains("old response"));
+        assert!(!delta.contains("total_tokens"));
     }
 }

@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub(crate) mod callback_adapter;
 pub mod compat_sse;
 pub mod ex;
 pub(crate) mod llm_tool_visibility;

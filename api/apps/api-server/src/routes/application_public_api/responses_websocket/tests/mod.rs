@@ -12,7 +12,10 @@ use super::{
         ResponsesWebSocketClientRequest,
     },
 };
-use crate::routes::application_public_api::openai::openai_credential;
+use crate::routes::application_public_api::{
+    callback_adapter::correlate_openai_responses_callback, openai::openai_credential,
+    tool_callback_ids::encode_openai_callback_tool_call_id,
+};
 
 mod projector;
 
@@ -97,6 +100,46 @@ fn decodes_response_create_envelope_without_renaming_response_fields() {
     let ResponsesWebSocketClientRequest::Create { response } = request;
     assert_eq!(response["model"], json!("published-model"));
     assert_eq!(response["previous_response_id"], json!("resp_previous"));
+}
+
+#[test]
+fn responses_websocket_second_turn_uses_the_shared_callback_correlation_adapter() {
+    let callback_task_id = uuid::Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
+    let call_id = encode_openai_callback_tool_call_id(callback_task_id, "call_weather");
+    let previous_response_id = "resp_first";
+    let message = Message::Text(
+        json!({
+            "type": "response.create",
+            "response": {
+                "model": "published-model",
+                "previous_response_id": previous_response_id,
+                "input": [{
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": "sunny"
+                }]
+            }
+        })
+        .to_string()
+        .into(),
+    );
+
+    let ResponsesWebSocketClientRequest::Create { response } = decode_client_message(message)
+        .expect("WebSocket callback envelope should be valid")
+        .expect("WebSocket callback should be a data request");
+    let correlated = correlate_openai_responses_callback(
+        &response,
+        response
+            .get("previous_response_id")
+            .and_then(|value| value.as_str()),
+    )
+    .expect("WebSocket callback markers should correlate")
+    .expect("WebSocket second turn should resume the callback");
+    assert_eq!(correlated.callback_task_id, callback_task_id);
+    assert_eq!(
+        correlated.tool_results,
+        json!([{"tool_call_id": "call_weather", "content": "sunny"}])
+    );
 }
 
 #[test]

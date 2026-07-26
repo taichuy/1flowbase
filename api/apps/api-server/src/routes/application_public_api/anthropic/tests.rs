@@ -1,5 +1,6 @@
 use super::*;
 use axum::body::Bytes;
+use control_plane::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
@@ -97,7 +98,7 @@ fn anthropic_response_projects_native_tool_calls() {
 }
 
 #[test]
-fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
+fn anthropic_resume_rejects_mixed_callback_groups() {
     let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
     let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
     let request = json!({
@@ -130,18 +131,7 @@ fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
         ]
     });
 
-    let resume = anthropic_tool_resume_request(&request)
-        .expect("accumulated tool results should be valid")
-        .expect("the latest callback should resume");
-
-    assert_eq!(resume.callback_task_id, latest_callback);
-    assert_eq!(resume.tool_results.as_array().map(Vec::len), Some(1));
-    assert_eq!(
-        resume.tool_results[0]["tool_call_id"],
-        json!("toolu_latest")
-    );
-    assert_eq!(resume.tool_results[0]["content"], json!("LATEST"));
-    assert_eq!(resume.tool_results[0]["is_error"], json!(true));
+    assert!(correlate_anthropic_callback(&request).is_err());
 }
 
 #[test]
@@ -176,7 +166,7 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
         ]
     });
 
-    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
+    let resume = correlate_anthropic_callback(&request).expect("request should parse");
 
     assert!(
         resume.is_none(),
@@ -185,7 +175,7 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
 }
 
 #[test]
-fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
+fn ac_002_anthropic_orphan_tool_result_is_invalid() {
     let callback_task_id = Uuid::from_u128(0x44444444444444444444444444444444);
     let request = json!({
         "messages": [{
@@ -198,12 +188,7 @@ fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
         }]
     });
 
-    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
-
-    assert!(
-        resume.is_none(),
-        "orphan tool results must not resume callbacks"
-    );
+    assert!(correlate_anthropic_callback(&request).is_err());
 }
 
 #[test]
