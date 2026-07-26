@@ -23,6 +23,7 @@ describe('Native trusted block source static policy', () => {
     expect(NATIVE_TRUSTED_BLOCK_PERMISSION).toBe('ui_block.javascript.native');
     expect(NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS).toEqual([
       'react',
+      'react/jsx-runtime',
       'antd',
       '@1flowbase/ui'
     ]);
