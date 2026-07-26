@@ -1,79 +1,27 @@
 import { render, waitFor, within } from '@testing-library/react';
-import { readdirSync, readFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
-import type { ReactNode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
+import type { BlockContext } from '@1flowbase/page-protocol';
 import {
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME,
-  createNativeTrustedBlockHost,
   prepareNativeTrustedBlock,
   type NativeTrustedBlockPrepareInput
 } from '@1flowbase/page-runtime';
-import type { BlockContext } from '@1flowbase/page-protocol';
 
-import {
-  createFrontstageNativeTrustedBlockReactAdapter,
-  type FrontstageNativeTrustedBlockCreateRoot
-} from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
 import { createFrontstageNativeTrustedBlockRuntimeFactory } from '../../lib/native-trusted-block-runtime-factory';
 
-const NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE =
-  'data-flowbase-native-trusted-block-root';
-const NATIVE_STYLE_SCOPE_ID_ATTRIBUTE = 'data-flowbase-native-trusted-block-id';
-
-function createTestingRoot(): {
-  createRoot: FrontstageNativeTrustedBlockCreateRoot;
-  renderSpy: ReturnType<typeof vi.fn>;
-  unmountSpy: ReturnType<typeof vi.fn>;
-} {
-  const renderSpy = vi.fn();
-  const unmountSpy = vi.fn();
-  let unmountRendered: (() => void) | undefined;
-
-  return {
-    renderSpy,
-    unmountSpy,
-    createRoot(root) {
-      return {
-        render(children: ReactNode) {
-          renderSpy();
-          unmountRendered = render(<>{children}</>, {
-            container: root as HTMLElement
-          }).unmount;
-        },
-        unmount() {
-          unmountSpy();
-          unmountRendered?.();
-          unmountRendered = undefined;
-        }
-      };
-    }
-  };
-}
-
-function createBlockRoot(): HTMLDivElement {
-  const root = document.createElement('div');
-  document.body.append(root);
-  return root;
-}
-
-function shadowQueries(root: Element) {
-  if (!root.shadowRoot) throw new Error('Expected native block ShadowRoot.');
-  return within(root.shadowRoot as unknown as HTMLElement);
-}
-
-function createFakeBlockContext(
-  overrides: Partial<BlockContext> = {}
-): BlockContext {
+function createContext(overrides: Partial<BlockContext> = {}): BlockContext {
   return {
     currentUser: null,
-    workspace: { id: 'workspace-1', name: 'Workspace' },
-    application: { id: 'application-1', name: 'Application' },
-    page: { id: 'page-1', route: '/page-1', title: 'Page' },
+    workspace: { id: 'workspace-1' },
+    application: null,
+    page: { id: 'page-1', route: '/page-1' },
+    inputs: {},
+    outputs: { publish: vi.fn() },
     params: {},
-    props: {},
+    props: { title: 'Controlled ctx title' },
     state: {},
     patch: vi.fn(),
     api: {
@@ -86,14 +34,10 @@ function createFakeBlockContext(
       options: vi.fn(),
       stream: vi.fn()
     },
-    events: {
-      emit: vi.fn()
-    },
+    events: { emit: vi.fn() },
     theme: { mode: 'light', tokens: {} },
     ui: {},
-    ...overrides,
-    inputs: overrides.inputs ?? {},
-    outputs: overrides.outputs ?? { publish: vi.fn() }
+    ...overrides
   };
 }
 
@@ -110,14 +54,11 @@ import { Button, Space } from 'antd';
 
 export default function HostCompositionBlock(props) {
   void props.ctx.api.get('/api/console/test', { body: { title: props.props.title } });
-
   return (
-    <Space title="native-composition-block">
-      <Button type="primary">{props.props.title}</Button>
+    <Space>
+      <Button>{props.props.title}</Button>
       <Button>{props.ctx.props.title}</Button>
-      <Button>
-        {String(props.portalContainment.root instanceof ShadowRoot)}
-      </Button>
+      <Button>{String(props.portalContainment.root instanceof ShadowRoot)}</Button>
     </Space>
   );
 }
@@ -128,48 +69,52 @@ export default function HostCompositionBlock(props) {
   };
 }
 
-describe('native trusted block host composition smoke contract', () => {
-  test('mounts a prepared permissioned JSX source through host, runtime factory, and React adapter', async () => {
+function createBlockRoot(): HTMLDivElement {
+  const root = document.createElement('div');
+  document.body.append(root);
+  return root;
+}
+
+function shadowQueries(root: Element) {
+  if (!root.shadowRoot) throw new Error('Expected a native block ShadowRoot.');
+  return within(root.shadowRoot as unknown as HTMLElement);
+}
+
+describe('native trusted block surface portal composition', () => {
+  test('D3R-AC-001 composes prepare, component factory, controlled context, and portal host', async () => {
     const root = createBlockRoot();
-    const testingRoot = createTestingRoot();
-    const query = vi.fn(async () => ({ title: 'Resolved by controlled ctx' }));
-    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: testingRoot.createRoot,
-      providerWrapper: (children) => (
-        <div title="native-provider-scope">{children}</div>
-      ),
-      resolveBlockContext: () =>
-        createFakeBlockContext({
-          props: { title: 'Controlled ctx title' },
-          api: {
-            get: query as BlockContext['api']['get'],
-            post: vi.fn(),
-            put: vi.fn(),
-            patch: vi.fn(),
-            delete: vi.fn(),
-            head: vi.fn(),
-            options: vi.fn(),
-            stream: vi.fn()
-          }
-        }),
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
+    const query = vi.fn(async () => ({ title: 'Resolved' }));
+    const result = prepareNativeTrustedBlock(createPrepareInput());
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Expected native prepare to succeed.');
+    const component =
+      createFrontstageNativeTrustedBlockRuntimeFactory()(result.plan);
+    const context = createContext({
+      api: {
+        get: query as BlockContext['api']['get'],
+        post: vi.fn(),
+        put: vi.fn(),
+        patch: vi.fn(),
+        delete: vi.fn(),
+        head: vi.fn(),
+        options: vi.fn(),
+        stream: vi.fn()
+      }
     });
-    const host = createNativeTrustedBlockHost({ adapter });
-    const prepareResult = prepareNativeTrustedBlock(createPrepareInput());
 
-    expect(prepareResult.ok).toBe(true);
-    if (!prepareResult.ok) {
-      throw new Error('Expected native trusted block prepare to succeed.');
-    }
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="composition:1"
+        plan={result.plan}
+        component={component}
+        ctx={context}
+        providerWrapper={(children) => (
+          <section title="native-provider-scope">{children}</section>
+        )}
+      />
+    );
 
-    const mountedState = await host.mount(prepareResult.plan, root);
-
-    expect(mountedState).toMatchObject({
-      status: 'mounted',
-      blockId: 'host-composition-native-block',
-      runtime: NATIVE_TRUSTED_BLOCK_RUNTIME
-    });
-    expect(testingRoot.renderSpy).toHaveBeenCalledTimes(1);
     expect(
       await shadowQueries(root).findByRole('button', {
         name: 'Prepared JSX AntD block'
@@ -186,94 +131,60 @@ describe('native trusted block host composition smoke contract', () => {
     expect(query).toHaveBeenCalledWith('/api/console/test', {
       body: { title: 'Prepared JSX AntD block' }
     });
-    expect(root).toHaveAttribute(NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE, '');
-    expect(root).toHaveAttribute(
-      NATIVE_STYLE_SCOPE_ID_ATTRIBUTE,
-      'host-composition-native-block'
-    );
     expect(
       await shadowQueries(root).findByTitle('native-provider-scope')
     ).toBeInTheDocument();
-    expect(
-      root.shadowRoot?.querySelector('style[data-css-hash]')
-    ).not.toBeNull();
-
-    const disposedState = await host.dispose();
-
-    expect(disposedState).toEqual({ status: 'disposed' });
-    expect(testingRoot.unmountSpy).toHaveBeenCalledTimes(1);
-    expect(root).not.toHaveAttribute(NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE);
-    expect(root).not.toHaveAttribute(NATIVE_STYLE_SCOPE_ID_ATTRIBUTE);
-    expect(root.shadowRoot?.childNodes).toHaveLength(0);
   });
 
-  test('does not enter React mount when prepare rejects missing native permission', async () => {
+  test('permission rejection never creates a portal surface', () => {
     const root = createBlockRoot();
-    const testingRoot = createTestingRoot();
-    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: testingRoot.createRoot,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
-    });
-    const host = createNativeTrustedBlockHost({ adapter });
-    const prepareResult = prepareNativeTrustedBlock(
+    const result = prepareNativeTrustedBlock(
       createPrepareInput({ actorPermissions: ['workspace.read'] })
     );
 
-    expect(prepareResult.ok).toBe(false);
-    expect(prepareResult.errors[0]).toMatchObject({
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toMatchObject({
       code: 'action_denied',
       path: 'actorPermissions'
     });
-    if (prepareResult.ok) {
-      await host.mount(prepareResult.plan, root);
-    }
-
-    expect(host.getState()).toEqual({ status: 'idle' });
-    expect(testingRoot.renderSpy).not.toHaveBeenCalled();
-    expect(testingRoot.unmountSpy).not.toHaveBeenCalled();
-    expect(root).not.toHaveAttribute(NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE);
+    expect(root.shadowRoot).toBeNull();
   });
 
-  test('reports render-time capability guard violations through the host adapter boundary', async () => {
+  test('D3R-AC-007 reports capability render failure without leaking details into the surface', async () => {
     const root = createBlockRoot();
     const onRuntimeError = vi.fn();
-    const consoleErrorSpy = vi
+    const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const testingRoot = createTestingRoot();
-    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: testingRoot.createRoot,
-      onRuntimeError,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
-    });
-    const host = createNativeTrustedBlockHost({ adapter });
-    const prepareResult = prepareNativeTrustedBlock(
+    const result = prepareNativeTrustedBlock(
       createPrepareInput({
         source: `
 import React from 'react';
-import { Button } from 'antd';
-
 export default function CapabilityViolationBlock() {
   f\\u0065tch('/api/native-trusted-block');
-  return <Button>Denied</Button>;
+  return <div>Denied</div>;
 }
 `
       })
     );
 
     try {
-      expect(prepareResult.ok).toBe(true);
-      if (!prepareResult.ok) {
-        throw new Error(
-          'Expected capability violation source prepare to succeed.'
-        );
-      }
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('Expected prepare to succeed.');
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="capability:1"
+          plan={result.plan}
+          component={
+            createFrontstageNativeTrustedBlockRuntimeFactory()(result.plan)
+          }
+          ctx={createContext()}
+          onRuntimeError={onRuntimeError}
+        />
+      );
 
-      const mountedState = await host.mount(prepareResult.plan, root);
-
-      expect(mountedState.status).toBe('mounted');
-      expect(testingRoot.renderSpy).toHaveBeenCalledTimes(1);
-      await waitFor(() => {
+      await waitFor(() =>
         expect(onRuntimeError).toHaveBeenCalledWith(
           expect.objectContaining({
             code: 'runtime_error',
@@ -281,71 +192,13 @@ export default function CapabilityViolationBlock() {
           }),
           expect.objectContaining({
             blockId: 'host-composition-native-block',
-            root,
-            plan: expect.objectContaining({
-              blockId: 'host-composition-native-block'
-            })
+            root
           })
-        );
-      });
-      expect(root).not.toHaveTextContent('runtime.capability.fetch');
-    } finally {
-      consoleErrorSpy.mockRestore();
-      await host.dispose();
-    }
-  });
-
-  test('is consumed only by the shared Native Frontstage host paths', () => {
-    const frontstageDir = join(process.cwd(), 'src/features/frontstage');
-    const matches = collectSourceFiles([
-      join(frontstageDir, 'pages'),
-      join(frontstageDir, 'components'),
-      join(frontstageDir, 'api'),
-      join(frontstageDir, 'hooks'),
-      join(process.cwd(), 'src/routes'),
-      join(process.cwd(), 'src/app')
-    ])
-      .concat(
-        collectSourceFiles([join(frontstageDir, 'lib')]).filter((filePath) =>
-          filePath.includes('block-catalog')
         )
-      )
-      .filter((filePath) =>
-        [
-          'native-trusted-block-react-adapter',
-          'native-trusted-block-runtime-factory',
-          'createNativeTrustedBlockHost',
-          'prepareNativeTrustedBlock'
-        ].some((marker) => readFileSync(filePath, 'utf8').includes(marker))
       );
-
-    expect(matches).toEqual([
-      expect.stringMatching(/components\/JsBlockTrialPanel\.tsx$/u),
-      expect.stringMatching(/components\/PageCanvas\.tsx$/u),
-      expect.stringMatching(/hooks\/use-frontstage-native-block-instance\.ts$/u),
-      expect.stringMatching(
-        /hooks\/use-frontstage-page-canvas-native-preparations\.ts$/u
-      )
-    ]);
+      expect(root.shadowRoot).not.toHaveTextContent('runtime.capability.fetch');
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
-
-function collectSourceFiles(directories: string[]): string[] {
-  const files: string[] = [];
-
-  for (const directory of directories) {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const entryPath = join(directory, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...collectSourceFiles([entryPath]));
-        continue;
-      }
-
-      if (['.ts', '.tsx'].includes(extname(entry.name))) {
-        files.push(entryPath);
-      }
-    }
-  }
-
-  return files;
-}

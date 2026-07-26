@@ -1,231 +1,112 @@
-import type { BlockProtocolError } from '@1flowbase/page-protocol';
+const NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE =
+  'data-flowbase-native-trusted-block-root';
+const NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE =
+  'data-flowbase-native-trusted-block-id';
+const NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE =
+  'data-flowbase-native-trusted-block-mount';
 
-import type { NativeTrustedBlockPreparePlan } from './native-trusted-block-manifest';
+const ownedShadowRoots = new WeakMap<Element, ShadowRoot>();
+const activeRoots = new WeakSet<Element>();
 
-export type NativeTrustedBlockRootHandle = unknown;
-
-export interface NativeTrustedBlockMountInput {
-  plan: NativeTrustedBlockPreparePlan;
-  root: NativeTrustedBlockRootHandle;
+export interface NativeTrustedBlockPortalSurface {
+  root: Element;
+  shadowRoot: ShadowRoot;
+  mountElement: HTMLElement;
+  dispose(): void;
 }
 
-export interface NativeTrustedBlockMountedInstance {
-  update?: (plan: NativeTrustedBlockPreparePlan) => void | Promise<void>;
-  dispose?: () => void | Promise<void>;
+export interface NativeTrustedBlockPortalSurfaceInput {
+  root: Element;
+  blockId: string;
 }
 
-export interface NativeTrustedBlockHostAdapter {
-  mount(
-    input: NativeTrustedBlockMountInput
-  ):
-    | NativeTrustedBlockMountedInstance
-    | void
-    | Promise<NativeTrustedBlockMountedInstance | void>;
-}
-
-export type NativeTrustedBlockHostStatus =
-  | 'idle'
-  | 'mounted'
-  | 'failed'
-  | 'disposed';
-
-export interface NativeTrustedBlockHostState {
-  status: NativeTrustedBlockHostStatus;
-  blockId?: string;
-  runtime?: NativeTrustedBlockPreparePlan['runtime'];
-  error?: BlockProtocolError;
-}
-
-export interface NativeTrustedBlockHostOptions {
-  adapter: NativeTrustedBlockHostAdapter;
-}
-
-export interface NativeTrustedBlockHost {
-  getState(): NativeTrustedBlockHostState;
-  mount(
-    plan: NativeTrustedBlockPreparePlan,
-    root: NativeTrustedBlockRootHandle
-  ): Promise<NativeTrustedBlockHostState>;
-  update(
-    plan: NativeTrustedBlockPreparePlan
-  ): Promise<NativeTrustedBlockHostState>;
-  retry(): Promise<NativeTrustedBlockHostState>;
-  dispose(): Promise<NativeTrustedBlockHostState>;
-}
-
-export function createNativeTrustedBlockHost(
-  options: NativeTrustedBlockHostOptions
-): NativeTrustedBlockHost {
-  let state: NativeTrustedBlockHostState = { status: 'idle' };
-  let mountedInstance: NativeTrustedBlockMountedInstance | undefined;
-  let didDisposeInstance = false;
-  let didDisposeHost = false;
-  let currentPlan: NativeTrustedBlockPreparePlan | undefined;
-  let currentRoot: NativeTrustedBlockRootHandle;
-
-  const disposeMountedInstanceOnce = async (): Promise<void> => {
-    if (didDisposeInstance) {
-      return;
-    }
-
-    didDisposeInstance = true;
-    await mountedInstance?.dispose?.();
-    mountedInstance = undefined;
-  };
-
-  const mountAdapter = async (
-    plan: NativeTrustedBlockPreparePlan,
-    root: NativeTrustedBlockRootHandle
-  ): Promise<NativeTrustedBlockHostState> => {
-    try {
-      const instance = await options.adapter.mount({ plan, root });
-      if (didDisposeHost) {
-        if (isMountedInstance(instance)) {
-          await instance.dispose?.();
-        }
-        return state;
-      }
-
-      mountedInstance = isMountedInstance(instance) ? instance : undefined;
-      didDisposeInstance = false;
-      state = {
-        status: 'mounted',
-        blockId: plan.blockId,
-        runtime: plan.runtime
-      };
-    } catch (error) {
-      if (didDisposeHost) {
-        return state;
-      }
-
-      state = {
-        status: 'failed',
-        blockId: plan.blockId,
-        runtime: plan.runtime,
-        error: createRuntimeError(
-          'runtime.mount',
-          `Native trusted block adapter mount failed: ${getErrorMessage(error)}`
-        )
-      };
-    }
-
-    return state;
-  };
-
-  return {
-    getState() {
-      return state;
-    },
-    async mount(plan, root) {
-      if (didDisposeHost || state.status === 'disposed') {
-        return state;
-      }
-
-      if (state.status === 'mounted') {
-        return state;
-      }
-
-      currentPlan = plan;
-      currentRoot = root;
-      return mountAdapter(plan, root);
-    },
-    async retry() {
-      if (didDisposeHost || !currentPlan) {
-        return state;
-      }
-
-      try {
-        await disposeMountedInstanceOnce();
-      } catch (error) {
-        state = {
-          status: 'failed',
-          blockId: currentPlan.blockId,
-          runtime: currentPlan.runtime,
-          error: createRuntimeError(
-            'runtime.retry',
-            `Native trusted block retry cleanup failed: ${getErrorMessage(error)}`
-          )
-        };
-        return state;
-      }
-
-      return mountAdapter(currentPlan, currentRoot);
-    },
-    async update(plan) {
-      if (
-        didDisposeHost ||
-        state.status !== 'mounted' ||
-        !mountedInstance?.update
-      ) {
-        return state;
-      }
-      currentPlan = plan;
-      try {
-        await mountedInstance.update(plan);
-        state = {
-          status: 'mounted',
-          blockId: plan.blockId,
-          runtime: plan.runtime
-        };
-      } catch (error) {
-        state = {
-          status: 'failed',
-          blockId: plan.blockId,
-          runtime: plan.runtime,
-          error: createRuntimeError(
-            'runtime.update',
-            `Native trusted block adapter update failed: ${getErrorMessage(error)}`
-          )
-        };
-      }
-      return state;
-    },
-    async dispose() {
-      if (didDisposeHost) {
-        return state;
-      }
-
-      didDisposeHost = true;
-      try {
-        await disposeMountedInstanceOnce();
-        state = { status: 'disposed' };
-      } catch (error) {
-        state = {
-          status: 'failed',
-          error: createRuntimeError(
-            'runtime.dispose',
-            `Native trusted block adapter dispose failed: ${getErrorMessage(error)}`
-          )
-        };
-      }
-
-      return state;
-    }
-  };
-}
-
-function isMountedInstance(
-  value: NativeTrustedBlockMountedInstance | void
-): value is NativeTrustedBlockMountedInstance {
-  return typeof value === 'object' && value !== null;
-}
-
-function createRuntimeError(path: string, message: string): BlockProtocolError {
-  return {
-    code: 'runtime_error',
-    path,
-    message
-  };
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
+/**
+ * Attaches the DOM boundary for one surface-owned React portal.
+ * React render and unmount remain exclusively owned by the caller's tree.
+ */
+export function attachNativeTrustedBlockPortalSurface({
+  root,
+  blockId
+}: NativeTrustedBlockPortalSurfaceInput): NativeTrustedBlockPortalSurface {
+  validatePortalSurfaceRoot(root);
+  if (activeRoots.has(root)) {
+    throw new Error('Native trusted block root is already active.');
   }
 
-  if (typeof error === 'string' && error.trim() !== '') {
-    return error;
+  let shadowRoot = ownedShadowRoots.get(root);
+  if (!shadowRoot) {
+    if (root.shadowRoot) {
+      throw new Error(
+        'Native trusted block root must not contain a pre-existing ShadowRoot.'
+      );
+    }
+    shadowRoot = root.attachShadow({ mode: 'open' });
+    ownedShadowRoots.set(root, shadowRoot);
   }
 
-  return 'unknown error';
+  const styleScope = applyStyleScope(root, blockId);
+  const mountElement = document.createElement('div');
+  mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE, '');
+  mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
+  shadowRoot.replaceChildren(mountElement);
+  activeRoots.add(root);
+
+  let didDispose = false;
+  return {
+    root,
+    shadowRoot,
+    mountElement,
+    dispose() {
+      if (didDispose) return;
+      didDispose = true;
+      activeRoots.delete(root);
+      shadowRoot.replaceChildren();
+      styleScope.restore();
+    }
+  };
+}
+
+function validatePortalSurfaceRoot(root: unknown): asserts root is Element {
+  if (typeof Element === 'undefined' || !(root instanceof Element)) {
+    throw new Error('Native trusted block portal root must be a DOM Element.');
+  }
+}
+
+interface AttributeSnapshot {
+  attribute: string;
+  value: string | null;
+}
+
+function applyStyleScope(
+  root: Element,
+  blockId: string
+): { restore(): void } {
+  const snapshots = [
+    snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE),
+    snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE)
+  ];
+
+  root.setAttribute(NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE, '');
+  root.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
+
+  return {
+    restore() {
+      snapshots.forEach(restoreAttribute.bind(null, root));
+    }
+  };
+}
+
+function snapshotAttribute(
+  root: Element,
+  attribute: string
+): AttributeSnapshot {
+  return { attribute, value: root.getAttribute(attribute) };
+}
+
+function restoreAttribute(root: Element, snapshot: AttributeSnapshot): void {
+  if (snapshot.value === null) {
+    root.removeAttribute(snapshot.attribute);
+    return;
+  }
+  root.setAttribute(snapshot.attribute, snapshot.value);
 }
