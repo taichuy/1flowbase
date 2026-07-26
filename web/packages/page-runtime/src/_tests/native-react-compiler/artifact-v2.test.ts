@@ -71,9 +71,18 @@ describe('Native React Artifact V2 identity', () => {
       lock(),
       createNativeReactRuntimeFingerprint('/worker.js')
     );
-    expect(canonicalizeNativeReactComponentArtifact(artifact)).toEqual(
-      artifact
-    );
+    const transportedArtifact = structuredClone(artifact);
+    expect(
+      transportedArtifact.program.importBindings.some(
+        (binding) =>
+          binding.kind === 'named' &&
+          binding.source === '@1flowbase/native-components' &&
+          binding.imported === 'Surface'
+      )
+    ).toBe(true);
+    expect(
+      canonicalizeNativeReactComponentArtifact(transportedArtifact)
+    ).toEqual(artifact);
 
     expect(
       canonicalizeNativeReactComponentArtifact({ ...artifact, version: 1 })

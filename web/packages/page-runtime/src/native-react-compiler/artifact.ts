@@ -361,7 +361,12 @@ function cloneImportBinding(
   value: NativeTrustedBlockImportBinding
 ): NativeTrustedBlockImportBinding {
   return value.kind === 'named'
-    ? { ...value }
+    ? {
+        kind: 'named',
+        source: value.source,
+        imported: value.imported,
+        local: value.local
+      }
     : { kind: value.kind, source: value.source, local: value.local };
 }
 
