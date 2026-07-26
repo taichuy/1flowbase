@@ -93,6 +93,29 @@ function evaluateMockAttempt(before, after, expectedRuns) {
   };
 }
 
+async function waitForBarrierWaiting({
+  before,
+  mockSnapshot,
+  signal,
+  graceMs = 180_000,
+  pollIntervalMs = 100,
+}) {
+  if (typeof mockSnapshot !== 'function') throw new Error('mock snapshot reader is required');
+  const cursor = before?.entries?.at(-1)?.sequence ?? 0;
+  const deadline = Date.now() + graceMs;
+  do {
+    if (signal?.aborted) throw new Error('client execution ended before mock barrier_waiting was observed');
+    const current = await mockSnapshot();
+    const waiting = (current?.entries ?? []).find((entry) => (
+      entry.sequence > cursor && entry.event === 'barrier_waiting'
+    ));
+    if (waiting) return waiting;
+    if (Date.now() >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  } while (true);
+  throw new Error('mock barrier_waiting was not observed after the attempt snapshot cursor');
+}
+
 async function verifyIdle(
   targets,
   fetchImpl = globalThis.fetch,
@@ -131,4 +154,5 @@ module.exports = {
   reconcileAttempt,
   snapshotRuns,
   verifyIdle,
+  waitForBarrierWaiting,
 };

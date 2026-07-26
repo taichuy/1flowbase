@@ -117,7 +117,7 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
     config_path: `/machine/config/${client}`,
   }]));
   const reconciled = [];
-  let toolBarrierCallbacks = 0;
+  let toolBarrierReleases = 0;
   try {
     const result = await runLocalClientAcceptance({
       artifactRoot: path.join(root, 'artifacts'),
@@ -133,7 +133,7 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
         activeStreams: {},
       }])),
       mockSnapshot: async () => ({ entries: [] }),
-      releaseBarrier: async () => {},
+      releaseBarrier: async () => { toolBarrierReleases += 1; },
     }, {
       registry,
       discoverClients: () => discovered,
@@ -144,11 +144,13 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
         return { runs: Array.from({ length: expectedRuns }, (_, index) => ({ id: `run-${index}`, status: 'succeeded' })) };
       },
       evaluateMockAttempt: (_before, _after, expectedRuns) => ({ arrivals: expectedRuns, settled: expectedRuns }),
+      waitForBarrierWaiting: async ({ before }) => {
+        assert.deepEqual(before, { entries: [] });
+        return { sequence: 1, event: 'barrier_waiting' };
+      },
       verifyIdle: async () => ({ runtime_targets: 2, stream_targets: 1 }),
       executePlan: async (plan, execution) => {
-        if (plan.vector_id === TOOL_VECTOR.id && typeof execution.onFirstMarker === 'function') {
-          toolBarrierCallbacks += 1;
-        }
+        assert.equal(execution.onFirstMarker, undefined);
         const clientEvents = {
           codex: plan.vector_id === TEXT_VECTOR.id
             ? [{ type: 'item.completed', item: { type: 'agent_message', text: TEXT_SENTINEL } }]
@@ -192,7 +194,7 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
       'responses_sse', 'responses_websocket',
     ]);
     assert.deepEqual(reconciled, [1, 2, 1, 2, 1, 2, 1, 2]);
-    assert.equal(toolBarrierCallbacks, 4);
+    assert.equal(toolBarrierReleases, 4);
     assert.deepEqual(result.final_reconciliation, { runtime_targets: 2, stream_targets: 1 });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

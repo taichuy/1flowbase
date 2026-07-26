@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  evaluateMockAttempt, reconcileAttempt, snapshotRuns, verifyIdle,
+  evaluateMockAttempt, reconcileAttempt, snapshotRuns, verifyIdle, waitForBarrierWaiting,
 } = require('../durable');
 
 function response(data) {
@@ -66,6 +66,31 @@ test('WP-14A mock evidence proves one text arrival and ordered two-turn tool arr
   assert.equal(evaluateMockAttempt(before, text, 1).arrivals, 1);
   assert.equal(evaluateMockAttempt(before, after, 2).arrivals, 2);
   assert.throws(() => evaluateMockAttempt(before, after, 1), /expected 1 mock arrival/u);
+});
+
+test('F1 releases tool barrier only for barrier_waiting after the attempt snapshot cursor', async () => {
+  const before = { entries: [
+    { sequence: 7, event: 'arrival', nonce: 'old' },
+    { sequence: 8, event: 'barrier_waiting', nonce: 'old' },
+  ] };
+  const snapshots = [
+    before,
+    { entries: [
+      ...before.entries,
+      { sequence: 9, event: 'arrival', nonce: 'current' },
+      { sequence: 10, event: 'barrier_waiting', nonce: 'current' },
+    ] },
+  ];
+  let reads = 0;
+  const waiting = await waitForBarrierWaiting({
+    before,
+    mockSnapshot: async () => snapshots[Math.min(reads++, snapshots.length - 1)],
+    graceMs: 100,
+    pollIntervalMs: 0,
+  });
+  assert.equal(waiting.sequence, 10);
+  assert.equal(waiting.nonce, 'current');
+  assert.equal(reads, 2);
 });
 
 test('WP-14A final reconciliation requires zero runtime activity and active streams', async () => {

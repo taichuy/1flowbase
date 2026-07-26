@@ -149,6 +149,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
   const reconcileAttempt = dependencies.reconcileAttempt || durableEvidence.reconcileAttempt;
   const evaluateMockAttempt = dependencies.evaluateMockAttempt || durableEvidence.evaluateMockAttempt;
   const verifyIdle = dependencies.verifyIdle || durableEvidence.verifyIdle;
+  const waitForBarrierWaiting = dependencies.waitForBarrierWaiting || durableEvidence.waitForBarrierWaiting;
   let tmux = null;
   let surface = { status: 'skipped', surface: null, reason: 'discovery_not_completed' };
   const secrets = [];
@@ -208,13 +209,25 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
             || (surface.surface === 'acp-headless' ? dependencies.acpHeadlessExecutor : executeTmux);
           let result;
           try {
-            result = await executor(plan, {
+            const barrierAbort = new AbortController();
+            const execution = Promise.resolve().then(() => executor(plan, {
               registry,
               timeoutMs: options.timeoutMs,
               surface: surface.surface,
               tmuxExecutable: tmux,
-              onFirstMarker: vector.kind === 'tool' ? options.releaseBarrier : undefined,
-            });
+            })).finally(() => barrierAbort.abort());
+            const barrierRelease = vector.kind === 'tool'
+              ? waitForBarrierWaiting({
+                before: mockBefore,
+                mockSnapshot: options.mockSnapshot,
+                signal: barrierAbort.signal,
+                graceMs: options.timeoutMs ?? 180_000,
+              }).then(() => options.releaseBarrier())
+              : Promise.resolve();
+            const [executionOutcome, barrierOutcome] = await Promise.allSettled([execution, barrierRelease]);
+            if (executionOutcome.status === 'rejected') throw executionOutcome.reason;
+            if (barrierOutcome.status === 'rejected') throw barrierOutcome.reason;
+            result = executionOutcome.value;
           } catch (error) {
             result = {
               exit_code: null,
