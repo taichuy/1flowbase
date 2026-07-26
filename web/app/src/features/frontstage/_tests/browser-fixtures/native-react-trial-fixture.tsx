@@ -57,13 +57,11 @@ function SecondBlock({ ctx }: { ctx: BlockContext }) {
       <style>{`.shared-name { color: rgb(82, 196, 26); }`}</style>
       adjacent:{count}
       <Button
-        onClick={() =>
-          setCount((value) => {
-            const next = value + 1;
-            ctx.outputs.publish({ total: next });
-            return next;
-          })
-        }
+        onClick={() => {
+          const next = count + 1;
+          setCount(next);
+          ctx.outputs.publish({ total: next });
+        }}
       >
         input update
       </Button>
