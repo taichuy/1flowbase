@@ -36,7 +36,7 @@
   "artifacts": {
     "apiServer": {
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/api/target/release/api-server",
-      "sha256": "c7455c3b4e1e9454aef5d10366b75e55226e0d0aea198877eda588c63b55e216"
+      "sha256": "6615abc24ef2985544a4865dab34650fc40e2050bb427e70a9313588a3bdca0c"
     },
     "pluginRunner": {
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/api/target/release/plugin-runner",
