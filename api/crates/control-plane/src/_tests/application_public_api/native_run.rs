@@ -15,7 +15,6 @@ use control_plane::application_public_api::{
     run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness,
 };
-use control_plane::ports::{OrchestrationRuntimeRepository, UpdateFlowRunInput};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -956,26 +955,13 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         })
         .await
         .unwrap();
-    let durable_run = repository
-        .get_published_flow_run(run.id)
-        .await
-        .unwrap()
-        .expect("created run should be durable");
-    OrchestrationRuntimeRepository::update_flow_run(
-        &repository,
-        &UpdateFlowRunInput {
-            flow_run_id: run.id,
-            status: durable_run.status,
-            output_payload: json!({
-                "answer": "canonical partial before cancellation",
-                "__canonical_answer_presentation": true
-            }),
-            error_payload: None,
-            finished_at: None,
-        },
-    )
-    .await
-    .expect("canonical partial should be durable before cancellation");
+    repository.seed_flow_run_output_payload(
+        run.id,
+        json!({
+            "answer": "canonical partial before cancellation",
+            "__canonical_answer_presentation": true
+        }),
+    );
 
     let forbidden = service
         .cancel_native_run(CancelNativeRunCommand {

@@ -91,6 +91,20 @@ impl ApplicationPublicApiTestRepository {
         );
     }
 
+    pub fn seed_flow_run_output_payload(
+        &self,
+        flow_run_id: Uuid,
+        output_payload: serde_json::Value,
+    ) {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .flow_runs
+            .get_mut(&flow_run_id)
+            .expect("flow run fixture should exist")
+            .output_payload = output_payload;
+    }
+
     pub fn clear_native_run_results(&self) {
         self.inner
             .lock()

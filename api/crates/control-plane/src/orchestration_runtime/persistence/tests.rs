@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use super::{
     answer_presentation_terminal_events, canonical_terminal_output_payload, checkpoint_node_id,
-    checkpoint_snapshot_from_record, final_flow_output_payload, CheckpointLocatorPayload,
+    checkpoint_snapshot_from_record, CheckpointLocatorPayload,
 };
 
 fn checkpoint_record(locator_payload: Value, variable_snapshot: Value) -> domain::CheckpointRecord {
@@ -155,7 +155,7 @@ fn failed_flow_output_keeps_last_successful_node_payload() {
     };
 
     assert_eq!(
-        final_flow_output_payload(&outcome),
+        canonical_terminal_output_payload(None, &outcome).unwrap(),
         json!({ "text": "first answer" })
     );
 }
@@ -174,7 +174,7 @@ fn completed_flow_output_uses_terminal_node_payload() {
     };
 
     assert_eq!(
-        final_flow_output_payload(&outcome),
+        canonical_terminal_output_payload(None, &outcome).unwrap(),
         json!({ "answer": "final answer" })
     );
 }
@@ -335,7 +335,10 @@ fn canonical_native_operation_terminal_wins_over_later_ordinary_node_payload() {
                 trace("ordinary-tail", json!({ "text": "must not win" }), None),
             ],
         };
-        assert_eq!(final_flow_output_payload(&outcome), terminal);
+        assert_eq!(
+            canonical_terminal_output_payload(None, &outcome).unwrap(),
+            terminal
+        );
     }
 }
 
@@ -369,7 +372,10 @@ fn failed_flow_output_uses_terminal_answer_payload_even_when_answer_has_error() 
         ],
     };
 
-    assert_eq!(final_flow_output_payload(&outcome), answer_output);
+    assert_eq!(
+        canonical_terminal_output_payload(None, &outcome).unwrap(),
+        answer_output
+    );
 }
 
 #[test]
