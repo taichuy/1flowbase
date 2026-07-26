@@ -6,16 +6,24 @@ import { clearFrontstageRuntimeSessionCache } from './use-frontstage-page-canvas
 import { resetFrontstageRuntimeObservations } from '../lib/page-canvas/runtime-observation';
 import {
   frontstageCompiledArtifactCache,
+  frontstageNativeReactArtifactCache,
+  type FrontstageNativeReactArtifactCache,
   type FrontstageCompiledArtifactCache
 } from '../lib/runtime-cache';
 import { getFrontstageRestrictedBlockRuntimeFingerprint } from '../lib/restricted-block-worker-factory';
+import { getNativeReactRuntimeFingerprint } from '../../../shared/code-block/native-react-compiler-browser';
 
 export interface FrontstageRuntimeCacheLifecycleOptions {
   artifactCache?: Pick<
     FrontstageCompiledArtifactCache,
     'deleteActor' | 'pruneWorkspace'
   >;
+  nativeReactArtifactCache?: Pick<
+    FrontstageNativeReactArtifactCache,
+    'deleteActor' | 'pruneWorkspace'
+  >;
   runtimeFingerprint?: string;
+  nativeReactRuntimeFingerprint?: string;
 }
 
 export function useFrontstageRuntimeCacheLifecycle(
@@ -29,10 +37,15 @@ export function useFrontstageRuntimeCacheLifecycle(
     : sessionStatus;
   const previousIdentityRef = useRef<string | null>(null);
   const previousActorIdRef = useRef<string | null>(null);
-  const artifactCache = options.artifactCache ?? frontstageCompiledArtifactCache;
+  const artifactCache =
+    options.artifactCache ?? frontstageCompiledArtifactCache;
+  const nativeReactArtifactCache =
+    options.nativeReactArtifactCache ?? frontstageNativeReactArtifactCache;
   const runtimeFingerprint =
     options.runtimeFingerprint ??
     getFrontstageRestrictedBlockRuntimeFingerprint();
+  const nativeReactRuntimeFingerprint =
+    options.nativeReactRuntimeFingerprint ?? getNativeReactRuntimeFingerprint();
 
   useLayoutEffect(() => {
     if (previousIdentityRef.current === lifecycleIdentity) {
@@ -49,6 +62,9 @@ export function useFrontstageRuntimeCacheLifecycle(
     resetFrontstageRuntimeObservations();
     if (previousActorId && previousActorId !== currentActorId) {
       void artifactCache.deleteActor(previousActorId).catch(() => undefined);
+      void nativeReactArtifactCache
+        .deleteActor(previousActorId)
+        .catch(() => undefined);
     }
     if (actor) {
       void artifactCache
@@ -58,6 +74,21 @@ export function useFrontstageRuntimeCacheLifecycle(
           runtimeFingerprint
         })
         .catch(() => undefined);
+      void nativeReactArtifactCache
+        .pruneWorkspace({
+          actorId: actor.id,
+          workspaceId: actor.current_workspace_id,
+          runtimeFingerprint: nativeReactRuntimeFingerprint
+        })
+        .catch(() => undefined);
     }
-  }, [actor, artifactCache, lifecycleIdentity, queryClient, runtimeFingerprint]);
+  }, [
+    actor,
+    artifactCache,
+    lifecycleIdentity,
+    nativeReactArtifactCache,
+    nativeReactRuntimeFingerprint,
+    queryClient,
+    runtimeFingerprint
+  ]);
 }

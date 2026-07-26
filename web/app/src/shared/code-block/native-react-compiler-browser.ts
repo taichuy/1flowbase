@@ -1,5 +1,8 @@
 import {
   canonicalizeNativeReactComponentArtifact,
+  createNativeReactComponentArtifactIdentity,
+  createNativeReactRuntimeFingerprint,
+  nativeReactComponentArtifactMatchesIdentity,
   sha256Text,
   type NativeReactCompileDiagnostic,
   type NativeReactCompilerRequest,
@@ -36,6 +39,10 @@ export function getNativeReactCompilerWorkerUrl(): string {
   return nativeReactCompilerWorkerUrl;
 }
 
+export function getNativeReactRuntimeFingerprint(): string {
+  return createNativeReactRuntimeFingerprint(getNativeReactCompilerWorkerUrl());
+}
+
 export function createNativeReactBrowserCompilerWorkerFactory({
   workerConstructor = globalThis.Worker as NativeReactBrowserCompilerWorkerConstructor,
   workerUrl = getNativeReactCompilerWorkerUrl()
@@ -57,11 +64,13 @@ export function compileNativeReactComponentInBrowser({
   source,
   requestId,
   dependencyLock = [],
+  runtimeFingerprint = getNativeReactRuntimeFingerprint(),
   workerFactory = createNativeReactBrowserCompilerWorkerFactory()
 }: {
   source: string;
   requestId: string;
   dependencyLock?: NativeReactCatalogDependencyLock;
+  runtimeFingerprint?: string;
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
 }): Promise<NativeReactBrowserCompileResult> {
   return new Promise((resolve) => {
@@ -80,7 +89,15 @@ export function compileNativeReactComponentInBrowser({
       resolve(result);
     };
     worker.onmessage = (event) => {
-      finish(readCompilerResponse(event.data, requestId, source));
+      finish(
+        readCompilerResponse(
+          event.data,
+          requestId,
+          source,
+          dependencyLock,
+          runtimeFingerprint
+        )
+      );
     };
     worker.onerror = (event) => {
       finish(
@@ -93,7 +110,8 @@ export function compileNativeReactComponentInBrowser({
         type: 'compile_native_react_component',
         requestId,
         source,
-        dependencyLock
+        dependencyLock,
+        runtimeFingerprint
       });
     } catch (error) {
       finish(compilerFailure(errorMessage(error)));
@@ -104,7 +122,9 @@ export function compileNativeReactComponentInBrowser({
 function readCompilerResponse(
   value: unknown,
   requestId: string,
-  source: string
+  source: string,
+  dependencyLock: NativeReactCatalogDependencyLock,
+  runtimeFingerprint: string
 ): NativeReactBrowserCompileResult {
   if (!isCompilerResponse(value) || value.requestId !== requestId) {
     return compilerFailure('Native React compiler response is invalid.');
@@ -113,7 +133,13 @@ function readCompilerResponse(
     return { ok: false, diagnostics: value.diagnostics };
   }
   const artifact = canonicalizeNativeReactComponentArtifact(value.artifact);
-  return artifact && artifact.sourceSha256 === sha256Text(source)
+  const expectedIdentity = createNativeReactComponentArtifactIdentity({
+    sourceSha256: sha256Text(source),
+    dependencyLock,
+    runtimeFingerprint
+  });
+  return artifact &&
+    nativeReactComponentArtifactMatchesIdentity(artifact, expectedIdentity)
     ? { ok: true, artifact, diagnostics: [] }
     : compilerFailure('Native React compiler artifact is invalid.');
 }

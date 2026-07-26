@@ -30,7 +30,10 @@ function authenticate(actorId: string) {
   });
 }
 
-function seedActorScopedRuntimeState(queryClient: QueryClient, actorId: string) {
+function seedActorScopedRuntimeState(
+  queryClient: QueryClient,
+  actorId: string
+) {
   frontstageRuntimeResultCache.set(`runtime:${actorId}`, {
     view: { primitive: 'Text', props: { children: actorId } },
     outputs: { actorId },
@@ -73,7 +76,9 @@ describe('frontstage runtime cache lifecycle', () => {
 
     seedActorScopedRuntimeState(queryClient, 'actor-a');
     expect(readFrontstageRuntimeSessionCacheSize()).toBe(1);
-    expect(queryClient.getQueryCache().findAll({ queryKey: ['frontstage'] })).toHaveLength(1);
+    expect(
+      queryClient.getQueryCache().findAll({ queryKey: ['frontstage'] })
+    ).toHaveLength(1);
     expect(readFrontstageRuntimeObservations()).toHaveLength(1);
 
     act(() => useAuthStore.getState().setAnonymous());
@@ -119,8 +124,24 @@ describe('frontstage runtime cache lifecycle', () => {
   test('AC-022 starts non-blocking persistent prune and purges the previous actor on logout/switch', async () => {
     const queryClient = new QueryClient();
     const artifactCache = {
-      deleteActor: vi.fn(async () => ({ status: 'completed' as const, deleted: 0 })),
-      pruneWorkspace: vi.fn(async () => ({ status: 'completed' as const, deleted: 0 }))
+      deleteActor: vi.fn(async () => ({
+        status: 'completed' as const,
+        deleted: 0
+      })),
+      pruneWorkspace: vi.fn(async () => ({
+        status: 'completed' as const,
+        deleted: 0
+      }))
+    };
+    const nativeReactArtifactCache = {
+      deleteActor: vi.fn(async () => ({
+        status: 'completed' as const,
+        deleted: 0
+      })),
+      pruneWorkspace: vi.fn(async () => ({
+        status: 'completed' as const,
+        deleted: 0
+      }))
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -130,7 +151,9 @@ describe('frontstage runtime cache lifecycle', () => {
       () =>
         useFrontstageRuntimeCacheLifecycle({
           artifactCache,
-          runtimeFingerprint: 'runtime-a'
+          nativeReactArtifactCache,
+          runtimeFingerprint: 'runtime-a',
+          nativeReactRuntimeFingerprint: 'native-runtime-a'
         }),
       { wrapper }
     );
@@ -139,19 +162,35 @@ describe('frontstage runtime cache lifecycle', () => {
       workspaceId: 'workspace-1',
       runtimeFingerprint: 'runtime-a'
     });
+    expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenCalledWith({
+      actorId: 'actor-a',
+      workspaceId: 'workspace-1',
+      runtimeFingerprint: 'native-runtime-a'
+    });
 
     act(() => authenticate('actor-b'));
     await waitFor(() => {
       expect(artifactCache.deleteActor).toHaveBeenCalledWith('actor-a');
+      expect(nativeReactArtifactCache.deleteActor).toHaveBeenCalledWith(
+        'actor-a'
+      );
       expect(artifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
         actorId: 'actor-b',
         workspaceId: 'workspace-1',
         runtimeFingerprint: 'runtime-a'
       });
+      expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
+        actorId: 'actor-b',
+        workspaceId: 'workspace-1',
+        runtimeFingerprint: 'native-runtime-a'
+      });
     });
     act(() => useAuthStore.getState().setAnonymous());
     await waitFor(() =>
       expect(artifactCache.deleteActor).toHaveBeenLastCalledWith('actor-b')
+    );
+    expect(nativeReactArtifactCache.deleteActor).toHaveBeenLastCalledWith(
+      'actor-b'
     );
   });
 });

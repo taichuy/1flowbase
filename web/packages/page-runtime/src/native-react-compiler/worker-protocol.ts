@@ -1,5 +1,6 @@
 import {
   compileNativeReactComponent,
+  createNativeReactRuntimeFingerprint,
   type NativeReactCompileDiagnostic,
   type NativeReactComponentArtifact
 } from './artifact';
@@ -11,6 +12,7 @@ export interface NativeReactCompilerRequest {
   requestId: string;
   source: string;
   dependencyLock: NativeReactCatalogDependencyLock;
+  runtimeFingerprint: string;
 }
 
 export type NativeReactCompilerResponse =
@@ -56,7 +58,8 @@ export function handleNativeReactCompilerRequest(
 
   const result = compileNativeReactComponent(
     request.source,
-    request.dependencyLock
+    request.dependencyLock,
+    request.runtimeFingerprint
   );
   return result.ok
     ? {
@@ -101,7 +104,10 @@ function readRequest(value: unknown): NativeReactCompilerRequest | null {
         requestId: value.requestId,
         source: value.source,
         dependencyLock: (value.dependencyLock ??
-          []) as NativeReactCatalogDependencyLock
+          []) as NativeReactCatalogDependencyLock,
+        runtimeFingerprint: isNonEmptyString(value.runtimeFingerprint)
+          ? value.runtimeFingerprint
+          : createNativeReactRuntimeFingerprint('inline')
       }
     : null;
 }

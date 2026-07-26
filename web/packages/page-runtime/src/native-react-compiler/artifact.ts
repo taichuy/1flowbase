@@ -11,12 +11,25 @@ import {
 import { transformNativeReactComponentSource } from './component-transform';
 import {
   canonicalizeNativeReactCatalogDependencyLock,
+  nativeReactCatalogDependencyLockIdentity,
   type NativeReactCatalogDependencyLock
 } from './module-registry/contracts';
 
 export const NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT =
   '1flowbase/native-react-component' as const;
-export const NATIVE_REACT_COMPONENT_ARTIFACT_VERSION = 1 as const;
+export const NATIVE_REACT_COMPONENT_ARTIFACT_VERSION = 2 as const;
+export const NATIVE_REACT_COMPILER_ABI =
+  '1flowbase/native-react-compiler@2' as const;
+export const NATIVE_REACT_RUNTIME_ABI =
+  '1flowbase/native-react-runtime@2' as const;
+
+export interface NativeReactComponentArtifactIdentity {
+  source_sha256: string;
+  compiler_abi: typeof NATIVE_REACT_COMPILER_ABI;
+  runtime_abi: typeof NATIVE_REACT_RUNTIME_ABI;
+  runtime_fingerprint: string;
+  dependency_lock_sha256: string;
+}
 
 export interface NativeReactCompileDiagnostic extends BlockProtocolError {
   phase: 'compile';
@@ -25,7 +38,8 @@ export interface NativeReactCompileDiagnostic extends BlockProtocolError {
 export interface NativeReactComponentArtifact {
   format: typeof NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT;
   version: typeof NATIVE_REACT_COMPONENT_ARTIFACT_VERSION;
-  sourceSha256: string;
+  identity: NativeReactComponentArtifactIdentity;
+  integritySha256: string;
   dependencyLock: NativeReactCatalogDependencyLock;
   program: {
     injectedModules: NativeTrustedBlockInjectedModule[];
@@ -45,7 +59,8 @@ export type NativeReactComponentCompileResult =
 
 export function compileNativeReactComponent(
   source: unknown,
-  dependencyLockValue: unknown = []
+  dependencyLockValue: unknown = [],
+  runtimeFingerprint = createNativeReactRuntimeFingerprint('inline')
 ): NativeReactComponentCompileResult {
   const dependencyLock =
     canonicalizeNativeReactCatalogDependencyLock(dependencyLockValue);
@@ -87,26 +102,37 @@ export function compileNativeReactComponent(
   );
   if (!lockedDependencies.ok) return lockedDependencies;
 
-  return {
-    ok: true,
-    artifact: {
-      format: NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT,
-      version: NATIVE_REACT_COMPONENT_ARTIFACT_VERSION,
+  if (!isNativeReactRuntimeFingerprint(runtimeFingerprint)) {
+    return compileFailure(
+      'runtimeFingerprint',
+      'Native React runtime fingerprint is invalid.'
+    );
+  }
+  const payload: Omit<NativeReactComponentArtifact, 'integritySha256'> = {
+    format: NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT,
+    version: NATIVE_REACT_COMPONENT_ARTIFACT_VERSION,
+    identity: createNativeReactComponentArtifactIdentity({
       sourceSha256: sha256Text(transformed.source),
       dependencyLock: lockedDependencies.value,
-      program: {
-        injectedModules: transformed.injectedModules.map(cloneInjectedModule),
-        importBindings: transformed.importBindings.map(cloneImportBinding),
-        executableBody: transformed.executableBody,
-        executablePreambleLines: transformed.executablePreambleLines,
-        moduleMapIdentifier: transformed.moduleMapIdentifier,
-        runtimeCapabilityGuardBindingIdentifiers: [
-          ...transformed.runtimeCapabilityGuardBindingIdentifiers
-        ],
-        defaultExportIdentifier: transformed.defaultExportIdentifier
-      },
-      sourceMap
+      runtimeFingerprint
+    }),
+    dependencyLock: lockedDependencies.value,
+    program: {
+      injectedModules: transformed.injectedModules.map(cloneInjectedModule),
+      importBindings: transformed.importBindings.map(cloneImportBinding),
+      executableBody: transformed.executableBody,
+      executablePreambleLines: transformed.executablePreambleLines,
+      moduleMapIdentifier: transformed.moduleMapIdentifier,
+      runtimeCapabilityGuardBindingIdentifiers: [
+        ...transformed.runtimeCapabilityGuardBindingIdentifiers
+      ],
+      defaultExportIdentifier: transformed.defaultExportIdentifier
     },
+    sourceMap
+  };
+  return {
+    ok: true,
+    artifact: { ...payload, integritySha256: artifactIntegrity(payload) },
     diagnostics: []
   };
 }
@@ -118,7 +144,8 @@ export function canonicalizeNativeReactComponentArtifact(
     !isRecord(value) ||
     value.format !== NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT ||
     value.version !== NATIVE_REACT_COMPONENT_ARTIFACT_VERSION ||
-    !isSha256(value.sourceSha256) ||
+    !isRecord(value.identity) ||
+    !isSha256(value.integritySha256) ||
     !('dependencyLock' in value) ||
     !isRecord(value.program)
   ) {
@@ -135,8 +162,10 @@ export function canonicalizeNativeReactComponentArtifact(
     program.runtimeCapabilityGuardBindingIdentifiers
   );
   const sourceMap = canonicalJsonValue(value.sourceMap);
+  const identity = readArtifactIdentity(value.identity, dependencyLock);
   if (
     !dependencyLock ||
+    !identity ||
     !injectedModules ||
     !importBindings ||
     !guardIdentifiers ||
@@ -150,10 +179,10 @@ export function canonicalizeNativeReactComponentArtifact(
     return null;
   }
 
-  return {
+  const payload: Omit<NativeReactComponentArtifact, 'integritySha256'> = {
     format: NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT,
     version: NATIVE_REACT_COMPONENT_ARTIFACT_VERSION,
-    sourceSha256: value.sourceSha256,
+    identity,
     dependencyLock,
     program: {
       injectedModules,
@@ -166,6 +195,93 @@ export function canonicalizeNativeReactComponentArtifact(
     },
     sourceMap
   };
+  return artifactIntegrity(payload) === value.integritySha256
+    ? { ...payload, integritySha256: value.integritySha256 }
+    : null;
+}
+
+export function createNativeReactRuntimeFingerprint(
+  workerAssetIdentity: string | URL
+): string {
+  return `${nativeReactRuntimeFingerprintPrefix()}worker:${sha256Text(String(workerAssetIdentity))}`;
+}
+
+export function createNativeReactComponentArtifactIdentity({
+  sourceSha256,
+  dependencyLock,
+  runtimeFingerprint
+}: {
+  sourceSha256: string;
+  dependencyLock: NativeReactCatalogDependencyLock;
+  runtimeFingerprint: string;
+}): NativeReactComponentArtifactIdentity {
+  return {
+    source_sha256: sourceSha256,
+    compiler_abi: NATIVE_REACT_COMPILER_ABI,
+    runtime_abi: NATIVE_REACT_RUNTIME_ABI,
+    runtime_fingerprint: runtimeFingerprint,
+    dependency_lock_sha256: sha256Text(
+      nativeReactCatalogDependencyLockIdentity(dependencyLock)
+    )
+  };
+}
+
+export function nativeReactComponentArtifactMatchesIdentity(
+  artifact: NativeReactComponentArtifact,
+  identity: NativeReactComponentArtifactIdentity
+): boolean {
+  return (
+    artifact.identity.source_sha256 === identity.source_sha256 &&
+    artifact.identity.compiler_abi === identity.compiler_abi &&
+    artifact.identity.runtime_abi === identity.runtime_abi &&
+    artifact.identity.runtime_fingerprint === identity.runtime_fingerprint &&
+    artifact.identity.dependency_lock_sha256 === identity.dependency_lock_sha256
+  );
+}
+
+function readArtifactIdentity(
+  value: Record<string, unknown>,
+  dependencyLock: NativeReactCatalogDependencyLock | null
+): NativeReactComponentArtifactIdentity | null {
+  if (
+    !dependencyLock ||
+    !isSha256(value.source_sha256) ||
+    value.compiler_abi !== NATIVE_REACT_COMPILER_ABI ||
+    value.runtime_abi !== NATIVE_REACT_RUNTIME_ABI ||
+    !isNonEmptyString(value.runtime_fingerprint) ||
+    !isNativeReactRuntimeFingerprint(value.runtime_fingerprint) ||
+    !isSha256(value.dependency_lock_sha256)
+  ) {
+    return null;
+  }
+  const dependencyLockSha256 = sha256Text(
+    nativeReactCatalogDependencyLockIdentity(dependencyLock)
+  );
+  return value.dependency_lock_sha256 === dependencyLockSha256
+    ? {
+        source_sha256: value.source_sha256,
+        compiler_abi: NATIVE_REACT_COMPILER_ABI,
+        runtime_abi: NATIVE_REACT_RUNTIME_ABI,
+        runtime_fingerprint: value.runtime_fingerprint,
+        dependency_lock_sha256: dependencyLockSha256
+      }
+    : null;
+}
+
+function nativeReactRuntimeFingerprintPrefix(): string {
+  return `${NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT}@${NATIVE_REACT_COMPONENT_ARTIFACT_VERSION}:compiler:${sha256Text(NATIVE_REACT_COMPILER_ABI)}:runtime:${sha256Text(NATIVE_REACT_RUNTIME_ABI)}:`;
+}
+
+function isNativeReactRuntimeFingerprint(value: string): boolean {
+  const suffix = value.slice(nativeReactRuntimeFingerprintPrefix().length);
+  return (
+    value.startsWith(nativeReactRuntimeFingerprintPrefix()) &&
+    /^worker:[a-f0-9]{64}$/.test(suffix)
+  );
+}
+
+function artifactIntegrity(value: object): string {
+  return sha256Text(JSON.stringify(value));
 }
 
 function toCompileDiagnostic(
