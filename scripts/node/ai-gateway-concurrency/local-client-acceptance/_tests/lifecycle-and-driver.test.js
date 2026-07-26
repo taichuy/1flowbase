@@ -5,7 +5,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { LONG_REPEAT_COUNT, LONG_SEGMENT, TEXT_VECTOR, TOOL_VECTOR } = require('../contract');
+const {
+  TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL, TOOL_RESULT_SENTINEL, TOOL_VECTOR,
+} = require('../contract');
 const { evaluateAttempt, runLocalClientAcceptance } = require('../driver');
 const { OwnedResources, executionEnvironment } = require('../lifecycle');
 
@@ -48,12 +50,11 @@ test('AC-009 child environment carries gateway config without inheriting host cr
   assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, undefined);
 });
 
-test('AC-009 long/repeated and tool two-turn evaluations require observable evidence', () => {
-  const text = Array(LONG_REPEAT_COUNT).fill(LONG_SEGMENT).join(' ');
+test('WP-14A canonical text and tool two-turn evaluations require observable evidence', () => {
   assert.equal(evaluateAttempt('codex', TEXT_VECTOR, {
     exit_code: 0,
     timed_out: false,
-    stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } }),
+    stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: TEXT_SENTINEL } }),
     stderr: '',
   }).pass, true);
   assert.equal(evaluateAttempt('claude', TOOL_VECTOR, {
@@ -61,8 +62,8 @@ test('AC-009 long/repeated and tool two-turn evaluations require observable evid
     timed_out: false,
     stdout: [
       { type: 'assistant', message: { content: [{ type: 'tool_use' }] } },
-      { type: 'user', message: { content: [{ type: 'tool_result', content: '1flowbase-tool-result-challenge' }] } },
-      { type: 'assistant', message: { content: [{ type: 'text', text: '1flowbase-tool-two-turn-complete' }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', content: TOOL_RESULT_SENTINEL }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: TOOL_FINAL_SENTINEL }] } },
     ].map(JSON.stringify).join('\n'),
     stderr: '',
   }).pass, true);
@@ -71,13 +72,30 @@ test('AC-009 long/repeated and tool two-turn evaluations require observable evid
     timed_out: false,
     stdout: JSON.stringify({
       type: 'message.part.updated',
-      properties: { part: { type: 'text', text: '1flowbase-tool-two-turn-complete' } },
+      properties: { part: { type: 'text', text: TOOL_FINAL_SENTINEL } },
     }),
     stderr: '',
   }).pass, false);
 });
 
-test('AC-009 driver emits a non-blocking artifact and cleans resources in finally', async () => {
+test('WP-14A Codex WebSocket evidence rejects silent HTTP fallback', () => {
+  const output = JSON.stringify({
+    type: 'item.completed', item: { type: 'agent_message', text: TEXT_SENTINEL },
+  });
+  assert.equal(evaluateAttempt('codex', TEXT_VECTOR, {
+    exit_code: 0, timed_out: false, stdout: output,
+    stderr: 'model_client.stream_responses_websocket transport="responses_websocket"',
+  }, 'responses_websocket').pass, true);
+  assert.equal(evaluateAttempt('codex', TEXT_VECTOR, {
+    exit_code: 0, timed_out: false, stdout: output,
+    stderr: 'model_client.stream_responses_websocket falling back to HTTP',
+  }, 'responses_websocket').reason, 'responses_websocket_http_fallback');
+  assert.equal(evaluateAttempt('codex', TEXT_VECTOR, {
+    exit_code: 0, timed_out: false, stdout: output, stderr: '',
+  }, 'responses_websocket').reason, 'responses_websocket_evidence_missing');
+});
+
+test('WP-14A driver emits mock-backed reconciliation evidence and cleans resources in finally', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-client-driver-test-'));
   const bin = path.join(root, 'tmux');
   fs.writeFileSync(bin, '#!/bin/sh\n', { mode: 0o700 });
@@ -98,43 +116,60 @@ test('AC-009 driver emits a non-blocking artifact and cleans resources in finall
     binary: `/machine/${client}`,
     config_path: `/machine/config/${client}`,
   }]));
+  const reconciled = [];
+  let toolBarrierCallbacks = 0;
   try {
     const result = await runLocalClientAcceptance({
       artifactRoot: path.join(root, 'artifacts'),
       tmuxExecutable: bin,
       discovery: { env: { PATH: root } },
       targets: Object.fromEntries(['claude', 'opencode', 'codex'].map((client) => [client, {
+        applicationId: `${client}-app`,
         model: 'fixture-model',
         apiKey: `sk-${client}-secret-value`,
         gatewayBaseUrl: 'http://127.0.0.1:4567',
+        durable: { list_runs: {}, query_run: {} },
+        runtimeActivity: {},
+        activeStreams: {},
       }])),
+      mockSnapshot: async () => ({ entries: [] }),
+      releaseBarrier: async () => {},
     }, {
       registry,
       discoverClients: () => discovered,
       probeVersion: async (binary) => ({ status: 'ready', version: `${path.basename(binary)} 1.0`, reason: null }),
-      executePlan: async (plan) => {
-        const text = Array(LONG_REPEAT_COUNT).fill(LONG_SEGMENT).join(' ');
+      snapshotRuns: async () => ({ ids: [], runs: [] }),
+      reconcileAttempt: async ({ expectedRuns }) => {
+        reconciled.push(expectedRuns);
+        return { runs: Array.from({ length: expectedRuns }, (_, index) => ({ id: `run-${index}`, status: 'succeeded' })) };
+      },
+      evaluateMockAttempt: (_before, _after, expectedRuns) => ({ arrivals: expectedRuns, settled: expectedRuns }),
+      verifyIdle: async () => ({ runtime_targets: 2, stream_targets: 1 }),
+      executePlan: async (plan, execution) => {
+        if (plan.vector_id === TOOL_VECTOR.id && typeof execution.onFirstMarker === 'function') {
+          toolBarrierCallbacks += 1;
+        }
         const clientEvents = {
           codex: plan.vector_id === TEXT_VECTOR.id
-            ? [{ type: 'item.completed', item: { type: 'agent_message', text } }]
+            ? [{ type: 'item.completed', item: { type: 'agent_message', text: TEXT_SENTINEL } }]
             : [
               { type: 'item.completed', item: { type: 'command_execution' } },
-              { type: 'item.completed', item: { type: 'command_execution', output: '1flowbase-tool-result-challenge' } },
-              { type: 'item.completed', item: { type: 'agent_message', text: '1flowbase-tool-two-turn-complete' } },
+              { type: 'item.completed', item: { type: 'command_execution', output: TOOL_RESULT_SENTINEL } },
+              { type: 'item.completed', item: { type: 'agent_message', text: TOOL_FINAL_SENTINEL } },
             ],
           claude: plan.vector_id === TEXT_VECTOR.id
-            ? [{ type: 'assistant', message: { content: [{ type: 'text', text }] } }]
+            ? [{ type: 'assistant', message: { content: [{ type: 'text', text: TEXT_SENTINEL }] } }]
             : [
               { type: 'assistant', message: { content: [{ type: 'tool_use' }] } },
-              { type: 'user', message: { content: [{ type: 'tool_result', content: '1flowbase-tool-result-challenge' }] } },
-              { type: 'assistant', message: { content: [{ type: 'text', text: '1flowbase-tool-two-turn-complete' }] } },
+              { type: 'user', message: { content: [{ type: 'tool_result', content: TOOL_RESULT_SENTINEL }] } },
+              { type: 'assistant', message: { content: [{ type: 'text', text: TOOL_FINAL_SENTINEL }] } },
             ],
           opencode: plan.vector_id === TEXT_VECTOR.id
-            ? [{ type: 'message.part.updated', properties: { part: { type: 'text', text } } }]
+            ? [{ type: 'message.part.updated', properties: { part: { type: 'text', text: TEXT_SENTINEL } } }]
             : [
               { type: 'message.part.updated', properties: { part: { type: 'tool' } } },
-              { type: 'message.part.updated', properties: { part: { type: 'tool', output: '1flowbase-tool-result-challenge' } } },
-              { type: 'message.part.updated', properties: { part: { type: 'text', text: '1flowbase-tool-two-turn-complete' } } },
+              { type: 'message.part.updated', properties: { part: { type: 'tool', output: TOOL_RESULT_SENTINEL } } },
+              { type: 'message.part.updated', properties: { part: { type: 'text', text: TOOL_FINAL_SENTINEL } } },
             ],
         };
         return {
@@ -142,18 +177,23 @@ test('AC-009 driver emits a non-blocking artifact and cleans resources in finall
           signal: null,
           timed_out: false,
           stdout: clientEvents[plan.client].map(JSON.stringify).join('\n'),
-          stderr: '',
+          stderr: plan.protocol === 'responses_websocket'
+            ? 'model_client.stream_responses_websocket transport="responses_websocket"'
+            : '',
         };
       },
     });
     assert.equal(result.status, 'pass');
-    assert.equal(result.gate_role, 'explicit_non_blocking_local_client_acceptance');
+    assert.equal(result.gate_role, 'mock_backed_local_client_acceptance');
     assert.equal(cleaned, true);
     const artifact = fs.readFileSync(result.artifact_path, 'utf8');
     assert.doesNotMatch(artifact, /sk-(claude|opencode|codex)-secret-value/u);
     assert.deepEqual(result.clients.find((client) => client.name === 'codex').protocols, [
       'responses_sse', 'responses_websocket',
     ]);
+    assert.deepEqual(reconciled, [1, 2, 1, 2, 1, 2, 1, 2]);
+    assert.equal(toolBarrierCallbacks, 4);
+    assert.deepEqual(result.final_reconciliation, { runtime_targets: 2, stream_targets: 1 });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

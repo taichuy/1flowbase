@@ -6,10 +6,11 @@ const os = require('node:os');
 const path = require('node:path');
 const { writeArtifact, createTimeline } = require('./artifacts');
 const {
-  ARTIFACT_SCHEMA, CLIENT_PROTOCOLS, LONG_REPEAT_COUNT, LONG_SEGMENT,
-  TEXT_VECTOR, TOOL_VECTOR, buildClientPlan, selectExecutionSurface,
+  ARTIFACT_SCHEMA, CLIENT_PROTOCOLS, TEXT_SENTINEL, TEXT_VECTOR,
+  TOOL_RESULT_SENTINEL, TOOL_VECTOR, buildClientPlan, selectExecutionSurface,
 } = require('./contract');
 const { discoverClients, findExecutable, probeVersion } = require('./discovery');
+const durableEvidence = require('./durable');
 const { OwnedResources, executeTmux } = require('./lifecycle');
 
 function clientPaths(root, client) {
@@ -22,7 +23,7 @@ function clientPaths(root, client) {
   };
   fs.mkdirSync(result.config, { recursive: true, mode: 0o700 });
   fs.mkdirSync(result.output, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(result.toolFile, '1flowbase-tool-result-challenge\n', { mode: 0o600 });
+  fs.writeFileSync(result.toolFile, `${TOOL_RESULT_SENTINEL}\n`, { mode: 0o600 });
   return result;
 }
 
@@ -49,10 +50,6 @@ function overallStatus(clients, cleanupErrors) {
   if (clients.every((client) => client.status === 'skipped')) return 'skipped';
   if (clients.some((client) => client.status === 'skipped')) return 'partial';
   return 'pass';
-}
-
-function countOccurrences(text, marker) {
-  return String(text).split(marker).length - 1;
 }
 
 function includesMarker(value, marker) {
@@ -92,7 +89,7 @@ function isToolCall(client, event) {
 }
 
 function isToolResult(client, event) {
-  if (!includesMarker(event, '1flowbase-tool-result-challenge')) return false;
+  if (!includesMarker(event, TOOL_RESULT_SENTINEL)) return false;
   if (client === 'codex') return ['command_execution', 'mcp_tool_call', 'tool_call'].includes(event.item?.type);
   if (client === 'claude') {
     return event.type === 'user' || event.message?.content?.some?.((part) => part.type === 'tool_result');
@@ -101,19 +98,27 @@ function isToolResult(client, event) {
     && ['tool', 'tool_result'].includes(event.properties?.part?.type);
 }
 
-function evaluateAttempt(client, vector, result) {
+function evaluateAttempt(client, vector, result, protocol = null) {
   if (result.exit_code !== 0 || result.timed_out) {
     return { pass: false, reason: 'client_process_failed', observed_events: [] };
   }
+  if (client === 'codex' && protocol === 'responses_websocket') {
+    const diagnostics = `${result.stdout || ''}\n${result.stderr || ''}`;
+    if (/falling back to HTTP|fallback_to_http/iu.test(diagnostics)) {
+      return { pass: false, reason: 'responses_websocket_http_fallback', observed_events: [] };
+    }
+    if (!/model_client\.stream_responses_websocket|transport\s*=\s*["']?responses_websocket/iu.test(diagnostics)) {
+      return { pass: false, reason: 'responses_websocket_evidence_missing', observed_events: [] };
+    }
+  }
   const events = structuredEvents(result.stdout || '');
   if (vector.kind === 'text') {
-    const repetitions = Math.max(0, ...events
-      .filter((event) => isAssistantText(client, event))
-      .map((event) => countOccurrences(JSON.stringify(event), LONG_SEGMENT)));
+    const observed = events.some((event) => isAssistantText(client, event)
+      && includesMarker(event, TEXT_SENTINEL));
     return {
-      pass: repetitions >= LONG_REPEAT_COUNT,
-      reason: repetitions >= LONG_REPEAT_COUNT ? null : 'long_repeated_body_missing',
-      observed_events: repetitions >= LONG_REPEAT_COUNT ? ['long_repeated_body_observed'] : [],
+      pass: observed,
+      reason: observed ? null : 'canonical_text_sentinel_missing',
+      observed_events: observed ? ['canonical_text_sentinel_observed'] : [],
     };
   }
   const toolCallIndex = events.findIndex((event) => isToolCall(client, event));
@@ -136,14 +141,20 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
   if (!options?.artifactRoot || !path.isAbsolute(options.artifactRoot)) {
     throw new Error('absolute artifactRoot is required');
   }
+  if (typeof options.mockSnapshot !== 'function') throw new Error('mockSnapshot evidence reader is required');
   const registry = dependencies.registry || new OwnedResources(dependencies);
   const root = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-local-clients-')));
   const versionProbe = dependencies.probeVersion || probeVersion;
+  const snapshotRuns = dependencies.snapshotRuns || durableEvidence.snapshotRuns;
+  const reconcileAttempt = dependencies.reconcileAttempt || durableEvidence.reconcileAttempt;
+  const evaluateMockAttempt = dependencies.evaluateMockAttempt || durableEvidence.evaluateMockAttempt;
+  const verifyIdle = dependencies.verifyIdle || durableEvidence.verifyIdle;
   let tmux = null;
   let surface = { status: 'skipped', surface: null, reason: 'discovery_not_completed' };
   const secrets = [];
   const clients = [];
   let cleanupErrors = [];
+  let finalReconciliation = null;
   try {
     const discovery = (dependencies.discoverClients || discoverClients)(options.discovery);
     tmux = findExecutable(options.tmuxExecutable || 'tmux', options.discovery?.env?.PATH || process.env.PATH);
@@ -191,6 +202,8 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
           secrets.push(...plan.secrets);
           writeConfigs(plan);
           timeline.append('attempt_started', { protocol, vector_id: vector.id });
+          const durableBefore = await snapshotRuns(target, dependencies.fetchImpl);
+          const mockBefore = await options.mockSnapshot();
           const executor = dependencies.executePlan
             || (surface.surface === 'acp-headless' ? dependencies.acpHeadlessExecutor : executeTmux);
           let result;
@@ -200,6 +213,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
               timeoutMs: options.timeoutMs,
               surface: surface.surface,
               tmuxExecutable: tmux,
+              onFirstMarker: vector.kind === 'tool' ? options.releaseBarrier : undefined,
             });
           } catch (error) {
             result = {
@@ -210,8 +224,25 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
               stderr: error.message,
             };
           }
-          const evaluation = evaluateAttempt(client, vector, result);
-          const passed = evaluation.pass;
+          const evaluation = evaluateAttempt(client, vector, result, protocol);
+          let evidence = null;
+          let evidenceError = null;
+          try {
+            const expectedRuns = vector.expected.durable_runs;
+            const mockAfter = await options.mockSnapshot();
+            evidence = {
+              mock: evaluateMockAttempt(mockBefore, mockAfter, expectedRuns),
+              durable: await reconcileAttempt({
+                target,
+                before: durableBefore,
+                expectedRuns,
+                fetchImpl: dependencies.fetchImpl,
+              }),
+            };
+          } catch (error) {
+            evidenceError = { name: error.name || 'Error', message: error.message || String(error) };
+          }
+          const passed = evaluation.pass && evidenceError === null;
           failed ||= !passed;
           for (const event of evaluation.observed_events) timeline.append(event, { protocol, vector_id: vector.id });
           timeline.append('attempt_finished', {
@@ -225,6 +256,8 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
             command: publicPlan(plan, surface.surface),
             result,
             evaluation,
+            evidence,
+            evidence_error: evidenceError,
           });
         }
       }
@@ -240,6 +273,10 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         timeline: timeline.snapshot(),
       });
     }
+    finalReconciliation = await verifyIdle(
+      ['claude', 'opencode', 'codex'].map((client) => options.targets?.[client]).filter(Boolean),
+      dependencies.fetchImpl,
+    );
   } catch (error) {
     clients.push({
       name: 'driver',
@@ -254,10 +291,11 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
   const artifact = {
     schema_version: ARTIFACT_SCHEMA,
     run_id: crypto.randomUUID(),
-    gate_role: 'explicit_non_blocking_local_client_acceptance',
+    gate_role: 'mock_backed_local_client_acceptance',
     status: overallStatus(clients, cleanupErrors),
     surface_selection: surface,
     clients,
+    final_reconciliation: finalReconciliation,
     cleanup: { status: cleanupErrors.length ? 'fail' : 'pass', errors: cleanupErrors },
   };
   const artifactPath = path.join(options.artifactRoot, 'local-client-acceptance.json');

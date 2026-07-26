@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { discoverClients, findExecutable, probeVersion } = require('../discovery');
 
-test('AC-009 discovers only executable machine binaries and existing config paths', () => {
+test('WP-14A discovers executable machine binaries without reading host config', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-client-discovery-'));
   try {
     const bin = path.join(root, 'bin');
@@ -28,11 +28,20 @@ test('AC-009 discovers only executable machine binaries and existing config path
     });
     assert.equal(result.claude.status, 'ready');
     assert.equal(result.codex.status, 'ready');
+    assert.equal(result.codex.config_exists, true);
     assert.deepEqual(
       { status: result.opencode.status, reason: result.opencode.reason },
       { status: 'skipped', reason: 'binary_not_found' },
     );
     assert.equal(findExecutable('claude', bin), path.join(bin, 'claude'));
+
+    fs.writeFileSync(path.join(bin, 'opencode'), '#!/bin/sh\n', { mode: 0o700 });
+    const isolated = discoverClients({
+      env: { PATH: bin },
+      configs: { opencode: path.join(configs, 'missing-opencode-config') },
+    });
+    assert.equal(isolated.opencode.status, 'ready');
+    assert.equal(isolated.opencode.config_exists, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

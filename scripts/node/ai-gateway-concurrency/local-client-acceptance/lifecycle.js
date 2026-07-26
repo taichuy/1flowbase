@@ -153,6 +153,9 @@ async function executeTmux(plan, options = {}) {
     'status=$?',
     `printf '%s\\n' "$status" >${shellQuote(statusPath)}`,
   ].join('; ');
+  let outputWatcher = null;
+  let barrierRelease = null;
+  let markerObserved = false;
   const launched = await new Promise((resolve) => {
     const child = registry.addChild(spawnImpl(tmux, [
       '-L', socket, 'new-session', '-d', '-s', 'local-client', '-c', plan.invocation.cwd, shellCommand,
@@ -174,13 +177,25 @@ async function executeTmux(plan, options = {}) {
   if (!launched.ok) {
     return { exit_code: null, signal: null, timed_out: false, stdout: '', stderr: launched.error };
   }
+  if (typeof options.onFirstMarker === 'function') {
+    outputWatcher = fs.watch(root, () => {
+      if (markerObserved || !fs.existsSync(stdoutPath)) return;
+      let output;
+      try { output = readBoundedFile(stdoutPath); } catch { return; }
+      if (!output.includes('marker-1')) return;
+      markerObserved = true;
+      barrierRelease = Promise.resolve().then(() => options.onFirstMarker());
+    });
+  }
   let timedOut = false;
   try {
     await waitForFile(statusPath, timeoutMs);
+    await barrierRelease;
   } catch (error) {
     timedOut = true;
     return { exit_code: null, signal: 'SIGKILL', timed_out: true, stdout: '', stderr: error.message };
   } finally {
+    outputWatcher?.close();
     const result = registry.spawnSync(tmux, ['-L', socket, 'kill-server'], { stdio: 'ignore' });
     if (!result?.error) registry.releaseTmuxSocket(socket);
   }

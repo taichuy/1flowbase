@@ -42,9 +42,11 @@ function discoverClients(options = {}) {
     const binary = findExecutable(requestedBinary, env.PATH, fsImpl);
     const configPath = path.resolve(options.configs?.[client] || spec.config(env, home));
     const configExists = fsImpl.existsSync(configPath);
-    const status = !binary ? 'skipped' : !configExists ? 'skipped' : 'ready';
-    const reason = !binary ? 'binary_not_found' : !configExists ? 'config_not_found' : null;
-    return [client, { client, status, reason, binary, config_path: configPath }];
+    const status = binary ? 'ready' : 'skipped';
+    const reason = binary ? null : 'binary_not_found';
+    return [client, {
+      client, status, reason, binary, config_path: configPath, config_exists: configExists,
+    }];
   }));
 }
 

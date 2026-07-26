@@ -3,25 +3,27 @@
 const path = require('node:path');
 
 const ARTIFACT_SCHEMA = '1flowbase.local-client-acceptance/v1';
-const LONG_SEGMENT = '1flowbase-long-repeated-segment';
-const LONG_REPEAT_COUNT = 64;
-const LONG_RESPONSE = Array(LONG_REPEAT_COUNT).fill(LONG_SEGMENT).join(' ');
+const TEXT_SENTINEL = '1flowbase gateway sentinel ok';
+const TOOL_RESULT_SENTINEL = '1flowbase-client-tool-result';
+const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
 const TEXT_VECTOR = Object.freeze({
-  id: 'text-long-repeated',
+  id: 'text-canonical-sentinel',
   kind: 'text',
-  prompt: `Reply with exactly this repeated body and nothing else: ${LONG_RESPONSE}`,
-  expected: Object.freeze({ segment: LONG_SEGMENT, repetitions: LONG_REPEAT_COUNT }),
+  prompt: `Reply with exactly: ${TEXT_SENTINEL}`,
+  expected: Object.freeze({ final_marker: TEXT_SENTINEL, durable_runs: 1 }),
 });
 const TOOL_VECTOR = Object.freeze({
   id: 'tool-two-turn',
   kind: 'tool',
   promptTemplate: [
-    'Use your client-owned local file read tool exactly once on {{TOOL_PATH}}.',
-    'Return the file content to the provider, then after the second provider turn reply exactly:',
-    '1flowbase-tool-two-turn-complete',
+    '1flowbase-client-tool-vector',
+    'TOOL_VECTOR_PATH={{TOOL_PATH}}',
+    'Use the client-owned local read or shell tool requested by the provider.',
+    `After its result is returned to the provider, print exactly: ${TOOL_FINAL_SENTINEL}`,
   ].join(' '),
   expected: Object.freeze({
-    final_marker: '1flowbase-tool-two-turn-complete',
+    final_marker: TOOL_FINAL_SENTINEL,
+    durable_runs: 2,
     timeline: Object.freeze([
       'client_started', 'tool_call_observed', 'tool_result_observed',
       'second_turn_observed', 'final_marker_observed', 'client_exited',
@@ -69,6 +71,30 @@ function commonTarget(target) {
   };
 }
 
+function targetFromProvider(provider, gatewayBaseUrl) {
+  if (!provider?.application_id || !provider?.model || !provider?.api_key) {
+    throw new Error('fixture provider target is incomplete');
+  }
+  return {
+    applicationId: provider.application_id,
+    model: provider.model,
+    apiKey: provider.api_key,
+    gatewayBaseUrl: (provider.gateway?.base_url || gatewayBaseUrl || '').replace(/\/$/u, ''),
+    durable: provider.durable,
+    runtimeActivity: provider.runtime_activity,
+    activeStreams: provider.plugin_runner_active_streams,
+  };
+}
+
+function targetsFromReady(ready) {
+  if (ready?.schema_version !== '1flowbase.ai-gateway-fixture/v1') {
+    throw new Error('Gateway fixture ready manifest schema mismatch');
+  }
+  const openai = targetFromProvider(ready.targets?.openai, ready.gateway_base_url);
+  const anthropic = targetFromProvider(ready.targets?.anthropic, ready.gateway_base_url);
+  return { claude: anthropic, opencode: openai, codex: openai };
+}
+
 function codexPlan(binary, target, paths, vector, protocol) {
   if (!CLIENT_PROTOCOLS.codex.includes(protocol)) throw new Error(`unsupported Codex protocol: ${protocol}`);
   const provider = 'oneflowbase_local_acceptance';
@@ -96,6 +122,7 @@ function codexPlan(binary, target, paths, vector, protocol) {
     environment: {
       CODEX_HOME: paths.config,
       ONEFLOWBASE_APPLICATION_API_KEY: target.apiKey,
+      ...(websocket ? { RUST_LOG: 'codex_core::client=info' } : {}),
     },
     configFiles: [],
   };
@@ -178,11 +205,13 @@ function buildClientPlan(client, binary, rawTarget, paths, vector, protocol) {
 module.exports = {
   ARTIFACT_SCHEMA,
   CLIENT_PROTOCOLS,
-  LONG_REPEAT_COUNT,
-  LONG_SEGMENT,
+  TEXT_SENTINEL,
   TEXT_VECTOR,
+  TOOL_FINAL_SENTINEL,
+  TOOL_RESULT_SENTINEL,
   TOOL_VECTOR,
   buildClientPlan,
   promptFor,
   selectExecutionSurface,
+  targetsFromReady,
 };

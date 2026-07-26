@@ -3,6 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { targetsFromReady } = require('./contract');
 const { runLocalClientAcceptance } = require('./driver');
 
 function parseArguments(argv) {
@@ -22,11 +23,24 @@ function parseArguments(argv) {
 function loadOptions(values) {
   const manifestPath = path.resolve(values.manifest);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const snapshotUrl = manifest.controlled_upstream?.snapshot_url;
+  const barrierUrl = manifest.controlled_upstream?.barrier_release_url;
+  if (!snapshotUrl) throw new Error('Gateway fixture manifest omitted controlled upstream snapshot URL');
+  if (!barrierUrl) throw new Error('Gateway fixture manifest omitted controlled upstream barrier URL');
   return {
     artifactRoot: path.resolve(values['artifact-root']),
     surface: values.surface || 'auto',
     timeoutMs: values['timeout-ms'] ? Number(values['timeout-ms']) : undefined,
-    targets: manifest.targets,
+    targets: targetsFromReady(manifest),
+    async mockSnapshot() {
+      const response = await fetch(snapshotUrl);
+      if (!response.ok) throw new Error(`controlled upstream snapshot returned HTTP ${response.status}`);
+      return response.json();
+    },
+    async releaseBarrier() {
+      const response = await fetch(barrierUrl, { method: 'POST' });
+      if (!response.ok) throw new Error(`controlled upstream barrier returned HTTP ${response.status}`);
+    },
     discovery: {
       binaries: manifest.binaries,
       configs: manifest.configs,
@@ -42,7 +56,7 @@ async function main() {
     artifact_path: result.artifact_path,
     gate_role: result.gate_role,
   })}\n`);
-  if (result.status === 'fail') process.exitCode = 1;
+  if (result.status !== 'pass') process.exitCode = 1;
 }
 
 if (require.main === module) {
