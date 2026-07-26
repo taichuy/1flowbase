@@ -31,16 +31,30 @@ test("quality gate inventory contains the four blocking protocol harness suites"
   const repoRoot = path.resolve(__dirname, "../../../../../");
   const files = testFiles(repoRoot);
   for (const suite of [
+    "protocol-oracle",
+    "responses-websocket-acceptance",
+    "characterize",
     "workflow-contract",
     "wire-audit",
     "mock-upstream",
     "gateway-fixture",
+    "quality-gate",
   ]) {
     assert.ok(
       files.some((file) => file.includes(`/${suite}/_tests/`)),
       suite,
     );
   }
+  assert.equal(files.some((file) => file.includes("/local-client-acceptance/")), false);
+});
+
+test("quality gate pins the four blocking transports without implicit enum expansion", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../../workflow-contract/runner.js"), "utf8");
+  for (const label of ["OpenAI Chat", "Anthropic", "Responses SSE", "Responses WebSocket"]) {
+    assert.match(source, new RegExp(`label: '${label}'`, "u"));
+  }
+  const inventorySource = source.slice(source.indexOf("const BLOCKING_TRANSPORTS"), source.indexOf("function protocolOracleInventory"));
+  assert.doesNotMatch(inventorySource, /Object\.values/u);
 });
 
 test("release gate vendors Swagger UI instead of downloading a GitHub archive during Cargo build", () => {

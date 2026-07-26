@@ -5,7 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const { runWorkflowContract } = require("../workflow-contract/runner");
+const {
+  BLOCKING_TRANSPORTS,
+  runWorkflowContract,
+} = require("../workflow-contract/runner");
 const { createDatabase } = require("../local-acceptance/system");
 
 function dockerDatabaseContract(databaseUrl, containerIds) {
@@ -68,10 +71,15 @@ function command(root, artifactRoot, name, command, args, options = {}) {
 
 function testFiles(repoRoot) {
   const suites = [
+    "protocol-oracle",
+    "responses-websocket-acceptance",
+    "characterize",
     "workflow-contract",
     "wire-audit",
     "mock-upstream",
     "gateway-fixture",
+    "local-acceptance",
+    "quality-gate",
   ];
   return suites.flatMap((suite) => {
     const directory = path.join(
@@ -99,16 +107,21 @@ async function runQualityGate(rawOptions) {
   fs.rmSync(artifactRoot, { recursive: true, force: true });
   fs.mkdirSync(packageRoot, { recursive: true });
 
-  const mainSourceSha = command(
-    repoRoot,
-    artifactRoot,
+  const failures = [];
+  const attempt = (name, executable, args, options) => {
+    try {
+      return command(repoRoot, artifactRoot, name, executable, args, options);
+    } catch (error) {
+      failures.push({ name, message: error.message });
+      return null;
+    }
+  };
+  const mainSourceSha = attempt(
     "main-source-sha",
     "git",
     ["rev-parse", "HEAD"],
   );
-  const officialSourceSha = command(
-    repoRoot,
-    artifactRoot,
+  const officialSourceSha = attempt(
     "official-source-sha",
     "git",
     ["-C", officialSourceRoot, "rev-parse", "HEAD"],
@@ -119,26 +132,25 @@ async function runQualityGate(rawOptions) {
       "scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json",
     ),
   );
-  if (officialSourceSha !== paired.official_plugins.revision) {
-    throw new Error(
-      `official provider source must match paired revision ${paired.official_plugins.revision}`,
-    );
+  if (officialSourceSha && officialSourceSha !== paired.official_plugins.revision) {
+    failures.push({
+      name: "paired-source",
+      message: `official provider source must match paired revision ${paired.official_plugins.revision}`,
+    });
   }
-  const rustcVersion = command(
-    repoRoot,
-    artifactRoot,
+  const rustcVersion = attempt(
     "rustc-version",
     "rustc",
     ["-vV"],
   );
   const hostTarget = /^host: (.+)$/mu.exec(rustcVersion)?.[1];
-  if (!hostTarget) throw new Error("rustc host target is unavailable");
+  if (!hostTarget) failures.push({ name: "rustc-host", message: "rustc host target is unavailable" });
 
-  command(repoRoot, artifactRoot, "protocol-structural-tests", "node", [
+  attempt("protocol-structural-tests", "node", [
     "--test",
     ...testFiles(repoRoot),
   ]);
-  command(repoRoot, artifactRoot, "control-plane-conversation-tests", "cargo", [
+  attempt("control-plane-conversation-tests", "cargo", [
     "test",
     "--manifest-path",
     path.join(repoRoot, "api/Cargo.toml"),
@@ -146,7 +158,7 @@ async function runQualityGate(rawOptions) {
     "control-plane",
     "application_public_api",
   ]);
-  command(repoRoot, artifactRoot, "api-server-conversation-tests", "cargo", [
+  attempt("api-server-conversation-tests", "cargo", [
     "test",
     "--manifest-path",
     path.join(repoRoot, "api/Cargo.toml"),
@@ -161,18 +173,16 @@ async function runQualityGate(rawOptions) {
       "runtime-extensions/model-providers",
       providerCode,
     );
-    command(repoRoot, artifactRoot, `${providerCode}-provider-build`, "cargo", [
+    const built = attempt(`${providerCode}-provider-build`, "cargo", [
       "build",
       "--manifest-path",
       path.join(pluginRoot, "Cargo.toml"),
       "--release",
       "--locked",
       "--target",
-      hostTarget,
+      hostTarget || "unavailable",
     ]);
-    command(
-      repoRoot,
-      artifactRoot,
+    if (built !== null) attempt(
       `${providerCode}-provider-package`,
       "node",
       [
@@ -194,7 +204,7 @@ async function runQualityGate(rawOptions) {
       ],
     );
   }
-  command(repoRoot, artifactRoot, "gateway-build", "cargo", [
+  attempt("gateway-build", "cargo", [
     "build",
     "--manifest-path",
     path.join(repoRoot, "api/Cargo.toml"),
@@ -205,44 +215,61 @@ async function runQualityGate(rawOptions) {
     "plugin-runner",
   ]);
 
-  const adminDatabaseUrl = new URL(rawOptions.databaseUrl);
-  const publishedPort = Number(adminDatabaseUrl.port || 5432);
-  const containerIds = command(
-    repoRoot,
-    artifactRoot,
-    "postgres-container",
-    "docker",
-    ["ps", "--filter", `publish=${publishedPort}`, "--format", "{{.ID}}"],
-  );
-  const database = createDatabase(
-    dockerDatabaseContract(rawOptions.databaseUrl, containerIds),
-  );
-  let result;
-  try {
-    result = await runWorkflowContract({
-      mainSourceSha,
-      officialSourceSha,
-      profile: "characterize",
-      repoRoot,
-      databaseUrl: database.url,
-      apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
-      pluginRunnerBin: path.join(repoRoot, "api/target/release/plugin-runner"),
-      openaiPackageDir: path.join(packageRoot, "openai"),
-      anthropicPackageDir: path.join(packageRoot, "anthropic"),
-      hostTarget,
-    });
-  } finally {
-    await database.close();
+  let result = null;
+  if (failures.length === 0) {
+    const adminDatabaseUrl = new URL(rawOptions.databaseUrl);
+    const publishedPort = Number(adminDatabaseUrl.port || 5432);
+    const containerIds = attempt(
+      "postgres-container",
+      "docker",
+      ["ps", "--filter", `publish=${publishedPort}`, "--format", "{{.ID}}"],
+    );
+    let database = null;
+    try {
+      if (containerIds !== null) {
+        database = createDatabase(dockerDatabaseContract(rawOptions.databaseUrl, containerIds));
+        result = await runWorkflowContract({
+          mainSourceSha,
+          officialSourceSha,
+          profile: "characterize",
+          repoRoot,
+          databaseUrl: database.url,
+          apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
+          pluginRunnerBin: path.join(repoRoot, "api/target/release/plugin-runner"),
+          openaiPackageDir: path.join(packageRoot, "openai"),
+          anthropicPackageDir: path.join(packageRoot, "anthropic"),
+          hostTarget,
+        });
+        if (result.status !== "pass") failures.push({ name: "workflow-contract", message: result.error?.message || "blocking workflow failed" });
+      }
+    } catch (error) {
+      failures.push({ name: "workflow-contract", message: error.message });
+    } finally {
+      try { await database?.close(); }
+      catch (error) { failures.push({ name: "database-cleanup", message: error.message }); }
+    }
   }
+  const secretValues = [rawOptions.databaseUrl, new URL(rawOptions.databaseUrl).password].filter(Boolean);
+  const publicFailures = failures.map((failure) => ({
+    name: failure.name,
+    message: secretValues.reduce((message, secret) => message.replaceAll(secret, "<redacted>"), failure.message).slice(0, 4_000),
+  }));
+  const gateResult = {
+    status: failures.length === 0 ? "pass" : "fail",
+    failures: publicFailures,
+    workflow: result,
+  };
   fs.writeFileSync(
     path.join(artifactRoot, "quality-gate.json"),
     `${JSON.stringify(
       {
         schema_version: "1flowbase.ai-gateway-quality-gate/v1",
-        status: result.status,
+        status: gateResult.status,
         main_source_sha: mainSourceSha,
         official_source_sha: officialSourceSha,
         host_target: hostTarget,
+        blocking_transports: BLOCKING_TRANSPORTS,
+        failures: publicFailures,
         protocol_result: result,
         client_diagnostics: "non-blocking-local-only",
       },
@@ -250,7 +277,7 @@ async function runQualityGate(rawOptions) {
       2,
     )}\n`,
   );
-  return result;
+  return gateResult;
 }
 
 async function main(argv = process.argv.slice(2)) {
