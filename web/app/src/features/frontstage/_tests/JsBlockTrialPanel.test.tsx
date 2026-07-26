@@ -235,11 +235,19 @@ describe('JsBlockTrialPanel Native React run revision', () => {
         artifact: successful.artifact,
         diagnostics: []
       });
-    const view = renderPanel({
-      code: source('frozen'),
-      revision: 'run:compile-error',
-      nativeCompiler: compiler
-    });
+    const prepareDraftRun = vi.fn().mockResolvedValue(undefined);
+    const revokeDraftRun = vi.fn();
+    const view = render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code={source('frozen')}
+        revision="run:compile-error"
+        nativeCompiler={compiler}
+        onPrepareDraftRun={prepareDraftRun}
+        onRevokeDraftRun={revokeDraftRun}
+      />
+    );
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(screen.getByText('Malformed TSX')).toBeInTheDocument();
@@ -259,9 +267,13 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     expect(compiler.mock.calls[1]?.[0]).toMatchObject({
       source: source('frozen')
     });
+    expect(prepareDraftRun).toHaveBeenCalledTimes(2);
+    expect(revokeDraftRun).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(revokeDraftRun).toHaveBeenCalledTimes(2);
   });
 
-  test('D1-AC-004 confines render errors to the failing ShadowRoot', async () => {
+  test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {
     const compiler = createCompiler();
     const crashingBlock = { ...block, id: 'crashing-block' };
     const stableBlock = { ...block, id: 'stable-block' };
@@ -298,7 +310,7 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     expect(hosts[0]!.shadowRoot).not.toBe(hosts[1]!.shadowRoot);
   });
 
-  test('D4-AC-001/003 binds the shared Native Host context and draft authorization without remounting for API calls', async () => {
+  test('D4-AC-001/003 binds context and draft authorization through the shared declarative Portal Host', async () => {
     const apiPost = vi.fn().mockResolvedValue({ ok: true });
     const prepareDraftRun = vi.fn().mockResolvedValue(undefined);
     const revokeDraftRun = vi.fn();
@@ -344,9 +356,39 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     );
     expect(queries.getByTestId('studio-count')).toHaveTextContent('1');
     expect(compiler).toHaveBeenCalledOnce();
-    view.unmount();
-    expect(revokeDraftRun).toHaveBeenCalledWith(
+
+    view.rerender(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code={code}
+        revision="run:auth-studio:2"
+        nativeCompiler={compiler}
+        onPrepareDraftRun={prepareDraftRun}
+        onRevokeDraftRun={revokeDraftRun}
+        createBlockContext={({ plan }) => {
+          const context = createFrontstageUnavailableBlockContext(plan);
+          return {
+            ...context,
+            api: { ...context.api, post: apiPost }
+          };
+        }}
+      />
+    );
+    await waitFor(() => expect(prepareDraftRun).toHaveBeenCalledTimes(2));
+    expect(revokeDraftRun).toHaveBeenCalledTimes(1);
+    expect(revokeDraftRun).toHaveBeenLastCalledWith(
       expect.stringMatching(/^draft:block-1:/u)
+    );
+    expect(
+      (await trialQueries(view.container).findByTestId('studio-count'))
+        .textContent
+    ).toBe('0');
+
+    view.unmount();
+    expect(revokeDraftRun).toHaveBeenCalledTimes(2);
+    expect(new Set(revokeDraftRun.mock.calls.map(([runId]) => runId)).size).toBe(
+      2
     );
   });
 
