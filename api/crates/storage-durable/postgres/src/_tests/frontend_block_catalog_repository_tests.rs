@@ -187,7 +187,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
             entries: vec![FrontendBlockCatalogRegistryInput {
                 contribution_code: "hero_banner".into(),
                 title: "Hero Banner".into(),
-                runtime: "iframe".into(),
+                runtime: "native_react".into(),
                 entry: "blocks/hero/index.html".into(),
                 code_template: Some("export default {}".into()),
                 code_template_version: Some("1.0.0".into()),
