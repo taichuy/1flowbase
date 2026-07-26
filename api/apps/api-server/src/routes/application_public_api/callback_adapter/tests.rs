@@ -197,6 +197,115 @@ fn anthropic_parallel_results_must_match_one_preceding_callback_group() {
 }
 
 #[test]
+fn anthropic_merged_sequential_history_resumes_only_the_latest_callback_task() {
+    let historical_task = callback(12);
+    let latest_task = callback(13);
+    let historical = encode_anthropic_callback_tool_use_id(historical_task, "toolu_old");
+    let latest = encode_anthropic_callback_tool_use_id(latest_task, "toolu_latest");
+    let request = json!({"messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": historical, "name": "old", "input": {}},
+            {"type": "tool_use", "id": latest, "name": "latest", "input": {}}
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": historical, "content": "OLD"},
+            {"type": "tool_result", "tool_use_id": latest, "content": "LATEST"}
+        ]}
+    ]});
+
+    let correlated = correlate_anthropic_callback(&request)
+        .expect("merged sequential callback history should be valid")
+        .expect("the latest callback task should resume");
+    assert_eq!(correlated.callback_task_id, latest_task);
+    assert_eq!(
+        correlated.tool_results,
+        json!([{"tool_call_id": "toolu_latest", "content": "LATEST"}])
+    );
+}
+
+#[test]
+fn anthropic_merged_history_preserves_all_parallel_results_for_the_latest_task() {
+    let historical_task = callback(14);
+    let latest_task = callback(15);
+    let historical = encode_anthropic_callback_tool_use_id(historical_task, "toolu_old");
+    let latest_first = encode_anthropic_callback_tool_use_id(latest_task, "toolu_a");
+    let latest_second = encode_anthropic_callback_tool_use_id(latest_task, "toolu_b");
+    let request = json!({"messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": historical, "name": "old", "input": {}},
+            {"type": "tool_use", "id": latest_first, "name": "a", "input": {}},
+            {"type": "tool_use", "id": latest_second, "name": "b", "input": {}}
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": historical, "content": "OLD"},
+            {"type": "tool_result", "tool_use_id": latest_first, "content": "A"},
+            {"type": "tool_result", "tool_use_id": latest_second, "content": "B"}
+        ]}
+    ]});
+
+    let correlated = correlate_anthropic_callback(&request)
+        .expect("merged parallel callback history should be valid")
+        .expect("the latest parallel callback task should resume");
+    assert_eq!(correlated.callback_task_id, latest_task);
+    assert_eq!(
+        correlated.tool_results,
+        json!([
+            {"tool_call_id": "toolu_a", "content": "A"},
+            {"tool_call_id": "toolu_b", "content": "B"}
+        ])
+    );
+}
+
+#[test]
+fn anthropic_merged_history_rejects_an_incomplete_latest_callback_task() {
+    let historical_task = callback(16);
+    let latest_task = callback(17);
+    let historical = encode_anthropic_callback_tool_use_id(historical_task, "toolu_old");
+    let latest_first = encode_anthropic_callback_tool_use_id(latest_task, "toolu_a");
+    let latest_second = encode_anthropic_callback_tool_use_id(latest_task, "toolu_b");
+    let request = json!({"messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": historical},
+            {"type": "tool_use", "id": latest_first},
+            {"type": "tool_use", "id": latest_second}
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": historical, "content": "OLD"},
+            {"type": "tool_result", "tool_use_id": latest_first, "content": "A"}
+        ]}
+    ]});
+
+    assert_eq!(
+        correlate_anthropic_callback(&request)
+            .expect_err("an incomplete latest callback task must fail")
+            .message,
+        "callback tool results must cover the preceding assistant tool calls exactly"
+    );
+}
+
+#[test]
+fn anthropic_merged_history_rejects_an_unpaired_tool_result() {
+    let task = callback(18);
+    let paired = encode_anthropic_callback_tool_use_id(task, "toolu_paired");
+    let unpaired = encode_anthropic_callback_tool_use_id(task, "toolu_unpaired");
+    let request = json!({"messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": paired}
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": unpaired, "content": "forged"}
+        ]}
+    ]});
+
+    assert_eq!(
+        correlate_anthropic_callback(&request)
+            .expect_err("an unpaired callback result must fail")
+            .message,
+        "callback tool_result does not match the preceding assistant tool calls"
+    );
+}
+
+#[test]
 fn mixed_callback_task_ids_are_rejected() {
     let first = encode_openai_callback_tool_call_id(callback(6), "call_a");
     let second = encode_openai_callback_tool_call_id(callback(7), "call_b");

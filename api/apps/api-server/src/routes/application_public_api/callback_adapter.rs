@@ -150,16 +150,30 @@ pub(crate) fn correlate_anthropic_callback(
         return Ok(None);
     }
 
-    let assistant_ids = messages[..trailing_start]
+    let preceding = &messages[..trailing_start];
+    let assistant_start = preceding
         .iter()
-        .rev()
-        .take_while(|message| message.get("role").and_then(Value::as_str) == Some("assistant"))
+        .rposition(|message| message.get("role").and_then(Value::as_str) != Some("assistant"))
+        .map_or(0, |index| index + 1);
+    let assistant_ids = preceding[assistant_start..]
+        .iter()
         .flat_map(anthropic_assistant_tool_ids)
-        .collect::<BTreeSet<_>>();
-    if assistant_ids.is_empty() {
+        .collect::<Vec<_>>();
+    let Some(latest_callback_task_id) = assistant_ids
+        .last()
+        .and_then(|external_id| decode_anthropic_callback_tool_use_id(external_id))
+        .map(|(task_id, _)| task_id)
+    else {
         return Err(CallbackCorrelationError::new(
             "messages",
             "callback tool results require the immediately preceding assistant tool calls",
+        ));
+    };
+    let assistant_id_set = assistant_ids.iter().cloned().collect::<BTreeSet<_>>();
+    if assistant_id_set.len() != assistant_ids.len() {
+        return Err(CallbackCorrelationError::new(
+            "messages",
+            "preceding assistant tool call ids must be unique",
         ));
     }
 
@@ -188,7 +202,7 @@ pub(crate) fn correlate_anthropic_callback(
                         "callback tool_result tool_use_id is invalid",
                     )
                 })?;
-            if !assistant_ids.contains(external_id) {
+            if !assistant_id_set.contains(external_id) {
                 return Err(CallbackCorrelationError::new(
                     "messages",
                     "callback tool_result does not match the preceding assistant tool calls",
@@ -208,13 +222,25 @@ pub(crate) fn correlate_anthropic_callback(
         .iter()
         .map(|(_, external_id, _)| external_id.clone())
         .collect::<BTreeSet<_>>();
-    if result_ids != assistant_ids {
+    if result_ids.len() != decoded.len() {
+        return Err(CallbackCorrelationError::new(
+            "messages",
+            "callback tool result ids must be unique",
+        ));
+    }
+    if result_ids != assistant_id_set {
         return Err(CallbackCorrelationError::new(
             "messages",
             "callback tool results must cover the preceding assistant tool calls exactly",
         ));
     }
-    correlated_results(decoded, "messages")
+    correlated_results(
+        decoded
+            .into_iter()
+            .filter(|(task_id, _, _)| *task_id == latest_callback_task_id)
+            .collect(),
+        "messages",
+    )
 }
 
 fn correlate_openai_results<'a>(
