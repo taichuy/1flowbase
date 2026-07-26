@@ -34,6 +34,19 @@ function serverFrame(value) {
   return Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
 }
 
+function collectedFrameChunks(events) {
+  const collected = [];
+  const remaining = consumeServerFrames(
+    Buffer.concat(events.map((event) => serverFrame(JSON.stringify(event)))),
+    (opcode, payload) => {
+      assert.equal(opcode, 0x1);
+      collected.push([payload]);
+    },
+  );
+  assert.equal(remaining.length, 0);
+  return collected;
+}
+
 test('Root #1461 WP-14 WebSocket framing is bounded, masked outbound, and incremental inbound', () => {
   const outbound = clientFrame('hello');
   assert.equal((outbound[1] & 0x80) !== 0, true);
@@ -58,11 +71,11 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
     mockSnapshot: () => snapshots.shift(),
   }, {
     async collectGatewayFrames() {
-      return [
-        JSON.stringify({ type: 'response.created', response: { id: `resp_${RUN_ID}` } }),
-        JSON.stringify({ type: 'response.output_text.delta', delta: 'mock-000001:chunk-a' }),
-        JSON.stringify({ type: 'response.completed', response: { id: `resp_${RUN_ID}` } }),
-      ];
+      return collectedFrameChunks([
+        { type: 'response.created', response: { id: `resp_${RUN_ID}` } },
+        { type: 'response.output_text.delta', delta: 'mock-000001:chunk-a' },
+        { type: 'response.completed', response: { id: `resp_${RUN_ID}` } },
+      ]);
     },
     async queryDurableRun(_target, trace) {
       return { run: { id: trace.run_id, status: 'succeeded' }, digest_sha256: 'a'.repeat(64) };

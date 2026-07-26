@@ -86,8 +86,8 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000 } = {}
           buffered = consumeServerFrames(Buffer.concat([buffered, chunk]), (opcode, payload) => {
             if (opcode === 0x8) return;
             if (opcode !== 0x1) throw new Error(`unsupported Gateway WebSocket opcode ${opcode}`);
+            frames.push([payload]);
             const text = payload.toString('utf8');
-            frames.push(text);
             const event = JSON.parse(text);
             if (event.type === 'response.completed') finish();
             else if (event.type === 'error') finish(new Error(`Gateway WebSocket returned ${event.error?.message ?? 'an error'}`));
