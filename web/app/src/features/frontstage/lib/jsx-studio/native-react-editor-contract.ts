@@ -8,6 +8,8 @@ export const FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS: readonly BlockSourceExtr
       content: `declare module 'react' {
   export type CSSProperties = Record<string, string | number | undefined>;
   export const Fragment: unique symbol;
+  export interface FormEvent<T = Element> { preventDefault(): void; currentTarget: T; }
+  export interface ChangeEvent<T = Element> { target: T; currentTarget: T; }
   export function useState<T>(initial: T): [T, (next: T | ((current: T) => T)) => void];
   export function useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void;
 }
@@ -23,6 +25,10 @@ declare namespace JSX {
       source: '@1flowbase/native-react-context',
       filePath: 'file:///1flowbase/native-react-context.d.ts',
       content: `interface NativeReactBlockContext {
+  currentUser: { id: string; displayName?: string } | null;
+  workspace: { id: string; name?: string };
+  application: { id: string; name?: string } | null;
+  page: { id: string; route: string; title?: string };
   props: Record<string, unknown>;
   inputs: Record<string, unknown>;
   outputs: {
@@ -31,8 +37,23 @@ declare namespace JSX {
   params: Record<string, unknown>;
   state: Record<string, unknown>;
   patch(next: Record<string, unknown>): void;
+  api: {
+    get<TResponse = unknown>(path: string, request?: NativeReactApiRequest): Promise<TResponse>;
+    post<TResponse = unknown>(path: string, request?: NativeReactApiRequest): Promise<TResponse>;
+    put<TResponse = unknown>(path: string, request?: NativeReactApiRequest): Promise<TResponse>;
+    patch<TResponse = unknown>(path: string, request?: NativeReactApiRequest): Promise<TResponse>;
+    delete<TResponse = unknown>(path: string, request?: NativeReactApiRequest): Promise<TResponse>;
+  };
+  events: { emit(name: string, payload?: Record<string, unknown>): void };
   theme: { mode: 'light' | 'dark'; tokens: Record<string, unknown> };
   ui: { locale?: string };
+}
+
+interface NativeReactApiRequest {
+  path?: Record<string, unknown>;
+  query?: Record<string, unknown>;
+  headers?: Record<string, unknown>;
+  body?: unknown;
 }
 
 interface NativeReactBlockProps {

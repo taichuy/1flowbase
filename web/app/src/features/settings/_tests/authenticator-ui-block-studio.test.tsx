@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AuthenticatorUiBlockStudio } from '../components/auth-center/AuthenticatorUiBlockStudio';
+import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
 
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
@@ -123,29 +124,13 @@ describe('AuthenticatorUiBlockStudio', () => {
           pluginVersion: '1.0.0',
           contributionCode: 'frontstage.js-ui-block',
           entry: 'index.js',
-          codeCapabilities: {
-            monacoExtraLibs: [
-              {
-                source: '@1flowbase/block-sdk',
-                filePath:
-                  'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
-                content: "declare module '@1flowbase/block-sdk' {}"
-              },
-              {
-                source: '@1flowbase/block-renderer/antd-facade',
-                filePath:
-                  'file:///node_modules/@1flowbase/block-renderer/antd-facade/index.d.ts',
-                content:
-                  "declare module '@1flowbase/block-renderer/antd-facade' {}"
-              }
-            ]
-          }
+          codeModules: []
         }
       ]
     });
   });
 
-  test('AC-1444 injects the canonical block module declarations into Monaco', async () => {
+  test('D4-AC-005 injects the standard Native React declarations into Monaco', async () => {
     render(
       <AuthenticatorUiBlockStudio
         authenticatorId="password-local"
@@ -156,6 +141,11 @@ describe('AuthenticatorUiBlockStudio', () => {
             label: 'ctx.inputs.authenticator_id',
             member_path: 'inputs.authenticator_id',
             schema: { type: 'string' }
+          },
+          {
+            label: 'ctx.inputs.auth_event',
+            member_path: 'inputs.auth_event',
+            schema: { type: 'object' }
           }
         ]}
         description={null}
@@ -171,7 +161,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         readOnly={false}
         saving={false}
         selfRegistrationEnabled
-        source="export default { main };"
+        source="export default function AuthBlock({ ctx }) { return <div>{String(ctx.props.title)}</div>; }"
         workspaceId="workspace-1"
         onClose={vi.fn()}
         onSave={vi.fn()}
@@ -183,13 +173,20 @@ describe('AuthenticatorUiBlockStudio', () => {
     );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       1,
-      "declare module '@1flowbase/block-sdk' {}",
-      'file:///node_modules/@1flowbase/block-sdk/index.d.ts'
+      expect.stringContaining("declare module 'react'"),
+      'file:///node_modules/@types/react/index.d.ts'
     );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       2,
-      "declare module '@1flowbase/block-renderer/antd-facade' {}",
-      'file:///node_modules/@1flowbase/block-renderer/antd-facade/index.d.ts'
+      expect.stringContaining('interface NativeReactBlockContext'),
+      'file:///1flowbase/native-react-context.d.ts'
+    );
+    expect(resourcePanelHook.render).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contextVariables: [
+          expect.objectContaining({ member_path: 'inputs.authenticator_id' })
+        ]
+      })
     );
   });
 
@@ -385,5 +382,44 @@ describe('AuthenticatorUiBlockStudio', () => {
     expect(screen.getByRole('alert').parentElement).toHaveClass(
       'frontstage-jsx-studio__editor-notice'
     );
+  });
+
+  test('D4-AC-006 does not save, preview, or rewrite a controlled legacy Auth source', () => {
+    const legacySource = `import { Form } from '@1flowbase/block-renderer/antd-facade';
+async function main(ctx) { return { view: <Form />, outputs: {} }; }
+export default { main } satisfies BlockModule;`;
+    const onSave = vi.fn();
+    render(
+      <AuthenticatorUiBlockStudio
+        authenticatorId="password-local"
+        authenticatorTitle="Password"
+        authType="password_local"
+        contextVariables={[]}
+        description={null}
+        enabled
+        errorMessage={null}
+        interfacePathPrefixes={['/api/public/']}
+        publicVariables={{ self_registration_enabled: true }}
+        open
+        readOnly={false}
+        saving={false}
+        selfRegistrationEnabled
+        source={legacySource}
+        workspaceId="workspace-1"
+        onClose={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    expect(screen.getByRole('textbox', { name: 'TSX source' })).toHaveValue(
+      legacySource
+    );
+    expect(
+      screen.getByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(trialPanelHook.render).not.toHaveBeenCalled();
   });
 });

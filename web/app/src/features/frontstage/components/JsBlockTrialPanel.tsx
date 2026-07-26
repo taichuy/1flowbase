@@ -6,6 +6,7 @@ import {
   createNativeTrustedBlockHost,
   evaluateNativeReactComponentArtifactWithRegistry,
   hashJsBlockDraft,
+  diagnoseLegacyBlockModuleSource,
   type JsBlockHostEffectHandlers,
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
@@ -180,6 +181,17 @@ export function JsBlockTrialPanel({
         logs: [],
         diagnostics: []
       });
+
+      const legacyDiagnostic = diagnoseLegacyBlockModuleSource(frozenSource);
+      if (legacyDiagnostic) {
+        setSnapshot({
+          status: 'failed',
+          requestId,
+          logs: [],
+          diagnostics: [legacyDiagnostic]
+        });
+        return;
+      }
 
       try {
         await onPrepareDraftRun?.({

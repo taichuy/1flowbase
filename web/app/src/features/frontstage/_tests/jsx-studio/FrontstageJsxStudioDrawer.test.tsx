@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
+import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
@@ -138,16 +139,15 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   uiCapabilities: ['configurable', 'data_binding'],
   codeCapabilities: {
     template: null,
-    allowedImports: ['@1flowbase/block-renderer/antd-facade'],
+    allowedImports: ['@1flowbase/native-components'],
     monacoExtraLibs: [
       {
-        source: '@1flowbase/block-renderer/antd-facade',
-        filePath: 'file:///node_modules/antd-facade/index.d.ts',
-        content:
-          "declare module '@1flowbase/block-renderer/antd-facade' { export const Button: unknown; export const Stack: unknown; }"
+        source: '@1flowbase/native-components',
+        filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts',
+        content: "declare module '@1flowbase/native-components' { export const Button: unknown; }"
       }
     ],
-    workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
+    workerModuleSources: []
   },
   raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
 };
@@ -348,14 +348,10 @@ describe('FrontstageJsxStudioDrawer', () => {
   });
 
   test('AC-005 submits snippet and import changes as one Monaco edit batch', () => {
-    const source = `import {
-  Stack
-} from '@1flowbase/block-renderer/antd-facade';
-
-async function main(ctx: unknown) {
-  return { view: null, outputs: {} };
+    const source = `export default function Block({ ctx }: NativeReactBlockProps) {
+  return <div>content</div>;
 }`;
-    const selectionOffset = source.indexOf('null');
+    const selectionOffset = source.indexOf('content');
     const positionAt = (offset: number) => {
       const before = source.slice(0, offset).split('\n');
       return {
@@ -556,5 +552,56 @@ async function main(ctx: unknown) {
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  });
+
+  test('D4-AC-006 preserves controlled legacy source and blocks save/run with the stable diagnostic', () => {
+    const legacySource = `async function main(ctx) { return { view: null, outputs: {} }; }
+export default { main } satisfies BlockModule;`;
+    const save = vi.fn();
+    const runPanel = vi.fn(({ runRevision }) => (
+      <div>{String(runRevision)}</div>
+    ));
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: legacySource,
+      draft: legacySource,
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save
+    });
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        diagnostics={[]}
+        runPanel={runPanel}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('textbox', { name: 'JSX source' })).toHaveValue(
+      legacySource
+    );
+    expect(
+      screen.getByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    expect(save).not.toHaveBeenCalled();
+    expect(runPanel.mock.calls.at(-1)?.[0]).toMatchObject({
+      code: legacySource,
+      runRevision: null
+    });
   });
 });

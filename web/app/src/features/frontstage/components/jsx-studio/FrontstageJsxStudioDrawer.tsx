@@ -2,6 +2,7 @@ import type { OnMount } from '@monaco-editor/react';
 import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
+  diagnoseLegacyBlockModuleSource,
   validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
 import type { ReactNode } from 'react';
@@ -83,6 +84,13 @@ export function FrontstageJsxStudioDrawer({
   }, [block.id, open]);
   const compileDiagnostics = useMemo(() => {
     if (!tabId || draft.trim().length === 0) return [];
+    const legacyDiagnostic = diagnoseLegacyBlockModuleSource(draft);
+    if (legacyDiagnostic) {
+      return createJsBlockDiagnostics(
+        { pageId, tabId, blockId: block.id },
+        [legacyDiagnostic]
+      );
+    }
     const validation = validateNativeTrustedBlockSource(draft);
     return validation.ok
       ? []
@@ -91,6 +99,7 @@ export function FrontstageJsxStudioDrawer({
           validation.errors
         );
   }, [block.id, draft, pageId, tabId]);
+  const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
   const selectedDiagnostics = [...diagnostics, ...compileDiagnostics].filter(
     (diagnostic) =>
       diagnostic.pageId === pageId &&
@@ -179,8 +188,14 @@ export function FrontstageJsxStudioDrawer({
       }}
       onInjectContext={injectFrontstageContextComment}
       onReset={reset}
-      onRun={() => setRunRevision((current) => (current ?? 0) + 1)}
-      onSave={() => void save().catch(() => undefined)}
+      onRun={() => {
+        if (!hasLegacySource) {
+          setRunRevision((current) => (current ?? 0) + 1);
+        }
+      }}
+      onSave={() => {
+        if (!hasLegacySource) void save().catch(() => undefined);
+      }}
       renderResource={(section) => (
         <JsxStudioResourcePanel
           block={block}

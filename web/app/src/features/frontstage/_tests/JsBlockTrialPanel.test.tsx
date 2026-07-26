@@ -9,6 +9,7 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
+  LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
   compileNativeReactComponent,
   type NativeReactCatalogDependencyLock
 } from '@1flowbase/page-runtime';
@@ -365,5 +366,30 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     expect(revokeDraftRun).toHaveBeenCalledWith(
       expect.stringMatching(/^draft:block-1:/u)
     );
+  });
+
+  test('D4-AC-006 rejects controlled legacy source before authorization or compilation', async () => {
+    const legacySource = `async function main(ctx) { return { view: null, outputs: {} }; }
+export default { main } satisfies BlockModule;`;
+    const compiler = createCompiler();
+    const prepareDraftRun = vi.fn();
+    render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code={legacySource}
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        revision="run:legacy"
+        nativeCompiler={compiler}
+        onPrepareDraftRun={prepareDraftRun}
+      />
+    );
+
+    expect(
+      await screen.findByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
+    ).toBeInTheDocument();
+    expect(compiler).not.toHaveBeenCalled();
+    expect(prepareDraftRun).not.toHaveBeenCalled();
   });
 });

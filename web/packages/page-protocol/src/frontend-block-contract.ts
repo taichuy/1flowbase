@@ -45,7 +45,7 @@ export interface FrontendBlockPermissions {
 
 export const FRONTEND_BLOCK_CODE_MODULE_SOURCES = [
   '@1flowbase/block-sdk',
-  '@1flowbase/block-renderer/antd-facade'
+  '@1flowbase/native-components'
 ] as const;
 
 export type FrontendBlockCodeModuleSource =

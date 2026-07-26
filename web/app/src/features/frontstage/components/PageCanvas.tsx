@@ -386,6 +386,11 @@ function NativeRuntimeSlotSurface({
           type="error"
           showIcon
           message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+          description={
+            preparation.status === 'failed'
+              ? preparation.error.message
+              : instanceState.error?.message
+          }
           action={
             retry ? (
               <Button size="small" onClick={retry}>

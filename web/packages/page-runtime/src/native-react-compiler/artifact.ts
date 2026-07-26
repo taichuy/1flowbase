@@ -14,6 +14,7 @@ import {
   nativeReactCatalogDependencyLockIdentity,
   type NativeReactCatalogDependencyLock
 } from './module-registry/contracts';
+import { diagnoseLegacyBlockModuleSource } from './source-contract';
 
 export const NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT =
   '1flowbase/native-react-component' as const;
@@ -62,6 +63,10 @@ export function compileNativeReactComponent(
   dependencyLockValue: unknown = [],
   runtimeFingerprint = createNativeReactRuntimeFingerprint('inline')
 ): NativeReactComponentCompileResult {
+  const legacyDiagnostic = diagnoseLegacyBlockModuleSource(source);
+  if (legacyDiagnostic) {
+    return { ok: false, diagnostics: [legacyDiagnostic] };
+  }
   const dependencyLock =
     canonicalizeNativeReactCatalogDependencyLock(dependencyLockValue);
   if (!dependencyLock) {

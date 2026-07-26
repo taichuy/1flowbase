@@ -1,4 +1,5 @@
 import type { OnMount } from '@monaco-editor/react';
+import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
@@ -53,7 +54,7 @@ export interface AuthenticatorUiBlockStudioProps {
 const AUTH_CONTEXT_COMMENT = [
   '/**',
   ' * @1flowbase-context',
-  ' * inputs: authenticator_id, public_variables, auth_event',
+  ' * inputs: authenticator_id, public_variables',
   ' * interfaces: ctx.api',
   ' * outputs: 无',
   ' */'
@@ -93,7 +94,18 @@ export function AuthenticatorUiBlockStudio({
     }),
     [authoringCatalogEntry]
   );
+  const authorContextVariables = useMemo(
+    () =>
+      contextVariables?.filter(
+        ({ member_path }) => member_path !== 'inputs.auth_event'
+      ) ?? null,
+    [contextVariables]
+  );
   const [draft, setDraft] = useState(source);
+  const legacyDiagnostic = useMemo(
+    () => diagnoseLegacyBlockModuleSource(draft),
+    [draft]
+  );
   const [previewRequest, setPreviewRequest] = useState<{
     revision: string;
     source: string;
@@ -198,7 +210,7 @@ export function AuthenticatorUiBlockStudio({
     <BlockSourceStudio
       contextComment={AUTH_CONTEXT_COMMENT}
       dirty={draft !== source}
-      errorMessage={errorMessage}
+      errorMessage={legacyDiagnostic?.message ?? errorMessage}
       extraLibs={editorProjection.monacoExtraLibs}
       initialSection="code"
       loading={false}
@@ -218,6 +230,7 @@ export function AuthenticatorUiBlockStudio({
       onInjectContext={injectFrontstageContextComment}
       onReset={() => setDraft(source)}
       onRun={(runSource) => {
+        if (diagnoseLegacyBlockModuleSource(runSource)) return;
         previewSequenceRef.current += 1;
         setPreviewRequest({
           revision: `run:${previewSequenceRef.current}`,
@@ -225,13 +238,13 @@ export function AuthenticatorUiBlockStudio({
         });
       }}
       onSave={() => {
-        void onSave(draft).catch(() => undefined);
+        if (!legacyDiagnostic) void onSave(draft).catch(() => undefined);
       }}
       renderResource={(section) => (
         <JsxStudioResourcePanel
           block={authoringBlock}
           codeSource={draft}
-          contextVariables={contextVariables ?? null}
+          contextVariables={authorContextVariables}
           interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}

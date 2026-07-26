@@ -1,5 +1,7 @@
 import {
   evaluateNativeReactComponentArtifactWithRegistry,
+  diagnoseLegacyBlockModuleSource,
+  NativeReactSourceContractError,
   nativeReactCatalogDependencyLockIdentity,
   type NativeReactCatalogDependencyLock,
   type NativeReactModuleRegistry
@@ -151,6 +153,10 @@ export function useFrontstagePageCanvasNativePreparations({
             throw new Error(
               `Block code digest does not match source_sha256 for ${request.codeRef}.`
             );
+          }
+          const legacyDiagnostic = diagnoseLegacyBlockModuleSource(source.code);
+          if (legacyDiagnostic) {
+            throw new NativeReactSourceContractError(legacyDiagnostic);
           }
           enterStage('artifact_lookup');
           const identity = createFrontstageNativeReactArtifactCacheIdentity({

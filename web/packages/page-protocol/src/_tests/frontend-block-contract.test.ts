@@ -48,6 +48,19 @@ describe('frontend block contract vocabulary', () => {
       workerModuleSources: ['@1flowbase/block-sdk']
     });
   });
+  test('D4-AC-005 excludes the legacy facade from author code modules', () => {
+    expect(
+      createFrontendBlockCodeCapabilities({
+        code_modules: [
+          {
+            source: '@1flowbase/native-components',
+            type_declarations:
+              "declare module '@1flowbase/native-components' {}"
+          }
+        ]
+      }).allowedImports
+    ).toEqual(['@1flowbase/native-components']);
+  });
   test('exports the backend-aligned manifest and catalog vocabularies', () => {
     expect(FRONTEND_BLOCK_RUNTIMES).toEqual(['iframe']);
     expect(FRONTEND_BLOCK_CONTEXT_PRIMITIVES).toEqual([

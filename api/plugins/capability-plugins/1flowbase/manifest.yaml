@@ -29,7 +29,7 @@ block_contributions:
     runtime: native_react
     entry: index.js
     code_template: |
-      import React, { useState } from 'react';
+      import { useState } from 'react';
       import type { BlockComponentProps } from '@1flowbase/block-sdk';
       import { Surface } from '@1flowbase/native-components';
 
@@ -45,7 +45,7 @@ block_contributions:
           </Surface>
         );
       }
-    code_template_version: 4.0.0
+    code_template_version: 5.0.0
     code_template_language: tsx
     code_modules:
       - source: "@1flowbase/block-sdk"
@@ -73,13 +73,34 @@ block_contributions:
             export interface BlockContext {
               readonly currentUser: BlockContextIdentity | null;
               readonly workspace: BlockContextEntity;
-              readonly application: BlockContextEntity;
+              readonly application: BlockContextEntity | null;
               readonly page: BlockContextPage;
               readonly inputs: Readonly<BlockContextRecord>;
+              readonly outputs: {
+                publish(values: BlockContextRecord): { ok: boolean; stale: boolean; error?: string };
+              };
               readonly params: Readonly<BlockContextRecord>;
               readonly props: Readonly<BlockContextRecord>;
-              readonly theme: Readonly<BlockContextRecord>;
-              readonly ui: Readonly<BlockContextRecord>;
+              readonly state: Readonly<BlockContextRecord>;
+              patch(next: BlockContextRecord): void | Promise<void>;
+              readonly api: {
+                get<TResponse = unknown>(path: string, request?: BlockContextRecord): Promise<TResponse>;
+                post<TResponse = unknown>(path: string, request?: BlockContextRecord): Promise<TResponse>;
+                put<TResponse = unknown>(path: string, request?: BlockContextRecord): Promise<TResponse>;
+                patch<TResponse = unknown>(path: string, request?: BlockContextRecord): Promise<TResponse>;
+                delete<TResponse = unknown>(path: string, request?: BlockContextRecord): Promise<TResponse>;
+              };
+              readonly events: {
+                emit(name: string, payload?: BlockContextRecord): void;
+              };
+              readonly theme: {
+                readonly mode: 'light' | 'dark';
+                readonly tokens: Readonly<BlockContextRecord>;
+              };
+              readonly ui: {
+                readonly locale?: string;
+                readonly density?: 'compact' | 'comfortable';
+              };
             }
             export interface BlockComponentProps {
               readonly ctx: BlockContext;
