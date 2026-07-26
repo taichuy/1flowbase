@@ -360,6 +360,32 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .and_then(|module| module["type_declarations"].as_str())
         .unwrap();
     assert!(native_declarations.contains("interface SurfaceProps"));
+    let sdk_module = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/block-sdk")
+        .unwrap();
+    assert_eq!(sdk_module["version"], "1.0.0");
+    assert_eq!(
+        sdk_module["browser_asset"]["sha256"],
+        "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+    );
+    assert!(sdk_module["browser_asset"].get("path").is_none());
+    assert!(sdk_module["browser_asset"].get("url").is_none());
+    let native_module = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/native-components")
+        .unwrap();
+    assert_eq!(native_module["version"], "1.0.0");
+    assert_eq!(
+        native_module["browser_asset"]["sha256"],
+        "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"
+    );
+    assert!(native_module["browser_asset"].get("path").is_none());
+    assert!(native_module["browser_asset"].get("url").is_none());
     assert_eq!(
         jsx_block["code_modules"]
             .as_array()
@@ -472,8 +498,19 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
     assert_eq!(entry["code_template_language"].as_str(), Some("tsx"));
     assert_eq!(
         entry["code_modules"][0]["source"].as_str(),
-        Some("@1flowbase/block-sdk")
+        Some("@acme/native-components")
     );
+    assert_eq!(entry["code_modules"][0]["version"], "1.2.3");
+    assert_eq!(
+        entry["code_modules"][0]["browser_asset"]["sha256"],
+        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+    );
+    assert!(entry["code_modules"][0]["browser_asset"]
+        .get("path")
+        .is_none());
+    assert!(entry["code_modules"][0]["browser_asset"]
+        .get("url")
+        .is_none());
     assert_eq!(
         entry["context_contract"]["primitives"][0].as_str(),
         Some("text")
