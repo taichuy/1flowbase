@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { normalizeOptions, requireLoopbackUrl, requirePostgresUrl } = require('../inputs');
+const { normalizeOptions, requireLoopbackUrl, requirePort, requirePostgresUrl } = require('../inputs');
 const { parseArgs } = require('../../../cli/ai-gateway-fixture');
 
 // Root #1377 AC-001/008: lifecycle inputs must be explicit and fail closed.
@@ -15,6 +15,9 @@ test('controlled negatives reject non-PostgreSQL and non-loopback inputs', () =>
   assert.throws(() => requireLoopbackUrl('https://api.openai.com/v1'), /plain HTTP on loopback/u);
   assert.throws(() => requireLoopbackUrl('http://127.0.0.1:9000/?token=x'), /query/u);
   assert.throws(() => requireLoopbackUrl('http://127.0.0.1:9000/v1'), /without a path/u);
+  assert.throws(() => requirePort('7800', 'api-server port'), /integer between 1 and 65535/u);
+  assert.throws(() => requirePort(0, 'api-server port'), /integer between 1 and 65535/u);
+  assert.throws(() => requirePort(65_536, 'api-server port'), /integer between 1 and 65535/u);
 });
 
 test('CLI accepts the complete explicit environment contract', () => {
@@ -47,6 +50,14 @@ test('normalization requires executable binaries and exact package files', () =>
       upstreamBaseUrl: 'http://127.0.0.1:9123/',
     });
     assert.equal(options.upstreamBaseUrl, 'http://127.0.0.1:9123');
+    assert.equal(options.apiPort, null);
+
+    const explicitPort = normalizeOptions({
+      ...options,
+      upstreamBaseUrl: 'http://127.0.0.1:9123/',
+      apiPort: 7800,
+    });
+    assert.equal(explicitPort.apiPort, 7800);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -8,7 +8,13 @@ const path = require('node:path');
 const { bootstrapGateway } = require('./bootstrap');
 const { OwnerHttpClient } = require('./http-owner');
 const { normalizeOptions } = require('./inputs');
-const { reserveLoopbackPort, spawnOwned, stopOwned, waitForHealth } = require('./process-owner');
+const {
+  assertLoopbackPortAvailable,
+  reserveLoopbackPort,
+  spawnOwned,
+  stopOwned,
+  waitForHealth,
+} = require('./process-owner');
 const { persistServiceLogs, redactServiceLog } = require('./service-logs');
 const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
 
@@ -65,6 +71,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
   const options = normalizeOptions(rawOptions);
   const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-ai-gateway-fixture-'));
   const reservePort = dependencies.reserveLoopbackPort || reserveLoopbackPort;
+  const assertPortAvailable = dependencies.assertLoopbackPortAvailable || assertLoopbackPortAvailable;
   const spawnProcess = dependencies.spawnOwned || spawnOwned;
   const health = dependencies.waitForHealth || waitForHealth;
   const stopProcess = dependencies.stopOwned || stopOwned;
@@ -127,9 +134,14 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     }
   };
   try {
-    const runnerPort = await reservePort();
-    let apiPort = await reservePort();
-    while (apiPort === runnerPort) apiPort = await reservePort();
+    let runnerPort = await reservePort();
+    while (options.apiPort !== null && runnerPort === options.apiPort) runnerPort = await reservePort();
+    let apiPort = options.apiPort;
+    if (apiPort === null) {
+      apiPort = await reservePort();
+      while (apiPort === runnerPort) apiPort = await reservePort();
+    }
+    if (options.apiPort !== null) await assertPortAvailable(apiPort);
     const pluginRunnerBaseUrl = `http://127.0.0.1:${runnerPort}`;
     const gatewayBaseUrl = `http://127.0.0.1:${apiPort}`;
     const scrubbedCredentials = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' };
@@ -138,7 +150,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       PLUGIN_RUNNER_ADDR: `127.0.0.1:${runnerPort}`,
       RUST_LOG: process.env.RUST_LOG || 'info',
     }, { cwd: scratchRoot });
-    await health(pluginRunnerBaseUrl, 'plugin-runner');
+    await health(pluginRunnerBaseUrl, 'plugin-runner', { processHandle: runnerProcess });
 
     const rootAccount = `gateway_fixture_${crypto.randomBytes(4).toString('hex')}`;
     rootPassword = `Fixture-${crypto.randomBytes(18).toString('base64url')}`;
@@ -162,7 +174,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       BOOTSTRAP_ROOT_NICKNAME: 'Gateway Fixture',
       RUST_LOG: process.env.RUST_LOG || 'info',
     }, { cwd: scratchRoot });
-    await health(gatewayBaseUrl, 'api-server');
+    await health(gatewayBaseUrl, 'api-server', { processHandle: apiProcess });
 
     const client = new Client(gatewayBaseUrl, dependencies.fetchImpl || globalThis.fetch);
     ownerClient = client;
