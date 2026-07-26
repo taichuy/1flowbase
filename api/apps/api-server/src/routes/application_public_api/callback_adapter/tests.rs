@@ -135,7 +135,7 @@ fn responses_complete_history_without_previous_response_must_match_outputs_exact
         correlate_openai_responses_callback(&request, None)
             .expect_err("mismatched Responses history must fail")
             .message,
-        "callback tool results must cover the preceding assistant tool calls exactly"
+        "callback tool result does not match the preceding assistant tool calls"
     );
 }
 
