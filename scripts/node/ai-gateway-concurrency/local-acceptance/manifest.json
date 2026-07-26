@@ -43,12 +43,12 @@
       "sha256": "e51d7cb4325f52363e339da24ef58dc466ccf9dff7a30b227ecae6b666d35cc6"
     },
     "openaiPackage": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/tmp/test-governance/ai-gateway-quality-gate/packages/openai/1flowbase@openai@0.2.15@linux-amd64@0da77203de9b6e4d2a51532c418b6a0448d61a12b09f17c6a1ddfd670fee1104.1flowbasepkg",
-      "sha256": "0da77203de9b6e4d2a51532c418b6a0448d61a12b09f17c6a1ddfd670fee1104"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
+      "filename_pattern": "^1flowbase@openai@0\\.2\\.15@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "anthropicPackage": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic/1flowbase@anthropic@0.1.24@linux-amd64@8c2c0c88e38e10e22db075832a8ba6b627f32cd3e4b5a68e6540e227f3f3fbbb.1flowbasepkg",
-      "sha256": "8c2c0c88e38e10e22db075832a8ba6b627f32cd3e4b5a68e6540e227f3f3fbbb"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
+      "filename_pattern": "^1flowbase@anthropic@0\\.1\\.24@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "codex": {
       "path": "/home/linuxbrew/.linuxbrew/bin/codex",

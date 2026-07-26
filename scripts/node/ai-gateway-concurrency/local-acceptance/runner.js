@@ -9,7 +9,7 @@ const { runLocalClientAcceptance } = require('../local-client-acceptance/driver'
 const { createMockUpstream } = require('../mock-upstream');
 const { runWireAudit } = require('../wire-audit/runner');
 const { characterizeOptions, wireAuditManifest } = require('../workflow-contract/runner');
-const { loadManifest } = require('./manifest');
+const { loadManifest, resolveArtifactInventory } = require('./manifest');
 const system = require('./system');
 
 function publicError(error) {
@@ -28,6 +28,7 @@ async function closeOwned(label, owned, cleanupErrors) {
 async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
   const deps = {
     loadManifest: dependencies.loadManifest || loadManifest,
+    resolveArtifactInventory: dependencies.resolveArtifactInventory || resolveArtifactInventory,
     preflight: dependencies.preflight || system.preflight,
     createEvidenceRoot: dependencies.createEvidenceRoot || system.createEvidenceRoot,
     createDatabase: dependencies.createDatabase || system.createDatabase,
@@ -60,7 +61,7 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
   const cleanupErrors = [];
 
   try {
-    manifest = deps.loadManifest(rawOptions.manifest);
+    manifest = deps.resolveArtifactInventory(deps.loadManifest(rawOptions.manifest));
     preflightEvidence = await deps.preflight(manifest);
     evidenceRoot = deps.createEvidenceRoot(manifest.repo.host.path);
     database = deps.createDatabase(manifest.database);
