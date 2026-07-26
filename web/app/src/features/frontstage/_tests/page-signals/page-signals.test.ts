@@ -77,7 +77,7 @@ describe('Frontstage page signals', () => {
     const invalid = commitFrontstageBlockOutputs({
       block: producer,
       outputs: { total: 'two' },
-      scope: 'tab',
+      scopes: ['tab', 'page'],
       tabId: 'tab-1',
       snapshot: initial
     });
@@ -87,7 +87,7 @@ describe('Frontstage page signals', () => {
     const committed = commitFrontstageBlockOutputs({
       block: producer,
       outputs: { total: 2 },
-      scope: 'tab',
+      scopes: ['tab', 'page'],
       tabId: 'tab-1',
       snapshot: initial
     });
@@ -96,6 +96,15 @@ describe('Frontstage page signals', () => {
       readFrontstageSignal(committed.snapshot, {
         scope: 'tab',
         tab_id: 'tab-1',
+        block_id: 'producer',
+        output: 'total'
+      })
+    ).toBe(2);
+    expect(committed.snapshot.revision).toBe(1);
+    expect(
+      readFrontstageSignal(committed.snapshot, {
+        scope: 'page',
+        tab_id: 'another-tab',
         block_id: 'producer',
         output: 'total'
       })
@@ -117,7 +126,7 @@ describe('Frontstage page signals', () => {
           content_type: 'application/zip'
         }
       },
-      scope: 'tab',
+      scopes: ['tab'],
       tabId: 'tab-1',
       snapshot: initial
     });

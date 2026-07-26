@@ -13,19 +13,19 @@ export interface FrontstageSignalCommitResult {
 }
 
 export function createFrontstageSignalSnapshot(): FrontstageSignalSnapshot {
-  return { revision: 0, values: new Map() };
+  return Object.freeze({ revision: 0, values: new Map() });
 }
 
 export function commitFrontstageBlockOutputs({
   block,
   outputs,
-  scope,
+  scopes,
   tabId,
   snapshot
 }: {
   block: FrontstageBlockInstance;
   outputs: Record<string, unknown>;
-  scope: 'tab' | 'page';
+  scopes: readonly ('tab' | 'page')[];
   tabId: string;
   snapshot: FrontstageSignalSnapshot;
 }): FrontstageSignalCommitResult {
@@ -51,18 +51,23 @@ export function commitFrontstageBlockOutputs({
   }
 
   const values = new Map(snapshot.values);
-  for (const port of ports) {
-    values.set(
-      signalKey({
-        scope,
-        tab_id: tabId,
-        block_id: block.id,
-        output: port.name
-      }),
-      outputs[port.name]
-    );
+  for (const scope of scopes) {
+    for (const port of ports) {
+      values.set(
+        signalKey({
+          scope,
+          tab_id: tabId,
+          block_id: block.id,
+          output: port.name
+        }),
+        freezeJsonValue(outputs[port.name])
+      );
+    }
   }
-  return { ok: true, snapshot: { revision: snapshot.revision + 1, values } };
+  return {
+    ok: true,
+    snapshot: Object.freeze({ revision: snapshot.revision + 1, values })
+  };
 }
 
 export function readFrontstageSignal(
@@ -130,6 +135,23 @@ function isJsonValue(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
   return isRecord(value) && Object.values(value).every(isJsonValue);
+}
+
+function freezeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(freezeJsonValue));
+  }
+  if (isRecord(value)) {
+    return Object.freeze(
+      Object.fromEntries(
+        Object.entries(value).map(([name, item]) => [
+          name,
+          freezeJsonValue(item)
+        ])
+      )
+    );
+  }
+  return value;
 }
 
 function asSchema(value: unknown): Record<string, unknown> {
