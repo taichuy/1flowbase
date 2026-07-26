@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, waitFor, within } from '@testing-library/react';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { ReactNode } from 'react';
@@ -59,6 +59,11 @@ function createBlockRoot(): HTMLDivElement {
   return root;
 }
 
+function shadowQueries(root: Element) {
+  if (!root.shadowRoot) throw new Error('Expected native block ShadowRoot.');
+  return within(root.shadowRoot as unknown as HTMLElement);
+}
+
 function createFakeBlockContext(
   overrides: Partial<BlockContext> = {}
 ): BlockContext {
@@ -110,7 +115,7 @@ export default function HostCompositionBlock(props) {
       <Button type="primary">{props.props.title}</Button>
       <Button>{props.ctx.props.title}</Button>
       <Button>
-        {String(props.portalContainment.root instanceof HTMLElement)}
+        {String(props.portalContainment.root instanceof ShadowRoot)}
       </Button>
     </Space>
   );
@@ -165,13 +170,17 @@ describe('native trusted block host composition smoke contract', () => {
     });
     expect(testingRoot.renderSpy).toHaveBeenCalledTimes(1);
     expect(
-      await screen.findByRole('button', { name: 'Prepared JSX AntD block' })
+      await shadowQueries(root).findByRole('button', {
+        name: 'Prepared JSX AntD block'
+      })
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Controlled ctx title' })
+      await shadowQueries(root).findByRole('button', {
+        name: 'Controlled ctx title'
+      })
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'true' })
+      await shadowQueries(root).findByRole('button', { name: 'true' })
     ).toBeInTheDocument();
     expect(query).toHaveBeenCalledWith('/api/console/test', {
       body: { title: 'Prepared JSX AntD block' }
@@ -182,8 +191,11 @@ describe('native trusted block host composition smoke contract', () => {
       'host-composition-native-block'
     );
     expect(
-      await screen.findByTitle('native-provider-scope')
+      await shadowQueries(root).findByTitle('native-provider-scope')
     ).toBeInTheDocument();
+    expect(
+      root.shadowRoot?.querySelector('style[data-css-hash]')
+    ).not.toBeNull();
 
     const disposedState = await host.dispose();
 
@@ -191,11 +203,7 @@ describe('native trusted block host composition smoke contract', () => {
     expect(testingRoot.unmountSpy).toHaveBeenCalledTimes(1);
     expect(root).not.toHaveAttribute(NATIVE_STYLE_SCOPE_ROOT_ATTRIBUTE);
     expect(root).not.toHaveAttribute(NATIVE_STYLE_SCOPE_ID_ATTRIBUTE);
-    await waitFor(() => {
-      expect(
-        screen.queryByRole('button', { name: 'Prepared JSX AntD block' })
-      ).not.toBeInTheDocument();
-    });
+    expect(root.shadowRoot?.childNodes).toHaveLength(0);
   });
 
   test('does not enter React mount when prepare rejects missing native permission', async () => {

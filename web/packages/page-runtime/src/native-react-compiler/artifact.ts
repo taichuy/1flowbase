@@ -5,6 +5,7 @@ import type {
   NativeTrustedBlockImportBinding,
   NativeTrustedBlockInjectedModule
 } from '../native-trusted-block/source-evaluator';
+import { NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE } from '../native-trusted-block/source-evaluator-types';
 import {
   sha256Text,
   type JsonValue
@@ -152,7 +153,8 @@ function readInjectedModules(
   const modules = value.map((item) => {
     if (!isRecord(item) || !isAllowedImport(item.source)) return null;
     const bindings = readImportBindings(item.bindings);
-    return bindings && bindings.every((binding) => binding.source === item.source)
+    return bindings &&
+      bindings.every((binding) => binding.source === item.source)
       ? { source: item.source, bindings }
       : null;
   });
@@ -219,7 +221,10 @@ function isAllowedImport(
 ): value is NativeTrustedBlockInjectedModule['source'] {
   return (
     typeof value === 'string' &&
-    (NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS as readonly string[]).includes(value)
+    ((NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS as readonly string[]).includes(
+      value
+    ) ||
+      value === NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE)
   );
 }
 
@@ -227,10 +232,15 @@ function canonicalJsonValue(
   value: unknown,
   seen = new WeakSet<object>()
 ): JsonValue | undefined {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean'
+  ) {
     return value;
   }
-  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? value : undefined;
   if (typeof value !== 'object' || seen.has(value)) return undefined;
   seen.add(value);
   if (Array.isArray(value)) {

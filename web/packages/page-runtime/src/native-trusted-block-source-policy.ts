@@ -9,8 +9,7 @@ import {
   deniedConstructorIdentifiers,
   deniedEscapeIdentifiers,
   deniedGlobalIdentifiers,
-  deniedPortalIdentifiers,
-  deniedStylesheetProperties
+  deniedPortalIdentifiers
 } from './native-trusted-block/source-policy-constants';
 
 export {
@@ -526,16 +525,6 @@ function validateDeniedCapabilities(
       return;
     }
 
-    if (isStyleTagCreateElementCall(source, token.end)) {
-      addError(
-        capabilityError(
-          token.value,
-          'Style tag injection is not allowed in native trusted block source.'
-        )
-      );
-      return;
-    }
-
     const deniedPropertyAccess = readDeniedPropertyAccess(
       source,
       token,
@@ -566,9 +555,7 @@ function validateDeniedCapabilities(
       return;
     }
 
-    if (
-      deniedConstructorIdentifiers.has(token.value)
-    ) {
+    if (deniedConstructorIdentifiers.has(token.value)) {
       addError(
         failureError(
           'transform_failed',
@@ -728,7 +715,11 @@ function collectAntdModalDestructuringAliases(
 
     const aliasToken = tokens[tokenIndex + 1];
     const moduleToken = tokens[tokenIndex + 2];
-    if (!aliasToken || !moduleToken || !antdModuleAliases.has(moduleToken.value)) {
+    if (
+      !aliasToken ||
+      !moduleToken ||
+      !antdModuleAliases.has(moduleToken.value)
+    ) {
       return;
     }
 
@@ -758,7 +749,12 @@ function readStaticImportSource(
   const importToken = tokens[importTokenIndex];
   const nextCodeIndex = skipWhitespace(source, importToken.end);
   const nextChar = source[nextCodeIndex];
-  if (nextChar === '(' || nextChar === '.' || nextChar === '"' || nextChar === "'") {
+  if (
+    nextChar === '(' ||
+    nextChar === '.' ||
+    nextChar === '"' ||
+    nextChar === "'"
+  ) {
     return undefined;
   }
 
@@ -829,7 +825,10 @@ function addAlias(aliases: Set<string>, alias: string): boolean {
   return true;
 }
 
-function capabilityError(identifier: string, message: string): BlockProtocolError {
+function capabilityError(
+  identifier: string,
+  message: string
+): BlockProtocolError {
   return failureError(
     'transform_failed',
     `source.identifiers.${identifier}`,
@@ -861,30 +860,11 @@ function readDeniedPropertyAccess(
     };
   }
 
-  if (deniedStylesheetProperties.has(access.property)) {
-    return {
-      identifier: access.property,
-      code: 'transform_failed',
-      message: `Stylesheet property '${access.property}' is not allowed in native trusted block source.`
-    };
-  }
-
   if (access.property === 'cookie') {
     return {
       identifier: access.property,
       code: 'transform_failed',
       message: 'Cookie access is not allowed in native trusted block source.'
-    };
-  }
-
-  if (
-    access.property === 'createElement' &&
-    isStyleTagCreateElementCall(source, access.end)
-  ) {
-    return {
-      identifier: access.property,
-      code: 'transform_failed',
-      message: 'Style tag injection is not allowed in native trusted block source.'
     };
   }
 
@@ -919,7 +899,8 @@ function readDeniedPropertyAccess(
   if (deniedCallIdentifiers.has(access.property)) {
     return {
       identifier: access.property,
-      code: access.property === 'require' ? 'import_denied' : 'transform_failed',
+      code:
+        access.property === 'require' ? 'import_denied' : 'transform_failed',
       message: `Call '${access.property}' is not allowed in native trusted block source.`
     };
   }
@@ -940,13 +921,15 @@ function isDeniedComputedProperty(property: string): boolean {
     deniedEscapeIdentifiers.has(property) ||
     deniedCallIdentifiers.has(property) ||
     deniedConstructorIdentifiers.has(property) ||
-    deniedStylesheetProperties.has(property) ||
     deniedAntdStaticModalMethods.has(property) ||
     property === 'cookie'
   );
 }
 
-function isComputedPropertyAccessTarget(source: string, start: number): boolean {
+function isComputedPropertyAccessTarget(
+  source: string,
+  start: number
+): boolean {
   const targetIndex = previousNonWhitespaceIndex(source, start);
   if (targetIndex < 0) {
     return false;
@@ -1021,18 +1004,6 @@ function isCallExpressionAt(source: string, start: number): boolean {
   }
 
   return false;
-}
-
-function isStyleTagCreateElementCall(source: string, start: number): boolean {
-  const openParenIndex = skipWhitespace(source, start);
-  if (source[openParenIndex] !== '(') {
-    return false;
-  }
-
-  const tagLiteralIndex = skipWhitespace(source, openParenIndex + 1);
-  const tagLiteral = readStringLiteral(source, tagLiteralIndex);
-
-  return tagLiteral?.value.toLowerCase() === 'style';
 }
 
 function readPropertyAccess(

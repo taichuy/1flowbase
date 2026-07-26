@@ -52,9 +52,12 @@ describe('Native trusted block host lifecycle adapter', () => {
     };
     const host = createNativeTrustedBlockHost({ adapter });
 
-    const state = await host.mount(createPreparePlan({ blockId: 'block-fail' }), {
-      handle: 'root-fail'
-    });
+    const state = await host.mount(
+      createPreparePlan({ blockId: 'block-fail' }),
+      {
+        handle: 'root-fail'
+      }
+    );
 
     expect(state).toMatchObject({
       status: 'failed',
@@ -82,6 +85,34 @@ describe('Native trusted block host lifecycle adapter', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
     expect(firstState).toEqual({ status: 'disposed' });
     expect(secondState).toBe(firstState);
+  });
+
+  test('D1-AC-004 retry disposes and remounts only the current block instance', async () => {
+    const firstDispose = vi.fn();
+    const secondDispose = vi.fn();
+    const plan = createPreparePlan({ blockId: 'retry-block' });
+    const root = { handle: 'retry-root' };
+    const adapter: NativeTrustedBlockHostAdapter = {
+      mount: vi
+        .fn()
+        .mockReturnValueOnce({ dispose: firstDispose })
+        .mockReturnValueOnce({ dispose: secondDispose })
+    };
+    const host = createNativeTrustedBlockHost({ adapter });
+
+    await host.mount(plan, root);
+    const retriedState = await host.retry();
+
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+    expect(adapter.mount).toHaveBeenCalledTimes(2);
+    expect(adapter.mount).toHaveBeenNthCalledWith(2, { plan, root });
+    expect(retriedState).toMatchObject({
+      status: 'mounted',
+      blockId: 'retry-block'
+    });
+
+    await host.dispose();
+    expect(secondDispose).toHaveBeenCalledTimes(1);
   });
 
   test('disposes instances that resolve after dispose while mount is pending', async () => {
@@ -117,11 +148,15 @@ describe('Native trusted block host lifecycle adapter', () => {
     const host = createNativeTrustedBlockHost({ adapter });
 
     const disposedState = await host.dispose();
-    const mountState = await host.mount(createPreparePlan(), { handle: 'root-1' });
+    const mountState = await host.mount(createPreparePlan(), {
+      handle: 'root-1'
+    });
+    const retryState = await host.retry();
 
     expect(adapter.mount).not.toHaveBeenCalled();
     expect(disposedState).toEqual({ status: 'disposed' });
     expect(mountState).toBe(disposedState);
+    expect(retryState).toBe(disposedState);
     expect(host.getState().status).toBe('disposed');
   });
 });

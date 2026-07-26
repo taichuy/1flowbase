@@ -3,7 +3,6 @@ export const NATIVE_TRUSTED_BLOCK_PERMISSION = 'ui_block.javascript.native';
 
 export const NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS = [
   'react',
-  'react/jsx-runtime',
   'antd',
   '@1flowbase/ui'
 ] as const;
@@ -53,7 +52,6 @@ export const deniedCallIdentifiers = new Set([
 ]);
 
 export const deniedConstructorIdentifiers = new Set([
-  'CSSStyleSheet',
   'Function',
   'XMLHttpRequest',
   'WebSocket'
@@ -66,9 +64,3 @@ export const deniedEscapeIdentifiers = new Set([
 ]);
 
 export const deniedCallForwarders = new Set(['call', 'apply', 'bind']);
-
-export const deniedStylesheetProperties = new Set([
-  'adoptedStyleSheets',
-  'insertRule',
-  'styleSheets'
-]);

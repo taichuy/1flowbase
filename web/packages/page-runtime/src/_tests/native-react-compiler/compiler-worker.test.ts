@@ -22,6 +22,9 @@ export default function Block({ ctx }: BlockProps) {
   const style: CSSProperties = { color: 'rebeccapurple' };
   return (
     <>
+      <style>{\`:root { --native-tone: rebeccapurple; }
+        @keyframes native-pulse { from { opacity: 0.8; } to { opacity: 1; } }
+        .native-counter { color: var(--native-tone); animation: native-pulse 1s; }\`}</style>
       <Fragment>
         <button
           className="native-counter"

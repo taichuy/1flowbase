@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, waitFor, within } from '@testing-library/react';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { ReactNode } from 'react';
@@ -14,8 +14,27 @@ import {
 
 const antdProviderRecords = vi.hoisted(() => ({
   configProviderProps: [] as Array<Record<string, unknown>>,
-  appRenderCount: 0
+  appRenderCount: 0,
+  styleProviderProps: [] as Array<Record<string, unknown>>
 }));
+
+vi.mock('@ant-design/cssinjs', async () => {
+  const React = await vi.importActual<typeof import('react')>('react');
+
+  return {
+    createCache: vi.fn(() => ({})),
+    StyleProvider({
+      children,
+      ...props
+    }: {
+      children?: ReactNode;
+      [key: string]: unknown;
+    }) {
+      antdProviderRecords.styleProviderProps.push(props);
+      return React.createElement(React.Fragment, null, children);
+    }
+  };
+});
 
 vi.mock('antd', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
@@ -100,6 +119,16 @@ function createBlockRoot(): HTMLDivElement {
   return root;
 }
 
+function getShadowRoot(root: Element): ShadowRoot {
+  const shadowRoot = root.shadowRoot;
+  if (!shadowRoot) throw new Error('Expected an open native block ShadowRoot.');
+  return shadowRoot;
+}
+
+function shadowQueries(root: Element) {
+  return within(getShadowRoot(root) as unknown as HTMLElement);
+}
+
 function createFakeBlockContext(
   overrides: Partial<BlockContext> = {}
 ): BlockContext {
@@ -136,6 +165,7 @@ describe('frontstage native trusted block React adapter', () => {
   beforeEach(() => {
     antdProviderRecords.configProviderProps = [];
     antdProviderRecords.appRenderCount = 0;
+    antdProviderRecords.styleProviderProps = [];
   });
 
   test('creates a React root and renders the resolved native component', async () => {
@@ -151,10 +181,11 @@ describe('frontstage native trusted block React adapter', () => {
 
     await adapter.mount({ plan: createPlan(), root });
 
-    expect(testingRoot.roots).toEqual([root]);
-    expect(await screen.findByTestId('native-block')).toHaveTextContent(
-      'Ready'
-    );
+    expect(testingRoot.roots).toHaveLength(1);
+    expect(testingRoot.roots[0].getRootNode()).toBe(getShadowRoot(root));
+    expect(
+      await shadowQueries(root).findByTestId('native-block')
+    ).toHaveTextContent('Ready');
     expect(resolvedComponent).toHaveBeenCalledTimes(1);
   });
 
@@ -172,7 +203,19 @@ describe('frontstage native trusted block React adapter', () => {
     expect(providerProps).toEqual(
       expect.objectContaining({ getPopupContainer: expect.any(Function) })
     );
-    expect((providerProps.getPopupContainer as () => HTMLElement)()).toBe(root);
+    expect((providerProps.getPopupContainer as () => ShadowRoot)()).toBe(
+      getShadowRoot(root)
+    );
+    expect((providerProps.getTargetContainer as () => ShadowRoot)()).toBe(
+      getShadowRoot(root)
+    );
+    expect(antdProviderRecords.styleProviderProps).toEqual([
+      expect.objectContaining({
+        autoClear: true,
+        cache: expect.anything(),
+        container: getShadowRoot(root)
+      })
+    ]);
     expect(antdProviderRecords.appRenderCount).toBe(1);
   });
 
@@ -309,7 +352,10 @@ describe('frontstage native trusted block React adapter', () => {
       expect.objectContaining({
         plan: expect.objectContaining({ blockId: 'native-block-1' }),
         root: firstRoot,
-        portalContainment: expect.objectContaining({ root: firstRoot })
+        shadowRoot: getShadowRoot(firstRoot),
+        portalContainment: expect.objectContaining({
+          root: getShadowRoot(firstRoot)
+        })
       })
     );
     expect(scopeResolver).toHaveBeenNthCalledWith(
@@ -317,7 +363,10 @@ describe('frontstage native trusted block React adapter', () => {
       expect.objectContaining({
         plan: expect.objectContaining({ blockId: 'native-block-2' }),
         root: secondRoot,
-        portalContainment: expect.objectContaining({ root: secondRoot })
+        shadowRoot: getShadowRoot(secondRoot),
+        portalContainment: expect.objectContaining({
+          root: getShadowRoot(secondRoot)
+        })
       })
     );
     expect(antdProviderRecords.configProviderProps).toEqual([
@@ -335,15 +384,15 @@ describe('frontstage native trusted block React adapter', () => {
     expect(
       (
         antdProviderRecords.configProviderProps[0]
-          .getPopupContainer as () => HTMLElement
+          .getPopupContainer as () => ShadowRoot
       )()
-    ).toBe(firstRoot);
+    ).toBe(getShadowRoot(firstRoot));
     expect(
       (
         antdProviderRecords.configProviderProps[1]
-          .getPopupContainer as () => HTMLElement
+          .getPopupContainer as () => ShadowRoot
       )()
-    ).toBe(secondRoot);
+    ).toBe(getShadowRoot(secondRoot));
   });
 
   test('lets providerWrapper wrap the default scoped provider with context access', async () => {
@@ -372,16 +421,19 @@ describe('frontstage native trusted block React adapter', () => {
       root
     });
 
-    expect(await screen.findByTestId('provider-wrapper')).toHaveAttribute(
-      'data-block-id',
-      'native-block-wrapped'
-    );
+    expect(
+      await shadowQueries(root).findByTestId('provider-wrapper')
+    ).toHaveAttribute('data-block-id', 'native-block-wrapped');
     expect(providerWrapper).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         plan: expect.objectContaining({ blockId: 'native-block-wrapped' }),
         root,
-        portalContainment: expect.objectContaining({ root })
+        shadowRoot: getShadowRoot(root),
+        mountElement: expect.any(HTMLElement),
+        portalContainment: expect.objectContaining({
+          root: getShadowRoot(root)
+        })
       })
     );
     expect(antdProviderRecords.configProviderProps).toEqual([
@@ -409,7 +461,7 @@ describe('frontstage native trusted block React adapter', () => {
         return (
           <output data-testid="native-props">
             {props.props.title as string}:
-            {String(props.portalContainment.root === root)}
+            {String(props.portalContainment.root === getShadowRoot(root))}
           </output>
         );
       }
@@ -417,15 +469,15 @@ describe('frontstage native trusted block React adapter', () => {
 
     await adapter.mount({ plan, root });
 
-    expect(await screen.findByTestId('native-props')).toHaveTextContent(
-      'Scoped block:true'
-    );
+    expect(
+      await shadowQueries(root).findByTestId('native-props')
+    ).toHaveTextContent('Scoped block:true');
     expect(received).toEqual([
       expect.objectContaining({
         plan,
         props: plan.props,
         portalContainment: expect.objectContaining({
-          root,
+          root: getShadowRoot(root),
           modal: expect.objectContaining({
             getContainer: expect.any(Function)
           }),
@@ -468,9 +520,9 @@ describe('frontstage native trusted block React adapter', () => {
       root
     });
 
-    expect(await screen.findByTestId('native-context')).toHaveTextContent(
-      'Context title'
-    );
+    expect(
+      await shadowQueries(root).findByTestId('native-context')
+    ).toHaveTextContent('Context title');
     expect(receivedContext).toEqual(
       expect.objectContaining({
         currentUser: null,
@@ -536,13 +588,17 @@ describe('frontstage native trusted block React adapter', () => {
     });
 
     expect(
-      await screen.findByTestId('native-injected-context')
+      await shadowQueries(root).findByTestId('native-injected-context')
     ).toHaveTextContent('Injected context');
     expect(resolveBlockContext).toHaveBeenCalledWith(
       expect.objectContaining({
         plan: expect.objectContaining({ blockId: 'native-block-ctx' }),
         root,
-        portalContainment: expect.objectContaining({ root })
+        shadowRoot: getShadowRoot(root),
+        mountElement: expect.any(HTMLElement),
+        portalContainment: expect.objectContaining({
+          root: getShadowRoot(root)
+        })
       })
     );
     expect(fakeContext.api.get).toHaveBeenCalledWith('/api/console/test', {
@@ -623,7 +679,7 @@ describe('frontstage native trusted block React adapter', () => {
       });
 
       expect(
-        await screen.findByTestId('stable-native-block')
+        await shadowQueries(stableRoot).findByTestId('stable-native-block')
       ).toHaveTextContent('Still mounted');
       await waitFor(() => {
         expect(onRuntimeError).toHaveBeenCalledWith(
@@ -634,6 +690,48 @@ describe('frontstage native trusted block React adapter', () => {
     } finally {
       consoleErrorSpy.mockRestore();
     }
+  });
+
+  test('D1-AC-003 keeps authored CSS, selectors, variables, and keyframes in each ShadowRoot', async () => {
+    const firstRoot = createBlockRoot();
+    const secondRoot = createBlockRoot();
+    const testingRoot = createTestingRoot();
+    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
+      createRoot: testingRoot.createRoot,
+      resolveComponent: (plan) => () => (
+        <>
+          <style>{`:root { --tone: ${plan.blockId === 'first' ? 'red' : 'blue'}; }
+            @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
+            .same { color: var(--tone); animation: pulse 1s; }`}</style>
+          <div className="same" data-testid={`${plan.blockId}-same`} />
+        </>
+      )
+    });
+
+    await adapter.mount({
+      plan: createPlan({ blockId: 'first' }),
+      root: firstRoot
+    });
+    await adapter.mount({
+      plan: createPlan({ blockId: 'second' }),
+      root: secondRoot
+    });
+
+    const firstShadow = getShadowRoot(firstRoot);
+    const secondShadow = getShadowRoot(secondRoot);
+    expect(firstShadow).not.toBe(secondShadow);
+    expect(firstShadow.querySelector('style')?.textContent).toContain(
+      '--tone: red'
+    );
+    expect(secondShadow.querySelector('style')?.textContent).toContain(
+      '--tone: blue'
+    );
+    expect(firstShadow.querySelector('[data-testid="second-same"]')).toBeNull();
+    expect(secondShadow.querySelector('[data-testid="first-same"]')).toBeNull();
+    expect(document.head.textContent).not.toContain('@keyframes pulse');
+    expect(
+      antdProviderRecords.styleProviderProps.map(({ container }) => container)
+    ).toEqual([firstShadow, secondShadow]);
   });
 
   test('renders no raw crash details by default', async () => {
@@ -652,12 +750,12 @@ describe('frontstage native trusted block React adapter', () => {
     try {
       await adapter.mount({ plan: createPlan(), root });
 
-      expect(root).not.toHaveTextContent(
+      expect(getShadowRoot(root).textContent).not.toContain(
         'raw secret stack debug JSON prompt text'
       );
-      expect(root).not.toHaveTextContent('Error:');
-      expect(root).not.toHaveTextContent('runtime.render');
-      expect(root).not.toHaveTextContent('{');
+      expect(getShadowRoot(root).textContent).not.toContain('Error:');
+      expect(getShadowRoot(root).textContent).not.toContain('runtime.render');
+      expect(getShadowRoot(root).textContent).not.toContain('{');
     } finally {
       consoleErrorSpy.mockRestore();
     }
@@ -678,9 +776,40 @@ describe('frontstage native trusted block React adapter', () => {
     mounted?.dispose?.();
 
     expect(testingRoot.unmountSpy).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(screen.queryByTestId('native-block')).not.toBeInTheDocument();
+    expect(getShadowRoot(root).childNodes).toHaveLength(0);
+  });
+
+  test('D1-AC-004 remounts the same block root after isolated idempotent cleanup', async () => {
+    const root = createBlockRoot();
+    const testingRoot = createTestingRoot();
+    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
+      createRoot: testingRoot.createRoot,
+      resolveComponent: (plan) => () => (
+        <div data-testid="native-retry">{plan.blockId}</div>
+      )
     });
+
+    const first = await adapter.mount({
+      plan: createPlan({ blockId: 'before-retry' }),
+      root
+    });
+    const shadowRoot = getShadowRoot(root);
+    first?.dispose?.();
+    first?.dispose?.();
+    expect(shadowRoot.childNodes).toHaveLength(0);
+
+    const second = await adapter.mount({
+      plan: createPlan({ blockId: 'after-retry' }),
+      root
+    });
+    expect(getShadowRoot(root)).toBe(shadowRoot);
+    expect(
+      await shadowQueries(root).findByTestId('native-retry')
+    ).toHaveTextContent('after-retry');
+
+    second?.dispose?.();
+    expect(testingRoot.unmountSpy).toHaveBeenCalledTimes(2);
+    expect(shadowRoot.childNodes).toHaveLength(0);
   });
 
   test('rejects invalid roots and resolver failures', async () => {

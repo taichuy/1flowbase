@@ -45,6 +45,7 @@ export interface NativeTrustedBlockHost {
     plan: NativeTrustedBlockPreparePlan,
     root: NativeTrustedBlockRootHandle
   ): Promise<NativeTrustedBlockHostState>;
+  retry(): Promise<NativeTrustedBlockHostState>;
   dispose(): Promise<NativeTrustedBlockHostState>;
 }
 
@@ -55,6 +56,8 @@ export function createNativeTrustedBlockHost(
   let mountedInstance: NativeTrustedBlockMountedInstance | undefined;
   let didDisposeInstance = false;
   let didDisposeHost = false;
+  let currentPlan: NativeTrustedBlockPreparePlan | undefined;
+  let currentRoot: NativeTrustedBlockRootHandle;
 
   const disposeMountedInstanceOnce = async (): Promise<void> => {
     if (didDisposeInstance) {
@@ -64,6 +67,45 @@ export function createNativeTrustedBlockHost(
     didDisposeInstance = true;
     await mountedInstance?.dispose?.();
     mountedInstance = undefined;
+  };
+
+  const mountAdapter = async (
+    plan: NativeTrustedBlockPreparePlan,
+    root: NativeTrustedBlockRootHandle
+  ): Promise<NativeTrustedBlockHostState> => {
+    try {
+      const instance = await options.adapter.mount({ plan, root });
+      if (didDisposeHost) {
+        if (isMountedInstance(instance)) {
+          await instance.dispose?.();
+        }
+        return state;
+      }
+
+      mountedInstance = isMountedInstance(instance) ? instance : undefined;
+      didDisposeInstance = false;
+      state = {
+        status: 'mounted',
+        blockId: plan.blockId,
+        runtime: plan.runtime
+      };
+    } catch (error) {
+      if (didDisposeHost) {
+        return state;
+      }
+
+      state = {
+        status: 'failed',
+        blockId: plan.blockId,
+        runtime: plan.runtime,
+        error: createRuntimeError(
+          'runtime.mount',
+          `Native trusted block adapter mount failed: ${getErrorMessage(error)}`
+        )
+      };
+    }
+
+    return state;
   };
 
   return {
@@ -79,39 +121,31 @@ export function createNativeTrustedBlockHost(
         return state;
       }
 
-      try {
-        const instance = await options.adapter.mount({ plan, root });
-        if (didDisposeHost) {
-          if (isMountedInstance(instance)) {
-            await instance.dispose?.();
-          }
-          return state;
-        }
-
-        mountedInstance = isMountedInstance(instance) ? instance : undefined;
-        didDisposeInstance = false;
-        state = {
-          status: 'mounted',
-          blockId: plan.blockId,
-          runtime: plan.runtime
-        };
-      } catch (error) {
-        if (didDisposeHost) {
-          return state;
-        }
-
-        state = {
-          status: 'failed',
-          blockId: plan.blockId,
-          runtime: plan.runtime,
-          error: createRuntimeError(
-            'runtime.mount',
-            `Native trusted block adapter mount failed: ${getErrorMessage(error)}`
-          )
-        };
+      currentPlan = plan;
+      currentRoot = root;
+      return mountAdapter(plan, root);
+    },
+    async retry() {
+      if (didDisposeHost || !currentPlan) {
+        return state;
       }
 
-      return state;
+      try {
+        await disposeMountedInstanceOnce();
+      } catch (error) {
+        state = {
+          status: 'failed',
+          blockId: currentPlan.blockId,
+          runtime: currentPlan.runtime,
+          error: createRuntimeError(
+            'runtime.retry',
+            `Native trusted block retry cleanup failed: ${getErrorMessage(error)}`
+          )
+        };
+        return state;
+      }
+
+      return mountAdapter(currentPlan, currentRoot);
     },
     async dispose() {
       if (didDisposeHost) {

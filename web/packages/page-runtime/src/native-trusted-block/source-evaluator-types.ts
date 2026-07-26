@@ -3,8 +3,12 @@ import type { BlockProtocolError } from '@1flowbase/page-protocol';
 import type { JsBlockRunError } from '../js-block-worker-runtime';
 import type { NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS } from '../native-trusted-block-source-policy';
 
+export const NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE =
+  'react/jsx-runtime' as const;
+
 export type NativeTrustedBlockInjectedModuleSource =
-  (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
+  | (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number]
+  | typeof NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE;
 
 export type NativeTrustedBlockInjectedModuleMap = Partial<
   Record<NativeTrustedBlockInjectedModuleSource, Record<string, unknown>>
