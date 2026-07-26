@@ -52,6 +52,7 @@ fn sample_block(installation_id: Uuid) -> FrontendBlockCatalogEntry {
         code_modules: vec![FrontendBlockCodeModule {
             source: "@1flowbase/native-components".into(),
             version: "1.0.0".into(),
+            exports: vec!["Button".into(), "Alert".into()],
             browser_asset: FrontendModuleBrowserAsset {
                 path: "browser-assets/native-components.js".into(),
                 sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0".into(),
@@ -113,6 +114,7 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
 
     assert_eq!(page.total, 1);
     assert_eq!(page.items[0].contract.export_name, "Button");
+    assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
     assert!(!page.has_more);
     assert_eq!(page.next_offset, None);
     assert_eq!(page.module_sources, vec!["@1flowbase/native-components"]);

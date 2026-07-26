@@ -42,6 +42,7 @@ pub struct FrontendComponentCapability {
     pub contribution_code: String,
     pub module_source: String,
     pub module_version: String,
+    pub exports: Vec<String>,
     pub browser_asset: domain::FrontendModuleBrowserAsset,
     pub contract: domain::FrontendComponentContract,
 }
@@ -159,6 +160,7 @@ where
                         contribution_code: block.contribution_code.clone(),
                         module_source: module.source.clone(),
                         module_version: module.version.clone(),
+                        exports: module.exports.clone(),
                         browser_asset: module.browser_asset.clone(),
                         contract,
                     });

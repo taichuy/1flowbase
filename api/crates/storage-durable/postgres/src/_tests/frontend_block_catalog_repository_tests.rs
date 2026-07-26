@@ -195,6 +195,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
                 code_modules: vec![domain::FrontendBlockCodeModule {
                     source: "@1flowbase/block-sdk".into(),
                     version: "1.0.0".into(),
+                    exports: vec!["blockSdkVersion".into()],
                     browser_asset: domain::FrontendModuleBrowserAsset {
                         path: "browser-assets/block-sdk.js".into(),
                         sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
@@ -274,6 +275,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     assert_eq!(entries[0].code_template_version.as_deref(), Some("1.0.0"));
     assert_eq!(entries[0].code_template_language.as_deref(), Some("tsx"));
     assert_eq!(entries[0].code_modules.len(), 1);
+    assert_eq!(entries[0].code_modules[0].exports, vec!["blockSdkVersion"]);
 
     let code_modules_column = sqlx::query(
         r#"

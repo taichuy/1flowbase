@@ -414,9 +414,10 @@ block_contributions:
     code_modules:
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
+        exports: [blockSdkVersion]
         browser_asset:
           path: "browser-assets/block-sdk.js"
-          sha256: "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+          sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
         type_declarations: "export interface BlockComponentProps { readonly ctx: { readonly workspace: { readonly id: string } } }"
     context_contract:
       primitives:
@@ -435,7 +436,11 @@ block_contributions:
     )
     .unwrap();
     fs::write(root.join("bin/fixture-frontend-blocks"), "echo fixture").unwrap();
-    fs::write(root.join("browser-assets/block-sdk.js"), "export {};\n").unwrap();
+    fs::write(
+        root.join("browser-assets/block-sdk.js"),
+        "export const blockSdkVersion = \"1.0.0\";\n",
+    )
+    .unwrap();
     fs::write(root.join("blocks/hero/index.html"), "<div>hero</div>").unwrap();
 }
 

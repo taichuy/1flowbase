@@ -46,6 +46,7 @@ fn valid_module(source: &str, version: &str, path: &str, sha256: &str, export: &
     format!(
         r#"      - source: "{source}"
         version: "{version}"
+        exports: [Fixture]
         browser_asset:
           path: "{path}"
           sha256: "{sha256}"
@@ -115,6 +116,43 @@ fn d2_ac_004_manifest_rejects_duplicate_identity_export_path_and_digest() {
         .unwrap_err()
         .to_string()
         .contains("export_name cannot be empty"));
+
+    let empty_exports = module.replace("exports: [Fixture]", "exports: []");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&empty_exports))
+            .unwrap_err()
+            .to_string()
+            .contains("exports must not be empty")
+    );
+
+    let duplicate_exports = module.replace("exports: [Fixture]", "exports: [Fixture, Fixture]");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&duplicate_exports))
+            .unwrap_err()
+            .to_string()
+            .contains("exports[] must be unique")
+    );
+
+    let illegal_exports = module.replace("exports: [Fixture]", "exports: [bad-export]");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&illegal_exports))
+            .unwrap_err()
+            .to_string()
+            .contains("must be a JavaScript export name")
+    );
+
+    let missing_component_export = module.replace("exports: [Fixture]", "exports: [OtherExport]");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&missing_component_export))
+            .unwrap_err()
+            .to_string()
+            .contains("export_name must be declared in module exports")
+    );
+
+    let default_export = module
+        .replace("exports: [Fixture]", "exports: [default]")
+        .replace("export_name: \"Fixture\"", "export_name: \"default\"");
+    assert!(parse_plugin_manifest(&manifest_with_modules(&default_export)).is_ok());
 }
 
 #[test]

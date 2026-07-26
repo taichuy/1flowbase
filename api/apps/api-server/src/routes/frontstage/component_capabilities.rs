@@ -76,6 +76,7 @@ pub struct FrontstageComponentCapabilitySummaryResponse {
     pub contribution_code: String,
     pub module_source: String,
     pub module_version: String,
+    pub exports: Vec<String>,
     pub browser_asset: FrontendModuleBrowserAssetResponse,
     pub export_name: String,
     pub upstream: Option<FrontendComponentUpstreamResponse>,
@@ -276,6 +277,7 @@ fn to_summary_response(
         contribution_code: entry.contribution_code,
         module_source: entry.module_source,
         module_version: entry.module_version,
+        exports: entry.exports,
         browser_asset: FrontendModuleBrowserAssetResponse {
             sha256: entry.browser_asset.sha256,
             url: asset_url,
@@ -299,10 +301,15 @@ fn to_detail_response(
     workspace_id: Uuid,
 ) -> FrontstageComponentCapabilityResponse {
     let declaration = entry.contract.typescript_declaration(&entry.module_source);
-    let api_documentation = format!(
-        "import {{ {} }} from '{}';\n\n{}",
-        entry.contract.export_name, entry.module_source, declaration
-    );
+    let import_statement = if entry.contract.export_name == "default" {
+        format!("import DefaultExport from '{}';", entry.module_source)
+    } else {
+        format!(
+            "import {{ {} }} from '{}';",
+            entry.contract.export_name, entry.module_source
+        )
+    };
+    let api_documentation = format!("{import_statement}\n\n{declaration}");
     let props = entry
         .contract
         .props

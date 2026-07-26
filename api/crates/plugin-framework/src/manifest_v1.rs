@@ -164,6 +164,7 @@ pub struct FrontendBlockContextContractManifest {
 pub struct FrontendBlockCodeModuleManifest {
     pub source: String,
     pub version: String,
+    pub exports: Vec<String>,
     pub browser_asset: FrontendModuleBrowserAssetManifest,
     pub type_declarations: String,
     #[serde(default)]
@@ -644,6 +645,23 @@ fn validate_frontend_block_contributions(
 fn validate_frontend_component_contracts(
     code_module: &FrontendBlockCodeModuleManifest,
 ) -> FrameworkResult<()> {
+    if code_module.exports.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "block_contributions[].code_modules[].exports must not be empty",
+        ));
+    }
+    let mut module_exports = HashSet::new();
+    for export_name in &code_module.exports {
+        validate_javascript_export_name(
+            export_name,
+            "block_contributions[].code_modules[].exports[]",
+        )?;
+        if !module_exports.insert(export_name.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].code_modules[].exports[] must be unique",
+            ));
+        }
+    }
     let mut component_codes = HashSet::new();
     let mut export_names = HashSet::new();
     for component in &code_module.components {
@@ -659,6 +677,11 @@ fn validate_frontend_component_contracts(
             &component.export_name,
             "block_contributions[].code_modules[].components[].export_name",
         )?;
+        if !module_exports.contains(component.export_name.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].code_modules[].components[].export_name must be declared in module exports",
+            ));
+        }
         validate_non_empty(
             &component.description,
             "block_contributions[].code_modules[].components[].description",
@@ -742,6 +765,23 @@ fn validate_frontend_component_contracts(
                 "block_contributions[].code_modules[].components[].examples[].code",
             )?;
         }
+    }
+    Ok(())
+}
+
+fn validate_javascript_export_name(value: &str, field: &str) -> FrameworkResult<()> {
+    let mut chars = value.chars();
+    let valid_start = chars.next().is_some_and(|character| {
+        character == '_' || character == '$' || character.is_ascii_alphabetic()
+    });
+    if !valid_start
+        || !chars.all(|character| {
+            character == '_' || character == '$' || character.is_ascii_alphanumeric()
+        })
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must be a JavaScript export name"
+        )));
     }
     Ok(())
 }

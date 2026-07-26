@@ -799,6 +799,7 @@ async fn plugin_management_service_syncs_frontend_block_catalog_and_requires_ass
         .is_some_and(|template| template.contains("export default function Hero")));
     assert_eq!(entries[0].code_modules[0].source, "@1flowbase/block-sdk");
     assert_eq!(entries[0].code_modules[0].version, "1.0.0");
+    assert_eq!(entries[0].code_modules[0].exports, vec!["blockSdkVersion"]);
     assert_eq!(
         entries[0].context_contract.primitives,
         vec!["text", "image"]

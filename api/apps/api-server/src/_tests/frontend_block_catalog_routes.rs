@@ -94,6 +94,7 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     .bind(json!([{
         "source": "@acme/native-components",
         "version": "1.2.3",
+        "exports": ["Button"],
         "browser_asset": {
             "path": "browser-assets/native-components.js",
             "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
@@ -183,6 +184,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         "@acme/native-components"
     );
     assert_eq!(payload["data"]["items"][0]["module_version"], "1.2.3");
+    assert_eq!(payload["data"]["items"][0]["exports"], json!(["Button"]));
     assert_eq!(
         payload["data"]["items"][0]["browser_asset"]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
@@ -367,6 +369,7 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .find(|module| module["source"] == "@1flowbase/block-sdk")
         .unwrap();
     assert_eq!(sdk_module["version"], "1.0.0");
+    assert_eq!(sdk_module["exports"], json!(["blockSdkVersion"]));
     assert_eq!(
         sdk_module["browser_asset"]["sha256"],
         "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
@@ -380,6 +383,7 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .find(|module| module["source"] == "@1flowbase/native-components")
         .unwrap();
     assert_eq!(native_module["version"], "1.0.0");
+    assert_eq!(native_module["exports"], json!(["Surface"]));
     assert_eq!(
         native_module["browser_asset"]["sha256"],
         "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"
@@ -501,6 +505,7 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
         Some("@acme/native-components")
     );
     assert_eq!(entry["code_modules"][0]["version"], "1.2.3");
+    assert_eq!(entry["code_modules"][0]["exports"], json!(["Button"]));
     assert_eq!(
         entry["code_modules"][0]["browser_asset"]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"

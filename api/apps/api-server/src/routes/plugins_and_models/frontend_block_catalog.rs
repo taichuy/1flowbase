@@ -38,6 +38,7 @@ pub struct FrontendBlockBrowserAssetResponse {
 pub struct FrontendBlockCodeModuleResponse {
     pub source: String,
     pub version: String,
+    pub exports: Vec<String>,
     pub browser_asset: FrontendBlockBrowserAssetResponse,
     pub type_declarations: String,
 }
@@ -98,6 +99,7 @@ fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalog
                 FrontendBlockCodeModuleResponse {
                     source: code_module.source,
                     version: code_module.version,
+                    exports: code_module.exports,
                     browser_asset: FrontendBlockBrowserAssetResponse {
                         sha256: code_module.browser_asset.sha256,
                     },

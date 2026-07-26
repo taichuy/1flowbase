@@ -50,6 +50,7 @@ block_contributions:
     code_modules:
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
+        exports: [blockSdkVersion]
         browser_asset:
           path: "browser-assets/block-sdk.js"
           sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
@@ -86,6 +87,7 @@ block_contributions:
           }
       - source: "@1flowbase/native-components"
         version: "1.0.0"
+        exports: [Surface]
         browser_asset:
           path: "browser-assets/native-components.js"
           sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"

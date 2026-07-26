@@ -19,6 +19,7 @@ pub struct FrontendBlockContextContract {
 pub struct FrontendBlockCodeModule {
     pub source: String,
     pub version: String,
+    pub exports: Vec<String>,
     pub browser_asset: FrontendModuleBrowserAsset,
     pub type_declarations: String,
     #[serde(default)]
@@ -67,12 +68,17 @@ pub struct FrontendComponentContract {
 
 impl FrontendComponentContract {
     pub fn typescript_declaration(&self, module_source: &str) -> String {
+        let declaration_name = if self.export_name == "default" {
+            "DefaultExport"
+        } else {
+            &self.export_name
+        };
         let mut declaration = String::new();
         declaration.push_str("declare module '");
         declaration.push_str(module_source);
         declaration.push_str("' {\n");
         declaration.push_str("  export interface ");
-        declaration.push_str(&self.export_name);
+        declaration.push_str(declaration_name);
         declaration.push_str("Props {\n");
         for prop in &self.props {
             declaration.push_str("    /** ");
@@ -114,11 +120,19 @@ impl FrontendComponentContract {
             declaration.push_str(&jsdoc_text(&upstream.component));
             declaration.push('\n');
         }
-        declaration.push_str("   */\n  export const ");
-        declaration.push_str(&self.export_name);
+        declaration.push_str("   */\n  ");
+        if self.export_name != "default" {
+            declaration.push_str("export ");
+        }
+        declaration.push_str("const ");
+        declaration.push_str(declaration_name);
         declaration.push_str(": import('react').ComponentType<");
-        declaration.push_str(&self.export_name);
-        declaration.push_str("Props>;\n}\n");
+        declaration.push_str(declaration_name);
+        declaration.push_str("Props>;\n");
+        if self.export_name == "default" {
+            declaration.push_str("  export default DefaultExport;\n");
+        }
+        declaration.push_str("}\n");
         declaration
     }
 }

@@ -244,6 +244,7 @@ fn build_frontend_block_sync_input(
                     .map(|code_module| domain::FrontendBlockCodeModule {
                         source: code_module.source.clone(),
                         version: code_module.version.clone(),
+                        exports: code_module.exports.clone(),
                         browser_asset: domain::FrontendModuleBrowserAsset {
                             path: code_module.browser_asset.path.clone(),
                             sha256: code_module.browser_asset.sha256.clone(),

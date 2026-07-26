@@ -340,12 +340,14 @@ block_contributions:
     code_modules:
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
+        exports: [defineBlock]
         browser_asset:
           path: "assets/block-sdk.js"
           sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         type_declarations: "export declare function defineBlock(input: unknown): unknown;"
       - source: "@acme/native-components"
         version: "1.2.3"
+        exports: [Button]
         browser_asset:
           path: "assets/native-components.js"
           sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -403,6 +405,7 @@ block_contributions:
     assert_eq!(block.code_template_version.as_deref(), Some("1.0.0"));
     assert_eq!(block.code_template_language.as_deref(), Some("tsx"));
     assert_eq!(block.code_modules[0].source, "@1flowbase/block-sdk");
+    assert_eq!(block.code_modules[0].exports, vec!["defineBlock"]);
     let button = &block.code_modules[1].components[0];
     assert_eq!(button.component_code, "button");
     assert_eq!(button.export_name, "Button");
@@ -437,6 +440,7 @@ fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
 
     assert_eq!(exports, vec!["Surface"]);
     assert_eq!(native_module.version, "1.0.0");
+    assert_eq!(native_module.exports, vec!["Surface"]);
     assert_eq!(
         native_module.browser_asset.path,
         "browser-assets/native-components.js"
