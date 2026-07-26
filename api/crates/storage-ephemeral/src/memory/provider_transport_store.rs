@@ -100,10 +100,9 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         &self,
         slot_id: ProviderTransportSlotId,
     ) -> anyhow::Result<ProviderTransportPayload> {
-        let entry = Self::take_unexpired(&mut self.entries.write().await, &slot_id, |entry| {
-            entry.expires_at
-        })
-        .ok_or_else(|| anyhow::anyhow!("ephemeral_transport_missing"))?;
+        let mut entries = self.entries.write().await;
+        let entry = Self::take_unexpired(&mut entries, &slot_id, |entry| entry.expires_at)
+            .ok_or_else(|| anyhow::anyhow!("ephemeral_transport_missing"))?;
         Ok(entry.payload)
     }
 
@@ -146,10 +145,8 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         &self,
         slot_id: ProviderContinuationSlotId,
     ) -> anyhow::Result<ProviderContinuation> {
-        let entry =
-            Self::take_unexpired(&mut self.continuations.write().await, &slot_id, |entry| {
-                entry.expires_at
-            })
+        let mut continuations = self.continuations.write().await;
+        let entry = Self::take_unexpired(&mut continuations, &slot_id, |entry| entry.expires_at)
             .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
         Ok(entry.continuation)
     }
