@@ -56,6 +56,9 @@ fn valid_module(source: &str, version: &str, path: &str, sha256: &str, export: &
             export_name: "{export}"
             description: "Native React fixture."
             limitations: ["Host-owned React singleton."]
+            examples:
+              - title: "Native fixture"
+                code: "<Fixture />"
             insert_snippet: "<Fixture />"
 "#
     )
@@ -73,9 +76,12 @@ fn d2_ac_004_manifest_rejects_duplicate_identity_export_path_and_digest() {
     );
     let duplicate =
         parse_plugin_manifest(&manifest_with_modules(&format!("{module}{module}"))).unwrap_err();
-    assert!(duplicate
-        .to_string()
-        .contains("source/version must be unique"));
+    assert!(
+        duplicate
+            .to_string()
+            .contains("source/version must be unique"),
+        "{duplicate}"
+    );
 
     let path_escape = valid_module("@acme/native", "1.0.0", "../native.js", &digest, "Fixture");
     assert!(parse_plugin_manifest(&manifest_with_modules(&path_escape))
