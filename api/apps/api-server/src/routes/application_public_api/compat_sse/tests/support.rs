@@ -113,7 +113,7 @@ impl RuntimeEventStream for ReplayBeforeFallbackRuntimeEventStream {
         }
         Ok(RuntimeEventSubscription {
             replay: self.subscription_replay.clone(),
-            live_events,
+            live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live_events),
             closure,
         })
     }

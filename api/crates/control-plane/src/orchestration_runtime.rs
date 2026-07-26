@@ -129,7 +129,7 @@ pub struct LiveProviderStreamEvent {
     pub event: ProviderStreamEvent,
 }
 
-pub type LiveProviderStreamEventSender = mpsc::UnboundedSender<LiveProviderStreamEvent>;
+pub type LiveProviderStreamEventSender = mpsc::Sender<LiveProviderStreamEvent>;
 
 #[derive(Debug, Clone, Copy)]
 struct FirstTokenTiming {

@@ -227,7 +227,7 @@ impl RuntimeEventStream for RecordingRuntimeEventStream {
         let (_closure_sender, closure) = tokio::sync::watch::channel(None);
         Ok(RuntimeEventSubscription {
             replay: self.events(),
-            live_events: receiver,
+            live_events: crate::ports::RuntimeEventReceiver::from_unbounded(receiver),
             closure,
         })
     }

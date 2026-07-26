@@ -1268,7 +1268,7 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
             ..ProviderInvocationResult::default()
         },
     );
-    let (live_sender, mut live_receiver) = mpsc::unbounded_channel();
+    let (live_sender, mut live_receiver) = mpsc::channel(32);
     let invoker = RuntimeProviderInvoker {
         repository,
         runtime: runtime_port,

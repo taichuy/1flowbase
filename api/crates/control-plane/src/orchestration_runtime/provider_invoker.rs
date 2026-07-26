@@ -6,6 +6,8 @@ use super::canonical_stream::{
     CanonicalStreamState, CanonicalStreamTransitionError,
 };
 
+const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
+
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
 #[async_trait]
@@ -128,7 +130,8 @@ where
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
-        let mut live_forward_handle = None;
+        let mut required_forward_handle = None;
+        let mut diagnostic_forward_handle = None;
         let active_node = self
             .flow_execution_context
             .as_ref()
@@ -149,11 +152,14 @@ where
             let flow_run_id = self.flow_run_id;
             let first_token_timing_for_task = first_token_timing.clone();
             let canonical_tool_registry_for_task = canonical_tool_registry.clone();
-            let (provider_sender, mut provider_receiver) =
-                mpsc::unbounded_channel::<ProviderStreamEvent>();
-            live_forward_handle = Some(tokio::spawn(async move {
+            let (required_sender, mut required_receiver) =
+                mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
+            let (diagnostic_sender, mut diagnostic_receiver) =
+                mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
+            let diagnostic_node_id = node_id.clone();
+            required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
-                while let Some(mut event) = provider_receiver.recv().await {
+                while let Some(mut event) = required_receiver.recv().await {
                     orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
                             &canonical_tool_registry_for_task,
@@ -166,23 +172,18 @@ where
                     );
                     let canonical_deltas = canonical_writer.write(&event)?;
                     if let Some(sender) = &live_sender {
-                        let _ = sender.send(LiveProviderStreamEvent {
-                            node_id: node_id.clone(),
-                            node_run_id,
-                            event: event.clone(),
-                        });
+                        sender
+                            .send(LiveProviderStreamEvent {
+                                node_id: node_id.clone(),
+                                node_run_id,
+                                event: event.clone(),
+                            })
+                            .await
+                            .map_err(|_| anyhow!("required live provider event writer closed"))?;
                     }
                     if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
                     {
                         let runtime_events = match &event {
-                            ProviderStreamEvent::NativeEvent { protocol, event } => {
-                                vec![debug_stream_events::provider_native_event(
-                                    &node_id,
-                                    node_run_id,
-                                    protocol.clone(),
-                                    event.clone(),
-                                )]
-                            }
                             ProviderStreamEvent::TextDelta { .. }
                             | ProviderStreamEvent::ReasoningDelta { .. }
                             | ProviderStreamEvent::Finish { .. }
@@ -252,7 +253,34 @@ where
                 canonical_writer.complete()?;
                 Ok::<_, anyhow::Error>(canonical_writer.into_state())
             }));
-            Some(provider_sender)
+            let diagnostic_stream = self.runtime_event_stream.clone();
+            let diagnostic_flow_run_id = self.flow_run_id;
+            diagnostic_forward_handle = Some(tokio::spawn(async move {
+                while let Some(event) = diagnostic_receiver.recv().await {
+                    let ProviderStreamEvent::NativeEvent { protocol, event } = event else {
+                        continue;
+                    };
+                    if let (Some(stream), Some(flow_run_id)) =
+                        (&diagnostic_stream, diagnostic_flow_run_id)
+                    {
+                        let _ = stream
+                            .append(
+                                flow_run_id,
+                                debug_stream_events::provider_native_event(
+                                    &diagnostic_node_id,
+                                    node_run_id,
+                                    protocol,
+                                    event,
+                                ),
+                            )
+                            .await;
+                    }
+                }
+            }));
+            Some(crate::ports::ProviderLiveEventSenders {
+                required: required_sender,
+                diagnostic: diagnostic_sender,
+            })
         } else {
             None
         };
@@ -266,10 +294,15 @@ where
             "provider invoke finished"
         );
         let invocation_output = invocation_result?;
-        if let Some(handle) = live_forward_handle {
+        if let Some(handle) = required_forward_handle {
             handle.await.map_err(|error| {
                 anyhow!("provider live event forwarding task panicked: {error}")
             })??;
+        }
+        if let Some(handle) = diagnostic_forward_handle {
+            handle.await.map_err(|error| {
+                anyhow!("provider diagnostic event forwarding task panicked: {error}")
+            })?;
         }
         self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
             .await?;

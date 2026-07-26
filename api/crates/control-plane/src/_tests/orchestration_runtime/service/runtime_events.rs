@@ -181,7 +181,7 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
         }
         Ok(RuntimeEventSubscription {
             replay,
-            live_events,
+            live_events: crate::ports::RuntimeEventReceiver::from_unbounded(live_events),
             closure: closure_receiver,
         })
     }
