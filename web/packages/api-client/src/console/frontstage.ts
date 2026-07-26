@@ -164,6 +164,75 @@ export interface ConsoleFrontstageInterfaceCapabilityQuery {
   limit?: number;
 }
 
+export type ConsoleFrontendComponentImplementationKind =
+  | 'antd_facade'
+  | 'custom';
+export type ConsoleFrontendComponentModuleSource =
+  '@1flowbase/block-renderer/antd-facade';
+
+export interface ConsoleFrontendComponentUpstream {
+  package: string;
+  component: string;
+  version: string;
+}
+
+export interface ConsoleFrontendComponentProp {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
+export interface ConsoleFrontendComponentExample {
+  title: string;
+  code: string;
+}
+
+export interface ConsoleFrontstageComponentCapabilitySummary {
+  component_id: string;
+  installation_id: string;
+  provider_code: string;
+  plugin_id: string;
+  plugin_version: string;
+  contribution_code: string;
+  module_source: ConsoleFrontendComponentModuleSource;
+  export_name: string;
+  implementation_kind: ConsoleFrontendComponentImplementationKind;
+  upstream: ConsoleFrontendComponentUpstream | null;
+  description: string;
+  insert_snippet: string;
+}
+
+export interface ConsoleFrontstageComponentCapability
+  extends ConsoleFrontstageComponentCapabilitySummary {
+  props: ConsoleFrontendComponentProp[];
+  limitations: string[];
+  examples: ConsoleFrontendComponentExample[];
+  typescript_declaration: string;
+  api_documentation: string;
+}
+
+export interface ConsoleFrontstageComponentCapabilityPage {
+  items: ConsoleFrontstageComponentCapabilitySummary[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+  next_offset: number | null;
+  module_sources: string[];
+  implementation_kinds: ConsoleFrontendComponentImplementationKind[];
+}
+
+export interface ConsoleFrontstageComponentCapabilityQuery {
+  installation_id?: string;
+  contribution_code?: string;
+  query?: string;
+  module_source?: string;
+  implementation_kind?: ConsoleFrontendComponentImplementationKind;
+  offset?: number;
+  limit?: number;
+}
+
 export interface FrontstageCallableBinaryResource {
   bytes: Uint8Array;
   file_name: string | null;
@@ -233,6 +302,45 @@ export function getFrontstageInterfaceCapability(
 ): Promise<ConsoleFrontstageInterfaceCapability> {
   return apiFetch<ConsoleFrontstageInterfaceCapability>({
     path: `/api/console/frontstage/${workspaceId}/interface-capabilities/${encodeURIComponent(interfaceId)}`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function listFrontstageComponentCapabilities(
+  workspaceId: string,
+  query: ConsoleFrontstageComponentCapabilityQuery = {},
+  baseUrl?: string
+): Promise<ConsoleFrontstageComponentCapabilityPage> {
+  const params = new URLSearchParams();
+  if (query.installation_id) {
+    params.set('installation_id', query.installation_id);
+  }
+  if (query.contribution_code) {
+    params.set('contribution_code', query.contribution_code);
+  }
+  if (query.query) params.set('query', query.query);
+  if (query.module_source) params.set('module_source', query.module_source);
+  if (query.implementation_kind) {
+    params.set('implementation_kind', query.implementation_kind);
+  }
+  if (query.offset !== undefined) params.set('offset', String(query.offset));
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const suffix = params.size > 0 ? `?${params.toString()}` : '';
+  return apiFetch<ConsoleFrontstageComponentCapabilityPage>({
+    path: `/api/console/frontstage/${workspaceId}/component-capabilities${suffix}`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function getFrontstageComponentCapability(
+  workspaceId: string,
+  componentId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageComponentCapability> {
+  return apiFetch<ConsoleFrontstageComponentCapability>({
+    path: `/api/console/frontstage/${workspaceId}/component-capabilities/${encodeURIComponent(componentId)}`,
     method: 'GET',
     baseUrl
   });

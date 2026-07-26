@@ -19,14 +19,12 @@ import { useEffect, useState } from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
 import { fetchFrontstageInterfaceCapability } from '../../api/interface-capabilities';
 import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
-import type {
-  FrontstageJsxComponent,
-  FrontstageJsxEditorProjection
-} from '../../lib/jsx-studio/editor-projection';
+import type { FrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-codegen';
 import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
+import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
 
 export type FrontstageJsxStudioSection =
   | 'code'
@@ -99,9 +97,10 @@ export function JsxStudioResourcePanel({
 
   if (section === 'components') {
     return (
-      <ComponentsPanel
-        components={projection.components}
+      <JsxStudioComponentsPanel
+        componentCatalogQuery={projection.componentCatalogQuery}
         onInsertCode={onInsertCode}
+        workspaceId={workspaceId}
       />
     );
   }
@@ -679,44 +678,6 @@ function VariablesPanel({
       >
         {i18nText('frontstage', 'auto.connect')}
       </Button>
-    </div>
-  );
-}
-
-function ComponentsPanel({
-  components,
-  onInsertCode
-}: {
-  components: readonly FrontstageJsxComponent[];
-  onInsertCode: (insertion: FrontstageJsxInsertion) => void;
-}) {
-  return (
-    <div className="frontstage-jsx-studio__resource-scroll">
-      <ResourceHeading
-        title={i18nText('frontstage', 'auto.components')}
-        description={i18nText('frontstage', 'auto.components_description')}
-      />
-      {components.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={i18nText('frontstage', 'auto.no_available_components')}
-        />
-      ) : (
-        components.map((component) => (
-          <div
-            className="frontstage-jsx-studio__insert-row"
-            key={`${component.moduleSource}:${component.name}`}
-          >
-            <Typography.Text code>{component.name}</Typography.Text>
-            <Button
-              size="small"
-              onClick={() => onInsertCode({ kind: 'component', ...component })}
-            >
-              {i18nText('frontstage', 'auto.insert_code')}
-            </Button>
-          </div>
-        ))
-      )}
     </div>
   );
 }

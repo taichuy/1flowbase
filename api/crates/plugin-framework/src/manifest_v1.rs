@@ -161,6 +161,65 @@ pub struct FrontendBlockContextContractManifest {
 pub struct FrontendBlockCodeModuleManifest {
     pub source: String,
     pub type_declarations: String,
+    #[serde(default)]
+    pub components: Vec<FrontendComponentContractManifest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontendComponentImplementationKindManifest {
+    AntdFacade,
+    Custom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendComponentUpstreamManifest {
+    pub package: String,
+    pub component: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendComponentImplementationManifest {
+    pub kind: FrontendComponentImplementationKindManifest,
+    #[serde(default)]
+    pub upstream: Option<FrontendComponentUpstreamManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendComponentPropManifest {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_name: String,
+    #[serde(default)]
+    pub required: bool,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendComponentExampleManifest {
+    pub title: String,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontendComponentContractManifest {
+    pub component_code: String,
+    pub export_name: String,
+    pub implementation: FrontendComponentImplementationManifest,
+    pub description: String,
+    #[serde(default)]
+    pub props: Vec<FrontendComponentPropManifest>,
+    #[serde(default)]
+    pub limitations: Vec<String>,
+    #[serde(default)]
+    pub examples: Vec<FrontendComponentExampleManifest>,
+    pub insert_snippet: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -521,6 +580,7 @@ fn validate_frontend_block_contributions(
             }
             (None, None, None) => {}
         }
+        let mut contribution_component_codes = HashSet::new();
         for code_module in &contribution.code_modules {
             validate_allowed(
                 &code_module.source,
@@ -534,6 +594,14 @@ fn validate_frontend_block_contributions(
                 &code_module.type_declarations,
                 "block_contributions[].code_modules[].type_declarations",
             )?;
+            validate_frontend_component_contracts(code_module)?;
+            for component in &code_module.components {
+                if !contribution_component_codes.insert(component.component_code.as_str()) {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "frontend component_code must be unique within one block contribution",
+                    ));
+                }
+            }
         }
         validate_allowed(
             &contribution.runtime,
@@ -562,6 +630,135 @@ fn validate_frontend_block_contributions(
         }
     }
 
+    Ok(())
+}
+
+fn validate_frontend_component_contracts(
+    code_module: &FrontendBlockCodeModuleManifest,
+) -> FrameworkResult<()> {
+    if !code_module.components.is_empty()
+        && code_module.source != "@1flowbase/block-renderer/antd-facade"
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "frontend component contracts require @1flowbase/block-renderer/antd-facade",
+        ));
+    }
+
+    let mut component_codes = HashSet::new();
+    let mut export_names = HashSet::new();
+    for component in &code_module.components {
+        validate_non_empty(
+            &component.component_code,
+            "block_contributions[].code_modules[].components[].component_code",
+        )?;
+        validate_non_empty(
+            &component.export_name,
+            "block_contributions[].code_modules[].components[].export_name",
+        )?;
+        validate_typescript_identifier(
+            &component.export_name,
+            "block_contributions[].code_modules[].components[].export_name",
+        )?;
+        validate_non_empty(
+            &component.description,
+            "block_contributions[].code_modules[].components[].description",
+        )?;
+        validate_non_empty(
+            &component.insert_snippet,
+            "block_contributions[].code_modules[].components[].insert_snippet",
+        )?;
+        if !component_codes.insert(component.component_code.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].code_modules[].components[].component_code must be unique",
+            ));
+        }
+        if !export_names.insert(component.export_name.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].code_modules[].components[].export_name must be unique",
+            ));
+        }
+
+        match (
+            component.implementation.kind,
+            component.implementation.upstream.as_ref(),
+        ) {
+            (FrontendComponentImplementationKindManifest::AntdFacade, Some(upstream)) => {
+                validate_non_empty(
+                    &upstream.package,
+                    "block_contributions[].code_modules[].components[].implementation.upstream.package",
+                )?;
+                validate_non_empty(
+                    &upstream.component,
+                    "block_contributions[].code_modules[].components[].implementation.upstream.component",
+                )?;
+                validate_non_empty(
+                    &upstream.version,
+                    "block_contributions[].code_modules[].components[].implementation.upstream.version",
+                )?;
+            }
+            (FrontendComponentImplementationKindManifest::AntdFacade, None) => {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "antd_facade component contract requires implementation.upstream",
+                ));
+            }
+            (FrontendComponentImplementationKindManifest::Custom, Some(_)) => {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "custom component contract cannot declare implementation.upstream",
+                ));
+            }
+            (FrontendComponentImplementationKindManifest::Custom, None) => {}
+        }
+
+        let mut prop_names = HashSet::new();
+        for prop in &component.props {
+            validate_non_empty(
+                &prop.name,
+                "block_contributions[].code_modules[].components[].props[].name",
+            )?;
+            validate_typescript_identifier(
+                &prop.name,
+                "block_contributions[].code_modules[].components[].props[].name",
+            )?;
+            validate_non_empty(
+                &prop.type_name,
+                "block_contributions[].code_modules[].components[].props[].type",
+            )?;
+            validate_non_empty(
+                &prop.description,
+                "block_contributions[].code_modules[].components[].props[].description",
+            )?;
+            if !prop_names.insert(prop.name.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "block_contributions[].code_modules[].components[].props[].name must be unique",
+                ));
+            }
+        }
+        if component.limitations.is_empty()
+            || component
+                .limitations
+                .iter()
+                .any(|item| item.trim().is_empty())
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "frontend component contract requires non-empty limitations",
+            ));
+        }
+        if component.examples.is_empty() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "frontend component contract requires at least one example",
+            ));
+        }
+        for example in &component.examples {
+            validate_non_empty(
+                &example.title,
+                "block_contributions[].code_modules[].components[].examples[].title",
+            )?;
+            validate_non_empty(
+                &example.code,
+                "block_contributions[].code_modules[].components[].examples[].code",
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -787,6 +984,23 @@ fn validate_non_empty(value: &str, field: &str) -> FrameworkResult<()> {
     if value.trim().is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(format!(
             "{field} cannot be empty"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_typescript_identifier(value: &str, field: &str) -> FrameworkResult<()> {
+    let mut chars = value.chars();
+    let valid_start = chars.next().is_some_and(|character| {
+        character == '_' || character == '$' || character.is_ascii_alphabetic()
+    });
+    if !valid_start
+        || !chars.all(|character| {
+            character == '_' || character == '$' || character.is_ascii_alphanumeric()
+        })
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "{field} must be a TypeScript identifier"
         )));
     }
     Ok(())

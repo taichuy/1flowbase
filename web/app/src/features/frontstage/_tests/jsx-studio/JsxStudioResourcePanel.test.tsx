@@ -9,7 +9,10 @@ import {
 import { message } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
+import type {
+  ConsoleFrontstageComponentCapability,
+  ConsoleFrontstageInterfaceCapability
+} from '@1flowbase/api-client';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { JsxStudioResourcePanel } from '../../components/jsx-studio/JsxStudioResourcePanel';
@@ -23,12 +26,27 @@ const interfaceCapabilitiesHook = vi.hoisted(() => ({
 const interfaceCapabilitiesApi = vi.hoisted(() => ({
   fetchFrontstageInterfaceCapability: vi.fn()
 }));
+const componentCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageComponentCapabilities: vi.fn()
+}));
+const componentCapabilitiesApi = vi.hoisted(() => ({
+  fetchFrontstageComponentCapability: vi.fn()
+}));
+const clipboard = vi.hoisted(() => ({
+  copyTextToClipboard: vi.fn()
+}));
 
 vi.mock(
   '../../hooks/use-frontstage-interface-capabilities',
   () => interfaceCapabilitiesHook
 );
 vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
+vi.mock(
+  '../../hooks/use-frontstage-component-capabilities',
+  () => componentCapabilitiesHook
+);
+vi.mock('../../api/component-capabilities', () => componentCapabilitiesApi);
+vi.mock('../../../../shared/ui/clipboard/copy-text', () => clipboard);
 
 const block = {
   id: 'orders-block',
@@ -89,10 +107,48 @@ const operations = [
 ] as ConsoleFrontstageInterfaceCapability[];
 
 const projection: FrontstageJsxEditorProjection = {
-  components: [],
+  componentCatalogQuery: {
+    installation_id: 'installation-1',
+    contribution_code: 'frontstage.js-ui-block'
+  },
   contextComment: '',
   monacoExtraLibs: []
 };
+
+const buttonComponent = {
+  component_id: 'installation-1:frontstage.js-ui-block:button',
+  installation_id: 'installation-1',
+  provider_code: '1flowbase',
+  plugin_id: '1flowbase@1.0.0',
+  plugin_version: '1.0.0',
+  contribution_code: 'frontstage.js-ui-block',
+  module_source: '@1flowbase/block-renderer/antd-facade',
+  export_name: 'Button',
+  implementation_kind: 'antd_facade',
+  upstream: { package: 'antd', component: 'Button', version: '5.x' },
+  description:
+    'Ant Design Button 的受控 facade；支持 actionId，不支持 onClick。',
+  insert_snippet:
+    '<Button type="primary" actionId="save">保存</Button>',
+  props: [
+    {
+      name: 'actionId',
+      type: 'string',
+      required: false,
+      description: '点击后发送的区块 action 标识。'
+    }
+  ],
+  limitations: ['不支持 React onClick。'],
+  examples: [
+    {
+      title: '触发保存操作',
+      code: '<Button actionId="save">保存</Button>'
+    }
+  ],
+  typescript_declaration: 'export interface ButtonProps {}',
+  api_documentation:
+    "import { Button } from '@1flowbase/block-renderer/antd-facade';"
+} satisfies ConsoleFrontstageComponentCapability;
 
 const createInsertCodeMock = () =>
   vi.fn<(insertion: FrontstageJsxInsertion) => void>();
@@ -346,6 +402,26 @@ describe('TSX Studio insertion descriptors', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await appI18n.changeLanguage('zh_Hans');
+    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
+      {
+        data: {
+          items: [buttonComponent],
+          total: 1,
+          offset: 0,
+          limit: 10,
+          has_more: false,
+          next_offset: null,
+          module_sources: [buttonComponent.module_source],
+          implementation_kinds: ['antd_facade']
+        },
+        loading: false,
+        error: null
+      }
+    );
+    componentCapabilitiesApi.fetchFrontstageComponentCapability.mockResolvedValue(
+      buttonComponent
+    );
+    clipboard.copyTextToClipboard.mockResolvedValue(undefined);
   });
 
   test('AC-001 describes a context reference instead of assuming a global ctx', () => {
@@ -443,7 +519,7 @@ describe('TSX Studio insertion descriptors', () => {
     expect(screen.queryByText('ctx.currentUser')).not.toBeInTheDocument();
   });
 
-  test('AC-002 carries the catalog module source with a component insertion', () => {
+  test('AC-004 and AC-005 render the API table, insert the registered snippet, and copy the real API', async () => {
     const onInsertCode = createInsertCodeMock();
     render(
       <JsxStudioResourcePanel
@@ -451,27 +527,38 @@ describe('TSX Studio insertion descriptors', () => {
         codeSource=""
         pageBlocks={[block]}
         workspaceId="workspace-1"
-        projection={{
-          ...projection,
-          components: [
-            {
-              name: 'Button',
-              moduleSource: '@1flowbase/block-renderer/antd-facade'
-            }
-          ]
-        }}
+        projection={projection}
         section="components"
         onInsertCode={onInsertCode}
         onSaveBlock={createSaveBlockMock()}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
+    expect(
+      screen.getByRole('columnheader', { name: '组件' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '描述' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '操作' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(buttonComponent.description)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '插入' }));
 
     expect(onInsertCode).toHaveBeenCalledWith({
       kind: 'component',
       name: 'Button',
-      moduleSource: '@1flowbase/block-renderer/antd-facade'
+      moduleSource: '@1flowbase/block-renderer/antd-facade',
+      source: buttonComponent.insert_snippet
     });
+
+    fireEvent.click(screen.getByRole('button', { name: '复制 API' }));
+    await waitFor(() =>
+      expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith(
+        buttonComponent.api_documentation
+      )
+    );
   });
 });

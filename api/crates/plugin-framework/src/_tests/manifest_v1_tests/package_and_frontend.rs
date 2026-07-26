@@ -340,6 +340,37 @@ block_contributions:
     code_modules:
       - source: "@1flowbase/block-sdk"
         type_declarations: "export declare function defineBlock(input: unknown): unknown;"
+      - source: "@1flowbase/block-renderer/antd-facade"
+        type_declarations: |
+          declare module '@1flowbase/block-renderer/antd-facade' {
+            export interface FacadeCommonProps {}
+            export type FacadeComponent<TProps> = (props?: TProps) => unknown;
+          }
+        components:
+          - component_code: button
+            export_name: Button
+            implementation:
+              kind: antd_facade
+              upstream:
+                package: antd
+                component: Button
+                version: "5.x"
+            description: "Ant Design Button 的受控 facade；通过 actionId 触发区块 action，不支持 onClick。"
+            props:
+              - name: type
+                type: "'primary' | 'default' | 'dashed' | 'link' | 'text'"
+                required: false
+                description: "按钮视觉类型。"
+              - name: actionId
+                type: string
+                required: false
+                description: "点击后发送的区块 action 标识。"
+            limitations:
+              - "不支持 React onClick。"
+            examples:
+              - title: "触发保存操作"
+                code: '<Button type="primary" actionId="save">保存</Button>'
+            insert_snippet: '<Button type="primary" actionId="save">保存</Button>'
     context_contract:
       primitives:
         - text
@@ -369,8 +400,78 @@ block_contributions:
     assert_eq!(block.code_template_version.as_deref(), Some("1.0.0"));
     assert_eq!(block.code_template_language.as_deref(), Some("tsx"));
     assert_eq!(block.code_modules[0].source, "@1flowbase/block-sdk");
+    let button = &block.code_modules[1].components[0];
+    assert_eq!(button.component_code, "button");
+    assert_eq!(button.export_name, "Button");
+    assert_eq!(button.props[0].name, "type");
+    assert_eq!(
+        button.props[0].type_name,
+        "'primary' | 'default' | 'dashed' | 'link' | 'text'"
+    );
+    assert_eq!(button.examples[0].title, "触发保存操作");
+    assert!(button.limitations[0].contains("onClick"));
     assert_eq!(block.context_contract.primitives, vec!["text", "image"]);
     assert_eq!(block.ui_capabilities, vec!["responsive", "configurable"]);
+}
+
+#[test]
+fn ac_001_builtin_frontend_components_publish_complete_api_contracts() {
+    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/capability-plugins/1flowbase/manifest.yaml");
+    let source = std::fs::read_to_string(manifest_path).unwrap();
+    let manifest = parse_plugin_manifest(&source).unwrap();
+    let facade = manifest.block_contributions[0]
+        .code_modules
+        .iter()
+        .find(|module| module.source == "@1flowbase/block-renderer/antd-facade")
+        .unwrap();
+    let exports = facade
+        .components
+        .iter()
+        .map(|component| component.export_name.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        exports,
+        vec![
+            "Stack",
+            "Inline",
+            "Grid",
+            "Divider",
+            "Text",
+            "Title",
+            "Caption",
+            "Badge",
+            "Table",
+            "Descriptions",
+            "Empty",
+            "Alert",
+            "Form",
+            "FormItem",
+            "Input",
+            "Textarea",
+            "Select",
+            "Checkbox",
+            "Switch",
+            "DatePicker",
+            "NumberInput",
+            "Button",
+            "IconButton",
+            "Modal",
+        ]
+    );
+    let button = facade
+        .components
+        .iter()
+        .find(|component| component.export_name == "Button")
+        .unwrap();
+    assert!(button.props.iter().any(|prop| prop.name == "actionId"));
+    assert!(!button.props.iter().any(|prop| prop.name == "onClick"));
+    assert!(button.description.contains("Ant Design Button"));
+    assert!(facade
+        .components
+        .iter()
+        .all(|component| !component.description.contains("@1flowbase-component")));
 }
 
 #[test]

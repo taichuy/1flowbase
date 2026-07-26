@@ -69,7 +69,9 @@ pub use flow::{
 };
 pub use frontend_block_catalog::{
     FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
-    FrontendBlockPermissions,
+    FrontendBlockPermissions, FrontendComponentContract, FrontendComponentExample,
+    FrontendComponentImplementation, FrontendComponentImplementationKind, FrontendComponentProp,
+    FrontendComponentUpstream,
 };
 pub use frontstage::{FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode};
 pub use host_extension::{

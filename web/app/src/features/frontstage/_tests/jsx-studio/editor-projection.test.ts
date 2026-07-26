@@ -7,13 +7,13 @@ import {
 } from '../../lib/jsx-studio/editor-projection';
 
 describe('Frontstage JSX editor projection', () => {
-  test('AC-021 projects only catalog components and the editable context comment', () => {
+  test('AC-021 projects only backend catalog scope and the editable context comment', () => {
     const projection = createFrontstageJsxEditorProjection({
       catalogEntry: null
     });
 
     expect(projection).toEqual({
-      components: [],
+      componentCatalogQuery: null,
       contextComment: createFrontstageContextComment(),
       monacoExtraLibs: []
     });
@@ -22,7 +22,7 @@ describe('Frontstage JSX editor projection', () => {
     expect(projection.contextComment).not.toContain('ctx.data');
   });
 
-  test('AC-002 keeps each component attached to its catalog module source', () => {
+  test('AC-001 does not infer component APIs from TypeScript declarations', () => {
     const projection = createFrontstageJsxEditorProjection({
       catalogEntry: {
         codeCapabilities: {
@@ -38,19 +38,18 @@ describe('Frontstage JSX editor projection', () => {
             }
           ],
           workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
-        }
+        },
+        installationId: 'installation-1',
+        contributionCode: 'frontstage.js-ui-block'
       } as NormalizedFrontstageBlockCatalogEntry
     });
 
-    expect(projection.components).toEqual([
-      {
-        name: 'Button',
-        moduleSource: '@1flowbase/block-renderer/antd-facade'
-      },
-      {
-        name: 'Stack',
-        moduleSource: '@1flowbase/block-renderer/antd-facade'
-      }
-    ]);
+    expect(projection.componentCatalogQuery).toEqual({
+      installation_id: 'installation-1',
+      contribution_code: 'frontstage.js-ui-block'
+    });
+    expect(projection.monacoExtraLibs[0]?.content).toContain(
+      'export const Button'
+    );
   });
 });

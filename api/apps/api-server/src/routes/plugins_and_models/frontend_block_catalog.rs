@@ -86,9 +86,12 @@ fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalog
         code_modules: entry
             .code_modules
             .into_iter()
-            .map(|code_module| FrontendBlockCodeModuleResponse {
-                source: code_module.source,
-                type_declarations: code_module.type_declarations,
+            .map(|code_module| {
+                let type_declarations = code_module.resolved_type_declarations();
+                FrontendBlockCodeModuleResponse {
+                    source: code_module.source,
+                    type_declarations,
+                }
             })
             .collect(),
         context_contract: FrontendBlockContextContractResponse {

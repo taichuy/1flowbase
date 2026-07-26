@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 pub mod callable_interfaces;
+pub mod component_capabilities;
 pub mod data_capabilities;
 
 use axum::{
@@ -298,6 +299,20 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/frontstage/:workspace_id/interface-capabilities/:interface_id",
             console_get(
                 callable_interfaces::get_frontstage_interface_capability,
+                Authenticated,
+            ),
+        )
+        .route(
+            "/frontstage/:workspace_id/component-capabilities",
+            console_get(
+                component_capabilities::list_frontstage_component_capabilities,
+                Authenticated,
+            ),
+        )
+        .route(
+            "/frontstage/:workspace_id/component-capabilities/:component_id",
+            console_get(
+                component_capabilities::get_frontstage_component_capability,
                 Authenticated,
             ),
         )

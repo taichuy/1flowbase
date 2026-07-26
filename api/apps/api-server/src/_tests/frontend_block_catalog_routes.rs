@@ -85,6 +85,34 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     .bind(json!([{
         "source": "@1flowbase/block-sdk",
         "type_declarations": "export declare function defineBlock(input: unknown): unknown;"
+    }, {
+        "source": "@1flowbase/block-renderer/antd-facade",
+        "type_declarations": "declare module '@1flowbase/block-renderer/antd-facade' { export interface FacadeCommonProps {} export type FacadeComponent<TProps> = (props?: TProps) => unknown; }",
+        "components": [{
+            "component_code": "button",
+            "export_name": "Button",
+            "implementation": {
+                "kind": "antd_facade",
+                "upstream": {
+                    "package": "antd",
+                    "component": "Button",
+                    "version": "5.x"
+                }
+            },
+            "description": "Ant Design Button 的受控 facade；通过 actionId 触发区块 action，不支持 onClick。",
+            "props": [{
+                "name": "actionId",
+                "type": "string",
+                "required": false,
+                "description": "点击后发送的区块 action 标识。"
+            }],
+            "limitations": ["不支持 React onClick。"],
+            "examples": [{
+                "title": "触发保存操作",
+                "code": "<Button actionId=\"save\">保存</Button>"
+            }],
+            "insert_snippet": "<Button actionId=\"save\">保存</Button>"
+        }]
     }]))
     .execute(&pool)
     .await
@@ -109,6 +137,75 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     }
 
     installation_id
+}
+
+#[tokio::test]
+async fn ac_003_frontstage_component_capabilities_are_paged_and_addressable() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let installation_id = seed_frontend_block(&database_url, true).await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let workspace_id: Uuid =
+        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/frontstage/{workspace_id}/component-capabilities?installation_id={installation_id}&query=button&limit=1"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(payload["data"]["total"], 1);
+    assert_eq!(payload["data"]["items"][0]["export_name"], "Button");
+    assert_eq!(
+        payload["data"]["items"][0]["implementation_kind"],
+        "antd_facade"
+    );
+    let component_id = payload["data"]["items"][0]["component_id"]
+        .as_str()
+        .unwrap();
+
+    let detail_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/frontstage/{workspace_id}/component-capabilities/{component_id}"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail: Value = serde_json::from_slice(
+        &to_bytes(detail_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(detail["data"]["props"][0]["name"], "actionId");
+    assert!(detail["data"]["typescript_declaration"]
+        .as_str()
+        .unwrap()
+        .contains("readonly actionId?: string"));
+    assert!(!detail["data"]["typescript_declaration"]
+        .as_str()
+        .unwrap()
+        .contains("@1flowbase-component"));
 }
 
 #[tokio::test]
@@ -162,6 +259,16 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
     assert!(!sdk_declarations.contains("interfaceId"));
     assert!(!sdk_declarations.contains("schemaDigest"));
     assert!(!sdk_declarations.contains("defineBlock"));
+    let facade_declarations = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/block-renderer/antd-facade")
+        .and_then(|module| module["type_declarations"].as_str())
+        .unwrap();
+    assert!(facade_declarations.contains("interface ButtonProps"));
+    assert!(facade_declarations.contains("readonly actionId?: string"));
+    assert!(!facade_declarations.contains("readonly onClick"));
     assert_eq!(
         jsx_block["code_modules"]
             .as_array()

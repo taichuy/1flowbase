@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use crate::{
@@ -10,6 +11,178 @@ const FRONTEND_BLOCKS_VIEW_OPERATION_ID: &str = "frontend_blocks.view";
 
 pub struct ListFrontendBlockCatalogQuery {
     pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListFrontendComponentCapabilitiesQuery {
+    pub workspace_id: Uuid,
+    pub installation_id: Option<Uuid>,
+    pub contribution_code: Option<String>,
+    pub query: Option<String>,
+    pub module_source: Option<String>,
+    pub implementation_kind: Option<domain::FrontendComponentImplementationKind>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct GetFrontendComponentCapabilityQuery {
+    pub workspace_id: Uuid,
+    pub component_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrontendComponentCapability {
+    pub component_id: String,
+    pub installation_id: Uuid,
+    pub provider_code: String,
+    pub plugin_id: String,
+    pub plugin_version: String,
+    pub contribution_code: String,
+    pub module_source: String,
+    pub contract: domain::FrontendComponentContract,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrontendComponentCapabilityPage {
+    pub items: Vec<FrontendComponentCapability>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
+    pub module_sources: Vec<String>,
+    pub implementation_kinds: Vec<String>,
+}
+
+pub struct FrontendComponentCatalogService<R> {
+    repository: R,
+}
+
+impl<R> FrontendComponentCatalogService<R>
+where
+    R: FrontendBlockCatalogRepository,
+{
+    pub fn new(repository: R) -> Self {
+        Self { repository }
+    }
+
+    pub async fn list_component_capabilities(
+        &self,
+        query: ListFrontendComponentCapabilitiesQuery,
+    ) -> Result<FrontendComponentCapabilityPage> {
+        let mut entries = self.load_entries(query.workspace_id).await?;
+        let module_sources = entries
+            .iter()
+            .map(|entry| entry.module_source.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let implementation_kinds = entries
+            .iter()
+            .map(|entry| entry.contract.implementation.kind.as_str().to_string())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
+        if let Some(installation_id) = query.installation_id {
+            entries.retain(|entry| entry.installation_id == installation_id);
+        }
+        if let Some(contribution_code) = non_empty(query.contribution_code.as_deref()) {
+            entries.retain(|entry| entry.contribution_code == contribution_code);
+        }
+        if let Some(module_source) = non_empty(query.module_source.as_deref()) {
+            entries.retain(|entry| entry.module_source == module_source);
+        }
+        if let Some(implementation_kind) = query.implementation_kind {
+            entries.retain(|entry| entry.contract.implementation.kind == implementation_kind);
+        }
+        if let Some(search) = non_empty(query.query.as_deref()) {
+            let search = search.to_lowercase();
+            entries.retain(|entry| component_matches(entry, &search));
+        }
+
+        entries.sort_by(|left, right| {
+            left.contract
+                .export_name
+                .cmp(&right.contract.export_name)
+                .then_with(|| left.module_source.cmp(&right.module_source))
+                .then_with(|| left.component_id.cmp(&right.component_id))
+        });
+        let total = entries.len();
+        let offset = query.offset.min(total);
+        let limit = query.limit.max(1);
+        let end = offset.saturating_add(limit).min(total);
+        let has_more = end < total;
+        Ok(FrontendComponentCapabilityPage {
+            items: entries[offset..end].to_vec(),
+            total,
+            offset,
+            limit,
+            has_more,
+            next_offset: has_more.then_some(end),
+            module_sources,
+            implementation_kinds,
+        })
+    }
+
+    pub async fn get_component_capability(
+        &self,
+        query: GetFrontendComponentCapabilityQuery,
+    ) -> Result<Option<FrontendComponentCapability>> {
+        Ok(self
+            .load_entries(query.workspace_id)
+            .await?
+            .into_iter()
+            .find(|entry| entry.component_id == query.component_id))
+    }
+
+    async fn load_entries(&self, workspace_id: Uuid) -> Result<Vec<FrontendComponentCapability>> {
+        let blocks = self
+            .repository
+            .list_workspace_frontend_blocks(workspace_id)
+            .await?;
+        let mut entries = Vec::new();
+        for block in blocks {
+            for module in block.code_modules {
+                for contract in module.components {
+                    entries.push(FrontendComponentCapability {
+                        component_id: format!(
+                            "{}:{}:{}",
+                            block.installation_id, block.contribution_code, contract.component_code
+                        ),
+                        installation_id: block.installation_id,
+                        provider_code: block.provider_code.clone(),
+                        plugin_id: block.plugin_id.clone(),
+                        plugin_version: block.plugin_version.clone(),
+                        contribution_code: block.contribution_code.clone(),
+                        module_source: module.source.clone(),
+                        contract,
+                    });
+                }
+            }
+        }
+        Ok(entries)
+    }
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn component_matches(entry: &FrontendComponentCapability, search: &str) -> bool {
+    entry.contract.export_name.to_lowercase().contains(search)
+        || entry.contract.description.to_lowercase().contains(search)
+        || entry
+            .contract
+            .props
+            .iter()
+            .any(|prop| prop.name.to_lowercase().contains(search))
+        || entry
+            .contract
+            .limitations
+            .iter()
+            .any(|limitation| limitation.to_lowercase().contains(search))
 }
 
 #[derive(Debug, Clone)]

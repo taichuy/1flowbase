@@ -1,0 +1,273 @@
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, Query, State},
+    http::HeaderMap,
+    Json,
+};
+use control_plane::{
+    errors::ControlPlaneError,
+    frontend_block_catalog::{
+        FrontendComponentCapability, FrontendComponentCatalogService,
+        GetFrontendComponentCapabilityQuery, ListFrontendComponentCapabilitiesQuery,
+    },
+    ports::FrontstagePageRepository,
+};
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
+
+use crate::{
+    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
+    response::ApiSuccess,
+};
+
+const COMPONENT_CAPABILITY_PAGE_SIZE: usize = 20;
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FrontstageComponentCapabilityQuery {
+    pub installation_id: Option<Uuid>,
+    pub contribution_code: Option<String>,
+    pub query: Option<String>,
+    pub module_source: Option<String>,
+    pub implementation_kind: Option<String>,
+    #[param(minimum = 0)]
+    pub offset: Option<usize>,
+    #[param(minimum = 1, maximum = 20)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontendComponentUpstreamResponse {
+    pub package: String,
+    pub component: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontendComponentPropResponse {
+    pub name: String,
+    pub r#type: String,
+    pub required: bool,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontendComponentExampleResponse {
+    pub title: String,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontstageComponentCapabilitySummaryResponse {
+    pub component_id: String,
+    pub installation_id: String,
+    pub provider_code: String,
+    pub plugin_id: String,
+    pub plugin_version: String,
+    pub contribution_code: String,
+    pub module_source: String,
+    pub export_name: String,
+    pub implementation_kind: String,
+    pub upstream: Option<FrontendComponentUpstreamResponse>,
+    pub description: String,
+    pub insert_snippet: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageComponentCapabilityPageResponse {
+    pub items: Vec<FrontstageComponentCapabilitySummaryResponse>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
+    pub module_sources: Vec<String>,
+    pub implementation_kinds: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageComponentCapabilityResponse {
+    #[serde(flatten)]
+    pub summary: FrontstageComponentCapabilitySummaryResponse,
+    pub props: Vec<FrontendComponentPropResponse>,
+    pub limitations: Vec<String>,
+    pub examples: Vec<FrontendComponentExampleResponse>,
+    pub typescript_declaration: String,
+    pub api_documentation: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/component-capabilities",
+    params(
+        FrontstageComponentCapabilityQuery,
+        ("workspace_id" = String, Path, description = "Workspace id")
+    ),
+    responses(
+        (status = 200, body = FrontstageComponentCapabilityPageResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn list_frontstage_component_capabilities(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<FrontstageComponentCapabilityQuery>,
+    Path(workspace_id): Path<String>,
+) -> Result<Json<ApiSuccess<FrontstageComponentCapabilityPageResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
+    require_design_permission(&state, context.user.id, workspace_id).await?;
+    let page = FrontendComponentCatalogService::new(state.store.clone())
+        .list_component_capabilities(ListFrontendComponentCapabilitiesQuery {
+            workspace_id,
+            installation_id: query.installation_id,
+            contribution_code: query.contribution_code,
+            query: query.query,
+            module_source: query.module_source,
+            implementation_kind: parse_implementation_kind(query.implementation_kind.as_deref())?,
+            offset: query.offset.unwrap_or(0),
+            limit: query
+                .limit
+                .unwrap_or(COMPONENT_CAPABILITY_PAGE_SIZE)
+                .clamp(1, COMPONENT_CAPABILITY_PAGE_SIZE),
+        })
+        .await?;
+
+    Ok(Json(ApiSuccess::new(
+        FrontstageComponentCapabilityPageResponse {
+            items: page.items.into_iter().map(to_summary_response).collect(),
+            total: page.total,
+            offset: page.offset,
+            limit: page.limit,
+            has_more: page.has_more,
+            next_offset: page.next_offset,
+            module_sources: page.module_sources,
+            implementation_kinds: page.implementation_kinds,
+        },
+    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/component-capabilities/{component_id}",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace id"),
+        ("component_id" = String, Path, description = "Component capability id")
+    ),
+    responses(
+        (status = 200, body = FrontstageComponentCapabilityResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_frontstage_component_capability(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, component_id)): Path<(String, String)>,
+) -> Result<Json<ApiSuccess<FrontstageComponentCapabilityResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
+    require_design_permission(&state, context.user.id, workspace_id).await?;
+    let entry = FrontendComponentCatalogService::new(state.store.clone())
+        .get_component_capability(GetFrontendComponentCapabilityQuery {
+            workspace_id,
+            component_id,
+        })
+        .await?
+        .ok_or(ControlPlaneError::NotFound("frontend_component_capability"))?;
+
+    Ok(Json(ApiSuccess::new(to_detail_response(entry))))
+}
+
+async fn require_design_permission(
+    state: &ApiState,
+    actor_user_id: Uuid,
+    workspace_id: Uuid,
+) -> Result<(), ApiError> {
+    let actor = state
+        .store
+        .load_actor_context_for_workspace(actor_user_id, workspace_id)
+        .await?;
+    if !actor.has_permission("frontstage.page.design") {
+        return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
+    }
+    Ok(())
+}
+
+fn parse_implementation_kind(
+    value: Option<&str>,
+) -> Result<Option<domain::FrontendComponentImplementationKind>, ApiError> {
+    match value.map(str::trim).filter(|value| !value.is_empty()) {
+        None => Ok(None),
+        Some("antd_facade") => Ok(Some(
+            domain::FrontendComponentImplementationKind::AntdFacade,
+        )),
+        Some("custom") => Ok(Some(domain::FrontendComponentImplementationKind::Custom)),
+        Some(_) => Err(ControlPlaneError::InvalidInput("implementation_kind").into()),
+    }
+}
+
+fn to_summary_response(
+    entry: FrontendComponentCapability,
+) -> FrontstageComponentCapabilitySummaryResponse {
+    FrontstageComponentCapabilitySummaryResponse {
+        component_id: entry.component_id,
+        installation_id: entry.installation_id.to_string(),
+        provider_code: entry.provider_code,
+        plugin_id: entry.plugin_id,
+        plugin_version: entry.plugin_version,
+        contribution_code: entry.contribution_code,
+        module_source: entry.module_source,
+        export_name: entry.contract.export_name,
+        implementation_kind: entry.contract.implementation.kind.as_str().to_string(),
+        upstream: entry.contract.implementation.upstream.map(|upstream| {
+            FrontendComponentUpstreamResponse {
+                package: upstream.package,
+                component: upstream.component,
+                version: upstream.version,
+            }
+        }),
+        description: entry.contract.description,
+        insert_snippet: entry.contract.insert_snippet,
+    }
+}
+
+fn to_detail_response(entry: FrontendComponentCapability) -> FrontstageComponentCapabilityResponse {
+    let declaration = entry.contract.typescript_declaration(&entry.module_source);
+    let api_documentation = format!(
+        "import {{ {} }} from '{}';\n\n{}",
+        entry.contract.export_name, entry.module_source, declaration
+    );
+    let props = entry
+        .contract
+        .props
+        .iter()
+        .map(|prop| FrontendComponentPropResponse {
+            name: prop.name.clone(),
+            r#type: prop.type_name.clone(),
+            required: prop.required,
+            description: prop.description.clone(),
+        })
+        .collect();
+    let limitations = entry.contract.limitations.clone();
+    let examples = entry
+        .contract
+        .examples
+        .iter()
+        .map(|example| FrontendComponentExampleResponse {
+            title: example.title.clone(),
+            code: example.code.clone(),
+        })
+        .collect();
+    FrontstageComponentCapabilityResponse {
+        summary: to_summary_response(entry),
+        props,
+        limitations,
+        examples,
+        typescript_declaration: declaration,
+        api_documentation,
+    }
+}

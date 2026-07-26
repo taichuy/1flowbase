@@ -195,6 +195,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
                 code_modules: vec![domain::FrontendBlockCodeModule {
                     source: "@1flowbase/block-sdk".into(),
                     type_declarations: "export declare function defineBlock(): unknown;".into(),
+                    components: vec![],
                 }],
                 context_contract: domain::FrontendBlockContextContract {
                     primitives: vec!["text".into(), "image".into()],

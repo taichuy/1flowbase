@@ -42,9 +42,12 @@ pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension
 pub use installation::*;
 pub use manifest_v1::{
     parse_plugin_manifest, FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
-    FrontendBlockPermissionsManifest, NodeContributionDependencyManifest, NodeContributionManifest,
-    PluginExecutionMode, PluginManifestV1, PluginPermissionManifest, PluginRuntimeLimits,
-    PluginRuntimeManifest,
+    FrontendBlockPermissionsManifest, FrontendComponentContractManifest,
+    FrontendComponentExampleManifest, FrontendComponentImplementationKindManifest,
+    FrontendComponentImplementationManifest, FrontendComponentPropManifest,
+    FrontendComponentUpstreamManifest, NodeContributionDependencyManifest,
+    NodeContributionManifest, PluginExecutionMode, PluginManifestV1, PluginPermissionManifest,
+    PluginRuntimeLimits, PluginRuntimeManifest,
 };
 pub use package_intake::*;
 pub use provider_contract::*;

@@ -15,6 +15,7 @@ export type FrontstageJsxInsertion =
       kind: 'component';
       name: string;
       moduleSource: FrontendBlockCodeModuleSource;
+      source: string;
     }
   | {
       kind: 'source';
@@ -59,7 +60,7 @@ export function planFrontstageJsxInsertion({
       insertedSource = `${findMainContextBinding(source)}.${insertion.memberPath}`;
       break;
     case 'component':
-      insertedSource = `<${insertion.name}></${insertion.name}>`;
+      insertedSource = insertion.source;
       requiredImports.push({
         kind: 'value',
         name: insertion.name,

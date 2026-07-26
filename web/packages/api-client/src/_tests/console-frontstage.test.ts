@@ -12,10 +12,12 @@ import {
   issueFrontstageCallableWriteGrant,
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
+  getFrontstageComponentCapability,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
   listFrontstagePageTabs,
   listFrontstageInterfaceCapabilities,
+  listFrontstageComponentCapabilities,
   listFrontstagePages,
   moveFrontstagePageNode,
   saveFrontstageBlockCode,
@@ -90,6 +92,23 @@ describe('console-frontstage client', () => {
       }
     },
     {
+      name: 'component capability catalog',
+      request: () =>
+        listFrontstageComponentCapabilities('workspace-1', {
+          installation_id: 'installation-1',
+          contribution_code: 'frontstage.js-ui-block',
+          query: 'button',
+          module_source: '@1flowbase/block-renderer/antd-facade',
+          implementation_kind: 'antd_facade',
+          offset: 20,
+          limit: 20
+        }),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/component-capabilities?installation_id=installation-1&contribution_code=frontstage.js-ui-block&query=button&module_source=%401flowbase%2Fblock-renderer%2Fantd-facade&implementation_kind=antd_facade&offset=20&limit=20',
+        method: 'GET'
+      }
+    },
+    {
       name: 'page tree collection',
       request: () => listFrontstagePages('workspace-1'),
       expected: {
@@ -138,6 +157,18 @@ describe('console-frontstage client', () => {
       )
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace-1/interface-capabilities/published%2Finterface%3Adetail',
+      method: 'GET'
+    });
+  });
+
+  test('loads one encoded component capability detail on demand', async () => {
+    await expect(
+      getFrontstageComponentCapability(
+        'workspace-1',
+        'installation-1:block:button'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/component-capabilities/installation-1%3Ablock%3Abutton',
       method: 'GET'
     });
   });

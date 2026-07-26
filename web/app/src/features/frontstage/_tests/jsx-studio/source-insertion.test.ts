@@ -30,7 +30,11 @@ function sourceDiagnostics(source: string): string[] {
 }
 declare module '${facadeSource}' {
   export const Stack: (props?: { children?: unknown }) => unknown;
-  export const Button: (props?: { children?: unknown }) => unknown;
+  export interface ButtonProps {
+    readonly actionId?: string;
+    readonly children?: unknown;
+  }
+  export const Button: (props?: ButtonProps) => unknown;
 }`
     ]
   ]);
@@ -95,14 +99,17 @@ async function main(ctx: BlockContext) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource
+        moduleSource: facadeSource,
+        source: '<Button type="primary" actionId="save">保存</Button>'
       }
     });
     const nextSource = applyFrontstageJsxInsertionPlan(source, plan);
 
     expect(plan.edits).toHaveLength(2);
     expect(nextSource).toContain(`import { Button } from '${facadeSource}';`);
-    expect(nextSource).toContain('<Button></Button>');
+    expect(nextSource).toContain(
+      '<Button type="primary" actionId="save">保存</Button>'
+    );
   });
 
   test('AC-002 and AC-004 merge and deduplicate an existing multiline component import', () => {
@@ -119,7 +126,8 @@ async function main(ctx: unknown) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource
+        moduleSource: facadeSource,
+        source: '<Button></Button>'
       }
     });
     const firstSource = applyFrontstageJsxInsertionPlan(source, firstPlan);
@@ -129,7 +137,8 @@ async function main(ctx: unknown) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource
+        moduleSource: facadeSource,
+        source: '<Button></Button>'
       }
     });
     const secondSource = applyFrontstageJsxInsertionPlan(
@@ -199,7 +208,8 @@ export default { main } satisfies BlockModule;`;
         insertion: {
           kind: 'component',
           name: 'Button',
-          moduleSource: facadeSource
+          moduleSource: facadeSource,
+          source: '<Button></Button>'
         }
       })
     );
@@ -227,5 +237,15 @@ export default { main } satisfies BlockModule;`;
     expect(sourceDiagnostics(variableSource)).toEqual([]);
     expect(sourceDiagnostics(componentSource)).toEqual([]);
     expect(sourceDiagnostics(interfaceSource)).toEqual([]);
+  });
+
+  test('AC-006 rejects unsupported React props that are outside the facade contract', () => {
+    const source = `import { Button } from '${facadeSource}';
+
+const view = <Button onClick={() => undefined}>保存</Button>;`;
+
+    expect(sourceDiagnostics(source)).toContain(
+      "Type '{ onClick: () => undefined; }' is not assignable to type 'ButtonProps'.\n  Property 'onClick' does not exist on type 'ButtonProps'."
+    );
   });
 });

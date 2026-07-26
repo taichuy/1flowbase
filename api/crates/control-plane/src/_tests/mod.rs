@@ -10,6 +10,7 @@ mod ephemeral_inspection_contract_tests;
 mod external_agent_bridge_tests;
 mod file_management;
 mod flow;
+mod frontend_component_catalog_service_tests;
 mod host_extensions;
 mod host_infrastructure;
 mod member;
