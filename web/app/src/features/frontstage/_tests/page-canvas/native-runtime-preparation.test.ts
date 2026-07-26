@@ -233,6 +233,55 @@ describe('FrontstageNativePreparationScheduler', () => {
     });
   });
 
+  test('D3-AC-006 observes only current Native stages with generation and cache tier', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    const stale = deferred();
+    const observations: Array<Record<string, unknown>> = [];
+    const observedTask = (
+      identity: string,
+      prepare: FrontstageNativePreparationTask['prepare']
+    ): FrontstageNativePreparationTask => ({
+      blockId: 'observed',
+      slotIndex: 0,
+      identity,
+      observe: (observation) => observations.push(observation),
+      prepare
+    });
+    scheduler.reconcile([observedTask('v1', () => stale.promise)], {
+      observed: 0
+    });
+    scheduler.reconcile(
+      [
+        observedTask('v2', async (_signal, enterStage) => {
+          enterStage('artifact_lookup');
+          enterStage('module_resolve', 'l2');
+          return { ...prepared('observed'), artifactCacheTier: 'l2' };
+        })
+      ],
+      { observed: 0 }
+    );
+    stale.resolve(prepared('stale'));
+    await tick();
+
+    expect(observations.map(({ stage }) => stage)).toEqual([
+      'source_fetch',
+      'source_fetch',
+      'artifact_lookup',
+      'module_resolve'
+    ]);
+    expect(observations.at(-1)).toMatchObject({
+      generation: 1,
+      cacheTier: 'l2'
+    });
+    expect(
+      observations.some(({ stage }) =>
+        ['executing', 'waiting_effect', 'schema_validate'].includes(
+          String(stage)
+        )
+      )
+    ).toBe(false);
+  });
+
   test('D3-AC-002 marks module_resolve failures without action/schema rerun phases', async () => {
     const scheduler = new FrontstageNativePreparationScheduler();
     scheduler.reconcile(

@@ -332,19 +332,33 @@ function NativeRuntimeSlotSurface({
     mountIntent: readyPreparation?.mountIntent ?? null,
     prepared: readyPreparation?.prepared ?? null,
     createRuntimeInput,
-    instanceEpochOwner
+    instanceEpochOwner,
+    observationContext: preparation.observationContext,
+    preparationGeneration: preparation.generation
   });
 
   if (preparation.status === 'failed' || instanceState.status === 'failed') {
+    const retry =
+      preparation.status === 'failed' ? onRetry : instanceState.retry;
     return (
-      <div style={contentViewportStyle}>
+      <div
+        className="frontstage-native-block-state frontstage-native-block-state--error"
+        style={contentViewportStyle}
+      >
+        {instanceState.status === 'failed' ? (
+          <div
+            ref={setRoot}
+            data-testid={`frontstage-native-block-root-${item.blockId}`}
+            hidden
+          />
+        ) : null}
         <Alert
           type="error"
           showIcon
           message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
           action={
-            onRetry ? (
-              <Button size="small" onClick={onRetry}>
+            retry ? (
+              <Button size="small" onClick={retry}>
                 {i18nText('frontstage', 'auto.retry')}
               </Button>
             ) : undefined
@@ -356,7 +370,10 @@ function NativeRuntimeSlotSurface({
 
   if (!readyPreparation?.mountIntent) {
     return (
-      <div style={contentViewportStyle}>
+      <div
+        className="frontstage-native-block-state frontstage-native-block-state--loading"
+        style={contentViewportStyle}
+      >
         <BlockUiLoadingShell />
       </div>
     );

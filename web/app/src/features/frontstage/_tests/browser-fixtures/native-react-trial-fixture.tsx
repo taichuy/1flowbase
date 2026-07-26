@@ -1,113 +1,318 @@
-import React, { useState } from 'react';
+import '@ant-design/v5-patch-for-react-19';
+import { Button, ConfigProvider, Select } from 'antd';
+import type { BlockContext } from '@1flowbase/page-protocol';
+import type { ComponentType } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { JsBlockTrialPanel } from '../../components/JsBlockTrialPanel';
-import type { FrontstageBlockInstance } from '../../lib/page-document';
+import { PageCanvas } from '../../components/PageCanvas';
+import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
+import type {
+  FrontstageNativePreparedRuntime,
+  FrontstageNativePreparationSnapshot
+} from '../../lib/page-canvas/native-runtime-preparation';
+import {
+  readFrontstageRuntimeObservations,
+  resetFrontstageRuntimeObservations,
+  subscribeFrontstageRuntimeObservations
+} from '../../lib/page-canvas/runtime-observation';
 
-const baseBlock = {
-  rendererVersion: 'v1',
-  sourceId: 'native-trial',
-  codeRef: 'native-trial-code',
-  sourceCodeRef: 'native-trial-code',
-  catalog: { providerCode: 'official', installationId: 'native-trial' },
-  contribution: {
-    pluginId: 'official.blocks',
-    pluginVersion: '1.0.0',
-    code: 'native-react'
-  },
-  props: {},
-  ports: { inputs: [], outputs: [] },
-  presentation: { heightMode: 'auto', height: null },
-  layout: { order: 0 },
-  order: 0,
-  runtime: { kind: 'iframe', entry: 'default', hint: 'native-react' }
-} satisfies Omit<FrontstageBlockInstance, 'id'>;
+type FixtureBlockProps = {
+  label: string;
+};
 
-const firstSource = `
-import { useState } from 'react';
-import { Button, Select } from 'antd';
-export default function Block() {
+let firstThrowPending = false;
+
+function FirstBlock({
+  props,
+  ctx
+}: {
+  props: FixtureBlockProps;
+  ctx: BlockContext;
+}) {
+  const count = Number(ctx.inputs.count ?? 0);
+  if (firstThrowPending) {
+    firstThrowPending = false;
+    throw new Error('controlled Native render failure');
+  }
+  return (
+    <div data-testid="native-fixture-first-output" className="shared-name">
+      <style>{`.shared-name { color: rgb(22, 119, 255); }`}</style>
+      {props.label}:{count}
+      <Button data-testid="native-fixture-local-button">local</Button>
+      <Select
+        open
+        value="first"
+        options={[{ value: 'first', label: 'shadow-contained-popup' }]}
+      />
+    </div>
+  );
+}
+
+function SecondBlock({ ctx }: { ctx: BlockContext }) {
   const [count, setCount] = useState(0);
-  return <>
-    <style>{\`:root { --tone: red; } @keyframes pulse { from { opacity: .8; } to { opacity: 1; } } .same { color: var(--tone); animation: pulse 1s; }\`}</style>
-    <div className="same" data-testid="first-native-output">first:{count}</div>
-    <Button onClick={() => setCount((value) => value + 1)}>increment-first</Button>
-    <Select open value="first" options={[{ value: 'first', label: 'first-popup' }]} />
-  </>;
-}`;
+  return (
+    <div data-testid="native-fixture-second-output" className="shared-name">
+      <style>{`.shared-name { color: rgb(82, 196, 26); }`}</style>
+      adjacent:{count}
+      <Button
+        onClick={() =>
+          setCount((value) => {
+            const next = value + 1;
+            ctx.outputs.publish({ total: next });
+            return next;
+          })
+        }
+      >
+        input update
+      </Button>
+    </div>
+  );
+}
 
-const secondSource = `
-import { Button, Select } from 'antd';
-export default function Block() {
-  return <>
-    <style>{\`:root { --tone: blue; } @keyframes pulse { from { opacity: .6; } to { opacity: 1; } } .same { color: var(--tone); animation: pulse 1s; }\`}</style>
-    <div className="same" data-testid="second-native-output">second</div>
-    <Button>second-button</Button>
-    <Select open value="second" options={[{ value: 'second', label: 'second-popup' }]} />
-  </>;
-}`;
+const components = {
+  first: FirstBlock,
+  second: SecondBlock
+} satisfies Record<string, ComponentType<any>>;
 
 function NativeReactTrialFixture() {
-  const [firstCode, setFirstCode] = useState(firstSource);
-  const [firstRevision, setFirstRevision] = useState(1);
+  const [sourceRevision, setSourceRevision] = useState(1);
+  const [demands, setDemands] = useState<Record<string, 0 | 1 | 2 | 3>>({
+    first: 1,
+    second: 1
+  });
+  const [preparationFailure, setPreparationFailure] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const content = useMemo(
+    () =>
+      createFrontstagePageContentFixture({
+        page: {
+          id: 'native-frontstage-fixture',
+          title: 'Native Frontstage fixture'
+        },
+        root: {
+          payload: {
+            blocks: [
+              fixtureBlock(
+                'first',
+                0,
+                { label: `source-${sourceRevision}` },
+                {
+                  inputs: [
+                    {
+                      name: 'count',
+                      schema: { type: 'integer' },
+                      source: {
+                        block_id: 'second',
+                        output: 'total',
+                        scope: 'tab'
+                      }
+                    }
+                  ],
+                  outputs: []
+                }
+              ),
+              fixtureBlock(
+                'second',
+                1,
+                {},
+                {
+                  inputs: [],
+                  outputs: [{ name: 'total', schema: { type: 'integer' } }]
+                }
+              )
+            ]
+          }
+        }
+      }),
+    [sourceRevision]
+  );
+  const preparations = useMemo(
+    () => [
+      preparation(
+        'first',
+        0,
+        components.first,
+        demands.first,
+        sourceRevision,
+        preparationFailure,
+        'l2'
+      ),
+      preparation(
+        'second',
+        1,
+        components.second,
+        demands.second,
+        1,
+        false,
+        'miss'
+      )
+    ],
+    [demands.first, demands.second, preparationFailure, sourceRevision]
+  );
+  const [observations, setObservations] = useState(() =>
+    readFrontstageRuntimeObservations()
+  );
+  useEffect(() => subscribeFrontstageRuntimeObservations(setObservations), []);
+
+  const retryPreparation = (blockId: string) => {
+    if (blockId === 'first' && preparationFailure) {
+      setPreparationFailure(false);
+      setSourceRevision((value) => value + 1);
+    }
+  };
+
   return (
-    <main>
-      <button
-        data-testid="edit-without-run"
-        onClick={() => setFirstCode(firstSource.replace('first:', 'edited:'))}
+    <main style={{ padding: 16 }} data-hidden-page={hidden}>
+      <div
+        data-testid="native-frontstage-stats"
+        data-max-concurrent="1"
+        data-demands={`${demands.first},${demands.second}`}
+        data-observation-stages={observations
+          .map(({ stage }) => stage)
+          .join(',')}
+        data-instance-epochs={observations
+          .flatMap(({ instanceEpoch }) =>
+            instanceEpoch ? [instanceEpoch] : []
+          )
+          .join(',')}
+        data-ready-signal={
+          preparations.every(({ status }) => status === 'ready')
+            ? 'settled'
+            : 'pending'
+        }
       >
-        edit without run
-      </button>
-      <button
-        data-testid="run-edited"
-        onClick={() => setFirstRevision((value) => value + 1)}
-      >
-        run edited
-      </button>
-      <button
-        data-testid="compile-error"
-        onClick={() => {
-          setFirstCode('export default function Block() { return <div>; }');
-          setFirstRevision((value) => value + 1);
+        <button onClick={() => setSourceRevision((value) => value + 1)}>
+          source remount
+        </button>
+        <button
+          onClick={() => {
+            firstThrowPending = true;
+            setSourceRevision((value) => value + 1);
+          }}
+        >
+          render throw once
+        </button>
+        <button onClick={() => setPreparationFailure(true)}>
+          compile failure
+        </button>
+        <button onClick={() => setHidden((value) => !value)}>
+          hidden page
+        </button>
+        <button onClick={() => resetFrontstageRuntimeObservations()}>
+          reset observations
+        </button>
+        {[0, 1, 2, 3].map((priority) => (
+          <button
+            key={priority}
+            onClick={() =>
+              setDemands((current) => ({
+                ...current,
+                first: priority as 0 | 1 | 2 | 3
+              }))
+            }
+          >
+            demand {priority}
+          </button>
+        ))}
+      </div>
+      <PageCanvas
+        content={content}
+        runtimePreparations={hidden ? [] : preparations}
+        runtimeContext={{
+          currentUser: { id: 'fixture-user', displayName: 'Fixture User' },
+          workspace: { id: 'fixture-workspace' },
+          application: null,
+          theme: { mode: 'light', tokens: {} },
+          ui: {}
         }}
-      >
-        compile error
-      </button>
-      <button
-        data-testid="render-error"
-        onClick={() => {
-          setFirstCode(
-            "export default function Block() { throw new Error('fixture render error'); }"
-          );
-          setFirstRevision((value) => value + 1);
-        }}
-      >
-        render error
-      </button>
-      <section data-testid="native-trial-first">
-        <JsBlockTrialPanel
-          block={{ ...baseBlock, id: 'native-trial-first' }}
-          catalogEntry={null}
-          code={firstCode}
-          contextSnapshot={{}}
-          limits={{ timeoutMs: 1_000 }}
-          revision={`run:${firstRevision}`}
-        />
-      </section>
-      <section data-testid="native-trial-second">
-        <JsBlockTrialPanel
-          block={{ ...baseBlock, id: 'native-trial-second' }}
-          catalogEntry={null}
-          code={secondSource}
-          contextSnapshot={{}}
-          limits={{ timeoutMs: 1_000 }}
-          revision="run:1"
-        />
-      </section>
+        onRuntimeDemandChange={(blockId, priority) =>
+          setDemands((current) =>
+            current[blockId] === priority
+              ? current
+              : { ...current, [blockId]: priority }
+          )
+        }
+        onRuntimeRetry={retryPreparation}
+      />
     </main>
   );
 }
 
+function fixtureBlock(
+  id: string,
+  order: number,
+  props: Record<string, unknown>,
+  ports: Record<string, unknown>
+) {
+  return {
+    id,
+    renderer_version: 'v1',
+    codeRef: `${id}-code`,
+    contributionCode: `qa.native.${id}`,
+    runtime: { kind: 'iframe', entry: `blocks/${id}.js` },
+    layout: { order, region: 'main', span: 12 },
+    props,
+    ports
+  };
+}
+
+function preparation(
+  blockId: 'first' | 'second',
+  slotIndex: number,
+  component: ComponentType<any>,
+  priority: 0 | 1 | 2 | 3,
+  sourceRevision: number,
+  failed: boolean,
+  artifactCacheTier: 'l2' | 'miss'
+): FrontstageNativePreparationSnapshot {
+  const base = {
+    blockId,
+    slotIndex,
+    priority,
+    generation: sourceRevision,
+    observationContext: {
+      actorId: 'fixture-user',
+      workspaceId: 'fixture-workspace',
+      pageId: 'native-frontstage-fixture',
+      tabId: 'tab-1',
+      blockId
+    }
+  };
+  if (failed) {
+    return {
+      ...base,
+      status: 'failed',
+      failedStage: 'compile',
+      error: new Error('controlled compile failure')
+    };
+  }
+  if (priority === 3) return { ...base, status: 'idle' };
+  const identityInput = {
+    sourceSha256: `${blockId}-${sourceRevision}`.padEnd(64, '0'),
+    runtimeFingerprint: 'native-fixture-runtime',
+    dependencyLockIdentity: 'fixture-lock'
+  };
+  const prepared: FrontstageNativePreparedRuntime = {
+    artifact: {} as FrontstageNativePreparedRuntime['artifact'],
+    component: component as FrontstageNativePreparedRuntime['component'],
+    identityInput,
+    artifactCacheTier
+  };
+  return {
+    ...base,
+    status: 'ready',
+    prepared,
+    mountIntent: priority <= 1 ? { blockId, slotIndex, identityInput } : null
+  };
+}
+
 const root = document.getElementById('root');
-if (!root) throw new Error('Native React trial fixture root is missing.');
-createRoot(root).render(<NativeReactTrialFixture />);
+if (!root) throw new Error('Native Frontstage fixture root is missing.');
+createRoot(root).render(
+  <StrictMode>
+    <ConfigProvider>
+      <NativeReactTrialFixture />
+    </ConfigProvider>
+  </StrictMode>
+);

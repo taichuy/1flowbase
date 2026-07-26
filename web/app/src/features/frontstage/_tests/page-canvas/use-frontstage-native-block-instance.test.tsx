@@ -5,6 +5,7 @@ import type {
   NativeTrustedBlockHost,
   NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
+import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
 import { useFrontstageNativeBlockInstance } from '../../hooks/use-frontstage-native-block-instance';
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block-react-adapter';
@@ -116,9 +117,44 @@ describe('useFrontstageNativeBlockInstance', () => {
     await waitFor(() => expect(hosts.dispose).toHaveBeenCalledTimes(2));
     expect(epochs.end).toHaveBeenCalledWith('epoch-2');
   });
+
+  test('D3-AC-006 render retry remounts only the failed identity with a new epoch', async () => {
+    const hosts = createHostFactory();
+    const epochs = createEpochOwner();
+    const root = document.createElement('div');
+    const runtimePlan = plan({ title: 'Retry' });
+    const { result } = renderHook(() =>
+      useFrontstageNativeBlockInstance({
+        root,
+        mountIntent: intent('source-a'),
+        prepared: prepared(),
+        createRuntimeInput: () => ({
+          plan: runtimePlan,
+          context: createFrontstageUnavailableBlockContext(runtimePlan)
+        }),
+        instanceEpochOwner: epochs.owner,
+        hostFactory: hosts.factory
+      })
+    );
+    await waitFor(() => expect(hosts.mount).toHaveBeenCalledOnce());
+    hosts.fail({
+      code: 'runtime_error',
+      path: 'runtime.render',
+      message: 'controlled render failure'
+    });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+
+    result.current.retry();
+    await waitFor(() => expect(hosts.mount).toHaveBeenCalledTimes(2));
+    expect(hosts.dispose).toHaveBeenCalledOnce();
+    expect(hosts.factory).toHaveBeenCalledTimes(2);
+    expect(epochs.begin).toHaveBeenCalledTimes(2);
+    expect(epochs.end).toHaveBeenCalledWith('epoch-1');
+  });
 });
 
 function createHostFactory() {
+  let onRuntimeError: ((error: BlockProtocolError) => void) | undefined;
   const mount = vi.fn(async (runtimePlan: NativeTrustedBlockPreparePlan) => ({
     status: 'mounted' as const,
     blockId: runtimePlan.blockId,
@@ -131,15 +167,28 @@ function createHostFactory() {
   }));
   const dispose = vi.fn(async () => ({ status: 'disposed' as const }));
   const factory = vi.fn(
-    (): NativeTrustedBlockHost => ({
-      getState: () => ({ status: 'idle' }),
-      mount,
-      update,
-      retry: vi.fn(async () => ({ status: 'mounted' as const })),
-      dispose
-    })
+    (input: {
+      onRuntimeError(error: BlockProtocolError): void;
+    }): NativeTrustedBlockHost => {
+      onRuntimeError = input.onRuntimeError;
+      return {
+        getState: () => ({ status: 'idle' }),
+        mount,
+        update,
+        retry: vi.fn(async () => ({ status: 'mounted' as const })),
+        dispose
+      };
+    }
   );
-  return { factory, mount, update, dispose };
+  return {
+    factory,
+    mount,
+    update,
+    dispose,
+    fail(error: BlockProtocolError) {
+      onRuntimeError?.(error);
+    }
+  };
 }
 
 function createEpochOwner() {

@@ -12,6 +12,11 @@ import {
   type FrontstageRuntimeDemandByBlockId,
   type FrontstageRuntimeDemandPriority
 } from './runtime-demand';
+import type {
+  FrontstageNativeRuntimeObservationStage,
+  FrontstageRuntimeObservationCacheTier,
+  FrontstageRuntimeObservationContext
+} from './runtime-observation';
 
 export type FrontstageNativePreparationStage =
   | 'idle'
@@ -55,6 +60,7 @@ interface FrontstageNativePreparationSnapshotBase {
   slotIndex: number;
   priority: FrontstageRuntimeDemandPriority;
   generation: number;
+  observationContext?: FrontstageRuntimeObservationContext;
 }
 
 export type FrontstageNativePreparationSnapshot =
@@ -78,9 +84,20 @@ export interface FrontstageNativePreparationTask {
   blockId: string;
   slotIndex: number;
   identity: string;
+  observationContext?: FrontstageRuntimeObservationContext;
+  observe?(input: {
+    stage: FrontstageNativeRuntimeObservationStage;
+    generation: number;
+    cacheTier?: FrontstageRuntimeObservationCacheTier;
+    timestampMs: number;
+    durationMs: number;
+  }): void;
   prepare(
     signal: AbortSignal,
-    enterStage: (stage: FrontstageNativePreparationActiveStage) => void
+    enterStage: (
+      stage: FrontstageNativePreparationActiveStage,
+      cacheTier?: FrontstageRuntimeObservationCacheTier
+    ) => void
   ): Promise<FrontstageNativePreparedRuntime>;
 }
 
@@ -90,6 +107,7 @@ interface ScheduledPreparation {
   generation: number;
   snapshot: FrontstageNativePreparationSnapshot;
   abortController: AbortController | null;
+  observedAtMs: number;
 }
 
 export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
@@ -174,7 +192,8 @@ export class FrontstageNativePreparationScheduler {
             generation: 0,
             status: 'idle'
           },
-          abortController: null
+          abortController: null,
+          observedAtMs: 0
         };
         this.scheduled.set(task.blockId, current);
       } else if (current.task.identity !== task.identity) {
@@ -273,11 +292,17 @@ export class FrontstageNativePreparationScheduler {
     const generation = current.generation;
     current.abortController = abortController;
     current.snapshot = this.snapshot(current, 'source_fetch');
+    current.observedAtMs = Date.now();
+    this.observe(current, generation, 'source_fetch', 'network');
     this.emit();
 
-    const enterStage = (stage: FrontstageNativePreparationActiveStage) => {
+    const enterStage = (
+      stage: FrontstageNativePreparationActiveStage,
+      cacheTier?: FrontstageRuntimeObservationCacheTier
+    ) => {
       if (!this.isCurrent(current, generation, abortController)) return;
       current.snapshot = this.snapshot(current, stage);
+      this.observe(current, generation, stage, cacheTier);
       this.emit();
     };
     void current.task
@@ -323,6 +348,23 @@ export class FrontstageNativePreparationScheduler {
     );
   }
 
+  private observe(
+    current: ScheduledPreparation,
+    generation: number,
+    stage: FrontstageNativePreparationActiveStage,
+    cacheTier?: FrontstageRuntimeObservationCacheTier
+  ): void {
+    const timestampMs = Date.now();
+    current.task.observe?.({
+      stage,
+      generation,
+      cacheTier,
+      timestampMs,
+      durationMs: Math.max(0, timestampMs - current.observedAtMs)
+    });
+    current.observedAtMs = timestampMs;
+  }
+
   private readySnapshot(
     current: ScheduledPreparation,
     prepared: FrontstageNativePreparedRuntime
@@ -356,7 +398,8 @@ export class FrontstageNativePreparationScheduler {
       blockId: current.task.blockId,
       slotIndex: current.task.slotIndex,
       priority: current.priority,
-      generation: current.generation
+      generation: current.generation,
+      observationContext: current.task.observationContext
     };
   }
 

@@ -8,7 +8,7 @@ import {
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createFrontstageNativeTrustedBlockReactAdapter,
@@ -18,6 +18,11 @@ import type {
   FrontstageNativeInstanceMountIntent,
   FrontstageNativePreparedRuntime
 } from '../lib/page-canvas/native-runtime-preparation';
+import {
+  recordFrontstageRuntimeObservation,
+  type FrontstageNativeRuntimeObservationStage,
+  type FrontstageRuntimeObservationContext
+} from '../lib/page-canvas/runtime-observation';
 
 export type FrontstageNativeBlockInstanceStatus =
   | 'unmounted'
@@ -31,6 +36,7 @@ export interface FrontstageNativeBlockInstanceState {
   status: FrontstageNativeBlockInstanceStatus;
   instanceEpoch?: string;
   error?: BlockProtocolError;
+  retry(): void;
 }
 
 export interface FrontstageNativeBlockInstanceRuntimeInput {
@@ -45,6 +51,7 @@ export interface FrontstageNativeBlockInstanceRuntimeInput {
 export type FrontstageNativeBlockInstanceHostFactory = (input: {
   prepared: FrontstageNativePreparedRuntime;
   readRuntimeInput(): FrontstageNativeBlockInstanceRuntimeInput;
+  onRuntimeError(error: BlockProtocolError): void;
 }) => NativeTrustedBlockHost;
 
 export interface UseFrontstageNativeBlockInstanceInput {
@@ -56,6 +63,8 @@ export interface UseFrontstageNativeBlockInstanceInput {
   ): FrontstageNativeBlockInstanceRuntimeInput;
   instanceEpochOwner?: FrontstageNativeInstanceEpochOwner;
   hostFactory?: FrontstageNativeBlockInstanceHostFactory;
+  observationContext?: FrontstageRuntimeObservationContext;
+  preparationGeneration?: number;
 }
 
 interface ActiveNativeBlockInstance {
@@ -64,6 +73,7 @@ interface ActiveNativeBlockInstance {
   host: NativeTrustedBlockHost;
   mountedPlan: NativeTrustedBlockPreparePlan;
   mountedRuntimeInputFactory: UseFrontstageNativeBlockInstanceInput['createRuntimeInput'];
+  epochEnded: boolean;
 }
 
 export interface FrontstageNativeInstanceEpochOwner {
@@ -79,11 +89,16 @@ export function useFrontstageNativeBlockInstance({
   prepared,
   createRuntimeInput,
   instanceEpochOwner,
-  hostFactory = createFrontstageNativeBlockInstanceHost
+  hostFactory = createFrontstageNativeBlockInstanceHost,
+  observationContext,
+  preparationGeneration
 }: UseFrontstageNativeBlockInstanceInput): FrontstageNativeBlockInstanceState {
-  const [state, setState] = useState<FrontstageNativeBlockInstanceState>({
+  const [state, setState] = useState<
+    Omit<FrontstageNativeBlockInstanceState, 'retry'>
+  >({
     status: 'unmounted'
   });
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const activeRef = useRef<ActiveNativeBlockInstance | null>(null);
   const createRuntimeInputRef = useRef(createRuntimeInput);
   createRuntimeInputRef.current = createRuntimeInput;
@@ -93,6 +108,24 @@ export function useFrontstageNativeBlockInstance({
     () =>
       mountIntent ? nativeInstanceIdentity(mountIntent.identityInput) : null,
     [mountIntent]
+  );
+  const retry = useCallback(() => {
+    setState({ status: 'unmounted' });
+    setRetryGeneration((current) => current + 1);
+  }, []);
+  const observe = useCallback(
+    (stage: FrontstageNativeRuntimeObservationStage, instanceEpoch: string) => {
+      if (!observationContext || !prepared) return;
+      recordFrontstageRuntimeObservation({
+        ...observationContext,
+        stage,
+        runtimeKind: 'native',
+        cacheTier: prepared.artifactCacheTier,
+        generation: preparationGeneration,
+        instanceEpoch
+      });
+    },
+    [observationContext, preparationGeneration, prepared]
   );
 
   useEffect(() => {
@@ -110,9 +143,22 @@ export function useFrontstageNativeBlockInstance({
       const instanceEpoch =
         instanceEpochOwner?.begin() ??
         `standalone:${++nextStandaloneInstanceEpoch}`;
-      const host = hostFactory({
+      let host: NativeTrustedBlockHost;
+      let runtimeError: BlockProtocolError | undefined;
+      const onRuntimeError = (error: BlockProtocolError) => {
+        if (
+          cancelled ||
+          lifecycleGenerationRef.current !== generation ||
+          activeRef.current?.host !== host
+        )
+          return;
+        runtimeError = error;
+        setState({ status: 'failed', instanceEpoch, error });
+      };
+      host = hostFactory({
         prepared,
-        readRuntimeInput: () => createRuntimeInputRef.current(instanceEpoch)
+        readRuntimeInput: () => createRuntimeInputRef.current(instanceEpoch),
+        onRuntimeError
       });
       const mountedRuntimeInputFactory = createRuntimeInputRef.current;
       const plan = mountedRuntimeInputFactory(instanceEpoch).plan;
@@ -121,8 +167,10 @@ export function useFrontstageNativeBlockInstance({
         instanceEpoch,
         host,
         mountedPlan: plan,
-        mountedRuntimeInputFactory
+        mountedRuntimeInputFactory,
+        epochEnded: false
       };
+      observe('shadow_attach', instanceEpoch);
       const hostState = await host.mount(plan, root);
       if (
         cancelled ||
@@ -133,11 +181,14 @@ export function useFrontstageNativeBlockInstance({
         return;
       }
       if (hostState.status === 'failed') {
-        instanceEpochOwner?.end(instanceEpoch);
+        endInstanceEpoch(activeRef.current, instanceEpochOwner);
         setState({ status: 'failed', instanceEpoch, error: hostState.error });
         return;
       }
+      if (runtimeError) return;
+      observe('react_mount', instanceEpoch);
       setState({ status: 'mounted', instanceEpoch });
+      observe('present', instanceEpoch);
       const latestRuntimeInputFactory = createRuntimeInputRef.current;
       if (latestRuntimeInputFactory !== mountedRuntimeInputFactory) {
         const latestPlan = latestRuntimeInputFactory(instanceEpoch).plan;
@@ -151,11 +202,12 @@ export function useFrontstageNativeBlockInstance({
           activeRef.current.mountedPlan = latestPlan;
           activeRef.current.mountedRuntimeInputFactory =
             latestRuntimeInputFactory;
-          setState(
-            updated.status === 'failed'
-              ? { status: 'failed', instanceEpoch, error: updated.error }
-              : { status: 'mounted', instanceEpoch }
-          );
+          if (updated.status === 'failed') {
+            setState({ status: 'failed', instanceEpoch, error: updated.error });
+          } else {
+            setState({ status: 'mounted', instanceEpoch });
+            observe('present', instanceEpoch);
+          }
         }
       }
     };
@@ -166,11 +218,18 @@ export function useFrontstageNativeBlockInstance({
       const active = activeRef.current;
       if (!active || active.identity !== identity) return;
       activeRef.current = null;
-      instanceEpochOwner?.end(active.instanceEpoch);
+      endInstanceEpoch(active, instanceEpochOwner);
       setState({ status: 'disposing', instanceEpoch: active.instanceEpoch });
       disposalRef.current = active.host.dispose();
     };
-  }, [hostFactory, identity, instanceEpochOwner, root]);
+  }, [
+    hostFactory,
+    identity,
+    instanceEpochOwner,
+    observe,
+    retryGeneration,
+    root
+  ]);
 
   useEffect(() => {
     const active = activeRef.current;
@@ -183,22 +242,32 @@ export function useFrontstageNativeBlockInstance({
     setState({ status: 'updating', instanceEpoch: active.instanceEpoch });
     void active.host.update(runtimeInput.plan).then((hostState) => {
       if (cancelled || activeRef.current !== active) return;
-      setState(
-        hostState.status === 'failed'
-          ? {
-              status: 'failed',
-              instanceEpoch: active.instanceEpoch,
-              error: hostState.error
-            }
-          : { status: 'mounted', instanceEpoch: active.instanceEpoch }
-      );
+      if (hostState.status === 'failed') {
+        setState({
+          status: 'failed',
+          instanceEpoch: active.instanceEpoch,
+          error: hostState.error
+        });
+      } else {
+        setState({ status: 'mounted', instanceEpoch: active.instanceEpoch });
+        observe('present', active.instanceEpoch);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [createRuntimeInput, identity]);
+  }, [createRuntimeInput, identity, observe]);
 
-  return state;
+  return { ...state, retry };
+}
+
+function endInstanceEpoch(
+  active: ActiveNativeBlockInstance | null,
+  owner: FrontstageNativeInstanceEpochOwner | undefined
+): void {
+  if (!active || active.epochEnded) return;
+  active.epochEnded = true;
+  owner?.end(active.instanceEpoch);
 }
 
 function nativeInstanceIdentity(
@@ -213,16 +282,19 @@ function nativeInstanceIdentity(
 
 function createFrontstageNativeBlockInstanceHost({
   prepared,
-  readRuntimeInput
+  readRuntimeInput,
+  onRuntimeError
 }: {
   prepared: FrontstageNativePreparedRuntime;
   readRuntimeInput(): FrontstageNativeBlockInstanceRuntimeInput;
+  onRuntimeError(error: BlockProtocolError): void;
 }): NativeTrustedBlockHost {
   const adapter = createFrontstageNativeTrustedBlockReactAdapter({
     resolveComponent: () =>
       prepared.component as FrontstageNativeTrustedBlockReactComponent,
     resolveBlockContext: () => readRuntimeInput().context,
-    resolveProviderScope: () => readRuntimeInput().providerScope
+    resolveProviderScope: () => readRuntimeInput().providerScope,
+    onRuntimeError
   });
   return createNativeTrustedBlockHost({ adapter });
 }

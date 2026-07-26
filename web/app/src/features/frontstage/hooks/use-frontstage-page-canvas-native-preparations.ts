@@ -29,6 +29,7 @@ import {
   type FrontstagePageCanvasBlockCodeReadPlan
 } from '../lib/page-canvas/runtime-source';
 import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
+import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 
 interface NativePreparationSource {
   code: string;
@@ -121,6 +122,23 @@ export function useFrontstagePageCanvasNativePreparations({
           runtimeFingerprint,
           dependencyLockIdentity
         ].join('/'),
+        observationContext: {
+          actorId,
+          workspaceId: readPlan.workspaceId,
+          pageId: readPlan.pageId,
+          tabId: null,
+          blockId: request.blockId
+        },
+        observe: (observation) =>
+          recordFrontstageRuntimeObservation({
+            actorId,
+            workspaceId: readPlan.workspaceId,
+            pageId: readPlan.pageId,
+            tabId: null,
+            blockId: request.blockId,
+            runtimeKind: 'native',
+            ...observation
+          }),
         prepare: async (signal, enterStage) => {
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
@@ -150,7 +168,7 @@ export function useFrontstagePageCanvasNativePreparations({
             artifact = cached.artifact;
             artifactCacheTier = 'l2';
           } else {
-            enterStage('compile');
+            enterStage('compile', 'miss');
             const compiled = await compile({
               source: source.code,
               requestId: `${request.requestId}:${identity.source_sha256}`,
@@ -170,7 +188,7 @@ export function useFrontstagePageCanvasNativePreparations({
             throwIfAborted(signal);
           }
 
-          enterStage('module_resolve');
+          enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
           let componentFactoryFlight =
             componentFactoryFlights.get(componentFactoryKey);

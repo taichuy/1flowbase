@@ -1,4 +1,13 @@
-export type FrontstageRuntimeObservationStage =
+export type FrontstageNativeRuntimeObservationStage =
+  | 'source_fetch'
+  | 'artifact_lookup'
+  | 'compile'
+  | 'module_resolve'
+  | 'shadow_attach'
+  | 'react_mount'
+  | 'present';
+
+export type FrontstageRestrictedRuntimeObservationStage =
   | 'source_fetch'
   | 'worker_boot'
   | 'compile'
@@ -6,6 +15,10 @@ export type FrontstageRuntimeObservationStage =
   | 'main'
   | 'schema_validate'
   | 'present';
+
+export type FrontstageRuntimeObservationStage =
+  | FrontstageNativeRuntimeObservationStage
+  | FrontstageRestrictedRuntimeObservationStage;
 
 export type FrontstageRuntimeObservationCacheTier =
   | 'network'
@@ -20,7 +33,18 @@ export interface FrontstageRuntimeObservation {
   stage: FrontstageRuntimeObservationStage;
   timestampMs: number;
   durationMs: number;
-  cacheTier: FrontstageRuntimeObservationCacheTier;
+  cacheTier?: FrontstageRuntimeObservationCacheTier;
+  actorId: string;
+  workspaceId: string;
+  pageId: string;
+  tabId: string | null;
+  blockId: string;
+  runtimeKind?: 'restricted' | 'native';
+  generation?: number;
+  instanceEpoch?: string;
+}
+
+export interface FrontstageRuntimeObservationContext {
   actorId: string;
   workspaceId: string;
   pageId: string;
@@ -49,9 +73,8 @@ export class FrontstageRuntimeObservationBuffer {
     FrontstageRuntimeObservationStage,
     number
   >();
-  private readonly subscribers = new Set<
-    FrontstageRuntimeObservationSubscriber
-  >();
+  private readonly subscribers =
+    new Set<FrontstageRuntimeObservationSubscriber>();
   private sequence = 0;
 
   constructor(maxEntries = DEFAULT_MAX_RUNTIME_OBSERVATIONS) {
