@@ -3,7 +3,8 @@
 //! Clients connect with `GET /v1/responses`, an application API credential, and
 //! `openai-beta: responses_websockets=2026-02-06`. After the upgrade they send
 //! text JSON envelopes shaped as `{ "type": "response.create", "response": { ... } }`.
-//! Connection ownership, run lifecycle, and server-event projection are assembled by WP-07.
+//! Connection ownership and run lifecycle are assembled here. Canonical
+//! server-event projection is supplied by the following delivery packet.
 
 use std::sync::Arc;
 
@@ -19,10 +20,12 @@ use crate::{
     routes::application_public_api::{openai, openai::OpenAiRouteError},
 };
 
+mod actor;
 mod auth;
 pub(crate) mod schema;
 #[cfg(test)]
 mod tests;
+mod turn_bridge;
 
 /// Authentication context handed to the connection owner after HTTP upgrade.
 pub(crate) struct ResponsesWebSocketAuthorization {
@@ -49,13 +52,6 @@ pub(crate) async fn upgrade(
     };
 
     Ok(websocket.on_upgrade(move |socket| async move {
-        // WP-07 replaces this assembly seam with the connection actor. Keeping the
-        // authenticated values inside the upgrade future prevents request extensions
-        // or a second credential interpretation from becoming connection truth.
-        let ResponsesWebSocketAuthorization {
-            bearer_token,
-            actor,
-        } = authorization;
-        drop((socket, bearer_token, actor));
+        actor::run_connection(socket, state, Arc::new(authorization)).await;
     }))
 }

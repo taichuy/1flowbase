@@ -5,6 +5,7 @@ use axum::{
 use serde_json::json;
 
 use super::{
+    actor::{ConnectionAction, ConnectionState, ResponsesConnectionActor, TurnCompletion},
     auth::{require_responses_websocket_beta, RESPONSES_WEBSOCKET_BETA},
     schema::{
         decode_client_message, ResponsesWebSocketClientMessageError,
@@ -139,4 +140,78 @@ fn control_frames_are_not_request_envelopes() {
     assert!(decode_client_message(Message::Close(None))
         .unwrap()
         .is_none());
+}
+
+#[test]
+fn prewarm_then_generate_reuses_one_connection_without_starting_two_turns() {
+    let mut actor = ResponsesConnectionActor::new();
+
+    let prewarm = actor
+        .accept_response(json!({
+            "model": "published-model",
+            "instructions": "shared instructions",
+            "generate": false
+        }))
+        .expect("a valid prewarm request must be accepted");
+    assert_eq!(prewarm, ConnectionAction::Prewarmed);
+    assert_eq!(actor.state(), ConnectionState::Prewarming);
+
+    let generated = actor
+        .accept_response(json!({
+            "input": "first turn",
+            "generate": true
+        }))
+        .expect("the generated request must start the prewarmed turn");
+    let ConnectionAction::StartTurn { turn, response } = generated else {
+        panic!("generated response.create must start one turn");
+    };
+    assert_eq!(response["model"], json!("published-model"));
+    assert_eq!(response["instructions"], json!("shared instructions"));
+    assert_eq!(response["input"], json!("first turn"));
+    assert!(response.get("generate").is_none());
+    assert_eq!(actor.state(), ConnectionState::Active);
+
+    assert_eq!(actor.complete_turn(turn), TurnCompletion::ReturnedToIdle);
+    assert_eq!(actor.state(), ConnectionState::Idle);
+
+    let second = actor
+        .accept_response(json!({"model": "published-model", "input": "second turn"}))
+        .expect("the same connection must accept a later sequential turn");
+    assert!(matches!(second, ConnectionAction::StartTurn { .. }));
+    assert_eq!(actor.state(), ConnectionState::Active);
+}
+
+#[test]
+fn active_turn_is_singleton_and_close_cancels_before_closed() {
+    let mut actor = ResponsesConnectionActor::new();
+    let first = actor
+        .accept_response(json!({"input": "first"}))
+        .expect("first generated request must start");
+    let ConnectionAction::StartTurn { turn, .. } = first else {
+        panic!("first request must start a turn");
+    };
+
+    let busy = actor
+        .accept_response(json!({"input": "overlap"}))
+        .unwrap_err();
+    assert_eq!(busy.close_code(), 1008);
+    assert_eq!(actor.state(), ConnectionState::Active);
+
+    assert_eq!(actor.begin_close(), ConnectionAction::CancelTurn { turn });
+    assert_eq!(actor.state(), ConnectionState::Cancelling);
+    assert_eq!(actor.complete_turn(turn), TurnCompletion::Closed);
+    assert_eq!(actor.state(), ConnectionState::Closed);
+}
+
+#[test]
+fn invalid_generate_is_a_protocol_policy_error_and_idle_close_is_terminal() {
+    let mut actor = ResponsesConnectionActor::new();
+    let invalid = actor
+        .accept_response(json!({"input": "hello", "generate": "later"}))
+        .unwrap_err();
+    assert_eq!(invalid.close_code(), 1008);
+    assert_eq!(actor.state(), ConnectionState::Idle);
+
+    assert_eq!(actor.begin_close(), ConnectionAction::Close);
+    assert_eq!(actor.state(), ConnectionState::Closed);
 }
