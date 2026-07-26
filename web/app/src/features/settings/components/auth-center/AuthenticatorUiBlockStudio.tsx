@@ -1,14 +1,18 @@
 import type { OnMount } from '@monaco-editor/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
   createPublicAuthInputs,
+  createPublicAuthNativeBlockContextCapabilities,
   createPublicAuthPreviewCapabilityHandlers,
   PUBLIC_AUTH_RUNTIME_LIMITS
 } from '../../../auth/components/public-auth-block-host';
-import { JsBlockTrialPanel } from '../../../frontstage/components/JsBlockTrialPanel';
+import {
+  JsBlockTrialPanel,
+  type NativeTrialBlockContextInput
+} from '../../../frontstage/components/JsBlockTrialPanel';
 import {
   JsxStudioResourcePanel,
   type JsxStudioContextVariable
@@ -24,6 +28,7 @@ import {
 } from '../../../frontstage/lib/jsx-studio/source-insertion';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../../frontstage/lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
+import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
 
 export interface AuthenticatorUiBlockStudioProps {
   authenticatorId: string;
@@ -100,6 +105,33 @@ export function AuthenticatorUiBlockStudio({
   const previewCapabilities = useMemo(
     () => createPublicAuthPreviewCapabilityHandlers(),
     []
+  );
+  const createPreviewBlockContext = useCallback(
+    ({
+      requestId,
+      instanceEpoch,
+      plan,
+      isCurrentInstance
+    }: NativeTrialBlockContextInput) => {
+      const unavailable = createFrontstageUnavailableBlockContext(plan);
+      return {
+        ...unavailable,
+        workspace: { id: workspaceId },
+        application: null,
+        inputs: createPublicAuthInputs(
+          authenticatorId,
+          publicVariables ?? {}
+        ),
+        ...createPublicAuthNativeBlockContextCapabilities({
+          requestId,
+          instanceEpoch,
+          isCurrentInstance,
+          outputs: unavailable.outputs,
+          interfaceHandler: previewCapabilities.interface
+        })
+      };
+    },
+    [authenticatorId, previewCapabilities, publicVariables, workspaceId]
   );
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
@@ -211,13 +243,7 @@ export function AuthenticatorUiBlockStudio({
                 catalogEntry={authoringCatalogEntry}
                 code={previewRequest.source}
                 contextSnapshot={{}}
-                createRunInputs={(event) =>
-                  createPublicAuthInputs(
-                    authenticatorId,
-                    publicVariables,
-                    event
-                  )
-                }
+                createBlockContext={createPreviewBlockContext}
                 handlers={previewCapabilities}
                 limits={PUBLIC_AUTH_RUNTIME_LIMITS}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}
@@ -303,9 +329,9 @@ function createAuthoringBlock(
     layout: { order: 0 },
     order: 0,
     runtime: {
-      kind: catalogEntry?.runtimeKind ?? 'iframe',
+      kind: 'native_trusted_block',
       entry: catalogEntry?.entry ?? 'index.js',
-      hint: catalogEntry?.runtimeKind ?? 'iframe'
+      hint: 'native_trusted_block'
     }
   };
 }

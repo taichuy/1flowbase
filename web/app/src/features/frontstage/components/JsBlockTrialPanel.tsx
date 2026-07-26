@@ -5,6 +5,7 @@ import {
 import {
   createNativeTrustedBlockHost,
   evaluateNativeReactComponentArtifactWithRegistry,
+  hashJsBlockDraft,
   type JsBlockHostEffectHandlers,
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
@@ -12,7 +13,8 @@ import {
   type NativeTrustedBlockHost,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
-import { Alert, Button, Space } from 'antd';
+import type { BlockContext } from '@1flowbase/page-protocol';
+import { Alert, Button, Modal, Space } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';
@@ -22,6 +24,7 @@ import {
 } from '../../../shared/code-block/native-react-compiler-browser';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import {
+  createFrontstageUnavailableBlockContext,
   createFrontstageNativeTrustedBlockReactAdapter,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../lib/native-trusted-block-react-adapter';
@@ -53,6 +56,13 @@ interface ActiveNativeTrialRun {
   runtimeFailed?: boolean;
 }
 
+export interface NativeTrialBlockContextInput {
+  requestId: string;
+  instanceEpoch: string;
+  plan: NativeTrustedBlockPreparePlan;
+  isCurrentInstance(): boolean;
+}
+
 export interface JsBlockTrialPanelProps {
   block: FrontstageBlockInstance;
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
@@ -77,6 +87,8 @@ export interface JsBlockTrialPanelProps {
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
   nativeDependencyLockError?: string | null;
   nativeModuleRegistryFactory?: typeof createFrontstageNativeReactModuleRegistry;
+  createBlockContext?(input: NativeTrialBlockContextInput): BlockContext;
+  surfaceOnly?: boolean;
 }
 
 export function JsBlockTrialPanel({
@@ -87,7 +99,11 @@ export function JsBlockTrialPanel({
   nativeCompilerWorkerFactory,
   nativeDependencyLock = EMPTY_NATIVE_REACT_DEPENDENCY_LOCK,
   nativeDependencyLockError = null,
-  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry
+  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
+  createBlockContext,
+  surfaceOnly = false,
+  onPrepareDraftRun,
+  onRevokeDraftRun
 }: JsBlockTrialPanelProps) {
   const previewRootRef = useRef<HTMLDivElement | null>(null);
   const generationRef = useRef(0);
@@ -97,6 +113,7 @@ export function JsBlockTrialPanel({
   const runtimeErrorHandlerRef = useRef<
     ((error: NativeReactRuntimeDiagnostic) => void) | null
   >(null);
+  const blockContextRef = useRef<BlockContext | null>(null);
   const adapterRef = useRef<ReturnType<
     typeof createFrontstageNativeTrustedBlockReactAdapter
   > | null>(null);
@@ -108,6 +125,9 @@ export function JsBlockTrialPanel({
         }
         return resolvedComponentRef.current;
       },
+      resolveBlockContext: (context) =>
+        blockContextRef.current ??
+        createFrontstageUnavailableBlockContext(context.plan),
       onRuntimeError(error) {
         runtimeErrorHandlerRef.current?.({ phase: 'runtime', ...error });
       }
@@ -120,8 +140,10 @@ export function JsBlockTrialPanel({
   const disposeActiveRun = useCallback(() => {
     const active = activeRunRef.current;
     activeRunRef.current = null;
+    blockContextRef.current = null;
+    if (active) onRevokeDraftRun?.(active.requestId);
     return active?.host?.dispose() ?? Promise.resolve();
-  }, []);
+  }, [onRevokeDraftRun]);
 
   const runFrozenRevision = useCallback(
     async ({
@@ -140,7 +162,10 @@ export function JsBlockTrialPanel({
       await disposeActiveRun();
       if (generationRef.current !== generation) return;
 
-      const requestId = `native:${frozenBlock.id}:${frozenRevision}`;
+      const requestId = onPrepareDraftRun
+        ? `draft:${frozenBlock.id}:${generation}`
+        : `native:${frozenBlock.id}:${frozenRevision}`;
+      const instanceEpoch = `${requestId}:epoch`;
       const activeRun: ActiveNativeTrialRun = {
         block: frozenBlock,
         source: frozenSource,
@@ -155,6 +180,31 @@ export function JsBlockTrialPanel({
         logs: [],
         diagnostics: []
       });
+
+      try {
+        await onPrepareDraftRun?.({
+          blockId: frozenBlock.id,
+          runId: requestId,
+          draftHash: hashJsBlockDraft(frozenSource),
+          confirmWrite: confirmWriteRun
+        });
+      } catch (error) {
+        if (generationRef.current !== generation) return;
+        setSnapshot({
+          status: 'failed',
+          requestId,
+          logs: [],
+          diagnostics: [
+            {
+              phase: 'runtime',
+              code: 'runtime_error',
+              path: 'runtime.authorization',
+              message: getErrorMessage(error)
+            }
+          ]
+        });
+        return;
+      }
 
       if (nativeDependencyLockError) {
         setSnapshot({
@@ -220,6 +270,13 @@ export function JsBlockTrialPanel({
         });
       };
       const plan = createNativeTrialPlan(frozenBlock, frozenSource);
+      blockContextRef.current =
+        createBlockContext?.({
+          requestId,
+          instanceEpoch,
+          plan,
+          isCurrentInstance: () => activeRunRef.current === activeRun
+        }) ?? createFrontstageUnavailableBlockContext(plan);
       const host = createNativeTrustedBlockHost({
         adapter: adapterRef.current!
       });
@@ -253,7 +310,9 @@ export function JsBlockTrialPanel({
       nativeCompilerWorkerFactory,
       nativeDependencyLock,
       nativeDependencyLockError,
-      nativeModuleRegistryFactory
+      nativeModuleRegistryFactory,
+      createBlockContext,
+      onPrepareDraftRun
     ]
   );
 
@@ -326,33 +385,53 @@ export function JsBlockTrialPanel({
   }, [runFrozenRevision]);
 
   const failed = snapshot?.status === 'failed';
+  const preview = (
+    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <div
+        ref={previewRootRef}
+        data-testid="native-react-trial-root"
+        style={{ width: '100%' }}
+      />
+      {snapshot?.status === 'compiling' ? <BlockUiLoadingShell /> : null}
+      {failed ? (
+        <Alert
+          type="error"
+          showIcon
+          message={i18nText('frontstage', 'auto.run_failed')}
+          description={snapshot?.diagnostics[0]?.message}
+          action={
+            <Button size="small" onClick={() => void retry()}>
+              {i18nText('frontstage', 'auto.retry')}
+            </Button>
+          }
+        />
+      ) : null}
+    </Space>
+  );
+  if (surfaceOnly) return preview;
   return (
     <JsBlockPreviewConsole
       snapshot={snapshot}
-      preview={
-        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          <div
-            ref={previewRootRef}
-            data-testid="native-react-trial-root"
-            style={{ width: '100%' }}
-          />
-          {snapshot?.status === 'compiling' ? <BlockUiLoadingShell /> : null}
-          {failed ? (
-            <Alert
-              type="error"
-              showIcon
-              message={i18nText('frontstage', 'auto.run_failed')}
-              action={
-                <Button size="small" onClick={() => void retry()}>
-                  {i18nText('frontstage', 'auto.retry')}
-                </Button>
-              }
-            />
-          ) : null}
-        </Space>
-      }
+      preview={preview}
     />
   );
+}
+
+function confirmWriteRun(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Modal.confirm({
+      title: i18nText('frontstage', 'auto.confirm_write_run'),
+      content: i18nText('frontstage', 'auto.confirm_write_run_description'),
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false)
+    });
+  });
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : 'Native React preview authorization failed.';
 }
 
 function createNativeTrialPlan(

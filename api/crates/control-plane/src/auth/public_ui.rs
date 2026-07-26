@@ -1,107 +1,155 @@
 use serde_json::{json, Map, Value};
 
-pub const PASSWORD_LOCAL_PUBLIC_UI_BLOCK: &str = r#"import type {
-  BlockContext,
-  BlockModule,
-  BlockResult
-} from '@1flowbase/block-sdk';
-
-import {
-  Alert,
-  Button,
-  Form,
-  FormItem,
-  Input,
-  Stack,
-  Text,
-  Title
-} from '@1flowbase/block-renderer/antd-facade';
-
-type AuthEvent = {
-  action_id?: string;
-  values?: Record<string, unknown>;
-};
+pub const PASSWORD_LOCAL_PUBLIC_UI_BLOCK: &str = r#"import { useState } from 'react';
+import { Alert, Button, Input, Space } from 'antd';
 
 type AuthInputs = {
   authenticator_id?: string;
   public_variables?: {
     self_registration_enabled?: boolean;
   };
-  auth_event?: AuthEvent;
 };
 
-async function main(ctx: BlockContext<AuthInputs>): Promise<BlockResult> {
-  const event = ctx.inputs.auth_event;
-  const values = event?.values ?? {};
-  let feedback = null;
+type AuthContext = {
+  inputs: AuthInputs;
+  api: {
+    post<TResponse = unknown>(
+      path: string,
+      request?: { body?: unknown }
+    ): Promise<TResponse>;
+  };
+};
 
-  try {
-    if (event?.action_id === 'sign_in') {
-      await ctx.api.post('/api/public/auth/sign-in', {
-        body: {
-          authenticator_id: ctx.inputs.authenticator_id,
-          identifier: String(values.identifier ?? ''),
-          password: String(values.password ?? '')
-        }
-      });
-      feedback = <Alert type="success" message="Signed in" />;
-    }
-    if (event?.action_id === 'sign_up') {
-      await ctx.api.post('/api/public/auth/sign-up', {
-        body: {
-          authenticator_id: ctx.inputs.authenticator_id,
-          account: String(values.account ?? ''),
-          email: String(values.email ?? ''),
-          password: String(values.registration_password ?? '')
-        }
-      });
-      feedback = <Alert type="success" message="Account created" />;
-    }
-  } catch {
-    feedback = <Alert type="error" message="Authentication failed" />;
-  }
-
+export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
+  const [mode, setMode] = useState<'sign_in' | 'sign_up'>('sign_in');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [account, setAccount] = useState('');
+  const [email, setEmail] = useState('');
   const registrationEnabled =
     ctx.inputs.public_variables?.self_registration_enabled === true;
 
-  return {
-    view: (
-      <Stack>
-        <Title>Sign in</Title>
-        {feedback}
-        <Form>
-          <FormItem name="identifier" label="Account or email">
-            <Input />
-          </FormItem>
-          <FormItem name="password" label="Password">
-            <Input type="password" />
-          </FormItem>
-          <Button actionId="sign_in" type="primary">Sign in</Button>
-        </Form>
-        {registrationEnabled ? (
-          <Stack>
-            <Text>Create an account</Text>
-            <Form>
-              <FormItem name="account" label="Account">
-                <Input />
-              </FormItem>
-              <FormItem name="email" label="Email">
-                <Input />
-              </FormItem>
-              <FormItem name="registration_password" label="Password">
-                <Input type="password" />
-              </FormItem>
-              <Button actionId="sign_up">Register</Button>
-            </Form>
-          </Stack>
-        ) : null}
-      </Stack>
-    ),
-    outputs: {}
+  const submitSignIn = async (event) => {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    try {
+      await ctx.api.post('/api/public/auth/sign-in', {
+        body: {
+          authenticator_id: ctx.inputs.authenticator_id,
+          identifier,
+          password
+        }
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Authentication failed');
+    } finally {
+      setPending(false);
+    }
   };
-}
 
-export default { main } satisfies BlockModule;
+  const submitSignUp = async (event) => {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    try {
+      await ctx.api.post('/api/public/auth/sign-up', {
+        body: {
+          authenticator_id: ctx.inputs.authenticator_id,
+          account,
+          email,
+          password
+        }
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Registration failed');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <h2>
+        {mode === 'sign_in' ? 'Sign in' : 'Create an account'}
+      </h2>
+      {error ? <Alert type="error" showIcon message={error} /> : null}
+      {mode === 'sign_in' ? (
+        <form onSubmit={submitSignIn} style={{ display: 'grid', gap: 12 }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            Account or email
+            <Input
+              required
+              autoComplete="username"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            Password
+            <Input
+              required
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          <Button htmlType="submit" type="primary" block loading={pending}>
+            Sign in
+          </Button>
+        </form>
+      ) : (
+        <form onSubmit={submitSignUp} style={{ display: 'grid', gap: 12 }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            Account
+            <Input
+              required
+              autoComplete="username"
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            Email
+            <Input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            Password
+            <Input
+              required
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          <Button htmlType="submit" type="primary" block loading={pending}>
+            Register
+          </Button>
+        </form>
+      )}
+      {registrationEnabled ? (
+        <Button
+          type="link"
+          disabled={pending}
+          onClick={() => setMode((current) =>
+            current === 'sign_in' ? 'sign_up' : 'sign_in'
+          )}
+        >
+          {mode === 'sign_in' ? 'Create an account' : 'Back to sign in'}
+        </Button>
+      ) : null}
+    </Space>
+  );
+}
 "#;
 
 pub fn auth_common_config_form_schema() -> Value {

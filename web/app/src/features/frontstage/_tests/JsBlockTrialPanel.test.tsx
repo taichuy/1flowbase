@@ -18,6 +18,7 @@ import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../lib/page-document';
 import type { NativeReactBrowserCompileResult } from '../../../shared/code-block/native-react-compiler-browser';
+import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
 
 const block = {
   id: 'block-1',
@@ -310,5 +311,59 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     ).toHaveTextContent('stable');
     expect(await screen.findByText(/render exploded/u)).toBeInTheDocument();
     expect(hosts[0]!.shadowRoot).not.toBe(hosts[1]!.shadowRoot);
+  });
+
+  test('D4-AC-001/003 binds the shared Native Host context and draft authorization without remounting for API calls', async () => {
+    const apiPost = vi.fn().mockResolvedValue({ ok: true });
+    const prepareDraftRun = vi.fn().mockResolvedValue(undefined);
+    const revokeDraftRun = vi.fn();
+    const code = `
+      import { useState } from 'react';
+      import { Button } from 'antd';
+      export default function Block({ ctx }) {
+        const [count, setCount] = useState(0);
+        return <div>
+          <span data-testid="studio-count">{count}</span>
+          <Button onClick={() => setCount((value) => value + 1)}>Local</Button>
+          <Button onClick={() => void ctx.api.post('/api/public/auth/sign-up')}>Register</Button>
+        </div>;
+      }
+    `;
+    const compiler = createCompiler();
+    const view = render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code={code}
+        contextSnapshot={{}}
+        limits={{ timeoutMs: 1_000 }}
+        revision="run:auth-studio"
+        nativeCompiler={compiler}
+        onPrepareDraftRun={prepareDraftRun}
+        onRevokeDraftRun={revokeDraftRun}
+        createBlockContext={({ plan }) => {
+          const context = createFrontstageUnavailableBlockContext(plan);
+          return {
+            ...context,
+            api: { ...context.api, post: apiPost }
+          };
+        }}
+      />
+    );
+    await waitFor(() => expect(prepareDraftRun).toHaveBeenCalledOnce());
+    const queries = trialQueries(view.container);
+    const local = await queries.findByRole('button', { name: 'Local' });
+    fireEvent.click(queries.getByRole('button', { name: 'Register' }));
+    fireEvent.click(local);
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith('/api/public/auth/sign-up')
+    );
+    expect(queries.getByTestId('studio-count')).toHaveTextContent('1');
+    expect(compiler).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(revokeDraftRun).toHaveBeenCalledWith(
+      expect.stringMatching(/^draft:block-1:/u)
+    );
   });
 });

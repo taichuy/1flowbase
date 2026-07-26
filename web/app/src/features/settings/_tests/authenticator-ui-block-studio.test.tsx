@@ -52,10 +52,12 @@ vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
     };
     code: string;
     revision: string;
-    createRunInputs: (event?: {
-      actionId: string;
-      formValues?: Record<string, unknown>;
-    }) => Record<string, unknown>;
+    createBlockContext: (input: {
+      requestId: string;
+      instanceEpoch: string;
+      plan: Record<string, unknown>;
+      isCurrentInstance(): boolean;
+    }) => { inputs: Record<string, unknown>; application: unknown };
   }) => {
     trialPanelHook.render(props);
     return <div>Auth Trial</div>;
@@ -301,6 +303,10 @@ describe('AuthenticatorUiBlockStudio', () => {
         pluginId: 'builtin-frontstage',
         pluginVersion: '1.0.0',
         code: 'frontstage.js-ui-block'
+      },
+      runtime: {
+        kind: 'native_trusted_block',
+        hint: 'native_trusted_block'
       }
     });
     expect(trialProps.code).toBe('first unsaved draft');
@@ -328,31 +334,29 @@ describe('AuthenticatorUiBlockStudio', () => {
         revision: firstRevision
       })
     );
-    expect(trialProps.createRunInputs()).toEqual({
-      authenticator_id: 'password-local',
-      public_variables: {
-        title: 'Password',
-        enabled: true,
-        self_registration_enabled: false
-      }
-    });
-    expect(
-      trialProps.createRunInputs({
-        actionId: 'sign_up',
-        formValues: { account: 'alice' }
-      })
-    ).toEqual({
-      authenticator_id: 'password-local',
-      public_variables: {
-        title: 'Password',
-        enabled: true,
-        self_registration_enabled: false
+    const previewContext = trialProps.createBlockContext({
+      requestId: 'draft:public-auth:password-local:1',
+      instanceEpoch: 'auth-preview-1',
+      plan: {
+        runtime: 'native_trusted_block',
+        blockId: 'public-auth:password-local',
+        entry: 'default',
+        source: 'first unsaved draft',
+        normalizedSource: 'first unsaved draft',
+        props: {},
+        requiredPermissions: ['ui_block.javascript.native']
       },
-      auth_event: {
-        action_id: 'sign_up',
-        values: { account: 'alice' }
+      isCurrentInstance: () => true
+    });
+    expect(previewContext.inputs).toEqual({
+      authenticator_id: 'password-local',
+      public_variables: {
+        title: 'Password',
+        enabled: true,
+        self_registration_enabled: false
       }
     });
+    expect(previewContext.application).toBeNull();
   });
 
   test('AC-013 keeps editor errors in a content-sized notice row', () => {
