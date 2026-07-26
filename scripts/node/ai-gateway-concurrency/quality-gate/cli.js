@@ -96,15 +96,51 @@ function testFiles(repoRoot) {
   });
 }
 
-function conversationTestArgs(repoRoot, packageName) {
+function conversationTestInvocations(repoRoot) {
+  const manifestPath = path.join(repoRoot, "api/Cargo.toml");
+  const invocation = (name, packageName, filter) => ({
+    name,
+    args: [
+      "test",
+      "--manifest-path",
+      manifestPath,
+      "-p",
+      packageName,
+      "--lib",
+      filter,
+    ],
+  });
   return [
-    "test",
-    "--manifest-path",
-    path.join(repoRoot, "api/Cargo.toml"),
-    "-p",
-    packageName,
-    "--lib",
-    "application_public_api",
+    invocation(
+      "control-plane-conversation-tests",
+      "control-plane",
+      "application_public_api",
+    ),
+    invocation(
+      "api-server-protocol-projection-tests",
+      "api-server",
+      "routes::application_public_api::compat_sse::tests::protocol_projection",
+    ),
+    invocation(
+      "api-server-responses-websocket-tests",
+      "api-server",
+      "routes::application_public_api::responses_websocket::tests",
+    ),
+    invocation(
+      "api-server-callback-adapter-tests",
+      "api-server",
+      "routes::application_public_api::callback_adapter::tests",
+    ),
+    invocation(
+      "api-server-native-sse-tests",
+      "api-server",
+      "routes::application_public_api::sse::tests",
+    ),
+    invocation(
+      "api-server-terminal-fallback-tests",
+      "api-server",
+      "routes::application_public_api::stream_terminal_fallback::tests",
+    ),
   ];
 }
 
@@ -162,16 +198,9 @@ async function runQualityGate(rawOptions) {
     "--test",
     ...testFiles(repoRoot),
   ]);
-  attempt(
-    "control-plane-conversation-tests",
-    "cargo",
-    conversationTestArgs(repoRoot, "control-plane"),
-  );
-  attempt(
-    "api-server-conversation-tests",
-    "cargo",
-    conversationTestArgs(repoRoot, "api-server"),
-  );
+  for (const invocation of conversationTestInvocations(repoRoot)) {
+    attempt(invocation.name, "cargo", invocation.args);
+  }
 
   for (const providerCode of ["openai", "anthropic"]) {
     const pluginRoot = path.join(
@@ -306,7 +335,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  conversationTestArgs,
+  conversationTestInvocations,
   dockerDatabaseContract,
   main,
   parseArgs,

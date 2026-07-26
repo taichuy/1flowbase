@@ -6,7 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
-  conversationTestArgs,
+  conversationTestInvocations,
   dockerDatabaseContract,
   parseArgs,
   testFiles,
@@ -53,20 +53,42 @@ test("quality gate inventory contains the four blocking protocol harness suites"
   assert.equal(files.some((file) => file.includes("/local-client-acceptance/")), false);
 });
 
-test("quality gate limits conversation Cargo probes to library targets", () => {
-  for (const packageName of ["control-plane", "api-server"]) {
-    const args = conversationTestArgs("/repo", packageName);
-    assert.deepEqual(args, [
-      "test",
-      "--manifest-path",
-      path.join("/repo", "api/Cargo.toml"),
-      "-p",
-      packageName,
-      "--lib",
-      "application_public_api",
-    ]);
+test("quality gate limits conversation Cargo probes to deterministic library suites", () => {
+  const invocations = conversationTestInvocations("/repo");
+  assert.deepEqual(
+    invocations.map(({ name, args }) => [name, args.at(-1)]),
+    [
+      ["control-plane-conversation-tests", "application_public_api"],
+      [
+        "api-server-protocol-projection-tests",
+        "routes::application_public_api::compat_sse::tests::protocol_projection",
+      ],
+      [
+        "api-server-responses-websocket-tests",
+        "routes::application_public_api::responses_websocket::tests",
+      ],
+      [
+        "api-server-callback-adapter-tests",
+        "routes::application_public_api::callback_adapter::tests",
+      ],
+      [
+        "api-server-native-sse-tests",
+        "routes::application_public_api::sse::tests",
+      ],
+      [
+        "api-server-terminal-fallback-tests",
+        "routes::application_public_api::stream_terminal_fallback::tests",
+      ],
+    ],
+  );
+  for (const { args } of invocations) {
+    assert.equal(args.includes("--lib"), true);
     assert.equal(args.includes("--tests"), false);
     assert.equal(args.includes("--all-targets"), false);
+  }
+  assert.equal(invocations[0].args.at(-1), "application_public_api");
+  for (const { args } of invocations.slice(1)) {
+    assert.notEqual(args.at(-1), "application_public_api");
   }
 });
 
