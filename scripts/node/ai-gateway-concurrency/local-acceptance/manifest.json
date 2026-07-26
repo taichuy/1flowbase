@@ -2,16 +2,16 @@
   "schema_version": "1flowbase.local-ai-gateway-acceptance/v1",
   "repo": {
     "host": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream",
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations",
       "revision": "HEAD"
     },
     "officialPlugins": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-official-plugins",
-      "revision": "40b155590d1d50fbbd9ae22b26cb0a25ce2901d7"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-official-assembly",
+      "revision": "e032003f478e732ef0ce3be5d178d944609e6505"
     },
     "protectedMain": {
       "path": "/home/taichuy/git/1flowbase",
-      "revision": "fe432c810af37376aea066e7b49ad5fdad4fdc2d",
+      "revision": "922f87806b4713c8ef2599214cbf3fedc131b88d",
       "require_clean": false
     }
   },
