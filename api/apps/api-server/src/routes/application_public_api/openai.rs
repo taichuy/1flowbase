@@ -72,9 +72,9 @@ pub use types::{
     OpenAiRouteError, OpenAiToolCall, OpenAiToolCallFunction, OpenAiUsage,
 };
 
-struct OpenAiCredential {
-    token: String,
-    source: &'static str,
+pub(super) struct OpenAiCredential {
+    pub(super) token: String,
+    pub(super) source: &'static str,
 }
 
 struct OpenAiToolResumeRequest {
@@ -736,7 +736,9 @@ pub async fn list_models(
     .into_response())
 }
 
-fn openai_credential(headers: &HeaderMap) -> Result<OpenAiCredential, native::NativeApiError> {
+pub(super) fn openai_credential(
+    headers: &HeaderMap,
+) -> Result<OpenAiCredential, native::NativeApiError> {
     if let Ok(token) = native::bearer_token(headers) {
         return Ok(OpenAiCredential {
             token,
@@ -761,15 +763,17 @@ fn openai_credential(headers: &HeaderMap) -> Result<OpenAiCredential, native::Na
         })
 }
 
-async fn authenticate_openai_response_credential(
+pub(super) async fn authenticate_openai_response_credential(
     state: &ApiState,
     credential: &OpenAiCredential,
-) -> Result<(), native::NativeApiError> {
+) -> Result<
+    control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    native::NativeApiError,
+> {
     ApplicationApiKeyService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .authenticate_bearer_token(&credential.token)
         .await
-        .map(|_| ())
         .map_err(|_| native::native_error(NativeRunValidationError::NotAuthenticated))
 }
 
