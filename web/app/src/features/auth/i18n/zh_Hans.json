@@ -3,7 +3,7 @@
     "product_tagline": "对话即是壁垒，AI应用原生底座"
   },
   "sign_in": {
-    "footer": "power by taichuy",
+    "footer": "Powered by 1flowbase",
     "login_instances_load_failed": "登录入口加载失败，请刷新页面后重试。",
     "no_login_instances": "当前没有可用登录入口。"
   }

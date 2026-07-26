@@ -113,8 +113,8 @@ export function SignInPage() {
 
         <div style={{ textAlign: 'center', marginTop: 48 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            <a href="https://www.taichuy.com" target="_blank" rel="noreferrer"
-              style={{ color: token.colorTextDescription, textDecoration: 'none' }}>
+            <a href="https://1flowbase.taichuy.com/" target="_blank" rel="noreferrer"
+              style={{ color: token.colorLink, textDecoration: 'none' }}>
               {t('sign_in.footer')}
             </a>
           </Typography.Text>
