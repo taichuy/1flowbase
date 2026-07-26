@@ -7,8 +7,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
-    checkpoint_node_id, checkpoint_snapshot_from_record, final_flow_output_payload,
-    CheckpointLocatorPayload,
+    answer_presentation_terminal_events, canonical_terminal_output_payload, checkpoint_node_id,
+    checkpoint_snapshot_from_record, final_flow_output_payload, CheckpointLocatorPayload,
 };
 
 fn checkpoint_record(locator_payload: Value, variable_snapshot: Value) -> domain::CheckpointRecord {
@@ -176,6 +176,121 @@ fn completed_flow_output_uses_terminal_node_payload() {
     assert_eq!(
         final_flow_output_payload(&outcome),
         json!({ "answer": "final answer" })
+    );
+}
+
+#[test]
+fn ac_005_terminal_answer_presentation_is_materialized_from_canonical_provider_events() {
+    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderStreamEvent};
+
+    let plan: orchestration_runtime::compiled_plan::CompiledPlan = serde_json::from_value(json!({
+        "flow_id": Uuid::nil(),
+        "source_draft_id": "draft-1",
+        "schema_version": "1flowbase.flow/v2",
+        "topological_order": ["node-llm", "node-answer"],
+        "edges": [],
+        "compile_issues": [],
+        "nodes": {
+            "node-llm": {
+                "node_id": "node-llm",
+                "node_type": "llm",
+                "alias": "LLM",
+                "container_id": null,
+                "dependency_node_ids": [],
+                "downstream_node_ids": ["node-answer"],
+                "bindings": {},
+                "outputs": [{
+                    "key": "text",
+                    "title": "Text",
+                    "value_type": "string",
+                    "selector": ["text"]
+                }],
+                "config": {}
+            },
+            "node-answer": {
+                "node_id": "node-answer",
+                "node_type": "answer",
+                "alias": "Answer",
+                "container_id": null,
+                "dependency_node_ids": ["node-llm"],
+                "downstream_node_ids": [],
+                "bindings": {
+                    "answer_template": {
+                        "kind": "selector",
+                        "raw_value": ["node-llm", "text"],
+                        "selector_paths": [["node-llm", "text"]]
+                    }
+                },
+                "outputs": [{
+                    "key": "answer",
+                    "title": "Answer",
+                    "value_type": "string",
+                    "selector": ["answer"]
+                }],
+                "config": {}
+            }
+        }
+    }))
+    .unwrap();
+    let mut llm_trace = trace("node-llm", json!({ "text": "wrong fallback" }), None);
+    llm_trace.provider_events = vec![
+        ProviderStreamEvent::TextDelta {
+            delta: "<think>reason</think>same  ".to_string(),
+        },
+        ProviderStreamEvent::TextDelta {
+            delta: "\n`code`same  ".to_string(),
+        },
+        ProviderStreamEvent::Finish {
+            reason: ProviderFinishReason::Stop,
+        },
+    ];
+    let outcome = FlowDebugExecutionOutcome {
+        stop_reason: ExecutionStopReason::Completed,
+        variable_pool: Map::from_iter([
+            ("node-llm".to_string(), json!({ "text": "wrong fallback" })),
+            (
+                "node-answer".to_string(),
+                json!({ "answer": "wrong fallback" }),
+            ),
+        ]),
+        checkpoint_snapshot: None,
+        operation_terminal: None,
+        node_traces: vec![
+            llm_trace,
+            typed_trace(
+                "node-answer",
+                "answer",
+                json!({ "answer": "wrong fallback" }),
+                None,
+            ),
+        ],
+    };
+
+    let events = answer_presentation_terminal_events(
+        Some(&plan),
+        &outcome,
+        None,
+        "node-answer",
+        &json!({ "answer": "wrong fallback" }),
+    )
+    .unwrap();
+    let text = events
+        .iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter_map(|event| event.payload["text"].as_str())
+        .collect::<String>();
+    let reasoning = events
+        .iter()
+        .filter(|event| event.event_type == "reasoning_delta")
+        .filter_map(|event| event.payload["text"].as_str())
+        .collect::<String>();
+
+    assert_eq!(text, "same  \n`code`same  ");
+    assert_eq!(reasoning, "reason");
+    assert!(!text.contains("wrong fallback"));
+    assert_eq!(
+        canonical_terminal_output_payload(Some(&plan), &outcome).unwrap()["answer"],
+        json!("same  \n`code`same  ")
     );
 }
 

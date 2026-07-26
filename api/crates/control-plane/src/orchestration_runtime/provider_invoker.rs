@@ -1,6 +1,11 @@
 use super::*;
 use plugin_framework::provider_contract::ProviderMessageRole;
 
+use super::canonical_stream::{
+    CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
+    CanonicalStreamState, CanonicalStreamTransitionError,
+};
+
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
 #[async_trait]
@@ -141,31 +146,13 @@ where
         {
             let live_sender = self.live_provider_events.clone();
             let runtime_event_stream = self.runtime_event_stream.clone();
-            let answer_presentation = self.answer_presentation.clone();
-            let repository = self.repository.clone();
             let flow_run_id = self.flow_run_id;
             let first_token_timing_for_task = first_token_timing.clone();
             let canonical_tool_registry_for_task = canonical_tool_registry.clone();
             let (provider_sender, mut provider_receiver) =
                 mpsc::unbounded_channel::<ProviderStreamEvent>();
             live_forward_handle = Some(tokio::spawn(async move {
-                let mut think_tag_splitter = ThinkTagStreamSplitter::default();
-                let (mut answer_persistence_sender, answer_persistence_handle) =
-                    if answer_presentation.is_some()
-                        && runtime_event_stream.is_some()
-                        && flow_run_id.is_some()
-                    {
-                        let (sender, receiver) = mpsc::channel(
-                            runtime_event_persister::RUNTIME_EVENT_PERSISTENCE_QUEUE_CAPACITY,
-                        );
-                        let handle = runtime_event_persister::spawn_batched_runtime_event_persister(
-                            repository.clone(),
-                            receiver,
-                        );
-                        (Some(sender), Some(handle))
-                    } else {
-                        (None, None)
-                    };
+                let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 while let Some(mut event) = provider_receiver.recv().await {
                     orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
@@ -177,6 +164,7 @@ where
                         provider_invoke_started_at,
                         provider_invoke_started,
                     );
+                    let canonical_deltas = canonical_writer.write(&event)?;
                     if let Some(sender) = &live_sender {
                         let _ = sender.send(LiveProviderStreamEvent {
                             node_id: node_id.clone(),
@@ -195,57 +183,30 @@ where
                                     event.clone(),
                                 )]
                             }
-                            ProviderStreamEvent::TextDelta { delta } => {
+                            ProviderStreamEvent::TextDelta { .. }
+                            | ProviderStreamEvent::ReasoningDelta { .. }
+                            | ProviderStreamEvent::Finish { .. }
+                            | ProviderStreamEvent::Error { .. } => {
                                 let mut runtime_events = Vec::new();
-                                let parts = think_tag_splitter.split(delta);
-                                for part in parts {
-                                    let provider_event = match part.kind {
-                                        DebugDeltaKind::Text => {
+                                for delta in canonical_deltas {
+                                    match delta.kind {
+                                        CanonicalContentKind::Text => {
                                             runtime_events.push(debug_stream_events::text_delta(
                                                 &node_id,
                                                 node_run_id,
-                                                part.text.clone(),
+                                                delta.text,
                                             ));
-                                            ProviderStreamEvent::TextDelta { delta: part.text }
                                         }
-                                        DebugDeltaKind::Reasoning => {
+                                        CanonicalContentKind::Reasoning => {
                                             runtime_events.push(
                                                 debug_stream_events::reasoning_delta(
                                                     &node_id,
                                                     node_run_id,
-                                                    part.text.clone(),
+                                                    delta.text,
                                                 ),
                                             );
-                                            ProviderStreamEvent::ReasoningDelta { delta: part.text }
                                         }
-                                    };
-                                    if let Some(answer_presentation) = &answer_presentation {
-                                        runtime_events.extend(
-                                            answer_presentation.lock().await.push_provider_event(
-                                                &node_id,
-                                                node_run_id,
-                                                &provider_event,
-                                            ),
-                                        );
                                     }
-                                }
-                                runtime_events
-                            }
-                            ProviderStreamEvent::ReasoningDelta { delta } => {
-                                let mut runtime_events =
-                                    vec![debug_stream_events::reasoning_delta(
-                                        &node_id,
-                                        node_run_id,
-                                        delta.clone(),
-                                    )];
-                                if let Some(answer_presentation) = &answer_presentation {
-                                    runtime_events.extend(
-                                        answer_presentation.lock().await.push_provider_event(
-                                            &node_id,
-                                            node_run_id,
-                                            &event,
-                                        ),
-                                    );
                                 }
                                 runtime_events
                             }
@@ -255,27 +216,16 @@ where
                             continue;
                         };
                         for runtime_event in runtime_events {
-                            let is_answer_presentation =
-                                debug_stream_events::is_answer_presentation_delta_payload(
-                                    &runtime_event.payload,
-                                );
-                            let persistence_fallback =
-                                is_answer_presentation.then(|| runtime_event.clone());
                             let event_type = runtime_event.event_type.clone();
                             let source = runtime_event.source;
                             let mut stream_event = runtime_event;
-                            if is_answer_presentation {
+                            if debug_stream_events::is_answer_presentation_delta_payload(
+                                &stream_event.payload,
+                            ) {
                                 stream_event.persist_required = false;
                             }
-                            let event_for_persistence = match stream
-                                .append(flow_run_id, stream_event)
-                                .await
-                            {
-                                Ok(mut envelope) if is_answer_presentation => {
-                                    envelope.persist_required = true;
-                                    Some(envelope)
-                                }
-                                Ok(_) => None,
+                            match stream.append(flow_run_id, stream_event).await {
+                                Ok(_) => {}
                                 Err(error) => {
                                     if is_expected_runtime_event_stream_closed_error(&error) {
                                         tracing::debug!(
@@ -294,45 +244,13 @@ where
                                             "failed to append provider runtime event"
                                         );
                                     }
-                                    persistence_fallback.map(|event| {
-                                        RuntimeEventEnvelope::new(flow_run_id, 0, event)
-                                    })
-                                }
-                            };
-                            if let (Some(sender), Some(event)) =
-                                (answer_persistence_sender.as_ref(), event_for_persistence)
-                            {
-                                if let Err(error) = sender.try_send(event) {
-                                    tracing::warn!(
-                                        flow_run_id = %flow_run_id,
-                                        event_type = %event_type,
-                                        error = %error,
-                                        "answer presentation persistence queue stopped accepting events; durable suffix recovery will preserve the final answer"
-                                    );
-                                    // Stop at a durable prefix. Persisting later deltas after a gap
-                                    // would make terminal suffix recovery duplicate the final answer.
-                                    answer_persistence_sender = None;
                                 }
                             }
                         }
                     }
                 }
-                drop(answer_persistence_sender);
-                if let Some(handle) = answer_persistence_handle {
-                    match handle.await {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => tracing::warn!(
-                            flow_run_id = ?flow_run_id,
-                            error = %error,
-                            "failed to flush answer presentation runtime event batch"
-                        ),
-                        Err(error) => tracing::warn!(
-                            flow_run_id = ?flow_run_id,
-                            error = %error,
-                            "answer presentation runtime event persister panicked"
-                        ),
-                    }
-                }
+                canonical_writer.complete()?;
+                Ok::<_, anyhow::Error>(canonical_writer.into_state())
             }));
             Some(provider_sender)
         } else {
@@ -347,15 +265,12 @@ where
             provider_invoke_ms = provider_invoke_started.elapsed().as_millis() as u64,
             "provider invoke finished"
         );
-        if let Some(handle) = live_forward_handle {
-            if let Err(error) = handle.await {
-                tracing::warn!(
-                    error = %error,
-                    "provider live event forwarding task panicked"
-                );
-            }
-        }
         let invocation_output = invocation_result?;
+        if let Some(handle) = live_forward_handle {
+            handle.await.map_err(|error| {
+                anyhow!("provider live event forwarding task panicked: {error}")
+            })??;
+        }
         self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
             .await?;
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
@@ -372,6 +287,152 @@ where
         );
         Ok(output)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CanonicalProviderDelta {
+    pub(super) kind: CanonicalContentKind,
+    pub(super) text: String,
+}
+
+pub(super) struct RuntimeCanonicalStreamWriter {
+    item_id: CanonicalItemId,
+    text_block_id: CanonicalBlockId,
+    reasoning_block_id: CanonicalBlockId,
+    state: CanonicalStreamState,
+    think_tag_splitter: ThinkTagStreamSplitter,
+}
+
+impl RuntimeCanonicalStreamWriter {
+    pub(super) fn new(item_id: impl Into<String>) -> Self {
+        let item_id = CanonicalItemId::new(item_id);
+        Self {
+            text_block_id: CanonicalBlockId::new(item_id.clone(), "text"),
+            reasoning_block_id: CanonicalBlockId::new(item_id.clone(), "reasoning"),
+            item_id,
+            state: CanonicalStreamState::default(),
+            think_tag_splitter: ThinkTagStreamSplitter::default(),
+        }
+    }
+
+    pub(super) fn write(
+        &mut self,
+        event: &ProviderStreamEvent,
+    ) -> Result<Vec<CanonicalProviderDelta>> {
+        if self.state.terminal().is_some() {
+            return Err(CanonicalStreamTransitionError::StreamAlreadyTerminal.into());
+        }
+
+        match event {
+            ProviderStreamEvent::TextDelta { delta } => {
+                let parts = self.think_tag_splitter.split(delta);
+                self.append_content_parts(parts)
+            }
+            ProviderStreamEvent::ReasoningDelta { delta } => {
+                self.append_content_parts(vec![DebugDeltaPart {
+                    kind: DebugDeltaKind::Reasoning,
+                    text: delta.clone(),
+                }])
+            }
+            ProviderStreamEvent::ToolCallDelta { call_id, delta } => {
+                if let Some(arguments) = tool_argument_delta(delta) {
+                    self.state.apply(CanonicalStreamEvent::ToolArgumentsDelta {
+                        call_id: CanonicalCallId::new(self.item_id.clone(), call_id.clone()),
+                        delta: arguments.to_string(),
+                    })?;
+                }
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::UsageDelta { usage } => {
+                self.state.apply(CanonicalStreamEvent::UsageDelta {
+                    usage: usage.clone(),
+                })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::UsageSnapshot { usage } => {
+                self.state.apply(CanonicalStreamEvent::UsageSnapshot {
+                    usage: usage.clone(),
+                })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::Finish { reason } => {
+                let deltas = self.flush_pending_content()?;
+                self.state.apply(CanonicalStreamEvent::Finish {
+                    reason: reason.clone(),
+                })?;
+                Ok(deltas)
+            }
+            ProviderStreamEvent::Error { error } => {
+                let deltas = self.flush_pending_content()?;
+                self.state.apply(CanonicalStreamEvent::Fail {
+                    error: error.clone(),
+                })?;
+                Ok(deltas)
+            }
+            ProviderStreamEvent::NativeEvent { .. }
+            | ProviderStreamEvent::ToolCallCommit { .. }
+            | ProviderStreamEvent::McpCallDelta { .. }
+            | ProviderStreamEvent::McpCallCommit { .. } => Ok(Vec::new()),
+        }
+    }
+
+    pub(super) fn complete(&mut self) -> Result<Vec<CanonicalProviderDelta>> {
+        if self.state.terminal().is_some() {
+            return Ok(Vec::new());
+        }
+        self.flush_pending_content()
+    }
+
+    pub(super) fn state(&self) -> &CanonicalStreamState {
+        &self.state
+    }
+
+    pub(super) fn into_state(self) -> CanonicalStreamState {
+        self.state
+    }
+
+    fn flush_pending_content(&mut self) -> Result<Vec<CanonicalProviderDelta>> {
+        let parts = self.think_tag_splitter.finish();
+        self.append_content_parts(parts)
+    }
+
+    fn append_content_parts(
+        &mut self,
+        parts: Vec<DebugDeltaPart>,
+    ) -> Result<Vec<CanonicalProviderDelta>> {
+        let mut deltas = Vec::with_capacity(parts.len());
+        for part in parts {
+            let (kind, event) = match part.kind {
+                DebugDeltaKind::Text => (
+                    CanonicalContentKind::Text,
+                    CanonicalStreamEvent::TextDelta {
+                        block_id: self.text_block_id.clone(),
+                        delta: part.text.clone(),
+                    },
+                ),
+                DebugDeltaKind::Reasoning => (
+                    CanonicalContentKind::Reasoning,
+                    CanonicalStreamEvent::ReasoningDelta {
+                        block_id: self.reasoning_block_id.clone(),
+                        delta: part.text.clone(),
+                    },
+                ),
+            };
+            self.state.apply(event)?;
+            deltas.push(CanonicalProviderDelta {
+                kind,
+                text: part.text,
+            });
+        }
+        Ok(deltas)
+    }
+}
+
+fn tool_argument_delta(delta: &Value) -> Option<&str> {
+    delta
+        .pointer("/function/arguments")
+        .or_else(|| delta.get("arguments"))
+        .and_then(Value::as_str)
 }
 
 fn record_first_token_timing(
@@ -1327,6 +1388,126 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod canonical_writer_tests {
+    use super::*;
+    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
+
+    #[test]
+    fn ac_001_runtime_writer_preserves_partitioned_text_and_reasoning() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+
+        for event in [
+            ProviderStreamEvent::TextDelta {
+                delta: "<think>same ".to_string(),
+            },
+            ProviderStreamEvent::TextDelta {
+                delta: "same</think>answer  ".to_string(),
+            },
+            ProviderStreamEvent::TextDelta {
+                delta: "\n`code`answer  ".to_string(),
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Stop,
+            },
+        ] {
+            writer.write(&event).unwrap();
+        }
+
+        assert_eq!(
+            writer.state().accumulated().reasoning().as_str(),
+            "same same"
+        );
+        assert_eq!(
+            writer.state().accumulated().text().as_str(),
+            "answer  \n`code`answer  "
+        );
+    }
+
+    #[test]
+    fn ac_003_runtime_writer_accumulates_tool_arguments_and_usage() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+        for delta in ["{\"query\":\"", "same", "same", "\"}"] {
+            writer
+                .write(&ProviderStreamEvent::ToolCallDelta {
+                    call_id: " call-1 ".to_string(),
+                    delta: json!({ "function": { "arguments": delta } }),
+                })
+                .unwrap();
+        }
+        writer
+            .write(&ProviderStreamEvent::UsageDelta {
+                usage: ProviderUsage {
+                    input_tokens: Some(2),
+                    total_tokens: Some(2),
+                    ..ProviderUsage::default()
+                },
+            })
+            .unwrap();
+        writer
+            .write(&ProviderStreamEvent::UsageSnapshot {
+                usage: ProviderUsage {
+                    input_tokens: Some(5),
+                    output_tokens: Some(3),
+                    total_tokens: Some(8),
+                    ..ProviderUsage::default()
+                },
+            })
+            .unwrap();
+
+        let call_id = CanonicalCallId::new(CanonicalItemId::new("item-1"), " call-1 ");
+        assert_eq!(
+            writer
+                .state()
+                .accumulated()
+                .tool_call(&call_id)
+                .unwrap()
+                .arguments()
+                .as_str(),
+            "{\"query\":\"samesame\"}"
+        );
+        assert_eq!(
+            writer.state().accumulated().usage().value(),
+            &ProviderUsage {
+                input_tokens: Some(5),
+                output_tokens: Some(3),
+                total_tokens: Some(8),
+                ..ProviderUsage::default()
+            }
+        );
+    }
+
+    #[test]
+    fn ac_006_runtime_writer_rejects_every_post_terminal_provider_event() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+        writer
+            .write(&ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Stop,
+            })
+            .unwrap();
+
+        for event in [
+            ProviderStreamEvent::TextDelta {
+                delta: "late".to_string(),
+            },
+            ProviderStreamEvent::NativeEvent {
+                protocol: "fixture".to_string(),
+                event: json!({}),
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Length,
+            },
+        ] {
+            assert!(writer
+                .write(&event)
+                .unwrap_err()
+                .to_string()
+                .contains("already terminal"));
+        }
+        assert!(writer.state().accumulated().text().is_empty());
+    }
 }
 
 #[cfg(test)]

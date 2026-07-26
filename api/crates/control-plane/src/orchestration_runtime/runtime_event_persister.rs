@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
 use serde_json::{json, Value};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -11,7 +11,6 @@ use crate::ports::{
     RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
 };
 
-pub(super) const RUNTIME_EVENT_PERSISTENCE_QUEUE_CAPACITY: usize = 64;
 const RUNTIME_EVENT_BATCH_MAX_BYTES: usize = 64 * 1024;
 const RUNTIME_EVENT_BATCH_MAX_DELAY: Duration = Duration::from_millis(20);
 
@@ -47,51 +46,6 @@ impl RuntimeEventPersistenceBatch {
         self.payload_bytes = 0;
         std::mem::take(&mut self.events)
     }
-}
-
-pub(super) fn spawn_batched_runtime_event_persister<R>(
-    repository: R,
-    mut receiver: mpsc::Receiver<RuntimeEventEnvelope>,
-) -> JoinHandle<Result<()>>
-where
-    R: OrchestrationRuntimeRepository + Send + Sync + 'static,
-{
-    tokio::spawn(async move {
-        let start = tokio::time::Instant::now() + RUNTIME_EVENT_BATCH_MAX_DELAY;
-        let mut flush_interval = tokio::time::interval_at(start, RUNTIME_EVENT_BATCH_MAX_DELAY);
-        let mut batch = RuntimeEventPersistenceBatch::default();
-
-        loop {
-            tokio::select! {
-                maybe_event = receiver.recv() => {
-                    let Some(event) = maybe_event else {
-                        persist_runtime_event_batch(&repository, &mut batch).await?;
-                        return Ok(());
-                    };
-                    batch.push(event);
-                    if batch.reached_byte_limit() {
-                        persist_runtime_event_batch(&repository, &mut batch).await?;
-                    }
-                }
-                _ = flush_interval.tick(), if !batch.is_empty() => {
-                    persist_runtime_event_batch(&repository, &mut batch).await?;
-                }
-            }
-        }
-    })
-}
-
-async fn persist_runtime_event_batch<R>(
-    repository: &R,
-    batch: &mut RuntimeEventPersistenceBatch,
-) -> Result<()>
-where
-    R: OrchestrationRuntimeRepository,
-{
-    if batch.is_empty() {
-        return Ok(());
-    }
-    persist_runtime_debug_stream_events(repository, batch.take()).await
 }
 
 pub async fn persist_runtime_event_payload<R>(
