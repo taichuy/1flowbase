@@ -325,6 +325,7 @@ function NativeRuntimeSlotSurface({
     mountIntent: readyPreparation?.mountIntent ?? null,
     prepared: readyPreparation?.prepared ?? null,
     createRuntimeInput,
+    runtimeInputRevision: createRuntimeInput,
     instanceEpochOwner,
     observationContext: preparation.observationContext,
     preparationGeneration: preparation.generation

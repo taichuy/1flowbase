@@ -61,6 +61,7 @@ export interface UseFrontstageNativeBlockInstanceInput {
   createRuntimeInput(
     instanceEpoch: string
   ): FrontstageNativeBlockInstanceRuntimeInput;
+  runtimeInputRevision: unknown;
   instanceEpochOwner?: FrontstageNativeInstanceEpochOwner;
   hostFactory?: FrontstageNativeBlockInstanceHostFactory;
   observationContext?: FrontstageRuntimeObservationContext;
@@ -72,7 +73,7 @@ interface ActiveNativeBlockInstance {
   instanceEpoch: string;
   host: NativeTrustedBlockHost;
   mountedPlan: NativeTrustedBlockPreparePlan;
-  mountedRuntimeInputFactory: UseFrontstageNativeBlockInstanceInput['createRuntimeInput'];
+  mountedRuntimeInputRevision: unknown;
   epochEnded: boolean;
 }
 
@@ -88,6 +89,7 @@ export function useFrontstageNativeBlockInstance({
   mountIntent,
   prepared,
   createRuntimeInput,
+  runtimeInputRevision,
   instanceEpochOwner,
   hostFactory = createFrontstageNativeBlockInstanceHost,
   observationContext,
@@ -102,6 +104,18 @@ export function useFrontstageNativeBlockInstance({
   const activeRef = useRef<ActiveNativeBlockInstance | null>(null);
   const createRuntimeInputRef = useRef(createRuntimeInput);
   createRuntimeInputRef.current = createRuntimeInput;
+  const runtimeInputRevisionRef = useRef(runtimeInputRevision);
+  runtimeInputRevisionRef.current = runtimeInputRevision;
+  const observationContextRef = useRef(observationContext);
+  observationContextRef.current = observationContext;
+  const observationMetadataRef = useRef({
+    cacheTier: prepared?.artifactCacheTier,
+    generation: preparationGeneration
+  });
+  observationMetadataRef.current = {
+    cacheTier: prepared?.artifactCacheTier,
+    generation: preparationGeneration
+  };
   const lifecycleGenerationRef = useRef(0);
   const disposalRef = useRef<Promise<unknown>>(Promise.resolve());
   const identity = useMemo(
@@ -115,17 +129,19 @@ export function useFrontstageNativeBlockInstance({
   }, []);
   const observe = useCallback(
     (stage: FrontstageNativeRuntimeObservationStage, instanceEpoch: string) => {
-      if (!observationContext || !prepared) return;
+      const currentObservationContext = observationContextRef.current;
+      const metadata = observationMetadataRef.current;
+      if (!currentObservationContext || !metadata.cacheTier) return;
       recordFrontstageRuntimeObservation({
-        ...observationContext,
+        ...currentObservationContext,
         stage,
         runtimeKind: 'native',
-        cacheTier: prepared.artifactCacheTier,
-        generation: preparationGeneration,
+        cacheTier: metadata.cacheTier,
+        generation: metadata.generation,
         instanceEpoch
       });
     },
-    [observationContext, preparationGeneration, prepared]
+    []
   );
 
   useEffect(() => {
@@ -160,14 +176,14 @@ export function useFrontstageNativeBlockInstance({
         readRuntimeInput: () => createRuntimeInputRef.current(instanceEpoch),
         onRuntimeError
       });
-      const mountedRuntimeInputFactory = createRuntimeInputRef.current;
-      const plan = mountedRuntimeInputFactory(instanceEpoch).plan;
+      const mountedRuntimeInputRevision = runtimeInputRevisionRef.current;
+      const plan = createRuntimeInputRef.current(instanceEpoch).plan;
       activeRef.current = {
         identity,
         instanceEpoch,
         host,
         mountedPlan: plan,
-        mountedRuntimeInputFactory,
+        mountedRuntimeInputRevision,
         epochEnded: false
       };
       observe('shadow_attach', instanceEpoch);
@@ -189,9 +205,9 @@ export function useFrontstageNativeBlockInstance({
       observe('react_mount', instanceEpoch);
       setState({ status: 'mounted', instanceEpoch });
       observe('present', instanceEpoch);
-      const latestRuntimeInputFactory = createRuntimeInputRef.current;
-      if (latestRuntimeInputFactory !== mountedRuntimeInputFactory) {
-        const latestPlan = latestRuntimeInputFactory(instanceEpoch).plan;
+      const latestRuntimeInputRevision = runtimeInputRevisionRef.current;
+      if (latestRuntimeInputRevision !== mountedRuntimeInputRevision) {
+        const latestPlan = createRuntimeInputRef.current(instanceEpoch).plan;
         setState({ status: 'updating', instanceEpoch });
         const updated = await host.update(latestPlan);
         if (
@@ -200,8 +216,8 @@ export function useFrontstageNativeBlockInstance({
           activeRef.current?.host === host
         ) {
           activeRef.current.mountedPlan = latestPlan;
-          activeRef.current.mountedRuntimeInputFactory =
-            latestRuntimeInputFactory;
+          activeRef.current.mountedRuntimeInputRevision =
+            latestRuntimeInputRevision;
           if (updated.status === 'failed') {
             setState({ status: 'failed', instanceEpoch, error: updated.error });
           } else {
@@ -234,10 +250,10 @@ export function useFrontstageNativeBlockInstance({
   useEffect(() => {
     const active = activeRef.current;
     if (!active || active.identity !== identity) return;
-    if (active.mountedRuntimeInputFactory === createRuntimeInput) return;
-    const runtimeInput = createRuntimeInput(active.instanceEpoch);
+    if (active.mountedRuntimeInputRevision === runtimeInputRevision) return;
+    const runtimeInput = createRuntimeInputRef.current(active.instanceEpoch);
     active.mountedPlan = runtimeInput.plan;
-    active.mountedRuntimeInputFactory = createRuntimeInput;
+    active.mountedRuntimeInputRevision = runtimeInputRevision;
     let cancelled = false;
     setState({ status: 'updating', instanceEpoch: active.instanceEpoch });
     void active.host.update(runtimeInput.plan).then((hostState) => {
@@ -256,7 +272,7 @@ export function useFrontstageNativeBlockInstance({
     return () => {
       cancelled = true;
     };
-  }, [createRuntimeInput, identity, observe]);
+  }, [identity, observe, runtimeInputRevision]);
 
   return { ...state, retry };
 }

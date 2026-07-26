@@ -30,6 +30,7 @@ describe('useFrontstageNativeBlockInstance', () => {
             plan: runtimePlan,
             context: createFrontstageUnavailableBlockContext(runtimePlan)
           }),
+          runtimeInputRevision: runtimePlan,
           instanceEpochOwner: epochs.owner,
           hostFactory: hosts.factory
         }),
@@ -79,6 +80,7 @@ describe('useFrontstageNativeBlockInstance', () => {
           plan: runtimePlan,
           context: createFrontstageUnavailableBlockContext(runtimePlan)
         }),
+        runtimeInputRevision: runtimePlan,
         instanceEpochOwner: epochs.owner,
         hostFactory: hosts.factory
       });
@@ -132,6 +134,7 @@ describe('useFrontstageNativeBlockInstance', () => {
           plan: runtimePlan,
           context: createFrontstageUnavailableBlockContext(runtimePlan)
         }),
+        runtimeInputRevision: runtimePlan,
         instanceEpochOwner: epochs.owner,
         hostFactory: hosts.factory
       })
