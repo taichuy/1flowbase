@@ -343,7 +343,7 @@ fn typed_mcp_approval_is_visible_and_done_joins_completed_output() {
             RuntimeEventEnvelope::new(
                 run.id,
                 1,
-                debug_stream_events::mcp_output_item_added(
+                debug_stream_events::provider_output_item_added(
                     "node-llm",
                     node_run_id,
                     2,
@@ -373,7 +373,7 @@ fn typed_mcp_approval_is_visible_and_done_joins_completed_output() {
                 RuntimeEventEnvelope::new(
                     run.id,
                     3,
-                    debug_stream_events::mcp_output_item_done(
+                    debug_stream_events::provider_output_item_done(
                         "node-llm",
                         node_run_id,
                         2,

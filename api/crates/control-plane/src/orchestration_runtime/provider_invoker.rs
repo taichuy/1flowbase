@@ -1,5 +1,5 @@
 use super::*;
-use plugin_framework::provider_contract::{ProviderMcpOutputItemPhase, ProviderMessageRole};
+use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
 
 use super::canonical_stream::{
     CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
@@ -211,21 +211,21 @@ where
                                 }
                                 runtime_events
                             }
-                            ProviderStreamEvent::McpOutputItem {
+                            ProviderStreamEvent::OutputItem {
                                 phase,
                                 output_index,
                                 item,
                             } => vec![match phase {
-                                ProviderMcpOutputItemPhase::Added => {
-                                    debug_stream_events::mcp_output_item_added(
+                                ProviderOutputItemPhase::Added => {
+                                    debug_stream_events::provider_output_item_added(
                                         &node_id,
                                         node_run_id,
                                         *output_index,
                                         item.clone(),
                                     )
                                 }
-                                ProviderMcpOutputItemPhase::Done => {
-                                    debug_stream_events::mcp_output_item_done(
+                                ProviderOutputItemPhase::Done => {
+                                    debug_stream_events::provider_output_item_done(
                                         &node_id,
                                         node_run_id,
                                         *output_index,
@@ -410,12 +410,12 @@ impl RuntimeCanonicalStreamWriter {
                 })?;
                 Ok(Vec::new())
             }
-            ProviderStreamEvent::McpOutputItem {
+            ProviderStreamEvent::OutputItem {
                 phase,
                 output_index,
                 item,
             } => {
-                self.state.apply(CanonicalStreamEvent::McpOutputItem {
+                self.state.apply(CanonicalStreamEvent::OutputItem {
                     phase: *phase,
                     output_index: *output_index,
                     item: item.clone(),
@@ -1577,7 +1577,7 @@ mod canonical_writer_tests {
     }
 
     #[test]
-    fn runtime_canonical_writer_applies_verified_mcp_output_item_phases() {
+    fn runtime_canonical_writer_applies_verified_provider_output_item_phases() {
         let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
         let item = json!({
             "id": "approval_1",
@@ -1585,24 +1585,24 @@ mod canonical_writer_tests {
             "name": "delete_record"
         });
         writer
-            .write(&ProviderStreamEvent::McpOutputItem {
-                phase: ProviderMcpOutputItemPhase::Added,
+            .write(&ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Added,
                 output_index: 1,
                 item: item.clone(),
             })
             .unwrap();
         writer
-            .write(&ProviderStreamEvent::McpOutputItem {
-                phase: ProviderMcpOutputItemPhase::Done,
+            .write(&ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Done,
                 output_index: 1,
                 item: item.clone(),
             })
             .unwrap();
 
-        let phases = writer.state().accumulated().mcp_output_items();
+        let phases = writer.state().accumulated().output_items();
         assert_eq!(phases.len(), 2);
-        assert_eq!(phases[0].phase(), ProviderMcpOutputItemPhase::Added);
-        assert_eq!(phases[1].phase(), ProviderMcpOutputItemPhase::Done);
+        assert_eq!(phases[0].phase(), ProviderOutputItemPhase::Added);
+        assert_eq!(phases[1].phase(), ProviderOutputItemPhase::Done);
         assert_eq!(phases[1].item(), &item);
     }
 }

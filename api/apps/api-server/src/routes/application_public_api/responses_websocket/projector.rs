@@ -116,9 +116,9 @@ impl ResponsesWebSocketProjector {
                 }));
             }
             "text_delta" | "reasoning_delta" => {}
-            "mcp_output_item_added" | "mcp_output_item_done" => {
+            "provider_output_item_added" | "provider_output_item_done" => {
                 self.begin_streaming();
-                self.project_mcp_output_item(run, &envelope, &mut events);
+                self.project_provider_output_item(run, &envelope, &mut events);
             }
             _ if terminal => {
                 self.begin_streaming();
@@ -181,7 +181,7 @@ impl ResponsesWebSocketProjector {
         self.output_item_index += 1;
     }
 
-    fn project_mcp_output_item(
+    fn project_provider_output_item(
         &mut self,
         run: &NativeRunResult,
         envelope: &RuntimeEventEnvelope,
@@ -201,8 +201,8 @@ impl ResponsesWebSocketProjector {
 
         self.close_output_item(run, events);
         let event_type = match envelope.event_type.as_str() {
-            "mcp_output_item_added" => "response.output_item.added",
-            "mcp_output_item_done" => "response.output_item.done",
+            "provider_output_item_added" => "response.output_item.added",
+            "provider_output_item_done" => "response.output_item.done",
             _ => return,
         };
         events.push(json!({
@@ -211,7 +211,7 @@ impl ResponsesWebSocketProjector {
             "output_index": output_index,
             "item": item.clone()
         }));
-        if envelope.event_type == "mcp_output_item_done" {
+        if envelope.event_type == "provider_output_item_done" {
             self.completed_output_items.push(item);
         }
         self.output_item_index = self.output_item_index.max(output_index.saturating_add(1));

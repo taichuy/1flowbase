@@ -302,20 +302,20 @@ pub fn provider_native_event(
     }
 }
 
-pub fn mcp_output_item_added(
+pub fn provider_output_item_added(
     node_id: &str,
     node_run_id: Uuid,
     output_index: usize,
     item: Value,
 ) -> RuntimeEventPayload {
     RuntimeEventPayload {
-        event_type: "mcp_output_item_added".to_string(),
+        event_type: "provider_output_item_added".to_string(),
         source: RuntimeEventSource::Provider,
         durability: RuntimeEventDurability::Ephemeral,
         persist_required: false,
         trace_visible: true,
         payload: json!({
-            "type": "mcp_output_item_added",
+            "type": "provider_output_item_added",
             "node_id": node_id,
             "node_run_id": node_run_id,
             "output_index": output_index,
@@ -324,20 +324,20 @@ pub fn mcp_output_item_added(
     }
 }
 
-pub fn mcp_output_item_done(
+pub fn provider_output_item_done(
     node_id: &str,
     node_run_id: Uuid,
     output_index: usize,
     item: Value,
 ) -> RuntimeEventPayload {
     RuntimeEventPayload {
-        event_type: "mcp_output_item_done".to_string(),
+        event_type: "provider_output_item_done".to_string(),
         source: RuntimeEventSource::Provider,
         durability: RuntimeEventDurability::Ephemeral,
         persist_required: false,
         trace_visible: true,
         payload: json!({
-            "type": "mcp_output_item_done",
+            "type": "provider_output_item_done",
             "node_id": node_id,
             "node_run_id": node_run_id,
             "output_index": output_index,

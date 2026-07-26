@@ -26,7 +26,7 @@ test('AC-003/005/006/008/019/024: workflow delegates all blocking checks to one 
 });
 
 test('AC-027/028: gate uses paired provider source, empty credentials, and always uploads evidence', () => {
-  assert.match(source, /7057175cd6b1f2062565875107d3232a221146fc/u);
+  assert.match(source, /e032003f478e732ef0ce3be5d178d944609e6505/u);
   assert.match(source, /OPENAI_API_KEY: ''/u);
   assert.match(source, /ANTHROPIC_API_KEY: ''/u);
   assert.match(source, /name: Upload bounded protocol evidence\n        if: always\(\)/u);

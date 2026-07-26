@@ -37,15 +37,18 @@ test('AC-003/007: gateway CLI reads distinct Application keys from two named env
   });
   assert.deepEqual(parsed.authorizationTokenByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'responses-fixture-secret',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'responses-fixture-secret',
     [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-fixture-secret',
   });
   assert.deepEqual(parsed.modelByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'gateway-openai-model',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'gateway-openai-model',
     [TRANSPORT.ANTHROPIC_SSE]: 'gateway-anthropic-model',
   });
   assert.deepEqual(parsed.endpointSet, {
     [TRANSPORT.RESPONSES_SSE]: 'http://127.0.0.1:7800/v1/responses',
     [TRANSPORT.RESPONSES_WEBSOCKET]: 'ws://127.0.0.1:7802/v1/responses',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'http://127.0.0.1:7800/v1/chat/completions',
     [TRANSPORT.ANTHROPIC_SSE]: 'http://127.0.0.1:7801/v1/messages',
   });
 });

@@ -191,7 +191,7 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
         RuntimeEventEnvelope::new(
             run.id,
             7,
-            debug_stream_events::mcp_output_item_added(
+            debug_stream_events::provider_output_item_added(
                 "node-llm",
                 node_run_id,
                 2,
@@ -219,7 +219,7 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
         RuntimeEventEnvelope::new(
             run.id,
             9,
-            debug_stream_events::mcp_output_item_done(
+            debug_stream_events::provider_output_item_done(
                 "node-llm",
                 node_run_id,
                 2,
@@ -243,9 +243,15 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
     let body = String::from_utf8(body.to_vec()).expect("Responses SSE must be UTF-8");
     let decoded = decode_responses_sse(&body);
     assert_eq!(decoded.output_item_events.len(), 2);
-    assert_eq!(decoded.output_item_events[0]["type"], "response.output_item.added");
+    assert_eq!(
+        decoded.output_item_events[0]["type"],
+        "response.output_item.added"
+    );
     assert_eq!(decoded.output_item_events[0]["sequence_number"], 7);
-    assert_eq!(decoded.output_item_events[1]["type"], "response.output_item.done");
+    assert_eq!(
+        decoded.output_item_events[1]["type"],
+        "response.output_item.done"
+    );
     assert_eq!(decoded.output_item_events[1]["output_index"], 2);
     assert_eq!(decoded.output_item_events[1]["item"], approval);
     assert_eq!(decoded.completed_output, vec![approval]);

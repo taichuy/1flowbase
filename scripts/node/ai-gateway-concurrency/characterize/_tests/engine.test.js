@@ -227,11 +227,12 @@ test('AC-003 controlled negatives: WebSocket, unknown, missing, and shared autho
   );
   assert.throws(
     () => authorizationHeadersByTransport({ [TRANSPORT.RESPONSES_SSE]: 'responses-key' }),
-    /authorization token is required for transport: anthropic-sse/u,
+    /authorization token is required for transport: chat-completions-sse/u,
   );
   assert.throws(
     () => authorizationHeadersByTransport({
       [TRANSPORT.RESPONSES_SSE]: 'shared-key',
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'shared-key',
       [TRANSPORT.ANTHROPIC_SSE]: 'shared-key',
     }),
     /must use distinct Application API keys/u,
@@ -249,7 +250,7 @@ test('AC-003 controlled negatives: WebSocket, unknown, and missing published mod
   );
   assert.throws(
     () => requirePublishedModelsByTransport({ [TRANSPORT.RESPONSES_SSE]: 'published-openai-model' }),
-    /published model is required for transport: anthropic-sse/u,
+    /published model is required for transport: chat-completions-sse/u,
   );
 });
 

@@ -212,7 +212,7 @@ where
 {
     if matches!(
         event,
-        ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::McpOutputItem { .. }
+        ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. }
     ) {
         bail!("ephemeral provider events cannot be persisted");
     }
@@ -283,7 +283,7 @@ where
     for event in events {
         if matches!(
             event,
-            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::McpOutputItem { .. }
+            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. }
         ) {
             continue;
         }
@@ -350,7 +350,7 @@ pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {
         ProviderStreamEvent::ToolCallCommit { .. } => "tool_call_commit",
         ProviderStreamEvent::McpCallDelta { .. } => "mcp_call_delta",
         ProviderStreamEvent::McpCallCommit { .. } => "mcp_call_commit",
-        ProviderStreamEvent::McpOutputItem { .. } => "mcp_output_item",
+        ProviderStreamEvent::OutputItem { .. } => "provider_output_item",
         ProviderStreamEvent::UsageDelta { .. } => "usage_delta",
         ProviderStreamEvent::UsageSnapshot { .. } => "usage_snapshot",
         ProviderStreamEvent::Finish { .. } => "finish",

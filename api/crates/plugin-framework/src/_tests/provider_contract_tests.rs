@@ -9,11 +9,10 @@ use plugin_framework::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
         ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderRuntimeError,
-        ProviderMcpOutputItemPhase, ProviderRuntimeErrorKind, ProviderRuntimeLine,
-        ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderOutputItemPhase,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
+        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -669,44 +668,44 @@ fn provider_runtime_line_tool_commit_preserves_arguments() {
 }
 
 #[test]
-fn provider_runtime_line_mcp_output_item_preserves_verified_item() {
+fn provider_runtime_line_provider_output_item_preserves_verified_item() {
     let encoded = json!({
-        "type": "mcp_output_item",
+        "type": "output_item",
         "phase": "added",
         "output_index": 2,
         "item": {
-            "id": "mcp_approval_1",
-            "type": "mcp_approval_request",
-            "name": "delete_record"
+            "id": "tool_search_1",
+            "type": "tool_search_call",
+            "arguments": "{}"
         }
     });
 
     let line: ProviderRuntimeLine = serde_json::from_value(encoded).unwrap();
     assert_eq!(
         line.into_stream_event(),
-        Some(ProviderStreamEvent::McpOutputItem {
-            phase: ProviderMcpOutputItemPhase::Added,
+        Some(ProviderStreamEvent::OutputItem {
+            phase: ProviderOutputItemPhase::Added,
             output_index: 2,
             item: json!({
-                "id": "mcp_approval_1",
-                "type": "mcp_approval_request",
-                "name": "delete_record"
+                "id": "tool_search_1",
+                "type": "tool_search_call",
+                "arguments": "{}"
             }),
         })
     );
 }
 
 #[test]
-fn provider_runtime_line_rejects_unknown_mcp_output_item_type() {
+fn provider_runtime_line_rejects_unknown_provider_output_item_type() {
     let error = serde_json::from_value::<ProviderRuntimeLine>(json!({
-        "type": "mcp_output_item",
+        "type": "output_item",
         "phase": "done",
         "output_index": 0,
         "item": { "id": "unknown_1", "type": "computer_call" }
     }))
     .unwrap_err();
 
-    assert!(error.to_string().contains(
-        "provider MCP output item type must be one of mcp_list_tools, mcp_call, or mcp_approval_request"
-    ));
+    assert!(error
+        .to_string()
+        .contains("provider output item type is not supported by the typed Responses projection"));
 }

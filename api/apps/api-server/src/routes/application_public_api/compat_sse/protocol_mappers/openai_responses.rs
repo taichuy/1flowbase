@@ -18,7 +18,7 @@ pub(in crate::routes::application_public_api::compat_sse) struct OpenAiResponseS
     previous_response_id: Option<String>,
     active_output_item: Option<OpenAiResponseOutputItemKind>,
     active_output_item_text: String,
-    completed_mcp_output_items: Vec<Value>,
+    completed_output_items: Vec<Value>,
     output_item_index: usize,
     state: OpenAiResponseStreamState,
 }
@@ -33,7 +33,7 @@ impl OpenAiResponseStreamMapper {
             previous_response_id,
             active_output_item: None,
             active_output_item_text: String::new(),
-            completed_mcp_output_items: Vec::new(),
+            completed_output_items: Vec::new(),
             output_item_index: 0,
             state: OpenAiResponseStreamState::Initial,
         }
@@ -83,15 +83,15 @@ impl OpenAiResponseStreamMapper {
         self.output_item_index += 1;
     }
 
-    fn project_mcp_output_item(
+    fn project_provider_output_item(
         &mut self,
         initial_run: &NativeRunResult,
         envelope: &RuntimeEventEnvelope,
         events: &mut Vec<Result<Event, Infallible>>,
     ) -> bool {
         let event_name = match envelope.event_type.as_str() {
-            "mcp_output_item_added" => "response.output_item.added",
-            "mcp_output_item_done" => "response.output_item.done",
+            "provider_output_item_added" => "response.output_item.added",
+            "provider_output_item_done" => "response.output_item.done",
             _ => return false,
         };
         let Some(output_index) = envelope
@@ -117,8 +117,8 @@ impl OpenAiResponseStreamMapper {
                 "item": item.clone()
             }),
         ));
-        if envelope.event_type == "mcp_output_item_done" {
-            self.completed_mcp_output_items.push(item);
+        if envelope.event_type == "provider_output_item_done" {
+            self.completed_output_items.push(item);
         }
         self.output_item_index = self.output_item_index.max(output_index.saturating_add(1));
         true
@@ -147,7 +147,7 @@ impl OpenAiResponseStreamMapper {
         }
         let is_terminal = event.terminal().is_some();
         let mut events = Vec::new();
-        if self.project_mcp_output_item(initial_run, envelope, &mut events) {
+        if self.project_provider_output_item(initial_run, envelope, &mut events) {
             return events;
         }
         match event.answer_delta() {
@@ -181,7 +181,7 @@ impl OpenAiResponseStreamMapper {
             initial_run,
             &self.model,
             self.previous_response_id.as_deref(),
-            &self.completed_mcp_output_items,
+            &self.completed_output_items,
             event.into_envelope(),
         ));
         if is_terminal {
