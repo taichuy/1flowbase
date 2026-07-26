@@ -381,15 +381,27 @@ test('AC-003/004: characterize matrix separates blocking correctness from perfor
     row.gateRole === GATE_ROLE.BLOCKING && row.scenario !== SCENARIO.NORMAL
   )).every((row) => row.concurrency === 1), true);
   const multiRows = CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.MULTI_POOL);
-  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency, row.gateRole]), [
+  const expectedMultiRows = [
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 2, GATE_ROLE.BLOCKING],
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 16, GATE_ROLE.ADVISORY],
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 32, GATE_ROLE.ADVISORY],
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4, GATE_ROLE.ADVISORY],
-  ]);
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.BLOCKING).reduce((total, row) => total + row.concurrency, 0), 29);
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.ADVISORY).reduce((total, row) => total + row.concurrency, 0), 196);
-  assert.equal(CHARACTERIZE_PLAN.reduce((total, row) => total + row.concurrency, 0), 225);
+  ];
+  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency, row.gateRole]), expectedMultiRows);
+  const requestCount = (rows) => rows.reduce((total, row) => total + row.concurrency, 0);
+  const multiRequestCount = (gateRole) => expectedMultiRows
+    .filter((row) => row[3] === gateRole)
+    .reduce((total, row) => total + row[2], 0);
+  const expectedBlockingRequests = Object.values(TRANSPORT).length * (
+    Object.values(SCENARIO).length + CORRECTNESS_CONCURRENCY.filter((value) => value !== 1)
+      .reduce((total, value) => total + value, 0)
+  ) + multiRequestCount(GATE_ROLE.BLOCKING);
+  const expectedAdvisoryRequests = Object.values(TRANSPORT).length
+    * PERFORMANCE_CONCURRENCY.reduce((total, value) => total + value, 0)
+    + multiRequestCount(GATE_ROLE.ADVISORY);
+  assert.equal(requestCount(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.BLOCKING)), expectedBlockingRequests);
+  assert.equal(requestCount(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.ADVISORY)), expectedAdvisoryRequests);
+  assert.equal(requestCount(CHARACTERIZE_PLAN), expectedBlockingRequests + expectedAdvisoryRequests);
 });
 
 test('AC-029: non-blocking performance failures remain visible without changing the protocol verdict', async () => {
