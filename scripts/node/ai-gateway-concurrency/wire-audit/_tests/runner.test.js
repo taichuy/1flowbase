@@ -19,9 +19,9 @@ test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approva
   const wire = JSON.stringify(vectors);
   for (const value of [
     'tool_search_call', 'tool_search_output', 'additional_tools', 'file_search',
-    'programmatic_tool_calling', 'shell', 'mcp_list_tools', 'mcp_call',
-    'mcp_approval_request', canary,
+    'programmatic_tool_calling', 'shell', 'ordinary user request for an MCP lookup', canary,
   ]) assert.match(wire, new RegExp(value, 'u'));
+  assert.doesNotMatch(wire, /mcp_list_tools|mcp_call|mcp_approval_request/u);
   assert.doesNotMatch(wire, /mcp_approval_response/u);
   assert.doesNotMatch(wire, /wire_audit_vector/u);
 });
@@ -60,13 +60,28 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
       data = { ...data, fixture: ['tool_search_output', 'additional_tools'] };
     }
     if (toolTypes.includes('file_search')) {
-      data = { ...data, fixture: ['file_search_call', 'program', 'shell_call', 'response.future_gateway_drift'] };
+      data = { ...data, fixture: ['file_search_call', 'program', 'shell_call'] };
     }
     if (toolTypes.includes('mcp')) {
       data = {
-        type: 'response.created', response: { id: providerResponseId },
-        fixture: ['mcp_list_tools', 'mcp_call'],
-        item: { type: 'mcp_approval_request', id: approvalRequestId },
+        type: 'response.created',
+        response: {
+          id: providerResponseId,
+          output: [
+            {
+              type: 'mcp_list_tools', id: 'mcp_list_provider_owned',
+              server_label: 'fixture_mcp', status: 'completed', tools: [{ name: 'lookup' }],
+            },
+            {
+              type: 'mcp_call', id: 'mcp_call_provider_owned', server_label: 'fixture_mcp',
+              status: 'completed', name: 'lookup', arguments: '{"query":"fixture"}',
+            },
+            {
+              type: 'mcp_approval_request', id: approvalRequestId, server_label: 'fixture_mcp',
+              status: 'in_progress', name: 'lookup', arguments: '{"query":"approval fixture"}',
+            },
+          ],
+        },
       };
     }
     if (inputTypes.includes('mcp_approval_response')) {
@@ -89,7 +104,8 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
 
   const startIndex = requests.findIndex((body) => body.tools?.some((tool) => tool.type === 'mcp'));
   assert.notEqual(startIndex, -1);
-  assert.equal(requests[startIndex].input.some((item) => item.type === 'mcp_approval_response'), false);
+  assert.equal(requests[startIndex].input, 'ordinary user request for an MCP lookup');
+  assert.equal(JSON.stringify(requests[startIndex].input).includes('mcp_'), false);
   const continuation = requests[startIndex + 1];
   assert.equal(continuation.previous_response_id, providerResponseId);
   assert.deepEqual(continuation.input, [{

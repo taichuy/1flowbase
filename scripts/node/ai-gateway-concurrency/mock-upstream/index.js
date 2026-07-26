@@ -196,15 +196,20 @@ function observeWireVectors(body, requestTimeline, counters) {
       requestTimeline.record('provider_tool_execution', { toolKind: kind });
     }
     if (kind === 'mcp') requestTimeline.record('mcp_server_definition');
-    if (kind === 'mcp_list_tools') requestTimeline.record('mcp_list');
-    if (kind === 'mcp_call') {
-      counters.providerExecutions += 1;
-      requestTimeline.record('mcp_call');
-    }
-    if (kind === 'mcp_approval_request' || kind === 'mcp_approval_response') requestTimeline.record('mcp_approval');
     if (kind === 'tool_search' || kind === 'tool_search_call') requestTimeline.record('client_tool_search');
     if (kind === 'tool_search_output') requestTimeline.record('server_tool_search');
     if (kind === 'additional_tools') requestTimeline.record('additional_tools');
+  }
+}
+
+function observeProviderWireOutput(stream, requestTimeline, counters) {
+  for (const type of stream.providerOutputTypes ?? []) {
+    if (type === 'mcp_list_tools') requestTimeline.record('mcp_list');
+    if (type === 'mcp_call') {
+      counters.providerExecutions += 1;
+      requestTimeline.record('mcp_call');
+    }
+    if (type === 'mcp_approval_request') requestTimeline.record('mcp_approval');
   }
 }
 
@@ -380,6 +385,7 @@ function createMockUpstream(options = {}) {
             : isClientTextTurn
               ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
               : anthropicEvents(requestTimeline.nonce));
+      observeProviderWireOutput(stream, requestTimeline, counters);
       await emitHttpStream({
         response,
         request,
