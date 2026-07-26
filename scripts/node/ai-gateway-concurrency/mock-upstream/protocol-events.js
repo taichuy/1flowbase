@@ -307,6 +307,78 @@ function chatTextEvents(nonce) {
   };
 }
 
+const LOSSLESS_SENTINEL_SEGMENTS = Object.freeze([
+  'same  same',
+  '  ',
+  '\n',
+  '\n',
+  '```markdown\n',
+  '`same`  **same**',
+  '\n```\n',
+  '中文边界',
+  '🙂🚀',
+  '',
+  '  same  same  ',
+]);
+
+const LOSSLESS_LONG_TEXT = '长文本🙂 `markdown`  repeated\n'.repeat(256);
+
+function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_SEGMENTS) {
+  const deltas = [...segments];
+  if (transport === 'responses-sse' || transport === 'responses-websocket') {
+    const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
+    return {
+      chunks: [
+        { type: 'response.created', sequence_number: 0, response },
+        ...deltas.map((delta, index) => ({
+          type: 'response.output_text.delta',
+          sequence_number: index + 1,
+          item_id: `item_${nonce}`,
+          output_index: 0,
+          content_index: 0,
+          delta,
+        })),
+      ],
+      terminal: {
+        type: 'response.completed',
+        sequence_number: deltas.length + 1,
+        response: { ...response, status: 'completed' },
+      },
+    };
+  }
+  if (transport === 'chat-completions-sse') {
+    return {
+      doneSentinel: true,
+      chunks: deltas.map((content) => ({
+        id: `chatcmpl_${nonce}`,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content }, finish_reason: null }],
+      })),
+      terminal: {
+        id: `chatcmpl_${nonce}`,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      },
+    };
+  }
+  if (transport === 'anthropic-sse') {
+    return {
+      chunks: deltas.map((text) => ({
+        event: 'content_block_delta',
+        data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+      })),
+      terminal: [
+        {
+          event: 'message_delta',
+          data: { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+        },
+        { event: 'message_stop', data: { type: 'message_stop' } },
+      ],
+    };
+  }
+  throw new Error(`unsupported lossless fixture transport: ${transport}`);
+}
+
 function responsesWireEvents(nonce, vector) {
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const types = {
@@ -337,10 +409,13 @@ function responsesWireEvents(nonce, vector) {
 
 module.exports = {
   DEFAULT_BARRIER_MARKERS,
+  LOSSLESS_LONG_TEXT,
+  LOSSLESS_SENTINEL_SEGMENTS,
   anthropicEvents,
   anthropicToolEvents,
   chatTextEvents,
   chatToolEvents,
+  losslessProtocolEvents,
   responsesEvents,
   responsesToolEvents,
   responsesWireEvents,
