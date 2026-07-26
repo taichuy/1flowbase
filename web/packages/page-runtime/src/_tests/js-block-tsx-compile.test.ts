@@ -11,6 +11,11 @@ const context = {
   application: { id: 'application-1' },
   page: { id: 'page-1', route: '/demo' },
   inputs: {},
+  outputs: {
+    publish() {
+      return { ok: false, stale: false };
+    }
+  },
   params: {},
   props: { visible: true },
   state: {},

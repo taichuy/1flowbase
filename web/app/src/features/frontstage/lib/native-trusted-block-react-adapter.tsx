@@ -217,12 +217,21 @@ export function createFrontstageUnavailableBlockContext(
   return {
     currentUser: null,
     workspace: { id: 'workspace' },
-    application: { id: 'application' },
+    application: null,
     page: {
       id: plan.blockId,
       route: plan.blockId
     },
     inputs: {},
+    outputs: {
+      publish() {
+        return {
+          ok: false,
+          stale: false,
+          error: 'Native trusted block outputs are unavailable.'
+        };
+      }
+    },
     params: {},
     props: { ...plan.props },
     state,

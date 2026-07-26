@@ -15,6 +15,7 @@ const blockContext = {
   application: { id: 'application-1', name: 'Application' },
   page: { id: 'page-1', route: '/demo', title: 'Demo' },
   inputs: {},
+  outputs: { publish: vi.fn() },
   params: {},
   props: {},
   state: {},

@@ -92,7 +92,8 @@ function createFakeBlockContext(
     theme: { mode: 'light', tokens: {} },
     ui: {},
     ...overrides,
-    inputs: overrides.inputs ?? {}
+    inputs: overrides.inputs ?? {},
+    outputs: overrides.outputs ?? { publish: vi.fn() }
   };
 }
 

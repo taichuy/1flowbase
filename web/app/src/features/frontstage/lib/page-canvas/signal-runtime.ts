@@ -1,3 +1,5 @@
+import type { BlockContextOutputs } from '@1flowbase/page-protocol';
+
 import type { FrontstageBlockInstance } from '../page-document';
 import { createFrontstageSignalGraph } from '../page-signals/graph';
 import {
@@ -23,11 +25,12 @@ export function createFrontstagePageSignalSession(): FrontstagePageSignalSession
 }
 
 export class FrontstageSignalRuntimeCoordinator {
-  readonly graph;
-  private readonly blocksById;
+  graph;
+  private blocksById;
   private readonly tabId;
   private readonly pageSession;
-  private latestRunIds = new Map<string, string>();
+  private latestInstanceEpochs = new Map<string, string>();
+  private nextInstanceEpoch = 0;
 
   constructor(
     blocks: readonly FrontstageBlockInstance[],
@@ -40,12 +43,48 @@ export class FrontstageSignalRuntimeCoordinator {
     this.graph = createFrontstageSignalGraph(blocks);
   }
 
+  updateBlocks(blocks: readonly FrontstageBlockInstance[]): void {
+    this.blocksById = new Map(blocks.map((block) => [block.id, block]));
+    this.graph = createFrontstageSignalGraph(blocks);
+    for (const blockId of this.latestInstanceEpochs.keys()) {
+      if (!this.blocksById.has(blockId)) {
+        this.latestInstanceEpochs.delete(blockId);
+      }
+    }
+  }
+
   get revision(): number {
     return this.pageSession.snapshot.revision;
   }
 
-  beginRun(blockId: string, runId: string): void {
-    this.latestRunIds.set(blockId, runId);
+  instanceEpochFor(blockId: string): string | null {
+    return this.latestInstanceEpochs.get(blockId) ?? null;
+  }
+
+  beginInstance(blockId: string, epoch?: string): string {
+    const nextEpoch = epoch ?? `${blockId}:${++this.nextInstanceEpoch}`;
+    this.latestInstanceEpochs.set(blockId, nextEpoch);
+    return nextEpoch;
+  }
+
+  endInstance(blockId: string, epoch: string): void {
+    if (this.latestInstanceEpochs.get(blockId) === epoch) {
+      this.latestInstanceEpochs.delete(blockId);
+    }
+  }
+
+  outputsFor(
+    blockId: string,
+    epoch: string,
+    onPublish?: (revision: number) => void
+  ): BlockContextOutputs {
+    return {
+      publish: (values) => {
+        const result = this.commit(blockId, epoch, values);
+        if (result.ok) onPublish?.(this.revision);
+        return result;
+      }
+    };
   }
 
   canRun(blockId: string): boolean {
@@ -77,10 +116,10 @@ export class FrontstageSignalRuntimeCoordinator {
 
   commit(
     blockId: string,
-    runId: string,
+    instanceEpoch: string,
     outputs: Record<string, unknown>
   ): FrontstageSignalRuntimeCommitResult {
-    if (this.latestRunIds.get(blockId) !== runId)
+    if (this.latestInstanceEpochs.get(blockId) !== instanceEpoch)
       return { ok: false, stale: true };
     const block = this.blocksById.get(blockId);
     if (!block)
@@ -105,7 +144,7 @@ export class FrontstageSignalRuntimeCoordinator {
 
   clear(): void {
     this.pageSession.snapshot = clearFrontstagePageSignals();
-    this.latestRunIds.clear();
+    this.latestInstanceEpochs.clear();
   }
 
   private readSource(

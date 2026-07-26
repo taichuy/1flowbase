@@ -226,7 +226,11 @@ async function runRequest(
       ? canonicalizeCompiledBlockArtifact(program.artifact)
       : null;
   if (program.kind === 'compiled_artifact' && !artifact) {
-    postError(request, artifactCorruptError('Compiled block artifact shape is invalid.'), postMessage);
+    postError(
+      request,
+      artifactCorruptError('Compiled block artifact shape is invalid.'),
+      postMessage
+    );
     return;
   }
 
@@ -401,9 +405,19 @@ function createBlockContext(
   const context: MutableBlockContext = {
     currentUser: readIdentity(snapshot.currentUser),
     workspace: readEntity(snapshot.workspace, 'workspace'),
-    application: readEntity(snapshot.application, 'application'),
+    application: readOptionalEntity(snapshot.application),
     page: readPage(snapshot.page),
     inputs: { ...(request.inputs ?? {}) },
+    outputs: {
+      publish() {
+        return {
+          ok: false,
+          stale: false,
+          error:
+            'Restricted BlockContext outputs.publish is not an execution owner.'
+        };
+      }
+    },
     params: readRecord(snapshot.params),
     props: { ...request.props },
     state,
@@ -740,6 +754,12 @@ function readEntity(value: unknown, fallbackId: string): BlockContextEntity {
     id: value.id,
     ...(typeof value.name === 'string' ? { name: value.name } : {})
   };
+}
+
+function readOptionalEntity(value: unknown): BlockContextEntity | null {
+  return isRecord(value) && typeof value.id === 'string'
+    ? readEntity(value, value.id)
+    : null;
 }
 
 function readPage(value: unknown): BlockContextPage {

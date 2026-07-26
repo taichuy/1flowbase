@@ -1,12 +1,13 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import type { BlockContext } from '@1flowbase/page-protocol';
 import {
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
@@ -53,6 +54,15 @@ import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
 import { useFrontstageNativeBlockInstance } from '../hooks/use-frontstage-native-block-instance';
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
+import {
+  createFrontstagePageSignalSession,
+  FrontstageSignalRuntimeCoordinator
+} from '../lib/page-canvas/signal-runtime';
+
+export type FrontstagePageCanvasRuntimeContext = Pick<
+  BlockContext,
+  'currentUser' | 'workspace' | 'application' | 'theme' | 'ui'
+>;
 
 type DesignBlockActions = {
   onEditCode: (blockId: string) => void;
@@ -73,6 +83,7 @@ type PageCanvasProps = {
     | readonly FrontstagePageCanvasRuntimeSessionEntry[]
     | null;
   runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
   /** Actions triggered from the design mode hover toolbar */
@@ -146,6 +157,11 @@ function findRuntimeSessionEntryForSlot({
 type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
   runtimePreparation?: FrontstageNativePreparationSnapshot | null;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  signalRevision: number;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  pageContent?: FrontstagePageContent;
+  onSignalRevision(revision: number): void;
   runtimeSessionEntry?: FrontstagePageCanvasRuntimeSessionEntry | null;
   isSelected: boolean;
   onSelectBlock?: (blockId: string | null) => void;
@@ -220,6 +236,11 @@ function resolveRendererVersionError(
 function NativeRuntimeSlotSurface({
   item,
   preparation,
+  signalCoordinator,
+  signalRevision,
+  runtimeContext,
+  pageContent,
+  onSignalRevision,
   contentViewportStyle,
   onRetry
 }: {
@@ -227,6 +248,11 @@ function NativeRuntimeSlotSurface({
   preparation: FrontstageNativePreparationSnapshot;
   contentViewportStyle: CSSProperties;
   onRetry?: () => void;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  signalRevision: number;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  pageContent?: FrontstagePageContent;
+  onSignalRevision(revision: number): void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const readyPreparation = preparation.status === 'ready' ? preparation : null;
@@ -249,18 +275,64 @@ function NativeRuntimeSlotSurface({
     item.runtime.entry,
     readyPreparation?.prepared.identityInput.sourceSha256
   ]);
-  const runtimeInput = useMemo(
-    () => ({
+  const instanceEpochOwner = useMemo(
+    () =>
+      signalCoordinator
+        ? {
+            begin: () => signalCoordinator.beginInstance(item.blockId),
+            end: (instanceEpoch: string) =>
+              signalCoordinator.endInstance(item.blockId, instanceEpoch)
+          }
+        : undefined,
+    [item.blockId, signalCoordinator]
+  );
+  const createRuntimeInput = useCallback(
+    (instanceEpoch: string) => {
+      const unavailable = createFrontstageUnavailableBlockContext(plan);
+      const outputs = signalCoordinator
+        ? signalCoordinator.outputsFor(
+            item.blockId,
+            instanceEpoch,
+            onSignalRevision
+          )
+        : unavailable.outputs;
+      return {
+        plan,
+        context: {
+          ...unavailable,
+          ...(runtimeContext ?? {}),
+          page: {
+            id: pageContent?.page.id ?? unavailable.page.id,
+            route:
+              pageContent?.tab.routeSegment ??
+              pageContent?.page.id ??
+              unavailable.page.route,
+            ...(pageContent?.page.title
+              ? { title: pageContent.page.title }
+              : {})
+          },
+          inputs: signalCoordinator?.inputsFor(item.blockId) ?? {},
+          outputs,
+          props: { ...plan.props }
+        }
+      };
+    },
+    [
+      item.blockId,
+      onSignalRevision,
+      pageContent,
       plan,
-      context: createFrontstageUnavailableBlockContext(plan)
-    }),
-    [plan]
+      runtimeContext,
+      signalCoordinator,
+      signalRevision
+    ]
   );
   const instanceState = useFrontstageNativeBlockInstance({
     root,
     mountIntent: readyPreparation?.mountIntent ?? null,
     prepared: readyPreparation?.prepared ?? null,
-    runtimeInput
+    createRuntimeInput,
+    instanceEpochOwner
   });
 
   if (preparation.status === 'failed' || instanceState.status === 'failed') {
@@ -308,6 +380,11 @@ function NativeRuntimeSlotSurface({
 function RenderPlanSlot({
   item,
   runtimePreparation,
+  signalCoordinator,
+  signalRevision,
+  runtimeContext,
+  pageContent,
+  onSignalRevision,
   runtimeSessionEntry,
   isSelected,
   onSelectBlock,
@@ -426,6 +503,11 @@ function RenderPlanSlot({
         <NativeRuntimeSlotSurface
           item={item}
           preparation={runtimePreparation}
+          signalCoordinator={signalCoordinator}
+          signalRevision={signalRevision}
+          runtimeContext={runtimeContext}
+          pageContent={pageContent}
+          onSignalRevision={onSignalRevision}
           contentViewportStyle={contentViewportStyle}
           onRetry={
             onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
@@ -552,6 +634,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   onRetry,
   runtimeSessionEntries,
   runtimePreparations,
+  runtimeContext,
   isDesignMode = false,
   designActions,
   toolbarDisabled = false,
@@ -569,6 +652,29 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     [document]
   );
   const renderItems = useMemo(() => renderPlan?.items ?? [], [renderPlan]);
+  const signalSession = useMemo(
+    () => createFrontstagePageSignalSession(),
+    [content?.page.id]
+  );
+  const signalCoordinator = useMemo(
+    () =>
+      document && content
+        ? new FrontstageSignalRuntimeCoordinator(
+            document.blocks,
+            content.tab.id,
+            signalSession
+          )
+        : null,
+    [content?.tab.id, document?.page.id, signalSession]
+  );
+  const [signalRevision, setSignalRevision] = useState(0);
+  useEffect(() => {
+    signalCoordinator?.updateBlocks(document?.blocks ?? []);
+    setSignalRevision(signalCoordinator?.revision ?? 0);
+  }, [document?.blocks, signalCoordinator]);
+  const handleSignalRevision = useCallback((revision: number) => {
+    setSignalRevision(revision);
+  }, []);
   const { width: measuredWidth, containerRef } = useContainerWidth({
     initialWidth: 1280
   });
@@ -791,6 +897,11 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                       (preparation) => preparation.blockId === item.blockId
                     ) ?? null
                   }
+                  signalCoordinator={signalCoordinator}
+                  signalRevision={signalRevision}
+                  runtimeContext={runtimeContext}
+                  pageContent={content}
+                  onSignalRevision={handleSignalRevision}
                   runtimeSessionEntry={findRuntimeSessionEntryForSlot({
                     item,
                     slotIndex,

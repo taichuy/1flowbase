@@ -7,7 +7,9 @@ import type {
 export type {
   BlockBinaryInput,
   BlockBinaryResource,
-  BlockContext
+  BlockContext,
+  BlockContextOutputPublishResult,
+  BlockContextOutputs
 } from '@1flowbase/page-protocol';
 
 export interface BlockResult<
@@ -21,7 +23,7 @@ export type BlockMain<
   TInputs extends BlockContextRecord = BlockContextRecord,
   TOutputs extends BlockContextRecord = BlockContextRecord
 > = (
-  ctx: BlockContext<TInputs>
+  ctx: BlockContext<TInputs, TOutputs>
 ) => BlockResult<TOutputs> | Promise<BlockResult<TOutputs>>;
 
 export interface BlockModule<

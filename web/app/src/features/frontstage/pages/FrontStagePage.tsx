@@ -18,7 +18,10 @@ import type { FrontstagePageContent } from '../api/page-content';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
-import { PageCanvas } from '../components/PageCanvas';
+import {
+  PageCanvas,
+  type FrontstagePageCanvasRuntimeContext
+} from '../components/PageCanvas';
 import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
@@ -266,6 +269,22 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
       demandsByBlockId: runtimeDemandsByBlockId
     });
+  const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
+    () => ({
+      currentUser: actor
+        ? {
+            id: actor.id,
+            displayName:
+              me?.nickname?.trim() || me?.name?.trim() || actor.account
+          }
+        : null,
+      workspace: { id: workspaceId },
+      application: null,
+      theme: { mode: 'light', tokens: {} },
+      ui: { locale: me?.preferred_locale ?? undefined }
+    }),
+    [actor, me?.name, me?.nickname, me?.preferred_locale, workspaceId]
+  );
   const blockCompositionState = useMemo(
     () =>
       displayedPageDocument
@@ -1196,6 +1215,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         }
         onRetry={onRetryLoadPageContent}
         runtimePreparations={pageCanvasNativePreparations.preparations}
+        runtimeContext={nativeBlockRuntimeContext}
         onRuntimeDemandChange={handleRuntimeDemandChange}
         onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}

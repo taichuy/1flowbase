@@ -29,6 +29,7 @@ export type FrontstageNativeBlockInstanceStatus =
 
 export interface FrontstageNativeBlockInstanceState {
   status: FrontstageNativeBlockInstanceStatus;
+  instanceEpoch?: string;
   error?: BlockProtocolError;
 }
 
@@ -50,29 +51,42 @@ export interface UseFrontstageNativeBlockInstanceInput {
   root: Element | null;
   mountIntent: FrontstageNativeInstanceMountIntent | null;
   prepared: FrontstageNativePreparedRuntime | null;
-  runtimeInput: FrontstageNativeBlockInstanceRuntimeInput;
+  createRuntimeInput(
+    instanceEpoch: string
+  ): FrontstageNativeBlockInstanceRuntimeInput;
+  instanceEpochOwner?: FrontstageNativeInstanceEpochOwner;
   hostFactory?: FrontstageNativeBlockInstanceHostFactory;
 }
 
 interface ActiveNativeBlockInstance {
   identity: string;
+  instanceEpoch: string;
   host: NativeTrustedBlockHost;
   mountedPlan: NativeTrustedBlockPreparePlan;
+  mountedRuntimeInputFactory: UseFrontstageNativeBlockInstanceInput['createRuntimeInput'];
 }
+
+export interface FrontstageNativeInstanceEpochOwner {
+  begin(): string;
+  end(instanceEpoch: string): void;
+}
+
+let nextStandaloneInstanceEpoch = 0;
 
 export function useFrontstageNativeBlockInstance({
   root,
   mountIntent,
   prepared,
-  runtimeInput,
+  createRuntimeInput,
+  instanceEpochOwner,
   hostFactory = createFrontstageNativeBlockInstanceHost
 }: UseFrontstageNativeBlockInstanceInput): FrontstageNativeBlockInstanceState {
   const [state, setState] = useState<FrontstageNativeBlockInstanceState>({
     status: 'unmounted'
   });
   const activeRef = useRef<ActiveNativeBlockInstance | null>(null);
-  const runtimeInputRef = useRef(runtimeInput);
-  runtimeInputRef.current = runtimeInput;
+  const createRuntimeInputRef = useRef(createRuntimeInput);
+  createRuntimeInputRef.current = createRuntimeInput;
   const lifecycleGenerationRef = useRef(0);
   const disposalRef = useRef<Promise<unknown>>(Promise.resolve());
   const identity = useMemo(
@@ -93,12 +107,22 @@ export function useFrontstageNativeBlockInstance({
       await disposalRef.current;
       if (cancelled || lifecycleGenerationRef.current !== generation) return;
       setState({ status: 'mounting' });
+      const instanceEpoch =
+        instanceEpochOwner?.begin() ??
+        `standalone:${++nextStandaloneInstanceEpoch}`;
       const host = hostFactory({
         prepared,
-        readRuntimeInput: () => runtimeInputRef.current
+        readRuntimeInput: () => createRuntimeInputRef.current(instanceEpoch)
       });
-      const plan = runtimeInputRef.current.plan;
-      activeRef.current = { identity, host, mountedPlan: plan };
+      const mountedRuntimeInputFactory = createRuntimeInputRef.current;
+      const plan = mountedRuntimeInputFactory(instanceEpoch).plan;
+      activeRef.current = {
+        identity,
+        instanceEpoch,
+        host,
+        mountedPlan: plan,
+        mountedRuntimeInputFactory
+      };
       const hostState = await host.mount(plan, root);
       if (
         cancelled ||
@@ -109,13 +133,15 @@ export function useFrontstageNativeBlockInstance({
         return;
       }
       if (hostState.status === 'failed') {
-        setState({ status: 'failed', error: hostState.error });
+        instanceEpochOwner?.end(instanceEpoch);
+        setState({ status: 'failed', instanceEpoch, error: hostState.error });
         return;
       }
-      setState({ status: 'mounted' });
-      const latestPlan = runtimeInputRef.current.plan;
-      if (latestPlan !== plan) {
-        setState({ status: 'updating' });
+      setState({ status: 'mounted', instanceEpoch });
+      const latestRuntimeInputFactory = createRuntimeInputRef.current;
+      if (latestRuntimeInputFactory !== mountedRuntimeInputFactory) {
+        const latestPlan = latestRuntimeInputFactory(instanceEpoch).plan;
+        setState({ status: 'updating', instanceEpoch });
         const updated = await host.update(latestPlan);
         if (
           !cancelled &&
@@ -123,10 +149,12 @@ export function useFrontstageNativeBlockInstance({
           activeRef.current?.host === host
         ) {
           activeRef.current.mountedPlan = latestPlan;
+          activeRef.current.mountedRuntimeInputFactory =
+            latestRuntimeInputFactory;
           setState(
             updated.status === 'failed'
-              ? { status: 'failed', error: updated.error }
-              : { status: 'mounted' }
+              ? { status: 'failed', instanceEpoch, error: updated.error }
+              : { status: 'mounted', instanceEpoch }
           );
         }
       }
@@ -138,30 +166,37 @@ export function useFrontstageNativeBlockInstance({
       const active = activeRef.current;
       if (!active || active.identity !== identity) return;
       activeRef.current = null;
-      setState({ status: 'disposing' });
+      instanceEpochOwner?.end(active.instanceEpoch);
+      setState({ status: 'disposing', instanceEpoch: active.instanceEpoch });
       disposalRef.current = active.host.dispose();
     };
-  }, [hostFactory, identity, root]);
+  }, [hostFactory, identity, instanceEpochOwner, root]);
 
   useEffect(() => {
     const active = activeRef.current;
     if (!active || active.identity !== identity) return;
-    if (active.mountedPlan === runtimeInput.plan) return;
+    if (active.mountedRuntimeInputFactory === createRuntimeInput) return;
+    const runtimeInput = createRuntimeInput(active.instanceEpoch);
     active.mountedPlan = runtimeInput.plan;
+    active.mountedRuntimeInputFactory = createRuntimeInput;
     let cancelled = false;
-    setState({ status: 'updating' });
+    setState({ status: 'updating', instanceEpoch: active.instanceEpoch });
     void active.host.update(runtimeInput.plan).then((hostState) => {
       if (cancelled || activeRef.current !== active) return;
       setState(
         hostState.status === 'failed'
-          ? { status: 'failed', error: hostState.error }
-          : { status: 'mounted' }
+          ? {
+              status: 'failed',
+              instanceEpoch: active.instanceEpoch,
+              error: hostState.error
+            }
+          : { status: 'mounted', instanceEpoch: active.instanceEpoch }
       );
     });
     return () => {
       cancelled = true;
     };
-  }, [identity, runtimeInput]);
+  }, [createRuntimeInput, identity]);
 
   return state;
 }

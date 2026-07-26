@@ -478,7 +478,7 @@ function createAndRunRuntimeSession({
           }
         }
       : item.runPlan;
-    signalCoordinator?.beginRun(item.blockId, sessionKey);
+    signalCoordinator?.beginInstance(item.blockId, sessionKey);
     const runtimeOptions: FrontstageRestrictedBlockRuntimeHostOptions = {
       runPlan,
       runtimeFingerprint

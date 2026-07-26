@@ -16,6 +16,7 @@ import type {
 describe('useFrontstageNativeBlockInstance', () => {
   test('D3-AC-003 updates props on the same Host and remounts exactly once when identity changes', async () => {
     const hosts = createHostFactory();
+    const epochs = createEpochOwner();
     const root = document.createElement('div');
     const initialPlan = plan({ title: 'Initial' });
     const { rerender } = renderHook(
@@ -24,10 +25,11 @@ describe('useFrontstageNativeBlockInstance', () => {
           root,
           mountIntent,
           prepared: prepared(),
-          runtimeInput: {
+          createRuntimeInput: () => ({
             plan: runtimePlan,
             context: createFrontstageUnavailableBlockContext(runtimePlan)
-          },
+          }),
+          instanceEpochOwner: epochs.owner,
           hostFactory: hosts.factory
         }),
       {
@@ -47,6 +49,7 @@ describe('useFrontstageNativeBlockInstance', () => {
     await waitFor(() => expect(hosts.update).toHaveBeenCalledOnce());
     expect(hosts.factory).toHaveBeenCalledOnce();
     expect(hosts.dispose).not.toHaveBeenCalled();
+    expect(epochs.begin).toHaveBeenCalledOnce();
 
     rerender({
       mountIntent: intent('source-b'),
@@ -55,10 +58,13 @@ describe('useFrontstageNativeBlockInstance', () => {
     await waitFor(() => expect(hosts.factory).toHaveBeenCalledTimes(2));
     expect(hosts.dispose).toHaveBeenCalledOnce();
     expect(hosts.mount).toHaveBeenCalledTimes(2);
+    expect(epochs.begin).toHaveBeenCalledTimes(2);
+    expect(epochs.end).toHaveBeenCalledWith('epoch-1');
   });
 
   test('D3-AC-004 unmounts for demand 1 to 2, remounts for 2 to 1, and disposes on page leave', async () => {
     const hosts = createHostFactory();
+    const epochs = createEpochOwner();
     const root = document.createElement('div');
     const runtimePlan = plan({ title: 'Demand' });
     const renderInstance = (
@@ -68,10 +74,11 @@ describe('useFrontstageNativeBlockInstance', () => {
         root,
         mountIntent,
         prepared: prepared(),
-        runtimeInput: {
+        createRuntimeInput: () => ({
           plan: runtimePlan,
           context: createFrontstageUnavailableBlockContext(runtimePlan)
-        },
+        }),
+        instanceEpochOwner: epochs.owner,
         hostFactory: hosts.factory
       });
     const { rerender, unmount } = renderHook(
@@ -80,7 +87,13 @@ describe('useFrontstageNativeBlockInstance', () => {
       }: {
         mountIntent: FrontstageNativeInstanceMountIntent | null;
       }) => renderInstance(mountIntent),
-      { initialProps: { mountIntent: intent('source-a') } }
+      {
+        initialProps: {
+          mountIntent: intent(
+            'source-a'
+          ) as FrontstageNativeInstanceMountIntent | null
+        }
+      }
     );
     await waitFor(() => expect(hosts.mount).toHaveBeenCalledOnce());
 
@@ -88,6 +101,9 @@ describe('useFrontstageNativeBlockInstance', () => {
     await waitFor(() => expect(hosts.dispose).toHaveBeenCalledOnce());
     rerender({ mountIntent: intent('source-a') });
     await waitFor(() => expect(hosts.mount).toHaveBeenCalledTimes(2));
+    expect(epochs.begin).toHaveBeenNthCalledWith(1);
+    expect(epochs.begin).toHaveBeenNthCalledWith(2);
+    expect(epochs.end).toHaveBeenCalledWith('epoch-1');
 
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
@@ -98,6 +114,7 @@ describe('useFrontstageNativeBlockInstance', () => {
 
     unmount();
     await waitFor(() => expect(hosts.dispose).toHaveBeenCalledTimes(2));
+    expect(epochs.end).toHaveBeenCalledWith('epoch-2');
   });
 });
 
@@ -123,6 +140,13 @@ function createHostFactory() {
     })
   );
   return { factory, mount, update, dispose };
+}
+
+function createEpochOwner() {
+  let nextEpoch = 0;
+  const begin = vi.fn(() => `epoch-${++nextEpoch}`);
+  const end = vi.fn();
+  return { owner: { begin, end }, begin, end };
 }
 
 function intent(sourceSha256: string): FrontstageNativeInstanceMountIntent {

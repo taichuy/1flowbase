@@ -157,7 +157,8 @@ function createFakeBlockContext(
     theme: { mode: 'light', tokens: {} },
     ui: {},
     ...overrides,
-    inputs: overrides.inputs ?? {}
+    inputs: overrides.inputs ?? {},
+    outputs: overrides.outputs ?? { publish: vi.fn() }
   };
 }
 
@@ -555,7 +556,8 @@ describe('frontstage native trusted block React adapter', () => {
       expect.objectContaining({
         currentUser: null,
         workspace: { id: 'workspace' },
-        application: { id: 'application' },
+        application: null,
+        outputs: { publish: expect.any(Function) },
         page: expect.objectContaining({
           id: 'native-block-default-context',
           route: 'native-block-default-context'

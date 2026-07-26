@@ -93,6 +93,7 @@ describe('block UI schema protocol', () => {
       'application',
       'page',
       'inputs',
+      'outputs',
       'params',
       'props',
       'state',
@@ -194,21 +195,24 @@ describe('block UI schema protocol', () => {
     ['create', 'create_denied'],
     ['update', 'update_denied'],
     ['delete', 'delete_denied']
-  ] as const)('rejects denied data permission marker %s', (permission, code) => {
-    const result = validateBlockUiSchema(
-      {
-        primitive: 'Table',
-        permissions: { data: [permission] }
-      },
-      { allowedDataPermissions: [] }
-    );
+  ] as const)(
+    'rejects denied data permission marker %s',
+    (permission, code) => {
+      const result = validateBlockUiSchema(
+        {
+          primitive: 'Table',
+          permissions: { data: [permission] }
+        },
+        { allowedDataPermissions: [] }
+      );
 
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toMatchObject({
-      code,
-      path: 'root.permissions.data[0]'
-    });
-  });
+      expect(result.ok).toBe(false);
+      expect(result.errors[0]).toMatchObject({
+        code,
+        path: 'root.permissions.data[0]'
+      });
+    }
+  );
 
   test('rejects denied action and event permission markers', () => {
     const actionResult = validateBlockUiSchema(

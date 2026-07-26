@@ -25,6 +25,9 @@ declare namespace JSX {
       content: `interface NativeReactBlockContext {
   props: Record<string, unknown>;
   inputs: Record<string, unknown>;
+  outputs: {
+    publish(values: Record<string, unknown>): { ok: boolean; stale: boolean; error?: string };
+  };
   params: Record<string, unknown>;
   state: Record<string, unknown>;
   patch(next: Record<string, unknown>): void;

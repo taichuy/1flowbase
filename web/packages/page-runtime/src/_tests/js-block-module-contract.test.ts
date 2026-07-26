@@ -34,6 +34,7 @@ function createContext(): BlockContext {
     application: { id: 'application-1' },
     page: { id: 'page-1', route: '/demo' },
     inputs: { title: 'Conversations' },
+    outputs: { publish: vi.fn() },
     params: {},
     props: {},
     state: {},
