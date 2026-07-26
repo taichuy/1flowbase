@@ -108,19 +108,18 @@ export class FrontstageNativeReactArtifactCache {
       return { status: 'miss', reason: 'identity_mismatch' };
     }
 
-    const accessed = createCanonicalRecord(
-      identity,
-      record.artifact,
-      this.now()
-    );
-    if (accessed.byteSize > this.byteBudget) {
-      await this.deleteWithoutThrow(key);
-      return { status: 'miss', reason: 'corrupt' };
-    }
     try {
-      const records = canonicalRecords(await this.options.store.list()).filter(
-        (item) => item.key !== accessed.key
+      const storedRecords = canonicalRecords(await this.options.store.list());
+      const accessed = createCanonicalRecord(
+        identity,
+        record.artifact,
+        nextLruTimestamp(storedRecords, this.now())
       );
+      if (accessed.byteSize > this.byteBudget) {
+        await this.deleteWithoutThrow(key);
+        return { status: 'miss', reason: 'corrupt' };
+      }
+      const records = storedRecords.filter((item) => item.key !== accessed.key);
       await this.evictToFit(records, accessed.byteSize);
       await this.options.store.put(accessed);
     } catch {
@@ -139,16 +138,23 @@ export class FrontstageNativeReactArtifactCache {
       return { status: 'skipped', reason: 'identity_mismatch' };
     }
 
-    const record = createCanonicalRecord(identity, artifact, this.now());
-    if (record.byteSize > this.byteBudget) {
+    const candidate = createCanonicalRecord(identity, artifact, this.now());
+    if (candidate.byteSize > this.byteBudget) {
       return { status: 'skipped', reason: 'oversized' };
     }
 
     let records: FrontstageNativeReactArtifactCacheRecord[] = [];
     try {
-      records = canonicalRecords(await this.options.store.list()).filter(
-        (item) => item.key !== record.key
+      const storedRecords = canonicalRecords(await this.options.store.list());
+      const record = createCanonicalRecord(
+        identity,
+        artifact,
+        nextLruTimestamp(storedRecords, this.now())
       );
+      if (record.byteSize > this.byteBudget) {
+        return { status: 'skipped', reason: 'oversized' };
+      }
+      records = storedRecords.filter((item) => item.key !== record.key);
       records = await this.evictToFit(records, record.byteSize);
       await this.options.store.put(record);
       return { status: 'stored', byteSize: record.byteSize };
@@ -156,6 +162,11 @@ export class FrontstageNativeReactArtifactCache {
       if (!isQuotaExceeded(error)) return unavailableWrite(error);
     }
 
+    const record = createCanonicalRecord(
+      identity,
+      artifact,
+      nextLruTimestamp(records, this.now())
+    );
     const retryVictim = sortByLru(records)[0];
     if (retryVictim) await this.deleteWithoutThrow(retryVictim.key);
     try {
@@ -446,6 +457,17 @@ function sortByLru(
       left.lastAccessedAt - right.lastAccessedAt ||
       compareStableKey(left.key, right.key)
   );
+}
+
+function nextLruTimestamp(
+  records: FrontstageNativeReactArtifactCacheRecord[],
+  now: number
+): number {
+  const latest = records.reduce(
+    (current, record) => Math.max(current, record.lastAccessedAt),
+    -1
+  );
+  return Math.max(now, latest + 1);
 }
 
 function compareStableKey(left: string, right: string): number {
