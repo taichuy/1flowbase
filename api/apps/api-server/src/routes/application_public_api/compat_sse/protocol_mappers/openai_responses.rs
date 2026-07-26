@@ -18,6 +18,7 @@ pub(in crate::routes::application_public_api::compat_sse) struct OpenAiResponseS
     previous_response_id: Option<String>,
     active_output_item: Option<OpenAiResponseOutputItemKind>,
     active_output_item_text: String,
+    completed_mcp_output_items: Vec<Value>,
     output_item_index: usize,
     state: OpenAiResponseStreamState,
 }
@@ -32,6 +33,7 @@ impl OpenAiResponseStreamMapper {
             previous_response_id,
             active_output_item: None,
             active_output_item_text: String::new(),
+            completed_mcp_output_items: Vec::new(),
             output_item_index: 0,
             state: OpenAiResponseStreamState::Initial,
         }
@@ -81,6 +83,47 @@ impl OpenAiResponseStreamMapper {
         self.output_item_index += 1;
     }
 
+    fn project_mcp_output_item(
+        &mut self,
+        initial_run: &NativeRunResult,
+        envelope: &RuntimeEventEnvelope,
+        events: &mut Vec<Result<Event, Infallible>>,
+    ) -> bool {
+        let event_name = match envelope.event_type.as_str() {
+            "mcp_output_item_added" => "response.output_item.added",
+            "mcp_output_item_done" => "response.output_item.done",
+            _ => return false,
+        };
+        let Some(output_index) = envelope
+            .payload
+            .get("output_index")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+        else {
+            return true;
+        };
+        let Some(item) = envelope.payload.get("item").cloned() else {
+            return true;
+        };
+
+        self.close_output_item(initial_run, events);
+        events.push(event_json_sse(
+            event_name,
+            json!({
+                "type": event_name,
+                "response_id": response_id_from_run_id(initial_run.id),
+                "sequence_number": envelope.sequence,
+                "output_index": output_index,
+                "item": item.clone()
+            }),
+        ));
+        if envelope.event_type == "mcp_output_item_done" {
+            self.completed_mcp_output_items.push(item);
+        }
+        self.output_item_index = self.output_item_index.max(output_index.saturating_add(1));
+        true
+    }
+
     pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
@@ -104,6 +147,9 @@ impl OpenAiResponseStreamMapper {
         }
         let is_terminal = event.terminal().is_some();
         let mut events = Vec::new();
+        if self.project_mcp_output_item(initial_run, envelope, &mut events) {
+            return events;
+        }
         match event.answer_delta() {
             Some(CompatibleAnswerDeltaKind::Reasoning) => {
                 self.open_output_item(
@@ -135,6 +181,7 @@ impl OpenAiResponseStreamMapper {
             initial_run,
             &self.model,
             self.previous_response_id.as_deref(),
+            &self.completed_mcp_output_items,
             event.into_envelope(),
         ));
         if is_terminal {

@@ -328,6 +328,86 @@ fn provider_native_and_non_presentation_deltas_are_never_body_truth() {
 }
 
 #[test]
+fn typed_mcp_approval_is_visible_and_done_joins_completed_output() {
+    let mut run = native_run(0x18181818181818181818181818181818);
+    let node_run_id = Uuid::new_v4();
+    let approval = json!({
+        "id": "approval_1",
+        "type": "mcp_approval_request",
+        "name": "delete_record"
+    });
+    let mut projector = ResponsesWebSocketProjector::new("model".to_string(), None);
+    let mut frames = projector
+        .project(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                debug_stream_events::mcp_output_item_added(
+                    "node-llm",
+                    node_run_id,
+                    2,
+                    approval.clone(),
+                ),
+            ),
+        )
+        .expect("typed MCP approval added must project");
+    let unknown_native = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        debug_stream_events::provider_native_event(
+            "node-llm",
+            node_run_id,
+            "openai_responses".to_string(),
+            json!({ "type": "response.output_item.done", "item": approval.clone() }),
+        ),
+    );
+    assert!(projector
+        .project(&run, unknown_native)
+        .expect("unknown native event must remain filtered")
+        .is_empty());
+    frames.extend(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    3,
+                    debug_stream_events::mcp_output_item_done(
+                        "node-llm",
+                        node_run_id,
+                        2,
+                        approval.clone(),
+                    ),
+                ),
+            )
+            .expect("typed MCP approval done must project"),
+    );
+    run.status = NativeRunStatus::Succeeded;
+    frames.extend(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    4,
+                    debug_stream_events::flow_finished(run.id, json!({})),
+                ),
+            )
+            .expect("terminal must include completed MCP output"),
+    );
+
+    let events = decoded(frames);
+    assert_eq!(events[0]["type"], "response.output_item.added");
+    assert_eq!(events[0]["response_id"], response_id_from_run_id(run.id));
+    assert_eq!(events[0]["output_index"], 2);
+    assert_eq!(events[1]["type"], "response.output_item.done");
+    assert_eq!(events[1]["sequence_number"], 1);
+    assert_eq!(events[2]["type"], "response.completed");
+    assert_eq!(events[2]["response"]["output"], json!([approval]));
+}
+
+#[test]
 fn sequential_turns_reset_sequence_and_keep_distinct_durable_response_ids() {
     let first = native_run(0x16161616161616161616161616161616);
     let second = native_run(0x17171717171717171717171717171717);

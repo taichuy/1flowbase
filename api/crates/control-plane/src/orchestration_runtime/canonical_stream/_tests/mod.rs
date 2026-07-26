@@ -1,6 +1,8 @@
 use plugin_framework::provider_contract::{
-    ProviderFinishReason, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderUsage,
+    ProviderFinishReason, ProviderMcpOutputItemPhase, ProviderRuntimeError,
+    ProviderRuntimeErrorKind, ProviderUsage,
 };
+use serde_json::json;
 
 use super::{
     CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
@@ -334,5 +336,92 @@ fn ac_003_a_block_identity_cannot_change_content_kind() {
     assert_eq!(
         state.accumulated().block(&id).unwrap().id().as_str(),
         " block "
+    );
+}
+
+#[test]
+fn mcp_output_item_phases_preserve_order_and_require_matching_added_item() {
+    let added = json!({
+        "id": "approval_1",
+        "type": "mcp_approval_request",
+        "name": "delete_record"
+    });
+    let done = json!({
+        "id": "approval_1",
+        "type": "mcp_approval_request",
+        "name": "delete_record",
+        "status": "completed"
+    });
+    let mut state = CanonicalStreamState::default();
+    state
+        .apply(CanonicalStreamEvent::McpOutputItem {
+            phase: ProviderMcpOutputItemPhase::Added,
+            output_index: 3,
+            item: added.clone(),
+        })
+        .unwrap();
+    state
+        .apply(CanonicalStreamEvent::McpOutputItem {
+            phase: ProviderMcpOutputItemPhase::Done,
+            output_index: 3,
+            item: done.clone(),
+        })
+        .unwrap();
+
+    let phases = state.accumulated().mcp_output_items();
+    assert_eq!(phases.len(), 2);
+    assert_eq!(phases[0].phase(), ProviderMcpOutputItemPhase::Added);
+    assert_eq!(phases[0].item(), &added);
+    assert_eq!(phases[1].phase(), ProviderMcpOutputItemPhase::Done);
+    assert_eq!(phases[1].output_index(), 3);
+    assert_eq!(phases[1].item(), &done);
+}
+
+#[test]
+fn mcp_output_item_rejects_unknown_type_mismatch_and_post_terminal_phase() {
+    let mut state = CanonicalStreamState::default();
+    let invalid = state
+        .apply(CanonicalStreamEvent::McpOutputItem {
+            phase: ProviderMcpOutputItemPhase::Added,
+            output_index: 0,
+            item: json!({ "id": "computer_1", "type": "computer_call" }),
+        })
+        .unwrap_err();
+    assert!(matches!(
+        invalid,
+        CanonicalStreamTransitionError::InvalidMcpOutputItem { .. }
+    ));
+
+    state
+        .apply(CanonicalStreamEvent::McpOutputItem {
+            phase: ProviderMcpOutputItemPhase::Added,
+            output_index: 0,
+            item: json!({ "id": "call_1", "type": "mcp_call" }),
+        })
+        .unwrap();
+    assert_eq!(
+        state
+            .apply(CanonicalStreamEvent::McpOutputItem {
+                phase: ProviderMcpOutputItemPhase::Done,
+                output_index: 0,
+                item: json!({ "id": "call_2", "type": "mcp_call" }),
+            })
+            .unwrap_err(),
+        CanonicalStreamTransitionError::McpOutputItemDoneMismatch { output_index: 0 }
+    );
+    state
+        .apply(CanonicalStreamEvent::Finish {
+            reason: ProviderFinishReason::Stop,
+        })
+        .unwrap();
+    assert_eq!(
+        state
+            .apply(CanonicalStreamEvent::McpOutputItem {
+                phase: ProviderMcpOutputItemPhase::Done,
+                output_index: 0,
+                item: json!({ "id": "call_1", "type": "mcp_call" }),
+            })
+            .unwrap_err(),
+        CanonicalStreamTransitionError::StreamAlreadyTerminal
     );
 }

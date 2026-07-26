@@ -77,6 +77,7 @@ fn openai_response_runtime_event_to_sse(
     initial_run: &NativeRunResult,
     model: &str,
     previous_response_id: Option<&str>,
+    completed_mcp_output_items: &[Value],
     envelope: RuntimeEventEnvelope,
 ) -> Vec<Result<Event, Infallible>> {
     match envelope.event_type.as_str() {
@@ -118,7 +119,8 @@ fn openai_response_runtime_event_to_sse(
                 "response": openai_response_completed_snapshot(
                     initial_run,
                     model,
-                    previous_response_id
+                    previous_response_id,
+                    completed_mcp_output_items
                 )
             }),
         )],
@@ -129,7 +131,8 @@ fn openai_response_runtime_event_to_sse(
                 "response": openai_response_incomplete_snapshot(
                     initial_run,
                     model,
-                    previous_response_id
+                    previous_response_id,
+                    completed_mcp_output_items
                 )
             }),
         )],
@@ -211,10 +214,12 @@ fn openai_response_completed_snapshot(
     initial_run: &NativeRunResult,
     model: &str,
     previous_response_id: Option<&str>,
+    completed_mcp_output_items: &[Value],
 ) -> Value {
     let mut response =
         openai_response_stream_snapshot(initial_run, model, previous_response_id, "completed");
     response["usage"] = openai_responses_usage_payload(initial_run.usage.as_ref());
+    response["output"] = Value::Array(completed_mcp_output_items.to_vec());
     response
 }
 
@@ -222,11 +227,13 @@ fn openai_response_incomplete_snapshot(
     initial_run: &NativeRunResult,
     model: &str,
     previous_response_id: Option<&str>,
+    completed_mcp_output_items: &[Value],
 ) -> Value {
     let mut response =
         openai_response_stream_snapshot(initial_run, model, previous_response_id, "incomplete");
     response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
     response["usage"] = openai_responses_usage_payload(initial_run.usage.as_ref());
+    response["output"] = Value::Array(completed_mcp_output_items.to_vec());
     response
 }
 

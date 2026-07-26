@@ -210,8 +210,11 @@ pub async fn append_provider_stream_event<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
-    if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
-        bail!("ephemeral provider native events cannot be persisted");
+    if matches!(
+        event,
+        ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::McpOutputItem { .. }
+    ) {
+        bail!("ephemeral provider events cannot be persisted");
     }
     let event_type = provider_stream_event_type(event);
     let payload = serde_json::to_value(event)?;
@@ -278,7 +281,10 @@ where
     let mut runtime_inputs = Vec::with_capacity(events.len());
 
     for event in events {
-        if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
+        if matches!(
+            event,
+            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::McpOutputItem { .. }
+        ) {
             continue;
         }
         let event_type = provider_stream_event_type(event);
@@ -344,6 +350,7 @@ pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {
         ProviderStreamEvent::ToolCallCommit { .. } => "tool_call_commit",
         ProviderStreamEvent::McpCallDelta { .. } => "mcp_call_delta",
         ProviderStreamEvent::McpCallCommit { .. } => "mcp_call_commit",
+        ProviderStreamEvent::McpOutputItem { .. } => "mcp_output_item",
         ProviderStreamEvent::UsageDelta { .. } => "usage_delta",
         ProviderStreamEvent::UsageSnapshot { .. } => "usage_snapshot",
         ProviderStreamEvent::Finish { .. } => "finish",

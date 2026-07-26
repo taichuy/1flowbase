@@ -247,7 +247,8 @@ pub(super) fn durable_provider_events(
     events
         .into_iter()
         .filter_map(|event| match event {
-            ProviderStreamEvent::NativeEvent { .. } => None,
+            ProviderStreamEvent::NativeEvent { .. }
+            | ProviderStreamEvent::McpOutputItem { .. } => None,
             ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
                 error: ProviderRuntimeError::new(
                     error.kind,

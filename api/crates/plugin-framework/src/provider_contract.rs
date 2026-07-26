@@ -1127,6 +1127,12 @@ pub enum ProviderStreamEvent {
     ToolCallCommit { call: ProviderToolCall },
     McpCallDelta { call_id: String, delta: Value },
     McpCallCommit { call: ProviderMcpCall },
+    McpOutputItem {
+        phase: ProviderMcpOutputItemPhase,
+        output_index: usize,
+        #[serde(deserialize_with = "deserialize_provider_mcp_output_item")]
+        item: Value,
+    },
     UsageDelta { usage: ProviderUsage },
     UsageSnapshot { usage: ProviderUsage },
     Finish { reason: ProviderFinishReason },
@@ -1143,6 +1149,12 @@ pub enum ProviderRuntimeLine {
     ToolCallCommit { call: ProviderToolCall },
     McpCallDelta { call_id: String, delta: Value },
     McpCallCommit { call: ProviderMcpCall },
+    McpOutputItem {
+        phase: ProviderMcpOutputItemPhase,
+        output_index: usize,
+        #[serde(deserialize_with = "deserialize_provider_mcp_output_item")]
+        item: Value,
+    },
     UsageDelta { usage: ProviderUsage },
     UsageSnapshot { usage: ProviderUsage },
     Finish { reason: ProviderFinishReason },
@@ -1166,6 +1178,15 @@ impl ProviderRuntimeLine {
                 Some(ProviderStreamEvent::McpCallDelta { call_id, delta })
             }
             Self::McpCallCommit { call } => Some(ProviderStreamEvent::McpCallCommit { call }),
+            Self::McpOutputItem {
+                phase,
+                output_index,
+                item,
+            } => Some(ProviderStreamEvent::McpOutputItem {
+                phase,
+                output_index,
+                item,
+            }),
             Self::UsageDelta { usage } => Some(ProviderStreamEvent::UsageDelta { usage }),
             Self::UsageSnapshot { usage } => Some(ProviderStreamEvent::UsageSnapshot { usage }),
             Self::Finish { reason } => Some(ProviderStreamEvent::Finish { reason }),
@@ -1173,4 +1194,51 @@ impl ProviderRuntimeLine {
             Self::Result { .. } => None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderMcpOutputItemPhase {
+    Added,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProviderMcpOutputItemValidationError {
+    #[error("provider MCP output item must be an object")]
+    NotObject,
+    #[error("provider MCP output item id must be a non-empty string")]
+    InvalidId,
+    #[error("provider MCP output item type must be one of mcp_list_tools, mcp_call, or mcp_approval_request")]
+    InvalidType,
+}
+
+pub fn validate_provider_mcp_output_item(
+    item: &Value,
+) -> Result<(), ProviderMcpOutputItemValidationError> {
+    let object = item
+        .as_object()
+        .ok_or(ProviderMcpOutputItemValidationError::NotObject)?;
+    if !matches!(
+        object.get("id").and_then(Value::as_str),
+        Some(id) if !id.trim().is_empty()
+    ) {
+        return Err(ProviderMcpOutputItemValidationError::InvalidId);
+    }
+    if !matches!(
+        object.get("type").and_then(Value::as_str),
+        Some("mcp_list_tools" | "mcp_call" | "mcp_approval_request")
+    ) {
+        return Err(ProviderMcpOutputItemValidationError::InvalidType);
+    }
+    Ok(())
+}
+
+fn deserialize_provider_mcp_output_item<'de, D>(deserializer: D) -> Result<Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let item = Value::deserialize(deserializer)?;
+    validate_provider_mcp_output_item(&item).map_err(serde::de::Error::custom)?;
+    Ok(item)
 }

@@ -1,6 +1,8 @@
 use plugin_framework::provider_contract::{
-    ProviderFinishReason, ProviderRuntimeError, ProviderUsage,
+    validate_provider_mcp_output_item, ProviderFinishReason, ProviderMcpOutputItemPhase,
+    ProviderRuntimeError, ProviderUsage,
 };
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CanonicalItemId(String);
@@ -177,6 +179,11 @@ pub enum CanonicalStreamEvent {
         call_id: CanonicalCallId,
         delta: String,
     },
+    McpOutputItem {
+        phase: ProviderMcpOutputItemPhase,
+        output_index: usize,
+        item: Value,
+    },
     UsageDelta {
         usage: ProviderUsage,
     },
@@ -291,12 +298,34 @@ fn replace_present(current: &mut Option<u64>, snapshot: Option<u64>) {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct CanonicalMcpOutputItem {
+    phase: ProviderMcpOutputItemPhase,
+    output_index: usize,
+    item: Value,
+}
+
+impl CanonicalMcpOutputItem {
+    pub fn phase(&self) -> ProviderMcpOutputItemPhase {
+        self.phase
+    }
+
+    pub fn output_index(&self) -> usize {
+        self.output_index
+    }
+
+    pub fn item(&self) -> &Value {
+        &self.item
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CanonicalStreamAccumulator {
     items: Vec<CanonicalItem>,
     text: SegmentedString,
     reasoning: SegmentedString,
     usage: CanonicalUsage,
+    mcp_output_items: Vec<CanonicalMcpOutputItem>,
 }
 
 impl CanonicalStreamAccumulator {
@@ -314,6 +343,10 @@ impl CanonicalStreamAccumulator {
 
     pub fn usage(&self) -> &CanonicalUsage {
         &self.usage
+    }
+
+    pub fn mcp_output_items(&self) -> &[CanonicalMcpOutputItem] {
+        &self.mcp_output_items
     }
 
     pub fn block(&self, block_id: &CanonicalBlockId) -> Option<&CanonicalContentBlock> {
@@ -378,6 +411,66 @@ impl CanonicalStreamAccumulator {
             }
         };
         call.arguments.append(delta);
+    }
+
+    fn append_mcp_output_item(
+        &mut self,
+        phase: ProviderMcpOutputItemPhase,
+        output_index: usize,
+        item: Value,
+    ) -> Result<(), CanonicalStreamTransitionError> {
+        validate_provider_mcp_output_item(&item).map_err(|error| {
+            CanonicalStreamTransitionError::InvalidMcpOutputItem {
+                message: error.to_string(),
+            }
+        })?;
+        let item_id = item["id"].as_str().expect("validated MCP item id");
+        let item_type = item["type"].as_str().expect("validated MCP item type");
+        match phase {
+            ProviderMcpOutputItemPhase::Added => {
+                if self
+                    .mcp_output_items
+                    .iter()
+                    .any(|existing| existing.output_index == output_index)
+                {
+                    return Err(CanonicalStreamTransitionError::McpOutputItemAlreadyAdded {
+                        output_index,
+                    });
+                }
+            }
+            ProviderMcpOutputItemPhase::Done => {
+                let added = self.mcp_output_items.iter().find(|existing| {
+                    existing.phase == ProviderMcpOutputItemPhase::Added
+                        && existing.output_index == output_index
+                });
+                let Some(added) = added else {
+                    return Err(CanonicalStreamTransitionError::McpOutputItemDoneWithoutAdded {
+                        output_index,
+                    });
+                };
+                if added.item["id"].as_str() != Some(item_id)
+                    || added.item["type"].as_str() != Some(item_type)
+                {
+                    return Err(CanonicalStreamTransitionError::McpOutputItemDoneMismatch {
+                        output_index,
+                    });
+                }
+                if self.mcp_output_items.iter().any(|existing| {
+                    existing.phase == ProviderMcpOutputItemPhase::Done
+                        && existing.output_index == output_index
+                }) {
+                    return Err(CanonicalStreamTransitionError::McpOutputItemAlreadyDone {
+                        output_index,
+                    });
+                }
+            }
+        }
+        self.mcp_output_items.push(CanonicalMcpOutputItem {
+            phase,
+            output_index,
+            item,
+        });
+        Ok(())
     }
 
     fn item_mut(&mut self, item_id: CanonicalItemId) -> &mut CanonicalItem {
@@ -456,6 +549,11 @@ impl CanonicalStreamState {
                 accumulated.append_tool_arguments(call_id, delta);
                 Ok(())
             }
+            CanonicalStreamEvent::McpOutputItem {
+                phase,
+                output_index,
+                item,
+            } => accumulated.append_mcp_output_item(phase, output_index, item),
             CanonicalStreamEvent::UsageDelta { usage } => accumulated.usage.add_delta(usage),
             CanonicalStreamEvent::UsageSnapshot { usage } => {
                 accumulated.usage.merge_snapshot(usage);
@@ -495,6 +593,16 @@ pub enum CanonicalStreamTransitionError {
     },
     #[error("canonical usage field {field} overflowed")]
     UsageOverflow { field: &'static str },
+    #[error("invalid canonical MCP output item: {message}")]
+    InvalidMcpOutputItem { message: String },
+    #[error("canonical MCP output index {output_index} was already added")]
+    McpOutputItemAlreadyAdded { output_index: usize },
+    #[error("canonical MCP output index {output_index} completed without a preceding added phase")]
+    McpOutputItemDoneWithoutAdded { output_index: usize },
+    #[error("canonical MCP output index {output_index} completed with a different id or type")]
+    McpOutputItemDoneMismatch { output_index: usize },
+    #[error("canonical MCP output index {output_index} was already completed")]
+    McpOutputItemAlreadyDone { output_index: usize },
 }
 
 #[cfg(test)]

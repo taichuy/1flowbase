@@ -1,5 +1,5 @@
 use super::*;
-use plugin_framework::provider_contract::ProviderMessageRole;
+use plugin_framework::provider_contract::{ProviderMcpOutputItemPhase, ProviderMessageRole};
 
 use super::canonical_stream::{
     CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
@@ -211,6 +211,28 @@ where
                                 }
                                 runtime_events
                             }
+                            ProviderStreamEvent::McpOutputItem {
+                                phase,
+                                output_index,
+                                item,
+                            } => vec![match phase {
+                                ProviderMcpOutputItemPhase::Added => {
+                                    debug_stream_events::mcp_output_item_added(
+                                        &node_id,
+                                        node_run_id,
+                                        *output_index,
+                                        item.clone(),
+                                    )
+                                }
+                                ProviderMcpOutputItemPhase::Done => {
+                                    debug_stream_events::mcp_output_item_done(
+                                        &node_id,
+                                        node_run_id,
+                                        *output_index,
+                                        item.clone(),
+                                    )
+                                }
+                            }],
                             _ => Vec::new(),
                         };
                         if runtime_events.is_empty() {
@@ -385,6 +407,18 @@ impl RuntimeCanonicalStreamWriter {
             ProviderStreamEvent::UsageSnapshot { usage } => {
                 self.state.apply(CanonicalStreamEvent::UsageSnapshot {
                     usage: usage.clone(),
+                })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::McpOutputItem {
+                phase,
+                output_index,
+                item,
+            } => {
+                self.state.apply(CanonicalStreamEvent::McpOutputItem {
+                    phase: *phase,
+                    output_index: *output_index,
+                    item: item.clone(),
                 })?;
                 Ok(Vec::new())
             }
@@ -1540,6 +1574,36 @@ mod canonical_writer_tests {
                 .contains("already terminal"));
         }
         assert!(writer.state().accumulated().text().is_empty());
+    }
+
+    #[test]
+    fn runtime_canonical_writer_applies_verified_mcp_output_item_phases() {
+        let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+        let item = json!({
+            "id": "approval_1",
+            "type": "mcp_approval_request",
+            "name": "delete_record"
+        });
+        writer
+            .write(&ProviderStreamEvent::McpOutputItem {
+                phase: ProviderMcpOutputItemPhase::Added,
+                output_index: 1,
+                item: item.clone(),
+            })
+            .unwrap();
+        writer
+            .write(&ProviderStreamEvent::McpOutputItem {
+                phase: ProviderMcpOutputItemPhase::Done,
+                output_index: 1,
+                item: item.clone(),
+            })
+            .unwrap();
+
+        let phases = writer.state().accumulated().mcp_output_items();
+        assert_eq!(phases.len(), 2);
+        assert_eq!(phases[0].phase(), ProviderMcpOutputItemPhase::Added);
+        assert_eq!(phases[1].phase(), ProviderMcpOutputItemPhase::Done);
+        assert_eq!(phases[1].item(), &item);
     }
 }
 
