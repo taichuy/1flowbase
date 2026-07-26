@@ -77,6 +77,31 @@ pub(super) struct OpenAiCredential {
     pub(super) source: &'static str,
 }
 
+/// A Generate or tool-resume turn accepted by the same ingress used by HTTP
+/// Responses, before any public transport projection is selected.
+pub(crate) struct PreparedOpenAiResponseTurn {
+    model: String,
+    previous_response_id: Option<String>,
+    runtime: compat_sse::PreparedCompatibleTurn,
+}
+
+impl PreparedOpenAiResponseTurn {
+    pub(crate) fn into_parts(self) -> (String, Option<String>, compat_sse::PreparedCompatibleTurn) {
+        (self.model, self.previous_response_id, self.runtime)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum OpenAiResponseDelivery {
+    Http,
+    TypedEvents,
+}
+
+enum OpenAiResponseDispatch {
+    Http(Response),
+    TypedEvents(PreparedOpenAiResponseTurn),
+}
+
 struct OpenAiToolResumeRequest {
     callback_task_id: Uuid,
     tool_results: Value,
@@ -285,6 +310,58 @@ async fn create_response_for_endpoint(
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
 ) -> Result<Response, OpenAiRouteError> {
+    match dispatch_response_for_endpoint(
+        state,
+        headers,
+        body,
+        endpoint,
+        OpenAiResponseDelivery::Http,
+    )
+    .await?
+    {
+        OpenAiResponseDispatch::Http(response) => Ok(response),
+        OpenAiResponseDispatch::TypedEvents(_) => {
+            Err(OpenAiRouteError::Native(native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "openai_response_delivery_mismatch",
+                "OpenAI Responses HTTP delivery produced a typed turn",
+            )))
+        }
+    }
+}
+
+pub(crate) async fn prepare_typed_response_turn(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<PreparedOpenAiResponseTurn, OpenAiRouteError> {
+    match dispatch_response_for_endpoint(
+        state,
+        headers,
+        body,
+        OpenAiResponsesEndpoint::Responses,
+        OpenAiResponseDelivery::TypedEvents,
+    )
+    .await?
+    {
+        OpenAiResponseDispatch::TypedEvents(prepared) => Ok(prepared),
+        OpenAiResponseDispatch::Http(_) => {
+            Err(OpenAiRouteError::Native(native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "openai_response_delivery_mismatch",
+                "OpenAI Responses typed delivery produced an HTTP response",
+            )))
+        }
+    }
+}
+
+async fn dispatch_response_for_endpoint(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    body: Bytes,
+    endpoint: OpenAiResponsesEndpoint,
+    delivery: OpenAiResponseDelivery,
+) -> Result<OpenAiResponseDispatch, OpenAiRouteError> {
     let route = match endpoint {
         OpenAiResponsesEndpoint::Responses => "responses",
         OpenAiResponsesEndpoint::ResponsesCompact => "responses_compact",
@@ -326,7 +403,7 @@ async fn create_response_for_endpoint(
             return Err(error);
         }
     };
-    let value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
+    let mut value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
         Ok(value) => value,
         Err(error) => {
             warn_openai_route_error(
@@ -337,6 +414,12 @@ async fn create_response_for_endpoint(
             return Err(error);
         }
     };
+    if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
+        value
+            .as_object_mut()
+            .ok_or_else(|| openai_invalid_request("response", "response must be an object"))?
+            .insert("stream".to_string(), Value::Bool(true));
+    }
     let previous_response_id = optional_string_field(&value, "previous_response_id")?;
     let previous_response = load_previous_response_context(
         state.clone(),
@@ -376,23 +459,40 @@ async fn create_response_for_endpoint(
                     )
                     .await?;
                     if response_mode.as_deref() == Some("streaming") {
-                        return compat_sse::start_openai_response_resume_stream(
-                            state,
-                            plan.initial_run,
-                            model,
-                            previous_response_id,
-                            plan.command,
-                        )
-                        .await
-                        .map_err(Into::into);
+                        return match delivery {
+                            OpenAiResponseDelivery::Http => {
+                                compat_sse::start_openai_response_resume_stream(
+                                    state,
+                                    plan.initial_run,
+                                    model,
+                                    previous_response_id,
+                                    plan.command,
+                                )
+                                .await
+                                .map(OpenAiResponseDispatch::Http)
+                                .map_err(Into::into)
+                            }
+                            OpenAiResponseDelivery::TypedEvents => Ok(
+                                OpenAiResponseDispatch::TypedEvents(PreparedOpenAiResponseTurn {
+                                    model,
+                                    previous_response_id,
+                                    runtime: compat_sse::PreparedCompatibleTurn::resume(
+                                        plan.initial_run,
+                                        plan.command,
+                                    ),
+                                }),
+                            ),
+                        };
                     }
                     let run = execute_openai_tool_resume(state, plan.command).await?;
-                    return Ok(Json(to_openai_responses_response(
-                        run,
-                        model,
-                        previous_response_id,
-                    )?)
-                    .into_response());
+                    return Ok(OpenAiResponseDispatch::Http(
+                        Json(to_openai_responses_response(
+                            run,
+                            model,
+                            previous_response_id,
+                        )?)
+                        .into_response(),
+                    ));
                 }
                 Err(error)
                     if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
@@ -511,15 +611,28 @@ async fn create_response_for_endpoint(
             );
 
             if response_mode.as_deref() == Some("streaming") {
-                return compat_sse::start_openai_response_stream(
-                    state,
-                    run,
-                    model,
-                    previous_response_id,
-                    provider_transport_slot,
-                )
-                .await
-                .map_err(Into::into);
+                return match delivery {
+                    OpenAiResponseDelivery::Http => compat_sse::start_openai_response_stream(
+                        state,
+                        run,
+                        model,
+                        previous_response_id,
+                        provider_transport_slot,
+                    )
+                    .await
+                    .map(OpenAiResponseDispatch::Http)
+                    .map_err(Into::into),
+                    OpenAiResponseDelivery::TypedEvents => Ok(OpenAiResponseDispatch::TypedEvents(
+                        PreparedOpenAiResponseTurn {
+                            model,
+                            previous_response_id,
+                            runtime: compat_sse::PreparedCompatibleTurn::start(
+                                run,
+                                provider_transport_slot,
+                            ),
+                        },
+                    )),
+                };
             }
 
             let run = native::execute_blocking_native_run_with_provider_transport(
@@ -529,18 +642,26 @@ async fn create_response_for_endpoint(
                 provider_transport_slot,
             )
             .await?;
-            Ok(Json(to_openai_responses_response(
-                run,
-                model,
-                previous_response_id,
-            )?)
-            .into_response())
+            Ok(OpenAiResponseDispatch::Http(
+                Json(to_openai_responses_response(
+                    run,
+                    model,
+                    previous_response_id,
+                )?)
+                .into_response(),
+            ))
         }
         AiNativeOperation::CountTokens => Err(openai_invalid_request(
             "operation",
             "count_tokens is not supported by the OpenAI Responses route",
         )),
         AiNativeOperation::Compact(remote_profile) => {
+            if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
+                return Err(openai_invalid_request(
+                    "operation",
+                    "Compact is a unary operation and cannot open a typed event turn",
+                ));
+            }
             let profile = match remote_profile {
                 AiNativeCompactProfile::ResponsesCompact => {
                     ProviderCompactProfile::ResponsesCompact
@@ -587,7 +708,9 @@ async fn create_response_for_endpoint(
                     // The legacy Compact contract is exactly the provider's ResponseItem[]. It
                     // is intentionally neither wrapped in a Response object nor projected as a
                     // runtime SSE flow.
-                    Ok(Json(response_items).into_response())
+                    Ok(OpenAiResponseDispatch::Http(
+                        Json(response_items).into_response(),
+                    ))
                 }
                 (
                     ProviderCompactProfile::ResponsesCompactionV2,
@@ -611,9 +734,10 @@ async fn create_response_for_endpoint(
                             ))
                         })?;
                         return compat_sse::openai_compact_sse_response(response)
+                            .map(OpenAiResponseDispatch::Http)
                             .map_err(Into::into);
                     }
-                    Ok(Json(response).into_response())
+                    Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))
                 }
                 _ => Err(compact::unexpected_compact_result_error()),
             }

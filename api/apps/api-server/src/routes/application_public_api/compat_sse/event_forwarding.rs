@@ -1,5 +1,97 @@
 use super::*;
 
+pub(super) struct SubscribedCompatibleTypedEventStream {
+    pub(super) state: Arc<ApiState>,
+    pub(super) initial_run: NativeRunResult,
+    pub(super) from_sequence: Option<i64>,
+    pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    pub(super) subscription: control_plane::ports::RuntimeEventSubscription,
+    pub(super) sender: mpsc::Sender<CompatibleProjectionInput>,
+}
+
+pub(super) async fn send_subscribed_compatible_typed_event_stream(
+    stream: SubscribedCompatibleTypedEventStream,
+) {
+    // This lane ends at the runtime stream boundary. SSE-only identity claims,
+    // durable-prefix reconciliation, and terminal fallback stay downstream of
+    // the HTTP compatibility consumer and never rewrite typed facts here.
+    let SubscribedCompatibleTypedEventStream {
+        state,
+        initial_run,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        mut subscription,
+        sender,
+    } = stream;
+    let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
+    if forward_ordered_typed_events(
+        state.as_ref(),
+        &initial_run,
+        &sender,
+        ignored_waiting_callback_task_id,
+        &mut last_forwarded_sequence,
+        subscription.replay,
+    )
+    .await
+    {
+        return;
+    }
+
+    while let Some(event) = subscription.live_events.recv().await {
+        if forward_ordered_typed_events(
+            state.as_ref(),
+            &initial_run,
+            &sender,
+            ignored_waiting_callback_task_id,
+            &mut last_forwarded_sequence,
+            vec![event],
+        )
+        .await
+        {
+            return;
+        }
+    }
+}
+
+async fn forward_ordered_typed_events(
+    state: &ApiState,
+    initial_run: &NativeRunResult,
+    sender: &mpsc::Sender<CompatibleProjectionInput>,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    last_forwarded_sequence: &mut i64,
+    events: Vec<RuntimeEventEnvelope>,
+) -> bool {
+    for event in events {
+        let Some(event) = take_ordered_compatible_event(
+            event,
+            last_forwarded_sequence,
+            ignored_waiting_callback_task_id,
+        ) else {
+            continue;
+        };
+        let terminal = is_public_terminal_runtime_event(&event.event_type);
+        let run = if terminal {
+            load_latest_native_run_for_terminal_fallback(state, initial_run).await
+        } else {
+            initial_run.clone()
+        };
+        if sender
+            .send(CompatibleProjectionInput {
+                run_snapshot: run,
+                envelope: event,
+            })
+            .await
+            .is_err()
+        {
+            return true;
+        }
+        if terminal {
+            return true;
+        }
+    }
+    false
+}
+
 pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
     pub(super) state: Arc<ApiState>,
     pub(super) initial_run: NativeRunResult,
@@ -385,6 +477,21 @@ enum CompatibleForwardOutcome {
     ClientDisconnected,
 }
 
+pub(super) fn take_ordered_compatible_event(
+    event: RuntimeEventEnvelope,
+    last_forwarded_sequence: &mut i64,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+) -> Option<RuntimeEventEnvelope> {
+    if event.sequence <= *last_forwarded_sequence {
+        return None;
+    }
+    *last_forwarded_sequence = event.sequence;
+    if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
+        return None;
+    }
+    Some(event)
+}
+
 async fn forward_compatible_runtime_events<F>(
     forward: CompatibleRuntimeEventsForward<'_, F>,
 ) -> CompatibleForwardOutcome
@@ -405,13 +512,13 @@ where
     let mut resume_durable_sequence_before_terminal = resume_durable_sequence_before_terminal;
 
     for event in events {
-        if event.sequence <= *last_forwarded_sequence {
+        let Some(event) = take_ordered_compatible_event(
+            event,
+            last_forwarded_sequence,
+            ignored_waiting_callback_task_id,
+        ) else {
             continue;
-        }
-        *last_forwarded_sequence = event.sequence;
-        if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
-            continue;
-        }
+        };
 
         let is_terminal = is_public_terminal_runtime_event(&event.event_type);
         if is_terminal && ignored_waiting_callback_task_id.is_some() {
@@ -482,13 +589,13 @@ where
         events,
     } = forward;
     for event in events {
-        if event.sequence <= *last_forwarded_sequence {
+        let Some(event) = take_ordered_compatible_event(
+            event,
+            last_forwarded_sequence,
+            ignored_waiting_callback_task_id,
+        ) else {
             continue;
-        }
-        *last_forwarded_sequence = event.sequence;
-        if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
-            continue;
-        }
+        };
 
         match forward_single_compatible_runtime_event(
             state,

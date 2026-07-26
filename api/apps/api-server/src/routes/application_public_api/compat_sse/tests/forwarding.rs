@@ -394,6 +394,55 @@ fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
     assert_eq!(second.text.as_deref(), Some("ab"));
 }
 
+#[test]
+fn typed_turn_ordering_preserves_equal_text_and_filters_only_cursor_history() {
+    let run = native_run();
+    let node_run_id = Uuid::from_u128(0x77777777777777777777777777777777);
+    let event = |sequence| {
+        RuntimeEventEnvelope::new(
+            run.id,
+            sequence,
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "same  文本".to_string(),
+                0,
+                Some("node-llm"),
+                Some(node_run_id),
+                Some("text"),
+            ),
+        )
+    };
+    let mut cursor = 0;
+
+    let first = take_ordered_compatible_event(event(1), &mut cursor, None)
+        .expect("first ordered fact must pass");
+    let second = take_ordered_compatible_event(event(2), &mut cursor, None)
+        .expect("equal text at a later sequence remains a distinct fact");
+    assert_eq!(first.text, second.text);
+    assert_eq!(cursor, 2);
+    assert!(take_ordered_compatible_event(event(2), &mut cursor, None).is_none());
+    assert!(take_ordered_compatible_event(event(1), &mut cursor, None).is_none());
+}
+
+#[test]
+fn typed_projection_input_keeps_runtime_identity_and_canonical_envelope() {
+    let run = native_run();
+    let envelope = RuntimeEventEnvelope::new(
+        run.id,
+        9,
+        debug_stream_events::flow_finished(run.id, json!({ "answer": "done" })),
+    );
+    let input = CompatibleProjectionInput {
+        run_snapshot: run.clone(),
+        envelope: envelope.clone(),
+    };
+    let (run_snapshot, projected_envelope) = input.into_parts();
+
+    assert_eq!(run_snapshot.id, run.id);
+    assert_eq!(projected_envelope, envelope);
+    assert_eq!(projected_envelope.event_id, format!("{}:9", run.id));
+}
+
 #[tokio::test]
 async fn d1_ac_007_native_sse_initial_and_durable_replay_keep_incomplete_distinct_from_completed() {
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
