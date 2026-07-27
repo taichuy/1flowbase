@@ -42,3 +42,5 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
   });
 });
 // @vitest-environment jsdom
+
+import '@testing-library/jest-dom/vitest';

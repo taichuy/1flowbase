@@ -26,3 +26,5 @@ describe('@1flowbase/native-components (AC-PUB-001)', () => {
   });
 });
 // @vitest-environment jsdom
+
+import '@testing-library/jest-dom/vitest';

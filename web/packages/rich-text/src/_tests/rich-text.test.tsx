@@ -81,3 +81,5 @@ describe('@1flowbase/rich-text (AC-PUB-006)', () => {
   });
 });
 // @vitest-environment jsdom
+
+import '@testing-library/jest-dom/vitest';
