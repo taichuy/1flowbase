@@ -12,6 +12,7 @@ import {
   frontstageBlockCatalogQueryKeyPrefix
 } from '../api/block-catalog';
 import {
+  createFrontstagePageBlock,
   fetchFrontstagePageContent,
   frontstagePageContentQueryKey,
   saveFrontstagePageContent
@@ -400,6 +401,70 @@ describe('frontstage page content feature api', () => {
       );
     } finally {
       saveSpy.mockRestore();
+    }
+  });
+
+  test('adapts atomic block creation calls to api-client DTOs', async () => {
+    const createSpy = vi
+      .spyOn(apiClient, 'createFrontstageBlock')
+      .mockResolvedValue({
+        page: {
+          id: 'page-1',
+          title: '页面 1',
+          icon: null,
+          tooltip: null,
+          is_hidden: false,
+          placement: 'sidebar',
+          content_presentation: 'single',
+          slug: null,
+          kind: 'page',
+          parent_id: null,
+          rank: '001000'
+        },
+        tab: {
+          id: 'tab-1',
+          page_id: 'page-1',
+          title: '概览',
+          rank: '001000',
+          is_default: true,
+          route_segment: null,
+          document_root_uid: 'root-1'
+        },
+        document: {
+          root_uid: 'root-1',
+          payload: { blocks: [{ id: 'hero-1', renderer_version: 'v1' }] }
+        }
+      });
+    const input = {
+      payload: { blocks: [{ id: 'hero-1', renderer_version: 'v1' }] },
+      code_ref: 'hero-1-code',
+      code: 'export default function Hero() {}'
+    };
+
+    try {
+      await expect(
+        createFrontstagePageBlock(
+          'workspace-1',
+          'page-1',
+          'tab-1',
+          input,
+          'csrf-123'
+        )
+      ).resolves.toMatchObject({
+        page: { id: 'page-1', contentPresentation: 'single' },
+        tab: { id: 'tab-1', pageId: 'page-1' },
+        document: { rootUid: 'root-1', payload: input.payload }
+      });
+      expect(createSpy).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        input,
+        'csrf-123',
+        expect.any(String)
+      );
+    } finally {
+      createSpy.mockRestore();
     }
   });
 });

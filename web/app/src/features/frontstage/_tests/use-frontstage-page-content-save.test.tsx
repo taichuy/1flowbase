@@ -11,6 +11,7 @@ const frontstageApi = vi.hoisted(() => ({
     (workspaceId: string, pageId: string, tabId: string) =>
       ['frontstage', workspaceId, 'pages', pageId, 'tabs', tabId, 'content'] as const
   ),
+  createFrontstagePageBlock: vi.fn(),
   saveFrontstagePageContent: vi.fn()
 }));
 
@@ -73,6 +74,14 @@ function createSaveInput() {
   return { payload: { blocks: [{ uid: 'hero', renderer_version: 'v1' }] } };
 }
 
+function createBlockInput() {
+  return {
+    ...createSaveInput(),
+    code_ref: 'hero-code',
+    code: 'export default function Hero() {}'
+  };
+}
+
 function setupSave(queryClient = createQueryClient()) {
   const invalidateQueriesSpy = vi
     .spyOn(queryClient, 'invalidateQueries')
@@ -105,6 +114,45 @@ describe('useFrontstagePageContentSave', () => {
     frontstageApi.saveFrontstagePageContent.mockResolvedValue(
       createPageContent('页面 已保存')
     );
+    frontstageApi.createFrontstagePageBlock.mockResolvedValue(
+      createPageContent('页面 已创建区块')
+    );
+  });
+
+  test('creates a block atomically, writes the query cache, and invalidates active tab queries', async () => {
+    const { invalidateQueriesSpy, queryClient, result } = setupSave();
+    const input = createBlockInput();
+    let savedContent: unknown;
+
+    await act(async () => {
+      savedContent = await result.current.createBlock(input);
+    });
+
+    const queryKey = [
+      'frontstage',
+      'workspace-1',
+      'pages',
+      'page-1',
+      'tabs',
+      'tab-1',
+      'content'
+    ];
+
+    expect(frontstageApi.createFrontstagePageBlock).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'tab-1',
+      input,
+      'csrf-123'
+    );
+    expect(savedContent).toEqual(createPageContent('页面 已创建区块'));
+    expect(queryClient.getQueryData(queryKey)).toEqual(
+      createPageContent('页面 已创建区块')
+    );
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
+      queryKey: ['frontstage', 'workspace-1', 'pages', 'page-1', 'tabs'],
+      refetchType: 'active'
+    });
   });
 
   test('saves page content with csrf token, writes the query cache, and invalidates active page content queries', async () => {

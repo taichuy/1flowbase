@@ -3,6 +3,7 @@ import * as transport from '../transport';
 
 import {
   createFrontstageGroup,
+  createFrontstageBlock,
   createFrontstagePage,
   createFrontstagePageTab,
   deleteFrontstagePageTab,
@@ -528,6 +529,31 @@ describe('console-frontstage client', () => {
         path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
         method: 'PUT',
         body: { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'atomic block creation',
+      request: () =>
+        createFrontstageBlock(
+          'workspace-1',
+          'page-1',
+          'tab-1',
+          {
+            payload: { version: 1, blocks: [{ id: 'hero-1' }] },
+            code_ref: 'hero-1-code',
+            code: 'export default function Hero() {}'
+          },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/blocks',
+        method: 'POST',
+        body: {
+          payload: { version: 1, blocks: [{ id: 'hero-1' }] },
+          code_ref: 'hero-1-code',
+          code: 'export default function Hero() {}'
+        },
         csrfToken: 'csrf-123'
       }
     },

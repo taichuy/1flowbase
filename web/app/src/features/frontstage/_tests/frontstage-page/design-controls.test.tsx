@@ -16,6 +16,7 @@ import {
   useFrontstageDesignModeStore
 } from '../../../../state/frontstage-design-mode-store';
 import type {
+  CreateFrontstageBlockInput,
   FrontstagePageContent,
   SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
@@ -131,6 +132,7 @@ type TestFrontStageTreeNode = {
 
 type FrontstagePageContentSaveState = {
   save: ReturnType<typeof vi.fn>;
+  createBlock: ReturnType<typeof vi.fn>;
   saving: boolean;
   isPending: boolean;
   error: Error | null;
@@ -353,6 +355,11 @@ function mockPageContentSaveState(
   const state = {
     save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
+    ),
+    createBlock: vi.fn((input: CreateFrontstageBlockInput) =>
+      Promise.resolve(
+        createSavedPageContentFromInput({ payload: input.payload })
+      )
     ),
     saving: false,
     isPending: false,
@@ -935,7 +942,7 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
     await waitFor(() => {
-      expect(saveState.save).toHaveBeenCalledTimes(1);
+      expect(saveState.createBlock).toHaveBeenCalledTimes(1);
     });
     expect(
       screen.queryByRole('button', { name: '选择' })
@@ -948,10 +955,10 @@ describe('FrontStagePage - design controls', () => {
       pageId: 'page-1'
     });
 
-    const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstageTabDocumentInput
+    const [createInput] = saveState.createBlock.mock.calls[0] as [
+      CreateFrontstageBlockInput
     ];
-    const [block] = getSavedBlocks(saveInput);
+    const [block] = getSavedBlocks(createInput);
 
     expect(block).toMatchObject({
       renderer_version: 'v1',
@@ -980,15 +987,11 @@ describe('FrontStagePage - design controls', () => {
     expect(block.id).toMatch(/^frontstage-js-block-[0-9a-f-]{36}$/);
     expect(block.codeRef).toBe(`${String(block.id)}-code`);
     expect(block).not.toHaveProperty('layout');
-    expect(blockCodeApi.saveFrontstageBlockCode).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      {
-        codeRef: block.codeRef,
-        code: PLUGIN_CODE_TEMPLATE
-      },
-      'csrf-123'
-    );
+    expect(createInput).toEqual({
+      payload: createInput.payload,
+      code_ref: block.codeRef,
+      code: PLUGIN_CODE_TEMPLATE
+    });
   });
 
   test('AC-011 rejects a catalog entry without a code template before saving', async () => {
@@ -1018,6 +1021,7 @@ describe('FrontStagePage - design controls', () => {
       screen.queryByRole('button', { name: '选择' })
     ).not.toBeInTheDocument();
     expect(saveState.save).not.toHaveBeenCalled();
+    expect(saveState.createBlock).not.toHaveBeenCalled();
     expect(blockCodeApi.saveFrontstageBlockCode).not.toHaveBeenCalled();
   });
 
@@ -1045,7 +1049,7 @@ describe('FrontStagePage - design controls', () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     mockPageContentSaveState({
-      save: vi.fn(() => Promise.reject(new Error('request failed')))
+      createBlock: vi.fn(() => Promise.reject(new Error('request failed')))
     });
 
     render(
@@ -1065,13 +1069,12 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.getByText('request failed')).toBeInTheDocument();
   });
 
-  test('shows a clear Add Block code template save error', async () => {
+  test('keeps the previous document when atomic block creation fails', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
-    const saveState = mockPageContentSaveState();
-    blockCodeApi.saveFrontstageBlockCode.mockRejectedValueOnce(
-      new Error('code save failed')
-    );
+    const saveState = mockPageContentSaveState({
+      createBlock: vi.fn(() => Promise.reject(new Error('create failed')))
+    });
 
     render(
       <AppProviders>
@@ -1087,14 +1090,11 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
-    expect(screen.getByText('code save failed')).toBeInTheDocument();
+    expect(screen.getByText('create failed')).toBeInTheDocument();
     await waitFor(() => {
-      expect(saveState.save).toHaveBeenCalledTimes(2);
+      expect(saveState.createBlock).toHaveBeenCalledTimes(1);
     });
-    const [rollbackInput] = saveState.save.mock.calls[1] as [
-      SaveFrontstageTabDocumentInput
-    ];
-    expect(getSavedBlocks(rollbackInput)).toEqual([]);
+    expect(saveState.save).not.toHaveBeenCalled();
     expect(screen.queryByText('1 个区块')).not.toBeInTheDocument();
   });
 
@@ -1146,12 +1146,12 @@ describe('FrontStagePage - design controls', () => {
       fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
       await waitFor(() => {
-        expect(saveState.save).toHaveBeenCalledTimes(1);
+        expect(saveState.createBlock).toHaveBeenCalledTimes(1);
       });
-      const [saveInput] = saveState.save.mock.calls[0] as [
-        SaveFrontstageTabDocumentInput
+      const [createInput] = saveState.createBlock.mock.calls[0] as [
+        CreateFrontstageBlockInput
       ];
-      const [createdBlock] = getSavedBlocks(saveInput);
+      const [createdBlock] = getSavedBlocks(createInput);
       const createdBlockId = String(createdBlock?.id);
 
       await waitFor(() => {

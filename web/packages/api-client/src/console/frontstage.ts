@@ -107,6 +107,12 @@ export interface SaveFrontstageBlockCodeInput {
   code: string;
 }
 
+export interface CreateFrontstageBlockInput {
+  payload: unknown;
+  code_ref: string;
+  code: string;
+}
+
 export interface DispatchFrontstageQueryInput {
   query_id: string;
   params?: unknown;
@@ -707,6 +713,23 @@ export function saveFrontstageTabDocument(
   return apiFetch<ConsoleFrontstagePageDetail>({
     path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
     method: 'PUT',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function createFrontstageBlock(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: CreateFrontstageBlockInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstagePageDetail> {
+  return apiFetch<ConsoleFrontstagePageDetail>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/blocks`,
+    method: 'POST',
     body: input,
     csrfToken,
     baseUrl

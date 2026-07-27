@@ -14,7 +14,6 @@ import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
-import { saveFrontstageBlockCode } from '../api/block-code';
 import type { FrontstagePageContent } from '../api/page-content';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
@@ -74,10 +73,7 @@ import {
   createCatalogBlockInput,
   findMatchingFrontstageBlockCatalogEntry
 } from './frontstage-page/block-catalog-helpers';
-import {
-  requireCsrfToken,
-  toDisplayErrorMessage
-} from './frontstage-page/page-action-helpers';
+import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import {
@@ -1102,15 +1098,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     setIsBlockSavePending(true);
     setBlockSaveError(null);
     pageContentSave.clearError();
-    let persistedContent: FrontstagePageContent | null = null;
-
     try {
       const input = createFrontstagePageDocumentSaveInput(
         sourceContent,
         nextCompositionState.document
       );
-      const nextContent = await pageContentSave.save(input);
-      persistedContent = nextContent;
       const createdBlock =
         nextCompositionState.document.blocks.find(
           (block) => block.id === nextCompositionState.selectedBlockId
@@ -1123,38 +1115,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       }
 
       const codeRef = createdBlock.codeRef;
-
-      await saveFrontstageBlockCode(
-        workspaceId,
-        selectedPageId ?? sourceContent.page.id,
-        {
-          codeRef,
-          code: codeTemplate.source
-        },
-        requireCsrfToken(csrfToken)
-      );
+      const nextContent = await pageContentSave.createBlock({
+        payload: input.payload,
+        code_ref: codeRef,
+        code: codeTemplate.source
+      });
 
       setSavedPageContent(nextContent);
       setSelectedBlockId(nextCompositionState.selectedBlockId);
     } catch (error) {
-      let errorMessage = toDisplayErrorMessage(error);
-      if (persistedContent) {
-        try {
-          const rollbackInput = createFrontstagePageDocumentSaveInput(
-            sourceContent,
-            blockCompositionState.document
-          );
-          const rollbackContent = await pageContentSave.save(rollbackInput);
-          setSavedPageContent(rollbackContent);
-        } catch (rollbackError) {
-          setSavedPageContent(persistedContent);
-          errorMessage = `${errorMessage}; ${i18nText(
-            'frontstage',
-            'auto.operation_failed'
-          )}: ${toDisplayErrorMessage(rollbackError)}`;
-        }
-      }
-      setBlockSaveError(errorMessage);
+      setBlockSaveError(toDisplayErrorMessage(error));
     } finally {
       setIsBlockSavePending(false);
     }
