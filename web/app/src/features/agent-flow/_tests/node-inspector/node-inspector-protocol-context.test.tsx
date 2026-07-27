@@ -8,10 +8,7 @@ import {
   createInitialStateWithProtocolContextCodeNode,
   fireEvent,
   getLlmNodeConfig,
-  openSelect,
   renderWithProviders,
-  screen,
-  selectOption,
   setupNodeInspectorTest,
   waitFor,
   within
@@ -24,7 +21,7 @@ describe('NodeInspector protocol context', () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     let latestDocument = state.draft.document;
 
-    renderWithProviders(
+    const view = renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver
@@ -36,7 +33,7 @@ describe('NodeInspector protocol context', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    const field = await screen.findByTestId(
+    const field = await view.findByTestId(
       'inspector-field-config.protocol_context'
     );
     const protocolContextSwitch = within(field).getByRole('switch', {
@@ -69,10 +66,12 @@ describe('NodeInspector protocol context', () => {
       });
     });
 
-    await openSelect('协议上下文变量');
-    await selectOption('Protocol Builder');
-    await selectOption('result');
-    await selectOption('protocol_context');
+    fireEvent.mouseDown(protocolContextSelector);
+    fireEvent.keyDown(protocolContextSelector, { key: 'ArrowDown' });
+    for (const title of ['Protocol Builder', 'result', 'protocol_context']) {
+      const matches = await view.findAllByTitle(title);
+      fireEvent.click(matches[matches.length - 1]);
+    }
 
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument).protocol_context).toEqual({
@@ -80,6 +79,6 @@ describe('NodeInspector protocol context', () => {
         value: ['node-code', 'result', 'protocol_context']
       });
     });
-    expect(screen.queryByTitle('headers')).not.toBeInTheDocument();
+    expect(view.queryByTitle('headers')).not.toBeInTheDocument();
   });
 });

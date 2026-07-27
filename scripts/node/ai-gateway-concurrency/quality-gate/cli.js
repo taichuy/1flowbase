@@ -20,10 +20,7 @@ const MAX_COMMAND_LOG_BYTES = 2 * 1024 * 1024;
 const MAX_GATE_ARTIFACT_BYTES = 64 * 1024 * 1024;
 
 function boundedCommandLog(output) {
-  const redacted = output.replace(
-    /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/giu,
-    "$1<redacted>@",
-  );
+  const redacted = redactCredentialUris(output);
   const encoded = Buffer.from(redacted);
   if (encoded.length <= MAX_COMMAND_LOG_BYTES) return redacted;
   const marker = Buffer.from(
@@ -36,6 +33,55 @@ function boundedCommandLog(output) {
     marker,
     encoded.subarray(encoded.length - (remaining - headLength)),
   ]).toString("utf8");
+}
+
+function redactCredentialUris(output) {
+  let cursor = 0;
+  let searchFrom = 0;
+  let redacted = "";
+
+  while (true) {
+    const separator = output.indexOf("://", searchFrom);
+    if (separator === -1) break;
+
+    let schemeStart = separator;
+    while (schemeStart > cursor && /[a-z0-9+.-]/iu.test(output[schemeStart - 1])) {
+      schemeStart -= 1;
+    }
+    if (
+      schemeStart === separator ||
+      !/[a-z]/iu.test(output[schemeStart]) ||
+      (schemeStart > 0 && /[a-z0-9+.-]/iu.test(output[schemeStart - 1]))
+    ) {
+      searchFrom = separator + 3;
+      continue;
+    }
+
+    const authorityStart = separator + 3;
+    let authorityEnd = authorityStart;
+    while (
+      authorityEnd < output.length &&
+      !/[\s/?#]/u.test(output[authorityEnd])
+    ) {
+      authorityEnd += 1;
+    }
+    const at = output.indexOf("@", authorityStart);
+    const colon = output.indexOf(":", authorityStart);
+    if (
+      at !== -1 &&
+      at < authorityEnd &&
+      colon > authorityStart &&
+      colon < at &&
+      colon + 1 < at
+    ) {
+      redacted += output.slice(cursor, authorityStart);
+      redacted += "<redacted>@";
+      cursor = at + 1;
+    }
+    searchFrom = authorityEnd > separator ? authorityEnd : separator + 3;
+  }
+
+  return redacted + output.slice(cursor);
 }
 
 function artifactBytes(roots) {
