@@ -80,6 +80,18 @@ pub struct SaveFrontstageBlockCodeInput {
     pub code: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateFrontstageBlockInput {
+    pub workspace_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
+    pub document_payload: serde_json::Value,
+    pub code_ref: String,
+    pub code: String,
+    pub audit_log: domain::AuditLogRecord,
+}
+
 #[async_trait]
 pub trait FrontstagePageRepository: Send + Sync {
     async fn load_actor_context_for_workspace(
@@ -172,6 +184,11 @@ pub trait FrontstagePageRepository: Send + Sync {
     async fn save_frontstage_tab_document(
         &self,
         input: &SaveFrontstageTabDocumentInput,
+    ) -> anyhow::Result<domain::frontstage::FrontstagePageDetail>;
+
+    async fn create_frontstage_block(
+        &self,
+        input: &CreateFrontstageBlockInput,
     ) -> anyhow::Result<domain::frontstage::FrontstagePageDetail>;
 
     async fn get_frontstage_block_code(

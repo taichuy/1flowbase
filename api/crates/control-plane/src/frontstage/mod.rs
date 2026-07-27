@@ -18,6 +18,10 @@ use crate::{
     },
 };
 
+mod block_creation;
+
+pub use block_creation::CreateFrontstageBlockCommand;
+
 pub struct CreateFrontstageGroupCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,

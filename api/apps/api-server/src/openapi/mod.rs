@@ -157,6 +157,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::frontstage::update_frontstage_page_tab,
         crate::routes::frontstage::delete_frontstage_page_tab,
         crate::routes::frontstage::save_frontstage_tab_document,
+        crate::routes::frontstage::create_frontstage_block,
         crate::routes::frontstage::get_frontstage_block_code,
         crate::routes::frontstage::save_frontstage_block_code,
         crate::routes::frontstage::data_capabilities::list_frontstage_data_capabilities,

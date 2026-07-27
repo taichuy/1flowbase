@@ -10,10 +10,10 @@ use axum::{
     Json, Router,
 };
 use control_plane::frontstage::{
-    CreateFrontstageGroupCommand, CreateFrontstagePageCommand, CreateFrontstagePageTabCommand,
-    DeleteFrontstagePageCommand, DeleteFrontstagePageTabCommand, FrontstagePageService,
-    GetFrontstageBlockCodeCommand, GetFrontstagePageDetailCommand, MoveFrontstagePageCommand,
-    SaveFrontstageBlockCodeCommand, SaveFrontstageTabDocumentCommand,
+    CreateFrontstageBlockCommand, CreateFrontstageGroupCommand, CreateFrontstagePageCommand,
+    CreateFrontstagePageTabCommand, DeleteFrontstagePageCommand, DeleteFrontstagePageTabCommand,
+    FrontstagePageService, GetFrontstageBlockCodeCommand, GetFrontstagePageDetailCommand,
+    MoveFrontstagePageCommand, SaveFrontstageBlockCodeCommand, SaveFrontstageTabDocumentCommand,
     UpdateFrontstagePageMetadataCommand, UpdateFrontstagePageTabCommand,
 };
 use control_plane::resource_action::{
@@ -198,6 +198,13 @@ pub struct SaveFrontstageBlockCodeBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateFrontstageBlockBody {
+    pub payload: Value,
+    pub code_ref: String,
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DispatchFrontstageQueryBody {
     pub query_id: String,
     #[serde(default)]
@@ -272,6 +279,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
             console_put(save_frontstage_tab_document, Authenticated),
+        )
+        .route(
+            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/blocks",
+            console_post(create_frontstage_block, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
@@ -894,6 +905,45 @@ pub async fn save_frontstage_tab_document(
         .await?;
 
     Ok(Json(ApiSuccess::new(to_page_detail_response(detail))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/blocks",
+    request_body = CreateFrontstageBlockBody,
+    responses(
+        (status = 201, body = FrontstagePageDetailResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody),
+        (status = 409, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn create_frontstage_block(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Json(body): Json<CreateFrontstageBlockBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageDetailResponse>>), ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let detail = FrontstagePageService::new(state.store.clone())
+        .create_block(CreateFrontstageBlockCommand {
+            actor_user_id: context.user.id,
+            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+            page_id: parse_uuid(&page_id, "page_id")?,
+            tab_id: parse_uuid(&tab_id, "tab_id")?,
+            document_payload: body.payload,
+            code_ref: body.code_ref,
+            code: body.code,
+        })
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(to_page_detail_response(detail))),
+    ))
 }
 
 #[utoipa::path(
