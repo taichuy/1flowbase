@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const { TRANSPORT } = require('../../contracts');
 const {
+  CANONICAL_STREAM_REGRESSION_ORACLE,
   LIFECYCLE_PAIRWISE_ORACLES,
   PROTOCOL_TRANSPORT_ORACLES,
   PROVIDER_TRANSPORTS,
@@ -36,4 +37,16 @@ test('AC-006: every public protocol/provider transport lifecycle pair is absorbi
     assert.match(row.disconnectBeforeTerminal, /no-success-terminal/u);
     assert.match(row.cancelBeforeTerminal, /no-success-terminal/u);
   }
+});
+
+test('Root #1477 AC-009 keeps #1461 UTF-8 partition, immediate terminal, and durable parity oracle', () => {
+  const oracle = CANONICAL_STREAM_REGRESSION_ORACLE;
+  assert.equal(oracle.origin, 'Root #1461');
+  assert.deepEqual(oracle.partitions, ['whole', 'bytewise', 'uneven']);
+  assert.equal(oracle.providerTransports.length, 4);
+  assert.match(oracle.utf8, /fatal/u);
+  assert.match(oracle.delivery, /immediately/u);
+  assert.equal(oracle.successTerminalCount, 1);
+  assert.equal(oracle.terminalIsAbsorbing, true);
+  assert.equal(oracle.durableParity.preservesRepeatedContent, true);
 });

@@ -11,6 +11,7 @@ const {
 } = require('../../contracts');
 const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = require('..');
 const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
+const { errorFixtureMarker, upstreamErrorFixture } = require('../../protocol-oracle/error-fidelity');
 
 async function withMockUpstream(run, options = {}) {
   const upstream = createMockUpstream({
@@ -257,6 +258,64 @@ test('AC-004: HTTP 500 is explicit and produces no success terminal', async () =
     assert.equal(await response.text(), HTTP_500_ERROR_BODY);
     const evidence = await waitFor(() => upstream.snapshot().entries.find((entry) => entry.outcome === 'http-500'));
     assert.equal(evidence.successTerminalCount, 0);
+  });
+});
+
+test('Root #1477 AC-008: mock emits byte-exact JSON/text/HTML/empty upstream errors', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    for (const id of ['json', 'text', 'html', 'empty']) {
+      const fixture = upstreamErrorFixture(id);
+      const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'mock-model', input: errorFixtureMarker(id) }),
+      });
+      assert.equal(response.status, fixture.status);
+      assert.equal(response.headers.get('content-type'), fixture.contentType);
+      assert.equal(await response.text(), fixture.body);
+    }
+    const failures = upstream.snapshot().entries.filter((entry) => entry.errorFixture);
+    assert.deepEqual(failures.map((entry) => entry.errorFixture), ['json', 'text', 'html', 'empty']);
+    assert.equal(failures.every((entry) => entry.successTerminalCount === 0), true);
+  });
+});
+
+test('Root #1477 AC-008: retry fixture fails once and then succeeds for one correlation key', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const request = () => fetch(`${httpBaseUrl}${MOCK_ROUTE.CHAT_COMPLETIONS}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', fixture_retry_key: 'retry-correlation-1',
+        messages: [{ role: 'user', content: errorFixtureMarker('retry') }],
+      }),
+    });
+    const first = await request();
+    assert.equal(first.status, upstreamErrorFixture('retry').status);
+    assert.equal(await first.text(), upstreamErrorFixture('retry').body);
+    const second = await request();
+    assert.equal(second.status, 200);
+    assert.match(await second.text(), /chat\.completion\.chunk/u);
+  });
+});
+
+test('Root #1477 AC-005/006: arrival evidence stores a semantic digest without raw body or credentials', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}?fixture_query=value`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer raw-auth-canary', 'x-api-key': 'raw-key-canary',
+        'content-type': 'application/json', 'x-fixture-extension': 'safe-extension',
+      },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        messages: [{ role: 'user', content: 'raw-body-canary' }],
+      }),
+    });
+    await response.text();
+    const evidence = arrivalEntries(upstream)[0].request;
+    assert.match(evidence.semantic_sha256, /^[a-f0-9]{64}$/u);
+    for (const canary of ['raw-auth-canary', 'raw-key-canary', 'raw-body-canary']) {
+      assert.doesNotMatch(JSON.stringify(evidence), new RegExp(canary, 'u'));
+    }
   });
 });
 

@@ -19,6 +19,8 @@ const {
   responsesWireEvents,
 } = require('./protocol-events');
 const { acceptWebSocket, createFrameReader, sendClose, sendJson } = require('./websocket');
+const { normalizedRequestFingerprint } = require('../protocol-oracle/request-fidelity');
+const { errorFixtureFromBody } = require('../protocol-oracle/error-fidelity');
 
 const SAFE_HEADER_NAMES = Object.freeze([
   'accept',
@@ -51,6 +53,12 @@ function safeRequestSummary(request, body) {
     path: new URL(request.url, 'http://mock.invalid').pathname,
     headers,
     body: requestBodySummary(body),
+    semantic_sha256: normalizedRequestFingerprint({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body,
+    }),
   };
 }
 
@@ -300,6 +308,7 @@ function createMockUpstream(options = {}) {
   const cancelObservationMs = options.cancelObservationMs ?? 250;
   const timeline = createTimeline();
   const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
+  const errorFixtureAttempts = new Map();
   const sockets = new Set();
   const barrierWaiters = new Set();
   const barrier = {
@@ -354,6 +363,23 @@ function createMockUpstream(options = {}) {
         : path === MOCK_ROUTE.CHAT_COMPLETIONS ? 'chat-completions-sse' : TRANSPORT.ANTHROPIC_SSE;
       const requestTimeline = timeline.arrive(transport, scenario, safeRequestSummary(request, body));
       observeWireVectors(body, requestTimeline, counters);
+      const errorFixture = errorFixtureFromBody(body);
+      const errorFixtureKey = `${errorFixture?.id ?? ''}:${body.fixture_retry_key ?? ''}`;
+      const errorFixtureAttempt = (errorFixtureAttempts.get(errorFixtureKey) ?? 0) + 1;
+      if (errorFixture) errorFixtureAttempts.set(errorFixtureKey, errorFixtureAttempt);
+      const shouldEmitFixtureError = errorFixture
+        && (errorFixture.id !== 'retry' || errorFixtureAttempt === 1);
+      if (shouldEmitFixtureError) {
+        response.writeHead(errorFixture.status, { 'content-type': errorFixture.contentType });
+        response.end(errorFixture.body);
+        requestTimeline.finish(`http-${errorFixture.status}`, {
+          status: errorFixture.status,
+          errorFixture: errorFixture.id,
+          errorFixtureAttempt,
+          successTerminalCount: 0,
+        });
+        return;
+      }
       if (scenario === SCENARIO.HTTP_500) {
         response.writeHead(500, { 'content-type': 'application/json' });
         response.end(HTTP_500_ERROR_BODY);
@@ -446,6 +472,25 @@ function createMockUpstream(options = {}) {
         scenario,
         safeRequestSummary(request, body),
       );
+      const errorFixture = errorFixtureFromBody(body.response ?? body);
+      if (errorFixture) {
+        sendJson(socket, {
+          type: 'error',
+          error: {
+            type: 'mock_upstream_error',
+            message: errorFixture.body,
+            status: errorFixture.status,
+            nonce: requestTimeline.nonce,
+          },
+        });
+        requestTimeline.finish('upstream-error', {
+          status: errorFixture.status,
+          errorFixture: errorFixture.id,
+          successTerminalCount: 0,
+        });
+        sendClose(socket, 1011, 'mock upstream error');
+        return;
+      }
       if (scenario === SCENARIO.HTTP_500) {
         sendJson(socket, {
           type: 'error',

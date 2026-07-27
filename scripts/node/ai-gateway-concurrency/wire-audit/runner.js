@@ -1,5 +1,111 @@
 'use strict';
 
+const {
+  EPHEMERAL_NO_LEAK_ORACLE,
+  REQUEST_FIDELITY_VECTORS,
+  REQUEST_NEGATIVE_VECTORS,
+  assertNoEphemeralRawLeak,
+} = require('../protocol-oracle/request-fidelity');
+const {
+  ERROR_SURFACES,
+  UPSTREAM_ERROR_FIXTURES,
+  assertUpstreamErrorFidelity,
+} = require('../protocol-oracle/error-fidelity');
+
+function requestFidelityInventory() {
+  const ingresses = REQUEST_FIDELITY_VECTORS.map((row) => row.ingress);
+  if (new Set(ingresses).size !== 3) throw new Error('request fidelity oracle must cover three distinct ingresses');
+  const negativeKinds = REQUEST_NEGATIVE_VECTORS.map((row) => row.kind);
+  for (const expected of [
+    'typed-opaque-conflict', 'reserved-field', 'foreign-protocol', 'unconsumed-residual',
+  ]) {
+    if (!negativeKinds.includes(expected)) throw new Error(`request negative oracle omitted ${expected}`);
+  }
+  return {
+    schema_version: '1flowbase.ai-gateway-request-fidelity/v1',
+    positive_rows: REQUEST_FIDELITY_VECTORS.map((row) => row.id),
+    negative_rows: REQUEST_NEGATIVE_VECTORS.map((row) => row.id),
+    ephemeral_lifetime: EPHEMERAL_NO_LEAK_ORACLE.raw_lifetime,
+    raw_sinks_forbidden: EPHEMERAL_NO_LEAK_ORACLE.forbidden_sinks,
+  };
+}
+
+function errorFidelityInventory() {
+  if (UPSTREAM_ERROR_FIXTURES.length !== 5) throw new Error('upstream error oracle must contain five fixtures');
+  if (ERROR_SURFACES.length !== 4) throw new Error('upstream error oracle must cover four public surfaces');
+  return {
+    schema_version: '1flowbase.ai-gateway-error-fidelity/v1',
+    fixtures: UPSTREAM_ERROR_FIXTURES.map((row) => row.id),
+    surfaces: ERROR_SURFACES,
+    rows: UPSTREAM_ERROR_FIXTURES.length * ERROR_SURFACES.length,
+  };
+}
+
+function assertRequestFidelityAudit(evidence, { rawCanaries = [] } = {}) {
+  const expectedPositive = requestFidelityInventory().positive_rows;
+  const positive = new Map((evidence.positive ?? []).map((row) => [row.id, row]));
+  for (const id of expectedPositive) {
+    const row = positive.get(id);
+    if (!row) throw new Error(`request fidelity evidence omitted ${id}`);
+    if (!/^[a-f0-9]{64}$/u.test(row.direct_sha256 ?? '')) {
+      throw new Error(`request fidelity direct digest is invalid for ${id}`);
+    }
+    if (row.direct_sha256 !== row.gateway_sha256) {
+      throw new Error(`request fidelity mismatch for ${id}`);
+    }
+  }
+  const expectedNegative = requestFidelityInventory().negative_rows;
+  const negative = new Map((evidence.negative ?? []).map((row) => [row.id, row]));
+  for (const id of expectedNegative) {
+    const row = negative.get(id);
+    if (!row?.failed || row.upstream_arrivals !== 0) {
+      throw new Error(`request negative did not fail before upstream for ${id}`);
+    }
+  }
+  for (const phase of EPHEMERAL_NO_LEAK_ORACLE.raw_lifetime) {
+    if (!evidence.ephemeral?.preserved_phases?.includes(phase)) {
+      throw new Error(`ephemeral raw context was not preserved through ${phase}`);
+    }
+  }
+  for (const phase of EPHEMERAL_NO_LEAK_ORACLE.cleanup) {
+    if (!evidence.ephemeral?.cleanup_phases?.includes(phase)) {
+      throw new Error(`ephemeral raw context was not cleaned after ${phase}`);
+    }
+  }
+  if (evidence.ephemeral?.missing_before_terminal_failed !== true) {
+    throw new Error('missing ephemeral raw context did not fail before terminal');
+  }
+  assertNoEphemeralRawLeak(evidence, rawCanaries);
+  return {
+    schema_version: '1flowbase.ai-gateway-request-fidelity-result/v1',
+    verdict: 'PASS',
+    positive_rows: expectedPositive.length,
+    negative_rows: expectedNegative.length,
+  };
+}
+
+function assertErrorFidelityAudit(evidence) {
+  const rows = new Map((evidence.rows ?? []).map((row) => [`${row.fixture}:${row.surface}`, row]));
+  for (const fixture of UPSTREAM_ERROR_FIXTURES) {
+    for (const surface of ERROR_SURFACES) {
+      const row = rows.get(`${fixture.id}:${surface}`);
+      if (!row) throw new Error(`error fidelity evidence omitted ${fixture.id}:${surface}`);
+      assertUpstreamErrorFidelity(fixture, {
+        nativeMessage: row.native_message,
+        durableMessage: row.durable_message,
+        clientMessages: [row.client_message],
+      });
+      if (fixture.id === 'retry' && row.attempts !== fixture.attempts) {
+        throw new Error(`error retry evidence used ${row.attempts} attempts`);
+      }
+    }
+  }
+  return {
+    schema_version: '1flowbase.ai-gateway-error-fidelity-result/v1',
+    verdict: 'PASS', rows: rows.size,
+  };
+}
+
 function vectorBodies(observers, secretCanary) {
   return [
     {
@@ -170,4 +276,11 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
   };
 }
 
-module.exports = { runWireAudit, vectorBodies };
+module.exports = {
+  assertErrorFidelityAudit,
+  assertRequestFidelityAudit,
+  errorFidelityInventory,
+  requestFidelityInventory,
+  runWireAudit,
+  vectorBodies,
+};

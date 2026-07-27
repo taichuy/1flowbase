@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { TRANSPORT } = require('../../contracts');
-const { readReadyManifest, runWorkflowContract } = require('../runner');
+const { protocolOracleInventory, readReadyManifest, runWorkflowContract } = require('../runner');
 
 function fixtureInputs() {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-runner-'));
@@ -76,6 +76,18 @@ function fixtureManifest() {
     pools: { anthropic: anthropicPool },
   };
 }
+
+test('Root #1477 AC-001/004/005/006/008/009: workflow invokes the complete deterministic oracle inventory', () => {
+  const inventory = protocolOracleInventory();
+  assert.equal(inventory.rows, 16);
+  assert.equal(inventory.request_fidelity.positive_rows.length, 3);
+  assert.equal(inventory.request_fidelity.negative_rows.length, 4);
+  assert.equal(inventory.error_fidelity.rows, 20);
+  assert.deepEqual(inventory.canonical_stream_regression.partitions, ['whole', 'bytewise', 'uneven']);
+  assert.equal(inventory.canonical_stream_regression.successTerminalCount, 1);
+  assert.equal(inventory.canonical_stream_regression.durableParity.preservesRepeatedContent, true);
+  assert.deepEqual(inventory.provenance.providers, ['openai', 'anthropic']);
+});
 
 test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready-manifest keys once', async () => {
   const inputs = fixtureInputs();

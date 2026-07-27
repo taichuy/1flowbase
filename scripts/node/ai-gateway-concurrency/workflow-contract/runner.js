@@ -7,10 +7,18 @@ const { runGatewayCharacterize } = require('../characterize/engine');
 const { createGatewayFixture } = require('../gateway-fixture');
 const { createMockUpstream } = require('../mock-upstream');
 const { loadPinnedInventory } = require('../wire-audit/inventory');
-const { runWireAudit } = require('../wire-audit/runner');
-const { PROTOCOL_TRANSPORT_ORACLES } = require('../protocol-oracle/oracle-matrix');
+const {
+  errorFidelityInventory,
+  requestFidelityInventory,
+  runWireAudit,
+} = require('../wire-audit/runner');
+const {
+  CANONICAL_STREAM_REGRESSION_ORACLE,
+  PROTOCOL_TRANSPORT_ORACLES,
+} = require('../protocol-oracle/oracle-matrix');
 const { runGatewayWebSocketAcceptance } = require('./gateway-websocket');
 const { normalizeRunInputs } = require('./inputs');
+const { PROVENANCE_FIDELITY_ORACLE } = require('./provenance');
 const {
   prepareEvidence,
   publicError,
@@ -33,7 +41,22 @@ function protocolOracleInventory() {
     if (!observed.has(transport)) throw new Error(`protocol oracle omitted blocking transport ${transport}`);
   }
   if (PROTOCOL_TRANSPORT_ORACLES.length !== 16) throw new Error('protocol oracle must contain the approved 4 x 4 matrix');
-  return { rows: PROTOCOL_TRANSPORT_ORACLES.length, blocking_transports: BLOCKING_TRANSPORTS };
+  const requestFidelity = requestFidelityInventory();
+  const errorFidelity = errorFidelityInventory();
+  if (CANONICAL_STREAM_REGRESSION_ORACLE.partitions.length !== 3) {
+    throw new Error('canonical stream regression oracle omitted a UTF-8 partition');
+  }
+  if (CANONICAL_STREAM_REGRESSION_ORACLE.successTerminalCount !== 1) {
+    throw new Error('canonical stream regression oracle relaxed the success terminal invariant');
+  }
+  return {
+    rows: PROTOCOL_TRANSPORT_ORACLES.length,
+    blocking_transports: BLOCKING_TRANSPORTS,
+    request_fidelity: requestFidelity,
+    error_fidelity: errorFidelity,
+    canonical_stream_regression: CANONICAL_STREAM_REGRESSION_ORACLE,
+    provenance: PROVENANCE_FIDELITY_ORACLE,
+  };
 }
 
 function requireReadyEndpoint(value, provider, pathname) {
