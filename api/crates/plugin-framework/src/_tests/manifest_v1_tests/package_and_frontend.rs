@@ -444,9 +444,9 @@ fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
         .map(|component| component.export_name.as_str())
         .collect::<Vec<_>>();
 
-    assert_eq!(exports, vec!["Surface"]);
+    assert_eq!(exports, vec!["Surface", "ScrollableSurface"]);
     assert_eq!(native_module.version, "1.0.0");
-    assert_eq!(native_module.exports, vec!["Surface"]);
+    assert_eq!(native_module.exports, vec!["ScrollableSurface", "Surface"]);
     assert_eq!(
         native_module.assets[0].path,
         "browser-assets/native-components.js"
