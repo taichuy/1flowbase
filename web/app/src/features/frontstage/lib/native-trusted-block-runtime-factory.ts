@@ -10,13 +10,11 @@ import {
   type NativeTrustedBlockRunError,
   type NativeReactCatalogDependencyLock,
   type NativeReactModuleRegistry,
-  type NativeTrustedBlockInjectedModuleMap
+  type NativeTrustedBlockInjectedModuleMap,
+  type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 
-import type {
-  FrontstageNativeTrustedBlockReactComponent,
-  FrontstageNativeTrustedBlockResolveComponent
-} from './native-trusted-block-react-adapter';
+import type { FrontstageNativeTrustedBlockReactComponent } from './native-trusted-block-react-adapter';
 
 export {
   FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION,
@@ -49,7 +47,9 @@ export class FrontstageNativeTrustedBlockRuntimeError extends Error {
 
 export function createFrontstageNativeTrustedBlockRuntimeFactory(
   options: FrontstageNativeTrustedBlockRuntimeFactoryOptions = {}
-): FrontstageNativeTrustedBlockResolveComponent {
+): (
+  plan: NativeTrustedBlockPreparePlan
+) => FrontstageNativeTrustedBlockReactComponent {
   const modules = createFrontstageNativeTrustedBlockModuleMap(options.modules);
 
   return (plan) => {

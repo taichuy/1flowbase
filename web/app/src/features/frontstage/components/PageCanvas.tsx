@@ -64,7 +64,8 @@ import {
 } from '../hooks/use-frontstage-native-block-instance';
 import {
   createFrontstageUnavailableBlockContext,
-  FrontstageNativeTrustedBlockPortalHost
+  FrontstageNativeTrustedBlockPortalHost,
+  type FrontstageNativeTrustedBlockReactComponent
 } from '../lib/native-trusted-block-react-adapter';
 import {
   createFrontstagePageSignalSession,
@@ -422,7 +423,10 @@ function FrontstageNativeRuntimeInstance({
       root={root}
       renderEpoch={instanceEpoch}
       plan={plan}
-      component={preparation.prepared.component}
+      component={
+        preparation.prepared
+          .component as FrontstageNativeTrustedBlockReactComponent
+      }
       ctx={context}
       onRuntimeError={onRuntimeError}
     />
