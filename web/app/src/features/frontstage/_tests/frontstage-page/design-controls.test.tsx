@@ -854,11 +854,16 @@ describe('FrontStagePage - design controls', () => {
           {
             module_source: '@1flowbase/native-components',
             module_version: '1.0.0',
-            browser_asset: {
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-              url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            },
+            binding: 'fetched',
+            assets: [
+              {
+                role: 'browser_module',
+                media_type: 'text/javascript; charset=utf-8',
+                sha256:
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+              }
+            ],
             exports: ['Surface']
           }
         ],
