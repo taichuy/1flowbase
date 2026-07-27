@@ -1,0 +1,7 @@
+{
+  "module_source": "@1flowbase/charts",
+  "module_version": "1.0.0",
+  "entry": "src/index.tsx",
+  "exports": ["EChart"],
+  "type_declarations": "src/catalog-module.d.ts"
+}

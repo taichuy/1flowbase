@@ -1,0 +1,67 @@
+{
+  "format": "1flowbase.official-browser-assets/v1",
+  "modules": [
+    {
+      "module_source": "@1flowbase/charts",
+      "module_version": "1.0.0",
+      "exports": [
+        "EChart"
+      ],
+      "type_declarations": "declare module '@1flowbase/charts' {\n  import type { ComponentType, CSSProperties } from 'react';\n\n  export type EChartPrimitive = string | number | boolean | null;\n  export type EChartValue =\n    | EChartPrimitive\n    | readonly EChartValue[]\n    | { readonly [key: string]: EChartValue | undefined };\n  export type EChartOption = Readonly<Record<string, EChartValue | undefined>>;\n  export interface EChartProps {\n    readonly ariaLabel?: string;\n    readonly className?: string;\n    readonly option: EChartOption;\n    readonly style?: CSSProperties;\n  }\n  export const EChart: ComponentType<EChartProps>;\n}\n",
+      "assets": [
+        {
+          "path": "charts.js",
+          "role": "browser_module",
+          "media_type": "text/javascript; charset=utf-8",
+          "sha256": "4959dfbaf362b560d55fb65465b5758a960b304c53e197b4da577c8ccb6dfcaf"
+        }
+      ]
+    },
+    {
+      "module_source": "@1flowbase/native-components",
+      "module_version": "1.0.0",
+      "exports": [
+        "ScrollableSurface",
+        "Surface"
+      ],
+      "type_declarations": "declare module '@1flowbase/native-components' {\n  import type {\n    ComponentType,\n    ElementType,\n    HTMLAttributes,\n    ReactNode\n  } from 'react';\n\n  export interface SurfaceProps extends HTMLAttributes<HTMLElement> {\n    readonly as?: ElementType;\n    readonly children?: ReactNode;\n  }\n  export interface ScrollableSurfaceProps extends SurfaceProps {}\n  export const Surface: ComponentType<SurfaceProps>;\n  export const ScrollableSurface: ComponentType<ScrollableSurfaceProps>;\n}\n",
+      "assets": [
+        {
+          "path": "native-components.css",
+          "role": "shadow_style",
+          "media_type": "text/css; charset=utf-8",
+          "sha256": "e473a5769a89c4a209e1f7d056627b2ff827c6dc29b1602d3374a2078b80a93b"
+        },
+        {
+          "path": "native-components.js",
+          "role": "browser_module",
+          "media_type": "text/javascript; charset=utf-8",
+          "sha256": "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445"
+        }
+      ]
+    },
+    {
+      "module_source": "@1flowbase/rich-text",
+      "module_version": "1.0.0",
+      "exports": [
+        "MarkdownEditor",
+        "MarkdownPreview"
+      ],
+      "type_declarations": "declare module '@1flowbase/rich-text' {\n  import type { ComponentType, HTMLAttributes } from 'react';\n\n  export interface MarkdownEditorProps {\n    readonly ariaLabel?: string;\n    readonly className?: string;\n    readonly height?: number | string;\n    readonly placeholder?: string;\n    readonly value: string;\n    readonly onChange: (value: string) => void;\n  }\n  export interface MarkdownPreviewProps extends Omit<\n    HTMLAttributes<HTMLDivElement>,\n    'children'\n  > {\n    readonly value: string;\n  }\n  export const MarkdownEditor: ComponentType<MarkdownEditorProps>;\n  export const MarkdownPreview: ComponentType<MarkdownPreviewProps>;\n}\n",
+      "assets": [
+        {
+          "path": "rich-text.css",
+          "role": "shadow_style",
+          "media_type": "text/css; charset=utf-8",
+          "sha256": "ae29c715f0a1ca777cd93c846948f054b37dd7cd7a2a708f0f8727d4237e2592"
+        },
+        {
+          "path": "rich-text.js",
+          "role": "browser_module",
+          "media_type": "text/javascript; charset=utf-8",
+          "sha256": "873699d22f7785f6881af47196bf32f8b431ee87dd1b7fec406975355c90a3e8"
+        }
+      ]
+    }
+  ]
+}

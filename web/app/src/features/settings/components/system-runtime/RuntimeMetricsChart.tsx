@@ -1,23 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
-import { LineChart } from 'echarts/charts';
-import {
-  GridComponent,
-  LegendComponent,
-  TooltipComponent
-} from 'echarts/components';
-import * as echarts from 'echarts/core';
-import { CanvasRenderer } from 'echarts/renderers';
+import { EChart } from '@1flowbase/charts';
+import type { EChartOption } from '@1flowbase/charts';
 
 import { i18nText } from '../../../../shared/i18n/text';
-
-echarts.use([
-  LineChart,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  CanvasRenderer
-]);
 
 export type RuntimeMetricKind =
   | 'network'
@@ -58,20 +44,6 @@ function megabytes(value: number | null) {
   return value === null ? null : Number((value / 1024 / 1024).toFixed(2));
 }
 
-function processMemoryTooltip(value: unknown, processCount: number | null) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return '—';
-  }
-  const memory = `${value.toLocaleString(undefined, {
-    maximumFractionDigits: 2
-  })} MB`;
-  return processCount === null
-    ? memory
-    : `${memory} · ${i18nText('settings', 'auto.process_count', {
-        value1: processCount
-      })}`;
-}
-
 function seriesFor(
   kind: RuntimeMetricKind,
   points: RuntimeMetricPoint[],
@@ -109,13 +81,6 @@ function seriesFor(
         smooth: true,
         showSymbol: false,
         connectNulls: false,
-        tooltip: {
-          valueFormatter: (value: unknown, dataIndex: number) =>
-            processMemoryTooltip(
-              value,
-              points[dataIndex]?.hostRelatedProcessCount ?? null
-            )
-        },
         data: points.map((point) => megabytes(point.hostRelatedProcessBytes))
       },
       {
@@ -126,13 +91,6 @@ function seriesFor(
         smooth: true,
         showSymbol: false,
         connectNulls: false,
-        tooltip: {
-          valueFormatter: (value: unknown, dataIndex: number) =>
-            processMemoryTooltip(
-              value,
-              points[dataIndex]?.targetRelatedProcessCount ?? null
-            )
-        },
         data: points.map((point) => megabytes(point.targetRelatedProcessBytes))
       },
       {
@@ -144,10 +102,6 @@ function seriesFor(
         showSymbol: false,
         connectNulls: false,
         lineStyle: { type: 'dashed' as const },
-        tooltip: {
-          valueFormatter: (value: unknown, dataIndex: number) =>
-            processMemoryTooltip(value, points[dataIndex] ? 1 : null)
-        },
         data: points.map((point) => megabytes(point.rootProcessBytes))
       }
     ];
@@ -211,9 +165,7 @@ export function RuntimeMetricsChart({
   points: RuntimeMetricPoint[];
   targetLabel: string;
 }) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<ReturnType<typeof echarts.init> | null>(null);
-  const option = useMemo<echarts.EChartsCoreOption>(() => {
+  const option = useMemo<EChartOption>(() => {
     const percentage = kind === 'cpu' || kind === 'environment_memory';
     return {
       animation: false,
@@ -248,37 +200,11 @@ export function RuntimeMetricsChart({
     };
   }, [kind, points, targetLabel]);
 
-  useEffect(() => {
-    if (!chartRef.current) {
-      return;
-    }
-    const chart = echarts.init(chartRef.current);
-    chartInstanceRef.current = chart;
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => chart.resize());
-    resizeObserver?.observe(chartRef.current);
-    return () => {
-      resizeObserver?.disconnect();
-      chartInstanceRef.current = null;
-      chart.dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    chartInstanceRef.current?.setOption(option, {
-      notMerge: true,
-      lazyUpdate: true
-    });
-  }, [option]);
-
   return (
-    <div
-      ref={chartRef}
-      aria-label={i18nText('settings', 'auto.runtime_metrics_chart')}
+    <EChart
+      ariaLabel={i18nText('settings', 'auto.runtime_metrics_chart')}
       className="system-runtime-panel__chart"
-      role="img"
+      option={option}
     />
   );
 }

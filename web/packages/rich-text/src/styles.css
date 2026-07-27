@@ -1,0 +1,30 @@
+.oneflow-markdown-editor {
+  min-height: 180px;
+}
+
+.oneflow-markdown-editor.vditor {
+  --oneflow-markdown-background: var(--ant-colorBgContainer, #fff);
+  --oneflow-markdown-border: var(--ant-colorBorder, #d5ddd8);
+  --border-color: var(--oneflow-markdown-border);
+  --panel-background-color: var(--oneflow-markdown-background);
+  --toolbar-background-color: var(--oneflow-markdown-background);
+  --textarea-background-color: var(--oneflow-markdown-background);
+
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--oneflow-markdown-border);
+  border-radius: 6px;
+  background: var(--oneflow-markdown-background);
+}
+
+.oneflow-markdown-editor.vditor .vditor-toolbar,
+.oneflow-markdown-editor.vditor .vditor-content,
+.oneflow-markdown-editor.vditor .vditor-ir,
+.oneflow-markdown-editor.vditor .vditor-ir pre.vditor-reset {
+  background: var(--oneflow-markdown-background);
+}
+
+.oneflow-markdown-preview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

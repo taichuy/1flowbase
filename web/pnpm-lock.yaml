@@ -88,6 +88,9 @@ importers:
       '@1flowbase/block-renderer':
         specifier: workspace:*
         version: link:../packages/block-renderer
+      '@1flowbase/charts':
+        specifier: workspace:*
+        version: link:../packages/charts
       '@1flowbase/embed-sdk':
         specifier: workspace:*
         version: link:../packages/embed-sdk
@@ -97,6 +100,9 @@ importers:
       '@1flowbase/flow-schema':
         specifier: workspace:^
         version: link:../packages/flow-schema
+      '@1flowbase/rich-text':
+        specifier: workspace:*
+        version: link:../packages/rich-text
       '@1flowbase/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
@@ -237,11 +243,26 @@ importers:
         specifier: workspace:*
         version: link:../page-protocol
 
+  packages/charts:
+    dependencies:
+      echarts:
+        specifier: 6.1.0
+        version: 6.1.0
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
   packages/embed-sdk: {}
 
   packages/embedded-contracts: {}
 
   packages/flow-schema: {}
+
+  packages/native-components:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
 
   packages/page-protocol: {}
 
@@ -256,6 +277,15 @@ importers:
       sucrase:
         specifier: ^3.35.0
         version: 3.35.1
+
+  packages/rich-text:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+      vditor:
+        specifier: 3.11.2
+        version: 3.11.2
 
   packages/shared-types: {}
 

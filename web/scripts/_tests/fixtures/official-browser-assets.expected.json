@@ -1,0 +1,13 @@
+{
+  "format": "1flowbase.official-browser-assets/v1",
+  "module_sources": [
+    "@1flowbase/charts",
+    "@1flowbase/native-components",
+    "@1flowbase/rich-text"
+  ],
+  "exports": {
+    "@1flowbase/charts": ["EChart"],
+    "@1flowbase/native-components": ["ScrollableSurface", "Surface"],
+    "@1flowbase/rich-text": ["MarkdownEditor", "MarkdownPreview"]
+  }
+}

@@ -18,6 +18,11 @@
         "../scripts/node/testing/contracts/model-providers/*"
       ],
       "@1flowbase/ui": ["packages/ui/src/index.tsx"],
+      "@1flowbase/native-components": [
+        "packages/native-components/src/index.tsx"
+      ],
+      "@1flowbase/charts": ["packages/charts/src/index.tsx"],
+      "@1flowbase/rich-text": ["packages/rich-text/src/index.tsx"],
       "@1flowbase/flow-schema": ["packages/flow-schema/src/index.ts"],
       "@1flowbase/block-renderer": ["packages/block-renderer/src/index.tsx"],
       "@1flowbase/block-sdk": ["packages/block-sdk/src/index.ts"],

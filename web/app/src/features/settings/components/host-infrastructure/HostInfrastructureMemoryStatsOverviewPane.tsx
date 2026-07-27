@@ -1,21 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
-import {
-  BarChart,
-  LineChart,
-  PieChart,
-  FunnelChart,
-  GaugeChart,
-  RadarChart
-} from 'echarts/charts';
-import {
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  TitleComponent
-} from 'echarts/components';
-import * as echarts from 'echarts/core';
-import { CanvasRenderer } from 'echarts/renderers';
+import { EChart } from '@1flowbase/charts';
+import type { EChartOption } from '@1flowbase/charts';
 import {
   CloudServerOutlined,
   ClusterOutlined,
@@ -28,7 +14,16 @@ import {
   SafetyCertificateOutlined,
   UserOutlined
 } from '@ant-design/icons';
-import { Alert, Descriptions, Empty, Space, Statistic, Table, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Descriptions,
+  Empty,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import type {
@@ -36,35 +31,17 @@ import type {
   SettingsHostInfrastructureMemoryStatsOverview
 } from '../../api/host-infrastructure';
 import { i18nText } from '../../../../shared/i18n/text';
-import { formatBytes, formatInspectionPath } from './host-infrastructure-memory-format';
-
-echarts.use([
-  BarChart,
-  LineChart,
-  PieChart,
-  FunnelChart,
-  GaugeChart,
-  RadarChart,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  TitleComponent,
-  CanvasRenderer
-]);
+import {
+  formatBytes,
+  formatInspectionPath
+} from './host-infrastructure-memory-format';
 
 function MemoryStatsChart({
   stats
 }: {
   stats: SettingsHostInfrastructureMemoryStats[];
 }) {
-  const chartRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!chartRef.current || !stats.length) {
-      return;
-    }
-    const chart = echarts.init(chartRef.current);
-
+  const option = useMemo<EChartOption>(() => {
     const indicators = stats.map((item) => ({
       name: item.label,
       max: Math.max(5, ...stats.map((s) => s.entry_count))
@@ -75,7 +52,7 @@ function MemoryStatsChart({
       max: Math.max(1024, ...stats.map((s) => s.total_value_size_bytes))
     }));
 
-    chart.setOption({
+    return {
       tooltip: {
         trigger: 'item',
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -184,25 +161,14 @@ function MemoryStatsChart({
           ]
         }
       ]
-    });
-
-    const resizeObserver = new ResizeObserver(() => {
-      chart.resize();
-    });
-    resizeObserver.observe(chartRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-      chart.dispose();
     };
   }, [stats]);
 
   return (
-    <div
-      ref={chartRef}
-      aria-label={i18nText('settings', 'auto.memory_statistics_chart')}
+    <EChart
+      ariaLabel={i18nText('settings', 'auto.memory_statistics_chart')}
       className="host-memory-panel__stats-chart"
-      role="img"
+      option={option}
     />
   );
 }
@@ -211,30 +177,12 @@ function MemoryBreakdownChart({
   option,
   height = '280px'
 }: {
-  option: echarts.EChartsCoreOption;
+  option: EChartOption;
   height?: string;
 }) {
-  const chartRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!chartRef.current) return;
-    const chart = echarts.init(chartRef.current);
-    chart.setOption(option);
-
-    const resizeObserver = new ResizeObserver(() => {
-      chart.resize();
-    });
-    resizeObserver.observe(chartRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-      chart.dispose();
-    };
-  }, [option]);
-
   return (
-    <div
-      ref={chartRef}
+    <EChart
+      option={option}
       style={{ width: '100%', height }}
       className="host-memory-panel__breakdown-chart"
     />
@@ -287,7 +235,7 @@ const getCustomServiceChartOption = (
     case 'session-store':
       // 1. Sessions - Semi-Donut showing sensitive session ratio
       return {
-        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        tooltip: { trigger: 'item' },
         legend: { bottom: '0%', left: 'center', itemGap: 16 },
         series: [
           {
@@ -331,9 +279,7 @@ const getCustomServiceChartOption = (
         },
         xAxis: {
           type: 'value',
-          axisLabel: {
-            formatter: (value: number) => formatBytes(value)
-          },
+          axisLabel: {},
           splitLine: { lineStyle: { color: '#f5f5f5' } }
         },
         yAxis: {
@@ -367,7 +313,7 @@ const getCustomServiceChartOption = (
     case 'rate-limit':
       // 3. Rate Limits - Gauge representation of active limits/entries footprint
       return {
-        tooltip: { formatter: '{b}: {c}' },
+        tooltip: { trigger: 'item' },
         series: [
           {
             name: label,
@@ -390,7 +336,6 @@ const getCustomServiceChartOption = (
             axisLabel: { show: false },
             detail: {
               valueAnimation: true,
-              formatter: '{value}',
               fontSize: 16,
               fontWeight: 'bold',
               color: 'var(--ant-color-text)',
@@ -409,7 +354,7 @@ const getCustomServiceChartOption = (
     case 'lock':
       // 4. Locks - Funnel Chart
       return {
-        tooltip: { trigger: 'item', formatter: '{b}: {c}' },
+        tooltip: { trigger: 'item' },
         legend: { bottom: '0%', left: 'center', itemGap: 12 },
         series: [
           {
@@ -560,15 +505,14 @@ const getCustomServiceChartOption = (
             name: i18nText('settings', 'auto.number_of_events'),
             type: 'bar',
             barMaxWidth: 14,
-            itemStyle: {
-              borderRadius: [0, 4, 4, 0],
-              color: (params: { dataIndex: number }) => {
-                return params.dataIndex === 1
-                  ? themeColors.error
-                  : themeColors.success;
-              }
-            },
-            data: [regularCount, sensitiveCount]
+            itemStyle: { borderRadius: [0, 4, 4, 0] },
+            data: [
+              {
+                value: regularCount,
+                itemStyle: { color: themeColors.success }
+              },
+              { value: sensitiveCount, itemStyle: { color: themeColors.error } }
+            ]
           }
         ]
       };

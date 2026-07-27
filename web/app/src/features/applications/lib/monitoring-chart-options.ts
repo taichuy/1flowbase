@@ -1,6 +1,10 @@
 import type { ApplicationRunMonitoringReport } from '../api/runtime';
 import { i18nText } from '../../../shared/i18n/text';
-import { formatInteger, formatTokenAmount, formatTrendBucket, sourceLabel } from './application-monitoring-format';
+import {
+  formatInteger,
+  formatTrendBucket,
+  sourceLabel
+} from './application-monitoring-format';
 
 function buildTokenTrendOption(report: ApplicationRunMonitoringReport) {
   const gradientColor = (colors: [string, string]) => ({
@@ -16,7 +20,7 @@ function buildTokenTrendOption(report: ApplicationRunMonitoringReport) {
   });
   const tokenTrendSeries = [
     {
-      name: i18nText("applications", "auto.total_tokens"),
+      name: i18nText('applications', 'auto.total_tokens'),
       color: '#2f54eb',
       areaColor: undefined,
       lineWidth: 2.4,
@@ -24,25 +28,34 @@ function buildTokenTrendOption(report: ApplicationRunMonitoringReport) {
       data: report.tokens_trend.map((point) => point.total_tokens)
     },
     {
-      name: i18nText("applications", "auto.input_tokens"),
+      name: i18nText('applications', 'auto.input_tokens'),
       color: '#1677ff',
-      areaColor: ['rgba(22, 119, 255, 0.18)', 'rgba(22, 119, 255, 0.02)'] as [string, string],
+      areaColor: ['rgba(22, 119, 255, 0.18)', 'rgba(22, 119, 255, 0.02)'] as [
+        string,
+        string
+      ],
       lineWidth: 2,
       z: 3,
       data: report.tokens_trend.map((point) => point.input_tokens)
     },
     {
-      name: i18nText("applications", "auto.output_tokens"),
+      name: i18nText('applications', 'auto.output_tokens'),
       color: '#22c55e',
-      areaColor: ['rgba(34, 197, 94, 0.18)', 'rgba(34, 197, 94, 0.02)'] as [string, string],
+      areaColor: ['rgba(34, 197, 94, 0.18)', 'rgba(34, 197, 94, 0.02)'] as [
+        string,
+        string
+      ],
       lineWidth: 2,
       z: 2,
       data: report.tokens_trend.map((point) => point.output_tokens)
     },
     {
-      name: i18nText("applications", "auto.input_cache_hit_tokens"),
+      name: i18nText('applications', 'auto.input_cache_hit_tokens'),
       color: '#f59e0b',
-      areaColor: ['rgba(245, 158, 11, 0.2)', 'rgba(245, 158, 11, 0.02)'] as [string, string],
+      areaColor: ['rgba(245, 158, 11, 0.2)', 'rgba(245, 158, 11, 0.02)'] as [
+        string,
+        string
+      ],
       lineWidth: 2,
       z: 2,
       data: report.tokens_trend.map((point) => point.input_cache_hit_tokens)
@@ -62,9 +75,7 @@ function buildTokenTrendOption(report: ApplicationRunMonitoringReport) {
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderColor: '#f0f0f0',
       borderWidth: 1,
-      textStyle: { color: '#1f1f1f', fontSize: 12 },
-      valueFormatter: (value: unknown) =>
-        typeof value === 'number' ? formatTokenAmount(value) : String(value)
+      textStyle: { color: '#1f1f1f', fontSize: 12 }
     },
     legend: {
       bottom: 0,
@@ -88,10 +99,7 @@ function buildTokenTrendOption(report: ApplicationRunMonitoringReport) {
       {
         type: 'value',
         axisLine: { show: false },
-        axisLabel: {
-          color: '#8c8c8c',
-          formatter: (value: number) => formatTokenAmount(value)
-        },
+        axisLabel: { color: '#8c8c8c' },
         splitLine: {
           lineStyle: {
             color: 'rgba(0, 0, 0, 0.05)',
@@ -159,7 +167,7 @@ function buildProtocolOption(report: ApplicationRunMonitoringReport) {
     },
     series: [
       {
-        name: i18nText("applications", "auto.request_count"),
+        name: i18nText('applications', 'auto.request_count'),
         type: 'bar',
         barMaxWidth: 24,
         itemStyle: {
@@ -202,7 +210,7 @@ function buildSourceOption(report: ApplicationRunMonitoringReport) {
     },
     title: {
       text: formatInteger(totalRequests),
-      subtext: i18nText("applications", "auto.total_requests"),
+      subtext: i18nText('applications', 'auto.total_requests'),
       left: 'center',
       top: '38%',
       textStyle: {
@@ -218,7 +226,7 @@ function buildSourceOption(report: ApplicationRunMonitoringReport) {
     },
     series: [
       {
-        name: i18nText("applications", "auto.source"),
+        name: i18nText('applications', 'auto.source'),
         type: 'pie',
         radius: ['55%', '75%'],
         center: ['50%', '46%'],
