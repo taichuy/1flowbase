@@ -1,3 +1,4 @@
+import { fireEvent, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
@@ -6,12 +7,9 @@ import {
   DocumentObserver,
   SelectionSeed,
   createInitialStateWithProtocolContextCodeNode,
-  fireEvent,
   getLlmNodeConfig,
   renderWithProviders,
-  setupNodeInspectorTest,
-  waitFor,
-  within
+  setupNodeInspectorTest
 } from './support';
 
 beforeEach(setupNodeInspectorTest);
