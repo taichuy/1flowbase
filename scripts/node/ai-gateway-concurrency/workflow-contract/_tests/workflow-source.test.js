@@ -32,6 +32,7 @@ test('AC-027/028: gate uses paired provider source, empty credentials, and alway
   assert.match(source, /OPENAI_API_KEY: ''/u);
   assert.match(source, /ANTHROPIC_API_KEY: ''/u);
   assert.match(source, /name: Upload bounded protocol evidence\n        if: always\(\)/u);
-  assert.match(source, /path: tmp\/test-governance\/\*\*/u);
+  assert.match(source, /tmp\/test-governance\/ai-gateway-quality-gate\/\*\*/u);
+  assert.match(source, /tmp\/test-governance\/ai-gateway-concurrency\/\*\*/u);
   assert.match(source, /if-no-files-found: error/u);
 });

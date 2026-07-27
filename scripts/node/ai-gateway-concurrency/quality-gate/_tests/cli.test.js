@@ -32,6 +32,15 @@ test("quality gate bounds each command log without hiding both failure edges", (
   assert.match(bounded, /log truncated/u);
 });
 
+test("quality gate redacts credential-bearing URIs from command artifacts", () => {
+  const bounded = boundedCommandLog(
+    "database=postgres://fixture:secret@127.0.0.1:5432/gate endpoint=http://public.invalid/path",
+  );
+  assert.equal(bounded.includes("fixture:secret"), false);
+  assert.match(bounded, /postgres:\/\/<redacted>@127\.0\.0\.1:5432\/gate/u);
+  assert.match(bounded, /http:\/\/public\.invalid\/path/u);
+});
+
 test("quality gate exposes one explicit command with local source and database inputs", () => {
   assert.deepEqual(
     parseArgs([

@@ -20,8 +20,12 @@ const MAX_COMMAND_LOG_BYTES = 2 * 1024 * 1024;
 const MAX_GATE_ARTIFACT_BYTES = 64 * 1024 * 1024;
 
 function boundedCommandLog(output) {
-  const encoded = Buffer.from(output);
-  if (encoded.length <= MAX_COMMAND_LOG_BYTES) return output;
+  const redacted = output.replace(
+    /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/giu,
+    "$1<redacted>@",
+  );
+  const encoded = Buffer.from(redacted);
+  if (encoded.length <= MAX_COMMAND_LOG_BYTES) return redacted;
   const marker = Buffer.from(
     `\n[ai-gateway-quality-gate] log truncated from ${encoded.length} bytes\n`,
   );
