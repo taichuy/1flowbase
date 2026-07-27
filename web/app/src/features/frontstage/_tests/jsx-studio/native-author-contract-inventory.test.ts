@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from '../../lib/jsx-studio/native-react-editor-contract';
-import { createBlankJsBlockTemplateCode } from '../../lib/block-templates';
 
 const legacyAuthorFragments = [
   'function main',
@@ -14,8 +13,8 @@ const legacyAuthorFragments = [
   'antd-facade'
 ];
 
-describe('D4 Native React author contract inventory', () => {
-  test('D4-AC-005 teaches only standard React default-export source', () => {
+describe('Native React author contract inventory', () => {
+  test('R5-AC-005 teaches standard React source from the backend catalog manifest', () => {
     const repoRoot = resolve(process.cwd(), '../..');
     const manifest = readFileSync(
       resolve(
@@ -24,28 +23,39 @@ describe('D4 Native React author contract inventory', () => {
       ),
       'utf8'
     );
-    const builtInTemplate = createBlankJsBlockTemplateCode({
-      blockId: 'inventory-block',
-      codeRef: 'inventory-code',
-      contributionCode: 'frontstage.js-ui-block'
-    });
     const monacoDeclarations = FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS.map(
       ({ content }) => content
     ).join('\n');
 
-    for (const authorSurface of [
-      manifest,
-      builtInTemplate,
-      monacoDeclarations
-    ]) {
+    for (const authorSurface of [manifest, monacoDeclarations]) {
       expect(authorSurface).toContain('React');
       for (const legacyFragment of legacyAuthorFragments) {
         expect(authorSurface).not.toContain(legacyFragment);
       }
     }
     expect(manifest).toContain('export default function ExampleBlock');
-    expect(builtInTemplate).toContain('export default function Block');
     expect(monacoDeclarations).toContain('interface NativeReactBlockProps');
+  });
+
+  test('R5-AC-005 has no frontend default catalog id or template registry', () => {
+    const repoRoot = resolve(process.cwd(), '../..');
+    const frontstagePage = readFileSync(
+      resolve(
+        repoRoot,
+        'web/app/src/features/frontstage/pages/FrontStagePage.tsx'
+      ),
+      'utf8'
+    );
+
+    expect(frontstagePage).not.toContain('DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID');
+    expect(
+      existsSync(
+        resolve(
+          repoRoot,
+          'web/app/src/features/frontstage/lib/block-templates.ts'
+        )
+      )
+    ).toBe(false);
   });
 
   test('D4-P4 has no production entrypoint for the retired code-block runtime', () => {
