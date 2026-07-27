@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 use axum::body::Bytes;
 use control_plane::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
+use control_plane::application_public_api::compat::openai::OpenAiResponsesRequestContext;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
