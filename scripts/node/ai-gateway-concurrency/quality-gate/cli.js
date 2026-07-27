@@ -16,7 +16,9 @@ function dockerDatabaseContract(databaseUrl, containerIds) {
   const host = url.hostname;
   const port = Number(url.port || 5432);
   if (!["127.0.0.1", "localhost", "::1"].includes(host)) {
-    throw new Error("quality gate PostgreSQL must be a loopback Docker service");
+    throw new Error(
+      "quality gate PostgreSQL must be a loopback Docker service",
+    );
   }
   const containers = containerIds
     .split(/\r?\n/u)
@@ -96,10 +98,11 @@ function testFiles(repoRoot) {
   });
 }
 
-function conversationTestInvocations(repoRoot) {
+function conversationTestInvocations(repoRoot, databaseUrl) {
   const manifestPath = path.join(repoRoot, "api/Cargo.toml");
   const invocation = (name, packageName, filter) => ({
     name,
+    options: { env: { API_DATABASE_URL: databaseUrl } },
     args: [
       "test",
       "--manifest-path",
@@ -179,105 +182,118 @@ async function runQualityGate(rawOptions) {
       return null;
     }
   };
-  const mainSourceSha = attempt(
-    "main-source-sha",
-    "git",
-    ["rev-parse", "HEAD"],
-  );
-  const officialSourceSha = attempt(
-    "official-source-sha",
-    "git",
-    ["-C", officialSourceRoot, "rev-parse", "HEAD"],
-  );
+  const mainSourceSha = attempt("main-source-sha", "git", [
+    "rev-parse",
+    "HEAD",
+  ]);
+  const officialSourceSha = attempt("official-source-sha", "git", [
+    "-C",
+    officialSourceRoot,
+    "rev-parse",
+    "HEAD",
+  ]);
   const paired = require(
     path.join(
       repoRoot,
       "scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json",
     ),
   );
-  if (officialSourceSha && officialSourceSha !== paired.official_plugins.revision) {
+  if (
+    officialSourceSha &&
+    officialSourceSha !== paired.official_plugins.revision
+  ) {
     failures.push({
       name: "paired-source",
       message: `official provider source must match paired revision ${paired.official_plugins.revision}`,
     });
   }
-  const rustcVersion = attempt(
-    "rustc-version",
-    "rustc",
-    ["-vV"],
-  );
+  const rustcVersion = attempt("rustc-version", "rustc", ["-vV"]);
   const hostTarget = /^host: (.+)$/mu.exec(rustcVersion)?.[1];
-  if (!hostTarget) failures.push({ name: "rustc-host", message: "rustc host target is unavailable" });
+  if (!hostTarget)
+    failures.push({
+      name: "rustc-host",
+      message: "rustc host target is unavailable",
+    });
 
-  attempt("protocol-structural-tests", "node", [
-    "--test",
-    ...testFiles(repoRoot),
+  const adminDatabaseUrl = new URL(rawOptions.databaseUrl);
+  const publishedPort = Number(adminDatabaseUrl.port || 5432);
+  const containerIds = attempt("postgres-container", "docker", [
+    "ps",
+    "--filter",
+    `publish=${publishedPort}`,
+    "--format",
+    "{{.ID}}",
   ]);
-  for (const invocation of conversationTestInvocations(repoRoot)) {
-    attempt(invocation.name, "cargo", invocation.args);
+  let database = null;
+  if (containerIds !== null) {
+    try {
+      database = createDatabase(
+        dockerDatabaseContract(rawOptions.databaseUrl, containerIds),
+      );
+    } catch (error) {
+      failures.push({ name: "database-setup", message: error.message });
+    }
   }
-
-  for (const providerCode of ["openai", "anthropic"]) {
-    const pluginRoot = path.join(
-      officialSourceRoot,
-      "runtime-extensions/model-providers",
-      providerCode,
-    );
-    const built = attempt(`${providerCode}-provider-build`, "cargo", [
-      "build",
-      "--manifest-path",
-      path.join(pluginRoot, "Cargo.toml"),
-      "--release",
-      "--locked",
-      "--target",
-      hostTarget || "unavailable",
-    ]);
-    if (built !== null) attempt(
-      `${providerCode}-provider-package`,
-      "node",
-      [
-        path.join(repoRoot, "scripts/node/plugin/cli.js"),
-        "package",
-        pluginRoot,
-        "--out",
-        path.join(packageRoot, providerCode),
-        "--runtime-binary",
-        path.join(
-          pluginRoot,
-          "target",
-          hostTarget,
-          "release",
-          `${providerCode}-provider`,
-        ),
-        "--target",
-        hostTarget,
-      ],
-    );
-  }
-  attempt("gateway-build", "cargo", [
-    "build",
-    "--manifest-path",
-    path.join(repoRoot, "api/Cargo.toml"),
-    "--release",
-    "-p",
-    "api-server",
-    "-p",
-    "plugin-runner",
-  ]);
 
   let result = null;
-  if (failures.length === 0) {
-    const adminDatabaseUrl = new URL(rawOptions.databaseUrl);
-    const publishedPort = Number(adminDatabaseUrl.port || 5432);
-    const containerIds = attempt(
-      "postgres-container",
-      "docker",
-      ["ps", "--filter", `publish=${publishedPort}`, "--format", "{{.ID}}"],
-    );
-    let database = null;
-    try {
-      if (containerIds !== null) {
-        database = createDatabase(dockerDatabaseContract(rawOptions.databaseUrl, containerIds));
+  try {
+    attempt("protocol-structural-tests", "node", [
+      "--test",
+      ...testFiles(repoRoot),
+    ]);
+    for (const invocation of database
+      ? conversationTestInvocations(repoRoot, database.url)
+      : []) {
+      attempt(invocation.name, "cargo", invocation.args, invocation.options);
+    }
+
+    for (const providerCode of ["openai", "anthropic"]) {
+      const pluginRoot = path.join(
+        officialSourceRoot,
+        "runtime-extensions/model-providers",
+        providerCode,
+      );
+      const built = attempt(`${providerCode}-provider-build`, "cargo", [
+        "build",
+        "--manifest-path",
+        path.join(pluginRoot, "Cargo.toml"),
+        "--release",
+        "--locked",
+        "--target",
+        hostTarget || "unavailable",
+      ]);
+      if (built !== null)
+        attempt(`${providerCode}-provider-package`, "node", [
+          path.join(repoRoot, "scripts/node/plugin/cli.js"),
+          "package",
+          pluginRoot,
+          "--out",
+          path.join(packageRoot, providerCode),
+          "--runtime-binary",
+          path.join(
+            pluginRoot,
+            "target",
+            hostTarget,
+            "release",
+            `${providerCode}-provider`,
+          ),
+          "--target",
+          hostTarget,
+        ]);
+    }
+    attempt("gateway-build", "cargo", [
+      "build",
+      "--manifest-path",
+      path.join(repoRoot, "api/Cargo.toml"),
+      "--release",
+      "-p",
+      "api-server",
+      "-p",
+      "plugin-runner",
+    ]);
+
+    if (failures.length === 0 && database) {
+      try {
         result = await runWorkflowContract({
           mainSourceSha,
           officialSourceSha,
@@ -285,24 +301,44 @@ async function runQualityGate(rawOptions) {
           repoRoot,
           databaseUrl: database.url,
           apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
-          pluginRunnerBin: path.join(repoRoot, "api/target/release/plugin-runner"),
+          pluginRunnerBin: path.join(
+            repoRoot,
+            "api/target/release/plugin-runner",
+          ),
           openaiPackageDir: path.join(packageRoot, "openai"),
           anthropicPackageDir: path.join(packageRoot, "anthropic"),
           hostTarget,
         });
-        if (result.status !== "pass") failures.push({ name: "workflow-contract", message: result.error?.message || "blocking workflow failed" });
+        if (result.status !== "pass")
+          failures.push({
+            name: "workflow-contract",
+            message: result.error?.message || "blocking workflow failed",
+          });
+      } catch (error) {
+        failures.push({ name: "workflow-contract", message: error.message });
       }
+    }
+  } finally {
+    try {
+      await database?.close();
     } catch (error) {
-      failures.push({ name: "workflow-contract", message: error.message });
-    } finally {
-      try { await database?.close(); }
-      catch (error) { failures.push({ name: "database-cleanup", message: error.message }); }
+      failures.push({ name: "database-cleanup", message: error.message });
     }
   }
-  const secretValues = [rawOptions.databaseUrl, new URL(rawOptions.databaseUrl).password].filter(Boolean);
+  const secretValues = [
+    rawOptions.databaseUrl,
+    new URL(rawOptions.databaseUrl).password,
+    database?.url,
+    database?.url ? new URL(database.url).password : null,
+  ].filter(Boolean);
   const publicFailures = failures.map((failure) => ({
     name: failure.name,
-    message: secretValues.reduce((message, secret) => message.replaceAll(secret, "<redacted>"), failure.message).slice(0, 4_000),
+    message: secretValues
+      .reduce(
+        (message, secret) => message.replaceAll(secret, "<redacted>"),
+        failure.message,
+      )
+      .slice(0, 4_000),
   }));
   const gateResult = {
     status: failures.length === 0 ? "pass" : "fail",

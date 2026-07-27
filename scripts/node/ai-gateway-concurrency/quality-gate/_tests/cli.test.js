@@ -50,11 +50,15 @@ test("quality gate inventory contains the four blocking protocol harness suites"
       suite,
     );
   }
-  assert.equal(files.some((file) => file.includes("/local-client-acceptance/")), false);
+  assert.equal(
+    files.some((file) => file.includes("/local-client-acceptance/")),
+    false,
+  );
 });
 
-test("quality gate limits conversation Cargo probes to deterministic library suites", () => {
-  const invocations = conversationTestInvocations("/repo");
+test("quality gate limits conversation Cargo probes to one owned database and deterministic library suites", () => {
+  const databaseUrl = "postgres://gate@127.0.0.1:35432/owned";
+  const invocations = conversationTestInvocations("/repo", databaseUrl);
   assert.deepEqual(
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
@@ -92,6 +96,9 @@ test("quality gate limits conversation Cargo probes to deterministic library sui
     assert.equal(args.includes("--tests"), false);
     assert.equal(args.includes("--all-targets"), false);
   }
+  for (const { options } of invocations) {
+    assert.equal(options.env.API_DATABASE_URL, databaseUrl);
+  }
   assert.equal(invocations[0].args.at(-1), "application_public_api");
   for (const { args } of invocations.slice(1)) {
     assert.notEqual(args.at(-1), "application_public_api");
@@ -99,18 +106,32 @@ test("quality gate limits conversation Cargo probes to deterministic library sui
 });
 
 test("quality gate pins the four blocking transports without implicit enum expansion", () => {
-  const source = fs.readFileSync(path.resolve(__dirname, "../../workflow-contract/runner.js"), "utf8");
-  for (const label of ["OpenAI Chat", "Anthropic", "Responses SSE", "Responses WebSocket"]) {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "../../workflow-contract/runner.js"),
+    "utf8",
+  );
+  for (const label of [
+    "OpenAI Chat",
+    "Anthropic",
+    "Responses SSE",
+    "Responses WebSocket",
+  ]) {
     assert.match(source, new RegExp(`label: '${label}'`, "u"));
   }
-  const inventorySource = source.slice(source.indexOf("const BLOCKING_TRANSPORTS"), source.indexOf("function protocolOracleInventory"));
+  const inventorySource = source.slice(
+    source.indexOf("const BLOCKING_TRANSPORTS"),
+    source.indexOf("function protocolOracleInventory"),
+  );
   assert.doesNotMatch(inventorySource, /Object\.values/u);
 });
 
 test("release gate vendors Swagger UI instead of downloading a GitHub archive during Cargo build", () => {
   const repoRoot = path.resolve(__dirname, "../../../../../");
   const cargo = fs.readFileSync(path.join(repoRoot, "api/Cargo.toml"), "utf8");
-  assert.match(cargo, /utoipa-swagger-ui = \{ version = "8", features = \["axum", "vendored"\] \}/u);
+  assert.match(
+    cargo,
+    /utoipa-swagger-ui = \{ version = "8", features = \["axum", "vendored"\] \}/u,
+  );
 });
 
 test("quality gate derives one owned temporary database from the loopback Docker service", () => {

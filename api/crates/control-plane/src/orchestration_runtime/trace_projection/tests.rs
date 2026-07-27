@@ -143,7 +143,7 @@ fn ac_004_answer_node_truth_trace_hides_legacy_waiting_snapshots() {
         .iter()
         .find(|node| node.node_type.as_deref() == Some("answer"))
         .expect("the executed final Answer node should remain visible");
-    assert_eq!(answer.owner_id, final_answer_node_run_id.to_string());
+    assert_eq!(answer.owner_id, Some(final_answer_node_run_id.to_string()));
 }
 
 #[test]
