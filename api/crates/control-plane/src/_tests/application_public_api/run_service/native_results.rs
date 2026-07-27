@@ -133,8 +133,8 @@ fn d1_ac_001_failed_native_result_never_projects_an_answer_or_success_artifact()
     );
     let error = result
         .error
-        .expect("failed run should expose a sanitized error");
-    assert!(!error.message.contains(raw_provider_body));
+        .expect("failed run should expose the provider error");
+    assert_eq!(error.message, raw_provider_body);
     assert!(!error.details.to_string().contains(raw_provider_body));
 }
 

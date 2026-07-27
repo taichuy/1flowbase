@@ -47,6 +47,7 @@ test("quality gate runs both official provider library suites from the paired so
         `/official/runtime-extensions/model-providers/${provider}/Cargo.toml`,
         "--lib",
         "--locked",
+        "upstream",
       ],
     ]),
   );
@@ -86,7 +87,7 @@ test("quality gate limits conversation Cargo probes to one owned database and de
       ["control-plane-conversation-tests", "application_public_api"],
       [
         "control-plane-live-provider-error-tests",
-        "provider_error_after_live_delta",
+        "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",
       ],
       ["control-plane-answer-node-truth-tests", "ac_004_answer_node_truth"],
       ["api-server-answer-node-truth-tests", "ac_004_answer_node_truth"],

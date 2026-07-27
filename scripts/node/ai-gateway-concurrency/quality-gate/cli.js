@@ -133,7 +133,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     invocation(
       "control-plane-live-provider-error-tests",
       "control-plane",
-      "provider_error_after_live_delta",
+      "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",
     ),
     invocation(
       "control-plane-answer-node-truth-tests",
@@ -192,6 +192,7 @@ function officialProviderTestInvocations(officialSourceRoot) {
       ),
       "--lib",
       "--locked",
+      "upstream",
     ],
   }));
 }
