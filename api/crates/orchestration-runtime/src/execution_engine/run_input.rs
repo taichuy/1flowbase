@@ -1,7 +1,7 @@
 use super::*;
 use domain::AiNativeOperation;
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext,
+    NativeModelPromptContext, NativeModelRequestContext, ProtocolContextEnvelope,
     ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
     NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
@@ -11,7 +11,7 @@ use std::sync::Arc;
 pub struct ExecutionRuntimeContext {
     operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
-    pub(super) client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub(super) protocol_context: Option<ProtocolContextEnvelope>,
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
@@ -27,7 +27,7 @@ impl ExecutionRuntimeContext {
         Ok(Self {
             operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools: run_level_provider_tools(plan, variable_pool),
-            client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool)?,
+            protocol_context: None,
             native_model_prompt_context: native_model_prompt_context_from_variable_pool(
                 variable_pool,
             )?,
@@ -65,6 +65,11 @@ impl ExecutionRuntimeContext {
         capability: ProviderInvocationCapability,
     ) -> Self {
         self.provider_invocation_capabilities.insert(capability);
+        self
+    }
+
+    pub fn with_protocol_context(mut self, protocol_context: ProtocolContextEnvelope) -> Self {
+        self.protocol_context = Some(protocol_context);
         self
     }
 
@@ -126,20 +131,16 @@ fn native_model_request_context_from_variable_pool(
         .map_err(|error| anyhow!("invalid {NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY}: {error}"))
 }
 
-fn client_protocol_envelope_from_variable_pool(
-    variable_pool: &Map<String, Value>,
-) -> Result<Option<ClientProtocolEnvelope>> {
-    variable_pool
-        .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
-        .cloned()
-        .map(|value| {
-            serde_json::from_value(value)
-                .map_err(|error| anyhow!("invalid {CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY}: {error}"))
-        })
-        .transpose()
-}
-
 pub fn normalize_plan_variable_pool(plan: &CompiledPlan, variable_pool: &mut Map<String, Value>) {
+    variable_pool.remove(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
+    let [namespace, field] = crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR;
+    if let Some(sys) = variable_pool
+        .get_mut(namespace)
+        .and_then(Value::as_object_mut)
+    {
+        sys.remove(field);
+    }
+
     for (node_id, node) in &plan.nodes {
         if node.node_type != "start" {
             continue;

@@ -173,6 +173,16 @@ pub(super) fn build_provider_invocation(
         run_context.insert("visible_internal_llm_media_tools".to_string(), media_tools);
     }
 
+    let protocol_context = resolve_protocol_context(node, variable_pool, runtime_context)?;
+    let mut required_capabilities = runtime_context.provider_invocation_capabilities.clone();
+    let protocol_context_capability =
+        plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext;
+    if protocol_context.is_some() {
+        required_capabilities.insert(protocol_context_capability);
+    } else {
+        required_capabilities.remove(&protocol_context_capability);
+    }
+
     let mut input = ProviderInvocationInput {
         operation,
         contract_version: Default::default(),
@@ -186,7 +196,7 @@ pub(super) fn build_provider_invocation(
         messages: provider_context.messages,
         system: provider_context.system,
         request_context: runtime_context.native_model_request_context.clone(),
-        required_capabilities: runtime_context.provider_invocation_capabilities.clone(),
+        required_capabilities,
         tools: provider_tools(
             node,
             resolved_inputs,
@@ -197,7 +207,7 @@ pub(super) fn build_provider_invocation(
         mcp_bindings: Vec::new(),
         response_format: build_response_format(&node.config),
         model_parameters: model_parameters.values,
-        client_protocol_envelope: runtime_context.client_protocol_envelope.clone(),
+        client_protocol_envelope: protocol_context,
         native_transport: None,
         trace_context,
         run_context,
@@ -207,6 +217,52 @@ pub(super) fn build_provider_invocation(
     Ok(BuiltProviderInvocation {
         input,
         debug_context,
+    })
+}
+
+fn resolve_protocol_context(
+    node: &CompiledNode,
+    variable_pool: &Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+) -> Result<Option<plugin_framework::provider_contract::ProtocolContextEnvelope>, Value> {
+    let reference = node.protocol_context_reference().map_err(|error| {
+        protocol_context_resolution_error(node, None, format!("invalid VariableReference: {error}"))
+    })?;
+    let Some(reference) = reference else {
+        return Ok(None);
+    };
+    if reference.is_system_protocol_context() {
+        return Ok(runtime_context.protocol_context.clone());
+    }
+
+    let selector = reference.selector_path();
+    let value = crate::binding_runtime::lookup_selector_value(variable_pool, selector).map_err(
+        |error| protocol_context_resolution_error(node, Some(selector), error.to_string()),
+    )?;
+    if value.is_null() {
+        return Ok(None);
+    }
+
+    serde_json::from_value(value).map(Some).map_err(|error| {
+        protocol_context_resolution_error(
+            node,
+            Some(selector),
+            format!("selected JSON does not match ProtocolContextEnvelope: {error}"),
+        )
+    })
+}
+
+fn protocol_context_resolution_error(
+    node: &CompiledNode,
+    selector: Option<&[String]>,
+    runtime_message: String,
+) -> Value {
+    json!({
+        "error_code": "protocol_context_resolution_failed",
+        "message": "LLM protocol context resolution failed",
+        "node_id": node.node_id,
+        "selector": selector.map(|selector| selector.join(".")),
+        "runtime_message": runtime_message,
     })
 }
 

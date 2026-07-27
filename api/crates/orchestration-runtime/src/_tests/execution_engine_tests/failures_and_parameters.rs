@@ -283,27 +283,57 @@ async fn llm_runtime_sends_enabled_model_parameters_and_keeps_undeclared_structu
         .is_none());
 }
 
+fn protocol_context_fixture() -> ProtocolContextEnvelope {
+    ProtocolContextEnvelope {
+        source_protocol: "anthropic_messages".to_string(),
+        query: BTreeMap::from([(
+            "preview".to_string(),
+            vec!["one".to_string(), "two".to_string()],
+        )]),
+        headers: BTreeMap::from([(
+            "anthropic-beta".to_string(),
+            vec!["prompt-caching".to_string(), "private-beta".to_string()],
+        )]),
+        body: BTreeMap::from([(
+            "context_management".to_string(),
+            json!({ "edits": [{ "type": "clear_thinking_20251015" }] }),
+        )]),
+    }
+}
+
 #[tokio::test]
-async fn llm_runtime_forwards_client_protocol_envelope_to_provider_invocation() {
+async fn wp_d1b_start_protocol_context_reference_reaches_only_the_provider_invocation() {
+    let mut plan = base_plan();
+    plan.nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist")
+        .config["protocol_context"] = json!({
+        "kind": "selector",
+        "value": ["sys", "protocol_context"]
+    });
     let invoker = StubProviderInvoker {
         fail: false,
         captured_input: Arc::new(Mutex::new(None)),
         final_content: "ok".to_string(),
     };
-    start_flow_debug_run(
-        &base_plan(),
+    let protocol_context = protocol_context_fixture();
+    let runtime_context =
+        ExecutionRuntimeContext::default().with_protocol_context(protocol_context.clone());
+    let outcome = start_flow_debug_run_with_runtime_context(
+        &plan,
         &json!({
             "__client_protocol_envelope": {
-                "source_protocol": "anthropic_messages",
-                "policy": "anthropic_messages_v1",
-                "headers": {
-                    "anthropic-version": "2023-06-01",
-                    "anthropic-beta": "prompt-caching",
-                    "x-claude-code-session-id": "session-123"
-                }
+                "must_not": "become durable runtime state"
             },
-            "node-start": { "query": "退款政策" }
+            "node-start": { "query": "退款政策" },
+            "sys": {
+                "conversation_id": "conversation-1",
+                "protocol_context": {
+                    "must_not": "become a Start payload"
+                }
+            }
         }),
+        runtime_context,
         &invoker,
     )
     .await
@@ -317,30 +347,50 @@ async fn llm_runtime_forwards_client_protocol_envelope_to_provider_invocation() 
         .expect("provider input should be captured");
     let envelope = captured_input
         .client_protocol_envelope
-        .expect("client protocol envelope should be forwarded");
+        .expect("selected protocol context should be forwarded");
 
-    assert_eq!(envelope.source_protocol, "anthropic_messages");
-    assert_eq!(
-        envelope.headers.get("anthropic-beta").map(String::as_str),
-        Some("prompt-caching")
-    );
+    assert_eq!(envelope, protocol_context);
+    assert!(captured_input.required_capabilities.contains(
+        &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
+    ));
     assert!(captured_input
         .run_context
         .get("resolved_inputs")
         .and_then(|value| value.get("__client_protocol_envelope"))
         .is_none());
+    assert!(outcome.node_traces[0].input_payload["sys"]
+        .get("protocol_context")
+        .is_none());
+    assert!(outcome
+        .variable_pool
+        .get("__client_protocol_envelope")
+        .is_none());
+    assert!(outcome.variable_pool["sys"]
+        .get("protocol_context")
+        .is_none());
 }
 
 #[tokio::test]
-async fn llm_runtime_leaves_plain_workflow_invocations_without_client_protocol_envelope() {
+async fn wp_d1b_null_protocol_context_reference_disables_forwarding() {
+    let mut plan = base_plan();
+    plan.nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist")
+        .config["protocol_context"] = Value::Null;
     let invoker = StubProviderInvoker {
         fail: false,
         captured_input: Arc::new(Mutex::new(None)),
         final_content: "ok".to_string(),
     };
-    start_flow_debug_run(
-        &base_plan(),
+    let runtime_context = ExecutionRuntimeContext::default()
+        .with_protocol_context(protocol_context_fixture())
+        .with_provider_invocation_capability(
+            plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext,
+        );
+    start_flow_debug_run_with_runtime_context(
+        &plan,
         &json!({ "node-start": { "query": "退款政策" } }),
+        runtime_context,
         &invoker,
     )
     .await
@@ -354,6 +404,183 @@ async fn llm_runtime_leaves_plain_workflow_invocations_without_client_protocol_e
         .expect("provider input should be captured");
 
     assert!(captured_input.client_protocol_envelope.is_none());
+    assert!(!captured_input.required_capabilities.contains(
+        &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
+    ));
+}
+
+#[tokio::test]
+async fn wp_d1b_code_json_variable_becomes_the_invocation_protocol_context() {
+    let protocol_context = protocol_context_fixture();
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = ProtocolContextCodeInvoker {
+        provider: StubProviderInvoker {
+            fail: false,
+            captured_input: Arc::clone(&captured_input),
+            final_content: "ok".to_string(),
+        },
+        code_output: json!({
+            "protocol_context": serde_json::to_value(&protocol_context).unwrap()
+        }),
+    };
+
+    let outcome = start_flow_debug_run(
+        &code_protocol_context_plan(),
+        &json!({ "node-start": { "query": "退款政策" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+    assert_eq!(
+        captured_input.client_protocol_envelope,
+        Some(protocol_context)
+    );
+    assert!(captured_input.required_capabilities.contains(
+        &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
+    ));
+    assert!(outcome.node_traces[0]
+        .input_payload
+        .get("protocol_context")
+        .is_none());
+}
+
+#[tokio::test]
+async fn wp_d1b_invalid_code_json_fails_before_provider_invocation() {
+    let captured_input = Arc::new(Mutex::new(None));
+    let invoker = ProtocolContextCodeInvoker {
+        provider: StubProviderInvoker {
+            fail: false,
+            captured_input: Arc::clone(&captured_input),
+            final_content: "must not be invoked".to_string(),
+        },
+        code_output: json!({
+            "protocol_context": {
+                "source_protocol": "anthropic_messages",
+                "headers": { "anthropic-beta": "must be an array" }
+            }
+        }),
+    };
+
+    let outcome = start_flow_debug_run(
+        &code_protocol_context_plan(),
+        &json!({ "node-start": { "query": "退款政策" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .is_none());
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(ref failure) => assert_eq!(
+            failure.error_payload["error_code"],
+            json!("protocol_context_resolution_failed")
+        ),
+        other => panic!("invalid protocol context must fail before invocation, got {other:?}"),
+    }
+}
+
+struct ProtocolContextCodeInvoker {
+    provider: StubProviderInvoker,
+    code_output: Value,
+}
+
+#[async_trait]
+impl ProviderInvoker for ProtocolContextCodeInvoker {
+    async fn invoke_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        self.provider.invoke_llm(runtime, input).await
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for ProtocolContextCodeInvoker {
+    async fn invoke_capability_node(
+        &self,
+        runtime: &CompiledPluginRuntime,
+        config_payload: Value,
+        input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        self.provider
+            .invoke_capability_node(runtime, config_payload, input_payload)
+            .await
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for ProtocolContextCodeInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        Ok(CodeInvocationOutput {
+            output_payload: self.code_output.clone(),
+            console_logs: Vec::new(),
+        })
+    }
+}
+
+fn code_protocol_context_plan() -> CompiledPlan {
+    let mut plan = base_plan();
+    plan.topological_order.insert(1, "node-code".to_string());
+    plan.nodes
+        .get_mut("node-start")
+        .expect("start node should exist")
+        .downstream_node_ids = vec!["node-code".to_string()];
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.dependency_node_ids = vec!["node-code".to_string()];
+    llm.config["protocol_context"] = json!({
+        "kind": "selector",
+        "value": ["node-code", "result", "protocol_context"]
+    });
+    plan.nodes.insert(
+        "node-code".to_string(),
+        CompiledNode {
+            node_id: "node-code".to_string(),
+            node_type: "code".to_string(),
+            alias: "Protocol Context".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-start".to_string()],
+            downstream_node_ids: vec!["node-llm".to_string()],
+            bindings: BTreeMap::new(),
+            outputs: vec![CompiledOutput {
+                key: "protocol_context".to_string(),
+                title: "Protocol Context".to_string(),
+                value_type: "json".to_string(),
+                selector: vec!["result".to_string(), "protocol_context".to_string()],
+                json_schema: None,
+            }],
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: Some(CompiledCodeRuntime {
+                language: "javascript".to_string(),
+                source: None,
+                source_ref: None,
+                entrypoint: "main".to_string(),
+                imports: Vec::new(),
+                dependencies: Vec::new(),
+                isolation_profile: CodeIsolationProfile::quickjs_default(),
+            }),
+        },
+    );
+    plan
 }
 
 #[tokio::test]

@@ -6,7 +6,7 @@ use super::code_runtime_config::{
     code_import_aliases, compile_code_isolation_profile, trimmed_config_string,
     validate_code_imports,
 };
-use super::selector_paths::extract_selector_paths;
+use super::selector_paths::{compile_variable_reference, extract_selector_paths};
 use super::*;
 
 const NODE_CONTRIBUTION_SCHEMA_VERSION: &str = "1flowbase.node-contribution/v2";
@@ -20,10 +20,24 @@ pub(super) fn compile_node(
     let node_type = required_string(node, "type")?.to_string();
     let alias = required_string(node, "alias")?.to_string();
     let container_id = optional_string(node, "containerId")?.map(str::to_string);
-    let config = node
+    let mut config = node
         .get("config")
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
+    if node_type == "llm" {
+        let protocol_context =
+            compile_variable_reference("config.protocol_context", config.get("protocol_context"))
+                .with_context(|| {
+                format!("failed to compile protocol context reference for node {node_id}")
+            })?;
+        config
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("node {node_id} config must be an object"))?
+            .insert(
+                "protocol_context".to_string(),
+                serde_json::to_value(protocol_context)?,
+            );
+    }
     let raw_bindings = node
         .get("bindings")
         .and_then(Value::as_object)

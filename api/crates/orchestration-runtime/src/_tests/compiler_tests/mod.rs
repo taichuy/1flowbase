@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use orchestration_runtime::compiled_plan::{
     CodeIsolationProfile, CompileIssueCode, CompiledCodeDependency, CompiledLlmRouting,
+    VariableReference,
 };
 use orchestration_runtime::compiler::{
     ensure_plan_execution_contract, FlowCompileContext, FlowCompileJsDependency,

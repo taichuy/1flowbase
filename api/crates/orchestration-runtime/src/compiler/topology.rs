@@ -373,9 +373,101 @@ pub(super) fn validate_variable_scope_contracts(
         if let Some(selector) = context_policy_selector(node) {
             validate_variable_selector(nodes, node, &selector, &mut issues);
         }
+
+        if node.node_type == "llm" {
+            match node.protocol_context_reference() {
+                Ok(Some(reference)) => {
+                    validate_variable_selector(nodes, node, reference.selector_path(), &mut issues);
+                    validate_protocol_context_reference(nodes, node, &reference, &mut issues);
+                }
+                Ok(None) => {}
+                Err(error) => issues.push(CompileIssue {
+                    node_id: node.node_id.clone(),
+                    code: CompileIssueCode::InvalidLlmContextSelector,
+                    message: format!(
+                        "node {} protocol_context is not a valid VariableReference: {error}",
+                        node.node_id
+                    ),
+                }),
+            }
+        }
     }
 
     issues
+}
+
+fn validate_protocol_context_reference(
+    nodes: &BTreeMap<String, CompiledNode>,
+    target: &CompiledNode,
+    reference: &crate::compiled_plan::VariableReference,
+    issues: &mut Vec<CompileIssue>,
+) {
+    if reference.is_system_protocol_context() {
+        return;
+    }
+
+    let selector = reference.selector_path();
+    let Some(source_id) = selector.first() else {
+        return;
+    };
+    if RUN_LEVEL_VARIABLE_NAMESPACES.contains(&source_id.as_str()) {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidLlmContextSelector,
+            message: format!(
+                "node {} protocol_context {} must reference sys.protocol_context or an upstream Start/Code JSON output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    }
+
+    let Some(source) = nodes.get(source_id) else {
+        return;
+    };
+    if !node_depends_on(nodes, &target.node_id, source_id) {
+        return;
+    }
+    if !matches!(
+        source.node_type.as_str(),
+        "start" | "workflow_start" | "code"
+    ) {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidLlmContextSelector,
+            message: format!(
+                "node {} protocol_context {} must reference sys.protocol_context or an upstream Start/Code JSON output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    }
+
+    let Some(output) = output_for_selector(nodes, selector) else {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidLlmContextSelector,
+            message: format!(
+                "node {} protocol_context {} is not a declared Start/Code output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    };
+    if output.value_type != "json" {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::IncompatibleLlmContextSchema,
+            message: format!(
+                "node {} protocol_context {} must reference a JSON output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+    }
 }
 
 fn validate_variable_selector(
@@ -1184,6 +1276,21 @@ fn output_for_selector(
     nodes: &BTreeMap<String, CompiledNode>,
     selector: &[String],
 ) -> Option<CompiledOutput> {
+    if selector.len() == crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR.len()
+        && selector
+            .iter()
+            .zip(crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR)
+            .all(|(actual, expected)| actual.as_str() == expected)
+    {
+        return Some(CompiledOutput {
+            key: "protocol_context".to_string(),
+            title: "sys.protocol_context".to_string(),
+            value_type: "json".to_string(),
+            selector: Vec::new(),
+            json_schema: None,
+        });
+    }
+
     let node_id = selector.first()?;
     let selector_tail = selector.get(1..)?;
     let output_key = selector_tail.first()?;
