@@ -134,38 +134,6 @@ pub(super) fn answer_presentation_terminal_events(
     )])
 }
 
-pub(super) fn waiting_answer_presentation_events(
-    compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
-    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
-    prepared_node_runs: Option<&PreparedNodeRuns>,
-) -> Result<Vec<crate::ports::RuntimeEventPayload>> {
-    let Some(compiled_plan) = compiled_plan else {
-        return Ok(Vec::new());
-    };
-    let checkpoint = outcome
-        .checkpoint_snapshot
-        .as_ref()
-        .ok_or_else(|| anyhow!("waiting Answer Presentation is missing checkpoint state"))?;
-    let projection = canonical_flow_projection(outcome, &checkpoint.variable_pool)?;
-    let variable_pool = &projection.variable_pool;
-    let waiting_node_id = waiting_node_id(outcome)?;
-    let Some(ready) = answer_presentation::ready_waiting_answer_output_from_variable_pool(
-        compiled_plan,
-        variable_pool,
-        &checkpoint.active_node_ids,
-        waiting_node_id,
-    ) else {
-        return Ok(Vec::new());
-    };
-    Ok(presentation_events_from_canonical_pool(
-        compiled_plan,
-        &projection,
-        prepared_node_runs,
-        &ready.answer_node_id,
-    )
-    .unwrap_or_default())
-}
-
 pub(super) fn canonical_terminal_output_payload(
     compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,

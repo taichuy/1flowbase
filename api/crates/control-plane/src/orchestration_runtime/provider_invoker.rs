@@ -142,6 +142,7 @@ where
                 node_run_id: self.active_node_run_id?,
             })
         });
+        let presentation_source_node_id = input.trace_context.get("node_id").cloned();
         let live_provider_events = if let Some(RuntimeActiveNode {
             node_id,
             node_run_id,
@@ -152,6 +153,12 @@ where
             let flow_run_id = self.flow_run_id;
             let first_token_timing_for_task = first_token_timing.clone();
             let canonical_tool_registry_for_task = canonical_tool_registry.clone();
+            let answer_presentation = answer_presentation_source_is_active(
+                presentation_source_node_id.as_deref(),
+                &node_id,
+            )
+            .then(|| self.answer_presentation.clone())
+            .flatten();
             let (required_sender, mut required_receiver) =
                 mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
             let (diagnostic_sender, mut diagnostic_receiver) =
@@ -171,6 +178,15 @@ where
                         provider_invoke_started,
                     );
                     let canonical_deltas = canonical_writer.write(&event)?;
+                    project_canonical_provider_deltas(
+                        runtime_event_stream.as_ref(),
+                        flow_run_id,
+                        answer_presentation.as_ref(),
+                        &node_id,
+                        node_run_id,
+                        &canonical_deltas,
+                    )
+                    .await;
                     if let Some(sender) = &live_sender {
                         sender
                             .send(LiveProviderStreamEvent {
@@ -187,30 +203,7 @@ where
                             ProviderStreamEvent::TextDelta { .. }
                             | ProviderStreamEvent::ReasoningDelta { .. }
                             | ProviderStreamEvent::Finish { .. }
-                            | ProviderStreamEvent::Error { .. } => {
-                                let mut runtime_events = Vec::new();
-                                for delta in canonical_deltas {
-                                    match delta.kind {
-                                        CanonicalContentKind::Text => {
-                                            runtime_events.push(debug_stream_events::text_delta(
-                                                &node_id,
-                                                node_run_id,
-                                                delta.text,
-                                            ));
-                                        }
-                                        CanonicalContentKind::Reasoning => {
-                                            runtime_events.push(
-                                                debug_stream_events::reasoning_delta(
-                                                    &node_id,
-                                                    node_run_id,
-                                                    delta.text,
-                                                ),
-                                            );
-                                        }
-                                    }
-                                }
-                                runtime_events
-                            }
+                            | ProviderStreamEvent::Error { .. } => Vec::new(),
                             ProviderStreamEvent::OutputItem {
                                 phase,
                                 output_index,
@@ -272,7 +265,16 @@ where
                         }
                     }
                 }
-                canonical_writer.complete()?;
+                let completion_deltas = canonical_writer.complete()?;
+                project_canonical_provider_deltas(
+                    runtime_event_stream.as_ref(),
+                    flow_run_id,
+                    answer_presentation.as_ref(),
+                    &node_id,
+                    node_run_id,
+                    &completion_deltas,
+                )
+                .await;
                 Ok::<_, anyhow::Error>(canonical_writer.into_state())
             }));
             let diagnostic_stream = self.runtime_event_stream.clone();
@@ -315,7 +317,6 @@ where
             provider_invoke_ms = provider_invoke_started.elapsed().as_millis() as u64,
             "provider invoke finished"
         );
-        let invocation_output = invocation_result?;
         if let Some(handle) = required_forward_handle {
             handle.await.map_err(|error| {
                 anyhow!("provider live event forwarding task panicked: {error}")
@@ -326,6 +327,7 @@ where
                 anyhow!("provider diagnostic event forwarding task panicked: {error}")
             })?;
         }
+        let invocation_output = invocation_result?;
         self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
             .await?;
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
@@ -532,6 +534,87 @@ pub(super) fn is_expected_runtime_event_stream_closed_error(error: &anyhow::Erro
     let message = error.to_string();
     message.contains("runtime event stream is closed")
         || message.contains("runtime event stream is not open")
+}
+
+fn answer_presentation_source_is_active(trace_node_id: Option<&str>, active_node_id: &str) -> bool {
+    trace_node_id == Some(active_node_id)
+}
+
+async fn project_canonical_provider_deltas(
+    stream: Option<&Arc<dyn RuntimeEventStream>>,
+    flow_run_id: Option<Uuid>,
+    answer_presentation: Option<
+        &Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>,
+    >,
+    node_id: &str,
+    node_run_id: Uuid,
+    deltas: &[CanonicalProviderDelta],
+) {
+    for delta in deltas {
+        let canonical_event = match delta.kind {
+            CanonicalContentKind::Text => ProviderStreamEvent::TextDelta {
+                delta: delta.text.clone(),
+            },
+            CanonicalContentKind::Reasoning => ProviderStreamEvent::ReasoningDelta {
+                delta: delta.text.clone(),
+            },
+        };
+        if let Some(cursor) = answer_presentation {
+            let presentation_events =
+                cursor
+                    .lock()
+                    .await
+                    .push_provider_event(node_id, node_run_id, &canonical_event);
+            if let (Some(stream), Some(flow_run_id)) = (stream, flow_run_id) {
+                for mut presentation_event in presentation_events {
+                    presentation_event.persist_required = false;
+                    append_provider_runtime_event(stream, flow_run_id, presentation_event).await;
+                }
+            }
+        }
+
+        let (Some(stream), Some(flow_run_id)) = (stream, flow_run_id) else {
+            continue;
+        };
+        let mut debug_event = match delta.kind {
+            CanonicalContentKind::Text => {
+                debug_stream_events::text_delta(node_id, node_run_id, delta.text.clone())
+            }
+            CanonicalContentKind::Reasoning => {
+                debug_stream_events::reasoning_delta(node_id, node_run_id, delta.text.clone())
+            }
+        };
+        debug_event.persist_required = false;
+        append_provider_runtime_event(stream, flow_run_id, debug_event).await;
+    }
+}
+
+async fn append_provider_runtime_event(
+    stream: &Arc<dyn RuntimeEventStream>,
+    flow_run_id: Uuid,
+    event: crate::ports::RuntimeEventPayload,
+) {
+    let event_type = event.event_type.clone();
+    let source = event.source;
+    if let Err(error) = stream.append(flow_run_id, event).await {
+        if is_expected_runtime_event_stream_closed_error(&error) {
+            tracing::debug!(
+                flow_run_id = %flow_run_id,
+                event_type = %event_type,
+                source = ?source,
+                error = %error,
+                "provider runtime event append skipped because stream is already closed"
+            );
+        } else {
+            tracing::warn!(
+                flow_run_id = %flow_run_id,
+                event_type = %event_type,
+                source = ?source,
+                error = %error,
+                "failed to append provider runtime event"
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1461,6 +1544,19 @@ where
 mod canonical_writer_tests {
     use super::*;
     use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
+
+    #[test]
+    fn answer_presentation_requires_the_provider_trace_to_match_the_active_node() {
+        assert!(answer_presentation_source_is_active(
+            Some("node-main"),
+            "node-main"
+        ));
+        assert!(!answer_presentation_source_is_active(
+            Some("node-fusion-panel"),
+            "node-main"
+        ));
+        assert!(!answer_presentation_source_is_active(None, "node-main"));
+    }
 
     #[test]
     fn ac_001_runtime_writer_preserves_partitioned_text_and_reasoning() {

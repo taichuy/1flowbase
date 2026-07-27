@@ -316,6 +316,8 @@ struct ResumeExecutionSegmentInput<'a> {
 struct ResumeExecutionSegmentOutput {
     outcome: orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     prepared_node_runs: PreparedNodeRuns,
+    answer_presentation:
+        Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
@@ -560,8 +562,10 @@ where
             }
             Arc::new(tokio::sync::Mutex::new(cursor))
         });
-        let invoker = match answer_presentation {
-            Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation),
+        let invoker = match &answer_presentation {
+            Some(answer_presentation) => {
+                invoker.with_answer_presentation(answer_presentation.clone())
+            }
             None => invoker,
         };
         let mut runtime_context =
@@ -585,6 +589,7 @@ where
         Ok(ResumeExecutionSegmentOutput {
             outcome,
             prepared_node_runs: lifecycle.prepared_node_runs()?,
+            answer_presentation,
         })
     }
 
@@ -1129,6 +1134,7 @@ where
             compiled_plan: Some(&compiled_plan),
             outcome: &execution.outcome,
             prepared_node_runs: Some(&execution.prepared_node_runs),
+            answer_presentation: execution.answer_presentation.as_ref(),
             trigger_event_type: "flow_run_resumed",
             trigger_event_payload: json!({
                 "checkpoint_id": checkpoint.id,
@@ -1270,6 +1276,7 @@ where
             compiled_plan: Some(&compiled_plan),
             outcome: &execution.outcome,
             prepared_node_runs: Some(&execution.prepared_node_runs),
+            answer_presentation: execution.answer_presentation.as_ref(),
             trigger_event_type: "flow_run_resumed",
             trigger_event_payload: json!({
                 "callback_task_id": callback_task.id,
@@ -1418,6 +1425,7 @@ where
             compiled_plan: Some(compiled_plan),
             outcome: &resumed_execution.outcome,
             prepared_node_runs: Some(&resumed_execution.prepared_node_runs),
+            answer_presentation: resumed_execution.answer_presentation.as_ref(),
             trigger_event_type: "data_model_side_effect_confirmed",
             trigger_event_payload: json!({
                 "callback_task_id": callback_task.id,

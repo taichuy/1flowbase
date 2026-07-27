@@ -121,8 +121,8 @@ where
             &compiled_plan,
         )
         .map(|cursor| Arc::new(tokio::sync::Mutex::new(cursor)));
-    let invoker = match answer_presentation {
-        Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation),
+    let invoker = match &answer_presentation {
+        Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation.clone()),
         None => invoker,
     };
     let mut runtime_context = service.execution_runtime_context(&compiled_plan, &variable_pool)?;
@@ -153,6 +153,7 @@ where
             compiled_plan: Some(&compiled_plan),
             outcome: &outcome,
             prepared_node_runs: Some(&prepared_node_runs),
+            answer_presentation: answer_presentation.as_ref(),
             trigger_event_type: "flow_run_execution_started",
             trigger_event_payload: json!({
                 "run_mode": flow_run.run_mode.as_str(),

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use orchestration_runtime::answer_presentation::{
     AnswerPresentationPlan, AnswerPresentationSegment,
@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::ports::RuntimeEventPayload;
 
+use super::persistence::PreparedNodeRuns;
 use super::{debug_stream_events, DebugDeltaKind, ThinkTagStreamSplitter};
 
 const CANONICAL_ANSWER_PRESENTATION_KEY: &str = "__canonical_answer_presentation";
@@ -255,6 +256,29 @@ impl AnswerPresentationCursor {
     }
 }
 
+pub(super) async fn complete_execution_segment(
+    cursor: Option<&Arc<tokio::sync::Mutex<AnswerPresentationCursor>>>,
+    plan: &orchestration_runtime::compiled_plan::CompiledPlan,
+    outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
+    prepared_node_runs: &PreparedNodeRuns,
+) -> Vec<RuntimeEventPayload> {
+    let Some(cursor) = cursor else {
+        return Vec::new();
+    };
+    let mut cursor = cursor.lock().await;
+    let mut events = Vec::new();
+    for node_id in &plan.topological_order {
+        let Some(node_run) = prepared_node_runs.get(node_id) else {
+            continue;
+        };
+        let Some(output_payload) = outcome.variable_pool.get(node_id) else {
+            continue;
+        };
+        events.extend(cursor.complete_node_with_run_id(node_id, Some(node_run.id), output_payload));
+    }
+    events
+}
+
 impl AnswerPresentationCandidateCursor {
     fn new(plan: AnswerPresentationPlan) -> Self {
         Self {
@@ -432,20 +456,6 @@ impl AnswerPresentationCandidateCursor {
                             completed.node_run_id,
                             Some(output_key),
                         ));
-                    } else {
-                        let final_visible_text = visible_answer_text(&completed.value);
-                        if let Some(suffix) = final_visible_text.strip_prefix(already) {
-                            if !suffix.is_empty() {
-                                events.push(self.answer_delta(
-                                    segment_index,
-                                    false,
-                                    suffix.to_string(),
-                                    Some(node_id),
-                                    completed.node_run_id,
-                                    Some(output_key),
-                                ));
-                            }
-                        }
                     }
                     self.next_segment_index += 1;
                 }
@@ -510,17 +520,6 @@ impl AnswerPresentationCandidateCursor {
             )
         }
     }
-}
-
-pub(super) fn visible_answer_text(text: &str) -> String {
-    let mut splitter = ThinkTagStreamSplitter::default();
-    splitter
-        .split(text)
-        .into_iter()
-        .chain(splitter.finish())
-        .filter(|part| part.kind == DebugDeltaKind::Text)
-        .map(|part| part.text)
-        .collect()
 }
 
 #[cfg(test)]
@@ -676,11 +675,14 @@ mod tests {
     }
 
     #[test]
-    fn final_suffix_uses_visible_text_when_completed_output_contains_think_tags() {
-        let mut cursor = cursor_with_segments(vec![AnswerPresentationSegment::NodeOutput {
-            node_id: "node-llm".to_string(),
-            output_key: "text".to_string(),
-        }]);
+    fn completion_skips_live_body_compensation_but_emits_unsent_static_segment() {
+        let mut cursor = cursor_with_segments(vec![
+            AnswerPresentationSegment::NodeOutput {
+                node_id: "node-llm".to_string(),
+                output_key: "text".to_string(),
+            },
+            AnswerPresentationSegment::StaticText("!".to_string()),
+        ]);
         let node_run_id = Uuid::now_v7();
         cursor.push_provider_event(
             "node-llm",
@@ -701,6 +703,6 @@ mod tests {
             .filter(|event| event.event_type == "text_delta")
             .filter_map(|event| event.payload["text"].as_str())
             .collect::<Vec<_>>();
-        assert_eq!(text_deltas, vec!["llo"]);
+        assert_eq!(text_deltas, vec!["!"]);
     }
 }

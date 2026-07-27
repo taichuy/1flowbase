@@ -71,6 +71,29 @@ fn answer_reasoning(run: &NativeRunResult, sequence: i64, delta: &str) -> Runtim
     )
 }
 
+#[test]
+fn causal_barrier_projects_text_before_any_terminal_fact_exists() {
+    let run = native_run(0x10101010101010101010101010101010);
+    let mut projector = ResponsesWebSocketProjector::new("published-model".to_string(), None);
+
+    let frames = decoded(
+        projector
+            .project(&run, answer_text(&run, 1, "partial"))
+            .expect("a live Answer Presentation fact must project immediately"),
+    );
+
+    assert!(frames
+        .iter()
+        .any(|frame| frame["type"] == "response.output_text.delta" && frame["delta"] == "partial"));
+    assert!(!frames.iter().any(|frame| {
+        matches!(
+            frame["type"].as_str(),
+            Some("response.completed" | "response.failed" | "response.cancelled")
+        )
+    }));
+    assert!(!projector.has_terminal());
+}
+
 fn waiting_tool(run: &NativeRunResult, sequence: i64) -> RuntimeEventEnvelope {
     let callback_task_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
     RuntimeEventEnvelope::new(

@@ -2,7 +2,7 @@
   "schema_version": "1flowbase.local-ai-gateway-acceptance/v1",
   "repo": {
     "host": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations",
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection",
       "revision": "HEAD"
     },
     "officialPlugins": {
@@ -11,7 +11,7 @@
     },
     "protectedMain": {
       "path": "/home/taichuy/git/1flowbase",
-      "revision": "922f87806b4713c8ef2599214cbf3fedc131b88d",
+      "revision": "f0d55c2c612ca5aba70bf6d6680bcc3d52c8e51d",
       "require_clean": false
     }
   },
@@ -35,19 +35,19 @@
   },
   "artifacts": {
     "apiServer": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/api/target/release/api-server",
-      "sha256": "0d7a16179519dd3a1b497043cd8c35ef6cff453139e14e4e6f67080c4ba7fd3a"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/api/target/release/api-server",
+      "sha256": "a920b7d521a0e7822eed57cfaaca1e09e77e04fed420cc691f1a7f08101c3eda"
     },
     "pluginRunner": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/api/target/release/plugin-runner",
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/api/target/release/plugin-runner",
       "sha256": "e51d7cb4325f52363e339da24ef58dc466ccf9dff7a30b227ecae6b666d35cc6"
     },
     "openaiPackage": {
-      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
       "filename_pattern": "^1flowbase@openai@0\\.2\\.15@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "anthropicPackage": {
-      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1453-ai-native-operations/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
       "filename_pattern": "^1flowbase@anthropic@0\\.1\\.24@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "codex": {

@@ -72,6 +72,137 @@ async fn wait_for_provider_partial_delta(
     .expect("Provider must enter invoke and publish a partial delta before cancellation");
 }
 
+#[derive(Clone, Copy)]
+enum CausalSseProtocol {
+    OpenAiChat,
+    OpenAiResponses,
+    AnthropicMessages,
+}
+
+impl CausalSseProtocol {
+    fn request(self, token: &str) -> (&'static str, (&'static str, String), Value) {
+        match self {
+            Self::OpenAiChat => (
+                "/v1/chat/completions",
+                ("authorization", format!("Bearer {token}")),
+                openai_body(true),
+            ),
+            Self::OpenAiResponses => (
+                "/v1/responses",
+                ("authorization", format!("Bearer {token}")),
+                responses_body(true),
+            ),
+            Self::AnthropicMessages => (
+                "/v1/messages",
+                ("x-api-key", token.to_string()),
+                anthropic_body(true),
+            ),
+        }
+    }
+
+    fn terminal_marker(self) -> &'static str {
+        match self {
+            Self::OpenAiChat => "[DONE]",
+            Self::OpenAiResponses => "event: response.completed",
+            Self::AnthropicMessages => "event: message_stop",
+        }
+    }
+
+    fn first_delta_marker(self) -> &'static str {
+        match self {
+            Self::OpenAiChat => "\"content\":\"partial\"",
+            Self::OpenAiResponses => "\"delta\":\"partial\"",
+            Self::AnthropicMessages => "\"text\":\"partial\"",
+        }
+    }
+}
+
+async fn assert_first_answer_delta_precedes_provider_release(
+    app: &Router,
+    protocol: CausalSseProtocol,
+) {
+    let name = match protocol {
+        CausalSseProtocol::OpenAiChat => "Chat causal SSE app",
+        CausalSseProtocol::OpenAiResponses => "Responses causal SSE app",
+        CausalSseProtocol::AnthropicMessages => "Anthropic causal SSE app",
+    };
+    let (token, gate) = setup_published_app_with_provider_gate(app, name).await;
+    let (uri, credential, body) = protocol.request(&token);
+    let response = post_json(app, uri, credential, body).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/event-stream"
+    );
+
+    let mut body_stream = response.into_body().into_data_stream();
+    let mut bytes = Vec::new();
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let chunk = tokio_stream::StreamExt::next(&mut body_stream)
+                .await
+                .expect("SSE body ended before the gated Provider delta")
+                .expect("SSE body chunk must be readable");
+            bytes.extend_from_slice(&chunk);
+            if String::from_utf8_lossy(&bytes).contains(protocol.first_delta_marker()) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("the first Answer Presentation delta must arrive while Provider is blocked");
+
+    let before_release = String::from_utf8(bytes.clone()).unwrap();
+    timeout(Duration::from_secs(1), async {
+        while !gate.is_ready() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("Provider must reach the barrier after publishing its first delta");
+    assert!(
+        before_release.contains(protocol.first_delta_marker()),
+        "{before_release}"
+    );
+    assert!(
+        !before_release.contains(protocol.terminal_marker()),
+        "terminal escaped before Provider release: {before_release}"
+    );
+
+    gate.release();
+    timeout(Duration::from_secs(5), async {
+        while let Some(chunk) = tokio_stream::StreamExt::next(&mut body_stream).await {
+            bytes.extend_from_slice(&chunk.expect("SSE body chunk must be readable"));
+        }
+    })
+    .await
+    .expect("released Provider stream must reach its terminal");
+
+    let completed = String::from_utf8(bytes).unwrap();
+    assert!(
+        completed.contains(protocol.terminal_marker()),
+        "{completed}"
+    );
+    assert_eq!(
+        completed.matches(protocol.first_delta_marker()).count(),
+        1,
+        "the live prefix must not be replayed at terminal: {completed}"
+    );
+}
+
+#[tokio::test]
+async fn ac_live_causality_three_sse_surfaces_emit_before_provider_terminal() {
+    for protocol in [
+        CausalSseProtocol::OpenAiChat,
+        CausalSseProtocol::OpenAiResponses,
+        CausalSseProtocol::AnthropicMessages,
+    ] {
+        let app = test_app().await;
+        assert_first_answer_delta_precedes_provider_release(&app, protocol).await;
+    }
+}
+
 async fn cancel_active_streaming_run_and_collect_sse(
     app: &Router,
     state: &ApiState,

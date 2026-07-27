@@ -64,6 +64,10 @@ test("quality gate limits conversation Cargo probes to deterministic library sui
         "routes::application_public_api::compat_sse::tests::protocol_projection",
       ],
       [
+        "api-server-public-stream-causality-tests",
+        "_tests::application_public_api::compat_routes::streaming::ac_live_causality",
+      ],
+      [
         "api-server-responses-websocket-tests",
         "routes::application_public_api::responses_websocket::tests",
       ],

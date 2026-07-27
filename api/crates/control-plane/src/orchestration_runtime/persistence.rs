@@ -41,9 +41,10 @@ use super::{
         resolve_terminal_commit, terminal_event_from_flow_run, TerminalCommitResolution,
     },
 };
+#[cfg(test)]
+use answer_presentation_persistence::answer_presentation_terminal_events;
 use answer_presentation_persistence::{
-    answer_node_id, answer_presentation_terminal_events, canonical_terminal_output_payload,
-    materialize_ready_answer_node_run, waiting_answer_presentation_events,
+    canonical_terminal_output_payload, materialize_ready_answer_node_run,
 };
 pub(in crate::orchestration_runtime) use checkpoint_locator::{
     checkpoint_node_id, checkpoint_snapshot_from_record, CheckpointLocatorPayload,
@@ -69,6 +70,8 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
     pub(super) compiled_plan: Option<&'a orchestration_runtime::compiled_plan::CompiledPlan>,
     pub(super) outcome: &'a orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     pub(super) prepared_node_runs: Option<&'a PreparedNodeRuns>,
+    pub(super) answer_presentation:
+        Option<&'a Arc<tokio::sync::Mutex<super::answer_presentation::AnswerPresentationCursor>>>,
     pub(super) trigger_event_type: &'a str,
     pub(super) trigger_event_payload: Value,
     pub(super) base_started_at: OffsetDateTime,
@@ -128,11 +131,24 @@ where
         compiled_plan,
         outcome,
         prepared_node_runs,
+        answer_presentation,
         trigger_event_type,
         trigger_event_payload,
         base_started_at,
         waiting_node_resume,
     } = input;
+    let presentation_events = match (compiled_plan, prepared_node_runs) {
+        (Some(plan), Some(prepared_node_runs)) => {
+            super::answer_presentation::complete_execution_segment(
+                answer_presentation,
+                plan,
+                outcome,
+                prepared_node_runs,
+            )
+            .await
+        }
+        _ => Vec::new(),
+    };
     let flow_span = append_host_span(
         repository,
         AppendHostSpanInput {
@@ -259,11 +275,7 @@ where
                     external_ref_payload: Some(json!({ "prompt": wait.prompt })),
                 })
                 .await?;
-            stream_events.extend(waiting_answer_presentation_events(
-                compiled_plan,
-                outcome,
-                prepared_node_runs,
-            )?);
+            stream_events.extend(presentation_events);
             let waiting_event =
                 debug_stream_events::waiting_human(flow_run.id, waiting_node_run.id, &wait.node_id);
             runtime_event_persister::persist_runtime_event_payload(
@@ -357,11 +369,7 @@ where
                     external_ref_payload,
                 })
                 .await?;
-            stream_events.extend(waiting_answer_presentation_events(
-                compiled_plan,
-                outcome,
-                prepared_node_runs,
-            )?);
+            stream_events.extend(presentation_events);
             let waiting_event = debug_stream_events::waiting_callback_with_task(
                 flow_run.id,
                 waiting_node_run.id,
@@ -384,13 +392,7 @@ where
                 "persist_flow_completed",
             )?;
             let output_payload = canonical_terminal_output_payload(compiled_plan, outcome)?;
-            stream_events.extend(answer_presentation_terminal_events(
-                compiled_plan,
-                outcome,
-                prepared_node_runs,
-                answer_node_id(outcome),
-                &output_payload,
-            )?);
+            stream_events.extend(presentation_events);
             let terminal_event =
                 debug_stream_events::flow_finished(flow_run.id, output_payload.clone());
             return commit_terminal_outcome(
@@ -417,13 +419,7 @@ where
                 "persist_flow_incomplete",
             )?;
             let output_payload = canonical_terminal_output_payload(compiled_plan, outcome)?;
-            stream_events.extend(answer_presentation_terminal_events(
-                compiled_plan,
-                outcome,
-                prepared_node_runs,
-                answer_node_id(outcome),
-                &output_payload,
-            )?);
+            stream_events.extend(presentation_events);
             let terminal_event =
                 debug_stream_events::flow_incomplete(flow_run.id, output_payload.clone());
             return commit_terminal_outcome(
@@ -450,6 +446,7 @@ where
                 "persist_flow_failed",
             )?;
             let output_payload = canonical_terminal_output_payload(compiled_plan, outcome)?;
+            stream_events.extend(presentation_events);
             let error_payload = failure.error_payload.clone();
             let terminal_event =
                 debug_stream_events::flow_failed(flow_run.id, error_payload.clone());

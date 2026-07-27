@@ -122,6 +122,11 @@ function conversationTestInvocations(repoRoot) {
       "routes::application_public_api::compat_sse::tests::protocol_projection",
     ),
     invocation(
+      "api-server-public-stream-causality-tests",
+      "api-server",
+      "_tests::application_public_api::compat_routes::streaming::ac_live_causality",
+    ),
+    invocation(
       "api-server-responses-websocket-tests",
       "api-server",
       "routes::application_public_api::responses_websocket::tests",
