@@ -539,8 +539,8 @@ describe('FrontstageJsxStudioDrawer', () => {
         onSaveBlock={vi.fn()}
       />
     );
-    const row = screen.getByText('Button').closest('div');
-    fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
+    const row = screen.getByText('Button').closest('tr');
+    fireEvent.click(within(row!).getByRole('button', { name: '插入' }));
 
     expect(monacoEditor.executeEdits).toHaveBeenCalledTimes(1);
     expect(monacoEditor.executeEdits.mock.calls[0]?.[1]).toHaveLength(2);

@@ -604,7 +604,7 @@ describe('TSX Studio insertion descriptors', () => {
       />
     );
 
-    const search = screen.getByRole('textbox', { name: '搜索组件' });
+    const search = screen.getByRole('searchbox', { name: '搜索组件' });
     fireEvent.change(search, { target: { value: 'surface' } });
     fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
     await waitFor(() =>

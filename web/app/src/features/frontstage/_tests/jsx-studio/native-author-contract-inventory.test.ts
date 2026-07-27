@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from '../../lib/jsx-studio/native-react-editor-contract';
@@ -12,10 +13,13 @@ const legacyAuthorFragments = [
   'formValues',
   'antd-facade'
 ];
+const repoRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../../../..'
+);
 
 describe('Native React author contract inventory', () => {
   test('R5-AC-005 teaches standard React source from the backend catalog manifest', () => {
-    const repoRoot = resolve(process.cwd(), '../..');
     const manifest = readFileSync(
       resolve(
         repoRoot,
@@ -38,7 +42,6 @@ describe('Native React author contract inventory', () => {
   });
 
   test('R5-AC-005 has no frontend default catalog id or template registry', () => {
-    const repoRoot = resolve(process.cwd(), '../..');
     const frontstagePage = readFileSync(
       resolve(
         repoRoot,
@@ -59,7 +62,6 @@ describe('Native React author contract inventory', () => {
   });
 
   test('D4-P4 has no production entrypoint for the retired code-block runtime', () => {
-    const repoRoot = resolve(process.cwd(), '../..');
     const retiredEntrypoints = [
       'web/packages/page-runtime/src/js-block-worker-executor.ts',
       'web/packages/page-runtime/src/js-block-worker-runtime.ts',
