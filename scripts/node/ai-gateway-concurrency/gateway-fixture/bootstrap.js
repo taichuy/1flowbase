@@ -79,6 +79,10 @@ function configureDraft(document, provider) {
     source_instance_id: provider.provider_instance_id,
     model_id: provider.model,
   };
+  llm.config.protocol_context = {
+    kind: 'variable',
+    value: ['sys', 'protocol_context'],
+  };
   return document;
 }
 

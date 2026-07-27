@@ -247,7 +247,7 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
   }
 });
 
-test('publication source binds Generate for Responses, Chat Completions, and Anthropic Messages', async () => {
+test('publication source binds Generate and protocol context for all gateway protocols', async () => {
   FakeOwnerClient.calls = [];
   const client = new FakeOwnerClient('http://127.0.0.1:41002');
   const provider = (providerCode) => ({
@@ -259,6 +259,27 @@ test('publication source binds Generate for Responses, Chat Completions, and Ant
   await createPublishedApplication(client, provider('openai'));
   await createPublishedApplication(client, provider('anthropic'));
   await createPublishedApplication(client, provider('openai_compatible'));
+
+  const drafts = FakeOwnerClient.calls.filter(
+    (call) => call.kind === 'write' && call.pathname.endsWith('/orchestration/draft')
+  );
+  assert.equal(drafts.length, 3);
+  for (const providerCode of ['openai', 'anthropic', 'openai_compatible']) {
+    const draft = drafts.find(
+      (call) => call.pathname.includes(`/${providerCode}-application-1/`)
+    );
+    assert.ok(draft, `${providerCode} orchestration draft write must exist`);
+    const llmConfig = draft.body.document.graph.nodes.find((node) => node.type === 'llm').config;
+    assert.deepEqual(llmConfig.model_provider, {
+      provider_code: providerCode,
+      source_instance_id: `${providerCode}-instance-1`,
+      model_id: 'gateway-fixture-model',
+    });
+    assert.deepEqual(llmConfig.protocol_context, {
+      kind: 'variable',
+      value: ['sys', 'protocol_context'],
+    });
+  }
 
   const publications = FakeOwnerClient.calls.filter(
     (call) => call.kind === 'write' && call.pathname.endsWith('/api-publications')
