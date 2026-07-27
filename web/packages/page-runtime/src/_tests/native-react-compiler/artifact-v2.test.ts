@@ -34,16 +34,27 @@ describe('Native React Artifact V2 identity', () => {
     );
     const digestChanged = compile(
       lock({
-        browser_asset: {
-          sha256: 'b'.repeat(64),
-          url: `/api/console/frontstage/workspace-1/component-module-assets/${'b'.repeat(64)}`
-        }
+        assets: [browserAsset('b')]
       }),
+      createNativeReactRuntimeFingerprint('/worker-a.js')
+    );
+    const styleDigestChanged = compile(
+      lock({
+        assets: [browserAsset('a'), styleAsset('c')]
+      }),
+      createNativeReactRuntimeFingerprint('/worker-a.js')
+    );
+    const hostVersionChanged = compile(
+      [...lock(), hostModule('react', '20.0.0')],
       createNativeReactRuntimeFingerprint('/worker-a.js')
     );
     const runtimeChanged = compile(
       lock(),
       createNativeReactRuntimeFingerprint('/worker-b.js')
+    );
+    const hostChanged = compile(
+      lock(),
+      createNativeReactRuntimeFingerprint('/worker-a.js', 'react@20')
     );
 
     expect(first.version).toBe(2);
@@ -61,7 +72,16 @@ describe('Native React Artifact V2 identity', () => {
     expect(digestChanged.identity.dependency_lock_sha256).not.toBe(
       first.identity.dependency_lock_sha256
     );
+    expect(styleDigestChanged.identity.dependency_lock_sha256).not.toBe(
+      first.identity.dependency_lock_sha256
+    );
+    expect(hostVersionChanged.identity.dependency_lock_sha256).not.toBe(
+      first.identity.dependency_lock_sha256
+    );
     expect(runtimeChanged.identity.runtime_fingerprint).not.toBe(
+      first.identity.runtime_fingerprint
+    );
+    expect(hostChanged.identity.runtime_fingerprint).not.toBe(
       first.identity.runtime_fingerprint
     );
   });
@@ -129,17 +149,44 @@ function compile(
 function lock(
   overrides: Partial<NativeReactCatalogDependencyLock[number]> = {}
 ): NativeReactCatalogDependencyLock {
-  const sha256 = 'a'.repeat(64);
   return [
     {
       module_source: '@1flowbase/native-components',
       module_version: '1.0.0',
-      browser_asset: {
-        sha256,
-        url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`
-      },
+      binding: 'fetched',
+      assets: [browserAsset('a')],
       exports: ['Surface'],
       ...overrides
     }
   ];
+}
+
+function browserAsset(digestCharacter: string) {
+  const sha256 = digestCharacter.repeat(64);
+  return {
+    role: 'browser_module' as const,
+    media_type: 'text/javascript; charset=utf-8',
+    sha256,
+    url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`
+  };
+}
+
+function styleAsset(digestCharacter: string) {
+  const sha256 = digestCharacter.repeat(64);
+  return {
+    role: 'shadow_style' as const,
+    media_type: 'text/css; charset=utf-8',
+    sha256,
+    url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`
+  };
+}
+
+function hostModule(moduleSource: 'react' | 'antd', moduleVersion: string) {
+  return {
+    module_source: moduleSource,
+    module_version: moduleVersion,
+    binding: 'host' as const,
+    assets: [],
+    exports: ['default']
+  };
 }

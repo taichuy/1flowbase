@@ -21,8 +21,7 @@ import { transformNativeReactTsx } from './tsx-transform';
 const NATIVE_REACT_HOST_ABI_IMPORTS = new Set([
   'react',
   'react/jsx-runtime',
-  'antd',
-  '@1flowbase/ui'
+  'antd'
 ]);
 
 export type NativeReactComponentTransformResult =

@@ -26,9 +26,9 @@ export const NATIVE_REACT_COMPONENT_ARTIFACT_FORMAT =
   '1flowbase/native-react-component' as const;
 export const NATIVE_REACT_COMPONENT_ARTIFACT_VERSION = 2 as const;
 export const NATIVE_REACT_COMPILER_ABI =
-  '1flowbase/native-react-compiler@2' as const;
+  '1flowbase/native-react-compiler@3' as const;
 export const NATIVE_REACT_RUNTIME_ABI =
-  '1flowbase/native-react-runtime@2' as const;
+  '1flowbase/native-react-runtime@3' as const;
 
 export interface NativeReactComponentArtifactIdentity {
   source_sha256: string;
@@ -212,9 +212,10 @@ export function canonicalizeNativeReactComponentArtifact(
 }
 
 export function createNativeReactRuntimeFingerprint(
-  workerAssetIdentity: string | URL
+  workerAssetIdentity: string | URL,
+  hostAbiIdentity = 'unspecified-host-abi'
 ): string {
-  return `${nativeReactRuntimeFingerprintPrefix()}worker:${sha256Text(String(workerAssetIdentity))}`;
+  return `${nativeReactRuntimeFingerprintPrefix()}worker:${sha256Text(String(workerAssetIdentity))}:host:${sha256Text(hostAbiIdentity)}`;
 }
 
 export function createNativeReactComponentArtifactIdentity({
@@ -287,7 +288,7 @@ function isNativeReactRuntimeFingerprint(value: string): boolean {
   const suffix = value.slice(nativeReactRuntimeFingerprintPrefix().length);
   return (
     value.startsWith(nativeReactRuntimeFingerprintPrefix()) &&
-    /^worker:[a-f0-9]{64}$/.test(suffix)
+    /^worker:[a-f0-9]{64}:host:[a-f0-9]{64}$/.test(suffix)
   );
 }
 

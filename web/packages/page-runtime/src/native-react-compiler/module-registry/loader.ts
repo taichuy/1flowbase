@@ -4,23 +4,19 @@ import { tokenizeSource } from '../../native-trusted-block/source-evaluator-tran
 import type { NativeTrustedBlockInjectedModuleMap } from '../../native-trusted-block/source-evaluator-types';
 import {
   canonicalizeNativeReactCatalogDependencyLock,
+  nativeReactBrowserModuleAsset,
   nativeReactCatalogModuleIdentity,
   type NativeReactCatalogDependencyLock,
-  type NativeReactCatalogModuleLock
+  type NativeReactCatalogModuleLock,
+  type NativeReactModuleAssetLock
 } from './contracts';
-
-const HOST_MODULE_SOURCES = new Set([
-  'react',
-  'react/jsx-runtime',
-  'antd',
-  '@1flowbase/ui'
-]);
 
 export type NativeReactModuleRegistryErrorCode =
   | 'invalid_dependency_lock'
   | 'module_not_registered'
   | 'module_fetch_failed'
   | 'module_digest_mismatch'
+  | 'module_media_type_mismatch'
   | 'module_invalid'
   | 'module_dependency_denied'
   | 'module_dependency_cycle'
@@ -60,6 +56,18 @@ export interface NativeReactModuleRegistry {
   resolveModuleMap(
     moduleSources: readonly string[]
   ): Promise<NativeTrustedBlockInjectedModuleMap>;
+  resolveModuleAssets(
+    moduleSources: readonly string[]
+  ): Promise<NativeReactResolvedModuleAsset[]>;
+}
+
+export interface NativeReactResolvedModuleAsset {
+  module_source: string;
+  role: 'shadow_style' | 'support';
+  media_type: string;
+  sha256: string;
+  url: string;
+  bytes: ArrayBuffer;
 }
 
 export function createNativeReactModuleRegistry({
@@ -88,20 +96,26 @@ export function createNativeReactModuleRegistry({
   const registrations = new Map(
     dependencyLock.map((entry) => [entry.module_source, entry])
   );
-  for (const source of registrations.keys()) {
-    if (HOST_MODULE_SOURCES.has(source)) {
+  for (const registration of registrations.values()) {
+    if (
+      registration.binding === 'host' &&
+      !hostModules[registration.module_source]
+    ) {
       throw registryError(
         'invalid_dependency_lock',
-        `dependencyLock.${source}`,
-        `Catalog module cannot replace Host ABI module: ${source}.`
+        `dependencyLock.${registration.module_source}`,
+        `Host ABI module is unavailable: ${registration.module_source}.`
       );
     }
-  }
-  for (const registration of registrations.values()) {
-    if (!isRegisteredAssetUrl(registration)) {
+    if (
+      registration.binding === 'fetched' &&
+      !registration.assets.every((asset) =>
+        isRegisteredAssetUrl(registration, asset)
+      )
+    ) {
       throw registryError(
         'invalid_dependency_lock',
-        `dependencyLock.${registration.module_source}.browser_asset.url`,
+        `dependencyLock.${registration.module_source}.assets`,
         `Catalog module asset URL is invalid: ${registration.module_source}.`
       );
     }
@@ -109,6 +123,7 @@ export function createNativeReactModuleRegistry({
 
   const preparationFlights = new Map<string, Promise<PreparedModule>>();
   const evaluationFlights = new Map<string, Promise<Record<string, unknown>>>();
+  const assetFlights = new Map<string, Promise<ArrayBuffer>>();
   const dependencyGraph = new Map<string, Set<string>>();
 
   const prepare = (registration: NativeReactCatalogModuleLock) => {
@@ -131,6 +146,9 @@ export function createNativeReactModuleRegistry({
           `Catalog module is not registered: ${moduleSource}.`
         )
       );
+    }
+    if (registration.binding === 'host') {
+      return validateHostModule(registration, hostModules);
     }
     const identity = nativeReactCatalogModuleIdentity(registration);
     let flight = evaluationFlights.get(identity);
@@ -162,6 +180,37 @@ export function createNativeReactModuleRegistry({
         moduleMap[source] = namespaces[index];
       });
       return moduleMap;
+    },
+    async resolveModuleAssets(moduleSources) {
+      const assets = [...new Set(moduleSources)].flatMap((source) => {
+        const registration = registrations.get(source);
+        if (!registration) {
+          throw registryError(
+            'module_not_registered',
+            `modules.${source}`,
+            `Catalog module is not registered: ${source}.`
+          );
+        }
+        return registration.assets
+          .filter((asset) => asset.role !== 'browser_module')
+          .map((asset) => ({ registration, asset }));
+      });
+      return Promise.all(
+        assets.map(async ({ registration, asset }) => ({
+          module_source: registration.module_source,
+          role: asset.role as 'shadow_style' | 'support',
+          media_type: asset.media_type,
+          sha256: asset.sha256,
+          url: asset.url,
+          bytes: await fetchVerifiedAsset(
+            registration,
+            asset,
+            fetchAsset,
+            crypto,
+            assetFlights
+          )
+        }))
+      );
     }
   };
 }
@@ -171,45 +220,15 @@ async function fetchAndPrepare(
   fetchAsset: typeof fetch,
   crypto: Pick<Crypto, 'subtle'>
 ): Promise<PreparedModule> {
-  let response: Response;
-  try {
-    response = await fetchAsset(registration.browser_asset.url, {
-      credentials: 'same-origin'
-    });
-  } catch {
-    throw registryError(
-      'module_fetch_failed',
-      `modules.${registration.module_source}.browser_asset`,
-      `Catalog module asset request failed: ${registration.module_source}.`
-    );
-  }
-  if (!response.ok) {
-    throw registryError(
-      'module_fetch_failed',
-      `modules.${registration.module_source}.browser_asset`,
-      `Catalog module asset request failed: ${registration.module_source}.`
-    );
-  }
-
-  let bytes: ArrayBuffer;
-  let digest: string;
-  try {
-    bytes = await response.arrayBuffer();
-    digest = await sha256Hex(bytes, crypto);
-  } catch {
-    throw registryError(
-      'module_fetch_failed',
-      `modules.${registration.module_source}.browser_asset`,
-      `Catalog module asset response failed: ${registration.module_source}.`
-    );
-  }
-  if (digest !== registration.browser_asset.sha256) {
-    throw registryError(
-      'module_digest_mismatch',
-      `modules.${registration.module_source}.browser_asset.sha256`,
-      `Catalog module asset digest mismatch: ${registration.module_source}.`
-    );
-  }
+  const browserAsset = nativeReactBrowserModuleAsset(registration);
+  if (!browserAsset)
+    throw new Error('Fetched module browser asset is missing.');
+  const bytes = await fetchVerifiedAsset(
+    registration,
+    browserAsset,
+    fetchAsset,
+    crypto
+  );
 
   try {
     const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -225,7 +244,7 @@ async function fetchAndPrepare(
   } catch {
     throw registryError(
       'module_invalid',
-      `modules.${registration.module_source}.browser_asset`,
+      `modules.${registration.module_source}.assets.browser_module`,
       `Catalog module asset is not a valid ESM module: ${registration.module_source}.`
     );
   }
@@ -258,6 +277,13 @@ async function evaluateRegisteredModule(
     prepared.dependencies.map(async (source) => {
       const hostModule = hostModules[source];
       if (hostModule) {
+        if (registrations.get(source)?.binding !== 'host') {
+          throw registryError(
+            'module_dependency_denied',
+            `modules.${registration.module_source}.imports.${source}`,
+            `Host module dependency is not registered: ${source}.`
+          );
+        }
         dependencyNamespaces.set(source, hostModule);
         return;
       }
@@ -396,9 +422,10 @@ async function sha256Hex(
 }
 
 function isRegisteredAssetUrl(
-  registration: NativeReactCatalogModuleLock
+  registration: NativeReactCatalogModuleLock,
+  asset: NativeReactModuleAssetLock
 ): boolean {
-  const value = registration.browser_asset.url;
+  const value = asset.url;
   if (!value.startsWith('/') || value.startsWith('//')) return false;
   try {
     const url = new URL(value, 'https://1flowbase.invalid');
@@ -413,11 +440,105 @@ function isRegisteredAssetUrl(
       segments[2] === 'frontstage' &&
       segments[3]!.length > 0 &&
       segments[4] === 'component-module-assets' &&
-      segments[5] === registration.browser_asset.sha256
+      segments[5] === asset.sha256
     );
   } catch {
     return false;
   }
+}
+
+async function validateHostModule(
+  registration: NativeReactCatalogModuleLock,
+  hostModules: NativeTrustedBlockInjectedModuleMap
+): Promise<Record<string, unknown>> {
+  const namespace = hostModules[registration.module_source];
+  if (!namespace) {
+    throw registryError(
+      'module_not_registered',
+      `modules.${registration.module_source}`,
+      `Host ABI module is unavailable: ${registration.module_source}.`
+    );
+  }
+  for (const exportName of registration.exports) {
+    if (!(exportName in namespace)) {
+      throw registryError(
+        'module_export_missing',
+        `modules.${registration.module_source}.exports.${exportName}`,
+        `Host ABI export is missing: ${registration.module_source}.${exportName}.`
+      );
+    }
+  }
+  return namespace;
+}
+
+async function fetchVerifiedAsset(
+  registration: NativeReactCatalogModuleLock,
+  asset: NativeReactModuleAssetLock,
+  fetchAsset: typeof fetch,
+  crypto: Pick<Crypto, 'subtle'>,
+  flights?: Map<string, Promise<ArrayBuffer>>
+): Promise<ArrayBuffer> {
+  const identity = `${registration.module_source}:${asset.role}:${asset.sha256}`;
+  const existing = flights?.get(identity);
+  if (existing) return existing;
+  const flight = (async () => {
+    let response: Response;
+    try {
+      response = await fetchAsset(asset.url, { credentials: 'same-origin' });
+    } catch {
+      throw registryError(
+        'module_fetch_failed',
+        `modules.${registration.module_source}.assets.${asset.role}`,
+        `Catalog module asset request failed: ${registration.module_source}.`
+      );
+    }
+    if (!response.ok) {
+      throw registryError(
+        'module_fetch_failed',
+        `modules.${registration.module_source}.assets.${asset.role}`,
+        `Catalog module asset request failed: ${registration.module_source}.`
+      );
+    }
+    if (
+      normalizeMediaType(response.headers.get('content-type')) !==
+      normalizeMediaType(asset.media_type)
+    ) {
+      throw registryError(
+        'module_media_type_mismatch',
+        `modules.${registration.module_source}.assets.${asset.role}.media_type`,
+        `Catalog module asset media type mismatch: ${registration.module_source}.`
+      );
+    }
+    let bytes: ArrayBuffer;
+    try {
+      bytes = await response.arrayBuffer();
+    } catch {
+      throw registryError(
+        'module_fetch_failed',
+        `modules.${registration.module_source}.assets.${asset.role}`,
+        `Catalog module asset response failed: ${registration.module_source}.`
+      );
+    }
+    if ((await sha256Hex(bytes, crypto)) !== asset.sha256) {
+      throw registryError(
+        'module_digest_mismatch',
+        `modules.${registration.module_source}.assets.${asset.role}.sha256`,
+        `Catalog module asset digest mismatch: ${registration.module_source}.`
+      );
+    }
+    return bytes;
+  })();
+  flights?.set(identity, flight);
+  return flight;
+}
+
+function normalizeMediaType(value: string | null): string {
+  return (value ?? '')
+    .split(';')
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join(';');
 }
 
 function registryError(

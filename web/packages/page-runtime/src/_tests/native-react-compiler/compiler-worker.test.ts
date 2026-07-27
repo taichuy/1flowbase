@@ -134,10 +134,15 @@ describe('Native React compiler Worker contract', () => {
       {
         module_source: '@1flowbase/native-components',
         module_version: '1.0.0',
-        browser_asset: {
-          sha256: '0'.repeat(64),
-          url: '/api/frontstage/component-modules/native-components.js'
-        },
+        binding: 'fetched' as const,
+        assets: [
+          {
+            role: 'browser_module' as const,
+            media_type: 'text/javascript; charset=utf-8',
+            sha256: '0'.repeat(64),
+            url: `/api/console/frontstage/workspace-1/component-module-assets/${'0'.repeat(64)}`
+          }
+        ],
         exports: ['Surface']
       }
     ];
