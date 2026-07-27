@@ -574,6 +574,64 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
 }
 
 #[tokio::test]
+async fn failed_retry_attempts_preserve_each_upstream_body_and_terminal_uses_the_last() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+
+    let first_body = " {\"attempt\":0,\"future\":{\"shape\":true}}\n ";
+    let final_body = "<html>attempt 1 failed</html>\r\n";
+    let failed_output = |message: &str| ProviderInvocationOutput {
+        events: vec![ProviderStreamEvent::Error {
+            error: ProviderRuntimeError {
+                kind: ProviderRuntimeErrorKind::ProviderUpstreamError,
+                message: message.to_string(),
+                provider_summary: Some(message.to_string()),
+                provider_details: Some(json!({ "status": 502 })),
+            },
+        }],
+        result: ProviderInvocationResult::default(),
+        first_token_at: None,
+        time_to_first_token_ms: None,
+    };
+    let (invoker, _) =
+        sequential_tool_output_invoker(vec![failed_output(first_body), failed_output(final_body)]);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .expect("runtime should return a failed outcome");
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["error_message_ref"],
+        json!(format!("runtime_artifact:inline:error:{first_body}"))
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][1]["error_message_ref"],
+        json!(format!("runtime_artifact:inline:error:{final_body}"))
+    );
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(failure.error_payload["message"], json!(final_body));
+        }
+        other => panic!("expected terminal provider failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn llm_node_retries_protocol_only_empty_response() {
     let mut plan = base_plan();
     let llm = plan

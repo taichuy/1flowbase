@@ -248,6 +248,9 @@ impl CapabilityInvoker for RuntimeContractErrorInvoker {
 
 struct ProviderUpstreamErrorInvoker;
 
+const PROVIDER_UPSTREAM_ERROR_BODY: &str =
+    " {\"future_error\":{\"shape\":\"unknown\"},\"message\":\"keep complete body\"}\n ";
+
 #[async_trait]
 impl ProviderInvoker for ProviderUpstreamErrorInvoker {
     async fn invoke_llm(
@@ -259,21 +262,11 @@ impl ProviderInvoker for ProviderUpstreamErrorInvoker {
             events: vec![ProviderStreamEvent::Error {
                 error: ProviderRuntimeError {
                     kind: ProviderRuntimeErrorKind::ProviderUpstreamError,
-                    message: "400 Bad Request: OpenAI codex passthrough requires a non-empty instructions field".to_string(),
-                    provider_summary: Some(
-                        "Authorization: Bearer sk-secret-value; x-request-id=req_123".to_string(),
-                    ),
+                    message: PROVIDER_UPSTREAM_ERROR_BODY.to_string(),
+                    provider_summary: Some(PROVIDER_UPSTREAM_ERROR_BODY.to_string()),
                     provider_details: Some(json!({
                         "status": 400,
-                        "content_type": "application/json; charset=utf-8",
-                        "headers": {
-                            "content-type": "application/json; charset=utf-8",
-                            "x-request-id": "req_123"
-                        },
-                        "raw_body": concat!(
-                            "{\"error\":{\"message\":\"OpenAI codex passthrough requires a non-empty instructions field\"}}\n",
-                            "data: {\"type\":\"response.failed\"}\n\n"
-                        )
+                        "request_id": "req_123"
                     })),
                 },
             }],

@@ -13,6 +13,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+const PROVIDER_UPSTREAM_ERROR_BODY: &str =
+    " {\"future_error\":{\"shape\":\"unknown\"},\"message\":\"keep complete body\"}\n ";
+
 mod anthropic_resume;
 mod anthropic_streaming;
 mod openai_chat;

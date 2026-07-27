@@ -18,12 +18,14 @@ function unwrapData(payload) {
 
 function sanitizeDurableRun(payload) {
   const data = unwrapData(payload);
+  const errorMessage = typeof data?.error?.message === 'string' ? data.error.message : null;
   return {
     id: data?.id ?? null,
     status: data?.status ?? null,
     external_trace_id: data?.correlation?.external_trace_id ?? data?.external_trace_id ?? null,
     application_id: data?.application_id ?? null,
     provider_instance_id: data?.provider_instance_id ?? null,
+    ...(errorMessage === null ? {} : { error_message: errorMessage }),
   };
 }
 

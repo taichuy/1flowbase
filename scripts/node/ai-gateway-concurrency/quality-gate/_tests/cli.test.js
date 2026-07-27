@@ -8,6 +8,7 @@ const test = require("node:test");
 const {
   conversationTestInvocations,
   dockerDatabaseContract,
+  officialProviderTestInvocations,
   parseArgs,
   testFiles,
 } = require("../cli");
@@ -30,6 +31,25 @@ test("quality gate exposes one explicit command with local source and database i
     },
   );
   assert.throws(() => parseArgs(["run"]), /required/u);
+});
+
+test("quality gate runs both official provider library suites from the paired source", () => {
+  assert.deepEqual(
+    officialProviderTestInvocations("/official").map(({ name, args }) => [
+      name,
+      args,
+    ]),
+    ["openai", "anthropic"].map((provider) => [
+      `${provider}-provider-tests`,
+      [
+        "test",
+        "--manifest-path",
+        `/official/runtime-extensions/model-providers/${provider}/Cargo.toml`,
+        "--lib",
+        "--locked",
+      ],
+    ]),
+  );
 });
 
 test("quality gate inventory contains the four blocking protocol harness suites", () => {
@@ -62,7 +82,12 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   assert.deepEqual(
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
+      ["orchestration-runtime-upstream-error-tests", "upstream"],
       ["control-plane-conversation-tests", "application_public_api"],
+      [
+        "control-plane-live-provider-error-tests",
+        "provider_error_after_live_delta",
+      ],
       ["control-plane-answer-node-truth-tests", "ac_004_answer_node_truth"],
       ["api-server-answer-node-truth-tests", "ac_004_answer_node_truth"],
       [
@@ -101,8 +126,8 @@ test("quality gate limits conversation Cargo probes to one owned database and de
     assert.equal(options.env.BOOTSTRAP_ROOT_ACCOUNT, "root");
     assert.equal(options.env.BOOTSTRAP_ROOT_PASSWORD, "change-me");
   }
-  assert.equal(invocations[0].args.at(-1), "application_public_api");
-  for (const { args } of invocations.slice(1)) {
+  assert.equal(invocations[1].args.at(-1), "application_public_api");
+  for (const { args } of invocations.filter((_, index) => index !== 1)) {
     assert.notEqual(args.at(-1), "application_public_api");
   }
 });

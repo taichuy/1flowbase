@@ -14,6 +14,9 @@ use uuid::Uuid;
 
 use super::super::projector::ResponsesWebSocketProjector;
 
+const PROVIDER_UPSTREAM_ERROR_BODY: &str =
+    " {\"future_error\":{\"shape\":\"unknown\"},\"message\":\"keep complete body\"}\n ";
+
 fn native_run(id: u128) -> NativeRunResult {
     NativeRunResult {
         id: Uuid::from_u128(id),
@@ -309,6 +312,37 @@ fn cancellation_failure_and_post_terminal_events_are_honest_and_unique() {
     assert_eq!(terminal[0]["type"], "response.failed");
     assert_eq!(terminal[0]["error"]["code"], "provider_failed");
     assert_eq!(terminal[0]["error"]["message"], "provider unavailable");
+}
+
+#[test]
+fn issue_1474_responses_websocket_error_preserves_native_message_exactly() {
+    let mut failed = native_run(0x14741474147414741474147414741474);
+    failed.status = NativeRunStatus::Failed;
+    failed.error = Some(NativeError {
+        code: "provider_upstream_error".to_string(),
+        message: PROVIDER_UPSTREAM_ERROR_BODY.to_string(),
+        details: json!({}),
+    });
+    let mut projector = ResponsesWebSocketProjector::new("model".to_string(), None);
+    let terminal = decoded(
+        projector
+            .project(
+                &failed,
+                RuntimeEventEnvelope::new(
+                    failed.id,
+                    1,
+                    debug_stream_events::flow_failed(failed.id, json!({})),
+                ),
+            )
+            .expect("failure must project"),
+    );
+
+    assert_eq!(terminal.len(), 1);
+    assert_eq!(terminal[0]["type"], "response.failed");
+    assert_eq!(
+        terminal[0]["error"]["message"],
+        PROVIDER_UPSTREAM_ERROR_BODY
+    );
 }
 
 #[test]

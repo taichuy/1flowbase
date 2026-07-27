@@ -121,9 +121,19 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
   });
   return [
     invocation(
+      "orchestration-runtime-upstream-error-tests",
+      "orchestration-runtime",
+      "upstream",
+    ),
+    invocation(
       "control-plane-conversation-tests",
       "control-plane",
       "application_public_api",
+    ),
+    invocation(
+      "control-plane-live-provider-error-tests",
+      "control-plane",
+      "provider_error_after_live_delta",
     ),
     invocation(
       "control-plane-answer-node-truth-tests",
@@ -166,6 +176,24 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "routes::application_public_api::stream_terminal_fallback::tests",
     ),
   ];
+}
+
+function officialProviderTestInvocations(officialSourceRoot) {
+  return ["openai", "anthropic"].map((providerCode) => ({
+    name: `${providerCode}-provider-tests`,
+    args: [
+      "test",
+      "--manifest-path",
+      path.join(
+        officialSourceRoot,
+        "runtime-extensions/model-providers",
+        providerCode,
+        "Cargo.toml",
+      ),
+      "--lib",
+      "--locked",
+    ],
+  }));
 }
 
 async function runQualityGate(rawOptions) {
@@ -251,6 +279,12 @@ async function runQualityGate(rawOptions) {
       ? conversationTestInvocations(repoRoot, database.url)
       : []) {
       attempt(invocation.name, "cargo", invocation.args, invocation.options);
+    }
+
+    for (const invocation of officialProviderTestInvocations(
+      officialSourceRoot,
+    )) {
+      attempt(invocation.name, "cargo", invocation.args);
     }
 
     for (const providerCode of ["openai", "anthropic"]) {
@@ -395,6 +429,7 @@ module.exports = {
   conversationTestInvocations,
   dockerDatabaseContract,
   main,
+  officialProviderTestInvocations,
   parseArgs,
   runQualityGate,
   testFiles,

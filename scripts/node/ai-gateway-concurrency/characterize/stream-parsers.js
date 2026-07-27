@@ -61,6 +61,12 @@ function eventText(parsed) {
   return null;
 }
 
+function protocolErrorMessage(parsed) {
+  const data = parsed?.data;
+  const message = data?.response?.error?.message ?? data?.error?.message;
+  return typeof message === 'string' ? message : null;
+}
+
 function nonceFromText(text) {
   if (typeof text !== 'string') return null;
   return text.match(/\bmock-\d{6}\b/u)?.[0] ?? null;
@@ -87,6 +93,7 @@ module.exports = {
   eventText,
   nonceFromText,
   parseSseBlock,
+  protocolErrorMessage,
   protocolEventType,
   protocolRunId,
   isProtocolFailureTerminal,

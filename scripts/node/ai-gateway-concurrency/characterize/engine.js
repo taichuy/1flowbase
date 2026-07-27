@@ -11,7 +11,7 @@ const {
   assertTransport,
   mockScenarioSentinel,
 } = require('../contracts');
-const { createMockUpstream } = require('../mock-upstream');
+const { HTTP_500_ERROR_BODY, createMockUpstream } = require('../mock-upstream');
 const { CHARACTERIZE_PLAN, GATE_ROLE, TOPOLOGY } = require('./plan');
 const { collectDurableConvergence } = require('./durable-evidence');
 const {
@@ -19,6 +19,7 @@ const {
   eventText,
   isProtocolFailureTerminal,
   nonceFromText,
+  protocolErrorMessage,
   protocolEventType,
   protocolRunId,
 } = require('./stream-parsers');
@@ -269,6 +270,7 @@ async function runSseRequest({
   let ttftMs = null;
   let httpStatus = null;
   let errorNonce = null;
+  let publicErrorMessage = null;
   let outcome = 'interrupted';
   try {
     const response = await fetchImpl(endpoint, {
@@ -283,8 +285,17 @@ async function runSseRequest({
     });
     httpStatus = response.status;
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => null);
+      const rawErrorBody = await response.text();
+      let errorBody = null;
+      try {
+        errorBody = JSON.parse(rawErrorBody);
+      } catch {
+        // A non-JSON error response is still valid evidence and must remain byte-for-byte visible.
+      }
       if (typeof errorBody?.error?.nonce === 'string') errorNonce = errorBody.error.nonce;
+      publicErrorMessage = typeof errorBody?.error?.message === 'string'
+        ? errorBody.error.message
+        : rawErrorBody;
       outcome = 'failed';
     } else {
       const reader = response.body.getReader();
@@ -292,6 +303,8 @@ async function runSseRequest({
       const parser = createSseParser((event) => {
         const type = protocolEventType(event);
         if (type) protocolEvents.push(type);
+        const errorMessage = protocolErrorMessage(event);
+        if (errorMessage !== null) publicErrorMessage = errorMessage;
         const protocolId = protocolRunId(transport, event);
         if (protocolId) protocolIds.push(protocolId);
         const text = eventText(event);
@@ -338,6 +351,7 @@ async function runSseRequest({
     scenario,
     outcome,
     httpStatus,
+    publicErrorMessage,
     protocolEvents,
     protocolId: uniqueProtocolIds.length === 1 ? uniqueProtocolIds[0] : null,
     protocolIdCount: uniqueProtocolIds.length,
@@ -452,6 +466,13 @@ function validateRequestResult(result) {
   } else if (result.terminalCount !== 0) {
     failures.push(`non-success scenario emitted ${result.terminalCount} success terminal(s)`);
   }
+  if (
+    result.scenario === SCENARIO.HTTP_500
+    && AUTHORIZED_HTTP_TRANSPORTS.includes(result.transport)
+    && result.publicErrorMessage !== HTTP_500_ERROR_BODY
+  ) {
+    failures.push('public protocol error.message did not preserve the complete upstream HTTP body');
+  }
   return failures;
 }
 
@@ -470,6 +491,7 @@ function requestErrorResult({
     scenario,
     outcome: 'request-error',
     httpStatus: null,
+    publicErrorMessage: null,
     protocolEvents: [],
     chunkTexts: [],
     terminalCount: 0,
@@ -709,7 +731,14 @@ async function executeCharacterizePlan({
     const evidence = mockBatchEvidence(before, after, results);
     const rowDurableLedgers = [];
     const durableResults = gateRole === GATE_ROLE.BLOCKING
-      ? results.filter((result) => result.outcome === 'completed')
+      ? results.filter((result) => (
+        result.outcome === 'completed'
+        || (
+          result.outcome === 'failed'
+          && result.scenario === SCENARIO.HTTP_500
+          && AUTHORIZED_HTTP_TRANSPORTS.includes(result.transport)
+        )
+      ))
       : [];
     for (const targetIndex of [...new Set(durableResults.map((result) => result.targetIndex))]) {
       const target = pool[targetIndex];

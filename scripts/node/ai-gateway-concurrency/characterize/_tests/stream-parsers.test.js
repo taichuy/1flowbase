@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  eventText, isProtocolFailureTerminal, protocolEventType, protocolRunId,
+  eventText, isProtocolFailureTerminal, protocolErrorMessage, protocolEventType, protocolRunId,
 } = require('../stream-parsers');
 
 test('AC durable: protocol run ids come from Responses and Anthropic initial SSE events', () => {
@@ -19,6 +19,13 @@ test('AC durable: protocol run ids come from Responses and Anthropic initial SSE
     protocolRunId('chat-completions-sse', { data: { id: 'chatcmpl-018f7af7-3694-7ba0-90bf-83b5ec689705' } }),
     'chatcmpl-018f7af7-3694-7ba0-90bf-83b5ec689705',
   );
+});
+
+test('AC error fidelity: protocol error messages preserve the decoded string verbatim', () => {
+  const message = ' {"future_error":{"shape":"unknown"}}\n ';
+  assert.equal(protocolErrorMessage({ data: { error: { message } } }), message);
+  assert.equal(protocolErrorMessage({ data: { response: { error: { message } } } }), message);
+  assert.equal(protocolErrorMessage({ data: { error: { type: 'missing-message' } } }), null);
 });
 
 test('AC-002: Chat chunks expose text and one synthetic terminal type', () => {

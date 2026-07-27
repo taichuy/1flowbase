@@ -1,7 +1,8 @@
 'use strict';
 
 const { performance } = require('node:perf_hooks');
-const { TRANSPORT } = require('../contracts');
+const { SCENARIO, TRANSPORT } = require('../contracts');
+const { HTTP_500_ERROR_BODY } = require('../mock-upstream');
 
 const DURABLE_GRACE_MS = 10_000;
 const DURABLE_POLL_INTERVAL_MS = 100;
@@ -79,6 +80,18 @@ function evaluateSnapshot(requests, snapshot) {
     else {
       if (queried.id !== request.runId) failures.push(`${request.clientNonce}: protocol/query run id mismatch`);
       if (!TERMINAL_STATUSES.has(queried.status)) failures.push(`${request.clientNonce}: query status remained ${queried.status}`);
+      if (request.scenario === SCENARIO.HTTP_500) {
+        if (queried.status !== 'failed') failures.push(`${request.clientNonce}: upstream HTTP failure converged as ${queried.status}`);
+        if (request.publicErrorMessage !== HTTP_500_ERROR_BODY) {
+          failures.push(`${request.clientNonce}: public error message did not preserve the upstream body`);
+        }
+        if (queried.errorMessage !== HTTP_500_ERROR_BODY) {
+          failures.push(`${request.clientNonce}: durable error message did not preserve the upstream body`);
+        }
+        if (queried.errorMessage !== request.publicErrorMessage) {
+          failures.push(`${request.clientNonce}: public/durable error message mismatch`);
+        }
+      }
     }
   }
   for (const [transport, total] of Object.entries(snapshot.runtimeActiveTotals)) {
@@ -124,7 +137,11 @@ function sanitizedListItems(payload) {
 
 function sanitizedQuery(payload) {
   const data = unwrapData(payload);
-  return { id: data?.id ?? null, status: data?.status ?? null };
+  return {
+    id: data?.id ?? null,
+    status: data?.status ?? null,
+    errorMessage: typeof data?.error?.message === 'string' ? data.error.message : null,
+  };
 }
 
 async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
@@ -178,6 +195,8 @@ async function collectDurableConvergence({
       protocolId: event.protocolId ?? null,
       protocolIdCount: event.protocolIdCount ?? 0,
       runId: runUuidFromProtocolId(event.transport, event.protocolId),
+      scenario: event.scenario ?? null,
+      publicErrorMessage: event.publicErrorMessage ?? null,
     }));
   const polls = [];
   let failures = requestIdentityFailures(requests);

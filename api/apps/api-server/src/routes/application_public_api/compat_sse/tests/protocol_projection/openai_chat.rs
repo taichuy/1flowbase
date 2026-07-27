@@ -4,6 +4,7 @@ use super::*;
 struct DecodedOpenAiChatStream {
     text_deltas: Vec<String>,
     finish_reasons: Vec<String>,
+    error_messages: Vec<String>,
     done_count: usize,
 }
 
@@ -17,6 +18,10 @@ fn decode_openai_chat_sse(body: &str) -> DecodedOpenAiChatStream {
 
         let payload: serde_json::Value =
             serde_json::from_str(data).expect("OpenAI Chat SSE data must be valid JSON");
+        if let Some(message) = payload["error"]["message"].as_str() {
+            decoded.error_messages.push(message.to_string());
+            continue;
+        }
         let choice = &payload["choices"][0];
         if choice["finish_reason"].is_null() {
             if let Some(text) = choice["delta"]["content"].as_str() {
@@ -28,6 +33,39 @@ fn decode_openai_chat_sse(body: &str) -> DecodedOpenAiChatStream {
         }
     }
     decoded
+}
+
+#[tokio::test]
+async fn issue_1474_openai_chat_error_preserves_native_message_exactly() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Failed;
+    run.error = Some(NativeError {
+        code: "provider_upstream_error".to_string(),
+        message: PROVIDER_UPSTREAM_ERROR_BODY.to_string(),
+        details: json!({}),
+    });
+    let mut mapper =
+        OpenAiChatStreamMapper::new("1flowbase".to_string(), "chatcmpl-test".to_string());
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_failed(run.id, json!({})),
+        ),
+    );
+
+    let response = test_projected_events_response(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("OpenAI Chat error SSE body should be readable");
+    let body = String::from_utf8(body.to_vec()).expect("OpenAI Chat error SSE should be UTF-8");
+    let decoded = decode_openai_chat_sse(&body);
+
+    assert_eq!(
+        decoded.error_messages,
+        vec![PROVIDER_UPSTREAM_ERROR_BODY.to_string()]
+    );
 }
 
 #[tokio::test]
