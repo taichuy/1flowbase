@@ -1,26 +1,25 @@
 'use strict';
 
-const { HTTP_500_ERROR_BODY } = require('../mock-upstream');
+const {
+  CLAUDE_PROTOCOL_SENTINEL,
+  CONTINUITY_FINAL_SENTINEL,
+  CONTINUITY_SEED_SENTINEL,
+  HTTP_500_ERROR_BODY,
+  LONG_REPEATED_UNICODE_TEXT,
+  PARALLEL_FINAL_SENTINEL,
+  SEQUENTIAL_FINAL_SENTINEL,
+  TEXT_SENTINEL,
+  TOOL_FINAL_SENTINEL,
+} = require('../mock-upstream/client-vector-contract');
 
 const VECTOR_MANIFEST_SCHEMA = '1flowbase.local-client-vector-manifest/v1';
 const ALL_CLIENTS = Object.freeze(['claude', 'opencode', 'codex']);
 
-const TEXT_SENTINEL = '1flowbase gateway sentinel ok';
 const TOOL_RESULT_SENTINEL = '1flowbase-client-tool-result';
-const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
 const PARALLEL_RESULT_A = `${TOOL_RESULT_SENTINEL} parallel-a`;
 const PARALLEL_RESULT_B = `${TOOL_RESULT_SENTINEL} parallel-b`;
-const PARALLEL_FINAL_SENTINEL = '1flowbase parallel callback sentinel ok';
 const SEQUENTIAL_RESULT_A = `${TOOL_RESULT_SENTINEL} sequential-a`;
 const SEQUENTIAL_RESULT_B = `${TOOL_RESULT_SENTINEL} sequential-b`;
-const SEQUENTIAL_FINAL_SENTINEL = '1flowbase sequential callback sentinel ok';
-const CONTINUITY_SEED_SENTINEL = '1flowbase continuity seed 中🙂';
-const CONTINUITY_FINAL_SENTINEL = '1flowbase complete conversation continuity ok';
-const CLAUDE_PROTOCOL_SENTINEL = '1flowbase claude protocol context ok';
-const LONG_TEXT_BEGIN = '1flowbase-long-unicode-begin\n';
-const LONG_TEXT_UNIT = '重复段🙂🚀|e\u0301|漢字|`same`  **same**|  same  same  \n';
-const LONG_TEXT_END = '1flowbase-long-unicode-end';
-const LONG_REPEATED_UNICODE_TEXT = `${LONG_TEXT_BEGIN}${LONG_TEXT_UNIT.repeat(1024)}${LONG_TEXT_END}`;
 const PROVIDER_ERROR_BODY = HTTP_500_ERROR_BODY;
 const CLAUDE_PROTOCOL_PROFILE = Object.freeze({
   id: 'claude_1m_adaptive_context_management',
@@ -161,7 +160,7 @@ const PROVIDER_ERROR_VECTOR = Object.freeze({
     error_body: PROVIDER_ERROR_BODY,
     durable_runs: 'provider_requests',
     durable_statuses: Object.freeze(['failed']),
-    minimum_provider_requests: 1,
+    provider_requests: 1,
     provider_outcomes: Object.freeze(['http-500']),
     success_terminal_counts: Object.freeze([0]),
     gateway_executor_invocations: 0,

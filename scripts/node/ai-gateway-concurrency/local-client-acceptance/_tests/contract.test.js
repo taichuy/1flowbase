@@ -122,6 +122,7 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
     assert.equal(vector.expected.success_terminal_counts.length, 1);
   }
   assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.provider_requests, 1);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.durable_runs, 'provider_requests');
   assert.equal(vectorsFor('codex', 'responses_websocket').includes(PROVIDER_ERROR_VECTOR), false);
   assert.equal(vectorsFor('claude', 'anthropic_sse').includes(CLAUDE_PROTOCOL_VECTOR), true);
@@ -168,6 +169,19 @@ test('WP-D4B uses installed client surfaces without injecting Claude fields into
   for (const plan of [codex, opencode]) {
     assert.doesNotMatch(JSON.stringify(plan), /context_management|adaptive|\[1m\]/u);
   }
+});
+
+test('BLO-05 scopes Claude binary retries to the Provider error vector', () => {
+  const errorPlan = buildClientPlan(
+    'claude', '/machine/claude', target, paths, PROVIDER_ERROR_VECTOR, 'anthropic_sse',
+  );
+  const textPlan = buildClientPlan(
+    'claude', '/machine/claude', target, paths, TEXT_VECTOR, 'anthropic_sse',
+  );
+  assert.equal(errorPlan.environment.CLAUDE_CODE_MAX_RETRIES, '0');
+  assert.equal(textPlan.environment.CLAUDE_CODE_MAX_RETRIES, undefined);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
+  assert.deepEqual(PROVIDER_ERROR_VECTOR.expected.success_terminal_counts, [0]);
 });
 
 test('WP-D4B continuity uses each installed client session surface', () => {

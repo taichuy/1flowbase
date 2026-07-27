@@ -111,14 +111,14 @@ function networkObserverEvidence(snapshot, expected = 0) {
   return { network_observer_outbound: observed };
 }
 
-function callbackResumeEvidence(events, minimumResumes) {
+function callbackResumeEvidence(events, minimumResumes, toolMode) {
   if (minimumResumes === undefined) return null;
   const calls = events.filter((event) => event.event === 'tool_call');
   const resumes = events.filter((event) => event.event === 'second_upstream_request');
   if (resumes.length < minimumResumes) {
     throw new Error(`expected at least ${minimumResumes} Gateway callback resume, observed ${resumes.length}`);
   }
-  const rounds = resumes.map((resume) => {
+  const rounds = resumes.map((resume, index) => {
     const call = calls.findLast((candidate) => candidate.sequence < resume.sequence);
     const arrival = events.find((event) => (
       event.event === 'arrival' && event.nonce === resume.nonce && event.sequence < resume.sequence
@@ -130,18 +130,25 @@ function callbackResumeEvidence(events, minimumResumes) {
       event.event === 'barrier_released' && event.nonce === resume.nonce
         && event.sequence > (waiting?.sequence ?? Number.MAX_SAFE_INTEGER)
     ));
+    const finalRound = index === resumes.length - 1;
+    const barrierRequired = toolMode !== 'sequential_callback_tasks_one_turn' || finalRound;
+    const settledAfter = barrierRequired ? released?.sequence : resume.sequence;
     const settled = events.find((event) => (
       event.event === 'settled' && event.nonce === resume.nonce
-        && event.sequence > (released?.sequence ?? Number.MAX_SAFE_INTEGER)
+        && event.sequence > (settledAfter ?? Number.MAX_SAFE_INTEGER)
     ));
-    if (!call || !arrival || !waiting || !released || !settled) {
+    if (!call || !arrival || call.sequence >= arrival.sequence || !settled
+      || (barrierRequired && (!waiting || !released))) {
       throw new Error(`Gateway callback resume chronology was incomplete for ${resume.nonce}`);
+    }
+    if (!barrierRequired && (waiting || released)) {
+      throw new Error(`intermediate sequential callback fabricated a text barrier for ${resume.nonce}`);
     }
     return {
       tool_call_sequence: call.sequence,
       callback_request_sequence: resume.sequence,
-      barrier_waiting_sequence: waiting.sequence,
-      barrier_released_sequence: released.sequence,
+      barrier_waiting_sequence: waiting?.sequence ?? null,
+      barrier_released_sequence: released?.sequence ?? null,
       settled_sequence: settled.sequence,
     };
   });
@@ -219,7 +226,9 @@ function evaluateMockAttempt(before, after, rawExpectation) {
   const network = expectation.network_observer_outbound === undefined
     ? null
     : networkObserverEvidence(after, expectation.network_observer_outbound);
-  const callback = callbackResumeEvidence(events, expectation.minimum_callback_resumes);
+  const callback = callbackResumeEvidence(
+    events, expectation.minimum_callback_resumes, expectation.tool_mode,
+  );
   return {
     arrivals: arrivals.length,
     settled: settled.length,

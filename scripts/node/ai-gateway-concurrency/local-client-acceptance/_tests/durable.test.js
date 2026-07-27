@@ -184,6 +184,48 @@ test('F4-CLIENT-GATE accepts legal callback request counts but requires paired l
   /distinct Provider tool-call rounds/u);
 });
 
+test('BLO-07 proves two settled sequential callbacks while only the final text callback uses a barrier', () => {
+  const before = {
+    entries: [{ sequence: 40 }],
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
+  };
+  const entries = [
+    ...before.entries,
+    { sequence: 41, event: 'arrival', nonce: 'initial' },
+    { sequence: 42, event: 'tool_call', nonce: 'initial' },
+    { sequence: 43, event: 'settled', nonce: 'initial', outcome: 'completed', successTerminalCount: 1 },
+    { sequence: 44, event: 'arrival', nonce: 'callback-a' },
+    { sequence: 45, event: 'second_upstream_request', nonce: 'callback-a' },
+    { sequence: 46, event: 'tool_call', nonce: 'callback-a' },
+    { sequence: 47, event: 'settled', nonce: 'callback-a', outcome: 'completed', successTerminalCount: 1 },
+    { sequence: 48, event: 'arrival', nonce: 'callback-b' },
+    { sequence: 49, event: 'second_upstream_request', nonce: 'callback-b' },
+    { sequence: 50, event: 'barrier_waiting', nonce: 'callback-b' },
+    { sequence: 51, event: 'barrier_released', nonce: 'callback-b' },
+    { sequence: 52, event: 'settled', nonce: 'callback-b', outcome: 'completed', successTerminalCount: 1 },
+  ];
+  const expectation = {
+    minimum_provider_requests: 3,
+    provider_outcomes: ['completed'],
+    success_terminal_counts: [1],
+    minimum_callback_resumes: 2,
+    tool_mode: 'sequential_callback_tasks_one_turn',
+    gateway_executor_invocations: 0,
+    network_observer_outbound: 0,
+  };
+  const evidence = evaluateMockAttempt(before, { entries, counters: before.counters }, expectation);
+  assert.deepEqual(evidence.callback_resume.rounds.map((round) => round.barrier_waiting_sequence), [null, 50]);
+
+  const fabricated = entries.toSpliced(7, 0,
+    { sequence: 47.1, event: 'barrier_waiting', nonce: 'callback-a' },
+    { sequence: 47.2, event: 'barrier_released', nonce: 'callback-a' },
+  );
+  assert.throws(
+    () => evaluateMockAttempt(before, { entries: fabricated, counters: before.counters }, expectation),
+    /fabricated a text barrier/u,
+  );
+});
+
 test('F4-CLIENT-GATE retries remain strict and every durable error body is byte exact', async () => {
   const mockBefore = {
     entries: [{ sequence: 30 }],

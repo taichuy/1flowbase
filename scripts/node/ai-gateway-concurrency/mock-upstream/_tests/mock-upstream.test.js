@@ -515,11 +515,12 @@ test('Responses tool fixture calls a client-declared read function', async () =>
 
 test('Root #1477 local client fixture emits parallel calls and two sequential callback rounds', async () => {
   await withMockUpstream(async ({ httpBaseUrl, upstream }) => {
-    const request = async (input) => {
+    const request = async (input, previousResponseId = null) => {
       const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           model: 'mock-model', stream: true, input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
           tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
         }),
       });
@@ -529,6 +530,9 @@ test('Root #1477 local client fixture emits parallel calls and two sequential ca
       .filter((event) => event.event === 'response.output_item.done')
       .map((event) => event.data.item)
       .filter((item) => item.type === 'function_call');
+    const responseId = (events) => events.find(
+      (event) => event.event === 'response.completed',
+    )?.data.response.id;
 
     const parallel = await request(
       '1flowbase-client-tool-vector tools-parallel-one-callback-task '
@@ -548,19 +552,23 @@ test('Root #1477 local client fixture emits parallel calls and two sequential ca
       toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
       ['/tmp/sequential-a'],
     );
-    const second = await request(
-      `${sequentialPrompt} 1flowbase-client-tool-result sequential-a`,
-    );
+    const second = await request([{
+      type: 'function_call_output', call_id: 'call-a',
+      output: '1flowbase-client-tool-result sequential-a',
+    }], responseId(first));
     assert.deepEqual(
       toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
       ['/tmp/sequential-b'],
     );
-    const third = await request(
-      `${sequentialPrompt} 1flowbase-client-tool-result sequential-a `
-        + '1flowbase-client-tool-result sequential-b',
-    );
+    const third = await request([{
+      type: 'function_call_output', call_id: 'call-b',
+      output: '1flowbase-client-tool-result sequential-b',
+    }], responseId(second));
     assert.equal(toolItems(third).length, 0);
-    assert.match(third.map((event) => JSON.stringify(event.data)).join(''), /tool sentinel ok/u);
+    assert.match(
+      third.map((event) => JSON.stringify(event.data)).join(''),
+      /1flowbase sequential callback sentinel ok/u,
+    );
 
     const snapshot = upstream.snapshot();
     assert.equal(snapshot.entries.filter((event) => event.event === 'tool_call').length, 3);

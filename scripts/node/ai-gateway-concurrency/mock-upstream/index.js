@@ -21,6 +21,14 @@ const {
 const { acceptWebSocket, createFrameReader, sendClose, sendJson } = require('./websocket');
 const { normalizedRequestFingerprint } = require('../protocol-oracle/request-fidelity');
 const { errorFixtureFromBody } = require('../protocol-oracle/error-fidelity');
+const {
+  CONTINUITY_SEED_SENTINEL,
+  HTTP_500_ERROR_BODY,
+  TEXT_SENTINEL,
+  containsValue,
+  textVectorOutput,
+  toolVectorFinalOutput,
+} = require('./client-vector-contract');
 
 const SAFE_HEADER_NAMES = Object.freeze([
   'accept',
@@ -28,8 +36,6 @@ const SAFE_HEADER_NAMES = Object.freeze([
   'user-agent',
   'x-request-id',
 ]);
-const HTTP_500_ERROR_BODY =
-  ' \n{"future_error":{"shape":"unknown"},"message":"keep complete body"}\n ';
 const SUCCESS_TERMINALS = new Set(['response.completed', 'message_stop']);
 
 function requestBodySummary(body) {
@@ -150,13 +156,6 @@ function createTimeline() {
   };
 }
 
-function containsValue(value, marker) {
-  if (typeof value === 'string') return value.includes(marker);
-  if (Array.isArray(value)) return value.some((item) => containsValue(item, marker));
-  if (value && typeof value === 'object') return Object.values(value).some((item) => containsValue(item, marker));
-  return false;
-}
-
 function toolVectorPath(body) {
   const encoded = JSON.stringify(body);
   const match = /TOOL_VECTOR_PATH=([^\\"\s]+)/u.exec(encoded);
@@ -169,17 +168,41 @@ function namedToolVectorPath(body, name) {
   return match?.[1] ?? null;
 }
 
-function clientToolPlan(body) {
+function clientToolPlan(body, previousState = null) {
   const hasToolResult = containsValue(body, '1flowbase-client-tool-result');
+  if (hasToolResult && (previousState?.mode === 'parallel' || previousState?.mode === 'single')) {
+    return {
+      hasToolResult: true,
+      final: true,
+      paths: previousState.paths,
+      finalText: previousState.finalText,
+      nextState: null,
+    };
+  }
+  if (hasToolResult && previousState?.mode === 'sequential') {
+    const final = previousState.stage === 'awaiting-b';
+    return {
+      hasToolResult: true,
+      final,
+      paths: final ? previousState.paths : [previousState.paths[1]],
+      finalText: previousState.finalText,
+      nextState: final ? null : { ...previousState, stage: 'awaiting-b' },
+    };
+  }
   if (containsValue(body, 'tools-parallel-one-callback-task')) {
     const paths = [
       namedToolVectorPath(body, 'PARALLEL_TOOL_A_PATH'),
       namedToolVectorPath(body, 'PARALLEL_TOOL_B_PATH'),
     ];
+    const normalizedPaths = paths.every(Boolean) ? paths : [toolVectorPath(body)];
     return {
       hasToolResult,
       final: hasToolResult,
-      paths: paths.every(Boolean) ? paths : [toolVectorPath(body)],
+      paths: normalizedPaths,
+      finalText: toolVectorFinalOutput(body),
+      nextState: hasToolResult ? null : {
+        mode: 'parallel', paths: normalizedPaths, finalText: toolVectorFinalOutput(body),
+      },
     };
   }
   if (containsValue(body, 'tools-sequential-callback-tasks-one-turn')) {
@@ -191,9 +214,25 @@ function clientToolPlan(body) {
       hasToolResult,
       final: hasSecondResult,
       paths: hasFirstResult && !hasSecondResult ? [secondPath] : [firstPath],
+      finalText: toolVectorFinalOutput(body),
+      nextState: hasSecondResult ? null : {
+        mode: 'sequential',
+        stage: hasFirstResult ? 'awaiting-b' : 'awaiting-a',
+        paths: [firstPath, secondPath],
+        finalText: toolVectorFinalOutput(body),
+      },
     };
   }
-  return { hasToolResult, final: hasToolResult, paths: [toolVectorPath(body)] };
+  const paths = [toolVectorPath(body)];
+  return {
+    hasToolResult,
+    final: hasToolResult,
+    paths,
+    finalText: toolVectorFinalOutput(body),
+    nextState: hasToolResult ? null : {
+      mode: 'single', paths, finalText: toolVectorFinalOutput(body),
+    },
+  };
 }
 
 function gatewayExecutorProbeUrl(body) {
@@ -287,7 +326,7 @@ async function emitHttpStream({
   for (const chunk of stream.chunks) {
     const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
     if (!write(event, chunk.data ?? chunk)) break;
-    const visibleMarker = JSON.stringify(chunk).includes(barrier.marker);
+    const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
     if (!visibleDeltaReleased && barrier.enabled && visibleMarker && barrierEvents.includes(event)) {
       visibleDeltaReleased = true;
       timeline.record('barrier_waiting', { protocolEvent: event });
@@ -342,6 +381,8 @@ function createMockUpstream(options = {}) {
   const timeline = createTimeline();
   const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
   const errorFixtureAttempts = new Map();
+  const continuityResponses = new Set();
+  const toolResponses = new Map();
   const sockets = new Set();
   const barrierWaiters = new Set();
   const barrier = {
@@ -421,9 +462,19 @@ function createMockUpstream(options = {}) {
       }
       beginSse(response);
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
-      const toolPlan = clientToolPlan(body);
+      const toolPlan = clientToolPlan(body, toolResponses.get(body?.previous_response_id));
       const isToolResult = toolPlan.hasToolResult;
-      const isClientTextTurn = containsValue(body, '1flowbase gateway sentinel ok');
+      const clientText = textVectorOutput(body, continuityResponses);
+      if (clientText === CONTINUITY_SEED_SENTINEL) {
+        continuityResponses.add(`resp_${requestTimeline.nonce}`);
+      }
+      const textChunks = clientText === TEXT_SENTINEL
+        ? ['1flowbase gateway sentinel ', 'ok']
+        : [clientText, ''];
+      const toolFinalText = toolVectorFinalOutput(body);
+      if ((isToolTurn || isToolResult) && toolPlan.nextState) {
+        toolResponses.set(`resp_${requestTimeline.nonce}`, toolPlan.nextState);
+      }
       const wireAuditVector = wireAuditVectorFromBody(body);
       if (isToolTurn && !toolPlan.final) requestTimeline.record('tool_call');
       if (isToolResult) requestTimeline.record('second_upstream_request');
@@ -433,21 +484,25 @@ function createMockUpstream(options = {}) {
           : isToolTurn || isToolResult
           ? responsesToolEvents(
             requestTimeline.nonce, toolPlan.paths, toolPlan.final,
-            gatewayExecutorProbeUrl(body), requestedResponsesTool(body)
+            gatewayExecutorProbeUrl(body), requestedResponsesTool(body), toolPlan.finalText ?? toolFinalText
           )
-          : isClientTextTurn
-            ? responsesEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+          : clientText !== null
+            ? responsesEvents(requestTimeline.nonce, ...textChunks)
             : responsesEvents(requestTimeline.nonce))
         : path === MOCK_ROUTE.CHAT_COMPLETIONS
           ? (isToolTurn || isToolResult
-            ? chatToolEvents(requestTimeline.nonce, toolPlan.paths, toolPlan.final)
-            : isClientTextTurn
-              ? chatTextEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+            ? chatToolEvents(
+              requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
+            )
+            : clientText !== null
+              ? chatTextEvents(requestTimeline.nonce, ...textChunks)
               : chatTextEvents(requestTimeline.nonce))
           : (isToolTurn || isToolResult
-            ? anthropicToolEvents(requestTimeline.nonce, toolPlan.paths, toolPlan.final)
-            : isClientTextTurn
-              ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+            ? anthropicToolEvents(
+              requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
+            )
+            : clientText !== null
+              ? anthropicEvents(requestTimeline.nonce, ...textChunks)
               : anthropicEvents(requestTimeline.nonce));
       observeProviderWireOutput(stream, requestTimeline, counters);
       await emitHttpStream({
@@ -536,11 +591,42 @@ function createMockUpstream(options = {}) {
         sendClose(socket, 1011, 'mock upstream error');
         return;
       }
-      const stream = responsesEvents(requestTimeline.nonce);
+      const payload = body.response ?? body;
+      const isToolTurn = containsValue(payload, '1flowbase-client-tool-vector');
+      const toolPlan = clientToolPlan(payload, toolResponses.get(payload?.previous_response_id));
+      const clientText = textVectorOutput(payload, continuityResponses);
+      if (clientText === CONTINUITY_SEED_SENTINEL) {
+        continuityResponses.add(`resp_${requestTimeline.nonce}`);
+      }
+      if ((isToolTurn || toolPlan.hasToolResult) && toolPlan.nextState) {
+        toolResponses.set(`resp_${requestTimeline.nonce}`, toolPlan.nextState);
+      }
+      const textChunks = clientText === TEXT_SENTINEL
+        ? ['1flowbase gateway sentinel ', 'ok']
+        : [clientText, ''];
+      if (isToolTurn && !toolPlan.final) requestTimeline.record('tool_call');
+      if (toolPlan.hasToolResult) requestTimeline.record('second_upstream_request');
+      const stream = isToolTurn || toolPlan.hasToolResult
+        ? responsesToolEvents(
+          requestTimeline.nonce, toolPlan.paths, toolPlan.final,
+          gatewayExecutorProbeUrl(payload), requestedResponsesTool(payload), toolPlan.finalText,
+        )
+        : clientText !== null
+          ? responsesEvents(requestTimeline.nonce, ...textChunks)
+          : responsesEvents(requestTimeline.nonce);
+      let visibleDeltaReleased = false;
       for (const chunk of stream.chunks) {
         if (cancelRequested || socket.destroyed) return;
         sendJson(socket, chunk);
         requestTimeline.record('chunk', { protocolEvent: chunk.type });
+        const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
+        const barrierEvent = stream.barrierEvent ?? chunk.type;
+        if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
+          visibleDeltaReleased = true;
+          requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
+          await barrier.wait();
+          requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+        }
         if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
       }
       if (scenario === SCENARIO.STREAM_INTERRUPTION) {

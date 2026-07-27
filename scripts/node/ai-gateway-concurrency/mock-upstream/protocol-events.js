@@ -222,11 +222,19 @@ function responsesToolEvents(
   final = false,
   executorProbeUrl = null,
   toolName = 'shell_command',
+  finalText = '1flowbase gateway tool sentinel ok',
 ) {
+  if (final && finalText !== '1flowbase gateway tool sentinel ok') {
+    const split = Math.ceil(finalText.length / 2);
+    return {
+      ...responsesObservableItemEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      barrierMarker: finalText.slice(0, split),
+    };
+  }
   if (final) return responsesObservableItemEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
-    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
   );
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
@@ -259,11 +267,18 @@ function responsesToolEvents(
   };
 }
 
-function anthropicToolEvents(nonce, toolPath, final = false) {
+function anthropicToolEvents(nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok') {
+  if (final && finalText !== '1flowbase gateway tool sentinel ok') {
+    const split = Math.ceil(finalText.length / 2);
+    return {
+      ...anthropicEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      barrierMarker: finalText.slice(0, split),
+    };
+  }
   if (final) return anthropicEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
-    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
   );
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   return {
@@ -288,14 +303,21 @@ function anthropicToolEvents(nonce, toolPath, final = false) {
   };
 }
 
-function chatToolEvents(nonce, toolPath, final = false) {
+function chatToolEvents(nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok') {
+  if (final && finalText !== '1flowbase gateway tool sentinel ok') {
+    const split = Math.ceil(finalText.length / 2);
+    return {
+      ...chatTextEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      barrierMarker: finalText.slice(0, split),
+    };
+  }
   if (final) return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       content: `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
-      content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`,
+      content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`,
     }, finish_reason: 'stop' }] },
   };
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
