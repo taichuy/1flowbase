@@ -208,6 +208,7 @@ export function createNativeReactModuleRegistry({
       const assets = [...resolvedSources].flatMap((source) => {
         const registration = registrations.get(source);
         if (!registration) {
+          if (hostModules[source]) return [];
           throw registryError(
             'module_not_registered',
             `modules.${source}`,

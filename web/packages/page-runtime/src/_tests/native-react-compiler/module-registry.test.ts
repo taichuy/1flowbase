@@ -70,6 +70,16 @@ export const importedReact = React;
     );
   });
 
+  test('treats injected Host ABI modules as resource-free when no Catalog asset is required', async () => {
+    const registry = createNativeReactModuleRegistry({
+      dependencyLock: [],
+      hostModules
+    });
+    await expect(
+      registry.resolveModuleAssets(['react/jsx-runtime', 'antd'])
+    ).resolves.toEqual([]);
+  });
+
   test('single-flights and verifies ShadowRoot style/support assets', async () => {
     const source = 'export const Surface = 1;';
     const style = '.surface { color: red; }';
