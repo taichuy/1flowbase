@@ -112,7 +112,7 @@ const projection: FrontstageJsxEditorProjection = {
     contribution_code: 'frontstage.js-ui-block'
   },
   contextComment: '',
-  allowedImportSources: [],
+  allowedImportSources: new Set<string>(),
   monacoExtraLibs: []
 };
 
