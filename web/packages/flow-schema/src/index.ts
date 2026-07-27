@@ -90,6 +90,16 @@ export interface FlowNodeOutputDocument {
   jsonSchema?: Record<string, unknown>;
 }
 
+export interface FlowVariableReference {
+  kind: 'selector';
+  value: string[];
+}
+
+export const DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE: FlowVariableReference = {
+  kind: 'selector',
+  value: ['sys', 'protocol_context']
+};
+
 export type PublicOutputKeyValidationResult =
   | { ok: true }
   | { ok: false; reason: 'reserved_public_output_key' };
@@ -547,6 +557,10 @@ export function createDefaultAgentFlowDocument({
             },
             external_model_parameter_policy: {
               follow_external_max_output_tokens: true
+            },
+            protocol_context: {
+              kind: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.kind,
+              value: [...DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value]
             },
             visible_internal_llm_tools_enabled: false,
             visible_internal_llm_tools: [],

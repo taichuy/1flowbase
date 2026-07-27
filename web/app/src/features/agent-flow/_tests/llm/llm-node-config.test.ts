@@ -13,6 +13,7 @@ import {
   getLlmParameterDefaultValue,
   getLlmModelProvider,
   getLlmParameters,
+  getLlmProtocolContextReference,
   getLlmVisibleInternalToolsEnabled,
   getLlmVisibleInternalTools,
   getLlmToolExternalToolPolicy,
@@ -86,6 +87,31 @@ describe('llm-node-config', () => {
       integration_context: 'disabled',
       context_selector: ['node-code', 'result', 'chat_history']
     });
+  });
+
+  test('WP-D1D reads protocol context as one exact nullable variable reference', () => {
+    expect(
+      getLlmProtocolContextReference({
+        protocol_context: {
+          kind: 'selector',
+          value: ['node-code', 'result', 'protocol_context']
+        }
+      })
+    ).toEqual({
+      kind: 'selector',
+      value: ['node-code', 'result', 'protocol_context']
+    });
+    expect(getLlmProtocolContextReference({ protocol_context: null })).toBeNull();
+    expect(getLlmProtocolContextReference({})).toBeNull();
+    expect(
+      getLlmProtocolContextReference({
+        protocol_context: {
+          kind: 'selector',
+          value: ['sys', 'protocol_context'],
+          enabled: true
+        }
+      })
+    ).toBeNull();
   });
 
   test('getLlmExternalReasoningPolicy defaults follow external reasoning to false', () => {

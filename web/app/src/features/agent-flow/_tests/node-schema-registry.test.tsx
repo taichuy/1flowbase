@@ -330,6 +330,26 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
+  test('WP-D1D exposes protocol context as one nullable selector field', () => {
+    const schema = resolveAgentFlowNodeSchema('llm');
+    const contract = getBuiltinNodeRuntimeContract('llm');
+    const protocolContextField = findFieldBlock(
+      schema.detail.tabs.config.blocks,
+      'config.protocol_context'
+    );
+
+    expect(contract?.defaults.config.protocol_context).toEqual({
+      kind: 'selector',
+      value: ['sys', 'protocol_context']
+    });
+    expect(contract?.defaults.config).not.toHaveProperty(
+      'protocol_context_enabled'
+    );
+    expect(protocolContextField).toEqual(
+      expect.objectContaining({ renderer: 'selector' })
+    );
+  });
+
   test('exposes only workflow input fields through the start node contract', () => {
     const schema = resolveAgentFlowNodeSchema('workflow_start');
 
