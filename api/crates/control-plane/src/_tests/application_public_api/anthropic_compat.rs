@@ -188,18 +188,23 @@ fn ac_005_anthropic_adaptive_thinking_maps_to_native_reasoning() {
 }
 
 #[test]
-fn ac_005_anthropic_output_effort_maps_to_native_reasoning() {
+fn wp_d2a_anthropic_adaptive_max_reasoning_has_one_typed_owner() {
     let mut request = base_request();
     request["thinking"] = json!({"type": "adaptive"});
-    request["output_config"] = json!({"effort": "high"});
+    request["output_config"] = json!({"effort": "max"});
 
     let native = map_messages_request(request).expect("output effort should map to Native");
     let execution = serde_json::to_value(native.execution).expect("execution should serialize");
 
     assert_eq!(
-        execution["model_parameters"]["reasoning"]["effort"],
-        json!("high")
+        execution["model_parameters"]["reasoning"]["mode"],
+        json!("adaptive")
     );
+    assert_eq!(
+        execution["model_parameters"]["reasoning"]["effort"],
+        json!("max")
+    );
+    assert!(native.client_protocol_envelope.is_none());
 }
 
 #[test]
@@ -308,21 +313,19 @@ fn model_maps_exactly_without_validation() {
 }
 
 #[test]
-fn one_m_model_suffix_maps_to_native_model_and_anthropic_beta() {
+fn wp_d2a_one_m_model_suffix_maps_to_typed_requested_context_only() {
     let mut request = base_request();
     request["model"] = json!("claude-opus-4-8[1M]");
 
     let native = map_messages_request(request).unwrap();
 
     assert_eq!(native.model.as_deref(), Some("claude-opus-4-8"));
-    let envelope = native
-        .client_protocol_envelope
-        .expect("1M suffix should request anthropic client protocol beta");
-    assert_eq!(envelope.source_protocol, "anthropic_messages");
     assert_eq!(
-        envelope.headers.get("anthropic-beta"),
-        Some(&vec!["context-1m-2025-08-07".to_string()])
+        serde_json::to_value(&native).unwrap()["execution"]["model_parameters"]
+            ["requested_context_window"],
+        json!(1_000_000)
     );
+    assert!(native.client_protocol_envelope.is_none());
 }
 
 #[test]

@@ -14,10 +14,12 @@ use control_plane::application_public_api::{
     },
     client_protocol_envelope::{
         capture_client_protocol_envelope, capture_client_protocol_query,
-        merge_anthropic_messages_envelopes, merge_client_protocol_envelopes,
-        ClientProtocolIngressPolicy,
+        merge_client_protocol_envelopes, ClientProtocolIngressPolicy, ANTHROPIC_BETA_HEADER_NAME,
     },
-    compat::anthropic::{translate_messages_request, AnthropicCompatError},
+    compat::anthropic::{
+        translate_messages_request_with_context_window, AnthropicCompatError,
+        AnthropicContextWindowRequest,
+    },
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
         NativeRunStatus,
@@ -209,7 +211,10 @@ pub async fn create_message(
             Err(error) => return Err(error.into()),
         }
     }
-    let translated = translate_messages_request(value)?;
+    let translated = translate_messages_request_with_context_window(
+        value,
+        anthropic_context_window_request(&headers),
+    )?;
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
     request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
@@ -258,7 +263,10 @@ pub async fn count_message_tokens(
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     merge_claude_code_session_header(&mut value, &headers);
-    let mut translation = translate_messages_request(value)?;
+    let mut translation = translate_messages_request_with_context_window(
+        value,
+        anthropic_context_window_request(&headers),
+    )?;
     translation.request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
         uri.query(),
         &headers,
@@ -360,7 +368,16 @@ fn anthropic_protocol_context_from_ingress(
             form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
         ),
     );
-    merge_anthropic_messages_envelopes(captured, translated)
+    merge_client_protocol_envelopes(policy, captured, translated)
+}
+
+fn anthropic_context_window_request(headers: &HeaderMap) -> Option<AnthropicContextWindowRequest> {
+    AnthropicContextWindowRequest::from_beta_values(
+        headers
+            .get_all(ANTHROPIC_BETA_HEADER_NAME)
+            .iter()
+            .filter_map(|value| value.to_str().ok()),
+    )
 }
 
 async fn create_native_run(

@@ -6,7 +6,7 @@ use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 use crate::application_public_api::client_protocol_envelope::{
-    protocol_context_field_is_safe, ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
+    anthropic_context_1m_requested, protocol_context_field_is_safe,
 };
 use crate::application_public_api::native::{NativeObject, NativeRunRequest};
 use crate::application_public_api::protocol_translation::{
@@ -31,6 +31,7 @@ const CLAUDE_CODE_COMPACT_TRANSCRIPT_MARKER: &str =
 const CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER: &str = "Generate a concise, sentence-case title";
 const CLAUDE_CODE_SESSION_TITLE_JSON_MARKER: &str = "Return JSON with a single \"title\" field";
 const ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX: &str = "[1m]";
+const ANTHROPIC_CONTEXT_1M_TOKENS: u64 = 1_000_000;
 const ANTHROPIC_TYPED_ROOT_FIELDS: &[&str] = &[
     "model",
     "messages",
@@ -57,6 +58,23 @@ pub struct AnthropicCompatError {
     pub message: String,
     pub error_type: String,
     pub report: TranslationReport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnthropicContextWindowRequest {
+    OneMillion,
+}
+
+impl AnthropicContextWindowRequest {
+    pub fn from_beta_values<'a>(values: impl IntoIterator<Item = &'a str>) -> Option<Self> {
+        anthropic_context_1m_requested(values).then_some(Self::OneMillion)
+    }
+
+    fn tokens(self) -> u64 {
+        match self {
+            Self::OneMillion => ANTHROPIC_CONTEXT_1M_TOKENS,
+        }
+    }
 }
 
 impl AnthropicCompatError {
@@ -100,7 +118,9 @@ pub fn map_messages_request(request: Value) -> Result<NativeRunRequest, Anthropi
 
 mod request_translation;
 
-pub use request_translation::translate_messages_request;
+pub use request_translation::{
+    translate_messages_request, translate_messages_request_with_context_window,
+};
 
 fn validate_anthropic_root_fields(
     object: &Map<String, Value>,
@@ -1251,7 +1271,9 @@ fn anthropic_max_output_tokens(
     Ok(Some(max_output_tokens))
 }
 
-fn normalize_anthropic_model_for_native(model: &str) -> (String, Option<&'static str>) {
+fn normalize_anthropic_model_for_native(
+    model: &str,
+) -> (String, Option<AnthropicContextWindowRequest>) {
     let trimmed_end = model.trim_end();
     let suffix_start = trimmed_end
         .len()
@@ -1265,7 +1287,10 @@ fn normalize_anthropic_model_for_native(model: &str) -> (String, Option<&'static
             .get(..suffix_start)
             .unwrap_or(trimmed_end)
             .to_string();
-        return (native_model, Some(ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE));
+        return (
+            native_model,
+            Some(AnthropicContextWindowRequest::OneMillion),
+        );
     }
 
     (model.to_string(), None)
@@ -1744,8 +1769,7 @@ fn anthropic_reasoning(
                 )
             })?;
             effort = Some(match value {
-                "minimal" | "low" | "medium" | "high" | "xhigh" => value.to_string(),
-                "max" => "xhigh".to_string(),
+                "minimal" | "low" | "medium" | "high" | "xhigh" | "max" => value.to_string(),
                 _ => {
                     return Err(reject_anthropic_nested_field(
                         report,

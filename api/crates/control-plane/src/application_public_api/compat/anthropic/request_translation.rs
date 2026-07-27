@@ -9,11 +9,11 @@ use super::{
     anthropic_system_content_parts, metadata_conversation, normalize_anthropic_model_for_native,
     query_media_content_blocks, record_anthropic_context_management_decision,
     record_anthropic_system_decision, reject_legacy_anthropic_control, validate_anthropic_message,
-    validate_anthropic_root_fields, AnthropicCompatError, ANTHROPIC_TYPED_ROOT_FIELDS,
+    validate_anthropic_root_fields, AnthropicCompatError, AnthropicContextWindowRequest,
+    ANTHROPIC_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
-    anthropic_messages_envelope_with_beta, capture_client_protocol_body,
-    merge_anthropic_messages_envelopes, ClientProtocolIngressPolicy,
+    capture_client_protocol_body, ClientProtocolIngressPolicy,
 };
 use crate::application_public_api::native::{
     NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest,
@@ -26,6 +26,13 @@ use crate::application_public_api::protocol_translation::{
 pub fn translate_messages_request(
     request: Value,
 ) -> Result<TranslatedNativeRunRequest, AnthropicCompatError> {
+    translate_messages_request_with_context_window(request, None)
+}
+
+pub fn translate_messages_request_with_context_window(
+    request: Value,
+    ingress_context_window: Option<AnthropicContextWindowRequest>,
+) -> Result<TranslatedNativeRunRequest, AnthropicCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::AnthropicMessages);
     let object = anthropic_request_object(&request, &mut report)?;
     validate_anthropic_root_fields(object, &mut report)?;
@@ -36,7 +43,11 @@ pub fn translate_messages_request(
         ANTHROPIC_TYPED_ROOT_FIELDS,
     );
     let model = required_anthropic_string(object, "model", &mut report)?;
-    let (model, context_beta) = normalize_anthropic_model_for_native(&model);
+    let (model, model_context_window) = normalize_anthropic_model_for_native(&model);
+    let requested_context_window = model_context_window
+        .or(ingress_context_window)
+        .map(AnthropicContextWindowRequest::tokens)
+        .and_then(NonZeroU64::new);
     let messages = required_anthropic_array(object, "messages", &mut report)?;
 
     let system_parts =
@@ -123,7 +134,11 @@ pub fn translate_messages_request(
     let max_output_tokens =
         anthropic_max_output_tokens(object, &mut report)?.and_then(NonZeroU64::new);
     let reasoning = anthropic_reasoning(object, &mut report)?;
-    let execution = NativeExecution::with_model_parameters(max_output_tokens, None, reasoning);
+    let execution = NativeExecution::with_model_parameters(
+        max_output_tokens,
+        requested_context_window,
+        reasoning,
+    );
     let request = NativeRunRequest {
         query,
         system: system_parts,
@@ -141,10 +156,7 @@ pub fn translate_messages_request(
             end_user_reference: metadata.user_id,
         },
         title: None,
-        client_protocol_envelope: merge_anthropic_messages_envelopes(
-            protocol_context,
-            context_beta.map(anthropic_messages_envelope_with_beta),
-        ),
+        client_protocol_envelope: protocol_context,
     };
     report
         .ensure_consistent()

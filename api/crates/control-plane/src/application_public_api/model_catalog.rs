@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::native::{
+    NativeExecutionModelParameters, NativeReasoningMode, NativeReasoningParameters,
+};
+
 const DEFAULT_AGENT_MODEL_ID: &str = "1flowbase";
 const DEFAULT_AGENT_CONTEXT_WINDOW: u64 = 257_000;
 const DEFAULT_AGENT_MAX_CONTEXT_WINDOW: u64 = 128_000;
@@ -41,6 +45,80 @@ pub struct AgentModelDescriptor {
     pub reasoning: Option<AgentModelReasoning>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectedLlmModelParameterError {
+    RequestedContextWindowUnavailable { requested: u64 },
+    RequestedContextWindowExceeded { requested: u64, supported: u64 },
+    ReasoningUnsupported,
+    ReasoningEffortUnsupported { requested: String },
+}
+
+/// Validates explicit request intent against the descriptor resolved by an LLM
+/// node. Callers must not substitute the public request `model` for the model
+/// actually selected by that node.
+pub fn validate_selected_llm_model_parameters(
+    selected_model: &AgentModelDescriptor,
+    parameters: &NativeExecutionModelParameters,
+) -> Result<(), SelectedLlmModelParameterError> {
+    if let Some(requested) = parameters.requested_context_window() {
+        let supported = selected_model
+            .max_context_window
+            .or(selected_model.context_window)
+            .ok_or(
+                SelectedLlmModelParameterError::RequestedContextWindowUnavailable { requested },
+            )?;
+        if requested > supported {
+            return Err(
+                SelectedLlmModelParameterError::RequestedContextWindowExceeded {
+                    requested,
+                    supported,
+                },
+            );
+        }
+    }
+
+    let Some(reasoning) = parameters.reasoning() else {
+        return Ok(());
+    };
+    validate_selected_llm_reasoning(selected_model, reasoning)
+}
+
+fn validate_selected_llm_reasoning(
+    selected_model: &AgentModelDescriptor,
+    reasoning: &NativeReasoningParameters,
+) -> Result<(), SelectedLlmModelParameterError> {
+    let requested_effort = reasoning.effort();
+    let requests_reasoning = reasoning.effective_mode() != NativeReasoningMode::Disabled
+        || requested_effort.is_some()
+        || reasoning.budget_tokens().is_some();
+    if !requests_reasoning {
+        return Ok(());
+    }
+
+    let reasoning_descriptor = selected_model.reasoning.as_ref();
+    let supports_reasoning = selected_model.capabilities.reasoning
+        || reasoning_descriptor.is_some_and(|descriptor| {
+            descriptor.default_effort.is_some() || !descriptor.supported_efforts.is_empty()
+        });
+    if !supports_reasoning {
+        return Err(SelectedLlmModelParameterError::ReasoningUnsupported);
+    }
+
+    if let (Some(requested), Some(descriptor)) = (requested_effort, reasoning_descriptor) {
+        if !descriptor.supported_efforts.is_empty()
+            && !descriptor
+                .supported_efforts
+                .iter()
+                .any(|supported| supported == requested)
+        {
+            return Err(SelectedLlmModelParameterError::ReasoningEffortUnsupported {
+                requested: requested.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub fn extract_agent_model_catalog_from_start_node(document: &Value) -> Vec<AgentModelDescriptor> {
     let Some(nodes) = document
         .get("graph")
@@ -79,13 +157,6 @@ pub fn extract_agent_model_catalog_from_start_node(document: &Value) -> Vec<Agen
     } else {
         models
     }
-}
-
-pub fn find_agent_model<'a>(
-    models: &'a [AgentModelDescriptor],
-    model_id: &str,
-) -> Option<&'a AgentModelDescriptor> {
-    models.iter().find(|model| model.id == model_id)
 }
 
 fn default_model_catalog() -> Vec<AgentModelDescriptor> {
@@ -212,6 +283,41 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::application_public_api::native::NativeRunRequest;
+
+    fn selected_model(
+        max_context_window: Option<u64>,
+        reasoning: bool,
+        supported_efforts: &[&str],
+    ) -> AgentModelDescriptor {
+        AgentModelDescriptor {
+            id: "selected-provider-model".to_string(),
+            name: None,
+            context_window: None,
+            max_context_window,
+            max_output_tokens: Some(32_000),
+            auto_compact_token_limit: None,
+            capabilities: AgentModelCapabilities {
+                reasoning,
+                ..AgentModelCapabilities::default()
+            },
+            reasoning: reasoning.then(|| AgentModelReasoning {
+                default_effort: None,
+                supported_efforts: supported_efforts
+                    .iter()
+                    .map(|effort| (*effort).to_string())
+                    .collect(),
+            }),
+        }
+    }
+
+    fn request_with_model_parameters(model_parameters: Value) -> NativeRunRequest {
+        serde_json::from_value(json!({
+            "query": "hello",
+            "execution": {"model_parameters": model_parameters}
+        }))
+        .expect("model-parameter fixture should be valid Native input")
+    }
 
     #[test]
     fn extracts_start_node_model_catalog_with_capabilities() {
@@ -265,5 +371,101 @@ mod tests {
             vec!["low", "medium", "high"]
         );
         assert_eq!(models[1].id, "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn wp_d2a_selected_llm_catalog_accepts_exact_explicit_window_and_reasoning() {
+        let selected = selected_model(Some(1_000_000), true, &["low", "max"]);
+        let request = request_with_model_parameters(json!({
+            "requested_context_window": 1_000_000,
+            "reasoning": {"mode": "adaptive", "effort": "max"}
+        }));
+        let parameters = request
+            .execution
+            .model_parameters()
+            .expect("fixture has model parameters");
+
+        validate_selected_llm_model_parameters(&selected, parameters)
+            .expect("the actual selected model advertises the explicit request");
+        assert_eq!(
+            parameters.canonical_value(),
+            json!({
+                "requested_context_window": 1_000_000,
+                "reasoning": {"mode": "adaptive", "effort": "max"}
+            })
+        );
+    }
+
+    #[test]
+    fn wp_d2a_selected_llm_catalog_rejects_instead_of_inferring_or_downgrading() {
+        let selected = selected_model(Some(128_000), true, &["high", "xhigh"]);
+        let explicit = request_with_model_parameters(json!({
+            "requested_context_window": 1_000_000,
+            "reasoning": {"mode": "enabled", "effort": "max"}
+        }));
+        let explicit_parameters = explicit
+            .execution
+            .model_parameters()
+            .expect("fixture has explicit model parameters");
+
+        assert_eq!(
+            validate_selected_llm_model_parameters(&selected, explicit_parameters),
+            Err(
+                SelectedLlmModelParameterError::RequestedContextWindowExceeded {
+                    requested: 1_000_000,
+                    supported: 128_000,
+                }
+            )
+        );
+        assert_eq!(
+            explicit_parameters.canonical_value()["requested_context_window"],
+            json!(1_000_000),
+            "validation must not replace an unsupported request with the catalog limit"
+        );
+
+        let absent = request_with_model_parameters(json!({"max_output_tokens": 4096}));
+        let absent_parameters = absent
+            .execution
+            .model_parameters()
+            .expect("fixture has a non-context model parameter");
+        validate_selected_llm_model_parameters(&selected, absent_parameters)
+            .expect("an absent context request must remain absent");
+        assert!(absent_parameters
+            .canonical_value()
+            .get("requested_context_window")
+            .is_none());
+    }
+
+    #[test]
+    fn wp_d2a_selected_llm_catalog_requires_reasoning_capability_and_exact_effort() {
+        let request = request_with_model_parameters(json!({
+            "reasoning": {"mode": "adaptive", "effort": "max"}
+        }));
+        let parameters = request
+            .execution
+            .model_parameters()
+            .expect("fixture has reasoning parameters");
+
+        assert_eq!(
+            validate_selected_llm_model_parameters(
+                &selected_model(Some(1_000_000), false, &[]),
+                parameters,
+            ),
+            Err(SelectedLlmModelParameterError::ReasoningUnsupported)
+        );
+        assert_eq!(
+            validate_selected_llm_model_parameters(
+                &selected_model(Some(1_000_000), true, &["high", "xhigh"]),
+                parameters,
+            ),
+            Err(SelectedLlmModelParameterError::ReasoningEffortUnsupported {
+                requested: "max".to_string(),
+            })
+        );
+        assert_eq!(
+            parameters.canonical_value()["reasoning"]["effort"],
+            json!("max"),
+            "validation must not downgrade max to xhigh"
+        );
     }
 }

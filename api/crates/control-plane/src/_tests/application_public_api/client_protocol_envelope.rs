@@ -1,10 +1,8 @@
 use std::collections::BTreeMap;
 
 use control_plane::application_public_api::client_protocol_envelope::{
-    anthropic_messages_envelope_with_beta, capture_client_protocol_body,
-    capture_client_protocol_envelope, capture_client_protocol_query,
-    merge_anthropic_messages_envelopes, merge_client_protocol_envelopes,
-    ClientProtocolIngressPolicy, ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
+    capture_client_protocol_body, capture_client_protocol_envelope, capture_client_protocol_query,
+    merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
 };
 use control_plane::application_public_api::{
     mapping::ApplicationApiMappingConfig,
@@ -22,7 +20,7 @@ fn anthropic_policy_preserves_repeated_safe_headers_and_subtracts_typed_or_unsaf
         [
             ("Anthropic-Version", "2023-06-01"),
             ("anthropic-beta", "prompt-caching"),
-            ("anthropic-beta", "private-beta"),
+            ("anthropic-beta", "context-1m-2025-08-07, private-beta"),
             ("x-claude-code-session-id", "typed-session"),
             ("authorization", "Bearer platform-key"),
             ("x-api-key", "platform-key"),
@@ -143,48 +141,6 @@ fn query_headers_and_body_merge_into_one_protocol_context_envelope() {
     assert_eq!(envelope.query["preview"], vec!["one", "two"]);
     assert_eq!(envelope.headers["openai-organization"], vec!["org-test"]);
     assert_eq!(envelope.body["future_chat_option"]["mode"], "exact");
-}
-
-#[test]
-fn generated_one_m_beta_appends_without_flattening_captured_header_values() {
-    let captured = capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::AnthropicMessages,
-        [
-            ("anthropic-version", "2023-06-01"),
-            ("anthropic-beta", "prompt-caching"),
-        ],
-    );
-    let generated = Some(anthropic_messages_envelope_with_beta(
-        ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
-    ));
-
-    let envelope = merge_anthropic_messages_envelopes(captured, generated)
-        .expect("captured and generated headers should keep an envelope");
-
-    assert_eq!(envelope.headers["anthropic-version"], vec!["2023-06-01"]);
-    assert_eq!(
-        envelope.headers["anthropic-beta"],
-        vec!["prompt-caching", "context-1m-2025-08-07"]
-    );
-}
-
-#[test]
-fn generated_one_m_beta_is_not_duplicated_when_already_captured() {
-    let captured = capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::AnthropicMessages,
-        [("anthropic-beta", "prompt-caching, context-1m-2025-08-07")],
-    );
-    let generated = Some(anthropic_messages_envelope_with_beta(
-        ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
-    ));
-
-    let envelope = merge_anthropic_messages_envelopes(captured, generated)
-        .expect("captured and generated headers should keep an envelope");
-
-    assert_eq!(
-        envelope.headers["anthropic-beta"],
-        vec!["prompt-caching, context-1m-2025-08-07"]
-    );
 }
 
 #[test]

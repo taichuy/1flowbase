@@ -109,28 +109,23 @@ async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_ru
 }
 
 #[tokio::test]
-async fn anthropic_catalog_model_with_one_million_context_adds_the_required_beta() {
+async fn wp_d2a_anthropic_one_m_is_explicit_typed_intent_not_catalog_inference() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Anthropic 1M Context App");
     let token = issue_key(&harness, application.id).await;
     save_start_model_catalog(&repository, &application).await;
     publish_runnable_application(&repository, application.id).await;
-    let mut translated = translate_messages_request(json!({
-        "model": "claude-opus-4-8",
+    let translated = translate_messages_request(json!({
+        "model": "claude-opus-4-8[1M]",
         "max_tokens": 4096,
         "messages": [{"role": "user", "content": "use declared context"}]
     }))
     .expect("Anthropic request should translate");
-    translated.request.client_protocol_envelope =
-        control_plane::application_public_api::client_protocol_envelope::capture_client_protocol_envelope(
-            control_plane::application_public_api::client_protocol_envelope::ClientProtocolIngressPolicy::AnthropicMessages,
-            [("user-agent", "claude-code/2.1.220")],
-        );
 
     let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
+            bearer_token: token.clone(),
             request: translated.request,
         })
         .await
@@ -140,13 +135,41 @@ async fn anthropic_catalog_model_with_one_million_context_adds_the_required_beta
         .await
         .unwrap()
         .expect("published flow run should be durable");
-    let beta = flow_run.input_payload["__client_protocol_envelope"]["headers"]["anthropic-beta"]
-        .as_str()
-        .expect("Anthropic beta should be frozen into the private runtime envelope");
+    assert_eq!(
+        flow_run.input_payload["sys"]["model_parameters"]["requested_context_window"],
+        json!(1_000_000)
+    );
+    assert!(flow_run
+        .input_payload
+        .get("__client_protocol_envelope")
+        .is_none());
 
-    assert!(beta
-        .split(',')
-        .any(|value| value == "context-1m-2025-08-07"));
+    let catalog_only = translate_messages_request(json!({
+        "model": "claude-opus-4-8",
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": "do not infer context intent"}]
+    }))
+    .expect("the catalog model without an explicit 1M request should translate");
+    let catalog_only_result = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            bearer_token: token,
+            request: catalog_only.request,
+        })
+        .await
+        .expect("a catalog model without context intent should create a run");
+    let catalog_only_run = repository
+        .get_published_flow_run(catalog_only_result.id)
+        .await
+        .unwrap()
+        .expect("catalog-only flow run should be durable");
+
+    assert!(catalog_only_run.input_payload["sys"]["model_parameters"]
+        .get("requested_context_window")
+        .is_none());
+    assert!(catalog_only_run
+        .input_payload
+        .get("__client_protocol_envelope")
+        .is_none());
 }
 
 #[tokio::test]
@@ -171,7 +194,7 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
                 "execution": {
                     "model_parameters": {
                         "reasoning": {
-                            "enabled": true,
+                            "mode": "adaptive",
                             "effort": "high",
                             "budget_tokens": 4096
                         }
@@ -192,17 +215,17 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
         flow_run.input_payload["sys"]["model_parameters"],
         json!({
             "reasoning": {
-                "enabled": true,
+                "mode": "adaptive",
                 "effort": "high",
                 "budget_tokens": 4096
             }
         })
     );
     assert_eq!(
-        flow_run.input_payload["node-start"]["reasoning_effort"],
-        json!("high")
+        flow_run.input_payload["sys"]["model_parameters"]["reasoning"]["mode"],
+        json!("adaptive")
     );
-    assert!(flow_run.input_payload["sys"]
+    assert!(flow_run.input_payload["node-start"]
         .get("reasoning_effort")
         .is_none());
 }
@@ -237,10 +260,9 @@ async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime(
         flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
         json!(32000)
     );
-    assert_eq!(
-        flow_run.input_payload["node-start"]["max_output_tokens"],
-        json!(32000)
-    );
+    assert!(flow_run.input_payload["node-start"]
+        .get("max_output_tokens")
+        .is_none());
 }
 
 #[test]
@@ -281,7 +303,7 @@ async fn start_native_run_defers_requested_model_validation_to_the_selected_llm_
                 "missing-model",
                 json!({
                     "reasoning": {
-                        "enabled": true,
+                        "mode": "enabled",
                         "effort": "high"
                     }
                 }),
@@ -559,10 +581,9 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
             run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
             json!("high")
         );
-        assert_eq!(
-            run.input_payload["node-start"]["reasoning_effort"],
-            json!("high")
-        );
+        assert!(run.input_payload["node-start"]
+            .get("reasoning_effort")
+            .is_none());
     }
     assert_eq!(repository.flow_run_count(), 2);
 }

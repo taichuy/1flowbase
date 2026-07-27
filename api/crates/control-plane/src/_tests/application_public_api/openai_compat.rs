@@ -700,6 +700,39 @@ fn openai_responses_unknown_root_is_residual_without_duplicating_typed_roots() {
 }
 
 #[test]
+fn wp_d2a_chat_and_responses_reasoning_have_one_typed_owner() {
+    let chat = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "reasoning_effort": "high"
+    }))
+    .expect("Chat reasoning effort should map to Native");
+    let responses = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": "hello",
+        "reasoning": {"effort": "xhigh"}
+    }))
+    .expect("Responses reasoning effort should map to Native");
+
+    for (translated, effort) in [(chat, "high"), (responses, "xhigh")] {
+        let execution = serde_json::to_value(&translated.request.execution)
+            .expect("typed execution should serialize");
+        assert_eq!(
+            execution["model_parameters"]["reasoning"]["mode"],
+            json!("enabled")
+        );
+        assert_eq!(
+            execution["model_parameters"]["reasoning"]["effort"],
+            json!(effort)
+        );
+        assert!(
+            translated.request.client_protocol_envelope.is_none(),
+            "typed reasoning must not remain in an opaque protocol residual"
+        );
+    }
+}
+
+#[test]
 fn last_user_text_maps_to_native_query() {
     let native = map_chat_completion_request(base_request()).unwrap();
 

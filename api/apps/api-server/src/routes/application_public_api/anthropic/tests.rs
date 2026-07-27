@@ -301,7 +301,10 @@ fn claude_code_session_header_fills_missing_metadata_session_id() {
 fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     let mut headers = HeaderMap::new();
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
-    headers.insert("anthropic-beta", "prompt-caching".parse().unwrap());
+    headers.insert(
+        "anthropic-beta",
+        "prompt-caching, context-1m-2025-08-07".parse().unwrap(),
+    );
     headers.append("anthropic-beta", "private-beta".parse().unwrap());
     headers.insert(
         "x-claude-code-session-id",
@@ -313,15 +316,24 @@ fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     headers.insert("content-length", "42".parse().unwrap());
     headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
     headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
-    let translated = translate_messages_request(json!({
-        "model": "claude-compatible",
-        "messages": [{"role": "user", "content": "hello"}],
-        "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
-        "future_anthropic_option": {"shape": "opaque"},
-        "authorization": "body-secret",
-        "__native_transport": {"must_not_cross": true}
-    }))
+    let translated = translate_messages_request_with_context_window(
+        json!({
+            "model": "claude-compatible",
+            "messages": [{"role": "user", "content": "hello"}],
+            "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
+            "future_anthropic_option": {"shape": "opaque"},
+            "authorization": "body-secret",
+            "__native_transport": {"must_not_cross": true}
+        }),
+        anthropic_context_window_request(&headers),
+    )
     .expect("safe Anthropic residual fixture should translate");
+    assert_eq!(
+        serde_json::to_value(&translated.request)
+            .expect("typed Anthropic request should serialize")["execution"]["model_parameters"]
+            ["requested_context_window"],
+        json!(1_000_000)
+    );
 
     let envelope = anthropic_protocol_context_from_ingress(
         Some("preview=one&preview=two&authorization=query-secret&__native_transport=internal"),

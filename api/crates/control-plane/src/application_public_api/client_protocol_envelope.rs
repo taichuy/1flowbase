@@ -56,13 +56,22 @@ where
         {
             continue;
         }
-        captured
-            .entry(header_name)
-            .or_insert_with(Vec::new)
-            .push(value);
+        for value in residual_header_values(policy, &header_name, value) {
+            captured
+                .entry(header_name.clone())
+                .or_insert_with(Vec::new)
+                .push(value);
+        }
     }
 
     protocol_context(policy, BTreeMap::new(), captured, BTreeMap::new())
+}
+
+pub fn anthropic_context_1m_requested<'a>(values: impl IntoIterator<Item = &'a str>) -> bool {
+    values
+        .into_iter()
+        .flat_map(|value| split_anthropic_beta_header(value))
+        .any(is_anthropic_context_1m_beta)
 }
 
 pub fn capture_client_protocol_query<I, N, V>(
@@ -124,51 +133,6 @@ pub fn merge_client_protocol_envelopes(
         }
     }
     non_empty_protocol_context(merged)
-}
-
-pub fn anthropic_messages_envelope_with_beta(beta: &'static str) -> ProtocolContextEnvelope {
-    ProtocolContextEnvelope {
-        source_protocol: ANTHROPIC_MESSAGES_SOURCE_PROTOCOL.to_string(),
-        headers: BTreeMap::from([(
-            ANTHROPIC_BETA_HEADER_NAME.to_string(),
-            vec![beta.to_string()],
-        )]),
-        ..ProtocolContextEnvelope::default()
-    }
-}
-
-pub fn merge_anthropic_messages_envelopes(
-    captured: Option<ProtocolContextEnvelope>,
-    generated: Option<ProtocolContextEnvelope>,
-) -> Option<ProtocolContextEnvelope> {
-    match (captured, generated) {
-        (None, None) => None,
-        (Some(envelope), None) | (None, Some(envelope)) => Some(envelope),
-        (Some(mut captured), Some(generated)) => {
-            debug_assert_eq!(captured.source_protocol, ANTHROPIC_MESSAGES_SOURCE_PROTOCOL);
-            debug_assert_eq!(
-                generated.source_protocol,
-                ANTHROPIC_MESSAGES_SOURCE_PROTOCOL
-            );
-            if captured.source_protocol != ANTHROPIC_MESSAGES_SOURCE_PROTOCOL
-                || generated.source_protocol != ANTHROPIC_MESSAGES_SOURCE_PROTOCOL
-            {
-                return Some(captured);
-            }
-            extend_multi_values(&mut captured.query, generated.query);
-            for (name, values) in generated.headers {
-                if name == ANTHROPIC_BETA_HEADER_NAME {
-                    merge_generated_anthropic_beta_header(&mut captured.headers, values);
-                } else {
-                    captured.headers.entry(name).or_default().extend(values);
-                }
-            }
-            for (name, value) in generated.body {
-                captured.body.entry(name).or_insert(value);
-            }
-            non_empty_protocol_context(captured)
-        }
-    }
 }
 
 pub(crate) fn protocol_context_field_is_safe(name: &str) -> bool {
@@ -279,37 +243,46 @@ fn extend_multi_values(
     }
 }
 
-fn merge_generated_anthropic_beta_header(
-    headers: &mut BTreeMap<String, Vec<String>>,
-    generated_values: Vec<String>,
-) {
-    for generated in generated_values {
-        let generated_betas = split_anthropic_beta_header(&generated);
-        if generated_betas.is_empty()
-            || generated_betas.iter().all(|generated_beta| {
-                headers
-                    .get(ANTHROPIC_BETA_HEADER_NAME)
-                    .into_iter()
-                    .flatten()
-                    .flat_map(|value| split_anthropic_beta_header(value))
-                    .any(|captured_beta| captured_beta.eq_ignore_ascii_case(generated_beta))
-            })
-        {
-            continue;
-        }
-        headers
-            .entry(ANTHROPIC_BETA_HEADER_NAME.to_string())
-            .or_default()
-            .push(generated);
-    }
-}
-
 fn split_anthropic_beta_header(value: &str) -> Vec<&str> {
     value
         .split(',')
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .collect()
+}
+
+fn residual_header_values(
+    policy: ClientProtocolIngressPolicy,
+    name: &str,
+    value: String,
+) -> Vec<String> {
+    if policy != ClientProtocolIngressPolicy::AnthropicMessages
+        || name != ANTHROPIC_BETA_HEADER_NAME
+    {
+        return vec![value];
+    }
+
+    let beta_tokens = split_anthropic_beta_header(&value);
+    if !beta_tokens
+        .iter()
+        .copied()
+        .any(is_anthropic_context_1m_beta)
+    {
+        return vec![value];
+    }
+    let residual = beta_tokens
+        .into_iter()
+        .filter(|token| !is_anthropic_context_1m_beta(token))
+        .collect::<Vec<_>>()
+        .join(", ");
+    (!residual.is_empty())
+        .then_some(residual)
+        .into_iter()
+        .collect()
+}
+
+fn is_anthropic_context_1m_beta(value: &str) -> bool {
+    value.eq_ignore_ascii_case(ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE)
 }
 
 fn sanitized_protocol_context_value(value: &Value) -> Value {
