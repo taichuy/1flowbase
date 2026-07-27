@@ -98,6 +98,8 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   }
   for (const { options } of invocations) {
     assert.equal(options.env.API_DATABASE_URL, databaseUrl);
+    assert.equal(options.env.BOOTSTRAP_ROOT_ACCOUNT, "root");
+    assert.equal(options.env.BOOTSTRAP_ROOT_PASSWORD, "change-me");
   }
   assert.equal(invocations[0].args.at(-1), "application_public_api");
   for (const { args } of invocations.slice(1)) {

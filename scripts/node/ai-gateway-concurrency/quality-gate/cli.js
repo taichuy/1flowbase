@@ -102,7 +102,13 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
   const manifestPath = path.join(repoRoot, "api/Cargo.toml");
   const invocation = (name, packageName, filter) => ({
     name,
-    options: { env: { API_DATABASE_URL: databaseUrl } },
+    options: {
+      env: {
+        API_DATABASE_URL: databaseUrl,
+        BOOTSTRAP_ROOT_ACCOUNT: "root",
+        BOOTSTRAP_ROOT_PASSWORD: "change-me",
+      },
+    },
     args: [
       "test",
       "--manifest-path",
