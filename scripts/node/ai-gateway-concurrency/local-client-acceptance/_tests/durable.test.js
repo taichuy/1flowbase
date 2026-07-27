@@ -3,8 +3,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  evaluateMockAttempt, reconcileAttempt, snapshotRuns, verifyIdle, waitForBarrierWaiting,
+  evaluateMockAttempt, networkObserverEvidence, reconcileAttempt, snapshotRuns, verifyIdle,
+  waitForBarrierWaiting,
 } = require('../durable');
+const { PROVIDER_ERROR_BODY } = require('../vector-manifest');
 
 function response(data) {
   return { ok: true, async json() { return { data }; } };
@@ -73,7 +75,7 @@ test('WP-14A mock evidence proves one text arrival and ordered two-turn tool arr
 test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and executor=0', () => {
   const before = {
     entries: [{ sequence: 10 }],
-    counters: { gatewayExecutorInvocations: 0 },
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
   };
   const after = {
     entries: [
@@ -92,7 +94,7 @@ test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and execu
         successTerminalCount: 1,
       },
     ],
-    counters: { gatewayExecutorInvocations: 0 },
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
   };
   const evidence = evaluateMockAttempt(before, after, {
     provider_requests: 1,
@@ -100,8 +102,10 @@ test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and execu
     success_terminal_counts: [1],
     request_body_keys: ['context_management', 'output_config', 'thinking'],
     gateway_executor_invocations: 0,
+    network_observer_outbound: 0,
   });
   assert.equal(evidence.gateway_executor_invocations, 0);
+  assert.equal(evidence.network_observer_outbound, 0);
   assert.deepEqual(evidence.success_terminal_counts, [1]);
   assert.throws(() => evaluateMockAttempt(before, {
     ...after,
@@ -112,6 +116,146 @@ test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and execu
     success_terminal_counts: [1],
     gateway_executor_invocations: 0,
   }), /expected gateway executor=0/u);
+  assert.throws(() => networkObserverEvidence({
+    counters: { networkObserverOutbound: 1 },
+  }, 0), /expected network observer outbound=0/u);
+});
+
+test('F4-CLIENT-GATE accepts legal callback request counts but requires paired lifecycle and resume chronology', () => {
+  const before = {
+    entries: [{ sequence: 20 }],
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
+  };
+  const entries = [
+    ...before.entries,
+    { sequence: 21, event: 'arrival', nonce: 'initial' },
+    { sequence: 22, event: 'tool_call', nonce: 'initial' },
+    { sequence: 23, event: 'settled', nonce: 'initial', outcome: 'completed', successTerminalCount: 1 },
+    { sequence: 24, event: 'arrival', nonce: 'callback' },
+    { sequence: 25, event: 'second_upstream_request', nonce: 'callback' },
+    { sequence: 26, event: 'barrier_waiting', nonce: 'callback' },
+    { sequence: 27, event: 'barrier_released', nonce: 'callback' },
+    { sequence: 28, event: 'settled', nonce: 'callback', outcome: 'completed', successTerminalCount: 1 },
+  ];
+  const expectation = {
+    minimum_provider_requests: 2,
+    provider_outcomes: ['completed'],
+    success_terminal_counts: [1],
+    minimum_callback_resumes: 1,
+    gateway_executor_invocations: 0,
+    network_observer_outbound: 0,
+  };
+  const evidence = evaluateMockAttempt(before, { entries, counters: before.counters }, expectation);
+  assert.equal(evidence.arrivals, 2);
+  assert.equal(evidence.callback_resume.observed_resumes, 1);
+
+  const retryEntries = [
+    ...entries.slice(0, -1),
+    { sequence: 28, event: 'settled', nonce: 'callback', outcome: 'completed', successTerminalCount: 1 },
+    { sequence: 29, event: 'arrival', nonce: 'retry' },
+    { sequence: 30, event: 'settled', nonce: 'retry', outcome: 'completed', successTerminalCount: 1 },
+  ];
+  assert.equal(evaluateMockAttempt(before, {
+    entries: retryEntries, counters: before.counters,
+  }, expectation).arrivals, 3);
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: entries.filter((event) => event.event !== 'barrier_released'),
+    counters: before.counters,
+  }, expectation), /callback resume chronology was incomplete/u);
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: entries.filter((event) => !(event.event === 'settled' && event.nonce === 'callback')),
+    counters: before.counters,
+  }, expectation), /expected 2 settled mock request, observed 1/u);
+
+  const duplicateRound = [
+    ...entries,
+    { sequence: 29, event: 'arrival', nonce: 'callback-two' },
+    { sequence: 30, event: 'second_upstream_request', nonce: 'callback-two' },
+    { sequence: 31, event: 'barrier_waiting', nonce: 'callback-two' },
+    { sequence: 32, event: 'barrier_released', nonce: 'callback-two' },
+    {
+      sequence: 33, event: 'settled', nonce: 'callback-two',
+      outcome: 'completed', successTerminalCount: 1,
+    },
+  ];
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: duplicateRound, counters: before.counters,
+  }, { ...expectation, minimum_provider_requests: 3, minimum_callback_resumes: 2 }),
+  /distinct Provider tool-call rounds/u);
+});
+
+test('F4-CLIENT-GATE retries remain strict and every durable error body is byte exact', async () => {
+  const mockBefore = {
+    entries: [{ sequence: 30 }],
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
+  };
+  const retryEntries = [mockBefore.entries[0]];
+  for (let index = 0; index < 3; index += 1) {
+    const sequence = 31 + (index * 2);
+    const nonce = `error-${index}`;
+    retryEntries.push(
+      { sequence, event: 'arrival', nonce },
+      {
+        sequence: sequence + 1,
+        event: 'settled',
+        nonce,
+        outcome: 'http-500',
+        successTerminalCount: 0,
+      },
+    );
+  }
+  const mockExpectation = {
+    minimum_provider_requests: 1,
+    provider_outcomes: ['http-500'],
+    success_terminal_counts: [0],
+    gateway_executor_invocations: 0,
+    network_observer_outbound: 0,
+  };
+  assert.equal(evaluateMockAttempt(mockBefore, {
+    entries: retryEntries, counters: mockBefore.counters,
+  }, mockExpectation).arrivals, 3);
+  retryEntries.at(-1).outcome = 'completed';
+  assert.throws(() => evaluateMockAttempt(mockBefore, {
+    entries: retryEntries, counters: mockBefore.counters,
+  }, mockExpectation), /outcome completed did not match http-500/u);
+
+  const before = { ids: ['old-run'], entries: [{ sequence: 30 }] };
+  const payloads = {
+    'http://fixture/runs': { items: [
+      { id: 'old-run', status: 'succeeded' },
+      { id: 'failed-1', status: 'failed' },
+      { id: 'failed-2', status: 'failed' },
+    ] },
+    'http://fixture/runs/failed-1': {
+      id: 'failed-1', status: 'failed', error: { message: PROVIDER_ERROR_BODY },
+    },
+    'http://fixture/runs/failed-2': {
+      id: 'failed-2', status: 'failed', error: { message: PROVIDER_ERROR_BODY },
+    },
+  };
+  const fetchImpl = async (url) => response(payloads[url]);
+  const evidence = await reconcileAttempt({
+    target,
+    before,
+    expectedRuns: 2,
+    expectedStatuses: ['failed'],
+    expectedErrorBody: PROVIDER_ERROR_BODY,
+    fetchImpl,
+    graceMs: 0,
+  });
+  assert.deepEqual(evidence.runs.map((run) => run.error_message), [
+    PROVIDER_ERROR_BODY, PROVIDER_ERROR_BODY,
+  ]);
+  payloads['http://fixture/runs/failed-2'].error.message = `client wrapper ${PROVIDER_ERROR_BODY}`;
+  await assert.rejects(reconcileAttempt({
+    target,
+    before,
+    expectedRuns: 2,
+    expectedStatuses: ['failed'],
+    expectedErrorBody: PROVIDER_ERROR_BODY,
+    fetchImpl,
+    graceMs: 0,
+  }), /did not preserve the exact upstream body/u);
 });
 
 test('F1 releases tool barrier only for barrier_waiting after the attempt snapshot cursor', async () => {

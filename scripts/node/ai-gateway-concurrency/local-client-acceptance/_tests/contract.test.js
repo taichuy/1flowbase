@@ -11,7 +11,7 @@ const {
 } = require('../contract');
 const {
   LONG_REPEATED_UNICODE_TEXT, PARALLEL_RESULT_A, PARALLEL_RESULT_B,
-  SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B, VECTOR_MANIFEST_SCHEMA,
+  PROVIDER_ERROR_BODY, SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B, VECTOR_MANIFEST_SCHEMA,
 } = require('../vector-manifest');
 
 const paths = {
@@ -113,8 +113,16 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
   ]);
   for (const vector of VECTOR_MANIFEST.vectors) {
     assert.equal(vector.expected.gateway_executor_invocations, 0);
-    assert.equal(vector.expected.provider_requests, vector.expected.success_terminal_counts.length);
+    assert.equal(vector.expected.network_observer_outbound, 0);
+    assert.equal(
+      Number.isInteger(vector.expected.provider_requests)
+        || Number.isInteger(vector.expected.minimum_provider_requests),
+      true,
+    );
+    assert.equal(vector.expected.success_terminal_counts.length, 1);
   }
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.durable_runs, 'provider_requests');
   assert.equal(vectorsFor('codex', 'responses_websocket').includes(PROVIDER_ERROR_VECTOR), false);
   assert.equal(vectorsFor('claude', 'anthropic_sse').includes(CLAUDE_PROTOCOL_VECTOR), true);
   assert.equal(vectorsFor('opencode', 'openai_chat_sse').includes(CLAUDE_PROTOCOL_VECTOR), false);
@@ -126,11 +134,13 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.match(LONG_REPEATED_UNICODE_TEXT, /重复段🙂🚀/u);
   assert.match(LONG_REPEATED_UNICODE_TEXT, /e\u0301/u);
   assert.deepEqual(PARALLEL_TOOL_VECTOR.expected.tool_result_markers, [PARALLEL_RESULT_A, PARALLEL_RESULT_B]);
-  assert.equal(PARALLEL_TOOL_VECTOR.expected.provider_requests, 2);
+  assert.equal(PARALLEL_TOOL_VECTOR.expected.minimum_provider_requests, 2);
   assert.deepEqual(SEQUENTIAL_TOOL_VECTOR.expected.tool_result_markers, [
     SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
   ]);
-  assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.provider_requests, 3);
+  assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_provider_requests, 3);
+  assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.tool_call_count, 2);
+  assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_callback_resumes, 2);
 });
 
 test('WP-D4B uses installed client surfaces without injecting Claude fields into Codex or OpenCode', () => {

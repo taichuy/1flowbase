@@ -513,6 +513,64 @@ test('Responses tool fixture calls a client-declared read function', async () =>
   });
 });
 
+test('Root #1477 local client fixture emits parallel calls and two sequential callback rounds', async () => {
+  await withMockUpstream(async ({ httpBaseUrl, upstream }) => {
+    const request = async (input) => {
+      const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'mock-model', stream: true, input,
+          tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+        }),
+      });
+      return parseSse(await response.text());
+    };
+    const toolItems = (events) => events
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item)
+      .filter((item) => item.type === 'function_call');
+
+    const parallel = await request(
+      '1flowbase-client-tool-vector tools-parallel-one-callback-task '
+        + 'TOOL_VECTOR_PATH=/tmp/parallel-a PARALLEL_TOOL_A_PATH=/tmp/parallel-a '
+        + 'PARALLEL_TOOL_B_PATH=/tmp/parallel-b',
+    );
+    assert.deepEqual(
+      toolItems(parallel).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/parallel-a', '/tmp/parallel-b'],
+    );
+
+    const sequentialPrompt = '1flowbase-client-tool-vector '
+      + 'tools-sequential-callback-tasks-one-turn TOOL_VECTOR_PATH=/tmp/sequential-a '
+      + 'SEQUENTIAL_TOOL_A_PATH=/tmp/sequential-a SEQUENTIAL_TOOL_B_PATH=/tmp/sequential-b';
+    const first = await request(sequentialPrompt);
+    assert.deepEqual(
+      toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/sequential-a'],
+    );
+    const second = await request(
+      `${sequentialPrompt} 1flowbase-client-tool-result sequential-a`,
+    );
+    assert.deepEqual(
+      toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/sequential-b'],
+    );
+    const third = await request(
+      `${sequentialPrompt} 1flowbase-client-tool-result sequential-a `
+        + '1flowbase-client-tool-result sequential-b',
+    );
+    assert.equal(toolItems(third).length, 0);
+    assert.match(third.map((event) => JSON.stringify(event.data)).join(''), /tool sentinel ok/u);
+
+    const snapshot = upstream.snapshot();
+    assert.equal(snapshot.entries.filter((event) => event.event === 'tool_call').length, 3);
+    assert.equal(
+      snapshot.entries.filter((event) => event.event === 'second_upstream_request').length,
+      2,
+    );
+  });
+});
+
 // Root AC-019/020/023/024: provider output, rather than forged client input, drives MCP observations.
 test('controlled wire vectors observe honest provider MCP output without executor or server_url outbound', async () => {
   await withMockUpstream(async ({ upstream, httpBaseUrl, networkObserverUrl, gatewayExecutorObserverUrl }) => {

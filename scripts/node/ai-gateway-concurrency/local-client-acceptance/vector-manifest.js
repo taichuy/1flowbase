@@ -1,5 +1,7 @@
 'use strict';
 
+const { HTTP_500_ERROR_BODY } = require('../mock-upstream');
+
 const VECTOR_MANIFEST_SCHEMA = '1flowbase.local-client-vector-manifest/v1';
 const ALL_CLIENTS = Object.freeze(['claude', 'opencode', 'codex']);
 
@@ -19,8 +21,7 @@ const LONG_TEXT_BEGIN = '1flowbase-long-unicode-begin\n';
 const LONG_TEXT_UNIT = '重复段🙂🚀|e\u0301|漢字|`same`  **same**|  same  same  \n';
 const LONG_TEXT_END = '1flowbase-long-unicode-end';
 const LONG_REPEATED_UNICODE_TEXT = `${LONG_TEXT_BEGIN}${LONG_TEXT_UNIT.repeat(1024)}${LONG_TEXT_END}`;
-const PROVIDER_ERROR_BODY =
-  ' \n{"future_error":{"shape":"unknown"},"message":"keep complete body"}\n ';
+const PROVIDER_ERROR_BODY = HTTP_500_ERROR_BODY;
 const CLAUDE_PROTOCOL_PROFILE = Object.freeze({
   id: 'claude_1m_adaptive_context_management',
   model: 'claude-opus-4-6[1m]',
@@ -46,8 +47,10 @@ function successfulExpected({
   assistantTexts,
   durableRuns = 1,
   providerRequests = 1,
+  minimumProviderRequests = null,
   toolMode = null,
   toolResultMarkers = [],
+  minimumCallbackResumes = null,
   requestBodyKeys = [],
 }) {
   return Object.freeze({
@@ -55,14 +58,18 @@ function successfulExpected({
     assistant_texts: Object.freeze(assistantTexts),
     durable_runs: durableRuns,
     durable_statuses: Object.freeze(Array.from({ length: durableRuns }, () => 'succeeded')),
-    provider_requests: providerRequests,
-    provider_outcomes: Object.freeze(Array.from({ length: providerRequests }, () => 'completed')),
-    success_terminal_counts: Object.freeze(Array.from({ length: providerRequests }, () => 1)),
+    ...(minimumProviderRequests === null
+      ? { provider_requests: providerRequests }
+      : { minimum_provider_requests: minimumProviderRequests }),
+    provider_outcomes: Object.freeze(['completed']),
+    success_terminal_counts: Object.freeze([1]),
     gateway_executor_invocations: 0,
+    network_observer_outbound: 0,
     ...(toolMode ? {
       tool_mode: toolMode,
       tool_result_markers: Object.freeze(toolResultMarkers),
-      minimum_tool_calls: toolResultMarkers.length,
+      tool_call_count: toolResultMarkers.length,
+      minimum_callback_resumes: minimumCallbackResumes ?? 1,
     } : {}),
     ...(requestBodyKeys.length ? { request_body_keys: Object.freeze(requestBodyKeys) } : {}),
   });
@@ -92,7 +99,7 @@ const TOOL_VECTOR = Object.freeze({
   })]),
   expected: successfulExpected({
     assistantTexts: [TOOL_FINAL_SENTINEL],
-    providerRequests: 2,
+    minimumProviderRequests: 2,
     toolMode: 'single',
     toolResultMarkers: [TOOL_RESULT_SENTINEL],
   }),
@@ -151,15 +158,14 @@ const PROVIDER_ERROR_VECTOR = Object.freeze({
   })]),
   expected: Object.freeze({
     exit: 'failure',
-    error_markers: Object.freeze([
-      'future_error', '"shape":"unknown"', '"message":"keep complete body"',
-    ]),
-    durable_runs: 1,
+    error_body: PROVIDER_ERROR_BODY,
+    durable_runs: 'provider_requests',
     durable_statuses: Object.freeze(['failed']),
-    provider_requests: 1,
+    minimum_provider_requests: 1,
     provider_outcomes: Object.freeze(['http-500']),
     success_terminal_counts: Object.freeze([0]),
     gateway_executor_invocations: 0,
+    network_observer_outbound: 0,
   }),
 });
 
@@ -180,9 +186,10 @@ const PARALLEL_TOOL_VECTOR = Object.freeze({
   })]),
   expected: successfulExpected({
     assistantTexts: [PARALLEL_FINAL_SENTINEL],
-    providerRequests: 2,
+    minimumProviderRequests: 2,
     toolMode: 'parallel_one_callback_task',
     toolResultMarkers: [PARALLEL_RESULT_A, PARALLEL_RESULT_B],
+    minimumCallbackResumes: 1,
   }),
 });
 
@@ -203,9 +210,10 @@ const SEQUENTIAL_TOOL_VECTOR = Object.freeze({
   })]),
   expected: successfulExpected({
     assistantTexts: [SEQUENTIAL_FINAL_SENTINEL],
-    providerRequests: 3,
+    minimumProviderRequests: 3,
     toolMode: 'sequential_callback_tasks_one_turn',
     toolResultMarkers: [SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B],
+    minimumCallbackResumes: 2,
   }),
 });
 

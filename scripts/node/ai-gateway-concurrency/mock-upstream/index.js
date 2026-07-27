@@ -163,6 +163,39 @@ function toolVectorPath(body) {
   return match?.[1] ?? '/tmp/1flowbase-missing-tool-vector';
 }
 
+function namedToolVectorPath(body, name) {
+  const encoded = JSON.stringify(body);
+  const match = new RegExp(`${name}=([^\\\\"\\s]+)`, 'u').exec(encoded);
+  return match?.[1] ?? null;
+}
+
+function clientToolPlan(body) {
+  const hasToolResult = containsValue(body, '1flowbase-client-tool-result');
+  if (containsValue(body, 'tools-parallel-one-callback-task')) {
+    const paths = [
+      namedToolVectorPath(body, 'PARALLEL_TOOL_A_PATH'),
+      namedToolVectorPath(body, 'PARALLEL_TOOL_B_PATH'),
+    ];
+    return {
+      hasToolResult,
+      final: hasToolResult,
+      paths: paths.every(Boolean) ? paths : [toolVectorPath(body)],
+    };
+  }
+  if (containsValue(body, 'tools-sequential-callback-tasks-one-turn')) {
+    const hasFirstResult = containsValue(body, '1flowbase-client-tool-result sequential-a');
+    const hasSecondResult = containsValue(body, '1flowbase-client-tool-result sequential-b');
+    const firstPath = namedToolVectorPath(body, 'SEQUENTIAL_TOOL_A_PATH') ?? toolVectorPath(body);
+    const secondPath = namedToolVectorPath(body, 'SEQUENTIAL_TOOL_B_PATH') ?? toolVectorPath(body);
+    return {
+      hasToolResult,
+      final: hasSecondResult,
+      paths: hasFirstResult && !hasSecondResult ? [secondPath] : [firstPath],
+    };
+  }
+  return { hasToolResult, final: hasToolResult, paths: [toolVectorPath(body)] };
+}
+
 function gatewayExecutorProbeUrl(body) {
   const encoded = JSON.stringify(body);
   return /GATEWAY_EXECUTOR_PROBE_URL=([^\\"\s]+)/u.exec(encoded)?.[1] ?? null;
@@ -388,17 +421,18 @@ function createMockUpstream(options = {}) {
       }
       beginSse(response);
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
-      const isToolResult = containsValue(body, '1flowbase-client-tool-result');
+      const toolPlan = clientToolPlan(body);
+      const isToolResult = toolPlan.hasToolResult;
       const isClientTextTurn = containsValue(body, '1flowbase gateway sentinel ok');
       const wireAuditVector = wireAuditVectorFromBody(body);
-      if (isToolTurn && !isToolResult) requestTimeline.record('tool_call');
+      if (isToolTurn && !toolPlan.final) requestTimeline.record('tool_call');
       if (isToolResult) requestTimeline.record('second_upstream_request');
       const stream = path === MOCK_ROUTE.RESPONSES
         ? (wireAuditVector && wireAuditVector !== 'gateway-executor-probe'
           ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
           : isToolTurn || isToolResult
           ? responsesToolEvents(
-            requestTimeline.nonce, toolVectorPath(body), isToolResult,
+            requestTimeline.nonce, toolPlan.paths, toolPlan.final,
             gatewayExecutorProbeUrl(body), requestedResponsesTool(body)
           )
           : isClientTextTurn
@@ -406,12 +440,12 @@ function createMockUpstream(options = {}) {
             : responsesEvents(requestTimeline.nonce))
         : path === MOCK_ROUTE.CHAT_COMPLETIONS
           ? (isToolTurn || isToolResult
-            ? chatToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
+            ? chatToolEvents(requestTimeline.nonce, toolPlan.paths, toolPlan.final)
             : isClientTextTurn
               ? chatTextEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
               : chatTextEvents(requestTimeline.nonce))
           : (isToolTurn || isToolResult
-            ? anthropicToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
+            ? anthropicToolEvents(requestTimeline.nonce, toolPlan.paths, toolPlan.final)
             : isClientTextTurn
               ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
               : anthropicEvents(requestTimeline.nonce));

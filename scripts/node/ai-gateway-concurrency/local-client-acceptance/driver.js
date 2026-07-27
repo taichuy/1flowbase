@@ -17,8 +17,7 @@ const {
 const { discoverClients, findExecutable, probeVersion } = require('./discovery');
 const durableEvidence = require('./durable');
 const { OwnedResources, executeTmux } = require('./lifecycle');
-
-const TOOL_ITEM_TYPES = Object.freeze(['command_execution', 'mcp_tool_call', 'tool_call']);
+const { evaluateAttempt, structuredEvents } = require('./client-surface');
 
 function clientPaths(root, client) {
   const clientRoot = path.join(root, client);
@@ -78,6 +77,13 @@ function publicExpectation(expected) {
         utf8_bytes: Buffer.byteLength(value),
       })),
     } : {}),
+    ...(expected.error_body ? {
+      error_body: {
+        match: 'decoded_contiguous_substring',
+        sha256: crypto.createHash('sha256').update(expected.error_body).digest('hex'),
+        utf8_bytes: Buffer.byteLength(expected.error_body),
+      },
+    } : {}),
   };
 }
 
@@ -86,178 +92,6 @@ function overallStatus(clients, cleanupErrors) {
   if (clients.every((client) => client.status === 'skipped')) return 'skipped';
   if (clients.some((client) => client.status === 'skipped')) return 'partial';
   return 'pass';
-}
-
-function includesMarker(value, marker) {
-  if (typeof value === 'string') return value.includes(marker);
-  if (Array.isArray(value)) return value.some((item) => includesMarker(item, marker));
-  if (value && typeof value === 'object') return Object.values(value).some((item) => includesMarker(item, marker));
-  return false;
-}
-
-function structuredEvents(output) {
-  return String(output).split(/\r?\n/u).flatMap((line) => {
-    const trimmed = line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, '').trim();
-    if (!trimmed.startsWith('{')) return [];
-    try { return [JSON.parse(trimmed)]; } catch { return []; }
-  });
-}
-
-function assistantTextValues(client, event) {
-  if (client === 'codex') {
-    return event.type === 'item.completed' && event.item?.type === 'agent_message'
-      ? [event.item.text ?? event.item.content].filter((value) => typeof value === 'string')
-      : [];
-  }
-  if (client === 'claude') {
-    if (event.type === 'assistant') {
-      return (event.message?.content ?? [])
-        .filter((part) => part.type === 'text' && typeof part.text === 'string')
-        .map((part) => part.text);
-    }
-    return event.type === 'result' && typeof event.result === 'string' ? [event.result] : [];
-  }
-  if (event.type === 'message.part.updated' && event.properties?.part?.type === 'text') {
-    return [event.properties.part.text].filter((value) => typeof value === 'string');
-  }
-  if (event.type === 'text' && event.part?.type === 'text') {
-    return [event.part.text].filter((value) => typeof value === 'string');
-  }
-  return [];
-}
-
-function toolCalls(client, event) {
-  if (client === 'codex') {
-    if (!TOOL_ITEM_TYPES.includes(event.item?.type)) return [];
-    return [{
-      id: event.item.call_id || event.item.id || JSON.stringify(event.item),
-      value: event.item,
-    }];
-  }
-  if (client === 'claude') {
-    if (event.type !== 'assistant') return [];
-    return (event.message?.content ?? []).filter((part) => part.type === 'tool_use').map((part) => ({
-      id: part.id || `${part.name}:${JSON.stringify(part.input)}`,
-      value: part,
-    }));
-  }
-  const part = event.type === 'message.part.updated'
-    ? event.properties?.part
-    : event.type === 'tool_use' ? event.part : null;
-  if (!part || !['tool', 'tool_call'].includes(part.type)) return [];
-  return [{
-    id: part.callID || part.callId || part.id || `${part.tool}:${JSON.stringify(part.state?.input)}`,
-    value: part,
-  }];
-}
-
-function isToolResult(client, event, marker) {
-  if (!includesMarker(event, marker)) return false;
-  if (client === 'codex') return TOOL_ITEM_TYPES.includes(event.item?.type);
-  if (client === 'claude') {
-    return event.type === 'user'
-      || event.message?.content?.some?.((part) => part.type === 'tool_result');
-  }
-  const part = event.type === 'message.part.updated'
-    ? event.properties?.part
-    : event.type === 'tool_use' ? event.part : null;
-  return ['tool', 'tool_result'].includes(part?.type) || event.type === 'tool_use';
-}
-
-function orderedMarkerText(value, markers) {
-  let cursor = 0;
-  for (const marker of markers) {
-    const index = value.indexOf(marker, cursor);
-    if (index === -1) return false;
-    cursor = index + marker.length;
-  }
-  return true;
-}
-
-function assistantTextIndices(client, events, expectedTexts) {
-  let cursor = 0;
-  const indices = [];
-  for (const expected of expectedTexts) {
-    const relative = events.slice(cursor).findIndex((event) => (
-      assistantTextValues(client, event).some((text) => text === expected)
-    ));
-    if (relative === -1) return [];
-    const index = cursor + relative;
-    indices.push(index);
-    cursor = index + 1;
-  }
-  return indices;
-}
-
-function evaluateToolAttempt(client, vector, events) {
-  const calls = events.flatMap((event, index) => (
-    toolCalls(client, event).map((call) => ({ ...call, index }))
-  ));
-  const callsById = new Map();
-  for (const call of calls) {
-    if (!callsById.has(call.id)) callsById.set(call.id, call);
-  }
-  const distinctCalls = [...callsById.values()];
-  const resultIndices = vector.expected.tool_result_markers.map((marker) => (
-    events.findIndex((event) => isToolResult(client, event, marker))
-  ));
-  const finalIndex = events.findIndex((event) => (
-    assistantTextValues(client, event).some((text) => text === vector.expected.assistant_texts.at(-1))
-  ));
-  let chronology = false;
-  if (vector.expected.tool_mode === 'parallel_one_callback_task') {
-    chronology = resultIndices.every((index) => index >= 0)
-      && distinctCalls.length >= vector.expected.minimum_tool_calls
-      && distinctCalls.slice(0, vector.expected.minimum_tool_calls)
-        .every((call) => call.index <= Math.min(...resultIndices));
-  } else if (vector.expected.tool_mode === 'sequential_callback_tasks_one_turn') {
-    const [firstResult, secondResult] = resultIndices;
-    chronology = firstResult >= 0 && secondResult > firstResult
-      && distinctCalls.some((call) => call.index < firstResult)
-      && distinctCalls.some((call) => call.index > firstResult && call.index < secondResult);
-  } else {
-    chronology = resultIndices[0] >= 0 && distinctCalls.some((call) => call.index <= resultIndices[0]);
-  }
-  const resultsBeforeFinal = resultIndices.length > 0
-    && resultIndices.every((index) => index >= 0 && finalIndex > index);
-  const pass = chronology && resultsBeforeFinal;
-  const observed = [];
-  if (distinctCalls.length >= vector.expected.minimum_tool_calls) observed.push('tool_calls_observed');
-  if (resultIndices.every((index) => index >= 0)) observed.push('tool_results_observed');
-  if (chronology) observed.push(`${vector.expected.tool_mode}_observed`);
-  if (resultsBeforeFinal) observed.push('final_marker_observed');
-  return { pass, reason: pass ? null : 'tool_callback_evidence_missing', observed_events: observed };
-}
-
-function evaluateAttempt(client, vector, result, protocol = null) {
-  if (result.timed_out) return { pass: false, reason: 'client_process_timed_out', observed_events: [] };
-  const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
-  if (vector.expected.exit === 'failure') {
-    const markers = vector.expected.error_markers ?? [];
-    const visible = result.exit_code !== 0 && orderedMarkerText(combined, markers);
-    return {
-      pass: visible,
-      reason: visible ? null : 'provider_error_body_missing',
-      observed_events: visible ? ['provider_error_body_observed'] : [],
-    };
-  }
-  if (result.exit_code !== 0) {
-    return { pass: false, reason: 'client_process_failed', observed_events: [] };
-  }
-  if (client === 'codex' && protocol === 'responses_websocket') {
-    if (/falling back to HTTP|fallback_to_http/iu.test(combined)) {
-      return { pass: false, reason: 'responses_websocket_http_fallback', observed_events: [] };
-    }
-  }
-  const events = structuredEvents(result.stdout || '');
-  if (vector.kind === 'tools') return evaluateToolAttempt(client, vector, events);
-  const indices = assistantTextIndices(client, events, vector.expected.assistant_texts ?? []);
-  const observed = indices.length === vector.expected.assistant_texts?.length;
-  return {
-    pass: observed,
-    reason: observed ? null : 'ordered_assistant_text_missing',
-    observed_events: observed ? ['ordered_assistant_text_observed'] : [],
-  };
 }
 
 function continuationId(client, result, existing = null) {
@@ -361,6 +195,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
   const evaluateMockAttempt = dependencies.evaluateMockAttempt || durableEvidence.evaluateMockAttempt;
   const verifyIdle = dependencies.verifyIdle || durableEvidence.verifyIdle;
   const verifyGatewayExecutor = dependencies.gatewayExecutorEvidence || durableEvidence.gatewayExecutorEvidence;
+  const verifyNetworkObserver = dependencies.networkObserverEvidence || durableEvidence.networkObserverEvidence;
   const waitForBarrierWaiting = dependencies.waitForBarrierWaiting || durableEvidence.waitForBarrierWaiting;
   const selectVectors = dependencies.vectorsFor || vectorsFor;
   let tmux = null;
@@ -484,13 +319,18 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
           let evidenceError = null;
           try {
             const mockAfter = await options.mockSnapshot();
+            const mock = evaluateMockAttempt(mockBefore, mockAfter, vector.expected);
+            const expectedDurableRuns = vector.expected.durable_runs === 'provider_requests'
+              ? mock.arrivals
+              : vector.expected.durable_runs;
             evidence = {
-              mock: evaluateMockAttempt(mockBefore, mockAfter, vector.expected),
+              mock,
               durable: await reconcileAttempt({
                 target,
                 before: durableBefore,
-                expectedRuns: vector.expected.durable_runs,
+                expectedRuns: expectedDurableRuns,
                 expectedStatuses: vector.expected.durable_statuses,
+                expectedErrorBody: vector.expected.error_body ?? null,
                 fetchImpl: dependencies.fetchImpl,
               }),
             };
@@ -531,12 +371,14 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         timeline: timeline.snapshot(),
       });
     }
+    const finalMockSnapshot = await options.mockSnapshot();
     finalReconciliation = {
       ...await verifyIdle(
         ['claude', 'opencode', 'codex'].map((client) => options.targets?.[client]).filter(Boolean),
         dependencies.fetchImpl,
       ),
-      ...verifyGatewayExecutor(await options.mockSnapshot(), 0),
+      ...verifyGatewayExecutor(finalMockSnapshot, 0),
+      ...verifyNetworkObserver(finalMockSnapshot, 0),
     };
   } catch (error) {
     clients.push({
@@ -569,15 +411,12 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
 }
 
 module.exports = {
-  assistantTextValues,
   clientPaths,
   continuationId,
   evaluateAttempt,
-  includesMarker,
   overallStatus,
   publicPlan,
   runLocalClientAcceptance,
   structuredEvents,
-  toolCalls,
   writeConfigs,
 };
