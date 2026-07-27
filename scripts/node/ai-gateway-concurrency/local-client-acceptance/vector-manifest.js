@@ -18,7 +18,7 @@ const CLAUDE_PROTOCOL_SENTINEL = '1flowbase claude protocol context ok';
 const LONG_TEXT_BEGIN = '1flowbase-long-unicode-begin\n';
 const LONG_TEXT_UNIT = '重复段🙂🚀|e\u0301|漢字|`same`  **same**|  same  same  \n';
 const LONG_TEXT_END = '1flowbase-long-unicode-end';
-const LONG_REPEATED_UNICODE_TEXT = `${LONG_TEXT_BEGIN}${LONG_TEXT_UNIT.repeat(512)}${LONG_TEXT_END}`;
+const LONG_REPEATED_UNICODE_TEXT = `${LONG_TEXT_BEGIN}${LONG_TEXT_UNIT.repeat(1024)}${LONG_TEXT_END}`;
 const PROVIDER_ERROR_BODY =
   ' \n{"future_error":{"shape":"unknown"},"message":"keep complete body"}\n ';
 const CLAUDE_PROTOCOL_PROFILE = Object.freeze({

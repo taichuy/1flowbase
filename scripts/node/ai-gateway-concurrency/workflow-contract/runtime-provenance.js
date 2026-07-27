@@ -78,6 +78,24 @@ function provenanceRow(receipt, loaded) {
   };
 }
 
+function assertRuntimeLoad(providerCode, loaded) {
+  if (!loaded.response.ok) {
+    const detail = typeof loaded.body?.message === 'string'
+      ? loaded.body.message
+      : JSON.stringify(loaded.body);
+    throw new Error(
+      `${providerCode} runtime load failed after artifact receipt verification ` +
+      `(HTTP ${loaded.response.status}): ${detail}`
+    );
+  }
+  if (loaded.body?.provider_code !== providerCode) {
+    throw new Error(
+      `${providerCode} runtime loaded mismatched provider identity: ` +
+      `${String(loaded.body?.provider_code)}`
+    );
+  }
+}
+
 async function verifyRuntimeProvenance(options) {
   const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-runtime-provenance-'));
   const receipts = Object.fromEntries(PROVIDER_CODES.map((providerCode) => [
@@ -110,9 +128,7 @@ async function verifyRuntimeProvenance(options) {
         receipts[providerCode],
         receipts[providerCode].manifestFingerprint
       );
-      if (!loaded.response.ok || loaded.body?.provider_code !== providerCode) {
-        throw new Error(`${providerCode} runtime rejected the paired package receipt`);
-      }
+      assertRuntimeLoad(providerCode, loaded);
       providers[providerCode] = provenanceRow(receipts[providerCode], loaded.body);
     }
     const evidence = {
@@ -131,6 +147,7 @@ async function verifyRuntimeProvenance(options) {
 
 module.exports = {
   PROVIDER_CODES,
+  assertRuntimeLoad,
   packageReceipt,
   provenanceRow,
   sha256File,
