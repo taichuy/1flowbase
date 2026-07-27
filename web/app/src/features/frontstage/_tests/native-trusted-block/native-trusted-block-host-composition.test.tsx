@@ -161,7 +161,8 @@ describe('native trusted block surface portal composition', () => {
         source: `
 import React from 'react';
 export default function CapabilityViolationBlock() {
-  f\\u0065tch('/api/native-trusted-block');
+  const forbiddenFetch = globalThis['fe' + 'tch'];
+  forbiddenFetch('/api/native-trusted-block');
   return <div>Denied</div>;
 }
 `

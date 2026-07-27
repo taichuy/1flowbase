@@ -3,7 +3,7 @@ import { App as AntdApp, ConfigProvider } from 'antd';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,
-  useLayoutEffect,
+  useEffect,
   useMemo,
   useState,
   type ComponentType,
@@ -91,7 +91,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const nextSurface = attachNativeTrustedBlockPortalSurface({
       root,
       blockId: plan.blockId
