@@ -457,7 +457,7 @@ function NativeReactTrialFixture() {
 function InstrumentedPageCanvas(props: ComponentProps<typeof PageCanvas>) {
   fixtureCounters.pageCanvasRenders += 1;
   useLayoutEffect(syncFixtureCounters);
-  return PageCanvas(props);
+  return <PageCanvas {...props} />;
 }
 
 function fixtureBlock(

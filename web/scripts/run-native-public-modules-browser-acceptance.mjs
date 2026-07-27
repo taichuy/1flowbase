@@ -45,8 +45,14 @@ async function verifyFixture(browserInstance, fixture) {
   const consoleErrors = [];
   const externalRequests = [];
   const httpErrors = [];
+  const failedRequests = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.type() === 'error') {
+      consoleErrors.push({
+        text: message.text(),
+        location: message.location()
+      });
+    }
   });
   page.on('request', (request) => {
     if (new URL(request.url()).origin !== base) {
@@ -57,6 +63,12 @@ async function verifyFixture(browserInstance, fixture) {
     if (response.status() >= 400) {
       httpErrors.push({ url: response.url(), status: response.status() });
     }
+  });
+  page.on('requestfailed', (request) => {
+    failedRequests.push({
+      url: request.url(),
+      errorText: request.failure()?.errorText ?? 'unknown'
+    });
   });
 
   try {
@@ -121,7 +133,13 @@ async function verifyFixture(browserInstance, fixture) {
       publishCompleted !== '1' ||
       pageCanvasRendersAfter !== pageCanvasRendersBefore
     ) {
-      throw new Error(`${fixture.name} Signal evidence failed.`);
+      throw new Error(
+        `${fixture.name} Signal evidence failed: ${JSON.stringify({
+          publishCompleted,
+          pageCanvasRendersBefore,
+          pageCanvasRendersAfter
+        })}`
+      );
     }
     await page.screenshot({
       path: resolve(output, `native-${fixture.name}.png`),
@@ -135,6 +153,7 @@ async function verifyFixture(browserInstance, fixture) {
       fixture.name,
       externalRequests,
       httpErrors,
+      failedRequests,
       consoleErrors
     );
 
@@ -158,6 +177,7 @@ async function verifyFixture(browserInstance, fixture) {
       fixture.name,
       externalRequests,
       httpErrors,
+      failedRequests,
       consoleErrors
     );
 
@@ -171,7 +191,8 @@ async function verifyFixture(browserInstance, fixture) {
       publishCompleted,
       externalRequests: externalRequests.length,
       httpErrors,
-      consoleErrors: consoleErrors.length
+      failedRequests,
+      consoleErrors
     };
   } finally {
     await context.close();
@@ -221,6 +242,7 @@ function assertNetworkAndConsole(
   name,
   externalRequests,
   httpErrors,
+  failedRequests,
   consoleErrors
 ) {
   if (externalRequests.length > 0) {
@@ -235,7 +257,20 @@ function assertNetworkAndConsole(
         .join(' | ')}`
     );
   }
+  if (failedRequests.length > 0) {
+    throw new Error(
+      `${name} failed requests: ${failedRequests
+        .map(({ errorText, url }) => `${errorText} ${url}`)
+        .join(' | ')}`
+    );
+  }
   if (consoleErrors.length > 0) {
-    throw new Error(`${name} console errors: ${consoleErrors.join(' | ')}`);
+    throw new Error(
+      `${name} console errors: ${consoleErrors
+        .map(({ text, location }) =>
+          `${text} @ ${location.url || '<unknown>'}:${location.lineNumber}:${location.columnNumber}`
+        )
+        .join(' | ')}`
+    );
   }
 }
