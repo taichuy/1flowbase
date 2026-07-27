@@ -65,13 +65,9 @@ export const importedReact = React;
         dependencyLock: [hostLock('react', ['missing'])],
         hostModules
       })
-    ).not.toThrow();
-    await expect(
-      createNativeReactModuleRegistry({
-        dependencyLock: [hostLock('react', ['missing'])],
-        hostModules
-      }).load('react')
-    ).rejects.toMatchObject({ code: 'module_export_missing' });
+    ).toThrowError(
+      expect.objectContaining({ code: 'invalid_dependency_lock' })
+    );
   });
 
   test('single-flights and verifies ShadowRoot style/support assets', async () => {

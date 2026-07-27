@@ -288,6 +288,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           artifact: {} as never,
           component: () => <h1>FrontStage Runtime Snapshot</h1>,
           artifactCacheTier: 'l2',
+          moduleAssets: [],
           identityInput: {
             sourceSha256: 'a'.repeat(64),
             runtimeFingerprint: 'runtime-a',

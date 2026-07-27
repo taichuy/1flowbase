@@ -108,6 +108,19 @@ export function createNativeReactModuleRegistry({
       );
     }
     if (
+      registration.binding === 'host' &&
+      registration.exports.some(
+        (exportName) =>
+          !(exportName in hostModules[registration.module_source]!)
+      )
+    ) {
+      throw registryError(
+        'invalid_dependency_lock',
+        `dependencyLock.${registration.module_source}.exports`,
+        `Host ABI module exports do not match: ${registration.module_source}.`
+      );
+    }
+    if (
       registration.binding === 'fetched' &&
       !registration.assets.every((asset) =>
         isRegisteredAssetUrl(registration, asset)
@@ -182,7 +195,17 @@ export function createNativeReactModuleRegistry({
       return moduleMap;
     },
     async resolveModuleAssets(moduleSources) {
-      const assets = [...new Set(moduleSources)].flatMap((source) => {
+      const resolvedSources = new Set<string>();
+      const pendingSources = [...new Set(moduleSources)];
+      while (pendingSources.length > 0) {
+        const source = pendingSources.shift()!;
+        if (resolvedSources.has(source)) continue;
+        resolvedSources.add(source);
+        for (const dependency of dependencyGraph.get(source) ?? []) {
+          pendingSources.push(dependency);
+        }
+      }
+      const assets = [...resolvedSources].flatMap((source) => {
         const registration = registrations.get(source);
         if (!registration) {
           throw registryError(
@@ -277,7 +300,12 @@ async function evaluateRegisteredModule(
     prepared.dependencies.map(async (source) => {
       const hostModule = hostModules[source];
       if (hostModule) {
-        if (registrations.get(source)?.binding !== 'host') {
+        const hostRegistration =
+          registrations.get(source) ??
+          (source === 'react/jsx-runtime'
+            ? registrations.get('react')
+            : undefined);
+        if (hostRegistration?.binding !== 'host') {
           throw registryError(
             'module_dependency_denied',
             `modules.${registration.module_source}.imports.${source}`,

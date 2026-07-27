@@ -2,6 +2,7 @@ import {
   canonicalizeNativeReactComponentArtifact,
   createNativeReactComponentArtifactIdentity,
   createNativeReactRuntimeFingerprint,
+  nativeReactHostAbiIdentity,
   nativeReactComponentArtifactMatchesIdentity,
   sha256Text,
   type NativeReactCompileDiagnostic,
@@ -10,6 +11,8 @@ import {
   type NativeReactComponentArtifact,
   type NativeReactCatalogDependencyLock
 } from '@1flowbase/page-runtime';
+import antdPackageJson from 'antd/package.json';
+import reactPackageJson from 'react/package.json';
 
 import nativeReactCompilerWorkerUrl from './native-react-compiler.worker?worker&url';
 
@@ -39,8 +42,18 @@ export function getNativeReactCompilerWorkerUrl(): string {
   return nativeReactCompilerWorkerUrl;
 }
 
-export function getNativeReactRuntimeFingerprint(): string {
-  return createNativeReactRuntimeFingerprint(getNativeReactCompilerWorkerUrl());
+export function getNativeReactRuntimeFingerprint(
+  dependencyLock: NativeReactCatalogDependencyLock = []
+): string {
+  return createNativeReactRuntimeFingerprint(
+    getNativeReactCompilerWorkerUrl(),
+    JSON.stringify({
+      react: reactPackageJson.version,
+      react_jsx_runtime: reactPackageJson.version,
+      antd: antdPackageJson.version,
+      catalog: nativeReactHostAbiIdentity(dependencyLock)
+    })
+  );
 }
 
 export function createNativeReactBrowserCompilerWorkerFactory({
@@ -64,7 +77,7 @@ export function compileNativeReactComponentInBrowser({
   source,
   requestId,
   dependencyLock = [],
-  runtimeFingerprint = getNativeReactRuntimeFingerprint(),
+  runtimeFingerprint = getNativeReactRuntimeFingerprint(dependencyLock),
   workerFactory = createNativeReactBrowserCompilerWorkerFactory()
 }: {
   source: string;

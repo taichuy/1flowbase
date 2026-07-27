@@ -3,7 +3,7 @@ import { App as AntdApp, ConfigProvider } from 'antd';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ComponentType,
@@ -22,7 +22,8 @@ import {
   isNativeTrustedBlockRuntimeError,
   type NativeTrustedBlockPortalContainment,
   type NativeTrustedBlockPortalSurface,
-  type NativeTrustedBlockPreparePlan
+  type NativeTrustedBlockPreparePlan,
+  type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
@@ -69,6 +70,7 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   plan: NativeTrustedBlockPreparePlan;
   component: FrontstageNativeTrustedBlockReactComponent;
   ctx: BlockContext;
+  moduleAssets?: readonly NativeReactResolvedModuleAsset[];
   providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
@@ -84,6 +86,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   plan,
   component: BlockComponent,
   ctx,
+  moduleAssets = [],
   providerScope,
   providerWrapper,
   onRuntimeError
@@ -91,7 +94,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const nextSurface = attachNativeTrustedBlockPortalSurface({
       root,
       blockId: plan.blockId
@@ -106,14 +109,29 @@ export function FrontstageNativeTrustedBlockPortalHost({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 
-  const styleCache = useMemo(
-    () => (surface ? createCache() : null),
-    [surface]
-  );
+  const styleCache = useMemo(() => (surface ? createCache() : null), [surface]);
   const portalContainment = useMemo(
     () => (surface ? createPortalContainment(surface.shadowRoot) : null),
     [surface]
   );
+
+  useLayoutEffect(() => {
+    if (!surface) return;
+    const styles = moduleAssets
+      .filter((asset) => asset.role === 'shadow_style')
+      .map((asset) => {
+        const element =
+          surface.mountElement.ownerDocument.createElement('style');
+        element.dataset.moduleSource = asset.module_source;
+        element.dataset.assetSha256 = asset.sha256;
+        element.textContent = new TextDecoder('utf-8', { fatal: true }).decode(
+          asset.bytes
+        );
+        surface.shadowRoot.prepend(element);
+        return element;
+      });
+    return () => styles.forEach((style) => style.remove());
+  }, [moduleAssets, surface]);
 
   if (!surface || !styleCache || !portalContainment) return null;
 

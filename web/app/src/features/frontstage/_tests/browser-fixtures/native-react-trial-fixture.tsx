@@ -316,7 +316,11 @@ function NativeReactTrialFixture() {
         >
           render failure
         </button>
-        <button onClick={() => { firstThrowPending = false; }}>
+        <button
+          onClick={() => {
+            firstThrowPending = false;
+          }}
+        >
           allow render recovery
         </button>
         <button onClick={() => setPreparationFailure(true)}>
@@ -434,7 +438,8 @@ function preparation(
     artifact: {} as FrontstageNativePreparedRuntime['artifact'],
     component: component as FrontstageNativePreparedRuntime['component'],
     identityInput,
-    artifactCacheTier
+    artifactCacheTier,
+    moduleAssets: []
   };
   return {
     ...base,

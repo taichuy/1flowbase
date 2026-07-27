@@ -274,7 +274,8 @@ function preparation(
       artifact: {} as FrontstageNativePreparedRuntime['artifact'],
       component: component as FrontstageNativePreparedRuntime['component'],
       identityInput,
-      artifactCacheTier: 'l2'
+      artifactCacheTier: 'l2',
+      moduleAssets: []
     }
   };
 }

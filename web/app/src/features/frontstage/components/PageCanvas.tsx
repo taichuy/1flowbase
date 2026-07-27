@@ -266,10 +266,13 @@ function NativeRuntimeSlotSurface({
     readyPreparation?.prepared.identityInput.sourceSha256
   ]);
   if (preparation.status === 'failed' || runtimeError) {
-    const retry = preparation.status === 'failed' ? onRetry : () => {
-      setRuntimeError(null);
-      setRetryGeneration((current) => current + 1);
-    };
+    const retry =
+      preparation.status === 'failed'
+        ? onRetry
+        : () => {
+            setRuntimeError(null);
+            setRetryGeneration((current) => current + 1);
+          };
     return (
       <div
         className="frontstage-native-block-state frontstage-native-block-state--error"
@@ -363,14 +366,15 @@ function FrontstageNativeRuntimeInstance({
   pageContent?: FrontstagePageContent;
   onRuntimeError(error: BlockProtocolError): void;
 }) {
-  const { instanceEpoch, isCurrentInstance } =
-    useFrontstageNativeBlockInstance({
+  const { instanceEpoch, isCurrentInstance } = useFrontstageNativeBlockInstance(
+    {
       blockId: item.blockId,
       signalCoordinator,
       observationContext: preparation.observationContext,
       cacheTier: preparation.prepared.artifactCacheTier,
       preparationGeneration: preparation.generation
-    });
+    }
+  );
   const subscribe = useCallback(
     (listener: () => void) =>
       signalCoordinator?.subscribeBlock(item.blockId, listener) ?? (() => {}),
@@ -428,6 +432,7 @@ function FrontstageNativeRuntimeInstance({
           .component as FrontstageNativeTrustedBlockReactComponent
       }
       ctx={context}
+      moduleAssets={preparation.prepared.moduleAssets}
       onRuntimeError={onRuntimeError}
     />
   );

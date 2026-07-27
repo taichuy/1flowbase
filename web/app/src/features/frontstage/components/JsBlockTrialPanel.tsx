@@ -6,6 +6,7 @@ import {
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
   type NativeReactCatalogDependencyLock,
+  type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { BlockContext } from '@1flowbase/page-protocol';
@@ -45,6 +46,7 @@ interface NativeTrialReadySnapshot {
   plan: NativeTrustedBlockPreparePlan;
   context: BlockContext;
   renderEpoch: string;
+  moduleAssets: NativeReactResolvedModuleAsset[];
 }
 
 type NativeTrialSnapshot =
@@ -218,9 +220,12 @@ export function JsBlockTrialPanel({
         return;
       }
 
+      const moduleRegistry = nativeModuleRegistryFactory(
+        compiled.artifact.dependencyLock
+      );
       const evaluated = await evaluateNativeReactComponentArtifactWithRegistry(
         compiled.artifact,
-        nativeModuleRegistryFactory(compiled.artifact.dependencyLock)
+        moduleRegistry
       );
       if (generationRef.current !== generation) return;
       if (!evaluated.ok) {
@@ -233,6 +238,12 @@ export function JsBlockTrialPanel({
       }
 
       const plan = createNativeTrialPlan(frozenBlock, frozenSource);
+      const moduleAssets = await moduleRegistry.resolveModuleAssets(
+        evaluated.artifact.program.injectedModules.map(
+          (module) => module.source
+        )
+      );
+      if (generationRef.current !== generation) return;
       const context =
         createBlockContextRef.current?.({
           requestId,
@@ -248,7 +259,8 @@ export function JsBlockTrialPanel({
           evaluated.component as FrontstageNativeTrustedBlockReactComponent,
         plan,
         context,
-        renderEpoch: instanceEpoch
+        renderEpoch: instanceEpoch,
+        moduleAssets
       });
     },
     [
@@ -304,6 +316,7 @@ export function JsBlockTrialPanel({
           plan={snapshot.plan}
           component={snapshot.component}
           ctx={snapshot.context}
+          moduleAssets={snapshot.moduleAssets}
           onRuntimeError={(error) => {
             const active = activeRunRef.current;
             if (!active || active.requestId !== snapshot.requestId) return;

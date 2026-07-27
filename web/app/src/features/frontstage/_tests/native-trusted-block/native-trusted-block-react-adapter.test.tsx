@@ -315,6 +315,44 @@ describe('frontstage native trusted block declarative portal host', () => {
     }
   });
 
+  test('attaches verified module styles to each ShadowRoot and removes them on unmount', async () => {
+    const firstRoot = createBlockRoot();
+    const secondRoot = createBlockRoot();
+    const view = render(
+      <>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={firstRoot}
+          renderEpoch="styles:first"
+          plan={createPlan({ blockId: 'first' })}
+          component={() => <output className="same">First</output>}
+          ctx={createContext()}
+          moduleAssets={[moduleStyle('a', '.same { color: red; }')]}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={secondRoot}
+          renderEpoch="styles:second"
+          plan={createPlan({ blockId: 'second' })}
+          component={() => <output className="same">Second</output>}
+          ctx={createContext()}
+          moduleAssets={[moduleStyle('b', '.same { color: blue; }')]}
+        />
+      </>
+    );
+
+    await shadowQueries(firstRoot).findByText('First');
+    await shadowQueries(secondRoot).findByText('Second');
+    expect(firstRoot.shadowRoot?.textContent).toContain('color: red');
+    expect(firstRoot.shadowRoot?.textContent).not.toContain('color: blue');
+    expect(secondRoot.shadowRoot?.textContent).toContain('color: blue');
+    expect(secondRoot.shadowRoot?.textContent).not.toContain('color: red');
+    expect(document.head.textContent).not.toContain('color: red');
+    expect(document.head.textContent).not.toContain('color: blue');
+
+    view.unmount();
+    expect(firstRoot.shadowRoot?.childNodes).toHaveLength(0);
+    expect(secondRoot.shadowRoot?.childNodes).toHaveLength(0);
+  });
+
   test('D3R-AC-008 surface unmount cleans portal DOM and host-owned scope', async () => {
     const root = createBlockRoot();
     root.setAttribute('data-flowbase-native-trusted-block-id', 'before-host');
@@ -377,3 +415,14 @@ describe('frontstage native trusted block declarative portal host', () => {
     });
   });
 });
+
+function moduleStyle(digestCharacter: string, css: string) {
+  return {
+    module_source: '@1flowbase/native-components',
+    role: 'shadow_style' as const,
+    media_type: 'text/css; charset=utf-8',
+    sha256: digestCharacter.repeat(64),
+    url: `/assets/${digestCharacter}`,
+    bytes: new TextEncoder().encode(css).buffer as ArrayBuffer
+  };
+}

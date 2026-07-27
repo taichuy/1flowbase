@@ -340,6 +340,7 @@ function prepared(blockId: string): FrontstageNativePreparedRuntime {
     } as unknown as FrontstageNativePreparedRuntime['artifact'],
     component: (() => null) as FrontstageNativePreparedRuntime['component'],
     artifactCacheTier: 'miss',
+    moduleAssets: [],
     identityInput: {
       sourceSha256: blockId,
       runtimeFingerprint: 'runtime',

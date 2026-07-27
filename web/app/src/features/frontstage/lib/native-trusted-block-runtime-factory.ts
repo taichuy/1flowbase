@@ -2,6 +2,8 @@ import * as antdModule from 'antd';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
 import * as uiModule from '@1flowbase/ui';
+import antdPackageJson from 'antd/package.json';
+import reactPackageJson from 'react/package.json';
 
 import {
   evaluateNativeTrustedBlockSource,
@@ -84,6 +86,7 @@ export function createFrontstageNativeReactModuleRegistry(
   dependencyLock: NativeReactCatalogDependencyLock,
   options: { fetchAsset?: typeof fetch } = {}
 ): NativeReactModuleRegistry {
+  assertHostAbiVersions(dependencyLock);
   const sharedKey = options.fetchAsset
     ? null
     : nativeReactCatalogDependencyLockIdentity(dependencyLock);
@@ -98,6 +101,24 @@ export function createFrontstageNativeReactModuleRegistry(
   });
   if (sharedKey) sharedNativeReactModuleRegistries.set(sharedKey, registry);
   return registry;
+}
+
+function assertHostAbiVersions(
+  dependencyLock: NativeReactCatalogDependencyLock
+): void {
+  const expectedVersions: Readonly<Record<string, string>> = {
+    react: reactPackageJson.version,
+    antd: antdPackageJson.version
+  };
+  for (const registration of dependencyLock) {
+    if (registration.binding !== 'host') continue;
+    const expected = expectedVersions[registration.module_source];
+    if (!expected || registration.module_version !== expected) {
+      throw new Error(
+        `Native React Host ABI mismatch: ${registration.module_source}@${registration.module_version}.`
+      );
+    }
+  }
 }
 
 function createReactModule(): InjectedModule {

@@ -3,7 +3,8 @@ import {
   type NativeReactArtifactEvaluationResult,
   type NativeReactComponentArtifact,
   type NativeReactCatalogDependencyLock,
-  type NativeReactModuleRegistry
+  type NativeReactModuleRegistry,
+  type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
 
 import {
@@ -53,6 +54,7 @@ export interface FrontstageNativePreparedRuntime {
   >['component'];
   identityInput: FrontstageNativeInstanceIdentityInput;
   artifactCacheTier: 'l2' | 'miss';
+  moduleAssets: NativeReactResolvedModuleAsset[];
 }
 
 interface FrontstageNativePreparationSnapshotBase {

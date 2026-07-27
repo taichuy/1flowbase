@@ -34,9 +34,12 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     }) => {
       const [mountId] = useState(() => ++mounts);
       const [localCount, setLocalCount] = useState(0);
-      useEffect(() => () => {
-        unmounts += 1;
-      }, []);
+      useEffect(
+        () => () => {
+          unmounts += 1;
+        },
+        []
+      );
       return (
         <button
           data-testid="stateful-native-block"
@@ -68,9 +71,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         runtimePreparations={[initialPreparation]}
       />
     );
-    await waitFor(() =>
-      expect(stateful).toHaveTextContent('1:1:Changed:dark')
-    );
+    await waitFor(() => expect(stateful).toHaveTextContent('1:1:Changed:dark'));
     expect(mounts).toBe(1);
     expect(unmounts).toBe(0);
 
@@ -78,9 +79,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       <PageCanvas
         content={pageContent('Changed')}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[
-          preparation('source-b', 1, StatefulBlock)
-        ]}
+        runtimePreparations={[preparation('source-b', 1, StatefulBlock)]}
       />
     );
     const remountedRoot = await nativeRoot();
@@ -129,9 +128,12 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     const LifecycleBlock = ({ ctx }: { ctx: BlockContext }) => {
       contexts.push(ctx);
       useState(() => ++mounts);
-      useEffect(() => () => {
-        unmounts += 1;
-      }, []);
+      useEffect(
+        () => () => {
+          unmounts += 1;
+        },
+        []
+      );
       return <div data-testid="lifecycle-native-block">ready</div>;
     };
     const view = render(
@@ -201,9 +203,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       render(
         <PageCanvas
           content={pageContent('Retry')}
-          runtimePreparations={[
-            preparation('source-a', 1, RecoveringBlock)
-          ]}
+          runtimePreparations={[preparation('source-a', 1, RecoveringBlock)]}
         />
       );
       const firstPublish = contexts.at(-1)!.outputs.publish;
@@ -248,8 +248,7 @@ function preparation(
   const identityInput = {
     sourceSha256: sourceSha256.padEnd(64, '0'),
     runtimeFingerprint: identityOverrides.runtimeFingerprint ?? 'runtime-a',
-    dependencyLockIdentity:
-      identityOverrides.dependencyLockIdentity ?? 'lock-a'
+    dependencyLockIdentity: identityOverrides.dependencyLockIdentity ?? 'lock-a'
   };
   return {
     status: 'ready',
@@ -264,7 +263,8 @@ function preparation(
       artifact: {} as FrontstageNativePreparedRuntime['artifact'],
       component: component as FrontstageNativePreparedRuntime['component'],
       identityInput,
-      artifactCacheTier: 'l2'
+      artifactCacheTier: 'l2',
+      moduleAssets: []
     }
   };
 }

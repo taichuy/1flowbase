@@ -77,7 +77,7 @@ export function useFrontstagePageCanvasNativePreparations({
   demandsByBlockId,
   maxConcurrent = 2,
   artifactCache = frontstageNativeReactArtifactCache,
-  runtimeFingerprint = getNativeReactRuntimeFingerprint(),
+  runtimeFingerprint,
   fetchSource = defaultFetchSource,
   compile = compileNativeReactComponentInBrowser,
   moduleRegistryFactory = createFrontstageNativeReactModuleRegistry
@@ -112,6 +112,8 @@ export function useFrontstagePageCanvasNativePreparations({
     }
     return readPlan.requests.map((request) => {
       const dependencyLock = dependencyLocksByBlockId[request.blockId] ?? [];
+      const currentRuntimeFingerprint =
+        runtimeFingerprint ?? getNativeReactRuntimeFingerprint(dependencyLock);
       const dependencyLockIdentity =
         nativeReactCatalogDependencyLockIdentity(dependencyLock);
       return {
@@ -121,7 +123,7 @@ export function useFrontstagePageCanvasNativePreparations({
           actorId,
           readPlan.workspaceId,
           request.codeRef,
-          runtimeFingerprint,
+          currentRuntimeFingerprint,
           dependencyLockIdentity
         ].join('/'),
         observationContext: {
@@ -164,7 +166,7 @@ export function useFrontstagePageCanvasNativePreparations({
             workspaceId: readPlan.workspaceId,
             source: source.code,
             dependencyLock,
-            runtimeFingerprint
+            runtimeFingerprint: currentRuntimeFingerprint
           });
           const cached = await artifactCache.get(identity);
           throwIfAborted(signal);
@@ -179,7 +181,7 @@ export function useFrontstagePageCanvasNativePreparations({
               source: source.code,
               requestId: `${request.requestId}:${identity.source_sha256}`,
               dependencyLock,
-              runtimeFingerprint
+              runtimeFingerprint: currentRuntimeFingerprint
             });
             throwIfAborted(signal);
             if (!compiled.ok) {
@@ -196,13 +198,17 @@ export function useFrontstagePageCanvasNativePreparations({
 
           enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
+          const moduleRegistry = moduleRegistryCache.get(
+            dependencyLock,
+            moduleRegistryFactory
+          );
           let componentFactoryFlight =
             componentFactoryFlights.get(componentFactoryKey);
           if (!componentFactoryFlight) {
             componentFactoryFlight =
               evaluateNativeReactComponentArtifactWithRegistry(
                 artifact,
-                moduleRegistryCache.get(dependencyLock, moduleRegistryFactory)
+                moduleRegistry
               );
             componentFactoryFlights.set(
               componentFactoryKey,
@@ -218,13 +224,20 @@ export function useFrontstagePageCanvasNativePreparations({
                 'Native React module resolution failed.'
             );
           }
+          const moduleAssets = await moduleRegistry.resolveModuleAssets(
+            evaluated.artifact.program.injectedModules.map(
+              (module) => module.source
+            )
+          );
+          throwIfAborted(signal);
           return {
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
+            moduleAssets,
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
-              runtimeFingerprint,
+              runtimeFingerprint: currentRuntimeFingerprint,
               dependencyLockIdentity
             }
           };
