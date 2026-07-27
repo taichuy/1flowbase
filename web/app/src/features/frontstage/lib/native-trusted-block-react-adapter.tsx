@@ -3,6 +3,7 @@ import { App as AntdApp, ConfigProvider } from 'antd';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useState,
@@ -94,7 +95,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const nextSurface = attachNativeTrustedBlockPortalSurface({
       root,
       blockId: plan.blockId
@@ -104,8 +105,9 @@ export function FrontstageNativeTrustedBlockPortalHost({
     return () => {
       nextSurface.dispose();
     };
-    // The root owns the Shadow DOM resource. renderEpoch is a React portal key,
-    // so identity/retry replaces the component once without recreating DOM.
+    // Surface disposal stays in the passive phase so React removes every
+    // portal-owned ShadowRoot child before the surface clears host-owned DOM.
+    // renderEpoch remains the React portal key and does not recreate the DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 

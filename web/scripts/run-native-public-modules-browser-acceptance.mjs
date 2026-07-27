@@ -44,12 +44,18 @@ async function verifyFixture(browserInstance, fixture) {
   const page = await context.newPage();
   const consoleErrors = [];
   const externalRequests = [];
+  const httpErrors = [];
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
   page.on('request', (request) => {
     if (new URL(request.url()).origin !== base) {
       externalRequests.push(request.url());
+    }
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      httpErrors.push({ url: response.url(), status: response.status() });
     }
   });
 
@@ -125,7 +131,12 @@ async function verifyFixture(browserInstance, fixture) {
     await waitForPortalCleanup(page);
     const nativeCleanup = await readCleanup(page);
     assertCleanup(fixture.name, nativeCleanup);
-    assertNetworkAndConsole(fixture.name, externalRequests, consoleErrors);
+    assertNetworkAndConsole(
+      fixture.name,
+      externalRequests,
+      httpErrors,
+      consoleErrors
+    );
 
     await page.goto(`${base}/public-auth-native-fixture.html`, {
       waitUntil: 'networkidle'
@@ -143,7 +154,12 @@ async function verifyFixture(browserInstance, fixture) {
     await waitForPortalCleanup(page);
     const authCleanup = await readCleanup(page);
     assertCleanup(`${fixture.name} auth`, authCleanup);
-    assertNetworkAndConsole(fixture.name, externalRequests, consoleErrors);
+    assertNetworkAndConsole(
+      fixture.name,
+      externalRequests,
+      httpErrors,
+      consoleErrors
+    );
 
     return {
       fixture: fixture.name,
@@ -154,6 +170,7 @@ async function verifyFixture(browserInstance, fixture) {
       pageCanvasRendersAfter,
       publishCompleted,
       externalRequests: externalRequests.length,
+      httpErrors,
       consoleErrors: consoleErrors.length
     };
   } finally {
@@ -200,10 +217,22 @@ function assertCleanup(name, cleanup) {
   }
 }
 
-function assertNetworkAndConsole(name, externalRequests, consoleErrors) {
+function assertNetworkAndConsole(
+  name,
+  externalRequests,
+  httpErrors,
+  consoleErrors
+) {
   if (externalRequests.length > 0) {
     throw new Error(
       `${name} external requests: ${externalRequests.join(', ')}`
+    );
+  }
+  if (httpErrors.length > 0) {
+    throw new Error(
+      `${name} HTTP errors: ${httpErrors
+        .map(({ status, url }) => `${status} ${url}`)
+        .join(' | ')}`
     );
   }
   if (consoleErrors.length > 0) {
