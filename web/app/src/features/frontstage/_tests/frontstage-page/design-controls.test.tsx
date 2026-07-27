@@ -750,10 +750,13 @@ describe('FrontStagePage - design controls', () => {
     );
 
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '区块设置' }));
-    expect(
-      within(studio).getAllByText('区块设置').length
-    ).toBeGreaterThanOrEqual(1);
+    const configurationButton = within(studio).getByRole('button', {
+      name: '区块设置'
+    });
+    fireEvent.click(configurationButton);
+    expect(configurationButton).toHaveClass(
+      'frontstage-jsx-studio__rail-button--active'
+    );
     expect(
       screen.queryByRole('dialog', { name: '区块配置' })
     ).not.toBeInTheDocument();
@@ -841,7 +844,7 @@ describe('FrontStagePage - design controls', () => {
       within(blockSlot).getByRole('button', { name: '编辑区块' })
     );
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '运行' }));
+    fireEvent.click(within(studio).getByRole('button', { name: /运\s*行/ }));
 
     await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
     expect(trialPanel.render).toHaveBeenLastCalledWith(
