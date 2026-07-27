@@ -12,8 +12,10 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
 import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
+
+import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
@@ -27,6 +29,9 @@ const interfaceCapabilitiesHook = vi.hoisted(() => ({
 }));
 const interfaceCapabilitiesApi = vi.hoisted(() => ({
   fetchFrontstageInterfaceCapability: vi.fn()
+}));
+const componentCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageComponentCapabilities: vi.fn()
 }));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
@@ -47,6 +52,10 @@ vi.mock(
   () => interfaceCapabilitiesHook
 );
 vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
+vi.mock(
+  '../../hooks/use-frontstage-component-capabilities',
+  () => componentCapabilitiesHook
+);
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
     children,
@@ -174,6 +183,25 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
 };
 
+const buttonComponent = {
+  component_id: 'builtin-installation:frontstage.js-ui-block:button',
+  installation_id: 'builtin-installation',
+  provider_code: '1flowbase',
+  plugin_id: 'builtin-frontstage',
+  plugin_version: '1.0.0',
+  contribution_code: 'frontstage.js-ui-block',
+  module_source: '@1flowbase/native-components',
+  module_version: '1.0.0',
+  browser_asset: {
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  },
+  export_name: 'Button',
+  upstream: null,
+  description: 'Native button component.',
+  insert_snippet: '<Button>Action</Button>'
+} satisfies ConsoleFrontstageComponentCapabilitySummary;
+
 describe('FrontstageJsxStudioDrawer', () => {
   afterEach(async () => {
     cleanup();
@@ -257,6 +285,21 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
     interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability.mockResolvedValue(
       capability
+    );
+    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
+      {
+        data: {
+          items: [buttonComponent],
+          total: 1,
+          offset: 0,
+          limit: 10,
+          has_more: false,
+          next_offset: null,
+          module_sources: [buttonComponent.module_source]
+        },
+        loading: false,
+        error: null
+      }
     );
   });
 

@@ -1155,8 +1155,9 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
     selectCatalogEntry('空白 JS Block');
 
-    expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
-    expect(screen.getByText('request failed')).toBeInTheDocument();
+    const picker = screen.getByRole('dialog', { name: '新增区块' });
+    expect(await within(picker).findByText('区块保存失败')).toBeInTheDocument();
+    expect(within(picker).getByText('request failed')).toBeInTheDocument();
   });
 
   test('keeps the previous document when atomic block creation fails', async () => {
@@ -1180,8 +1181,9 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
     selectCatalogEntry('空白 JS Block');
 
-    expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
-    expect(screen.getByText('create failed')).toBeInTheDocument();
+    const picker = screen.getByRole('dialog', { name: '新增区块' });
+    expect(await within(picker).findByText('区块保存失败')).toBeInTheDocument();
+    expect(within(picker).getByText('create failed')).toBeInTheDocument();
     await waitFor(() => {
       expect(saveState.createBlock).toHaveBeenCalledTimes(1);
     });

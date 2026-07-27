@@ -76,7 +76,7 @@ async function verifyFixture(browserInstance, fixture) {
       waitUntil: 'networkidle'
     });
     const stats = page.locator('[data-testid=r5-studio-catalog-stats]');
-    await stats.waitFor();
+    await stats.waitFor({ state: 'attached' });
     await page.getByText('Fixture runtime diagnostic').waitFor();
     await page
       .getByText('[api/succeeded] GET /api/console/example 12ms')
