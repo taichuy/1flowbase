@@ -37,6 +37,7 @@ async function reconcileAttempt({
   target,
   before,
   expectedRuns,
+  expectedStatuses = null,
   fetchImpl = globalThis.fetch,
   graceMs = 10_000,
   pollIntervalMs = 100,
@@ -67,10 +68,31 @@ async function reconcileAttempt({
       throw new Error(`durable query mismatch for run ${observed[index].id}`);
     }
   }
+  if (expectedStatuses) {
+    const actual = queried.map((run) => run.status).sort();
+    const expected = [...expectedStatuses].sort();
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(`durable statuses ${actual.join(',')} did not match ${expected.join(',')}`);
+    }
+  }
   return { expected_runs: expectedRuns, runs: queried };
 }
 
-function evaluateMockAttempt(before, after, expectedRuns) {
+function gatewayExecutorEvidence(snapshot, expected = 0) {
+  const observed = snapshot?.counters?.gatewayExecutorInvocations;
+  if (!Number.isInteger(observed)) throw new Error('mock snapshot omitted gateway executor counter');
+  if (observed !== expected) {
+    throw new Error(`expected gateway executor=${expected}, observed ${observed}`);
+  }
+  return { gateway_executor_invocations: observed };
+}
+
+function evaluateMockAttempt(before, after, rawExpectation) {
+  const legacy = typeof rawExpectation === 'number';
+  const expectation = legacy
+    ? { provider_requests: rawExpectation, provider_outcomes: ['completed'] }
+    : rawExpectation;
+  const expectedRuns = expectation.provider_requests;
   const cursor = before?.entries?.at(-1)?.sequence ?? 0;
   const events = (after?.entries ?? []).filter((event) => event.sequence > cursor);
   const arrivals = events.filter((event) => event.event === 'arrival');
@@ -78,18 +100,43 @@ function evaluateMockAttempt(before, after, expectedRuns) {
   if (arrivals.length !== expectedRuns) {
     throw new Error(`expected ${expectedRuns} mock arrival, observed ${arrivals.length}`);
   }
-  if (settled.length !== expectedRuns || settled.some((event) => event.outcome !== 'completed')) {
-    throw new Error(`expected ${expectedRuns} completed mock request, observed ${settled.length}`);
+  if (settled.length !== expectedRuns) {
+    throw new Error(`expected ${expectedRuns} settled mock request, observed ${settled.length}`);
   }
-  if (expectedRuns === 2) {
+  const expectedOutcomes = expectation.provider_outcomes?.length === expectedRuns
+    ? expectation.provider_outcomes
+    : Array.from({ length: expectedRuns }, () => expectation.provider_outcomes?.[0] ?? 'completed');
+  for (const [index, event] of settled.entries()) {
+    if (event.outcome !== expectedOutcomes[index]) {
+      throw new Error(`mock request ${index + 1} outcome ${event.outcome} did not match ${expectedOutcomes[index]}`);
+    }
+    const expectedTerminalCount = expectation.success_terminal_counts?.[index];
+    if (expectedTerminalCount !== undefined && event.successTerminalCount !== expectedTerminalCount) {
+      throw new Error(
+        `mock request ${index + 1} success terminals ${event.successTerminalCount}`
+          + ` did not match ${expectedTerminalCount}`,
+      );
+    }
+  }
+  if (legacy && expectedRuns === 2) {
     const tool = events.findIndex((event) => event.event === 'tool_call');
     const second = events.findIndex((event) => event.event === 'second_upstream_request');
     if (tool === -1 || second <= tool) throw new Error('mock tool two-turn chronology was not observed');
   }
+  const requestKeys = arrivals[0]?.request?.body?.keys ?? [];
+  for (const key of expectation.request_body_keys ?? []) {
+    if (!requestKeys.includes(key)) throw new Error(`Provider request omitted ${key}`);
+  }
+  const executor = expectation.gateway_executor_invocations === undefined
+    ? null
+    : gatewayExecutorEvidence(after, expectation.gateway_executor_invocations);
   return {
     arrivals: arrivals.length,
     settled: settled.length,
     nonces: arrivals.map((event) => event.nonce),
+    outcomes: settled.map((event) => event.outcome),
+    success_terminal_counts: settled.map((event) => event.successTerminalCount ?? null),
+    ...(executor || {}),
   };
 }
 
@@ -149,6 +196,7 @@ async function verifyIdle(
 module.exports = {
   TERMINAL_STATUSES,
   evaluateMockAttempt,
+  gatewayExecutorEvidence,
   queryRun,
   readJson,
   reconcileAttempt,

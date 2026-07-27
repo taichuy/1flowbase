@@ -6,9 +6,16 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL, TOOL_RESULT_SENTINEL, TOOL_VECTOR,
+  CONTINUITY_VECTOR, LONG_TEXT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR,
+  SEQUENTIAL_TOOL_VECTOR, TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL,
+  TOOL_RESULT_SENTINEL, TOOL_VECTOR,
 } = require('../contract');
-const { evaluateAttempt, runLocalClientAcceptance } = require('../driver');
+const {
+  CONTINUITY_FINAL_SENTINEL, CONTINUITY_SEED_SENTINEL, LONG_REPEATED_UNICODE_TEXT,
+  PARALLEL_FINAL_SENTINEL, PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY,
+  SEQUENTIAL_FINAL_SENTINEL, SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
+} = require('../vector-manifest');
+const { evaluateAttempt, publicPlan, runLocalClientAcceptance } = require('../driver');
 const { OwnedResources, executionEnvironment } = require('../lifecycle');
 
 test('AC-009 cleanup terminates owned children, tmux servers, and temporary roots', async () => {
@@ -48,6 +55,23 @@ test('AC-009 child environment carries gateway config without inheriting host cr
   assert.equal(environment.ANTHROPIC_API_KEY, 'ephemeral-key');
   assert.equal(environment.OPENAI_API_KEY, undefined);
   assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+});
+
+test('WP-D4B public command artifacts redact key and embedded authorization configuration', () => {
+  const command = publicPlan({
+    client_surface: 'fixture-surface',
+    invocation: { executable: '/machine/client', args: [], cwd: '/tmp/client' },
+    environment: {
+      ANTHROPIC_API_KEY: 'fixture-key',
+      OPENCODE_CONFIG_CONTENT: '{"apiKey":"fixture-key"}',
+      USE_API_CONTEXT_MANAGEMENT: '1',
+    },
+    configFiles: [],
+  }, 'tmux');
+  assert.equal(command.environment.ANTHROPIC_API_KEY, '<redacted>');
+  assert.equal(command.environment.OPENCODE_CONFIG_CONTENT, '<isolated-config>');
+  assert.equal(command.environment.USE_API_CONTEXT_MANAGEMENT, '1');
+  assert.doesNotMatch(JSON.stringify(command), /fixture-key/u);
 });
 
 test('WP-14A canonical text and tool two-turn evaluations require observable evidence', () => {
@@ -95,6 +119,70 @@ test('WP-14A Codex WebSocket evidence rejects fallback without requiring interna
   }, 'responses_websocket').pass, true);
 });
 
+test('WP-D4B evaluates exact ordered text, complete continuity, and visible Provider errors', () => {
+  assert.equal(evaluateAttempt('codex', LONG_TEXT_VECTOR, {
+    exit_code: 0,
+    timed_out: false,
+    stdout: JSON.stringify({
+      type: 'item.completed', item: { type: 'agent_message', text: LONG_REPEATED_UNICODE_TEXT },
+    }),
+    stderr: '',
+  }).pass, true);
+  assert.equal(evaluateAttempt('codex', CONTINUITY_VECTOR, {
+    exit_code: 0,
+    timed_out: false,
+    stdout: [CONTINUITY_SEED_SENTINEL, CONTINUITY_FINAL_SENTINEL].map((text) => JSON.stringify({
+      type: 'item.completed', item: { type: 'agent_message', text },
+    })).join('\n'),
+    stderr: '',
+  }).pass, true);
+  assert.equal(evaluateAttempt('claude', PROVIDER_ERROR_VECTOR, {
+    exit_code: 1,
+    timed_out: false,
+    stdout: '',
+    stderr: PROVIDER_ERROR_BODY,
+  }).pass, true);
+  assert.equal(evaluateAttempt('claude', PROVIDER_ERROR_VECTOR, {
+    exit_code: 1,
+    timed_out: false,
+    stdout: '',
+    stderr: 'keep complete body',
+  }).reason, 'provider_error_body_missing');
+});
+
+test('WP-D4B distinguishes parallel results from sequential callback tasks in one turn', () => {
+  const parallel = [
+    { type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'tool-a' },
+      { type: 'tool_use', id: 'tool-b' },
+    ] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tool-a', content: PARALLEL_RESULT_A },
+      { type: 'tool_result', tool_use_id: 'tool-b', content: PARALLEL_RESULT_B },
+    ] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: PARALLEL_FINAL_SENTINEL }] } },
+  ];
+  assert.equal(evaluateAttempt('claude', PARALLEL_TOOL_VECTOR, {
+    exit_code: 0, timed_out: false, stdout: parallel.map(JSON.stringify).join('\n'), stderr: '',
+  }).pass, true);
+
+  const sequential = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-a' }] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tool-a', content: SEQUENTIAL_RESULT_A },
+    ] } },
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-b' }] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tool-a', content: SEQUENTIAL_RESULT_A },
+      { type: 'tool_result', tool_use_id: 'tool-b', content: SEQUENTIAL_RESULT_B },
+    ] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: SEQUENTIAL_FINAL_SENTINEL }] } },
+  ];
+  assert.equal(evaluateAttempt('claude', SEQUENTIAL_TOOL_VECTOR, {
+    exit_code: 0, timed_out: false, stdout: sequential.map(JSON.stringify).join('\n'), stderr: '',
+  }).pass, true);
+});
+
 test('WP-14A driver emits mock-backed reconciliation evidence and cleans resources in finally', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-client-driver-test-'));
   const bin = path.join(root, 'tmux');
@@ -133,7 +221,7 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
         runtimeActivity: {},
         activeStreams: {},
       }])),
-      mockSnapshot: async () => ({ entries: [] }),
+      mockSnapshot: async () => ({ entries: [], counters: { gatewayExecutorInvocations: 0 } }),
       releaseBarrier: async () => { toolBarrierReleases += 1; },
     }, {
       registry,
@@ -142,17 +230,24 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
       snapshotRuns: async () => ({ ids: [], runs: [] }),
       reconcileAttempt: async ({ expectedRuns }) => {
         reconciled.push(expectedRuns);
-        return { runs: Array.from({ length: expectedRuns }, (_, index) => ({ id: `run-${index}`, status: 'succeeded' })) };
+        return {
+          runs: Array.from({ length: expectedRuns }, (_, index) => ({
+            id: `run-${index}`,
+            status: 'succeeded',
+          })),
+        };
       },
-      evaluateMockAttempt: (_before, _after, expectedRuns) => {
+      evaluateMockAttempt: (_before, _after, expectation) => {
+        const expectedRuns = expectation.provider_requests;
         providerRequests.push(expectedRuns);
         return { arrivals: expectedRuns, settled: expectedRuns };
       },
       waitForBarrierWaiting: async ({ before }) => {
-        assert.deepEqual(before, { entries: [] });
+        assert.deepEqual(before, { entries: [], counters: { gatewayExecutorInvocations: 0 } });
         return { sequence: 1, event: 'barrier_waiting' };
       },
       verifyIdle: async () => ({ runtime_targets: 2, stream_targets: 1 }),
+      vectorsFor: () => [TEXT_VECTOR, TOOL_VECTOR],
       executePlan: async (plan, execution) => {
         assert.equal(execution.onFirstMarker, undefined);
         const clientEvents = {
@@ -189,6 +284,8 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
     });
     assert.equal(result.status, 'pass');
     assert.equal(result.gate_role, 'mock_backed_local_client_acceptance');
+    assert.equal(result.vector_manifest.schema_version, '1flowbase.local-client-vector-manifest/v1');
+    assert.ok(result.vector_manifest.vector_ids.includes(SEQUENTIAL_TOOL_VECTOR.id));
     assert.equal(cleaned, true);
     const artifact = fs.readFileSync(result.artifact_path, 'utf8');
     assert.doesNotMatch(artifact, /sk-(claude|opencode|codex)-secret-value/u);
@@ -198,7 +295,11 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
     assert.deepEqual(reconciled, [1, 1, 1, 1, 1, 1, 1, 1]);
     assert.deepEqual(providerRequests, [1, 2, 1, 2, 1, 2, 1, 2]);
     assert.equal(toolBarrierReleases, 4);
-    assert.deepEqual(result.final_reconciliation, { runtime_targets: 2, stream_targets: 1 });
+    assert.deepEqual(result.final_reconciliation, {
+      runtime_targets: 2,
+      stream_targets: 1,
+      gateway_executor_invocations: 0,
+    });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

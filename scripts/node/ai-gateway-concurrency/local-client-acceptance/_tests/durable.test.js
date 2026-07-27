@@ -15,8 +15,8 @@ const target = {
     list_runs: { url: 'http://fixture/runs', headers: { cookie: 'secret' } },
     query_run: { url_template: 'http://fixture/runs/{run_id}', headers: { authorization: 'secret' } },
   },
-  runtime_activity: { url: 'http://fixture/activity' },
-  plugin_runner_active_streams: { url: 'http://fixture/streams' },
+  runtimeActivity: { url: 'http://fixture/activity' },
+  activeStreams: { url: 'http://fixture/streams' },
 };
 
 test('WP-14A reconciles one terminal durable run for text and callback-resumed tool turns', async () => {
@@ -68,6 +68,50 @@ test('WP-14A mock evidence proves one text arrival and ordered two-turn tool arr
   assert.equal(evaluateMockAttempt(before, text, 1).arrivals, 1);
   assert.equal(evaluateMockAttempt(before, after, 2).arrivals, 2);
   assert.throws(() => evaluateMockAttempt(before, after, 1), /expected 1 mock arrival/u);
+});
+
+test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and executor=0', () => {
+  const before = {
+    entries: [{ sequence: 10 }],
+    counters: { gatewayExecutorInvocations: 0 },
+  };
+  const after = {
+    entries: [
+      ...before.entries,
+      {
+        sequence: 11,
+        event: 'arrival',
+        nonce: 'claude-profile',
+        request: { body: { keys: ['context_management', 'messages', 'output_config', 'thinking'] } },
+      },
+      {
+        sequence: 12,
+        event: 'settled',
+        nonce: 'claude-profile',
+        outcome: 'completed',
+        successTerminalCount: 1,
+      },
+    ],
+    counters: { gatewayExecutorInvocations: 0 },
+  };
+  const evidence = evaluateMockAttempt(before, after, {
+    provider_requests: 1,
+    provider_outcomes: ['completed'],
+    success_terminal_counts: [1],
+    request_body_keys: ['context_management', 'output_config', 'thinking'],
+    gateway_executor_invocations: 0,
+  });
+  assert.equal(evidence.gateway_executor_invocations, 0);
+  assert.deepEqual(evidence.success_terminal_counts, [1]);
+  assert.throws(() => evaluateMockAttempt(before, {
+    ...after,
+    counters: { gatewayExecutorInvocations: 1 },
+  }, {
+    provider_requests: 1,
+    provider_outcomes: ['completed'],
+    success_terminal_counts: [1],
+    gateway_executor_invocations: 0,
+  }), /expected gateway executor=0/u);
 });
 
 test('F1 releases tool barrier only for barrier_waiting after the attempt snapshot cursor', async () => {

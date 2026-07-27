@@ -1,0 +1,278 @@
+'use strict';
+
+const VECTOR_MANIFEST_SCHEMA = '1flowbase.local-client-vector-manifest/v1';
+const ALL_CLIENTS = Object.freeze(['claude', 'opencode', 'codex']);
+
+const TEXT_SENTINEL = '1flowbase gateway sentinel ok';
+const TOOL_RESULT_SENTINEL = '1flowbase-client-tool-result';
+const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
+const PARALLEL_RESULT_A = `${TOOL_RESULT_SENTINEL} parallel-a`;
+const PARALLEL_RESULT_B = `${TOOL_RESULT_SENTINEL} parallel-b`;
+const PARALLEL_FINAL_SENTINEL = '1flowbase parallel callback sentinel ok';
+const SEQUENTIAL_RESULT_A = `${TOOL_RESULT_SENTINEL} sequential-a`;
+const SEQUENTIAL_RESULT_B = `${TOOL_RESULT_SENTINEL} sequential-b`;
+const SEQUENTIAL_FINAL_SENTINEL = '1flowbase sequential callback sentinel ok';
+const CONTINUITY_SEED_SENTINEL = '1flowbase continuity seed 中🙂';
+const CONTINUITY_FINAL_SENTINEL = '1flowbase complete conversation continuity ok';
+const CLAUDE_PROTOCOL_SENTINEL = '1flowbase claude protocol context ok';
+const LONG_TEXT_BEGIN = '1flowbase-long-unicode-begin\n';
+const LONG_TEXT_UNIT = '重复段🙂🚀|e\u0301|漢字|`same`  **same**|  same  same  \n';
+const LONG_TEXT_END = '1flowbase-long-unicode-end';
+const LONG_REPEATED_UNICODE_TEXT = `${LONG_TEXT_BEGIN}${LONG_TEXT_UNIT.repeat(512)}${LONG_TEXT_END}`;
+const PROVIDER_ERROR_BODY =
+  ' \n{"future_error":{"shape":"unknown"},"message":"keep complete body"}\n ';
+const CLAUDE_PROTOCOL_PROFILE = Object.freeze({
+  id: 'claude_1m_adaptive_context_management',
+  model: 'claude-opus-4-6[1m]',
+  effort: 'high',
+  environment: Object.freeze({ USE_API_CONTEXT_MANAGEMENT: '1' }),
+  expected_wire: Object.freeze({
+    context_window: '1m',
+    thinking_type: 'adaptive',
+    effort: 'high',
+    context_management: true,
+  }),
+});
+
+const TOOL_ASSETS = Object.freeze({
+  TOOL_PATH: Object.freeze({ filename: 'tool-vector.txt', content: `${TOOL_RESULT_SENTINEL}\n` }),
+  PARALLEL_A_PATH: Object.freeze({ filename: 'parallel-a.txt', content: `${PARALLEL_RESULT_A}\n` }),
+  PARALLEL_B_PATH: Object.freeze({ filename: 'parallel-b.txt', content: `${PARALLEL_RESULT_B}\n` }),
+  SEQUENTIAL_A_PATH: Object.freeze({ filename: 'sequential-a.txt', content: `${SEQUENTIAL_RESULT_A}\n` }),
+  SEQUENTIAL_B_PATH: Object.freeze({ filename: 'sequential-b.txt', content: `${SEQUENTIAL_RESULT_B}\n` }),
+});
+
+function successfulExpected({
+  assistantTexts,
+  durableRuns = 1,
+  providerRequests = 1,
+  toolMode = null,
+  toolResultMarkers = [],
+  requestBodyKeys = [],
+}) {
+  return Object.freeze({
+    exit: 'success',
+    assistant_texts: Object.freeze(assistantTexts),
+    durable_runs: durableRuns,
+    durable_statuses: Object.freeze(Array.from({ length: durableRuns }, () => 'succeeded')),
+    provider_requests: providerRequests,
+    provider_outcomes: Object.freeze(Array.from({ length: providerRequests }, () => 'completed')),
+    success_terminal_counts: Object.freeze(Array.from({ length: providerRequests }, () => 1)),
+    gateway_executor_invocations: 0,
+    ...(toolMode ? {
+      tool_mode: toolMode,
+      tool_result_markers: Object.freeze(toolResultMarkers),
+      minimum_tool_calls: toolResultMarkers.length,
+    } : {}),
+    ...(requestBodyKeys.length ? { request_body_keys: Object.freeze(requestBodyKeys) } : {}),
+  });
+}
+
+const TEXT_VECTOR = Object.freeze({
+  id: 'text-canonical-sentinel',
+  kind: 'text',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([Object.freeze({
+    prompt: `Reply with exactly: ${TEXT_SENTINEL}`,
+  })]),
+  expected: successfulExpected({ assistantTexts: [TEXT_SENTINEL] }),
+});
+
+const TOOL_VECTOR = Object.freeze({
+  id: 'tool-two-turn',
+  kind: 'tools',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-tool-vector',
+      'TOOL_VECTOR_PATH={{TOOL_PATH}}',
+      'Use the client-owned local read or shell tool requested by the provider.',
+      `After its result is returned to the provider, print exactly: ${TOOL_FINAL_SENTINEL}`,
+    ].join(' '),
+  })]),
+  expected: successfulExpected({
+    assistantTexts: [TOOL_FINAL_SENTINEL],
+    providerRequests: 2,
+    toolMode: 'single',
+    toolResultMarkers: [TOOL_RESULT_SENTINEL],
+  }),
+});
+
+const LONG_TEXT_VECTOR = Object.freeze({
+  id: 'text-long-repeated-unicode',
+  kind: 'text',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-vector=text-long-repeated-unicode',
+      'Return the controlled Provider payload verbatim, preserving every repetition, space, newline,',
+      'combining character, CJK character, emoji, and marker order.',
+    ].join(' '),
+  })]),
+  expected: successfulExpected({ assistantTexts: [LONG_REPEATED_UNICODE_TEXT] }),
+});
+
+const CONTINUITY_VECTOR = Object.freeze({
+  id: 'conversation-complete-continuity',
+  kind: 'conversation',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([
+    Object.freeze({
+      prompt: [
+        '1flowbase-client-vector=conversation-complete-continuity-seed',
+        `Remember and reply with exactly: ${CONTINUITY_SEED_SENTINEL}`,
+      ].join(' '),
+    }),
+    Object.freeze({
+      prompt: [
+        '1flowbase-client-vector=conversation-complete-continuity-check',
+        `Using the complete prior user and assistant conversation, reply with exactly: ${CONTINUITY_FINAL_SENTINEL}`,
+      ].join(' '),
+    }),
+  ]),
+  expected: successfulExpected({
+    assistantTexts: [CONTINUITY_SEED_SENTINEL, CONTINUITY_FINAL_SENTINEL],
+    durableRuns: 2,
+    providerRequests: 2,
+  }),
+});
+
+const PROVIDER_ERROR_VECTOR = Object.freeze({
+  id: 'provider-visible-error-body',
+  kind: 'error',
+  clients: ALL_CLIENTS,
+  protocols: Object.freeze(['anthropic_sse', 'openai_chat_sse', 'responses_sse']),
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-vector=provider-visible-error-body',
+      '[1flowbase-test-scenario=http-500]',
+      'Surface the complete controlled Provider error body.',
+    ].join(' '),
+  })]),
+  expected: Object.freeze({
+    exit: 'failure',
+    error_markers: Object.freeze([
+      'future_error', '"shape":"unknown"', '"message":"keep complete body"',
+    ]),
+    durable_runs: 1,
+    durable_statuses: Object.freeze(['failed']),
+    provider_requests: 1,
+    provider_outcomes: Object.freeze(['http-500']),
+    success_terminal_counts: Object.freeze([0]),
+    gateway_executor_invocations: 0,
+  }),
+});
+
+const PARALLEL_TOOL_VECTOR = Object.freeze({
+  id: 'tools-parallel-one-callback-task',
+  kind: 'tools',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-tool-vector',
+      '1flowbase-client-vector=tools-parallel-one-callback-task',
+      'TOOL_VECTOR_PATH={{PARALLEL_A_PATH}}',
+      'PARALLEL_TOOL_A_PATH={{PARALLEL_A_PATH}}',
+      'PARALLEL_TOOL_B_PATH={{PARALLEL_B_PATH}}',
+      'Execute both independent client-owned reads from one Provider tool-call group.',
+      `Return both results in one callback task, then print exactly: ${PARALLEL_FINAL_SENTINEL}`,
+    ].join(' '),
+  })]),
+  expected: successfulExpected({
+    assistantTexts: [PARALLEL_FINAL_SENTINEL],
+    providerRequests: 2,
+    toolMode: 'parallel_one_callback_task',
+    toolResultMarkers: [PARALLEL_RESULT_A, PARALLEL_RESULT_B],
+  }),
+});
+
+const SEQUENTIAL_TOOL_VECTOR = Object.freeze({
+  id: 'tools-sequential-callback-tasks-one-turn',
+  kind: 'tools',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-tool-vector',
+      '1flowbase-client-vector=tools-sequential-callback-tasks-one-turn',
+      'TOOL_VECTOR_PATH={{SEQUENTIAL_A_PATH}}',
+      'SEQUENTIAL_TOOL_A_PATH={{SEQUENTIAL_A_PATH}}',
+      'SEQUENTIAL_TOOL_B_PATH={{SEQUENTIAL_B_PATH}}',
+      'First complete the A read callback. Only after the Provider sees A, complete the B read callback.',
+      `Keep both callback tasks in this one assistant turn, then print exactly: ${SEQUENTIAL_FINAL_SENTINEL}`,
+    ].join(' '),
+  })]),
+  expected: successfulExpected({
+    assistantTexts: [SEQUENTIAL_FINAL_SENTINEL],
+    providerRequests: 3,
+    toolMode: 'sequential_callback_tasks_one_turn',
+    toolResultMarkers: [SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B],
+  }),
+});
+
+const CLAUDE_PROTOCOL_VECTOR = Object.freeze({
+  id: 'claude-1m-adaptive-context-management',
+  kind: 'text',
+  clients: Object.freeze(['claude']),
+  protocol_profile: CLAUDE_PROTOCOL_PROFILE,
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-vector=claude-1m-adaptive-context-management',
+      `Reply with exactly: ${CLAUDE_PROTOCOL_SENTINEL}`,
+    ].join(' '),
+  })]),
+  expected: successfulExpected({
+    assistantTexts: [CLAUDE_PROTOCOL_SENTINEL],
+    requestBodyKeys: ['context_management', 'output_config', 'thinking'],
+  }),
+});
+
+const VECTOR_MANIFEST = Object.freeze({
+  schema_version: VECTOR_MANIFEST_SCHEMA,
+  vectors: Object.freeze([
+    TEXT_VECTOR,
+    TOOL_VECTOR,
+    LONG_TEXT_VECTOR,
+    CONTINUITY_VECTOR,
+    PROVIDER_ERROR_VECTOR,
+    PARALLEL_TOOL_VECTOR,
+    SEQUENTIAL_TOOL_VECTOR,
+    CLAUDE_PROTOCOL_VECTOR,
+  ]),
+});
+
+function vectorsFor(client, protocol) {
+  return VECTOR_MANIFEST.vectors.filter((vector) => (
+    vector.clients.includes(client)
+      && (!vector.protocols || vector.protocols.includes(protocol))
+  ));
+}
+
+module.exports = {
+  CLAUDE_PROTOCOL_SENTINEL,
+  CLAUDE_PROTOCOL_PROFILE,
+  CLAUDE_PROTOCOL_VECTOR,
+  CONTINUITY_FINAL_SENTINEL,
+  CONTINUITY_SEED_SENTINEL,
+  CONTINUITY_VECTOR,
+  LONG_REPEATED_UNICODE_TEXT,
+  LONG_TEXT_VECTOR,
+  PARALLEL_FINAL_SENTINEL,
+  PARALLEL_RESULT_A,
+  PARALLEL_RESULT_B,
+  PARALLEL_TOOL_VECTOR,
+  PROVIDER_ERROR_BODY,
+  PROVIDER_ERROR_VECTOR,
+  SEQUENTIAL_FINAL_SENTINEL,
+  SEQUENTIAL_RESULT_A,
+  SEQUENTIAL_RESULT_B,
+  SEQUENTIAL_TOOL_VECTOR,
+  TEXT_SENTINEL,
+  TEXT_VECTOR,
+  TOOL_ASSETS,
+  TOOL_FINAL_SENTINEL,
+  TOOL_RESULT_SENTINEL,
+  TOOL_VECTOR,
+  VECTOR_MANIFEST,
+  VECTOR_MANIFEST_SCHEMA,
+  vectorsFor,
+};
