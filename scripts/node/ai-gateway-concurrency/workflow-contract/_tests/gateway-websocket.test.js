@@ -84,8 +84,10 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
         { type: 'response.created', response: { id: `resp_${RUN_ID}` } },
         {
           type: 'response.failed',
-          response: { id: `resp_${RUN_ID}` },
-          error: { message: HTTP_500_ERROR_BODY, code: 'provider_upstream_error' },
+          response: {
+            id: `resp_${RUN_ID}`,
+            error: { message: HTTP_500_ERROR_BODY, code: 'provider_upstream_error' },
+          },
         },
       ] : [
         { type: 'response.created', response: { id: `resp_${RUN_ID}` } },

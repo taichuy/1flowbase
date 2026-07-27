@@ -452,15 +452,16 @@ fn failed_response_event(
     error_type: &str,
     code: &str,
 ) -> Value {
+    let mut response = response_snapshot(run, model, previous_response_id, "failed");
+    response["error"] = json!({
+        "message": message,
+        "type": error_type,
+        "param": null,
+        "code": code
+    });
     json!({
         "type": "response.failed",
-        "response": response_snapshot(run, model, previous_response_id, "failed"),
-        "error": {
-            "message": message,
-            "type": error_type,
-            "param": null,
-            "code": code
-        }
+        "response": response
     })
 }
 

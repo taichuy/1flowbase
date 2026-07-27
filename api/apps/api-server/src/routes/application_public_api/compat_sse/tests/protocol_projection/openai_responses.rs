@@ -5,6 +5,7 @@ struct DecodedResponsesStream {
     text_deltas: Vec<String>,
     completed_count: usize,
     error_messages: Vec<String>,
+    root_error_count: usize,
     output_item_events: Vec<serde_json::Value>,
     completed_output: Vec<serde_json::Value>,
 }
@@ -37,10 +38,13 @@ fn decode_responses_sse(body: &str) -> DecodedResponsesStream {
                     .unwrap_or_default();
             }
             Some("response.failed") => {
+                if payload.get("error").is_some() {
+                    decoded.root_error_count += 1;
+                }
                 decoded.error_messages.push(
-                    payload["error"]["message"]
+                    payload["response"]["error"]["message"]
                         .as_str()
-                        .expect("Responses failure should contain error.message")
+                        .expect("Responses failure should contain response.error.message")
                         .to_string(),
                 );
             }
@@ -80,6 +84,7 @@ async fn issue_1474_responses_sse_error_preserves_native_message_exactly() {
         decoded.error_messages,
         vec![PROVIDER_UPSTREAM_ERROR_BODY.to_string()]
     );
+    assert_eq!(decoded.root_error_count, 0);
 }
 
 #[tokio::test]
