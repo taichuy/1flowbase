@@ -310,8 +310,12 @@ fn cancellation_failure_and_post_terminal_events_are_honest_and_unique() {
             .expect("failure must project"),
     );
     assert_eq!(terminal[0]["type"], "response.failed");
-    assert_eq!(terminal[0]["error"]["code"], "provider_failed");
-    assert_eq!(terminal[0]["error"]["message"], "provider unavailable");
+    assert_eq!(terminal[0]["response"]["error"]["code"], "provider_failed");
+    assert_eq!(
+        terminal[0]["response"]["error"]["message"],
+        "provider unavailable"
+    );
+    assert!(terminal[0].get("error").is_none());
 }
 
 #[test]
@@ -340,9 +344,10 @@ fn issue_1474_responses_websocket_error_preserves_native_message_exactly() {
     assert_eq!(terminal.len(), 1);
     assert_eq!(terminal[0]["type"], "response.failed");
     assert_eq!(
-        terminal[0]["error"]["message"],
+        terminal[0]["response"]["error"]["message"],
         PROVIDER_UPSTREAM_ERROR_BODY
     );
+    assert!(terminal[0].get("error").is_none());
 }
 
 #[test]

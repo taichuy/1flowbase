@@ -140,36 +140,28 @@ fn openai_response_runtime_event_to_sse(
             "response.failed",
             json!({
                 "type": "response.failed",
-                "response": openai_response_stream_snapshot(
+                "response": openai_response_failed_snapshot(
                     initial_run,
                     model,
                     previous_response_id,
-                    "failed"
-                ),
-                "error": {
-                    "message": canonical_runtime_error_message(initial_run),
-                    "type": "server_error",
-                    "param": null,
-                    "code": canonical_runtime_error_code(initial_run)
-                }
+                    canonical_runtime_error_message(initial_run),
+                    "server_error",
+                    canonical_runtime_error_code(initial_run)
+                )
             }),
         )],
         "flow_cancelled" => vec![event_json_sse(
             "response.failed",
             json!({
                 "type": "response.failed",
-                "response": openai_response_stream_snapshot(
+                "response": openai_response_failed_snapshot(
                     initial_run,
                     model,
                     previous_response_id,
-                    "failed"
-                ),
-                "error": {
-                    "message": "published run cancelled",
-                    "type": "invalid_request_error",
-                    "param": null,
-                    "code": "run_cancelled"
-                }
+                    "published run cancelled",
+                    "invalid_request_error",
+                    "run_cancelled"
+                )
             }),
         )],
         "waiting_callback" => {
@@ -208,6 +200,25 @@ fn openai_response_stream_snapshot(
         "output_text": "",
         "previous_response_id": previous_response_id
     })
+}
+
+fn openai_response_failed_snapshot(
+    initial_run: &NativeRunResult,
+    model: &str,
+    previous_response_id: Option<&str>,
+    message: &str,
+    error_type: &str,
+    code: &str,
+) -> Value {
+    let mut response =
+        openai_response_stream_snapshot(initial_run, model, previous_response_id, "failed");
+    response["error"] = json!({
+        "message": message,
+        "type": error_type,
+        "param": null,
+        "code": code
+    });
+    response
 }
 
 fn openai_response_completed_snapshot(
@@ -525,18 +536,14 @@ fn required_action_not_supported_openai_response_sse(
         "response.failed",
         json!({
             "type": "response.failed",
-            "response": openai_response_stream_snapshot(
+            "response": openai_response_failed_snapshot(
                 initial_run,
                 model,
                 previous_response_id,
-                "failed"
-            ),
-            "error": {
-                "message": "waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs",
-                "type": "invalid_request_error",
-                "param": null,
-                "code": "required_action_not_supported"
-            }
+                "waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs",
+                "invalid_request_error",
+                "required_action_not_supported"
+            )
         }),
     )]
 }

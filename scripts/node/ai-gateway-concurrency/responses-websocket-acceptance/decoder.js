@@ -43,8 +43,8 @@ function decodeGatewayFrames(frames, { clientTraceId, maxEventBytes } = {}) {
   if (terminalType === 'response.completed' && upstreamNonces.length !== 1) {
     throw new Error(`expected one controlled upstream nonce, received ${upstreamNonces.length}`);
   }
-  const errorMessage = terminalType === 'response.failed' && typeof terminals[0]?.error?.message === 'string'
-    ? terminals[0].error.message
+  const errorMessage = terminalType === 'response.failed' && typeof terminals[0]?.response?.error?.message === 'string'
+    ? terminals[0].response.error.message
     : null;
   if (terminalType === 'response.failed' && errorMessage === null) {
     throw new Error('Gateway response.failed omitted error.message');
