@@ -22,7 +22,7 @@ function containsValue(value, marker) {
 }
 
 function hasClaudeProtocolProfile(body) {
-  return body?.model === 'claude-opus-4-6[1m]'
+  return body?.model === 'claude-opus-4-6'
     && body?.thinking?.type === 'adaptive'
     && body?.output_config?.effort === 'high'
     && body?.context_management !== undefined;

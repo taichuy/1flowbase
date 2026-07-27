@@ -35,9 +35,9 @@ test('BLO-03/04 selects exact long text and continuity output from request histo
 
 test('BLO-05/06/07 requires real Claude profile fields and selects vector-specific tool finals', () => {
   const marker = '1flowbase-client-vector=claude-1m-adaptive-context-management';
-  assert.equal(textVectorOutput({ model: 'claude-opus-4-6[1m]', messages: [marker] }), null);
+  assert.equal(textVectorOutput({ model: 'claude-opus-4-6', messages: [marker] }), null);
   assert.equal(textVectorOutput({
-    model: 'claude-opus-4-6[1m]',
+    model: 'claude-opus-4-6',
     messages: [marker],
     thinking: { type: 'adaptive' },
     output_config: { effort: 'high' },
