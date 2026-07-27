@@ -53,6 +53,10 @@ function requirePostgresUrl(value) {
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || !parsed.hostname || !parsed.pathname.slice(1)) {
     fixtureError('temporary PostgreSQL URL must name a PostgreSQL host and database');
   }
+  const databaseName = decodeURIComponent(parsed.pathname.slice(1)).toLowerCase();
+  if (!['qadb', 'fixture', 'test', 'tmp', 'temp'].some((prefix) => databaseName.startsWith(prefix))) {
+    fixtureError('temporary PostgreSQL URL must name a disposable PostgreSQL database');
+  }
   return raw;
 }
 

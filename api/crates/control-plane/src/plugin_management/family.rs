@@ -572,14 +572,6 @@ where
         actor_user_id: Uuid,
         compatibility_override: Option<&serde_json::Value>,
     ) -> Result<domain::PluginTaskRecord> {
-        if matches!(target.desired_state, domain::PluginDesiredState::Disabled) {
-            self.enable_plugin(EnablePluginCommand {
-                actor_user_id,
-                installation_id: target.id,
-            })
-            .await?;
-        }
-
         let task_id = Uuid::now_v7();
         let task = self
             .repository
@@ -615,6 +607,24 @@ where
             .await?;
 
         let switch_result = async {
+            let mut local_artifact = self.refresh_current_node_artifact_snapshot(target).await?;
+            if !local_artifact.artifact_status.is_ready() {
+                local_artifact = self
+                    .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+                        actor_user_id,
+                        installation_id: target.id,
+                    })
+                    .await?;
+            }
+            if matches!(target.desired_state, domain::PluginDesiredState::Disabled)
+                || local_artifact.runtime_status != domain::PluginRuntimeStatus::Active
+            {
+                self.enable_plugin(EnablePluginCommand {
+                    actor_user_id,
+                    installation_id: target.id,
+                })
+                .await?;
+            }
             let local_target = self.ready_current_node_installation(target.id).await?;
             let package = load_provider_package(&local_target.installed_path)?;
             refresh_provider_package_catalog_projection(&self.repository, &local_target, &package)

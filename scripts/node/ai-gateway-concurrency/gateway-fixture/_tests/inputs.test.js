@@ -12,6 +12,14 @@ const { parseArgs } = require('../../../cli/ai-gateway-fixture');
 // Root #1377 AC-001/008: lifecycle inputs must be explicit and fail closed.
 test('controlled negatives reject non-PostgreSQL and non-loopback inputs', () => {
   assert.throws(() => requirePostgresUrl('sqlite:///tmp/test.db'), /must name a PostgreSQL/u);
+  assert.throws(
+    () => requirePostgresUrl('postgres://postgres@127.0.0.1:35432/1flowbase'),
+    /disposable PostgreSQL database/u
+  );
+  assert.throws(
+    () => requirePostgresUrl('postgres://postgres@127.0.0.1:35432/postgres'),
+    /disposable PostgreSQL database/u
+  );
   assert.throws(() => requireLoopbackUrl('https://api.openai.com/v1'), /plain HTTP on loopback/u);
   assert.throws(() => requireLoopbackUrl('http://127.0.0.1:9000/?token=x'), /query/u);
   assert.throws(() => requireLoopbackUrl('http://127.0.0.1:9000/v1'), /without a path/u);
@@ -22,14 +30,14 @@ test('controlled negatives reject non-PostgreSQL and non-loopback inputs', () =>
 
 test('CLI accepts the complete explicit environment contract', () => {
   const parsed = parseArgs([], {
-    AI_GATEWAY_FIXTURE_DATABASE_URL: 'postgres://fixture/db',
+    AI_GATEWAY_FIXTURE_DATABASE_URL: 'postgres://fixture/fixture_db',
     AI_GATEWAY_FIXTURE_API_SERVER_BIN: '/tmp/api-server',
     AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN: '/tmp/plugin-runner',
     AI_GATEWAY_FIXTURE_OPENAI_PACKAGE: '/tmp/openai.pkg',
     AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE: '/tmp/anthropic.pkg',
     AI_GATEWAY_FIXTURE_UPSTREAM_BASE_URL: 'http://127.0.0.1:9123',
   });
-  assert.equal(parsed.databaseUrl, 'postgres://fixture/db');
+  assert.equal(parsed.databaseUrl, 'postgres://fixture/fixture_db');
   assert.equal(parsed.upstreamBaseUrl, 'http://127.0.0.1:9123');
 });
 

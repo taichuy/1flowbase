@@ -250,6 +250,19 @@ where
     R: PluginRepository + ?Sized,
 {
     let scanned = scan_current_node_artifact_at(install_root, installation).await;
+    let existing = repository
+        .get_artifact_instance(node_id, installation.id)
+        .await?;
+    let runtime_status = existing
+        .filter(|existing| {
+            existing.artifact_status.is_ready()
+                && scanned.artifact_status.is_ready()
+                && existing.local_version == scanned.local_version
+                && existing.local_checksum == scanned.local_checksum
+                && existing.installed_path == scanned.installed_path
+        })
+        .map(|existing| existing.runtime_status)
+        .unwrap_or(domain::PluginRuntimeStatus::Inactive);
     repository
         .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
             node_id: node_id.to_string(),
@@ -258,7 +271,7 @@ where
             local_checksum: scanned.local_checksum,
             installed_path: scanned.installed_path,
             artifact_status: scanned.artifact_status,
-            runtime_status: domain::PluginRuntimeStatus::Inactive,
+            runtime_status,
             checked_at: OffsetDateTime::now_utc(),
             last_error: scanned.last_error,
         })
