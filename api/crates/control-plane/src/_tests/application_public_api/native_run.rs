@@ -457,8 +457,9 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
         "execution": {
             "model_parameters": {
                 "max_output_tokens": 4096,
+                "requested_context_window": 1000000,
                 "reasoning": {
-                    "enabled": true,
+                    "mode": "adaptive",
                     "effort": " high ",
                     "budget_tokens": 2048
                 }
@@ -479,13 +480,18 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
             TranslationDecisionKind::Exact,
         ),
         (
+            "$.execution.model_parameters.requested_context_window",
+            "$.execution.model_parameters.requested_context_window",
+            TranslationDecisionKind::Exact,
+        ),
+        (
             "$.execution.model_parameters.reasoning",
             "$.execution.model_parameters.reasoning",
             TranslationDecisionKind::Exact,
         ),
         (
-            "$.execution.model_parameters.reasoning.enabled",
-            "$.execution.model_parameters.reasoning.enabled",
+            "$.execution.model_parameters.reasoning.mode",
+            "$.execution.model_parameters.reasoning.mode",
             TranslationDecisionKind::Exact,
         ),
         (
@@ -521,8 +527,9 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
             ["execution"]["model_parameters"],
         json!({
             "max_output_tokens": 4096,
+            "requested_context_window": 1000000,
             "reasoning": {
-                "enabled": true,
+                "mode": "adaptive",
                 "effort": "high",
                 "budget_tokens": 2048
             }
@@ -537,6 +544,16 @@ fn d2_ac_001_native_model_parameter_shape_errors_are_safe_and_specific() {
         (
             json!({"max_output_tokens": 0}),
             "$.execution.model_parameters.max_output_tokens",
+            TranslationSafeRepresentation::Present,
+        ),
+        (
+            json!({"requested_context_window": 0}),
+            "$.execution.model_parameters.requested_context_window",
+            TranslationSafeRepresentation::Present,
+        ),
+        (
+            json!({"reasoning": {"mode": "automatic"}}),
+            "$.execution.model_parameters.reasoning.mode",
             TranslationSafeRepresentation::Present,
         ),
         (
@@ -589,14 +606,14 @@ fn d2_ac_001_native_model_parameter_shape_errors_are_safe_and_specific() {
         "query": "hello",
         "execution": {"model_parameters": {"reasoning": {}}}
     }))
-    .expect("a missing reasoning.enabled value uses the documented default");
+    .expect("a missing reasoning.mode value uses the documented default");
     let decisions = translated
         .report
         .decisions
         .iter()
-        .filter(|decision| decision.source_path == "$.execution.model_parameters.reasoning.enabled")
+        .filter(|decision| decision.source_path == "$.execution.model_parameters.reasoning.mode")
         .collect::<Vec<_>>();
-    assert_eq!(decisions.len(), 1, "missing enabled needs one receipt");
+    assert_eq!(decisions.len(), 1, "missing mode needs one receipt");
     assert_eq!(decisions[0].kind, TranslationDecisionKind::Defaulted);
     assert_eq!(
         decisions[0].effective_value,

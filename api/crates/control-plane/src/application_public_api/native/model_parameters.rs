@@ -70,9 +70,11 @@ impl NativeExecution {
 
     pub(crate) fn with_model_parameters(
         max_output_tokens: Option<NonZeroU64>,
+        requested_context_window: Option<NonZeroU64>,
         reasoning: Option<NativeReasoningParameters>,
     ) -> Self {
-        if max_output_tokens.is_none() && reasoning.is_none() {
+        if max_output_tokens.is_none() && requested_context_window.is_none() && reasoning.is_none()
+        {
             return Self::default();
         }
         Self {
@@ -80,6 +82,7 @@ impl NativeExecution {
             idempotency_key: None,
             model_parameters: Some(NativeExecutionModelParameters {
                 max_output_tokens,
+                requested_context_window,
                 reasoning,
             }),
             execution_operation: AiNativeOperation::default(),
@@ -191,6 +194,7 @@ impl std::ops::Index<&str> for NativeExecution {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeExecutionModelParameters {
     max_output_tokens: Option<NonZeroU64>,
+    requested_context_window: Option<NonZeroU64>,
     reasoning: Option<NativeReasoningParameters>,
 }
 
@@ -204,7 +208,12 @@ impl NativeExecutionModelParameters {
         })?;
         let unknown_fields = object
             .keys()
-            .filter(|field| !matches!(field.as_str(), "max_output_tokens" | "reasoning"))
+            .filter(|field| {
+                !matches!(
+                    field.as_str(),
+                    "max_output_tokens" | "requested_context_window" | "reasoning"
+                )
+            })
             .collect::<Vec<_>>();
         if !unknown_fields.is_empty() {
             return Err(NativeModelParameterParseError::unknown_fields(
@@ -213,19 +222,19 @@ impl NativeExecutionModelParameters {
                 "unknown Native model parameter",
             ));
         }
-        let max_output_tokens = match object.get("max_output_tokens") {
-            Some(value) => {
-                NonZeroU64::new(value.as_u64().unwrap_or_default()).ok_or_else(|| {
-                    NativeModelParameterParseError::present(
-                        format!("{MODEL_PARAMETERS_PATH}.max_output_tokens"),
-                        "max_output_tokens must be a positive integer",
-                    )
-                })?
-            }
-            None => return Self::without_max_output_tokens(object.get("reasoning")),
-        };
+        let max_output_tokens = positive_integer_parameter(
+            object.get("max_output_tokens"),
+            format!("{MODEL_PARAMETERS_PATH}.max_output_tokens"),
+            "max_output_tokens must be a positive integer",
+        )?;
+        let requested_context_window = positive_integer_parameter(
+            object.get("requested_context_window"),
+            format!("{MODEL_PARAMETERS_PATH}.requested_context_window"),
+            "requested_context_window must be a positive integer",
+        )?;
         Ok(Self {
-            max_output_tokens: Some(max_output_tokens),
+            max_output_tokens,
+            requested_context_window,
             reasoning: object
                 .get("reasoning")
                 .map(NativeReasoningParameters::from_value)
@@ -233,19 +242,12 @@ impl NativeExecutionModelParameters {
         })
     }
 
-    fn without_max_output_tokens(
-        reasoning: Option<&Value>,
-    ) -> Result<Self, NativeModelParameterParseError> {
-        Ok(Self {
-            max_output_tokens: None,
-            reasoning: reasoning
-                .map(NativeReasoningParameters::from_value)
-                .transpose()?,
-        })
-    }
-
     pub(crate) fn max_output_tokens(&self) -> Option<u64> {
         self.max_output_tokens.map(NonZeroU64::get)
+    }
+
+    pub(crate) fn requested_context_window(&self) -> Option<u64> {
+        self.requested_context_window.map(NonZeroU64::get)
     }
 
     pub(crate) fn reasoning(&self) -> Option<&NativeReasoningParameters> {
@@ -268,6 +270,12 @@ impl NativeExecutionModelParameters {
                 Value::Number(max_output_tokens.into()),
             );
         }
+        if let Some(requested_context_window) = self.requested_context_window() {
+            model_parameters.insert(
+                "requested_context_window".to_string(),
+                Value::Number(requested_context_window.into()),
+            );
+        }
         if let Some(reasoning) = &self.reasoning {
             model_parameters.insert(
                 "reasoning".to_string(),
@@ -278,21 +286,34 @@ impl NativeExecutionModelParameters {
     }
 }
 
+fn positive_integer_parameter(
+    value: Option<&Value>,
+    source_path: String,
+    reason: &'static str,
+) -> Result<Option<NonZeroU64>, NativeModelParameterParseError> {
+    value
+        .map(|value| {
+            NonZeroU64::new(value.as_u64().unwrap_or_default())
+                .ok_or_else(|| NativeModelParameterParseError::present(source_path, reason))
+        })
+        .transpose()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeReasoningParameters {
-    enabled: Option<bool>,
+    mode: Option<NativeReasoningMode>,
     effort: Option<NativeReasoningEffort>,
     budget_tokens: Option<NonZeroU64>,
 }
 
 impl NativeReasoningParameters {
-    pub(crate) fn with_enabled_budget_and_effort(
-        enabled: bool,
+    pub(crate) fn with_mode_budget_and_effort(
+        mode: NativeReasoningMode,
         budget_tokens: Option<NonZeroU64>,
         effort: Option<&str>,
     ) -> Self {
         Self {
-            enabled: Some(enabled),
+            mode: Some(mode),
             effort: effort.and_then(NativeReasoningEffort::parse),
             budget_tokens,
         }
@@ -307,7 +328,7 @@ impl NativeReasoningParameters {
         })?;
         let unknown_fields = object
             .keys()
-            .filter(|field| !matches!(field.as_str(), "enabled" | "effort" | "budget_tokens"))
+            .filter(|field| !matches!(field.as_str(), "mode" | "effort" | "budget_tokens"))
             .collect::<Vec<_>>();
         if !unknown_fields.is_empty() {
             return Err(NativeModelParameterParseError::unknown_fields(
@@ -316,15 +337,20 @@ impl NativeReasoningParameters {
                 "unknown Native reasoning parameter",
             ));
         }
-        let enabled = match object.get("enabled") {
-            Some(value) => Some(value.as_bool().ok_or_else(|| {
-                NativeModelParameterParseError::present(
-                    format!("{REASONING_PATH}.enabled"),
-                    "reasoning.enabled must be a boolean",
-                )
-            })?),
-            None => None,
-        };
+        let mode = object
+            .get("mode")
+            .map(|value| {
+                value
+                    .as_str()
+                    .and_then(NativeReasoningMode::parse)
+                    .ok_or_else(|| {
+                        NativeModelParameterParseError::present(
+                            format!("{REASONING_PATH}.mode"),
+                            "reasoning.mode must be adaptive, enabled, or disabled",
+                        )
+                    })
+            })
+            .transpose()?;
         let effort = match object.get("effort") {
             Some(value) => {
                 let value = value.as_str().ok_or_else(|| {
@@ -354,14 +380,14 @@ impl NativeReasoningParameters {
             None => None,
         };
         Ok(Self {
-            enabled,
+            mode,
             effort,
             budget_tokens,
         })
     }
 
-    pub(crate) fn effective_enabled(&self) -> bool {
-        self.enabled.unwrap_or(true)
+    pub(crate) fn effective_mode(&self) -> NativeReasoningMode {
+        self.mode.unwrap_or(NativeReasoningMode::Enabled)
     }
 
     pub(crate) fn effort(&self) -> Option<&str> {
@@ -374,7 +400,10 @@ impl NativeReasoningParameters {
 
     fn value_with_effort(&self, effort_value: fn(&NativeReasoningEffort) -> &str) -> Value {
         let mut reasoning = Map::new();
-        reasoning.insert("enabled".to_string(), Value::Bool(self.effective_enabled()));
+        reasoning.insert(
+            "mode".to_string(),
+            Value::String(self.effective_mode().as_str().to_string()),
+        );
         if let Some(effort) = &self.effort {
             reasoning.insert(
                 "effort".to_string(),
@@ -388,6 +417,32 @@ impl NativeReasoningParameters {
             );
         }
         Value::Object(reasoning)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeReasoningMode {
+    Adaptive,
+    Enabled,
+    Disabled,
+}
+
+impl NativeReasoningMode {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "adaptive" => Some(Self::Adaptive),
+            "enabled" => Some(Self::Enabled),
+            "disabled" => Some(Self::Disabled),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Adaptive => "adaptive",
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        }
     }
 }
 
@@ -422,6 +477,7 @@ enum NativeReasoningEffortKind {
     Medium,
     High,
     Xhigh,
+    Max,
 }
 
 impl NativeReasoningEffortKind {
@@ -432,6 +488,7 @@ impl NativeReasoningEffortKind {
             "medium" => Some(Self::Medium),
             "high" => Some(Self::High),
             "xhigh" => Some(Self::Xhigh),
+            "max" => Some(Self::Max),
             _ => None,
         }
     }
@@ -443,6 +500,7 @@ impl NativeReasoningEffortKind {
             Self::Medium => "medium",
             Self::High => "high",
             Self::Xhigh => "xhigh",
+            Self::Max => "max",
         }
     }
 }
@@ -599,6 +657,16 @@ fn record_native_model_parameter_receipts(
             TranslationSafeRepresentation::Present,
         );
     }
+    if model_parameters.requested_context_window().is_some() {
+        let path = format!("{MODEL_PARAMETERS_PATH}.requested_context_window");
+        report.record(
+            &path,
+            Some(&path),
+            TranslationDecisionKind::Exact,
+            None,
+            TranslationSafeRepresentation::Present,
+        );
+    }
     let Some(reasoning) = model_parameters.reasoning() else {
         return;
     };
@@ -609,21 +677,21 @@ fn record_native_model_parameter_receipts(
         None,
         TranslationSafeRepresentation::Present,
     );
-    let enabled_path = format!("{REASONING_PATH}.enabled");
-    if reasoning.enabled.is_some() {
+    let mode_path = format!("{REASONING_PATH}.mode");
+    if reasoning.mode.is_some() {
         report.record(
-            &enabled_path,
-            Some(&enabled_path),
+            &mode_path,
+            Some(&mode_path),
             TranslationDecisionKind::Exact,
             None,
             TranslationSafeRepresentation::Present,
         );
     } else {
         report.record(
-            &enabled_path,
-            Some(&enabled_path),
+            &mode_path,
+            Some(&mode_path),
             TranslationDecisionKind::Defaulted,
-            Some("reasoning.enabled defaults to true"),
+            Some("reasoning.mode defaults to enabled"),
             TranslationSafeRepresentation::Defaulted,
         );
     }

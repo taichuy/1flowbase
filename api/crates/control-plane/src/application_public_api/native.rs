@@ -46,7 +46,7 @@ pub use compaction::{
 pub use metadata::NativeRequestMetadata;
 pub(crate) use metadata::ResponsesTransportRequirement;
 pub use model_parameters::{
-    NativeExecution, NativeExecutionModelParameters, NativeReasoningParameters,
+    NativeExecution, NativeExecutionModelParameters, NativeReasoningMode, NativeReasoningParameters,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

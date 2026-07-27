@@ -3,16 +3,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use plugin_framework::{
     installation::PluginTaskStatus,
     provider_contract::{
-        semantic_required_capabilities, ClientProtocolEnvelope, ModelDiscoveryMode,
-        NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
-        NativePromptCacheControlType, ProviderBalanceInfo, ProviderBalanceResult,
-        ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderOutputItemPhase,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation,
+        semantic_required_capabilities, ModelDiscoveryMode, NativeModelRequestContext,
+        NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType,
+        ProtocolContextEnvelope, ProviderBalanceInfo, ProviderBalanceResult, ProviderCompactError,
+        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensError,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationCapability,
+        ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
+        ProviderNativeTransport, ProviderOutputItemPhase, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
+        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation,
     },
 };
 use serde_json::json;
@@ -199,15 +199,28 @@ fn provider_invocation_input_preserves_tool_message_metadata() {
 }
 
 #[test]
-fn provider_invocation_input_serializes_client_protocol_envelope() {
+fn provider_invocation_input_serializes_protocol_context_envelope_without_flattening_values() {
     let input = ProviderInvocationInput {
-        client_protocol_envelope: Some(ClientProtocolEnvelope {
+        client_protocol_envelope: Some(ProtocolContextEnvelope {
             source_protocol: "anthropic_messages".to_string(),
-            policy: "anthropic_messages_v1".to_string(),
+            query: BTreeMap::from([(
+                "preview".to_string(),
+                vec!["one".to_string(), "two".to_string()],
+            )]),
             headers: BTreeMap::from([
-                ("anthropic-version".to_string(), "2023-06-01".to_string()),
-                ("anthropic-beta".to_string(), "prompt-caching".to_string()),
+                (
+                    "anthropic-version".to_string(),
+                    vec!["2023-06-01".to_string()],
+                ),
+                (
+                    "anthropic-beta".to_string(),
+                    vec!["prompt-caching".to_string(), "private-beta".to_string()],
+                ),
             ]),
+            body: BTreeMap::from([(
+                "context_management".to_string(),
+                json!({"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]}),
+            )]),
         }),
         ..ProviderInvocationInput::default()
     };
@@ -221,7 +234,7 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
     );
     assert_eq!(
         payload["client_protocol_envelope"]["headers"]["anthropic-version"],
-        "2023-06-01"
+        json!(["2023-06-01"])
     );
     assert_eq!(
         decoded
@@ -230,8 +243,44 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
             .unwrap()
             .headers
             .get("anthropic-beta")
-            .map(String::as_str),
-        Some("prompt-caching")
+            .cloned(),
+        Some(vec![
+            "prompt-caching".to_string(),
+            "private-beta".to_string()
+        ])
+    );
+    assert_eq!(
+        payload["client_protocol_envelope"]["query"]["preview"],
+        json!(["one", "two"])
+    );
+    assert_eq!(
+        payload["client_protocol_envelope"]["body"]["context_management"]["edits"][0]["type"],
+        "clear_thinking_20251015"
+    );
+}
+
+#[test]
+fn protocol_context_envelope_rejects_unknown_top_level_fields() {
+    let error = serde_json::from_value::<ProtocolContextEnvelope>(json!({
+        "source_protocol": "anthropic_messages",
+        "query": {},
+        "headers": {},
+        "body": {},
+        "fallback": {"must_not_become_a_second_truth": true}
+    }))
+    .expect_err("the protocol context shell must stay minimal and typed");
+
+    assert!(error.to_string().contains("unknown field"));
+}
+
+#[test]
+fn protocol_context_has_one_manifest_capability_name() {
+    let capability = ProviderInvocationCapability::ProtocolContext;
+
+    assert_eq!(capability.manifest_capability_name(), "protocol_context");
+    assert_eq!(
+        serde_json::to_value(capability).unwrap(),
+        json!("protocol_context")
     );
 }
 
