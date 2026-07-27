@@ -299,12 +299,17 @@ function chatToolEvents(nonce, toolPath, final = false) {
   };
 }
 
-function chatTextEvents(nonce) {
+function chatTextEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
   return {
     doneSentinel: true,
-    chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
-      index: 0, delta: { role: 'assistant', content: '1flowbase gateway sentinel ok' }, finish_reason: null,
-    }] }],
+    chunks: [
+      { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
+        index: 0, delta: { role: 'assistant', content: firstText }, finish_reason: null,
+      }] },
+      { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
+        index: 0, delta: { content: secondText }, finish_reason: null,
+      }] },
+    ],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'stop',
     }] },

@@ -407,7 +407,9 @@ function createMockUpstream(options = {}) {
         : path === MOCK_ROUTE.CHAT_COMPLETIONS
           ? (isToolTurn || isToolResult
             ? chatToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
-            : chatTextEvents(requestTimeline.nonce))
+            : isClientTextTurn
+              ? chatTextEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+              : chatTextEvents(requestTimeline.nonce))
           : (isToolTurn || isToolResult
             ? anthropicToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
             : isClientTextTurn

@@ -10,7 +10,7 @@ const {
   mockScenarioSentinel,
 } = require('../../contracts');
 const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = require('..');
-const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
+const { DEFAULT_BARRIER_MARKERS, chatTextEvents } = require('../protocol-events');
 const { errorFixtureMarker, upstreamErrorFixture } = require('../../protocol-oracle/error-fidelity');
 
 async function withMockUpstream(run, options = {}) {
@@ -35,6 +35,23 @@ function parseSse(text) {
     return { event, data: JSON.parse(data) };
   });
 }
+
+test('Root #1477 AC-001/005: Chat text fixture emits two nonce-bearing upstream deltas', () => {
+  const nonce = 'mock-chat-fidelity';
+  const stream = chatTextEvents(nonce);
+
+  assert.deepEqual(
+    stream.chunks.map((chunk) => chunk.choices[0].delta.content),
+    [`${nonce}:chunk-1`, `${nonce}:chunk-2`],
+  );
+  assert.equal(stream.terminal.choices[0].finish_reason, 'stop');
+
+  assert.deepEqual(
+    chatTextEvents(nonce, '1flowbase gateway sentinel ', 'ok')
+      .chunks.map((chunk) => chunk.choices[0].delta.content),
+    ['1flowbase gateway sentinel ', 'ok'],
+  );
+});
 
 test('wire audit vector is inferred from the public Responses body', () => {
   assert.equal(wireAuditVectorFromBody({
