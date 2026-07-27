@@ -80,3 +80,4 @@ describe('@1flowbase/rich-text (AC-PUB-006)', () => {
     expect(document.getElementById('vditorIconScript')).toBeNull();
   });
 });
+// @vitest-environment jsdom

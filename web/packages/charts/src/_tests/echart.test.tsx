@@ -41,3 +41,4 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     expect(() => render(<EChart option={option} />)).toThrow(TypeError);
   });
 });
+// @vitest-environment jsdom
