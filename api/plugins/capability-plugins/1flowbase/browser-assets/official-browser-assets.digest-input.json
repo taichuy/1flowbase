@@ -62,6 +62,61 @@
           "sha256": "873699d22f7785f6881af47196bf32f8b431ee87dd1b7fec406975355c90a3e8"
         }
       ]
+    },
+    {
+      "module_source": "@ant-design/icons",
+      "module_version": "5.6.1",
+      "exports": [
+        "ArrowDownOutlined",
+        "ArrowLeftOutlined",
+        "ArrowRightOutlined",
+        "ArrowUpOutlined",
+        "CalendarOutlined",
+        "CheckCircleOutlined",
+        "CheckOutlined",
+        "ClockCircleOutlined",
+        "CloseCircleOutlined",
+        "CloseOutlined",
+        "CopyOutlined",
+        "DeleteOutlined",
+        "DownloadOutlined",
+        "EditOutlined",
+        "ExclamationCircleOutlined",
+        "EyeInvisibleOutlined",
+        "EyeOutlined",
+        "FileOutlined",
+        "FolderOpenOutlined",
+        "FolderOutlined",
+        "HomeOutlined",
+        "InfoCircleOutlined",
+        "LeftOutlined",
+        "LinkOutlined",
+        "LoadingOutlined",
+        "LockOutlined",
+        "MailOutlined",
+        "MenuOutlined",
+        "MinusOutlined",
+        "MoreOutlined",
+        "PlusOutlined",
+        "QuestionCircleOutlined",
+        "RightOutlined",
+        "SaveOutlined",
+        "SearchOutlined",
+        "SettingOutlined",
+        "UpOutlined",
+        "UploadOutlined",
+        "UserOutlined",
+        "WarningOutlined"
+      ],
+      "type_declarations": "declare module '@ant-design/icons' {\n  import type { ComponentType, CSSProperties } from 'react';\n\n  export interface AntDesignIconProps {\n    readonly className?: string;\n    readonly onClick?: (event: unknown) => void;\n    readonly rotate?: number;\n    readonly spin?: boolean;\n    readonly style?: CSSProperties;\n    readonly twoToneColor?: string | readonly [string, string];\n  }\n\n  export type AntDesignIcon = ComponentType<AntDesignIconProps>;\n  export const ArrowDownOutlined: AntDesignIcon;\n  export const ArrowLeftOutlined: AntDesignIcon;\n  export const ArrowRightOutlined: AntDesignIcon;\n  export const ArrowUpOutlined: AntDesignIcon;\n  export const CalendarOutlined: AntDesignIcon;\n  export const CheckCircleOutlined: AntDesignIcon;\n  export const CheckOutlined: AntDesignIcon;\n  export const ClockCircleOutlined: AntDesignIcon;\n  export const CloseCircleOutlined: AntDesignIcon;\n  export const CloseOutlined: AntDesignIcon;\n  export const CopyOutlined: AntDesignIcon;\n  export const DeleteOutlined: AntDesignIcon;\n  export const DownloadOutlined: AntDesignIcon;\n  export const EditOutlined: AntDesignIcon;\n  export const ExclamationCircleOutlined: AntDesignIcon;\n  export const EyeInvisibleOutlined: AntDesignIcon;\n  export const EyeOutlined: AntDesignIcon;\n  export const FileOutlined: AntDesignIcon;\n  export const FolderOpenOutlined: AntDesignIcon;\n  export const FolderOutlined: AntDesignIcon;\n  export const HomeOutlined: AntDesignIcon;\n  export const InfoCircleOutlined: AntDesignIcon;\n  export const LeftOutlined: AntDesignIcon;\n  export const LinkOutlined: AntDesignIcon;\n  export const LoadingOutlined: AntDesignIcon;\n  export const LockOutlined: AntDesignIcon;\n  export const MailOutlined: AntDesignIcon;\n  export const MenuOutlined: AntDesignIcon;\n  export const MinusOutlined: AntDesignIcon;\n  export const MoreOutlined: AntDesignIcon;\n  export const PlusOutlined: AntDesignIcon;\n  export const QuestionCircleOutlined: AntDesignIcon;\n  export const RightOutlined: AntDesignIcon;\n  export const SaveOutlined: AntDesignIcon;\n  export const SearchOutlined: AntDesignIcon;\n  export const SettingOutlined: AntDesignIcon;\n  export const UpOutlined: AntDesignIcon;\n  export const UploadOutlined: AntDesignIcon;\n  export const UserOutlined: AntDesignIcon;\n  export const WarningOutlined: AntDesignIcon;\n}\n",
+      "assets": [
+        {
+          "path": "ant-design-icons-catalog.js",
+          "role": "browser_module",
+          "media_type": "text/javascript; charset=utf-8",
+          "sha256": "908c87d3f5ba137167f568487ece77fd0d5463c8e08396c927bec0df12745800"
+        }
+      ]
     }
   ]
 }

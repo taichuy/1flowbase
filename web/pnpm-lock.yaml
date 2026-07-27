@@ -243,6 +243,15 @@ importers:
         specifier: workspace:*
         version: link:../page-protocol
 
+  packages/ant-design-icons-catalog:
+    dependencies:
+      '@ant-design/icons':
+        specifier: 5.6.1
+        version: 5.6.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
   packages/charts:
     dependencies:
       echarts:

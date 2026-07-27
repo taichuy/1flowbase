@@ -3,11 +3,54 @@
   "module_sources": [
     "@1flowbase/charts",
     "@1flowbase/native-components",
-    "@1flowbase/rich-text"
+    "@1flowbase/rich-text",
+    "@ant-design/icons"
   ],
   "exports": {
     "@1flowbase/charts": ["EChart"],
     "@1flowbase/native-components": ["ScrollableSurface", "Surface"],
-    "@1flowbase/rich-text": ["MarkdownEditor", "MarkdownPreview"]
+    "@1flowbase/rich-text": ["MarkdownEditor", "MarkdownPreview"],
+    "@ant-design/icons": [
+      "ArrowDownOutlined",
+      "ArrowLeftOutlined",
+      "ArrowRightOutlined",
+      "ArrowUpOutlined",
+      "CalendarOutlined",
+      "CheckCircleOutlined",
+      "CheckOutlined",
+      "ClockCircleOutlined",
+      "CloseCircleOutlined",
+      "CloseOutlined",
+      "CopyOutlined",
+      "DeleteOutlined",
+      "DownloadOutlined",
+      "EditOutlined",
+      "ExclamationCircleOutlined",
+      "EyeInvisibleOutlined",
+      "EyeOutlined",
+      "FileOutlined",
+      "FolderOpenOutlined",
+      "FolderOutlined",
+      "HomeOutlined",
+      "InfoCircleOutlined",
+      "LeftOutlined",
+      "LinkOutlined",
+      "LoadingOutlined",
+      "LockOutlined",
+      "MailOutlined",
+      "MenuOutlined",
+      "MinusOutlined",
+      "MoreOutlined",
+      "PlusOutlined",
+      "QuestionCircleOutlined",
+      "RightOutlined",
+      "SaveOutlined",
+      "SearchOutlined",
+      "SettingOutlined",
+      "UpOutlined",
+      "UploadOutlined",
+      "UserOutlined",
+      "WarningOutlined"
+    ]
   }
 }

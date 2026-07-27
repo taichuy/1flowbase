@@ -11,7 +11,12 @@ const DEFAULT_OUTPUT = join(
   REPOSITORY_ROOT,
   'api/plugins/capability-plugins/1flowbase/browser-assets'
 );
-const MODULE_DIRECTORIES = ['native-components', 'charts', 'rich-text'];
+const MODULE_DIRECTORIES = [
+  'ant-design-icons-catalog',
+  'native-components',
+  'charts',
+  'rich-text'
+];
 
 export async function buildOfficialBrowserAssets(
   outputDirectory = DEFAULT_OUTPUT
@@ -34,6 +39,10 @@ export async function buildOfficialBrowserAssets(
         root: packageDirectory,
         resolve: {
           alias: {
+            '@ant-design/icons': join(
+              WEB_ROOT,
+              'app/node_modules/@ant-design/icons'
+            ),
             echarts: join(WEB_ROOT, 'app/node_modules/echarts'),
             vditor: join(WEB_ROOT, 'app/node_modules/vditor')
           }

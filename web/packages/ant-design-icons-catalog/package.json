@@ -1,0 +1,17 @@
+{
+  "name": "@1flowbase/ant-design-icons-catalog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@ant-design/icons": "5.6.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}
