@@ -1064,13 +1064,8 @@ async fn provider_error_after_live_delta_drains_runtime_event_stream_forwarding(
     );
     assert_eq!(
         error_payload["message"],
-        json!("provider returned an invalid response")
-    );
-    assert!(
-        !error_payload
-            .to_string()
-            .contains("provider failed after live events"),
-        "raw provider error text must not become durable public error content"
+        json!("provider failed after live events"),
+        "the durable error must keep the provider runtime message"
     );
     let event_types = stream
         .events()

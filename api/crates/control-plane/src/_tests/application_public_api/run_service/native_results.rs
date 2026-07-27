@@ -48,7 +48,7 @@ fn failed_published_flow_run(error_payload: serde_json::Value) -> domain::FlowRu
 }
 
 #[test]
-fn native_result_omits_provider_upstream_raw_details_from_public_error() {
+fn native_result_preserves_the_durable_provider_error_message() {
     let flow_run = failed_published_flow_run(json!({
         "error_code": "provider_upstream_error",
         "message": "400 Bad Request: missing instructions",
@@ -69,14 +69,14 @@ fn native_result_omits_provider_upstream_raw_details_from_public_error() {
         .expect("failed native run should expose an error");
 
     assert_eq!(error.code, "provider_upstream_error");
-    assert_eq!(error.message, "provider upstream request failed");
+    assert_eq!(error.message, "400 Bad Request: missing instructions");
     assert_eq!(error.details["status_code"], json!(400));
     assert!(error.details.get("provider_summary").is_none());
     assert!(error.details.get("provider_details").is_none());
 }
 
 #[test]
-fn native_result_sanitizes_legacy_provider_upstream_raw_body_from_public_error() {
+fn native_result_does_not_rewrite_legacy_provider_error_messages() {
     let raw_body = "plain upstream failure body with request payload";
     let flow_run = failed_published_flow_run(json!({
         "error_code": "provider_upstream_error",
@@ -98,11 +98,11 @@ fn native_result_sanitizes_legacy_provider_upstream_raw_body_from_public_error()
         .expect("failed native run should expose an error");
 
     assert_eq!(error.code, "provider_upstream_error");
-    assert_eq!(error.message, "provider upstream request failed");
+    assert_eq!(error.message, format!("400 Bad Request: {raw_body}"));
     assert_eq!(error.details["status_code"], json!(400));
     assert!(error.details.get("provider_summary").is_none());
     assert!(error.details.get("provider_details").is_none());
-    assert!(!error.message.contains(raw_body));
+    assert!(error.message.contains(raw_body));
     assert!(!error.details.to_string().contains(raw_body));
 }
 
@@ -133,8 +133,8 @@ fn d1_ac_001_failed_native_result_never_projects_an_answer_or_success_artifact()
     );
     let error = result
         .error
-        .expect("failed run should expose a sanitized error");
-    assert!(!error.message.contains(raw_provider_body));
+        .expect("failed run should expose the provider error");
+    assert_eq!(error.message, raw_provider_body);
     assert!(!error.details.to_string().contains(raw_provider_body));
 }
 

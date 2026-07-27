@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn d1_ac_008_provider_failure_keeps_only_allowlisted_durable_error_facts() {
+async fn provider_failure_preserves_the_runtime_error_message() {
     let outcome = start_flow_debug_run(
         &base_plan(),
         &json!({ "node-start": { "query": "退款政策" } }),
@@ -22,10 +22,7 @@ async fn d1_ac_008_provider_failure_keeps_only_allowlisted_durable_error_facts()
                 outcome.node_traces[1].error_payload.as_ref().unwrap()["error_code"],
                 json!("auth_failed")
             );
-            assert_eq!(
-                failure.error_payload["message"],
-                json!("provider authentication failed")
-            );
+            assert_eq!(failure.error_payload["message"], json!("invalid api_key"));
             assert!(outcome.node_traces[1].output_payload.get("text").is_none());
             assert!(!outcome.variable_pool.contains_key("node-llm"));
             assert!(failure.error_payload.get("provider_summary").is_none());
@@ -36,7 +33,7 @@ async fn d1_ac_008_provider_failure_keeps_only_allowlisted_durable_error_facts()
 }
 
 #[tokio::test]
-async fn d1_ac_008_provider_upstream_error_discards_raw_body_before_durable_trace() {
+async fn provider_upstream_error_body_is_the_durable_message_and_event_message() {
     let outcome = start_flow_debug_run(
         &base_plan(),
         &json!({ "node-start": { "query": "退款政策" } }),
@@ -54,7 +51,7 @@ async fn d1_ac_008_provider_upstream_error_discards_raw_body_before_durable_trac
             );
             assert_eq!(
                 failure.error_payload["message"],
-                json!("provider upstream request failed")
+                json!(PROVIDER_UPSTREAM_ERROR_BODY)
             );
             assert_eq!(failure.error_payload["status_code"], json!(400));
             assert!(failure.error_payload.get("provider_summary").is_none());
@@ -63,16 +60,19 @@ async fn d1_ac_008_provider_upstream_error_discards_raw_body_before_durable_trac
                 outcome.node_traces[1].error_payload.as_ref(),
                 Some(&failure.error_payload)
             );
-            let raw_body = "OpenAI codex passthrough requires a non-empty instructions field";
-            assert!(!failure.error_payload.to_string().contains(raw_body));
-            assert!(!outcome.node_traces[1]
-                .debug_payload
+            assert!(failure
+                .error_payload
                 .to_string()
-                .contains(raw_body));
-            assert!(outcome.node_traces[1]
+                .contains("keep complete body"));
+            let provider_error = outcome.node_traces[1]
                 .provider_events
                 .iter()
-                .all(|event| !serde_json::to_string(event).unwrap().contains(raw_body)));
+                .find_map(|event| match event {
+                    ProviderStreamEvent::Error { error } => Some(error),
+                    _ => None,
+                })
+                .expect("durable provider events should retain the upstream error");
+            assert_eq!(provider_error.message, PROVIDER_UPSTREAM_ERROR_BODY);
         }
         other => panic!("expected failed stop reason, got {other:?}"),
     }
@@ -92,13 +92,10 @@ async fn d1_ac_008_provider_runtime_contract_error_stays_out_of_llm_output() {
         ExecutionStopReason::Failed(ref failure) => {
             assert_eq!(failure.node_id, "node-llm");
             assert_eq!(failure.error_payload["error_code"], json!("auth_failed"));
-            assert_eq!(
-                failure.error_payload["message"],
-                json!("provider authentication failed")
-            );
+            assert_eq!(failure.error_payload["message"], json!("invalid api_key"));
             assert_eq!(
                 outcome.node_traces[1].error_payload.as_ref().unwrap()["message"],
-                json!("provider authentication failed")
+                json!("invalid api_key")
             );
             assert!(outcome.node_traces[1].output_payload.get("text").is_none());
             assert!(!outcome.variable_pool.contains_key("node-llm"));

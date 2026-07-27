@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { MOCK_ROUTE, SCENARIO, TRANSPORT, mockScenarioSentinel } = require('../../contracts');
-const { createMockUpstream } = require('../../mock-upstream');
+const { HTTP_500_ERROR_BODY, createMockUpstream } = require('../../mock-upstream');
 const {
   authorizationHeadersByTransport,
   countMockScenarioObservations,
@@ -115,6 +115,23 @@ test('AC-004: Gateway converts accepted HTTP upstream interruption to explicit f
     applicationId: 'application-1',
     providerInstanceId: 'provider-1',
   }).join('\n'), /expected outcome failed/u);
+});
+
+test('AC error fidelity: accepted HTTP failure blocks summarized public messages', () => {
+  const base = {
+    transport: TRANSPORT.ANTHROPIC_SSE,
+    scenario: SCENARIO.HTTP_500,
+    outcome: 'failed',
+    terminalCount: 0,
+    chunkTexts: [],
+    upstreamNonce: null,
+    upstreamNonceCount: 0,
+  };
+  assert.deepEqual(validateRequestResult({ ...base, publicErrorMessage: HTTP_500_ERROR_BODY }), []);
+  assert.match(
+    validateRequestResult({ ...base, publicErrorMessage: 'provider request failed' }).join('\n'),
+    /did not preserve the complete upstream HTTP body/u,
+  );
 });
 
 test('AC-011: downstream disconnect preserves an accepted Gateway run but cancels a direct mock request', () => {

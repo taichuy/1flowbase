@@ -26,6 +26,8 @@ const SAFE_HEADER_NAMES = Object.freeze([
   'user-agent',
   'x-request-id',
 ]);
+const HTTP_500_ERROR_BODY =
+  ' \n{"future_error":{"shape":"unknown"},"message":"keep complete body"}\n ';
 const SUCCESS_TERMINALS = new Set(['response.completed', 'message_stop']);
 
 function requestBodySummary(body) {
@@ -354,7 +356,7 @@ function createMockUpstream(options = {}) {
       observeWireVectors(body, requestTimeline, counters);
       if (scenario === SCENARIO.HTTP_500) {
         response.writeHead(500, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ error: { type: 'mock_upstream_error', nonce: requestTimeline.nonce } }));
+        response.end(HTTP_500_ERROR_BODY);
         requestTimeline.finish('http-500', { status: 500, successTerminalCount: 0 });
         return;
       }
@@ -507,4 +509,4 @@ function createMockUpstream(options = {}) {
   };
 }
 
-module.exports = { createMockUpstream, wireAuditVectorFromBody };
+module.exports = { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody };

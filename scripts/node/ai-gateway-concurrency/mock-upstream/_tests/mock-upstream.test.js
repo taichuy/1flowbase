@@ -9,7 +9,7 @@ const {
   assertDistinctRequestNonces,
   mockScenarioSentinel,
 } = require('../../contracts');
-const { createMockUpstream, wireAuditVectorFromBody } = require('..');
+const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = require('..');
 const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
 
 async function withMockUpstream(run, options = {}) {
@@ -254,6 +254,7 @@ test('AC-004: HTTP 500 is explicit and produces no success terminal', async () =
       }),
     });
     assert.equal(response.status, 500);
+    assert.equal(await response.text(), HTTP_500_ERROR_BODY);
     const evidence = await waitFor(() => upstream.snapshot().entries.find((entry) => entry.outcome === 'http-500'));
     assert.equal(evidence.successTerminalCount, 0);
   });

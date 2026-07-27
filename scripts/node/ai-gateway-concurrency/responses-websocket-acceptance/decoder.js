@@ -31,21 +31,37 @@ function decodeGatewayFrames(frames, { clientTraceId, maxEventBytes } = {}) {
     .filter((event) => event?.type === 'response.output_text.delta' && typeof event.delta === 'string')
     .map((event) => event.delta);
   const upstreamNonces = [...new Set(textDeltas.map(upstreamNonce).filter(Boolean))];
-  const terminalCount = eventTypes.filter((type) => type === 'response.completed').length;
+  const terminals = events.filter((event) =>
+    event?.type === 'response.completed' || event?.type === 'response.failed'
+  );
+  const terminalCount = terminals.length;
   if (protocolIds.length !== 1) throw new Error(`expected one Gateway response id, received ${protocolIds.length}`);
   const runId = runIdFromResponseId(protocolIds[0]);
   if (!runId) throw new Error('Gateway response id did not contain a durable run UUID');
-  if (terminalCount !== 1) throw new Error(`expected one response.completed, received ${terminalCount}`);
-  if (upstreamNonces.length !== 1) throw new Error(`expected one controlled upstream nonce, received ${upstreamNonces.length}`);
+  if (terminalCount !== 1) throw new Error(`expected one terminal response event, received ${terminalCount}`);
+  const terminalType = terminals[0].type;
+  if (terminalType === 'response.completed' && upstreamNonces.length !== 1) {
+    throw new Error(`expected one controlled upstream nonce, received ${upstreamNonces.length}`);
+  }
+  const errorMessage = terminalType === 'response.failed' && typeof terminals[0]?.error?.message === 'string'
+    ? terminals[0].error.message
+    : null;
+  if (terminalType === 'response.failed' && errorMessage === null) {
+    throw new Error('Gateway response.failed omitted error.message');
+  }
   return {
     schema_version: '1flowbase.responses-websocket-trace/v1',
     client_trace_id: clientTraceId,
     response_id: protocolIds[0],
     run_id: runId,
-    upstream_nonce: upstreamNonces[0],
+    upstream_nonce: upstreamNonces[0] ?? null,
     event_types: eventTypes,
     text_deltas: textDeltas,
     terminal_count: terminalCount,
+    ...(terminalType === 'response.failed' ? {
+      terminal_type: terminalType,
+      error_message: errorMessage,
+    } : {}),
   };
 }
 

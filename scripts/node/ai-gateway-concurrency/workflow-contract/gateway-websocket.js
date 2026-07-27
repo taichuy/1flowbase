@@ -3,6 +3,8 @@
 const crypto = require('node:crypto');
 const http = require('node:http');
 
+const { SCENARIO, mockScenarioSentinel } = require('../contracts');
+const { HTTP_500_ERROR_BODY } = require('../mock-upstream');
 const { decodeGatewayFrames } = require('../responses-websocket-acceptance/decoder');
 const { queryDurableRun } = require('../responses-websocket-acceptance/durable');
 const { createGatewayTarget } = require('../responses-websocket-acceptance/target');
@@ -46,7 +48,7 @@ function consumeServerFrames(buffer, onFrame) {
   return buffer.subarray(offset);
 }
 
-function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000 } = {}) {
+function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, inputText } = {}) {
   const url = new URL(target.url);
   if (url.protocol !== 'ws:') throw new Error('quality gate Gateway WebSocket must use loopback ws:');
   return new Promise((resolve, reject) => {
@@ -89,7 +91,7 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000 } = {}
             frames.push([payload]);
             const text = payload.toString('utf8');
             const event = JSON.parse(text);
-            if (event.type === 'response.completed') finish();
+            if (event.type === 'response.completed' || event.type === 'response.failed') finish();
             else if (event.type === 'error') finish(new Error(`Gateway WebSocket returned ${event.error?.message ?? 'an error'}`));
           });
         } catch (error) {
@@ -105,7 +107,10 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000 } = {}
         model: target.model,
         stream: true,
         metadata: { trace_id: clientTraceId },
-        input: [{ role: 'user', content: [{ type: 'input_text', text: `gateway websocket ${clientTraceId}` }] }],
+        input: [{ role: 'user', content: [{
+          type: 'input_text',
+          text: inputText ?? `gateway websocket ${clientTraceId}`,
+        }] }],
       })));
     });
     request.end();
@@ -120,10 +125,32 @@ async function runGatewayWebSocketAcceptance({ ready, mockSnapshot }, dependenci
   const trace = decodeGatewayFrames(frames, { clientTraceId });
   const durable = await (dependencies.queryDurableRun || queryDurableRun)(target, trace);
   const after = mockSnapshot();
+  const errorClientTraceId = `ws-gateway-error-${crypto.randomUUID()}`;
+  const errorFrames = await (dependencies.collectGatewayFrames || collectGatewayFrames)(
+    target,
+    errorClientTraceId,
+    { inputText: mockScenarioSentinel(SCENARIO.HTTP_500) },
+  );
+  const errorTrace = decodeGatewayFrames(errorFrames, { clientTraceId: errorClientTraceId });
+  const errorDurable = await (dependencies.queryDurableRun || queryDurableRun)(target, errorTrace);
+  if (errorTrace.terminal_type !== 'response.failed') {
+    throw new Error(`expected Gateway response.failed, received ${errorTrace.terminal_type}`);
+  }
+  if (errorTrace.error_message !== HTTP_500_ERROR_BODY) {
+    throw new Error('Responses WebSocket public error.message did not preserve the upstream response body');
+  }
+  if (errorDurable.run.error_message !== HTTP_500_ERROR_BODY) {
+    throw new Error('Responses WebSocket durable error.message did not preserve the upstream response body');
+  }
   return {
     trace,
     durable,
     wire_audit: createWireAudit({ target, trace, durable, upstreamBefore: before, upstreamAfter: after }),
+    error_fidelity: {
+      trace: errorTrace,
+      durable: errorDurable,
+      expected_message: HTTP_500_ERROR_BODY,
+    },
   };
 }
 

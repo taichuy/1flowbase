@@ -60,7 +60,7 @@ fn native_error_from_payload(payload: Option<&Value>) -> Option<native::NativeEr
                 .and_then(Value::as_str)
                 .unwrap_or("runtime_error")
                 .to_string(),
-            message: public_native_error_message(payload, &message),
+            message,
             details: public_native_error_details(payload),
         }
     })
@@ -88,18 +88,6 @@ fn public_native_error_details(payload: &Value) -> Value {
         details.insert("status_code".to_string(), json!(status_code));
     }
     Value::Object(details)
-}
-
-fn public_native_error_message(payload: &Value, message: &str) -> String {
-    match payload.get("error_code").and_then(Value::as_str) {
-        Some("auth_failed") => "provider authentication failed".to_string(),
-        Some("endpoint_unreachable") => "provider endpoint is unreachable".to_string(),
-        Some("model_not_found") => "provider model was not found".to_string(),
-        Some("rate_limited") => "provider rate limit exceeded".to_string(),
-        Some("provider_upstream_error") => "provider upstream request failed".to_string(),
-        Some("provider_invalid_response") => "provider returned an invalid response".to_string(),
-        _ => message.to_string(),
-    }
 }
 
 pub fn native_result_from_run_detail(

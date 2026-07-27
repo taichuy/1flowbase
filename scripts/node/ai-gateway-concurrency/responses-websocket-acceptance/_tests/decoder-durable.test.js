@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const { decodeGatewayFrames } = require('../decoder');
 const { queryDurableRun } = require('../durable');
+const { HTTP_500_ERROR_BODY } = require('../../mock-upstream');
 
 const RUN_ID = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -71,4 +72,38 @@ test('Root #1461 controlled negative: decoder rejects non-durable upstream mock 
     { type: 'response.output_text.delta', delta: 'mock-000001:chunk-1' },
     { type: 'response.completed', response: { id: 'resp_mock-000001' } },
   ]), { clientTraceId: 'ws-gateway-000002' }), /durable run UUID/u);
+});
+
+test('Root #1461 Delivery #1474 decodes response.failed without inventing a success nonce', () => {
+  const trace = decodeGatewayFrames(frames([
+    { type: 'response.created', response: { id: `resp_${RUN_ID}` } },
+    {
+      type: 'response.failed',
+      response: { id: `resp_${RUN_ID}` },
+      error: { message: HTTP_500_ERROR_BODY, type: 'provider_error', code: 'provider_upstream_error' },
+    },
+  ]), { clientTraceId: 'ws-gateway-error-000001' });
+  assert.equal(trace.run_id, RUN_ID);
+  assert.equal(trace.terminal_type, 'response.failed');
+  assert.equal(trace.error_message, HTTP_500_ERROR_BODY);
+  assert.equal(trace.upstream_nonce, null);
+});
+
+test('Root #1461 Delivery #1474 durable evidence preserves failed run error.message', async () => {
+  const evidence = await queryDurableRun(target(), {
+    run_id: RUN_ID,
+    client_trace_id: 'ws-gateway-error-000001',
+  }, async () => ({
+    ok: true,
+    async json() {
+      return { data: {
+        id: RUN_ID,
+        status: 'failed',
+        correlation: { external_trace_id: 'ws-gateway-error-000001' },
+        error: { message: HTTP_500_ERROR_BODY },
+      } };
+    },
+  }));
+  assert.equal(evidence.run.status, 'failed');
+  assert.equal(evidence.run.error_message, HTTP_500_ERROR_BODY);
 });

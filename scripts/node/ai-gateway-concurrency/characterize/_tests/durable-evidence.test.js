@@ -2,7 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { TRANSPORT } = require('../../contracts');
+const { SCENARIO, TRANSPORT } = require('../../contracts');
+const { HTTP_500_ERROR_BODY } = require('../../mock-upstream');
 const {
   collectDurableConvergence,
   evaluateListObservations,
@@ -58,6 +59,28 @@ test('AC durable list visibility is advisory while direct query remains authorit
   assert.deepEqual(evaluateSnapshot([request()], stale), []);
   assert.match(evaluateListObservations([request()], stale).join('\n'), /list status remained running/u);
   assert.match(evaluateListObservations([request()], stale).join('\n'), /list\/query status mismatch/u);
+});
+
+test('AC error fidelity: failed direct truth matches the public message and complete upstream body', () => {
+  const failedRequest = request({
+    scenario: SCENARIO.HTTP_500,
+    publicErrorMessage: HTTP_500_ERROR_BODY,
+  });
+  const failedSnapshot = snapshot({
+    queries: {
+      'load-000001': {
+        id: RUN_ID,
+        status: 'failed',
+        errorMessage: HTTP_500_ERROR_BODY,
+      },
+    },
+  });
+  assert.deepEqual(evaluateSnapshot([failedRequest], failedSnapshot), []);
+  assert.match(evaluateSnapshot([failedRequest], snapshot({
+    queries: {
+      'load-000001': { id: RUN_ID, status: 'failed', errorMessage: 'summarized' },
+    },
+  })).join('\n'), /durable error message did not preserve|public\/durable error message mismatch/u);
 });
 
 test('AC durable list endpoint failure remains advisory when direct truth converges', async () => {
