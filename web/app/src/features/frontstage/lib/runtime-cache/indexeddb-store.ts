@@ -1,16 +1,28 @@
-import type { FrontstageArtifactCacheStore } from './artifact-cache';
+export const FRONTSTAGE_RUNTIME_RECORD_DATABASE =
+  '1flowbase-frontstage-runtime-records';
+export const FRONTSTAGE_RUNTIME_RECORD_OBJECT_STORE = 'records';
 
-export const FRONTSTAGE_ARTIFACT_CACHE_DATABASE =
-  '1flowbase-frontstage-compiled-artifacts';
-export const FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE = 'artifacts';
-
-export interface IndexedDbArtifactCacheStoreOptions {
+export interface IndexedDbRecordStoreOptions {
   indexedDB?: IDBFactory | null;
   databaseName?: string;
+  objectStoreName?: string;
   onRequestSuccess?: (context: {
     mode: IDBTransactionMode;
     transaction: IDBTransaction;
   }) => void;
+}
+
+export interface FrontstageIndexedDbRecord {
+  key: string;
+}
+
+export interface FrontstageIndexedDbRecordStore<
+  TRecord extends FrontstageIndexedDbRecord
+> {
+  get(key: string): Promise<unknown | undefined>;
+  list(): Promise<unknown[]>;
+  put(record: TRecord): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 export class IndexedDbUnavailableError extends Error {
@@ -20,14 +32,18 @@ export class IndexedDbUnavailableError extends Error {
   }
 }
 
-export function createIndexedDbArtifactCacheStore(
-  options: IndexedDbArtifactCacheStoreOptions = {}
-): FrontstageArtifactCacheStore {
+export function createIndexedDbRecordStore<
+  TRecord extends FrontstageIndexedDbRecord
+>(
+  options: IndexedDbRecordStoreOptions = {}
+): FrontstageIndexedDbRecordStore<TRecord> {
   const factory = Object.hasOwn(options, 'indexedDB')
     ? (options.indexedDB ?? null)
     : readGlobalIndexedDb();
   const databaseName =
-    options.databaseName ?? FRONTSTAGE_ARTIFACT_CACHE_DATABASE;
+    options.databaseName ?? FRONTSTAGE_RUNTIME_RECORD_DATABASE;
+  const objectStoreName =
+    options.objectStoreName ?? FRONTSTAGE_RUNTIME_RECORD_OBJECT_STORE;
   let databasePromise: Promise<IDBDatabase> | null = null;
 
   const open = () => {
@@ -37,9 +53,14 @@ export function createIndexedDbArtifactCacheStore(
       );
     }
     if (!databasePromise) {
-      const pending = openDatabase(factory, databaseName, () => {
-        databasePromise = null;
-      });
+      const pending = openDatabase(
+        factory,
+        databaseName,
+        objectStoreName,
+        () => {
+          databasePromise = null;
+        }
+      );
       databasePromise = pending;
       void pending.catch(() => {
         if (databasePromise === pending) databasePromise = null;
@@ -52,6 +73,7 @@ export function createIndexedDbArtifactCacheStore(
     async get(key) {
       return runRequest(
         open,
+        objectStoreName,
         'readonly',
         (store) => store.get(key),
         options.onRequestSuccess
@@ -60,6 +82,7 @@ export function createIndexedDbArtifactCacheStore(
     async list() {
       const value = await runRequest(
         open,
+        objectStoreName,
         'readonly',
         (store) => store.getAll(),
         options.onRequestSuccess
@@ -69,6 +92,7 @@ export function createIndexedDbArtifactCacheStore(
     async put(record) {
       await runRequest(
         open,
+        objectStoreName,
         'readwrite',
         (store) => store.put(record),
         options.onRequestSuccess
@@ -77,6 +101,7 @@ export function createIndexedDbArtifactCacheStore(
     async delete(key) {
       await runRequest(
         open,
+        objectStoreName,
         'readwrite',
         (store) => store.delete(key),
         options.onRequestSuccess
@@ -94,6 +119,7 @@ function readGlobalIndexedDb(): IDBFactory | null {
 function openDatabase(
   factory: IDBFactory,
   databaseName: string,
+  objectStoreName: string,
   onVersionChange: () => void
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -101,13 +127,17 @@ function openDatabase(
     try {
       request = factory.open(databaseName, 1);
     } catch (error) {
-      reject(new IndexedDbUnavailableError('IndexedDB open failed.', { cause: error }));
+      reject(
+        new IndexedDbUnavailableError('IndexedDB open failed.', {
+          cause: error
+        })
+      );
       return;
     }
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE)) {
-        database.createObjectStore(FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE, {
+      if (!database.objectStoreNames.contains(objectStoreName)) {
+        database.createObjectStore(objectStoreName, {
           keyPath: 'key'
         });
       }
@@ -132,9 +162,10 @@ function openDatabase(
 
 async function runRequest<T>(
   open: () => Promise<IDBDatabase>,
+  objectStoreName: string,
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore) => IDBRequest<T>,
-  onRequestSuccess?: IndexedDbArtifactCacheStoreOptions['onRequestSuccess']
+  onRequestSuccess?: IndexedDbRecordStoreOptions['onRequestSuccess']
 ): Promise<T> {
   let database: IDBDatabase;
   try {
@@ -157,13 +188,8 @@ async function runRequest<T>(
       else reject(result.error);
     };
     try {
-      const transaction = database.transaction(
-        FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE,
-        mode
-      );
-      const request = operation(
-        transaction.objectStore(FRONTSTAGE_ARTIFACT_CACHE_OBJECT_STORE)
-      );
+      const transaction = database.transaction(objectStoreName, mode);
+      const request = operation(transaction.objectStore(objectStoreName));
       request.onsuccess = () => {
         requestSucceeded = true;
         requestResult = request.result;
@@ -187,7 +213,9 @@ async function runRequest<T>(
           ? settle({ ok: true })
           : settle({
               ok: false,
-              error: new Error('IndexedDB transaction completed without a request result.')
+              error: new Error(
+                'IndexedDB transaction completed without a request result.'
+              )
             });
       transaction.onabort = () =>
         settle({
@@ -198,8 +226,7 @@ async function runRequest<T>(
       transaction.onerror = () =>
         settle({
           ok: false,
-          error:
-            transaction.error ?? new Error('IndexedDB transaction failed.')
+          error: transaction.error ?? new Error('IndexedDB transaction failed.')
         });
     } catch (error) {
       settle({ ok: false, error });

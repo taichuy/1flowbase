@@ -90,7 +90,11 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["sort_order"], json!(0));
     assert!(password_local["public_ui_block"]
         .as_str()
-        .is_some_and(|source| source.contains("satisfies BlockModule")));
+        .is_some_and(|source| source.contains("export default function PasswordLocalAuth")
+            && source.contains("onSubmit={submitSignIn}")
+            && source.contains("self_registration_enabled === true")
+            && source.contains("onClick={() => setMode")
+            && !source.contains("function main")));
     assert_eq!(
         password_local["public_variables"],
         json!({
@@ -292,7 +296,8 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
     );
     assert!(created["data"]["public_ui_block"]
         .as_str()
-        .is_some_and(|source| source.contains("satisfies BlockModule")));
+        .is_some_and(|source| source.contains("export default function PasswordLocalAuth")
+            && source.contains("onSubmit={submitSignUp}")));
 
     let update = app
         .clone()

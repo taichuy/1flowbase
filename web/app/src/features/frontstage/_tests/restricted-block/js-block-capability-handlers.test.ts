@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import { ApiClientError } from '@1flowbase/api-client';
-import type { JsBlockHostInterfaceEffect } from '@1flowbase/page-runtime';
+import type { BlockHostInterfaceEffect } from '@1flowbase/page-runtime';
 import {
   createFrontstageJsBlockCapabilityHandlers,
   type FrontstageJsBlockCapabilityClient
@@ -24,8 +24,8 @@ function createClient(): FrontstageJsBlockCapabilityClient {
 }
 
 function effect(
-  overrides: Partial<JsBlockHostInterfaceEffect> = {}
-): JsBlockHostInterfaceEffect {
+  overrides: Partial<BlockHostInterfaceEffect> = {}
+): BlockHostInterfaceEffect {
   return {
     type: 'interface',
     requestId: 'run-1',
@@ -176,6 +176,32 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     await expect(handlers.interface(effect())).rejects.toThrow(
       'Write interface call was cancelled.'
     );
+    expect(client.dispatchFrontstageCallable).not.toHaveBeenCalled();
+    expect(client.issueFrontstageCallableWriteGrant).not.toHaveBeenCalled();
+  });
+
+  test('D4-AC-002 rejects a revoked Studio run without dispatching a request', async () => {
+    const client = createClient();
+    const handlers = createFrontstageJsBlockCapabilityHandlers({
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      csrfToken: 'csrf-1',
+      client,
+      resolveBlockId: () => 'block-1'
+    });
+    await handlers.prepareDraftRun({
+      blockId: 'block-1',
+      runId: 'run-1',
+      draftHash: 'draft-1',
+      confirmWrite: vi.fn().mockResolvedValue(true)
+    });
+    handlers.revokeDraftRun('run-1');
+
+    await expect(
+      handlers.interface(effect({ method: 'POST' }))
+    ).rejects.toThrow('revoked');
+    expect(client.dispatchFrontstageCallable).not.toHaveBeenCalled();
     expect(client.issueFrontstageCallableWriteGrant).not.toHaveBeenCalled();
   });
 

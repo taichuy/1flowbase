@@ -1,10 +1,12 @@
 use anyhow::Result;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, path::PathBuf};
 use uuid::Uuid;
 
 use crate::{
     errors::ControlPlaneError,
-    ports::{AuthRepository, FrontendBlockCatalogRepository, RoleConsolePolicyReader},
+    ports::{
+        AuthRepository, FrontendBlockCatalogRepository, PluginRepository, RoleConsolePolicyReader,
+    },
 };
 
 const FRONTEND_BLOCKS_VIEW_OPERATION_ID: &str = "frontend_blocks.view";
@@ -20,7 +22,6 @@ pub struct ListFrontendComponentCapabilitiesQuery {
     pub contribution_code: Option<String>,
     pub query: Option<String>,
     pub module_source: Option<String>,
-    pub implementation_kind: Option<domain::FrontendComponentImplementationKind>,
     pub offset: usize,
     pub limit: usize,
 }
@@ -40,6 +41,9 @@ pub struct FrontendComponentCapability {
     pub plugin_version: String,
     pub contribution_code: String,
     pub module_source: String,
+    pub module_version: String,
+    pub exports: Vec<String>,
+    pub browser_asset: domain::FrontendModuleBrowserAsset,
     pub contract: domain::FrontendComponentContract,
 }
 
@@ -52,7 +56,16 @@ pub struct FrontendComponentCapabilityPage {
     pub has_more: bool,
     pub next_offset: Option<usize>,
     pub module_sources: Vec<String>,
-    pub implementation_kinds: Vec<String>,
+}
+
+pub struct GetFrontendModuleAssetQuery {
+    pub workspace_id: Uuid,
+    pub sha256: String,
+}
+
+pub struct FrontendComponentModuleAsset {
+    pub sha256: String,
+    pub bytes: Vec<u8>,
 }
 
 pub struct FrontendComponentCatalogService<R> {
@@ -78,13 +91,6 @@ where
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let implementation_kinds = entries
-            .iter()
-            .map(|entry| entry.contract.implementation.kind.as_str().to_string())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
         if let Some(installation_id) = query.installation_id {
             entries.retain(|entry| entry.installation_id == installation_id);
         }
@@ -93,9 +99,6 @@ where
         }
         if let Some(module_source) = non_empty(query.module_source.as_deref()) {
             entries.retain(|entry| entry.module_source == module_source);
-        }
-        if let Some(implementation_kind) = query.implementation_kind {
-            entries.retain(|entry| entry.contract.implementation.kind == implementation_kind);
         }
         if let Some(search) = non_empty(query.query.as_deref()) {
             let search = search.to_lowercase();
@@ -122,7 +125,6 @@ where
             has_more,
             next_offset: has_more.then_some(end),
             module_sources,
-            implementation_kinds,
         })
     }
 
@@ -157,12 +159,61 @@ where
                         plugin_version: block.plugin_version.clone(),
                         contribution_code: block.contribution_code.clone(),
                         module_source: module.source.clone(),
+                        module_version: module.version.clone(),
+                        exports: module.exports.clone(),
+                        browser_asset: module.browser_asset.clone(),
                         contract,
                     });
                 }
             }
         }
         Ok(entries)
+    }
+}
+
+impl<R> FrontendComponentCatalogService<R>
+where
+    R: FrontendBlockCatalogRepository + PluginRepository,
+{
+    pub async fn get_module_asset(
+        &self,
+        query: GetFrontendModuleAssetQuery,
+    ) -> Result<Option<FrontendComponentModuleAsset>> {
+        let blocks = self
+            .repository
+            .list_workspace_frontend_blocks(query.workspace_id)
+            .await?
+            .into_iter();
+        let registered = blocks
+            .flat_map(|block| {
+                let installation_id = block.installation_id;
+                block
+                    .code_modules
+                    .into_iter()
+                    .map(move |module| (installation_id, module.browser_asset))
+            })
+            .find(|(_, asset)| asset.sha256 == query.sha256);
+        let Some((installation_id, browser_asset)) = registered else {
+            return Ok(None);
+        };
+        let Some(installation) = self.repository.get_installation(installation_id).await? else {
+            return Ok(None);
+        };
+        let root = PathBuf::from(installation.installed_path);
+        let registered = plugin_framework::FrontendModuleBrowserAssetManifest {
+            path: browser_asset.path,
+            sha256: browser_asset.sha256.clone(),
+        };
+        let bytes = tokio::task::spawn_blocking(move || {
+            plugin_framework::load_frontend_module_asset(&root, &registered)
+        })
+        .await
+        .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?
+        .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?;
+        Ok(Some(FrontendComponentModuleAsset {
+            sha256: browser_asset.sha256,
+            bytes,
+        }))
     }
 }
 

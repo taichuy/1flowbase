@@ -1,13 +1,22 @@
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
-import type { JsBlockRunError } from '../js-block-worker-runtime';
-import type { NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS } from '../native-trusted-block-source-policy';
+export interface NativeTrustedBlockRunError {
+  kind:
+    | 'runtime_error'
+    | 'source_policy_failed'
+    | 'schema_invalid'
+    | 'runtime_timeout';
+  message: string;
+  errors: BlockProtocolError[];
+}
+export const NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE =
+  'react/jsx-runtime' as const;
 
-export type NativeTrustedBlockInjectedModuleSource =
-  (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
+export type NativeTrustedBlockInjectedModuleSource = string;
 
-export type NativeTrustedBlockInjectedModuleMap = Partial<
-  Record<NativeTrustedBlockInjectedModuleSource, Record<string, unknown>>
+export type NativeTrustedBlockInjectedModuleMap = Record<
+  string,
+  Record<string, unknown> | undefined
 >;
 
 export type NativeTrustedBlockComponent = (...args: unknown[]) => unknown;
@@ -50,7 +59,7 @@ export interface NativeTrustedBlockSourceTransformSuccess {
 
 export interface NativeTrustedBlockSourceTransformFailure {
   ok: false;
-  errorKind: JsBlockRunError['kind'];
+  errorKind: NativeTrustedBlockRunError['kind'];
   errors: BlockProtocolError[];
 }
 
@@ -67,7 +76,7 @@ export type NativeTrustedBlockSourceEvaluationResult =
     }
   | {
       ok: false;
-      error: JsBlockRunError;
+      error: NativeTrustedBlockRunError;
     };
 
 export interface EvaluateNativeTrustedBlockSourceInput {

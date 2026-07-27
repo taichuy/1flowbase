@@ -1,9 +1,7 @@
-import type { FrontendBlockCodeModuleSource } from '@1flowbase/page-protocol';
-
 export interface FrontstageJsxRequiredImport {
   kind: 'type' | 'value';
   name: string;
-  moduleSource: FrontendBlockCodeModuleSource;
+  moduleSource: string;
 }
 
 export type FrontstageJsxInsertion =
@@ -14,7 +12,7 @@ export type FrontstageJsxInsertion =
   | {
       kind: 'component';
       name: string;
-      moduleSource: FrontendBlockCodeModuleSource;
+      moduleSource: string;
       source: string;
     }
   | {
@@ -57,7 +55,7 @@ export function planFrontstageJsxInsertion({
 
   switch (insertion.kind) {
     case 'context-reference':
-      insertedSource = `${findMainContextBinding(source)}.${insertion.memberPath}`;
+      insertedSource = `${findComponentContextBinding(source)}.${insertion.memberPath}`;
       break;
     case 'component':
       insertedSource = insertion.source;
@@ -101,16 +99,16 @@ export function applyFrontstageJsxInsertionPlan(
     );
 }
 
-function findMainContextBinding(source: string): string {
-  const functionDeclaration = source.match(
-    /\b(?:export\s+)?(?:async\s+)?function\s+main\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)/
+function findComponentContextBinding(source: string): string {
+  const componentBinding = source.match(
+    /\b(?:export\s+default\s+)?function\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(\s*\{\s*ctx(?:\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*))?/u
   );
-  if (functionDeclaration?.[1]) return functionDeclaration[1];
+  if (componentBinding) return componentBinding[1] ?? 'ctx';
 
-  const arrowDeclaration = source.match(
-    /\b(?:const|let|var)\s+main\s*=\s*(?:async\s*)?\(\s*([A-Za-z_$][A-Za-z0-9_$]*)/
+  const arrowBinding = source.match(
+    /\bexport\s+default\s+(?:async\s*)?\(\s*\{\s*ctx(?:\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*))?/u
   );
-  return arrowDeclaration?.[1] ?? 'ctx';
+  return arrowBinding?.[1] ?? 'ctx';
 }
 
 function groupRequiredImports(

@@ -12,33 +12,35 @@ describe('Frontstage JSX editor projection', () => {
       catalogEntry: null
     });
 
-    expect(projection).toEqual({
-      componentCatalogQuery: null,
-      contextComment: createFrontstageContextComment(),
-      monacoExtraLibs: []
-    });
+    expect(projection.componentCatalogQuery).toBeNull();
+    expect(projection.contextComment).toBe(createFrontstageContextComment());
+    expect(projection.monacoExtraLibs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'react' }),
+        expect.objectContaining({ source: '@1flowbase/native-react-context' })
+      ])
+    );
     expect(projection.contextComment).toContain('@1flowbase-context');
     expect(projection.contextComment).not.toContain('interfaces:');
     expect(projection.contextComment).not.toContain('ctx.data');
   });
 
-  test('AC-001 does not infer component APIs from TypeScript declarations', () => {
+  test('D2-AC-002 projects registered standard React declarations into Monaco', () => {
     const projection = createFrontstageJsxEditorProjection({
       catalogEntry: {
-        codeCapabilities: {
-          template: null,
-          allowedImports: ['@1flowbase/block-renderer/antd-facade'],
-          monacoExtraLibs: [
-            {
-              source: '@1flowbase/block-renderer/antd-facade',
-              filePath:
-                'file:///node_modules/@1flowbase/block-renderer/antd-facade/index.d.ts',
-              content:
-                "declare module '@1flowbase/block-renderer/antd-facade' { export const Button: unknown; export const Stack: unknown; }"
-            }
-          ],
-          workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
-        },
+        codeModules: [
+          {
+            source: '@1flowbase/native-components',
+            version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            exports: ['Surface'],
+            type_declarations:
+              "declare module '@1flowbase/native-components' { export interface SurfaceProps extends import('react').HTMLAttributes<HTMLElement> {} export const Surface: import('react').ComponentType<SurfaceProps>; }"
+          }
+        ],
         installationId: 'installation-1',
         contributionCode: 'frontstage.js-ui-block'
       } as NormalizedFrontstageBlockCatalogEntry
@@ -48,8 +50,13 @@ describe('Frontstage JSX editor projection', () => {
       installation_id: 'installation-1',
       contribution_code: 'frontstage.js-ui-block'
     });
-    expect(projection.monacoExtraLibs[0]?.content).toContain(
-      'export const Button'
+    expect(projection.monacoExtraLibs.at(-1)?.content).toContain(
+      "import('react').ComponentType<SurfaceProps>"
     );
+    expect(projection.monacoExtraLibs.at(-1)).toMatchObject({
+      source: '@1flowbase/native-components',
+      filePath:
+        'file:///node_modules/@1flowbase/native-components/index.d.ts'
+    });
   });
 });

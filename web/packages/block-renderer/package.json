@@ -9,14 +9,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.tsx"
-    },
-    "./antd-facade": {
-      "types": "./dist/antd-facade.d.ts",
-      "default": "./src/antd-facade.ts"
     }
   },
   "dependencies": {
-    "@1flowbase/antd-facade": "workspace:*",
     "@1flowbase/page-protocol": "workspace:*",
     "antd": "^5.24.6",
     "echarts": "6.1.0",

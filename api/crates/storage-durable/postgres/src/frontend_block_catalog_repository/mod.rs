@@ -141,8 +141,11 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
             left join plugin_assignments pa
                 on pa.workspace_id = $1
                and pa.installation_id = reg.installation_id
-            where installation.source_kind = 'builtin'
-               or pa.installation_id is not null
+            where (installation.source_kind = 'builtin'
+               or pa.installation_id is not null)
+              and installation.verification_status = 'valid'
+              and installation.artifact_status = 'ready'
+              and installation.availability_status = 'available'
             order by reg.title asc, reg.contribution_code asc
             "#,
         )

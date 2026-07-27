@@ -25,7 +25,6 @@ import {
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstagePageTab } from '../../api/page-tabs';
-import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -47,8 +46,10 @@ const dataCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageDataCapabilities: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -82,6 +83,9 @@ const pageTabsApi = vi.hoisted(() => ({
     'tabs'
   ])
 }));
+const trialPanel = vi.hoisted(() => ({
+  render: vi.fn()
+}));
 
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
@@ -94,23 +98,23 @@ vi.mock(
   () => dataCapabilitiesHook
 );
 vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
+vi.mock('../../components/JsBlockTrialPanel', () => ({
+  JsBlockTrialPanel: (props: unknown) => {
+    trialPanel.render(props);
+    return <div data-testid="captured-js-block-trial-panel" />;
+  }
+}));
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
 const PLUGIN_CODE_TEMPLATE = `
-import { Text } from '@1flowbase/block-renderer/antd-facade';
-
-async function main() {
-  return {
-    view: Text({ children: 'Plugin template ready' }),
-    outputs: {}
-  };
+export default function PluginBlock() {
+  return <p>Plugin template ready</p>;
 }
-export default { main };
 `.trim();
 
 vi.setConfig({ testTimeout: SLOW_FRONTSTAGE_TEST_TIMEOUT });
@@ -367,7 +371,7 @@ function createCatalogEntry(
 ): NormalizedFrontstageBlockCatalogEntry {
   return {
     id: '1flowbase:frontstage.js-ui-block',
-    runtimeKind: 'iframe',
+    runtimeKind: 'native_react',
     installationId: 'builtin-installation',
     providerCode: '1flowbase',
     pluginId: 'builtin-frontstage',
@@ -392,8 +396,7 @@ function createCatalogEntry(
         language: 'tsx'
       },
       allowedImports: [],
-      monacoExtraLibs: [],
-      workerModuleSources: []
+      monacoExtraLibs: []
     },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw'],
     ...overrides
@@ -433,18 +436,6 @@ function mockFrontstageDataCapabilities() {
   });
 }
 
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
-) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
-}
-
 function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
   const payload = input.payload;
   if (typeof payload !== 'object' || payload === null) {
@@ -468,7 +459,6 @@ describe('FrontStagePage - design controls', () => {
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
     mockFrontstageDataCapabilities();
-    mockRuntimeSessions();
     pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
       {
         id: 'tab-1',
@@ -721,7 +711,7 @@ describe('FrontStagePage - design controls', () => {
       },
       props: { title: 'Orders' },
       'x-layout': { order: 0, region: 'main' },
-      runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+      runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
     };
 
     render(
@@ -760,6 +750,106 @@ describe('FrontStagePage - design controls', () => {
     expect(
       screen.queryByRole('dialog', { name: '区块配置' })
     ).not.toBeInTheDocument();
+  });
+
+  test('D2-P2F wires an inserted Surface source and its catalog lock into the production trial path', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([
+      createCatalogEntry({
+        codeModules: [
+          {
+            source: '@1flowbase/native-components',
+            version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            exports: ['Surface'],
+            type_declarations:
+              "declare module '@1flowbase/native-components' { export const Surface: unknown; }"
+          }
+        ]
+      })
+    ]);
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: 'import { Surface } from \'@1flowbase/native-components\';\nexport default () => <Surface className="card" />;',
+      draft:
+        'import { Surface } from \'@1flowbase/native-components\';\nexport default () => <Surface className="card" />;',
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn()
+    });
+    const blockPayload = {
+      id: 'surface-block',
+      renderer_version: 'v1',
+      codeRef: 'surface-code',
+      catalog: {
+        providerCode: '1flowbase',
+        installationId: 'builtin-installation'
+      },
+      contribution: {
+        pluginId: 'builtin-frontstage',
+        pluginVersion: '1.0.0',
+        code: 'frontstage.js-ui-block'
+      },
+      props: {},
+      'x-layout': { order: 0, region: 'main' },
+      runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
+    };
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          onNavigateTab={vi.fn()}
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent({
+            schema: {
+              rootUid: 'root-1',
+              payload: { blocks: [blockPayload] }
+            },
+            root: {
+              uid: 'root-1',
+              payload: { blocks: [blockPayload] }
+            }
+          })}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    const blockSlot = await screen.findByTestId('block-slot-surface-block');
+    fireEvent.mouseEnter(blockSlot);
+    fireEvent.click(
+      within(blockSlot).getByRole('button', { name: '编辑区块' })
+    );
+    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    fireEvent.click(within(studio).getByRole('button', { name: '运行' }));
+
+    await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
+    expect(trialPanel.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        code: expect.stringContaining('<Surface className="card" />'),
+        nativeDependencyLock: [
+          {
+            module_source: '@1flowbase/native-components',
+            module_version: '1.0.0',
+            browser_asset: {
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            },
+            exports: ['Surface']
+          }
+        ],
+        nativeDependencyLockError: null
+      })
+    );
   });
 
   test('shows real page tree operation states without local draft wording', () => {
@@ -880,9 +970,9 @@ describe('FrontStagePage - design controls', () => {
         region: 'main'
       },
       runtime: {
-        kind: 'iframe',
+        kind: 'native_react',
         entry: 'index.js',
-        hint: 'iframe',
+        hint: 'native_react',
         code_template_version: '2.4.0',
         code_template_language: 'tsx'
       }

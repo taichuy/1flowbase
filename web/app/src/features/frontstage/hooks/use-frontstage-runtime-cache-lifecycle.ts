@@ -2,20 +2,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useRef } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
-import { clearFrontstageRuntimeSessionCache } from './use-frontstage-page-canvas-runtime-sessions';
 import { resetFrontstageRuntimeObservations } from '../lib/page-canvas/runtime-observation';
 import {
-  frontstageCompiledArtifactCache,
-  type FrontstageCompiledArtifactCache
+  frontstageNativeReactArtifactCache,
+  type FrontstageNativeReactArtifactCache
 } from '../lib/runtime-cache';
-import { getFrontstageRestrictedBlockRuntimeFingerprint } from '../lib/restricted-block-worker-factory';
+import { getNativeReactRuntimeFingerprint } from '../../../shared/code-block/native-react-compiler-browser';
 
 export interface FrontstageRuntimeCacheLifecycleOptions {
-  artifactCache?: Pick<
-    FrontstageCompiledArtifactCache,
+  nativeReactArtifactCache?: Pick<
+    FrontstageNativeReactArtifactCache,
     'deleteActor' | 'pruneWorkspace'
   >;
-  runtimeFingerprint?: string;
+  nativeReactRuntimeFingerprint?: string;
 }
 
 export function useFrontstageRuntimeCacheLifecycle(
@@ -29,10 +28,10 @@ export function useFrontstageRuntimeCacheLifecycle(
     : sessionStatus;
   const previousIdentityRef = useRef<string | null>(null);
   const previousActorIdRef = useRef<string | null>(null);
-  const artifactCache = options.artifactCache ?? frontstageCompiledArtifactCache;
-  const runtimeFingerprint =
-    options.runtimeFingerprint ??
-    getFrontstageRestrictedBlockRuntimeFingerprint();
+  const nativeReactArtifactCache =
+    options.nativeReactArtifactCache ?? frontstageNativeReactArtifactCache;
+  const nativeReactRuntimeFingerprint =
+    options.nativeReactRuntimeFingerprint ?? getNativeReactRuntimeFingerprint();
 
   useLayoutEffect(() => {
     if (previousIdentityRef.current === lifecycleIdentity) {
@@ -42,22 +41,29 @@ export function useFrontstageRuntimeCacheLifecycle(
     const previousActorId = previousActorIdRef.current;
     const currentActorId = actor?.id ?? null;
     previousActorIdRef.current = currentActorId;
-    clearFrontstageRuntimeSessionCache();
     queryClient.removeQueries({
       predicate: (query) => query.queryKey[0] === 'frontstage'
     });
     resetFrontstageRuntimeObservations();
     if (previousActorId && previousActorId !== currentActorId) {
-      void artifactCache.deleteActor(previousActorId).catch(() => undefined);
+      void nativeReactArtifactCache
+        .deleteActor(previousActorId)
+        .catch(() => undefined);
     }
     if (actor) {
-      void artifactCache
+      void nativeReactArtifactCache
         .pruneWorkspace({
           actorId: actor.id,
           workspaceId: actor.current_workspace_id,
-          runtimeFingerprint
+          runtimeFingerprint: nativeReactRuntimeFingerprint
         })
         .catch(() => undefined);
     }
-  }, [actor, artifactCache, lifecycleIdentity, queryClient, runtimeFingerprint]);
+  }, [
+    actor,
+    lifecycleIdentity,
+    nativeReactArtifactCache,
+    nativeReactRuntimeFingerprint,
+    queryClient
+  ]);
 }

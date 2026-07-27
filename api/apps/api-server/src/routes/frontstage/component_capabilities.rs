@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::HeaderMap,
+    http::{header, HeaderMap, HeaderValue},
+    response::Response,
     Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
     frontend_block_catalog::{
         FrontendComponentCapability, FrontendComponentCatalogService,
-        GetFrontendComponentCapabilityQuery, ListFrontendComponentCapabilitiesQuery,
+        GetFrontendComponentCapabilityQuery, GetFrontendModuleAssetQuery,
+        ListFrontendComponentCapabilitiesQuery,
     },
     ports::FrontstagePageRepository,
 };
@@ -30,7 +33,6 @@ pub struct FrontstageComponentCapabilityQuery {
     pub contribution_code: Option<String>,
     pub query: Option<String>,
     pub module_source: Option<String>,
-    pub implementation_kind: Option<String>,
     #[param(minimum = 0)]
     pub offset: Option<usize>,
     #[param(minimum = 1, maximum = 20)]
@@ -59,6 +61,12 @@ pub struct FrontendComponentExampleResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontendModuleBrowserAssetResponse {
+    pub sha256: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FrontstageComponentCapabilitySummaryResponse {
     pub component_id: String,
     pub installation_id: String,
@@ -67,8 +75,10 @@ pub struct FrontstageComponentCapabilitySummaryResponse {
     pub plugin_version: String,
     pub contribution_code: String,
     pub module_source: String,
+    pub module_version: String,
+    pub exports: Vec<String>,
+    pub browser_asset: FrontendModuleBrowserAssetResponse,
     pub export_name: String,
-    pub implementation_kind: String,
     pub upstream: Option<FrontendComponentUpstreamResponse>,
     pub description: String,
     pub insert_snippet: String,
@@ -83,7 +93,6 @@ pub struct FrontstageComponentCapabilityPageResponse {
     pub has_more: bool,
     pub next_offset: Option<usize>,
     pub module_sources: Vec<String>,
-    pub implementation_kinds: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -126,7 +135,6 @@ pub async fn list_frontstage_component_capabilities(
             contribution_code: query.contribution_code,
             query: query.query,
             module_source: query.module_source,
-            implementation_kind: parse_implementation_kind(query.implementation_kind.as_deref())?,
             offset: query.offset.unwrap_or(0),
             limit: query
                 .limit
@@ -137,14 +145,17 @@ pub async fn list_frontstage_component_capabilities(
 
     Ok(Json(ApiSuccess::new(
         FrontstageComponentCapabilityPageResponse {
-            items: page.items.into_iter().map(to_summary_response).collect(),
+            items: page
+                .items
+                .into_iter()
+                .map(|entry| to_summary_response(entry, workspace_id))
+                .collect(),
             total: page.total,
             offset: page.offset,
             limit: page.limit,
             has_more: page.has_more,
             next_offset: page.next_offset,
             module_sources: page.module_sources,
-            implementation_kinds: page.implementation_kinds,
         },
     )))
 }
@@ -179,7 +190,59 @@ pub async fn get_frontstage_component_capability(
         .await?
         .ok_or(ControlPlaneError::NotFound("frontend_component_capability"))?;
 
-    Ok(Json(ApiSuccess::new(to_detail_response(entry))))
+    Ok(Json(ApiSuccess::new(to_detail_response(
+        entry,
+        workspace_id,
+    ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/component-module-assets/{sha256}",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace id"),
+        ("sha256" = String, Path, description = "Registered module asset SHA-256")
+    ),
+    responses(
+        (status = 200, content_type = "text/javascript", body = String),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody),
+        (status = 502, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_frontstage_component_module_asset(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, sha256)): Path<(String, String)>,
+) -> Result<Response<Body>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
+    require_design_permission(&state, context.user.id, workspace_id).await?;
+    let asset = FrontendComponentCatalogService::new(state.store.clone())
+        .get_module_asset(GetFrontendModuleAssetQuery {
+            workspace_id,
+            sha256,
+        })
+        .await?
+        .ok_or(ControlPlaneError::NotFound(
+            "frontend_component_module_asset",
+        ))?;
+    let mut response = Response::new(Body::from(asset.bytes));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/javascript; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=31536000, immutable"),
+    );
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"sha256-{}\"", asset.sha256))
+            .map_err(|_| ControlPlaneError::InvalidInput("sha256"))?,
+    );
+    Ok(response)
 }
 
 async fn require_design_permission(
@@ -197,22 +260,14 @@ async fn require_design_permission(
     Ok(())
 }
 
-fn parse_implementation_kind(
-    value: Option<&str>,
-) -> Result<Option<domain::FrontendComponentImplementationKind>, ApiError> {
-    match value.map(str::trim).filter(|value| !value.is_empty()) {
-        None => Ok(None),
-        Some("antd_facade") => Ok(Some(
-            domain::FrontendComponentImplementationKind::AntdFacade,
-        )),
-        Some("custom") => Ok(Some(domain::FrontendComponentImplementationKind::Custom)),
-        Some(_) => Err(ControlPlaneError::InvalidInput("implementation_kind").into()),
-    }
-}
-
 fn to_summary_response(
     entry: FrontendComponentCapability,
+    workspace_id: Uuid,
 ) -> FrontstageComponentCapabilitySummaryResponse {
+    let asset_url = format!(
+        "/api/console/frontstage/{workspace_id}/component-module-assets/{}",
+        entry.browser_asset.sha256
+    );
     FrontstageComponentCapabilitySummaryResponse {
         component_id: entry.component_id,
         installation_id: entry.installation_id.to_string(),
@@ -221,26 +276,40 @@ fn to_summary_response(
         plugin_version: entry.plugin_version,
         contribution_code: entry.contribution_code,
         module_source: entry.module_source,
+        module_version: entry.module_version,
+        exports: entry.exports,
+        browser_asset: FrontendModuleBrowserAssetResponse {
+            sha256: entry.browser_asset.sha256,
+            url: asset_url,
+        },
         export_name: entry.contract.export_name,
-        implementation_kind: entry.contract.implementation.kind.as_str().to_string(),
-        upstream: entry.contract.implementation.upstream.map(|upstream| {
-            FrontendComponentUpstreamResponse {
+        upstream: entry
+            .contract
+            .upstream
+            .map(|upstream| FrontendComponentUpstreamResponse {
                 package: upstream.package,
                 component: upstream.component,
                 version: upstream.version,
-            }
-        }),
+            }),
         description: entry.contract.description,
         insert_snippet: entry.contract.insert_snippet,
     }
 }
 
-fn to_detail_response(entry: FrontendComponentCapability) -> FrontstageComponentCapabilityResponse {
+fn to_detail_response(
+    entry: FrontendComponentCapability,
+    workspace_id: Uuid,
+) -> FrontstageComponentCapabilityResponse {
     let declaration = entry.contract.typescript_declaration(&entry.module_source);
-    let api_documentation = format!(
-        "import {{ {} }} from '{}';\n\n{}",
-        entry.contract.export_name, entry.module_source, declaration
-    );
+    let import_statement = if entry.contract.export_name == "default" {
+        format!("import DefaultExport from '{}';", entry.module_source)
+    } else {
+        format!(
+            "import {{ {} }} from '{}';",
+            entry.contract.export_name, entry.module_source
+        )
+    };
+    let api_documentation = format!("{import_statement}\n\n{declaration}");
     let props = entry
         .contract
         .props
@@ -263,7 +332,7 @@ fn to_detail_response(entry: FrontendComponentCapability) -> FrontstageComponent
         })
         .collect();
     FrontstageComponentCapabilityResponse {
-        summary: to_summary_response(entry),
+        summary: to_summary_response(entry, workspace_id),
         props,
         limitations,
         examples,

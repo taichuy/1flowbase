@@ -329,7 +329,7 @@ runtime:
 block_contributions:
   - contribution_code: hero_banner
     title: Hero Banner
-    runtime: iframe
+    runtime: native_react
     entry: blocks/hero/index.html
     code_template: |
       export default function HeroBanner() {
@@ -339,23 +339,28 @@ block_contributions:
     code_template_language: tsx
     code_modules:
       - source: "@1flowbase/block-sdk"
+        version: "1.0.0"
+        exports: [defineBlock]
+        browser_asset:
+          path: "assets/block-sdk.js"
+          sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         type_declarations: "export declare function defineBlock(input: unknown): unknown;"
-      - source: "@1flowbase/block-renderer/antd-facade"
+      - source: "@acme/native-components"
+        version: "1.2.3"
+        exports: [Button]
+        browser_asset:
+          path: "assets/native-components.js"
+          sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         type_declarations: |
-          declare module '@1flowbase/block-renderer/antd-facade' {
-            export interface FacadeCommonProps {}
-            export type FacadeComponent<TProps> = (props?: TProps) => unknown;
-          }
+          declare module '@acme/native-components' {}
         components:
           - component_code: button
             export_name: Button
-            implementation:
-              kind: antd_facade
-              upstream:
-                package: antd
-                component: Button
-                version: "5.x"
-            description: "Ant Design Button 的受控 facade；通过 actionId 触发区块 action，不支持 onClick。"
+            upstream:
+              package: antd
+              component: Button
+              version: "5.x"
+            description: "Native React Button component."
             props:
               - name: type
                 type: "'primary' | 'default' | 'dashed' | 'link' | 'text'"
@@ -391,7 +396,7 @@ block_contributions:
     assert_eq!(manifest.block_contributions.len(), 1);
     let block = &manifest.block_contributions[0];
     assert_eq!(block.contribution_code, "hero_banner");
-    assert_eq!(block.runtime, "iframe");
+    assert_eq!(block.runtime, "native_react");
     assert_eq!(block.entry, "blocks/hero/index.html");
     assert_eq!(
         block.code_template.as_deref(),
@@ -400,6 +405,7 @@ block_contributions:
     assert_eq!(block.code_template_version.as_deref(), Some("1.0.0"));
     assert_eq!(block.code_template_language.as_deref(), Some("tsx"));
     assert_eq!(block.code_modules[0].source, "@1flowbase/block-sdk");
+    assert_eq!(block.code_modules[0].exports, vec!["defineBlock"]);
     let button = &block.code_modules[1].components[0];
     assert_eq!(button.component_code, "button");
     assert_eq!(button.export_name, "Button");
@@ -415,63 +421,33 @@ block_contributions:
 }
 
 #[test]
-fn ac_001_builtin_frontend_components_publish_complete_api_contracts() {
+fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
     let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/capability-plugins/1flowbase/manifest.yaml");
-    let source = std::fs::read_to_string(manifest_path).unwrap();
+    let source = std::fs::read_to_string(&manifest_path).unwrap();
     let manifest = parse_plugin_manifest(&source).unwrap();
-    let facade = manifest.block_contributions[0]
+    crate::validate_frontend_module_assets(manifest_path.parent().unwrap(), &manifest).unwrap();
+    let native_module = manifest.block_contributions[0]
         .code_modules
         .iter()
-        .find(|module| module.source == "@1flowbase/block-renderer/antd-facade")
+        .find(|module| module.source == "@1flowbase/native-components")
         .unwrap();
-    let exports = facade
+    let exports = native_module
         .components
         .iter()
         .map(|component| component.export_name.as_str())
         .collect::<Vec<_>>();
 
+    assert_eq!(exports, vec!["Surface"]);
+    assert_eq!(native_module.version, "1.0.0");
+    assert_eq!(native_module.exports, vec!["Surface"]);
     assert_eq!(
-        exports,
-        vec![
-            "Stack",
-            "Inline",
-            "Grid",
-            "Divider",
-            "Text",
-            "Title",
-            "Caption",
-            "Badge",
-            "Table",
-            "Descriptions",
-            "Empty",
-            "Alert",
-            "Form",
-            "FormItem",
-            "Input",
-            "Textarea",
-            "Select",
-            "Checkbox",
-            "Switch",
-            "DatePicker",
-            "NumberInput",
-            "Button",
-            "IconButton",
-            "Modal",
-        ]
+        native_module.browser_asset.path,
+        "browser-assets/native-components.js"
     );
-    let button = facade
-        .components
-        .iter()
-        .find(|component| component.export_name == "Button")
-        .unwrap();
-    assert!(button.props.iter().any(|prop| prop.name == "actionId"));
-    assert!(!button.props.iter().any(|prop| prop.name == "onClick"));
-    assert!(button.description.contains("Ant Design Button"));
-    assert!(facade
-        .components
-        .iter()
-        .all(|component| !component.description.contains("@1flowbase-component")));
+    assert_eq!(native_module.browser_asset.sha256.len(), 64);
+    assert!(!source.contains("antd_facade"));
+    assert!(!source.contains("FacadeCommonProps"));
 }
 
 #[test]
@@ -508,7 +484,7 @@ runtime:
 block_contributions:
   - contribution_code: hero_banner
     title: Hero Banner
-    runtime: iframe
+    runtime: native_react
     entry: blocks/hero/index.html
     context_contract:
       primitives: [text]
@@ -575,7 +551,7 @@ runtime:
 block_contributions:
   - contribution_code: hero_banner
     title: Hero Banner
-    runtime: iframe
+    runtime: native_react
     entry: blocks/hero/index.html
     code_template: {code_template:?}
     code_template_version: 1.0.0
@@ -646,7 +622,7 @@ block_contributions:
 
     assert!(invalid_runtime
         .to_string()
-        .contains("block_contributions[].runtime must be one of iframe"));
+        .contains("block_contributions[].runtime must be one of native_react"));
 
     let missing_entry = parse_plugin_manifest(
         r#"
@@ -680,7 +656,7 @@ runtime:
 block_contributions:
   - contribution_code: missing_entry
     title: Missing Entry
-    runtime: iframe
+    runtime: native_react
     entry: ""
     context_contract:
       primitives:
@@ -733,7 +709,7 @@ runtime:
 block_contributions:
   - contribution_code: bad_permission
     title: Bad Permission
-    runtime: iframe
+    runtime: native_react
     entry: blocks/bad/index.html
     context_contract:
       primitives:
@@ -786,7 +762,7 @@ runtime:
 block_contributions:
   - contribution_code: bad_primitive
     title: Bad Primitive
-    runtime: iframe
+    runtime: native_react
     entry: blocks/bad/index.html
     context_contract:
       primitives:
@@ -839,7 +815,7 @@ runtime:
 block_contributions:
   - contribution_code: bad_capability
     title: Bad Capability
-    runtime: iframe
+    runtime: native_react
     entry: blocks/bad/index.html
     context_contract:
       primitives:

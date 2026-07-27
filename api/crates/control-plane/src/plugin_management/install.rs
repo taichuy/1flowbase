@@ -81,14 +81,18 @@ pub(super) fn load_provider_package(path: impl AsRef<Path>) -> Result<ProviderPa
 }
 
 pub(super) fn load_plugin_manifest(path: impl AsRef<Path>) -> Result<PluginManifestV1> {
-    let manifest_path = path.as_ref().join("manifest.yaml");
+    let package_root = path.as_ref();
+    let manifest_path = package_root.join("manifest.yaml");
     let raw = fs::read_to_string(&manifest_path).with_context(|| {
         format!(
             "failed to read plugin manifest at {}",
             manifest_path.display()
         )
     })?;
-    parse_plugin_manifest(&raw).map_err(map_framework_error)
+    let manifest = parse_plugin_manifest(&raw).map_err(map_framework_error)?;
+    plugin_framework::validate_frontend_module_assets(package_root, &manifest)
+        .map_err(map_framework_error)?;
+    Ok(manifest)
 }
 
 trait InstallationProjectionIdentity {
@@ -239,6 +243,12 @@ fn build_frontend_block_sync_input(
                     .iter()
                     .map(|code_module| domain::FrontendBlockCodeModule {
                         source: code_module.source.clone(),
+                        version: code_module.version.clone(),
+                        exports: code_module.exports.clone(),
+                        browser_asset: domain::FrontendModuleBrowserAsset {
+                            path: code_module.browser_asset.path.clone(),
+                            sha256: code_module.browser_asset.sha256.clone(),
+                        },
                         type_declarations: code_module.type_declarations.clone(),
                         components: code_module
                             .components
@@ -246,23 +256,13 @@ fn build_frontend_block_sync_input(
                             .map(|component| domain::FrontendComponentContract {
                                 component_code: component.component_code.clone(),
                                 export_name: component.export_name.clone(),
-                                implementation: domain::FrontendComponentImplementation {
-                                    kind: match component.implementation.kind {
-                                        plugin_framework::FrontendComponentImplementationKindManifest::AntdFacade => {
-                                            domain::FrontendComponentImplementationKind::AntdFacade
-                                        }
-                                        plugin_framework::FrontendComponentImplementationKindManifest::Custom => {
-                                            domain::FrontendComponentImplementationKind::Custom
-                                        }
-                                    },
-                                    upstream: component.implementation.upstream.as_ref().map(
-                                        |upstream| domain::FrontendComponentUpstream {
-                                            package: upstream.package.clone(),
-                                            component: upstream.component.clone(),
-                                            version: upstream.version.clone(),
-                                        },
-                                    ),
-                                },
+                                upstream: component.upstream.as_ref().map(|upstream| {
+                                    domain::FrontendComponentUpstream {
+                                        package: upstream.package.clone(),
+                                        component: upstream.component.clone(),
+                                        version: upstream.version.clone(),
+                                    }
+                                }),
                                 description: component.description.clone(),
                                 props: component
                                     .props

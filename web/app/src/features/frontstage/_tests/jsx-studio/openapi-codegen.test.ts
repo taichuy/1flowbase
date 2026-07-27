@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import type { ConsoleFrontstageInterfaceCapability } from '@1flowbase/api-client';
-import { validateJsBlockSource } from '@1flowbase/page-runtime';
+import { validateNativeTrustedBlockSource } from '@1flowbase/page-runtime';
 
 import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-codegen';
 
@@ -148,7 +148,9 @@ describe('Frontstage callable OpenAPI codegen', () => {
 
     expect(result.source).toContain('"document": string;');
     expect(result.source).toContain('"page-id"?: string;');
-    expect(validateJsBlockSource(result.source)).toMatchObject({ ok: true });
+    expect(validateNativeTrustedBlockSource(result.source)).toMatchObject({
+      ok: true
+    });
   });
 
   test('flattens path parameters and keeps the request body inside one callable', () => {
@@ -188,7 +190,9 @@ describe('Frontstage callable OpenAPI codegen', () => {
       '{ path: { application_id: applicationId }, body }'
     );
     expect(result.source).not.toContain('interface UpdateApplication');
-    expect(validateJsBlockSource(result.source)).toMatchObject({ ok: true });
+    expect(validateNativeTrustedBlockSource(result.source)).toMatchObject({
+      ok: true
+    });
   });
 
   test('emits explicit binary envelopes and no-content results from media truth', () => {

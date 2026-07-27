@@ -1,29 +1,29 @@
+import { StyleProvider, createCache } from '@ant-design/cssinjs';
+import { App as AntdApp, ConfigProvider } from 'antd';
+import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,
+  useEffect,
+  useMemo,
+  useState,
   type ComponentType,
   type ErrorInfo,
   type ReactNode
 } from 'react';
-import { App as AntdApp, ConfigProvider } from 'antd';
-import type { ConfigProviderProps } from 'antd/es/config-provider';
-import { createRoot as defaultCreateRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 
 import type {
   BlockContext,
   BlockProtocolError
 } from '@1flowbase/page-protocol';
 import {
+  attachNativeTrustedBlockPortalSurface,
   createNativeTrustedBlockPortalContainment,
   isNativeTrustedBlockRuntimeError,
-  type NativeTrustedBlockHostAdapter,
   type NativeTrustedBlockPortalContainment,
+  type NativeTrustedBlockPortalSurface,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
-
-const NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE =
-  'data-flowbase-native-trusted-block-root';
-const NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE =
-  'data-flowbase-native-trusted-block-id';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -35,37 +35,18 @@ export interface FrontstageNativeTrustedBlockReactComponentProps {
 export type FrontstageNativeTrustedBlockReactComponent =
   ComponentType<FrontstageNativeTrustedBlockReactComponentProps>;
 
-export type FrontstageNativeTrustedBlockResolveComponent = (
-  plan: NativeTrustedBlockPreparePlan
-) => FrontstageNativeTrustedBlockReactComponent;
-
-export interface FrontstageNativeTrustedBlockReactRoot {
-  render(children: ReactNode): void;
-  unmount(): void;
-}
-
-export type FrontstageNativeTrustedBlockCreateRoot = (
-  root: Element
-) => FrontstageNativeTrustedBlockReactRoot;
-
-export interface FrontstageNativeTrustedBlockProviderContext {
-  plan: NativeTrustedBlockPreparePlan;
-  root: Element;
-  portalContainment: NativeTrustedBlockPortalContainment;
-}
-
 export interface FrontstageNativeTrustedBlockProviderScope {
   theme?: ConfigProviderProps['theme'];
   locale?: ConfigProviderProps['locale'];
 }
 
-export type FrontstageNativeTrustedBlockResolveProviderScope = (
-  context: FrontstageNativeTrustedBlockProviderContext
-) => FrontstageNativeTrustedBlockProviderScope | undefined;
-
-export type FrontstageNativeTrustedBlockResolveContext = (
-  context: FrontstageNativeTrustedBlockProviderContext
-) => BlockContext;
+export interface FrontstageNativeTrustedBlockProviderContext {
+  plan: NativeTrustedBlockPreparePlan;
+  root: Element;
+  shadowRoot: ShadowRoot;
+  mountElement: HTMLElement;
+  portalContainment: NativeTrustedBlockPortalContainment;
+}
 
 export type FrontstageNativeTrustedBlockProviderWrapper = (
   children: ReactNode,
@@ -82,90 +63,95 @@ export type FrontstageNativeTrustedBlockRuntimeErrorHandler = (
   context: FrontstageNativeTrustedBlockRuntimeErrorContext
 ) => void;
 
-export interface FrontstageNativeTrustedBlockReactAdapterOptions {
-  resolveComponent: FrontstageNativeTrustedBlockResolveComponent;
-  createRoot?: FrontstageNativeTrustedBlockCreateRoot;
-  resolveBlockContext?: FrontstageNativeTrustedBlockResolveContext;
-  resolveProviderScope?: FrontstageNativeTrustedBlockResolveProviderScope;
+export interface FrontstageNativeTrustedBlockPortalHostProps {
+  root: Element;
+  renderEpoch: string;
+  plan: NativeTrustedBlockPreparePlan;
+  component: FrontstageNativeTrustedBlockReactComponent;
+  ctx: BlockContext;
+  providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
 }
 
-export function createFrontstageNativeTrustedBlockReactAdapter(
-  options: FrontstageNativeTrustedBlockReactAdapterOptions
-): NativeTrustedBlockHostAdapter {
-  return {
-    async mount(input) {
-      const rootElement = validateRootElement(input.root);
-      const Component = options.resolveComponent(input.plan);
-      const styleScope = applyNativeTrustedBlockStyleScope(
-        rootElement,
-        input.plan.blockId
-      );
-      const portalContainment = createPortalContainment(rootElement);
-      const reactRoot = (options.createRoot ?? defaultCreateRoot)(rootElement);
-      const providerContext = {
-        plan: input.plan,
-        root: rootElement,
-        portalContainment
-      };
-      const blockContext = resolveControlledBlockContext(
-        providerContext,
-        options.resolveBlockContext
-      );
-      let didUnmount = false;
+/**
+ * A declarative child of the owning surface React tree. The effect owns only
+ * the Shadow DOM resource; React owns portal mount, update, and unmount.
+ */
+export function FrontstageNativeTrustedBlockPortalHost({
+  root,
+  renderEpoch,
+  plan,
+  component: BlockComponent,
+  ctx,
+  providerScope,
+  providerWrapper,
+  onRuntimeError
+}: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
+  const [surface, setSurface] =
+    useState<NativeTrustedBlockPortalSurface | null>(null);
 
-      reactRoot.render(
-        wrapWithHostProviders(
-          <FrontstageNativeTrustedBlockErrorBoundary
-            context={{
-              ...providerContext,
-              blockId: input.plan.blockId
-            }}
-            onRuntimeError={options.onRuntimeError}
-          >
-            <Component
-              plan={input.plan}
-              props={input.plan.props}
-              ctx={blockContext}
-              portalContainment={portalContainment}
-            />
-          </FrontstageNativeTrustedBlockErrorBoundary>,
-          providerContext,
-          options.resolveProviderScope,
-          options.providerWrapper
-        )
-      );
+  useEffect(() => {
+    const nextSurface = attachNativeTrustedBlockPortalSurface({
+      root,
+      blockId: plan.blockId
+    });
+    setSurface(nextSurface);
 
-      return {
-        dispose() {
-          if (didUnmount) {
-            return;
-          }
+    return () => {
+      nextSurface.dispose();
+    };
+    // The root owns the Shadow DOM resource. renderEpoch is a React portal key,
+    // so identity/retry replaces the component once without recreating DOM.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root]);
 
-          didUnmount = true;
-          try {
-            reactRoot.unmount();
-          } finally {
-            styleScope.restore();
-          }
-        }
-      };
-    }
+  const styleCache = useMemo(
+    () => (surface ? createCache() : null),
+    [surface]
+  );
+  const portalContainment = useMemo(
+    () => (surface ? createPortalContainment(surface.shadowRoot) : null),
+    [surface]
+  );
+
+  if (!surface || !styleCache || !portalContainment) return null;
+
+  const providerContext: FrontstageNativeTrustedBlockProviderContext = {
+    plan,
+    root,
+    shadowRoot: surface.shadowRoot,
+    mountElement: surface.mountElement,
+    portalContainment
   };
-}
+  const content = (
+    <FrontstageNativeTrustedBlockErrorBoundary
+      context={{ ...providerContext, blockId: plan.blockId }}
+      onRuntimeError={onRuntimeError}
+    >
+      <BlockComponent
+        plan={plan}
+        props={plan.props}
+        ctx={ctx}
+        portalContainment={portalContainment}
+      />
+    </FrontstageNativeTrustedBlockErrorBoundary>
+  );
 
-function resolveControlledBlockContext(
-  context: FrontstageNativeTrustedBlockProviderContext,
-  resolveBlockContext: FrontstageNativeTrustedBlockResolveContext | undefined
-): BlockContext {
-  return (
-    resolveBlockContext?.(context) ??
-    createUnavailableBlockContext(context.plan)
+  return createPortal(
+    wrapWithHostProviders(
+      content,
+      providerContext,
+      styleCache,
+      providerScope,
+      providerWrapper
+    ),
+    surface.mountElement,
+    renderEpoch
   );
 }
 
-function createUnavailableBlockContext(
+export function createFrontstageUnavailableBlockContext(
   plan: NativeTrustedBlockPreparePlan
 ): BlockContext {
   const state: Record<string, unknown> = {};
@@ -173,12 +159,18 @@ function createUnavailableBlockContext(
   return {
     currentUser: null,
     workspace: { id: 'workspace' },
-    application: { id: 'application' },
-    page: {
-      id: plan.blockId,
-      route: plan.blockId
-    },
+    application: null,
+    page: { id: plan.blockId, route: plan.blockId },
     inputs: {},
+    outputs: {
+      publish() {
+        return {
+          ok: false,
+          stale: false,
+          error: 'Native trusted block outputs are unavailable.'
+        };
+      }
+    },
     params: {},
     props: { ...plan.props },
     state,
@@ -255,26 +247,12 @@ class FrontstageNativeTrustedBlockErrorBoundary extends Component<
   }
 
   render(): ReactNode {
-    if (this.state.didCatch) {
-      return null;
-    }
-
-    return this.props.children;
+    return this.state.didCatch ? null : this.props.children;
   }
-}
-
-function validateRootElement(root: unknown): Element {
-  if (typeof Element === 'undefined' || !(root instanceof Element)) {
-    throw new Error(
-      'Native trusted block React adapter root must be a DOM Element.'
-    );
-  }
-
-  return root;
 }
 
 function createPortalContainment(
-  root: Element
+  root: ShadowRoot
 ): NativeTrustedBlockPortalContainment {
   const result = createNativeTrustedBlockPortalContainment({ root });
   if (!result.ok) {
@@ -283,7 +261,6 @@ function createPortalContainment(
         'Native trusted block portal containment creation failed.'
     );
   }
-
   return result.containment;
 }
 
@@ -291,7 +268,6 @@ function createRuntimeRenderError(error: unknown): BlockProtocolError {
   if (isNativeTrustedBlockRuntimeError(error) && error.errors.length > 0) {
     return error.errors[0];
   }
-
   return {
     code: 'runtime_error',
     path: 'runtime.render',
@@ -304,91 +280,37 @@ function createRuntimeErrorContext(
   errorInfo: ErrorInfo
 ): FrontstageNativeTrustedBlockRuntimeErrorContext {
   const componentStack = errorInfo.componentStack?.trim();
-
-  if (!componentStack) {
-    return context;
-  }
-
-  return {
-    ...context,
-    componentStack
-  };
-}
-
-interface NativeTrustedBlockStyleScopeSnapshot {
-  attribute: string;
-  value: string | null;
-}
-
-function applyNativeTrustedBlockStyleScope(
-  root: Element,
-  blockId: string
-): { restore(): void } {
-  const snapshots: NativeTrustedBlockStyleScopeSnapshot[] = [
-    snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE),
-    snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE)
-  ];
-
-  root.setAttribute(NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE, '');
-  root.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
-
-  return {
-    restore() {
-      snapshots.forEach((snapshot) => {
-        if (snapshot.value === null) {
-          root.removeAttribute(snapshot.attribute);
-          return;
-        }
-
-        root.setAttribute(snapshot.attribute, snapshot.value);
-      });
-    }
-  };
-}
-
-function snapshotAttribute(
-  root: Element,
-  attribute: string
-): NativeTrustedBlockStyleScopeSnapshot {
-  return {
-    attribute,
-    value: root.getAttribute(attribute)
-  };
+  return componentStack ? { ...context, componentStack } : context;
 }
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === 'string' && error.trim() !== '') {
-    return error;
-  }
-
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim() !== '') return error;
   return 'unknown error';
 }
 
 function wrapWithHostProviders(
   children: ReactNode,
   context: FrontstageNativeTrustedBlockProviderContext,
-  resolveProviderScope?: FrontstageNativeTrustedBlockResolveProviderScope,
+  styleCache: ReturnType<typeof createCache>,
+  providerScope?: FrontstageNativeTrustedBlockProviderScope,
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
 ): ReactNode {
-  const getPopupContainer = () => context.root as HTMLElement;
-  const providerScope = resolveProviderScope?.(context);
+  const getShadowContainer = () => context.shadowRoot;
   const scopedChildren = (
-    <ConfigProvider
-      getPopupContainer={getPopupContainer}
-      locale={providerScope?.locale}
-      theme={providerScope?.theme}
-    >
-      <AntdApp>{children}</AntdApp>
-    </ConfigProvider>
+    <StyleProvider autoClear cache={styleCache} container={context.shadowRoot}>
+      <ConfigProvider
+        getPopupContainer={getShadowContainer}
+        getTargetContainer={getShadowContainer}
+        locale={providerScope?.locale}
+        theme={providerScope?.theme}
+      >
+        <AntdApp>{children}</AntdApp>
+      </ConfigProvider>
+    </StyleProvider>
   );
 
-  if (providerWrapper) {
-    return providerWrapper(scopedChildren, context);
-  }
-
-  return scopedChildren;
+  return providerWrapper
+    ? providerWrapper(scopedChildren, context)
+    : scopedChildren;
 }

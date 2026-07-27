@@ -132,12 +132,6 @@ const baseOverview = {
         },
         {
           group: 'runtime',
-          label: 'Authentication event',
-          member_path: 'inputs.auth_event',
-          schema: { type: 'object' }
-        },
-        {
-          group: 'runtime',
           label: 'API',
           member_path: 'api',
           schema: { type: 'object' }

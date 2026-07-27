@@ -57,7 +57,10 @@ describe('Native trusted block source static policy', () => {
 
   test.each([
     ['react-dom import', "import ReactDOM from 'react-dom';"],
-    ['react-dom client import', "import { createRoot } from 'react-dom/client';"],
+    [
+      'react-dom client import',
+      "import { createRoot } from 'react-dom/client';"
+    ],
     ['CSS import', "import './native-block.css';"],
     ['arbitrary npm import', "import dayjs from 'dayjs';"]
   ])('rejects denied static import: %s', (_label, source) => {
@@ -85,7 +88,11 @@ describe('Native trusted block source static policy', () => {
   test.each([
     ['require', "const antd = require('antd');", 'import_denied'],
     ['eval', "eval('2 + 2');", 'transform_failed'],
-    ['Function constructor', "const fn = new Function('return 1');", 'transform_failed']
+    [
+      'Function constructor',
+      "const fn = new Function('return 1');",
+      'transform_failed'
+    ]
   ] as const)('rejects executable escape hatch: %s', (_label, source, code) => {
     const result = validateNativeTrustedBlockSource(source);
 
@@ -154,12 +161,25 @@ describe('Native trusted block source static policy', () => {
     });
   });
 
+  test('allows ordinary object properties named like an AntD global API', () => {
+    const result = validateNativeTrustedBlockSource(
+      `const cause = new Error('failed');
+       const props = { message: cause.message };
+       return <Alert message={props.message} />;`
+    );
+
+    expect(result).toMatchObject({ ok: true });
+  });
+
   test.each([
     [
       'named import alias',
       "import { Modal as Dialog } from 'antd'; Dialog.confirm({ title: 'Confirm' });"
     ],
-    ['local Modal alias', 'const Dialog = Modal; Dialog.confirm({ title: "Confirm" });'],
+    [
+      'local Modal alias',
+      'const Dialog = Modal; Dialog.confirm({ title: "Confirm" });'
+    ],
     [
       'antd destructuring alias',
       'const { Modal: Dialog } = antd; Dialog.confirm({ title: "Confirm" });'
@@ -179,7 +199,10 @@ describe('Native trusted block source static policy', () => {
 
   test.each([
     ['constructor call', "''.sub.constructor('return globalThis')();"],
-    ['computed constructor call', "''.sub['constructor']('return globalThis')();"],
+    [
+      'computed constructor call',
+      "''.sub['constructor']('return globalThis')();"
+    ],
     ['prototype access', 'const proto = Button.prototype;'],
     ['computed prototype access', "const proto = Button['prototype'];"],
     ['__proto__ access', 'const proto = ({}).__proto__;']
@@ -197,19 +220,24 @@ describe('Native trusted block source static policy', () => {
     ['adoptedStyleSheets assignment', 'root.adoptedStyleSheets = [];'],
     ['styleSheets access', 'const sheets = root.styleSheets;'],
     ['insertRule invocation', "sheet.insertRule('body { color: red; }');"],
-    ['computed insertRule invocation', "sheet['insertRule']('body { color: red; }');"],
-    ['React style tag injection', "return React.createElement('style', null, 'body { color: red; }');"],
-    ['direct style tag injection', "return createElement('style', null, 'body { color: red; }');"]
-  ])('rejects stylesheet injection capability: %s', (_label, source) => {
-    expect(() => validateNativeTrustedBlockSource(source)).not.toThrow();
-
-    const result = validateNativeTrustedBlockSource(source);
-
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toMatchObject({
-      code: 'transform_failed'
-    });
-  });
+    [
+      'computed insertRule invocation',
+      "sheet['insertRule']('body { color: red; }');"
+    ],
+    [
+      'React style tag',
+      "return React.createElement('style', null, ':root { --tone: red; } @keyframes pulse {} .same { color: var(--tone); }');"
+    ],
+    [
+      'direct style tag',
+      "return createElement('style', null, ':root { --tone: blue; } .same { color: var(--tone); }');"
+    ]
+  ])(
+    'allows ShadowRoot-contained stylesheet capability: %s',
+    (_label, source) => {
+      expect(validateNativeTrustedBlockSource(source).ok).toBe(true);
+    }
+  );
 
   test('native trusted block policy ignores dangerous words inside comments and strings', () => {
     const source = `
@@ -234,7 +262,9 @@ const words = ['constructor', 'prototype', '__proto__', 'message', 'notification
       validateNativeTrustedBlockSource('const value = "unterminated')
     ).not.toThrow();
 
-    const result = validateNativeTrustedBlockSource('const value = "unterminated');
+    const result = validateNativeTrustedBlockSource(
+      'const value = "unterminated'
+    );
 
     expect(result.ok).toBe(false);
     expect(result.errors[0]).toMatchObject({

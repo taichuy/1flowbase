@@ -1,7 +1,6 @@
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
 import { validateNativeTrustedBlockSource } from '../native-trusted-block-source-policy';
-import type { JsBlockRunError } from '../js-block-worker-runtime';
 import { transformNativeTrustedBlockJsx } from './jsx-transform';
 import {
   RUNTIME_CAPABILITY_GUARD_BINDING_NAMES,
@@ -24,6 +23,7 @@ import type {
   EvaluateNativeTrustedBlockSourceInput,
   NativeTrustedBlockComponent,
   NativeTrustedBlockInjectedModuleMap,
+  NativeTrustedBlockRunError,
   NativeTrustedBlockSourceEvaluationResult,
   NativeTrustedBlockSourceTransformFailure,
   NativeTrustedBlockSourceTransformResult,
@@ -37,6 +37,7 @@ export type {
   NativeTrustedBlockInjectedModule,
   NativeTrustedBlockInjectedModuleMap,
   NativeTrustedBlockInjectedModuleSource,
+  NativeTrustedBlockRunError,
   NativeTrustedBlockSourceEvaluationResult,
   NativeTrustedBlockSourceTransformFailure,
   NativeTrustedBlockSourceTransformResult,
@@ -44,10 +45,10 @@ export type {
 } from './source-evaluator-types';
 
 export class NativeTrustedBlockRuntimeError extends Error {
-  readonly kind: JsBlockRunError['kind'];
-  readonly errors: JsBlockRunError['errors'];
+  readonly kind: NativeTrustedBlockRunError['kind'];
+  readonly errors: NativeTrustedBlockRunError['errors'];
 
-  constructor(error: JsBlockRunError) {
+  constructor(error: NativeTrustedBlockRunError) {
     super(error.message);
     this.name = 'NativeTrustedBlockRuntimeError';
     this.kind = error.kind;
@@ -56,7 +57,7 @@ export class NativeTrustedBlockRuntimeError extends Error {
 }
 
 export function createNativeTrustedBlockRuntimeError(
-  error: JsBlockRunError
+  error: NativeTrustedBlockRunError
 ): NativeTrustedBlockRuntimeError {
   return new NativeTrustedBlockRuntimeError(error);
 }
@@ -69,7 +70,7 @@ export function isNativeTrustedBlockRuntimeError(
     (isRecord(error) &&
       error.name === 'NativeTrustedBlockRuntimeError' &&
       typeof error.message === 'string' &&
-      isJsBlockRunErrorKind(error.kind) &&
+      isNativeTrustedBlockRunErrorKind(error.kind) &&
       Array.isArray(error.errors))
   );
 }
@@ -257,7 +258,7 @@ function createEvaluator(
 function validateInjectedModules(
   compiledSource: NativeTrustedBlockSourceTransformSuccess,
   modules: NativeTrustedBlockInjectedModuleMap
-): JsBlockRunError | null {
+): NativeTrustedBlockRunError | null {
   for (const injectedModule of compiledSource.injectedModules) {
     const moduleValue = modules[injectedModule.source];
     if (!isRecord(moduleValue)) {
@@ -314,14 +315,17 @@ function wrapNativeTrustedBlockComponent(
 }
 
 function createRunError(
-  kind: JsBlockRunError['kind'],
+  kind: NativeTrustedBlockRunError['kind'],
   message: string,
   errors: BlockProtocolError[]
-): JsBlockRunError {
+): NativeTrustedBlockRunError {
   return { kind, message, errors };
 }
 
-function runtimeError(path: string, message: string): JsBlockRunError {
+function runtimeError(
+  path: string,
+  message: string
+): NativeTrustedBlockRunError {
   return createRunError('runtime_error', message, [
     {
       code: 'runtime_error',
@@ -360,7 +364,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isJsBlockRunErrorKind(value: unknown): value is JsBlockRunError['kind'] {
+function isNativeTrustedBlockRunErrorKind(
+  value: unknown
+): value is NativeTrustedBlockRunError['kind'] {
   return (
     value === 'runtime_error' ||
     value === 'source_policy_failed' ||

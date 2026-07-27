@@ -10,7 +10,7 @@ use control_plane::{
 use domain::{
     FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
     FrontendBlockPermissions, FrontendComponentContract, FrontendComponentExample,
-    FrontendComponentImplementation, FrontendComponentImplementationKind,
+    FrontendModuleBrowserAsset,
 };
 use uuid::Uuid;
 
@@ -44,14 +44,20 @@ fn sample_block(installation_id: Uuid) -> FrontendBlockCatalogEntry {
         plugin_version: "1.0.0".into(),
         contribution_code: "frontstage.js-ui-block".into(),
         title: "代码区块".into(),
-        runtime: "iframe".into(),
+        runtime: "native_react".into(),
         entry: "index.js".into(),
         code_template: None,
         code_template_version: None,
         code_template_language: None,
         code_modules: vec![FrontendBlockCodeModule {
-            source: "@1flowbase/block-renderer/antd-facade".into(),
-            type_declarations: "declare module '@1flowbase/block-renderer/antd-facade' {}".into(),
+            source: "@1flowbase/native-components".into(),
+            version: "1.0.0".into(),
+            exports: vec!["Button".into(), "Alert".into()],
+            browser_asset: FrontendModuleBrowserAsset {
+                path: "browser-assets/native-components.js".into(),
+                sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0".into(),
+            },
+            type_declarations: "declare module '@1flowbase/native-components' {}".into(),
             components: vec![
                 sample_component("button", "Button"),
                 sample_component("alert", "Alert"),
@@ -74,10 +80,7 @@ fn sample_component(component_code: &str, export_name: &str) -> FrontendComponen
     FrontendComponentContract {
         component_code: component_code.into(),
         export_name: export_name.into(),
-        implementation: FrontendComponentImplementation {
-            kind: FrontendComponentImplementationKind::AntdFacade,
-            upstream: None,
-        },
+        upstream: None,
         description: format!("{export_name} API contract"),
         props: vec![],
         limitations: vec!["仅支持已声明参数".into()],
@@ -90,7 +93,7 @@ fn sample_component(component_code: &str, export_name: &str) -> FrontendComponen
 }
 
 #[tokio::test]
-async fn ac_003_lists_filters_and_pages_registered_component_capabilities() {
+async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
     let installation_id = Uuid::now_v7();
     let service = FrontendComponentCatalogService::new(MemoryFrontendComponentCatalog {
         entries: vec![sample_block(installation_id)],
@@ -102,8 +105,7 @@ async fn ac_003_lists_filters_and_pages_registered_component_capabilities() {
             installation_id: Some(installation_id),
             contribution_code: Some("frontstage.js-ui-block".into()),
             query: Some("button".into()),
-            module_source: Some("@1flowbase/block-renderer/antd-facade".into()),
-            implementation_kind: Some(FrontendComponentImplementationKind::AntdFacade),
+            module_source: Some("@1flowbase/native-components".into()),
             offset: 0,
             limit: 1,
         })
@@ -112,12 +114,10 @@ async fn ac_003_lists_filters_and_pages_registered_component_capabilities() {
 
     assert_eq!(page.total, 1);
     assert_eq!(page.items[0].contract.export_name, "Button");
+    assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
     assert!(!page.has_more);
     assert_eq!(page.next_offset, None);
-    assert_eq!(
-        page.module_sources,
-        vec!["@1flowbase/block-renderer/antd-facade"]
-    );
+    assert_eq!(page.module_sources, vec!["@1flowbase/native-components"]);
 
     let detail = service
         .get_component_capability(GetFrontendComponentCapabilityQuery {

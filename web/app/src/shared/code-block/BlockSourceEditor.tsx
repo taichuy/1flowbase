@@ -3,12 +3,13 @@ import Editor, {
   type Monaco,
   type OnMount
 } from '@monaco-editor/react';
-import type { FrontendBlockMonacoExtraLib } from '@1flowbase/page-protocol';
 import { useCallback, useEffect, useRef } from 'react';
+
+import type { BlockSourceExtraLib } from './extra-lib';
 
 export interface BlockSourceEditorProps {
   ariaLabel: string;
-  extraLibs?: readonly FrontendBlockMonacoExtraLib[];
+  extraLibs?: readonly BlockSourceExtraLib[];
   height?: string | number;
   path: string;
   readOnly?: boolean;
@@ -29,7 +30,7 @@ export function BlockSourceEditor({
 }: BlockSourceEditorProps) {
   const monacoRef = useRef<Monaco | null>(null);
   const registeredExtraLibsRef = useRef<{
-    source: readonly FrontendBlockMonacoExtraLib[];
+    source: readonly BlockSourceExtraLib[];
     disposables: Array<{ dispose: () => void }>;
   } | null>(null);
   const configureMonaco: BeforeMount = (monaco) => {

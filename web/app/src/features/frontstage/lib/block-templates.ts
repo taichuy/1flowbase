@@ -84,28 +84,26 @@ export function createBlankJsBlockTemplateCode(
 }
 
 function createModuleTemplate(title: string, description: string): string {
-  return `import type {
-  BlockContext,
-  BlockModule,
-  BlockResult
-} from '@1flowbase/block-sdk';
+  return `import { useState } from 'react';
 
-import {
-  Stack,
-  Text,
-  Title
-} from '@1flowbase/block-renderer/antd-facade';
-
-async function main(_ctx: BlockContext): Promise<BlockResult> {
-  return {
-    view: (
-      <Stack>
-        <Title>${escapeJsxText(title)}</Title>
-        <Text>${escapeJsxText(description)}</Text>
-      </Stack>
-    ),
-    outputs: {}
-  };
+export default function Block({ ctx }: NativeReactBlockProps) {
+  const [count, setCount] = useState(0);
+  return (
+    <>
+      <style>{\`
+        :host { display: block; }
+        .native-example { padding: 16px; }
+        .native-example__title { font-weight: 600; }
+      \`}</style>
+      <section className="native-example">
+        <div className="native-example__title">${escapeJsxText(title)}</div>
+        <p>${escapeJsxText(description)}</p>
+        <button type="button" onClick={() => setCount((current) => current + 1)}>
+          {String(ctx.props.label ?? 'Count')}: {count}
+        </button>
+      </section>
+    </>
+  );
 }
 
 /**
@@ -113,9 +111,6 @@ async function main(_ctx: BlockContext): Promise<BlockResult> {
  * inputs: 无
  * outputs: 无
  */
-export default {
-  main
-} satisfies BlockModule;
 `;
 }
 

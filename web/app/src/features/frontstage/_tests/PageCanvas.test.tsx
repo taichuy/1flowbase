@@ -113,7 +113,7 @@ describe('PageCanvas', () => {
                   renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
-                  runtime: { kind: 'iframe', entry: 'blocks/hero.html' },
+                  runtime: { kind: 'native_react', entry: 'blocks/hero.html' },
                   layout: { order: 20, region: 'main' }
                 },
                 {
@@ -152,7 +152,7 @@ describe('PageCanvas', () => {
                   renderer_version: 'v1',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
-                  runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
+                  runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
                   layout: { order: 10, region: 'main', span: 12 }
                 }
               ]
@@ -183,7 +183,7 @@ describe('PageCanvas', () => {
                   renderer_version: 'v2',
                   codeRef: 'future-code',
                   contributionCode: 'official.future',
-                  runtime: { kind: 'iframe', entry: 'blocks/future.js' }
+                  runtime: { kind: 'native_react', entry: 'blocks/future.js' }
                 }
               ]
             }
@@ -278,7 +278,7 @@ describe('PageCanvas', () => {
                   id: 'hero',
                   codeRef: 'hero-code',
                   contributionCode: 'official.hero',
-                  runtime: { kind: 'iframe', entry: 'blocks/hero.js' },
+                  runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
                   layout: { order: 10, region: 'main' }
                 },
                 {
@@ -286,7 +286,7 @@ describe('PageCanvas', () => {
                   renderer_version: 'v1',
                   codeRef: 'cta-code',
                   contributionCode: 'official.cta',
-                  runtime: { kind: 'iframe', entry: 'blocks/cta.js' },
+                  runtime: { kind: 'native_react', entry: 'blocks/cta.js' },
                   layout: { order: 20, region: 'footer' }
                 }
               ]

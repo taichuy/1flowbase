@@ -32,6 +32,14 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     };
     let provider_code = format!("fixture_frontend_blocks_{suffix}");
     let plugin_id = format!("fixture_frontend_blocks_{suffix}@0.1.0");
+    let installed_path =
+        std::env::temp_dir().join(format!("1flowbase-frontend-module-{installation_id}"));
+    std::fs::create_dir_all(installed_path.join("browser-assets")).unwrap();
+    std::fs::write(
+        installed_path.join("browser-assets/native-components.js"),
+        "export function Button() {}\n",
+    )
+    .unwrap();
 
     sqlx::query(
         r#"
@@ -45,14 +53,15 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
             $1, $2, $3, '0.1.0',
             '1flowbase.capability/v1', 'stdio_json', 'Fixture Frontend Blocks',
             'uploaded', 'checksum_only', 'valid', 'active_requested', 'ready', 'inactive',
-            'available', null, '/tmp/plugins/fixture_frontend_blocks/0.1.0', null, null,
-            'unsigned', null, null, null, $4, $5
+            'available', null, $4, null, null,
+            'unsigned', null, null, null, $5, $6
         )
         "#,
     )
     .bind(installation_id)
     .bind(&provider_code)
     .bind(&plugin_id)
+    .bind(installed_path.display().to_string())
     .bind(json!({}))
     .bind(actor_id)
     .execute(&pool)
@@ -67,7 +76,7 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
             permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules
         ) values (
             $1, $2, $3, $4, '0.1.0',
-            'hero_banner', 'Hero Banner', 'iframe', 'blocks/hero/index.html',
+            'hero_banner', 'Hero Banner', 'native_react', 'blocks/hero/index.html',
             $5, 'none', 'none', 'none', $6, $7, '1.0.0', 'tsx', $8
         )
         "#,
@@ -83,23 +92,23 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     .bind(json!(["responsive"]))
     .bind("export default function HeroBanner() { return <section>Hero</section>; }")
     .bind(json!([{
-        "source": "@1flowbase/block-sdk",
-        "type_declarations": "export declare function defineBlock(input: unknown): unknown;"
-    }, {
-        "source": "@1flowbase/block-renderer/antd-facade",
-        "type_declarations": "declare module '@1flowbase/block-renderer/antd-facade' { export interface FacadeCommonProps {} export type FacadeComponent<TProps> = (props?: TProps) => unknown; }",
+        "source": "@acme/native-components",
+        "version": "1.2.3",
+        "exports": ["Button"],
+        "browser_asset": {
+            "path": "browser-assets/native-components.js",
+            "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+        },
+        "type_declarations": "declare module '@acme/native-components' {}",
         "components": [{
             "component_code": "button",
             "export_name": "Button",
-            "implementation": {
-                "kind": "antd_facade",
-                "upstream": {
-                    "package": "antd",
-                    "component": "Button",
-                    "version": "5.x"
-                }
+            "upstream": {
+                "package": "antd",
+                "component": "Button",
+                "version": "5.x"
             },
-            "description": "Ant Design Button 的受控 facade；通过 actionId 触发区块 action，不支持 onClick。",
+            "description": "Native React Button component.",
             "props": [{
                 "name": "actionId",
                 "type": "string",
@@ -140,7 +149,7 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
 }
 
 #[tokio::test]
-async fn ac_003_frontstage_component_capabilities_are_paged_and_addressable() {
+async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fail_closed() {
     let (app, database_url) = test_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
@@ -171,14 +180,25 @@ async fn ac_003_frontstage_component_capabilities_are_paged_and_addressable() {
     assert_eq!(payload["data"]["total"], 1);
     assert_eq!(payload["data"]["items"][0]["export_name"], "Button");
     assert_eq!(
-        payload["data"]["items"][0]["implementation_kind"],
-        "antd_facade"
+        payload["data"]["items"][0]["module_source"],
+        "@acme/native-components"
     );
+    assert_eq!(payload["data"]["items"][0]["module_version"], "1.2.3");
+    assert_eq!(payload["data"]["items"][0]["exports"], json!(["Button"]));
+    assert_eq!(
+        payload["data"]["items"][0]["browser_asset"]["sha256"],
+        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+    );
+    assert!(!payload["data"]["items"][0]["browser_asset"]["url"]
+        .as_str()
+        .unwrap()
+        .contains("/tmp/"));
     let component_id = payload["data"]["items"][0]["component_id"]
         .as_str()
         .unwrap();
 
     let detail_response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri(format!(
@@ -206,6 +226,84 @@ async fn ac_003_frontstage_component_capabilities_are_paged_and_addressable() {
         .as_str()
         .unwrap()
         .contains("@1flowbase-component"));
+
+    let asset_url = payload["data"]["items"][0]["browser_asset"]["url"]
+        .as_str()
+        .unwrap();
+    let asset_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(asset_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(asset_response.status(), StatusCode::OK);
+    assert_eq!(
+        asset_response.headers()["content-type"],
+        "text/javascript; charset=utf-8"
+    );
+    let asset_bytes = to_bytes(asset_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(asset_bytes.as_ref(), b"export function Button() {}\n");
+
+    let missing_asset_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(asset_url.replace(
+                    "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_asset_response.status(), StatusCode::NOT_FOUND);
+
+    let installed_path: String =
+        sqlx::query_scalar("select installed_path from plugin_installations where id = $1")
+            .bind(installation_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    std::fs::write(
+        std::path::Path::new(&installed_path).join("browser-assets/native-components.js"),
+        "export function Tampered() {}\n",
+    )
+    .unwrap();
+    let corrupt_asset_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(asset_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(corrupt_asset_response.status(), StatusCode::BAD_GATEWAY);
+
+    let unauthenticated_asset_response = app
+        .oneshot(
+            Request::builder()
+                .uri(asset_url)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        unauthenticated_asset_response.status(),
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]
@@ -238,13 +336,12 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .expect("system bootstrap must register the built-in JSX block");
 
     assert_eq!(jsx_block["code_template_language"], "tsx");
-    assert_eq!(jsx_block["code_template_version"], "3.0.0");
+    assert_eq!(jsx_block["code_template_version"], "5.0.0");
     let code_template = jsx_block["code_template"].as_str().unwrap();
-    assert!(code_template.contains("async function main"));
-    assert!(code_template.contains("satisfies BlockModule"));
-    assert!(code_template.contains("outputs: {}"));
-    assert!(!code_template.contains("defineBlock"));
-    assert!(!code_template.contains("render()"));
+    assert!(code_template.contains("export default function ExampleBlock"));
+    assert!(code_template.contains("useState"));
+    assert!(code_template.contains("onClick"));
+    assert!(!code_template.contains("BlockModule"));
     let sdk_declarations = jsx_block["code_modules"]
         .as_array()
         .unwrap()
@@ -252,23 +349,49 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .find(|module| module["source"] == "@1flowbase/block-sdk")
         .and_then(|module| module["type_declarations"].as_str())
         .unwrap();
-    assert!(sdk_declarations.contains("interface BlockModule"));
+    assert!(sdk_declarations.contains("interface BlockComponentProps"));
     assert!(sdk_declarations.contains("readonly inputs"));
+    assert!(sdk_declarations.contains("readonly application: BlockContextEntity | null"));
     assert!(sdk_declarations.contains("readonly api"));
-    assert!(sdk_declarations.contains("interface BlockContextApi"));
     assert!(!sdk_declarations.contains("interfaceId"));
     assert!(!sdk_declarations.contains("schemaDigest"));
     assert!(!sdk_declarations.contains("defineBlock"));
-    let facade_declarations = jsx_block["code_modules"]
+    let native_declarations = jsx_block["code_modules"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|module| module["source"] == "@1flowbase/block-renderer/antd-facade")
+        .find(|module| module["source"] == "@1flowbase/native-components")
         .and_then(|module| module["type_declarations"].as_str())
         .unwrap();
-    assert!(facade_declarations.contains("interface ButtonProps"));
-    assert!(facade_declarations.contains("readonly actionId?: string"));
-    assert!(!facade_declarations.contains("readonly onClick"));
+    assert!(native_declarations.contains("interface SurfaceProps"));
+    let sdk_module = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/block-sdk")
+        .unwrap();
+    assert_eq!(sdk_module["version"], "1.0.0");
+    assert_eq!(sdk_module["exports"], json!(["blockSdkVersion"]));
+    assert_eq!(
+        sdk_module["browser_asset"]["sha256"],
+        "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+    );
+    assert!(sdk_module["browser_asset"].get("path").is_none());
+    assert!(sdk_module["browser_asset"].get("url").is_none());
+    let native_module = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/native-components")
+        .unwrap();
+    assert_eq!(native_module["version"], "1.0.0");
+    assert_eq!(native_module["exports"], json!(["Surface"]));
+    assert_eq!(
+        native_module["browser_asset"]["sha256"],
+        "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"
+    );
+    assert!(native_module["browser_asset"].get("path").is_none());
+    assert!(native_module["browser_asset"].get("url").is_none());
     assert_eq!(
         jsx_block["code_modules"]
             .as_array()
@@ -276,10 +399,7 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
             .iter()
             .map(|module| module["source"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        vec![
-            "@1flowbase/block-sdk",
-            "@1flowbase/block-renderer/antd-facade"
-        ]
+        vec!["@1flowbase/block-sdk", "@1flowbase/native-components"]
     );
 }
 
@@ -375,7 +495,7 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
         .iter()
         .any(|entry| { entry["provider_code"] == "fixture_frontend_blocks_hidden" }));
     assert_eq!(entry["contribution_code"].as_str(), Some("hero_banner"));
-    assert_eq!(entry["runtime"].as_str(), Some("iframe"));
+    assert_eq!(entry["runtime"].as_str(), Some("native_react"));
     assert_eq!(
         entry["code_template"].as_str(),
         Some("export default function HeroBanner() { return <section>Hero</section>; }")
@@ -384,8 +504,20 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
     assert_eq!(entry["code_template_language"].as_str(), Some("tsx"));
     assert_eq!(
         entry["code_modules"][0]["source"].as_str(),
-        Some("@1flowbase/block-sdk")
+        Some("@acme/native-components")
     );
+    assert_eq!(entry["code_modules"][0]["version"], "1.2.3");
+    assert_eq!(entry["code_modules"][0]["exports"], json!(["Button"]));
+    assert_eq!(
+        entry["code_modules"][0]["browser_asset"]["sha256"],
+        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+    );
+    assert!(entry["code_modules"][0]["browser_asset"]
+        .get("path")
+        .is_none());
+    assert!(entry["code_modules"][0]["browser_asset"]
+        .get("url")
+        .is_none());
     assert_eq!(
         entry["context_contract"]["primitives"][0].as_str(),
         Some("text")

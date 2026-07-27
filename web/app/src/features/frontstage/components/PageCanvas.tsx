@@ -1,7 +1,23 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import type {
+  BlockContext,
+  BlockProtocolError
+} from '@1flowbase/page-protocol';
+import {
+  NATIVE_TRUSTED_BLOCK_PERMISSION,
+  NATIVE_TRUSTED_BLOCK_RUNTIME,
+  type NativeTrustedBlockPreparePlan
+} from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
@@ -13,15 +29,11 @@ import './page-canvas.css';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
-import { RestrictedBlockRuntimePreview } from './RestrictedBlockRuntimePreview';
-import type { FrontstagePageCanvasRuntimeSessionEntry } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
 import { createFrontstagePageDocument } from '../lib/page-document';
 import {
   createFrontstagePageRenderPlan,
   type FrontstageBlockRenderPlanItem
 } from '../lib/page-canvas/render-plan';
-import type { FrontstagePageCanvasRuntimeSourceState } from '../lib/page-canvas/runtime-source';
-import type { FrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
 import { i18nText } from '../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
@@ -45,6 +57,29 @@ import {
   frontstageLayoutsEqualForCommit
 } from '../lib/page-canvas/frontstage-block-interaction';
 import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
+import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
+import {
+  frontstageNativeInstanceRenderKey,
+  useFrontstageNativeBlockInstance
+} from '../hooks/use-frontstage-native-block-instance';
+import {
+  createFrontstageUnavailableBlockContext,
+  FrontstageNativeTrustedBlockPortalHost,
+  type FrontstageNativeTrustedBlockReactComponent
+} from '../lib/native-trusted-block-react-adapter';
+import {
+  createFrontstagePageSignalSession,
+  FrontstageSignalRuntimeCoordinator
+} from '../lib/page-canvas/signal-runtime';
+import {
+  createFrontstageNativeBlockContextCapabilities,
+  type FrontstageNativeBlockContextHost
+} from '../lib/page-canvas/native-block-context-host';
+
+export type FrontstagePageCanvasRuntimeContext = Pick<
+  BlockContext,
+  'currentUser' | 'workspace' | 'application' | 'theme' | 'ui'
+>;
 
 type DesignBlockActions = {
   onEditCode: (blockId: string) => void;
@@ -59,11 +94,9 @@ type PageCanvasProps = {
   selectedBlockId?: string | null;
   onSelectBlock?: (blockId: string | null) => void;
   onRetry?: () => void;
-  runtimeSourceState?: FrontstagePageCanvasRuntimeSourceState | null;
-  runtimeRunPlanState?: FrontstagePageCanvasRuntimeRunPlanState | null;
-  runtimeSessionEntries?:
-    | readonly FrontstagePageCanvasRuntimeSessionEntry[]
-    | null;
+  runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
   /** Actions triggered from the design mode hover toolbar */
@@ -105,38 +138,15 @@ function formatPageTitle(content: FrontstagePageContent): string {
   );
 }
 
-function findRuntimeSessionEntryForSlot({
-  item,
-  slotIndex,
-  runtimeSessionEntries
-}: {
-  item: { blockId: string; codeRef: string; sourceIndex: number };
-  slotIndex: number;
-  runtimeSessionEntries?:
-    | readonly FrontstagePageCanvasRuntimeSessionEntry[]
-    | null;
-}): FrontstagePageCanvasRuntimeSessionEntry | null {
-  if (!runtimeSessionEntries || runtimeSessionEntries.length === 0) {
-    return null;
-  }
-
-  return (
-    runtimeSessionEntries.find(
-      (entry) =>
-        entry.slotIndex === slotIndex &&
-        entry.blockId === item.blockId &&
-        entry.codeRef === item.codeRef
-    ) ??
-    runtimeSessionEntries.find((entry) => entry.slotIndex === slotIndex) ??
-    null
-  );
-}
-
 // ─── RenderPlanSlot ─────────────────────────────────────────────────
 
 type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
-  runtimeSessionEntry?: FrontstagePageCanvasRuntimeSessionEntry | null;
+  runtimePreparation?: FrontstageNativePreparationSnapshot | null;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
+  pageContent?: FrontstagePageContent;
   isSelected: boolean;
   onSelectBlock?: (blockId: string | null) => void;
   isDesignMode?: boolean;
@@ -207,9 +217,229 @@ function resolveRendererVersionError(
   };
 }
 
+function NativeRuntimeSlotSurface({
+  item,
+  preparation,
+  signalCoordinator,
+  runtimeContext,
+  nativeContextHost,
+  pageContent,
+  contentViewportStyle,
+  onRetry
+}: {
+  item: FrontstageBlockRenderPlanItem;
+  preparation: FrontstageNativePreparationSnapshot;
+  contentViewportStyle: CSSProperties;
+  onRetry?: () => void;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
+  pageContent?: FrontstagePageContent;
+}) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [runtimeError, setRuntimeError] = useState<BlockProtocolError | null>(
+    null
+  );
+  const [retryGeneration, setRetryGeneration] = useState(0);
+  const readyPreparation = preparation.status === 'ready' ? preparation : null;
+  const renderIdentity = readyPreparation?.mountIntent
+    ? frontstageNativeInstanceRenderKey(readyPreparation.mountIntent)
+    : null;
+  useEffect(() => setRuntimeError(null), [renderIdentity]);
+  const plan = useMemo<NativeTrustedBlockPreparePlan>(() => {
+    const preparedSource = readyPreparation
+      ? `/* prepared:${readyPreparation.prepared.identityInput.sourceSha256} */`
+      : '';
+    return {
+      runtime: NATIVE_TRUSTED_BLOCK_RUNTIME,
+      blockId: item.blockId,
+      entry: item.runtime.entry ?? 'default',
+      source: preparedSource,
+      normalizedSource: preparedSource,
+      props: { ...item.props },
+      requiredPermissions: [NATIVE_TRUSTED_BLOCK_PERMISSION]
+    };
+  }, [
+    item.blockId,
+    item.props,
+    item.runtime.entry,
+    readyPreparation?.prepared.identityInput.sourceSha256
+  ]);
+  if (preparation.status === 'failed' || runtimeError) {
+    const retry = preparation.status === 'failed' ? onRetry : () => {
+      setRuntimeError(null);
+      setRetryGeneration((current) => current + 1);
+    };
+    return (
+      <div
+        className="frontstage-native-block-state frontstage-native-block-state--error"
+        style={contentViewportStyle}
+      >
+        <Alert
+          type="error"
+          showIcon
+          message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+          description={
+            preparation.status === 'failed'
+              ? preparation.error.message
+              : runtimeError?.message
+          }
+          action={
+            retry ? (
+              <Button size="small" onClick={retry}>
+                {i18nText('frontstage', 'auto.retry')}
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
+
+  if (!readyPreparation?.mountIntent) {
+    return (
+      <div
+        className="frontstage-native-block-state frontstage-native-block-state--loading"
+        style={contentViewportStyle}
+      >
+        <BlockUiLoadingShell />
+      </div>
+    );
+  }
+
+  return (
+    <div style={contentViewportStyle}>
+      <div
+        ref={setRoot}
+        data-testid={`frontstage-native-block-root-${item.blockId}`}
+        style={{ width: '100%', minWidth: 0 }}
+      />
+      {root ? (
+        <FrontstageNativeRuntimeInstance
+          key={`${renderIdentity}:${retryGeneration}`}
+          root={root}
+          item={item}
+          plan={plan}
+          preparation={readyPreparation}
+          signalCoordinator={signalCoordinator}
+          runtimeContext={runtimeContext}
+          nativeContextHost={nativeContextHost}
+          pageContent={pageContent}
+          onRuntimeError={setRuntimeError}
+        />
+      ) : (
+        <BlockUiLoadingShell />
+      )}
+    </div>
+  );
+}
+
+const EMPTY_BLOCK_SIGNAL_SNAPSHOT = Object.freeze({
+  revision: 0,
+  inputs: Object.freeze({})
+});
+
+function FrontstageNativeRuntimeInstance({
+  root,
+  item,
+  plan,
+  preparation,
+  signalCoordinator,
+  runtimeContext,
+  nativeContextHost,
+  pageContent,
+  onRuntimeError
+}: {
+  root: Element;
+  item: FrontstageBlockRenderPlanItem;
+  plan: NativeTrustedBlockPreparePlan;
+  preparation: Extract<
+    FrontstageNativePreparationSnapshot,
+    { status: 'ready' }
+  >;
+  signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeContext?: FrontstagePageCanvasRuntimeContext;
+  nativeContextHost?: FrontstageNativeBlockContextHost;
+  pageContent?: FrontstagePageContent;
+  onRuntimeError(error: BlockProtocolError): void;
+}) {
+  const { instanceEpoch, isCurrentInstance } =
+    useFrontstageNativeBlockInstance({
+      blockId: item.blockId,
+      signalCoordinator,
+      observationContext: preparation.observationContext,
+      cacheTier: preparation.prepared.artifactCacheTier,
+      preparationGeneration: preparation.generation
+    });
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      signalCoordinator?.subscribeBlock(item.blockId, listener) ?? (() => {}),
+    [item.blockId, signalCoordinator]
+  );
+  const getSnapshot = useCallback(
+    () =>
+      signalCoordinator?.getBlockSnapshot(item.blockId) ??
+      EMPTY_BLOCK_SIGNAL_SNAPSHOT,
+    [item.blockId, signalCoordinator]
+  );
+  const signalSnapshot = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getSnapshot
+  );
+  const unavailable = createFrontstageUnavailableBlockContext(plan);
+  const outputs = signalCoordinator
+    ? signalCoordinator.outputsFor(item.blockId, instanceEpoch)
+    : unavailable.outputs;
+  const capabilities = nativeContextHost
+    ? createFrontstageNativeBlockContextCapabilities({
+        host: nativeContextHost,
+        pageId: pageContent?.page.id ?? unavailable.page.id,
+        tabId: pageContent?.tab.id ?? '',
+        blockId: item.blockId,
+        instanceEpoch,
+        isCurrentInstance,
+        outputs
+      })
+    : { api: unavailable.api, events: unavailable.events, outputs };
+  const context: BlockContext = {
+    ...unavailable,
+    ...(runtimeContext ?? {}),
+    page: {
+      id: pageContent?.page.id ?? unavailable.page.id,
+      route:
+        pageContent?.tab.routeSegment ??
+        pageContent?.page.id ??
+        unavailable.page.route,
+      ...(pageContent?.page.title ? { title: pageContent.page.title } : {})
+    },
+    inputs: signalSnapshot.inputs,
+    ...capabilities,
+    props: { ...plan.props }
+  };
+
+  return (
+    <FrontstageNativeTrustedBlockPortalHost
+      root={root}
+      renderEpoch={instanceEpoch}
+      plan={plan}
+      component={
+        preparation.prepared
+          .component as FrontstageNativeTrustedBlockReactComponent
+      }
+      ctx={context}
+      onRuntimeError={onRuntimeError}
+    />
+  );
+}
+
 function RenderPlanSlot({
   item,
-  runtimeSessionEntry,
+  runtimePreparation,
+  signalCoordinator,
+  runtimeContext,
+  nativeContextHost,
+  pageContent,
   isSelected,
   onSelectBlock,
   isDesignMode,
@@ -311,9 +541,7 @@ function RenderPlanSlot({
   const renderBlockContent = () => {
     if (rendererVersionError) {
       return (
-        <div
-          style={contentViewportStyle}
-        >
+        <div style={contentViewportStyle}>
           <Alert
             type="error"
             showIcon
@@ -324,62 +552,25 @@ function RenderPlanSlot({
       );
     }
 
-    if (runtimeSessionEntry && 'snapshot' in runtimeSessionEntry) {
+    if (runtimePreparation) {
       return (
-        <div
-          style={contentViewportStyle}
-        >
-          <RestrictedBlockRuntimePreview
-            snapshot={runtimeSessionEntry.snapshot}
-            onRetry={
-              onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
-            }
-          />
-        </div>
-      );
-    }
-
-    if (runtimeSessionEntry?.status === 'factory_failed') {
-      return (
-        <div
-          style={contentViewportStyle}
-        >
-          <Alert
-            type="error"
-            showIcon
-            message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
-            description={i18nText(
-              'frontstage',
-              'auto.restricted_runtime_session_create_failed'
-            )}
-          />
-        </div>
-      );
-    }
-
-    const isSourceLoading =
-      runtimeSessionEntry?.status === 'skipped' &&
-      (runtimeSessionEntry.skipReason === 'artifact_lookup_pending' ||
-        (runtimeSessionEntry.skipReason === 'source_not_ready' &&
-          (runtimeSessionEntry.sourceStatus === 'loading' ||
-            runtimeSessionEntry.sourceStatus === 'dormant')));
-
-    if (runtimeSessionEntry?.status === 'skipped' && !isSourceLoading) {
-      return (
-        <div
-          style={contentViewportStyle}
-        >
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            {i18nText('frontstage', 'auto.block_skipped_run')}
-          </Typography.Text>
-        </div>
+        <NativeRuntimeSlotSurface
+          item={item}
+          preparation={runtimePreparation}
+          signalCoordinator={signalCoordinator}
+          runtimeContext={runtimeContext}
+          nativeContextHost={nativeContextHost}
+          pageContent={pageContent}
+          contentViewportStyle={contentViewportStyle}
+          onRetry={
+            onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
+          }
+        />
       );
     }
 
     return (
-      <div
-        style={contentViewportStyle}
-      >
+      <div style={contentViewportStyle}>
         <BlockUiLoadingShell />
       </div>
     );
@@ -448,7 +639,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   selectedBlockId = null,
   onSelectBlock,
   onRetry,
-  runtimeSessionEntries,
+  runtimePreparations,
+  runtimeContext,
+  nativeContextHost,
   isDesignMode = false,
   designActions,
   toolbarDisabled = false,
@@ -466,6 +659,25 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     [document]
   );
   const renderItems = useMemo(() => renderPlan?.items ?? [], [renderPlan]);
+  const signalSession = useMemo(
+    () => createFrontstagePageSignalSession(),
+    [content?.page.id]
+  );
+  const signalCoordinator = useMemo(
+    () =>
+      document && content
+        ? new FrontstageSignalRuntimeCoordinator(
+            document.blocks,
+            content.tab.id,
+            signalSession
+          )
+        : null,
+    [content?.tab.id, document?.page.id, signalSession]
+  );
+  useEffect(() => {
+    signalCoordinator?.updateBlocks(document?.blocks ?? []);
+  }, [document?.blocks, signalCoordinator]);
+  useEffect(() => () => signalCoordinator?.dispose(), [signalCoordinator]);
   const { width: measuredWidth, containerRef } = useContainerWidth({
     initialWidth: 1280
   });
@@ -587,9 +799,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         data-testid="page-canvas-render-slots"
       >
         {renderPlan.isEmpty && isDesignMode ? (
-          <div
-            data-testid="page-canvas-design-empty-state"
-          />
+          <div data-testid="page-canvas-design-empty-state" />
         ) : renderPlan.isEmpty ? (
           <div
             style={{
@@ -600,10 +810,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
               textAlign: 'center'
             }}
           >
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={false}
-            />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
           </div>
         ) : (
           <ResponsiveGridLayout
@@ -684,15 +891,19 @@ export const PageCanvas: FC<PageCanvasProps> = ({
               );
             }}
           >
-            {renderItems.map((item, slotIndex) => (
+            {renderItems.map((item) => (
               <div key={item.blockId}>
                 <RenderPlanSlot
                   item={item}
-                  runtimeSessionEntry={findRuntimeSessionEntryForSlot({
-                    item,
-                    slotIndex,
-                    runtimeSessionEntries
-                  })}
+                  runtimePreparation={
+                    runtimePreparations?.find(
+                      (preparation) => preparation.blockId === item.blockId
+                    ) ?? null
+                  }
+                  signalCoordinator={signalCoordinator}
+                  runtimeContext={runtimeContext}
+                  nativeContextHost={nativeContextHost}
+                  pageContent={content}
                   isSelected={item.blockId === selectedBlockId}
                   onSelectBlock={onSelectBlock}
                   isDesignMode={isDesignMode}

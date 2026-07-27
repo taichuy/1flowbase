@@ -1,16 +1,17 @@
 import { NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS } from '../native-trusted-block-source-policy';
-import type {
-  DefaultExportDeclaration,
-  ImportDeclaration,
-  NativeTrustedBlockImportBinding,
-  NativeTrustedBlockInjectedModule,
-  NativeTrustedBlockInjectedModuleSource,
-  ParseFailure,
-  ParseResult,
-  SourceEdit,
-  SourceToken,
-  StatementEnd,
-  StringLiteralValue
+import {
+  NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE,
+  type DefaultExportDeclaration,
+  type ImportDeclaration,
+  type NativeTrustedBlockImportBinding,
+  type NativeTrustedBlockInjectedModule,
+  type NativeTrustedBlockInjectedModuleSource,
+  type ParseFailure,
+  type ParseResult,
+  type SourceEdit,
+  type SourceToken,
+  type StatementEnd,
+  type StringLiteralValue
 } from './source-evaluator-types';
 
 export const MODULES_IDENTIFIER = '__flowbaseNativeTrustedBlockModules';
@@ -21,7 +22,10 @@ export const RESERVED_TRANSFORM_IDENTIFIERS = new Set([
   DEFAULT_EXPORT_IDENTIFIER
 ]);
 
-const allowedImportSources = new Set<string>(NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS);
+const allowedImportSources = new Set<string>([
+  ...NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
+  NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE
+]);
 const localBindingIdentifiers = new Set<string>([
   'as',
   'async',
@@ -136,7 +140,8 @@ export function tokenizeSource(source: string): SourceToken[] {
 
 export function parseTopLevelModuleSyntax(
   source: string,
-  tokens: SourceToken[]
+  tokens: SourceToken[],
+  acceptedImportSources: ReadonlySet<string> = allowedImportSources
 ): ParseResult<{
   imports: ImportDeclaration[];
   defaultExport: DefaultExportDeclaration;
@@ -151,7 +156,12 @@ export function parseTopLevelModuleSyntax(
     }
 
     if (token.value === 'import') {
-      const importResult = parseImportDeclaration(source, tokens, index);
+      const importResult = parseImportDeclaration(
+        source,
+        tokens,
+        index,
+        acceptedImportSources
+      );
       if (!importResult.ok) {
         return importResult;
       }
@@ -299,7 +309,9 @@ export function findReactJsxRuntimeIdentifier(
 }
 
 export function applyEdits(source: string, edits: SourceEdit[]): string {
-  const orderedEdits = [...edits].sort((left, right) => left.start - right.start);
+  const orderedEdits = [...edits].sort(
+    (left, right) => left.start - right.start
+  );
   let result = '';
   let cursor = 0;
 
@@ -316,7 +328,8 @@ export function applyEdits(source: string, edits: SourceEdit[]): string {
 function parseImportDeclaration(
   source: string,
   tokens: SourceToken[],
-  importTokenIndex: number
+  importTokenIndex: number,
+  acceptedImportSources: ReadonlySet<string>
 ): ParseResult<ImportDeclaration> {
   const importToken = tokens[importTokenIndex];
   const nextIndex = skipWhitespaceAndComments(source, importToken.end);
@@ -324,7 +337,7 @@ function parseImportDeclaration(
 
   if (nextChar === '"' || nextChar === "'") {
     const literal = readStringLiteral(source, nextIndex);
-    if (!literal || !isAllowedImportSource(literal.value)) {
+    if (!literal || !acceptedImportSources.has(literal.value)) {
       return parseError(
         'source.imports',
         'Native trusted block import source could not be transformed.'
@@ -365,7 +378,7 @@ function parseImportDeclaration(
 
   const literalStart = skipWhitespaceAndComments(source, fromToken.end);
   const literal = readStringLiteral(source, literalStart);
-  if (!literal || !isAllowedImportSource(literal.value)) {
+  if (!literal || !acceptedImportSources.has(literal.value)) {
     return parseError(
       'source.imports',
       'Native trusted block import source could not be transformed.'
@@ -681,7 +694,10 @@ function readImportDeclarationEnd(
   let index = skipHorizontalWhitespace(source, start);
 
   while (source[index] === '/' && source[index + 1] === '*') {
-    index = skipHorizontalWhitespace(source, consumeBlockComment(source, index));
+    index = skipHorizontalWhitespace(
+      source,
+      consumeBlockComment(source, index)
+    );
   }
 
   if (source[index] === ';') {
@@ -692,7 +708,11 @@ function readImportDeclarationEnd(
     return consumeLineComment(source, index + 2);
   }
 
-  if (index >= source.length || source[index] === '\n' || source[index] === '\r') {
+  if (
+    index >= source.length ||
+    source[index] === '\n' ||
+    source[index] === '\r'
+  ) {
     return index;
   }
 
@@ -1099,12 +1119,6 @@ function skipHorizontalWhitespace(source: string, start: number): number {
   }
 
   return index;
-}
-
-function isAllowedImportSource(
-  source: string
-): source is NativeTrustedBlockInjectedModuleSource {
-  return allowedImportSources.has(source);
 }
 
 function isImportName(value: string): boolean {

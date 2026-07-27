@@ -18,7 +18,7 @@ import {
 } from '../index';
 
 describe('frontend block contract vocabulary', () => {
-  test('projects catalog modules into editor, import, and worker capabilities', () => {
+  test('projects catalog modules into Native editor and import capabilities', () => {
     expect(
       createFrontendBlockCodeCapabilities({
         code_template: 'export default {}',
@@ -44,12 +44,24 @@ describe('frontend block contract vocabulary', () => {
           filePath: 'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
           content: 'export declare function defineBlock(): unknown;'
         }
-      ],
-      workerModuleSources: ['@1flowbase/block-sdk']
+      ]
     });
   });
+  test('D4-AC-005 excludes the legacy facade from author code modules', () => {
+    expect(
+      createFrontendBlockCodeCapabilities({
+        code_modules: [
+          {
+            source: '@1flowbase/native-components',
+            type_declarations:
+              "declare module '@1flowbase/native-components' {}"
+          }
+        ]
+      }).allowedImports
+    ).toEqual(['@1flowbase/native-components']);
+  });
   test('exports the backend-aligned manifest and catalog vocabularies', () => {
-    expect(FRONTEND_BLOCK_RUNTIMES).toEqual(['iframe']);
+    expect(FRONTEND_BLOCK_RUNTIMES).toEqual(['native_react']);
     expect(FRONTEND_BLOCK_CONTEXT_PRIMITIVES).toEqual([
       'text',
       'image',
@@ -71,8 +83,7 @@ describe('frontend block contract vocabulary', () => {
       'page-protocol',
       'page-runtime',
       'block-renderer',
-      'block-sdk',
-      'antd-facade'
+      'block-sdk'
     ]);
     expect(FRONTEND_BLOCK_PACKAGE_BOUNDARIES).not.toContain(
       'frontend-block-runtime'
@@ -81,7 +92,8 @@ describe('frontend block contract vocabulary', () => {
   });
 
   test('guards runtime, context primitives, ui capabilities, and package boundaries', () => {
-    expect(isFrontendBlockRuntime('iframe')).toBe(true);
+    expect(isFrontendBlockRuntime('native_react')).toBe(true);
+    expect(isFrontendBlockRuntime('iframe')).toBe(false);
     expect(isFrontendBlockRuntime('worker')).toBe(false);
     expect(isFrontendBlockRuntime(null)).toBe(false);
 
@@ -98,7 +110,8 @@ describe('frontend block contract vocabulary', () => {
   });
 
   test('normalizes single contract values without widening unknown strings', () => {
-    expect(normalizeFrontendBlockRuntime('iframe')).toBe('iframe');
+    expect(normalizeFrontendBlockRuntime('native_react')).toBe('native_react');
+    expect(normalizeFrontendBlockRuntime('iframe')).toBeNull();
     expect(normalizeFrontendBlockRuntime('worker')).toBeNull();
     expect(normalizeFrontendBlockContextPrimitive('data_record')).toBe(
       'data_record'

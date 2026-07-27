@@ -30,8 +30,16 @@ pub struct FrontendBlockContextContractResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct FrontendBlockBrowserAssetResponse {
+    pub sha256: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockCodeModuleResponse {
     pub source: String,
+    pub version: String,
+    pub exports: Vec<String>,
+    pub browser_asset: FrontendBlockBrowserAssetResponse,
     pub type_declarations: String,
 }
 
@@ -90,6 +98,11 @@ fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalog
                 let type_declarations = code_module.resolved_type_declarations();
                 FrontendBlockCodeModuleResponse {
                     source: code_module.source,
+                    version: code_module.version,
+                    exports: code_module.exports,
+                    browser_asset: FrontendBlockBrowserAssetResponse {
+                        sha256: code_module.browser_asset.sha256,
+                    },
                     type_declarations,
                 }
             })

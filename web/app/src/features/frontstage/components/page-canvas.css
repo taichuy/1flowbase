@@ -1,16 +1,20 @@
-.frontstage-page-canvas-grid
-  .react-grid-item
-  > .frontstage-grid-resize-handle {
+.frontstage-page-canvas-grid .react-grid-item > .frontstage-grid-resize-handle {
   z-index: 8;
   margin: 0;
   background-image: none;
   transform: none;
   opacity: 0;
-  transition: opacity 120ms ease, background-color 120ms ease;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
 }
 
-.frontstage-page-canvas-grid .react-grid-item:hover > .frontstage-grid-resize-handle,
-.frontstage-page-canvas-grid .react-grid-item.resizing > .frontstage-grid-resize-handle {
+.frontstage-page-canvas-grid
+  .react-grid-item:hover
+  > .frontstage-grid-resize-handle,
+.frontstage-page-canvas-grid
+  .react-grid-item.resizing
+  > .frontstage-grid-resize-handle {
   opacity: 1;
 }
 
@@ -111,6 +115,25 @@
   height: 14px;
   border: 2px solid rgba(22, 119, 255, 0.75);
   background: transparent;
+}
+
+@media (max-width: 390px) {
+  .frontstage-native-block-state {
+    min-height: 72px;
+    padding: 8px !important;
+  }
+
+  .frontstage-native-block-state--error .ant-alert {
+    align-items: flex-start;
+  }
+
+  .frontstage-native-block-state--error .ant-alert-action {
+    margin-inline-start: 8px;
+  }
+
+  .frontstage-native-block-state--loading {
+    overflow: hidden;
+  }
 }
 
 .frontstage-page-canvas-grid

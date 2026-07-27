@@ -1,4 +1,4 @@
-export const FRONTEND_BLOCK_RUNTIMES = ['iframe'] as const;
+export const FRONTEND_BLOCK_RUNTIMES = ['native_react'] as const;
 
 export const FRONTEND_BLOCK_CONTEXT_PRIMITIVES = [
   'text',
@@ -20,8 +20,7 @@ export const FRONTEND_BLOCK_PACKAGE_BOUNDARIES = [
   'page-protocol',
   'page-runtime',
   'block-renderer',
-  'block-sdk',
-  'antd-facade'
+  'block-sdk'
 ] as const;
 
 export type FrontendBlockRuntime = (typeof FRONTEND_BLOCK_RUNTIMES)[number];
@@ -45,7 +44,7 @@ export interface FrontendBlockPermissions {
 
 export const FRONTEND_BLOCK_CODE_MODULE_SOURCES = [
   '@1flowbase/block-sdk',
-  '@1flowbase/block-renderer/antd-facade'
+  '@1flowbase/native-components'
 ] as const;
 
 export type FrontendBlockCodeModuleSource =
@@ -77,7 +76,6 @@ export interface FrontendBlockCodeCapabilities {
   } | null;
   allowedImports: FrontendBlockCodeModuleSource[];
   monacoExtraLibs: FrontendBlockMonacoExtraLib[];
-  workerModuleSources: FrontendBlockCodeModuleSource[];
 }
 
 export interface FrontendBlockCatalogEntry extends FrontendBlockCodeContribution {
@@ -126,8 +124,7 @@ export function createFrontendBlockCodeCapabilities(
       source: codeModule.source,
       filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
       content: codeModule.type_declarations
-    })),
-    workerModuleSources: modules.map((codeModule) => codeModule.source)
+    }))
   };
 }
 
