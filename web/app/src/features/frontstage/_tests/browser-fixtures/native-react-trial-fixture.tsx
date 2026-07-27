@@ -1,5 +1,12 @@
 import '@ant-design/v5-patch-for-react-19';
 import { Button, ConfigProvider, Select } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
+import { EChart } from '@1flowbase/charts';
+import { Surface } from '@1flowbase/native-components';
+import { MarkdownEditor, MarkdownPreview } from '@1flowbase/rich-text';
+import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
+import richTextCss from '@1flowbase/rich-text/styles.css?raw';
+import vditorCss from 'vditor/dist/index.css?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { ComponentProps, ComponentType } from 'react';
 import {
@@ -180,10 +187,51 @@ function SecondBlock({ ctx }: { ctx: BlockContext }) {
   );
 }
 
+function PublicModulesBlock({ props }: { props: FixtureBlockProps }) {
+  const [markdown, setMarkdown] = useState(`# ${props.label}`);
+  return (
+    <Surface
+      aria-label={`public-modules-${props.label}`}
+      data-testid={`public-modules-${props.label}`}
+    >
+      <h3>
+        <UserOutlined /> {props.label}
+      </h3>
+      <EChart
+        ariaLabel={`chart-${props.label}`}
+        option={{
+          xAxis: { type: 'category', data: ['A', 'B'] },
+          yAxis: { type: 'value' },
+          series: [{ type: 'bar', data: [3, 7] }]
+        }}
+        style={{ height: 140 }}
+      />
+      <MarkdownEditor
+        ariaLabel={`editor-${props.label}`}
+        height={180}
+        value={markdown}
+        onChange={setMarkdown}
+      />
+      <MarkdownPreview aria-label={`preview-${props.label}`} value={markdown} />
+    </Surface>
+  );
+}
+
 const components = {
   first: FirstBlock,
-  second: SecondBlock
+  second: SecondBlock,
+  publicA: PublicModulesBlock,
+  publicB: PublicModulesBlock
 } satisfies Record<string, ComponentType<any>>;
+
+const publicModuleAssets = [
+  fixtureModuleStyle('@1flowbase/native-components', 'c', nativeComponentsCss),
+  fixtureModuleStyle(
+    '@1flowbase/rich-text',
+    'd',
+    `${vditorCss}\n${richTextCss}`
+  )
+];
 
 function NativeReactTrialFixture() {
   const [sourceRevision, setSourceRevision] = useState(1);
@@ -231,6 +279,18 @@ function NativeReactTrialFixture() {
                   inputs: [],
                   outputs: [{ name: 'total', schema: { type: 'integer' } }]
                 }
+              ),
+              fixtureBlock(
+                'public-a',
+                2,
+                { label: 'a' },
+                { inputs: [], outputs: [] }
+              ),
+              fixtureBlock(
+                'public-b',
+                3,
+                { label: 'b' },
+                { inputs: [], outputs: [] }
               )
             ]
           }
@@ -257,6 +317,26 @@ function NativeReactTrialFixture() {
         1,
         false,
         'miss'
+      ),
+      preparation(
+        'public-a',
+        2,
+        components.publicA,
+        1,
+        1,
+        false,
+        'l2',
+        publicModuleAssets
+      ),
+      preparation(
+        'public-b',
+        3,
+        components.publicB,
+        1,
+        1,
+        false,
+        'l2',
+        publicModuleAssets
       )
     ],
     [demands.first, demands.second, preparationFailure, sourceRevision]
@@ -399,13 +479,14 @@ function fixtureBlock(
 }
 
 function preparation(
-  blockId: 'first' | 'second',
+  blockId: 'first' | 'second' | 'public-a' | 'public-b',
   slotIndex: number,
   component: ComponentType<any>,
   priority: 0 | 1 | 2 | 3,
   sourceRevision: number,
   failed: boolean,
-  artifactCacheTier: 'l2' | 'miss'
+  artifactCacheTier: 'l2' | 'miss',
+  moduleAssets: FrontstageNativePreparedRuntime['moduleAssets'] = []
 ): FrontstageNativePreparationSnapshot {
   const base = {
     blockId,
@@ -439,13 +520,28 @@ function preparation(
     component: component as FrontstageNativePreparedRuntime['component'],
     identityInput,
     artifactCacheTier,
-    moduleAssets: []
+    moduleAssets
   };
   return {
     ...base,
     status: 'ready',
     prepared,
     mountIntent: priority <= 1 ? { blockId, slotIndex, identityInput } : null
+  };
+}
+
+function fixtureModuleStyle(
+  moduleSource: string,
+  digestCharacter: string,
+  css: string
+): FrontstageNativePreparedRuntime['moduleAssets'][number] {
+  return {
+    module_source: moduleSource,
+    role: 'shadow_style',
+    media_type: 'text/css; charset=utf-8',
+    sha256: digestCharacter.repeat(64),
+    url: `/fixture-assets/${moduleSource}/${digestCharacter}`,
+    bytes: new TextEncoder().encode(css).buffer as ArrayBuffer
   };
 }
 
