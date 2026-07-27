@@ -304,8 +304,8 @@ fn to_summary_response(
         module_version: entry.module_version,
         exports: entry.exports,
         binding: match entry.binding {
-            domain::FrontendModuleBinding::Host => "host",
-            domain::FrontendModuleBinding::Fetched => "fetched",
+            domain::FrontendModuleBinding::Host => "host".to_owned(),
+            domain::FrontendModuleBinding::Fetched => "fetched".to_owned(),
         },
         assets,
         browser_asset,

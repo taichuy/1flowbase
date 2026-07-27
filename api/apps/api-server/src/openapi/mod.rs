@@ -494,7 +494,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::plugins::PluginInstalledVersionResponse,
         crate::routes::plugins::PluginTaskResponse,
         crate::routes::frontend_block_catalog::FrontendBlockCatalogResponse,
-        crate::routes::frontend_block_catalog::FrontendBlockBrowserAssetResponse,
+        crate::routes::frontend_block_catalog::FrontendBlockModuleAssetResponse,
         crate::routes::frontend_block_catalog::FrontendBlockCodeModuleResponse,
         crate::routes::frontend_block_catalog::FrontendBlockContextContractResponse,
         crate::routes::frontend_block_catalog::FrontendBlockPermissionsResponse,
