@@ -32,7 +32,14 @@ function readyManifest() {
 
 function serverFrame(value) {
   const payload = Buffer.from(value);
-  return Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
+  if (payload.length < 126) {
+    return Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
+  }
+  const header = Buffer.alloc(4);
+  header[0] = 0x81;
+  header[1] = 126;
+  header.writeUInt16BE(payload.length, 2);
+  return Buffer.concat([header, payload]);
 }
 
 function collectedFrameChunks(events) {
