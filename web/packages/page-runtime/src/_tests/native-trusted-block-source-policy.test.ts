@@ -85,6 +85,44 @@ describe('Native trusted block source static policy', () => {
     });
   });
 
+  test('preserves scanner locations for catalog import denials (R5-AC-002 / D1-AC-002)', () => {
+    const source = [
+      "import React from 'react';",
+      "  import { Button } from 'antd';",
+      "export { Surface } from '@1flowbase/ui';",
+      "    export { format } from 'dayjs';",
+      "const lazy = import('react');"
+    ].join('\n');
+
+    const result = validateNativeTrustedBlockSource(source, {
+      allowedImportSources: new Set(['react', '@1flowbase/ui'])
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        {
+          code: 'import_denied',
+          path: 'source.imports[1]',
+          message: "Import source 'antd' is not allowed.",
+          sourceLocation: { line: 2, column: 3 }
+        },
+        {
+          code: 'import_denied',
+          path: 'source.imports[3]',
+          message: "Import source 'dayjs' is not allowed.",
+          sourceLocation: { line: 4, column: 5 }
+        },
+        {
+          code: 'import_denied',
+          path: 'source.imports[4]',
+          message: 'Dynamic import and import host access are not allowed.',
+          sourceLocation: { line: 5, column: 14 }
+        }
+      ]
+    });
+  });
+
   test.each([
     ['require', "const antd = require('antd');", 'import_denied'],
     ['eval', "eval('2 + 2');", 'transform_failed'],

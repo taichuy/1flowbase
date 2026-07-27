@@ -77,11 +77,16 @@ export function validateNativeTrustedBlockSource(
       return { ok: false, errors: [scan.error] };
     }
 
+    const acceptedImportSources =
+      options.allowedImportSources ?? allowedImports;
+    const includeImportSourceLocations =
+      options.allowedImportSources !== undefined;
     const errors = [
       ...validateImports(
         source,
         scan.tokens,
-        options.allowedImportSources ?? allowedImports
+        acceptedImportSources,
+        includeImportSourceLocations
       ),
       ...validateDeniedCapabilities(source, scan.tokens)
     ];
@@ -313,7 +318,8 @@ function consumeTemplate(
 function validateImports(
   source: string,
   tokens: SourceToken[],
-  acceptedImportSources: ReadonlySet<string>
+  acceptedImportSources: ReadonlySet<string>,
+  includeSourceLocations: boolean
 ): BlockProtocolError[] {
   const errors: BlockProtocolError[] = [];
   let importIndex = 0;
@@ -325,7 +331,8 @@ function validateImports(
         tokens,
         tokenIndex,
         importIndex,
-        acceptedImportSources
+        acceptedImportSources,
+        includeSourceLocations
       );
       if (importError) {
         errors.push(importError);
@@ -341,7 +348,10 @@ function validateImports(
           failureError(
             'import_denied',
             `source.imports[${importIndex}]`,
-            `Import source '${exportedSource.value}' is not allowed.`
+            `Import source '${exportedSource.value}' is not allowed.`,
+            includeSourceLocations
+              ? sourceLocationFromOffset(source, token.start)
+              : undefined
           )
         );
       }
@@ -359,10 +369,14 @@ function validateImportToken(
   tokens: SourceToken[],
   tokenIndex: number,
   importIndex: number,
-  acceptedImportSources: ReadonlySet<string>
+  acceptedImportSources: ReadonlySet<string>,
+  includeSourceLocations: boolean
 ): BlockProtocolError | undefined {
   const token = tokens[tokenIndex];
   const path = `source.imports[${importIndex}]`;
+  const sourceLocation = includeSourceLocations
+    ? sourceLocationFromOffset(source, token.start)
+    : undefined;
   const nextCodeIndex = skipWhitespace(source, token.end);
   const nextChar = source[nextCodeIndex];
 
@@ -370,7 +384,8 @@ function validateImportToken(
     return failureError(
       'import_denied',
       path,
-      'Dynamic import and import host access are not allowed.'
+      'Dynamic import and import host access are not allowed.',
+      sourceLocation
     );
   }
 
@@ -384,7 +399,8 @@ function validateImportToken(
       : failureError(
           'import_denied',
           path,
-          `Import source '${sourceLiteral.value}' is not allowed.`
+          `Import source '${sourceLiteral.value}' is not allowed.`,
+          sourceLocation
         );
   }
 
@@ -413,7 +429,8 @@ function validateImportToken(
     : failureError(
         'import_denied',
         path,
-        `Import source '${sourceLiteral.value}' is not allowed.`
+        `Import source '${sourceLiteral.value}' is not allowed.`,
+        sourceLocation
       );
 }
 
@@ -1170,6 +1187,35 @@ function isIdentifierPart(char: string): boolean {
   return /[A-Za-z0-9_$]/.test(char);
 }
 
+function sourceLocationFromOffset(
+  source: string,
+  offset: number
+): NonNullable<BlockProtocolError['sourceLocation']> {
+  let line = 1;
+  let column = 1;
+
+  for (let index = 0; index < offset; index += 1) {
+    if (source[index] === '\r') {
+      if (source[index + 1] === '\n' && index + 1 < offset) {
+        index += 1;
+      }
+      line += 1;
+      column = 1;
+      continue;
+    }
+
+    if (source[index] === '\n') {
+      line += 1;
+      column = 1;
+      continue;
+    }
+
+    column += 1;
+  }
+
+  return { line, column };
+}
+
 function syntaxError(index: number, message: string): ScanCodeResult {
   return {
     index,
@@ -1192,7 +1238,10 @@ function failure(
 function failureError(
   code: BlockProtocolError['code'],
   path: string,
-  message: string
+  message: string,
+  sourceLocation?: BlockProtocolError['sourceLocation']
 ): BlockProtocolError {
-  return { code, path, message };
+  return sourceLocation
+    ? { code, path, message, sourceLocation }
+    : { code, path, message };
 }
