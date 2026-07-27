@@ -30,8 +30,6 @@ describe('@1flowbase/rich-text (AC-PUB-006)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     options.length = 0;
-    document.getElementById('vditorLuteScript')?.remove();
-    document.getElementById('vditorIconScript')?.remove();
   });
 
   it('owns a controlled editor with cache, uploads and remote CDN disabled', async () => {
@@ -52,12 +50,16 @@ describe('@1flowbase/rich-text (AC-PUB-006)', () => {
   });
 
   it('sanitizes preview HTML and removes network-capable content', async () => {
-    render(<MarkdownPreview aria-label="preview" value="fixture" />);
+    const view = render(
+      <MarkdownPreview aria-label="preview" value="fixture" />
+    );
     await act(async () => undefined);
 
     const preview = screen.getByLabelText('preview');
     expect(preview.querySelector('img')).toBeNull();
     expect(preview.querySelector('a')).not.toHaveAttribute('href');
+    view.unmount();
+    expect(document.getElementById('vditorLuteScript')).toBeNull();
   });
 
   it('owns two independent instances and releases shared support markers after the last unmount', async () => {
