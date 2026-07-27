@@ -4,7 +4,7 @@ import type { HTMLAttributes } from 'react';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
 
-import { markBundledVditorRuntime } from './runtime-assets';
+import { acquireBundledVditorRuntime } from './runtime-assets';
 import './styles.css';
 
 const NO_REMOTE_ASSET_BASE = '/__1flowbase_bundled_vditor__';
@@ -49,9 +49,10 @@ export function MarkdownEditor({
     if (!mount) return undefined;
 
     let disposed = false;
+    let releaseRuntime: () => void = () => undefined;
     queueMicrotask(() => {
       if (disposed) return;
-      markBundledVditorRuntime();
+      releaseRuntime = acquireBundledVditorRuntime();
       const editor = new Vditor(mount, {
         _lutePath: NO_REMOTE_ASSET_BASE,
         cache: { enable: false },
@@ -113,6 +114,7 @@ export function MarkdownEditor({
 
     return () => {
       disposed = true;
+      releaseRuntime();
       readyRef.current = false;
       const editor = editorRef.current;
       editorRef.current = null;
@@ -147,7 +149,7 @@ export function MarkdownPreview({
     const mount = mountRef.current;
     if (!mount) return undefined;
     let disposed = false;
-    markBundledVditorRuntime();
+    const releaseRuntime = acquireBundledVditorRuntime();
 
     void Vditor.md2html(value, {
       cdn: NO_REMOTE_ASSET_BASE,
@@ -167,6 +169,7 @@ export function MarkdownPreview({
 
     return () => {
       disposed = true;
+      releaseRuntime();
       mount.replaceChildren();
     };
   }, [value]);

@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const destroy = vi.fn();
 const setValue = vi.fn();
@@ -27,6 +27,13 @@ vi.mock('vditor', () => ({
 import { MarkdownEditor, MarkdownPreview } from '../index';
 
 describe('@1flowbase/rich-text (AC-PUB-006)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    options.length = 0;
+    document.getElementById('vditorLuteScript')?.remove();
+    document.getElementById('vditorIconScript')?.remove();
+  });
+
   it('owns a controlled editor with cache, uploads and remote CDN disabled', async () => {
     const view = render(
       <MarkdownEditor value="initial" onChange={vi.fn()} ariaLabel="editor" />
@@ -51,5 +58,25 @@ describe('@1flowbase/rich-text (AC-PUB-006)', () => {
     const preview = screen.getByLabelText('preview');
     expect(preview.querySelector('img')).toBeNull();
     expect(preview.querySelector('a')).not.toHaveAttribute('href');
+  });
+
+  it('owns two independent instances and releases shared support markers after the last unmount', async () => {
+    const first = render(
+      <MarkdownEditor value="first" onChange={vi.fn()} ariaLabel="first" />
+    );
+    const second = render(
+      <MarkdownEditor value="second" onChange={vi.fn()} ariaLabel="second" />
+    );
+    await act(async () => undefined);
+
+    expect(options).toHaveLength(2);
+    expect(document.getElementById('vditorLuteScript')).not.toBeNull();
+    first.unmount();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('vditorLuteScript')).not.toBeNull();
+    second.unmount();
+    expect(destroy).toHaveBeenCalledTimes(2);
+    expect(document.getElementById('vditorLuteScript')).toBeNull();
+    expect(document.getElementById('vditorIconScript')).toBeNull();
   });
 });

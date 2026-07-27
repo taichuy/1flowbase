@@ -7,7 +7,10 @@ const VDITOR_RUNTIME_MARKERS = [
   'vditorIconScript'
 ] as const;
 
-export function markBundledVditorRuntime() {
+let runtimeConsumers = 0;
+
+export function acquireBundledVditorRuntime(): () => void {
+  runtimeConsumers += 1;
   for (const id of VDITOR_RUNTIME_MARKERS) {
     if (document.getElementById(id)) continue;
     const marker = document.createElement('script');
@@ -15,4 +18,15 @@ export function markBundledVditorRuntime() {
     marker.type = 'application/x-1flowbase-bundled-support';
     document.head.appendChild(marker);
   }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    runtimeConsumers = Math.max(0, runtimeConsumers - 1);
+    if (runtimeConsumers === 0) {
+      for (const id of VDITOR_RUNTIME_MARKERS) {
+        document.getElementById(id)?.remove();
+      }
+    }
+  };
 }

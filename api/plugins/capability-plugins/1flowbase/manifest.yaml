@@ -307,7 +307,7 @@ block_contributions:
           - path: "browser-assets/rich-text.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "873699d22f7785f6881af47196bf32f8b431ee87dd1b7fec406975355c90a3e8"
+            sha256: "03107adfaba52abb3ba465e33db57dcbc892f93439f8e99051c0a1d36291704b"
           - path: "browser-assets/rich-text.css"
             role: shadow_style
             media_type: "text/css; charset=utf-8"
