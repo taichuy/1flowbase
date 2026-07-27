@@ -42,13 +42,7 @@ export interface FrontendBlockPermissions {
   secrets: string;
 }
 
-export const FRONTEND_BLOCK_CODE_MODULE_SOURCES = [
-  '@1flowbase/block-sdk',
-  '@1flowbase/native-components'
-] as const;
-
-export type FrontendBlockCodeModuleSource =
-  (typeof FRONTEND_BLOCK_CODE_MODULE_SOURCES)[number];
+export type FrontendBlockCodeModuleSource = string;
 
 export interface FrontendBlockCodeModule {
   source: FrontendBlockCodeModuleSource;
@@ -105,9 +99,7 @@ export interface FrontendBlockManifestContribution extends FrontendBlockCodeCont
 export function createFrontendBlockCodeCapabilities(
   contribution: FrontendBlockCodeContribution
 ): FrontendBlockCodeCapabilities {
-  const modules = (contribution.code_modules ?? []).filter((codeModule) =>
-    FRONTEND_BLOCK_CODE_MODULE_SOURCES.includes(codeModule.source)
-  );
+  const modules = contribution.code_modules ?? [];
   return {
     template:
       contribution.code_template &&

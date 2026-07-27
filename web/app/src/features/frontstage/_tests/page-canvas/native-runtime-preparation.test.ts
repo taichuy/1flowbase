@@ -61,7 +61,13 @@ describe('FrontstagePageNativeModuleRegistryCache', () => {
   test('D3-AC-004 fetches a shared module once for multiple blocks with the same page lock', async () => {
     const cache = new FrontstagePageNativeModuleRegistryCache();
     const source = 'export const Widget = 1;';
-    const fetchAsset = vi.fn(async () => new Response(source, { status: 200 }));
+    const fetchAsset = vi.fn(
+      async () =>
+        new Response(source, {
+          status: 200,
+          headers: { 'content-type': 'text/javascript; charset=utf-8' }
+        })
+    );
     const createRegistry = vi.fn((lock: NativeReactCatalogDependencyLock) =>
       createNativeReactModuleRegistry({
         dependencyLock: lock,
@@ -73,10 +79,15 @@ describe('FrontstagePageNativeModuleRegistryCache', () => {
       {
         module_source: '@example/components',
         module_version: '1.0.0',
-        browser_asset: {
-          sha256: sha256Text(source),
-          url: `/api/console/frontstage/workspace-a/component-module-assets/${sha256Text(source)}`
-        },
+        binding: 'fetched' as const,
+        assets: [
+          {
+            role: 'browser_module' as const,
+            media_type: 'text/javascript; charset=utf-8',
+            sha256: sha256Text(source),
+            url: `/api/console/frontstage/workspace-a/component-module-assets/${sha256Text(source)}`
+          }
+        ],
         exports: ['Widget']
       }
     ];

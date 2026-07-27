@@ -47,18 +47,17 @@ describe('frontend block contract vocabulary', () => {
       ]
     });
   });
-  test('D4-AC-005 excludes the legacy facade from author code modules', () => {
+  test('projects every backend-registered module without a second frontend whitelist', () => {
     expect(
       createFrontendBlockCodeCapabilities({
         code_modules: [
           {
-            source: '@1flowbase/native-components',
-            type_declarations:
-              "declare module '@1flowbase/native-components' {}"
+            source: '@1flowbase/charts',
+            type_declarations: "declare module '@1flowbase/charts' {}"
           }
         ]
       }).allowedImports
-    ).toEqual(['@1flowbase/native-components']);
+    ).toEqual(['@1flowbase/charts']);
   });
   test('exports the backend-aligned manifest and catalog vocabularies', () => {
     expect(FRONTEND_BLOCK_RUNTIMES).toEqual(['native_react']);

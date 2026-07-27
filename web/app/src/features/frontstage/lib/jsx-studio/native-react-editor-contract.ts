@@ -3,18 +3,9 @@ import type { BlockSourceExtraLib } from '../../../../shared/code-block/extra-li
 export const FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS: readonly BlockSourceExtraLib[] =
   [
     {
-      source: 'react',
-      filePath: 'file:///node_modules/@types/react/index.d.ts',
-      content: `declare module 'react' {
-  export type CSSProperties = Record<string, string | number | undefined>;
-  export const Fragment: unique symbol;
-  export interface FormEvent<T = Element> { preventDefault(): void; currentTarget: T; }
-  export interface ChangeEvent<T = Element> { target: T; currentTarget: T; }
-  export function useState<T>(initial: T): [T, (next: T | ((current: T) => T)) => void];
-  export function useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void;
-}
-
-declare namespace JSX {
+      source: '@1flowbase/native-react-jsx',
+      filePath: 'file:///1flowbase/native-react-jsx.d.ts',
+      content: `declare namespace JSX {
   interface IntrinsicElements {
     [elementName: string]: Record<string, unknown>;
   }

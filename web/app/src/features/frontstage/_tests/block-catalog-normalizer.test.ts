@@ -102,10 +102,8 @@ describe('frontstage block catalog normalizer', () => {
           {
             source: '@1flowbase/native-components',
             version: '1.0.0',
-            browser_asset: {
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            },
+            binding: 'fetched',
+            assets: [browserAsset('a')],
             exports: ['Surface'],
             type_declarations:
               "declare module '@1flowbase/native-components' { export const Surface: import('react').ComponentType<SurfaceProps>; }"
@@ -118,10 +116,8 @@ describe('frontstage block catalog normalizer', () => {
       {
         source: '@1flowbase/native-components',
         version: '1.0.0',
-        browser_asset: {
-          sha256:
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-        },
+        binding: 'fetched',
+        assets: [browserAsset('a')],
         exports: ['Surface'],
         type_declarations: expect.stringContaining(
           "import('react').ComponentType<SurfaceProps>"
@@ -137,10 +133,8 @@ describe('frontstage block catalog normalizer', () => {
           {
             source: '@1flowbase/native-components',
             version: '1.0.0',
-            browser_asset: {
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            },
+            binding: 'fetched',
+            assets: [browserAsset('a')],
             exports: ['Surface'],
             type_declarations:
               "declare module '@1flowbase/native-components' { export const Surface: unknown; }"
@@ -159,11 +153,13 @@ describe('frontstage block catalog normalizer', () => {
         {
           module_source: '@1flowbase/native-components',
           module_version: '1.0.0',
-          browser_asset: {
-            sha256:
-              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-          },
+          binding: 'fetched',
+          assets: [
+            {
+              ...browserAsset('a'),
+              url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            }
+          ],
           exports: ['Surface']
         }
       ],
@@ -178,10 +174,8 @@ describe('frontstage block catalog normalizer', () => {
           {
             source: '@1flowbase/native-components',
             version: '1.0.0',
-            browser_asset: {
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            },
+            binding: 'fetched',
+            assets: [browserAsset('a')],
             type_declarations: ''
           }
         ] as unknown as FrontstageBlockCatalogEntry['code_modules']
@@ -281,3 +275,11 @@ describe('frontstage block catalog normalizer', () => {
     ).toEqual(['product_grid']);
   });
 });
+
+function browserAsset(digestCharacter: string) {
+  return {
+    role: 'browser_module' as const,
+    media_type: 'text/javascript; charset=utf-8',
+    sha256: digestCharacter.repeat(64)
+  };
+}

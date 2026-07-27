@@ -16,9 +16,12 @@ describe('Frontstage JSX editor projection', () => {
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ source: 'react' }),
+        expect.objectContaining({ source: '@1flowbase/native-react-jsx' }),
         expect.objectContaining({ source: '@1flowbase/native-react-context' })
       ])
+    );
+    expect(projection.monacoExtraLibs).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ source: 'react' })])
     );
     expect(projection.contextComment).toContain('@1flowbase-context');
     expect(projection.contextComment).not.toContain('interfaces:');
@@ -32,10 +35,15 @@ describe('Frontstage JSX editor projection', () => {
           {
             source: '@1flowbase/native-components',
             version: '1.0.0',
-            browser_asset: {
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            },
+            binding: 'fetched',
+            assets: [
+              {
+                role: 'browser_module',
+                media_type: 'text/javascript; charset=utf-8',
+                sha256:
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+              }
+            ],
             exports: ['Surface'],
             type_declarations:
               "declare module '@1flowbase/native-components' { export interface SurfaceProps extends import('react').HTMLAttributes<HTMLElement> {} export const Surface: import('react').ComponentType<SurfaceProps>; }"
@@ -55,8 +63,7 @@ describe('Frontstage JSX editor projection', () => {
     );
     expect(projection.monacoExtraLibs.at(-1)).toMatchObject({
       source: '@1flowbase/native-components',
-      filePath:
-        'file:///node_modules/@1flowbase/native-components/index.d.ts'
+      filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts'
     });
   });
 });

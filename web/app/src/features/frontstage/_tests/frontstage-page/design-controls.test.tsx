@@ -767,10 +767,15 @@ describe('FrontStagePage - design controls', () => {
           {
             source: '@1flowbase/native-components',
             version: '1.0.0',
-            browser_asset: {
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            },
+            binding: 'fetched',
+            assets: [
+              {
+                role: 'browser_module',
+                media_type: 'text/javascript; charset=utf-8',
+                sha256:
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+              }
+            ],
             exports: ['Surface'],
             type_declarations:
               "declare module '@1flowbase/native-components' { export const Surface: unknown; }"

@@ -1,10 +1,8 @@
 import { frontstageComponentModuleAssetPath } from '@1flowbase/api-client';
 import {
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES,
-  FRONTEND_BLOCK_CODE_MODULE_SOURCES,
   FRONTEND_BLOCK_RUNTIMES,
   FRONTEND_BLOCK_UI_CAPABILITIES,
-  type FrontendBlockCodeModuleSource,
   type FrontendBlockContextPrimitive,
   type FrontendBlockRuntime,
   type FrontendBlockUiCapability
@@ -59,9 +57,12 @@ export interface NormalizedFrontstageBlockContextContract {
 export interface NormalizedFrontstageBlockCodeModule {
   source: string;
   version: string;
-  browser_asset: {
+  binding: 'host' | 'fetched';
+  assets: Array<{
+    role: 'browser_module' | 'shadow_style' | 'support';
+    media_type: string;
     sha256: string;
-  };
+  }>;
   exports: string[];
   type_declarations: string;
 }
@@ -154,25 +155,17 @@ export function normalizeFrontstageBlockCatalog(
         field: 'code_modules',
         value: entry.contribution_code,
         message:
-          'Frontend block catalog code_modules must include source, version, browser_asset.sha256, exports, and type_declarations.'
+          'Frontend block catalog code_modules must include source, version, binding, digest-locked assets, exports, and type_declarations.'
       });
     }
     const codeCapabilities = createFrontendBlockCodeCapabilities({
       code_template: entry.code_template,
       code_template_version: entry.code_template_version,
       code_template_language: entry.code_template_language,
-      code_modules: (codeModules ?? []).flatMap((codeModule) =>
-        FRONTEND_BLOCK_CODE_MODULE_SOURCES.includes(
-          codeModule.source as FrontendBlockCodeModuleSource
-        )
-          ? [
-              {
-                source: codeModule.source as FrontendBlockCodeModuleSource,
-                type_declarations: codeModule.type_declarations
-              }
-            ]
-          : []
-      )
+      code_modules: (codeModules ?? []).map((codeModule) => ({
+        source: codeModule.source,
+        type_declarations: codeModule.type_declarations
+      }))
     });
     items.push({
       id: `${entry.provider_code}:${entry.contribution_code}`,
@@ -231,13 +224,11 @@ export function resolveFrontstageNativeDependencyLock({
     catalogEntry.codeModules.map((codeModule) => ({
       module_source: codeModule.source,
       module_version: codeModule.version,
-      browser_asset: {
-        sha256: codeModule.browser_asset.sha256,
-        url: frontstageComponentModuleAssetPath(
-          workspaceId,
-          codeModule.browser_asset.sha256
-        )
-      },
+      binding: codeModule.binding,
+      assets: codeModule.assets.map((asset) => ({
+        ...asset,
+        url: frontstageComponentModuleAssetPath(workspaceId, asset.sha256)
+      })),
       exports: codeModule.exports
     }))
   );
@@ -378,8 +369,8 @@ function normalizeCodeModules(
       !isRecord(item) ||
       !isNonEmptyString(item.source) ||
       !isNonEmptyString(item.version) ||
-      !isRecord(item.browser_asset) ||
-      !isSha256(item.browser_asset.sha256) ||
+      (item.binding !== 'host' && item.binding !== 'fetched') ||
+      !Array.isArray(item.assets) ||
       !Array.isArray(item.exports) ||
       item.exports.length === 0 ||
       !item.exports.every(isNonEmptyString) ||
@@ -388,15 +379,42 @@ function normalizeCodeModules(
     ) {
       return null;
     }
+    const assets = normalizeModuleAssets(item.assets);
+    if (!assets) return null;
     modules.push({
       source: item.source,
       version: item.version,
-      browser_asset: { sha256: item.browser_asset.sha256 },
+      binding: item.binding,
+      assets,
       exports: [...item.exports],
       type_declarations: item.type_declarations
     });
   }
   return modules;
+}
+
+function normalizeModuleAssets(
+  value: unknown[]
+): NormalizedFrontstageBlockCodeModule['assets'] | null {
+  const assets: NormalizedFrontstageBlockCodeModule['assets'] = [];
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      (item.role !== 'browser_module' &&
+        item.role !== 'shadow_style' &&
+        item.role !== 'support') ||
+      !isNonEmptyString(item.media_type) ||
+      !isSha256(item.sha256)
+    ) {
+      return null;
+    }
+    assets.push({
+      role: item.role,
+      media_type: item.media_type,
+      sha256: item.sha256
+    });
+  }
+  return assets;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -172,11 +172,16 @@ describe('JsBlockTrialPanel Native React run revision', () => {
       {
         module_source: '@1flowbase/native-components',
         module_version: '1.0.0',
-        browser_asset: {
-          sha256:
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-        },
+        binding: 'fetched',
+        assets: [
+          {
+            role: 'browser_module',
+            media_type: 'text/javascript; charset=utf-8',
+            sha256:
+              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          }
+        ],
         exports: ['Surface']
       }
     ];
@@ -394,9 +399,9 @@ describe('JsBlockTrialPanel Native React run revision', () => {
 
     view.unmount();
     expect(revokeDraftRun).toHaveBeenCalledTimes(2);
-    expect(new Set(revokeDraftRun.mock.calls.map(([runId]) => runId)).size).toBe(
-      2
-    );
+    expect(
+      new Set(revokeDraftRun.mock.calls.map(([runId]) => runId)).size
+    ).toBe(2);
   });
 
   test('D4-AC-006 rejects controlled legacy source before authorization or compilation', async () => {
