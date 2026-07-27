@@ -18,7 +18,10 @@ import {
   closeWindowWorkspaceEntry,
   type WindowWorkspaceRect
 } from '../ui/window-workspace/window-workspace-state';
-import { BlockSourceEditor } from './BlockSourceEditor';
+import {
+  BlockSourceEditor,
+  type BlockSourceEditorDiagnostic
+} from './BlockSourceEditor';
 import type { BlockSourceExtraLib } from './extra-lib';
 import {
   BlockStudioWorkspace,
@@ -31,7 +34,7 @@ import './block-source-studio.css';
 export interface BlockSourceStudioProps {
   contextComment: string;
   dirty: boolean;
-  editorFooter?: ReactNode;
+  editorDiagnostics?: readonly BlockSourceEditorDiagnostic[];
   editorNotice?: ReactNode;
   errorMessage?: string | null;
   extraLibs?: readonly BlockSourceExtraLib[];
@@ -75,7 +78,7 @@ export function BlockSourceStudio(props: BlockSourceStudioProps) {
 function BlockSourceStudioWindow({
   contextComment,
   dirty,
-  editorFooter,
+  editorDiagnostics = [],
   editorNotice,
   errorMessage,
   extraLibs = [],
@@ -254,6 +257,7 @@ function BlockSourceStudioWindow({
             <div className="frontstage-jsx-studio__monaco">
               <BlockSourceEditor
                 ariaLabel={i18nText('frontstage', 'auto.code')}
+                diagnostics={editorDiagnostics}
                 extraLibs={extraLibs}
                 height="100%"
                 path={path}
@@ -263,7 +267,6 @@ function BlockSourceStudioWindow({
                 onMount={onEditorMount}
               />
             </div>
-            {editorFooter}
           </main>
         }
       />

@@ -21,7 +21,6 @@ import {
   type FrontstageJsxInsertion
 } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
-import { BlockRuntimeDiagnostics } from '../BlockRuntimeDiagnostics';
 import {
   JsxStudioResourcePanel,
   type FrontstageJsxStudioSection
@@ -47,7 +46,6 @@ export interface FrontstageJsxStudioDrawerProps {
 export function FrontstageJsxStudioDrawer({
   block,
   catalogEntry,
-  diagnostics,
   initialSection,
   onClose,
   onSaveBlock,
@@ -91,21 +89,17 @@ export function FrontstageJsxStudioDrawer({
         [legacyDiagnostic]
       );
     }
-    const validation = validateNativeTrustedBlockSource(draft);
+    const validation = validateNativeTrustedBlockSource(draft, {
+      allowedImportSources: projection.allowedImportSources
+    });
     return validation.ok
       ? []
       : createJsBlockDiagnostics(
           { pageId, tabId, blockId: block.id },
           validation.errors
         );
-  }, [block.id, draft, pageId, tabId]);
+  }, [block.id, draft, pageId, projection.allowedImportSources, tabId]);
   const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
-  const selectedDiagnostics = [...diagnostics, ...compileDiagnostics].filter(
-    (diagnostic) =>
-      diagnostic.pageId === pageId &&
-      diagnostic.tabId === tabId &&
-      diagnostic.blockId === block.id
-  );
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
@@ -176,11 +170,7 @@ export function FrontstageJsxStudioDrawer({
       testId={`frontstage-jsx-studio-${block.codeRef}`}
       windowId={`frontstage-jsx-studio:${block.codeRef}`}
       editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
-      editorFooter={
-        <div className="frontstage-jsx-studio__problems">
-          <BlockRuntimeDiagnostics diagnostics={selectedDiagnostics} />
-        </div>
-      }
+      editorDiagnostics={compileDiagnostics}
       onChange={setDraft}
       onClose={onClose}
       onEditorMount={(editor) => {

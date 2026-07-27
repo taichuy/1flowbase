@@ -13,6 +13,7 @@ describe('Frontstage JSX editor projection', () => {
     });
 
     expect(projection.componentCatalogQuery).toBeNull();
+    expect([...projection.allowedImportSources]).toEqual([]);
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([
@@ -58,6 +59,9 @@ describe('Frontstage JSX editor projection', () => {
       installation_id: 'installation-1',
       contribution_code: 'frontstage.js-ui-block'
     });
+    expect([...projection.allowedImportSources]).toEqual([
+      '@1flowbase/native-components'
+    ]);
     expect(projection.monacoExtraLibs.at(-1)?.content).toContain(
       "import('react').ComponentType<SurfaceProps>"
     );

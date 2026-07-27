@@ -30,7 +30,8 @@ const interfaceCapabilitiesApi = vi.hoisted(() => ({
 }));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
-  setCompilerOptions: vi.fn()
+  setCompilerOptions: vi.fn(),
+  setModelMarkers: vi.fn()
 }));
 const monacoEditor = vi.hoisted(() => ({
   executeEdits: vi.fn(),
@@ -77,6 +78,8 @@ vi.mock('@monaco-editor/react', () => ({
     options?: { editContext?: boolean };
   }) => {
     const monaco = {
+      MarkerSeverity: { Error: 8 },
+      editor: { setModelMarkers: monacoHook.setModelMarkers },
       languages: {
         typescript: {
           JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
@@ -137,6 +140,24 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   permissions: { network: 'none', storage: 'none', secrets: 'none' },
   contextContract: { primitives: [], inputSchema: {} },
   uiCapabilities: ['configurable', 'data_binding'],
+  codeModules: [
+    {
+      source: '@1flowbase/native-components',
+      version: '1.0.0',
+      binding: 'fetched',
+      assets: [
+        {
+          role: 'browser_module',
+          media_type: 'text/javascript; charset=utf-8',
+          sha256:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        }
+      ],
+      exports: ['Button'],
+      type_declarations:
+        "declare module '@1flowbase/native-components' { export const Button: unknown; }"
+    }
+  ],
   codeCapabilities: {
     template: null,
     allowedImports: ['@1flowbase/native-components'],
@@ -346,6 +367,73 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(monacoHook.setCompilerOptions).toHaveBeenCalledWith(
       expect.objectContaining({ jsx: 'preserve' })
     );
+  });
+
+  test('R5-AC-001/002 uses Catalog imports for inline Monaco problems', async () => {
+    const model = {};
+    monacoEditor.getModel.mockReturnValue(model);
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: "import { Button } from '@1flowbase/native-components';",
+      draft: "import { Button } from '@1flowbase/native-components';",
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined)
+    });
+    const props = {
+      open: true,
+      initialSection: 'code' as const,
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      block,
+      catalogEntry,
+      diagnostics: [],
+      onClose: vi.fn(),
+      onSaveBlock: vi.fn()
+    };
+    const view = render(<FrontstageJsxStudioDrawer {...props} />);
+
+    expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
+      model,
+      expect.any(String),
+      []
+    );
+    expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
+
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: "import dayjs from 'dayjs';",
+      draft: "import dayjs from 'dayjs';",
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined)
+    });
+    view.rerender(<FrontstageJsxStudioDrawer {...props} />);
+
+    await waitFor(() =>
+      expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
+        model,
+        expect.any(String),
+        [
+          expect.objectContaining({
+            code: 'import_denied',
+            message: "Import source 'dayjs' is not allowed.",
+            startLineNumber: 1,
+            startColumn: 1
+          })
+        ]
+      )
+    );
+    expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
   });
 
   test('AC-005 submits snippet and import changes as one Monaco edit batch', () => {
@@ -574,6 +662,8 @@ export default { main } satisfies BlockModule;`;
       reset: vi.fn(),
       save
     });
+    const model = {};
+    monacoEditor.getModel.mockReturnValue(model);
 
     render(
       <FrontstageJsxStudioDrawer
@@ -594,9 +684,16 @@ export default { main } satisfies BlockModule;`;
     expect(screen.getByRole('textbox', { name: 'JSX source' })).toHaveValue(
       legacySource
     );
-    expect(
-      screen.getByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
-    ).toBeInTheDocument();
+    expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
+      model,
+      expect.any(String),
+      [
+        expect.objectContaining({
+          message: LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message
+        })
+      ]
+    );
+    expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     expect(save).not.toHaveBeenCalled();

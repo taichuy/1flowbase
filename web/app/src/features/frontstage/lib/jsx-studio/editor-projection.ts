@@ -4,6 +4,7 @@ import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from './native-react-editor-contract';
 
 export interface FrontstageJsxEditorProjection {
+  allowedImportSources: ReadonlySet<string>;
   componentCatalogQuery: {
     installation_id: string;
     contribution_code: string;
@@ -17,15 +18,19 @@ export function createFrontstageJsxEditorProjection({
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
 }): FrontstageJsxEditorProjection {
+  const codeModules = catalogEntry?.codeModules ?? [];
   const monacoExtraLibs = [
     ...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS,
-    ...(catalogEntry?.codeModules ?? []).map((codeModule) => ({
+    ...codeModules.map((codeModule) => ({
       source: codeModule.source,
       filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
       content: codeModule.type_declarations
     }))
   ];
   return {
+    allowedImportSources: new Set(
+      codeModules.map((codeModule) => codeModule.source)
+    ),
     componentCatalogQuery: catalogEntry
       ? {
           installation_id: catalogEntry.installationId,
