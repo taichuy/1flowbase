@@ -114,13 +114,13 @@ export function JsxStudioResourcePanel({
     );
   }
 
-  return runPanel ? (
-    <div className="frontstage-jsx-studio__resource-scroll">{runPanel}</div>
-  ) : (
-    <Empty
-      image={Empty.PRESENTED_IMAGE_SIMPLE}
-      description={i18nText('frontstage', 'auto.no_run_preview')}
-    />
+  return (
+    runPanel ?? (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={i18nText('frontstage', 'auto.no_run_preview')}
+      />
+    )
   );
 }
 

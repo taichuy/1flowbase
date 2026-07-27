@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
 
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
@@ -17,7 +17,10 @@ import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-m
 import type { FrontstagePageContent } from '../api/page-content';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
-import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
+import {
+  JsBlockTrialPanel,
+  type NativeTrialBlockContextInput
+} from '../components/JsBlockTrialPanel';
 import {
   PageCanvas,
   type FrontstagePageCanvasRuntimeContext
@@ -39,6 +42,7 @@ import {
 import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
+import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
 import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
@@ -146,9 +150,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState<FrontstagePageContent | null>(null);
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
-  const [nativeRuntimeDiagnostics, setNativeRuntimeDiagnostics] = useState<
-    BlockRuntimeDiagnostic[]
-  >([]);
   const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(() =>
     normalizePageTree(initialPageTree ?? [])
   );
@@ -226,22 +227,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                 path: observation.path,
                 durationMs: observation.durationMs,
                 error: observation.error
-              }),
-            reportDiagnostic: (diagnostic) =>
-              setNativeRuntimeDiagnostics((current) => [
-                ...current.filter(
-                  (item) =>
-                    item.blockId !== diagnostic.blockId ||
-                    item.phase !== diagnostic.phase ||
-                    item.message !== diagnostic.message
-                ),
-                diagnostic
-              ])
+              })
           }
         : undefined,
     [actor?.id, jsBlockCapabilityHandlers, selectedPageId, tabId, workspaceId]
   );
-  useEffect(() => setNativeRuntimeDiagnostics([]), [selectedPageId, tabId]);
   const activePageRenderPlan = useMemo(
     () =>
       displayedPageDocument
@@ -317,6 +307,42 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     }),
     [actor, me?.name, me?.nickname, me?.preferred_locale, workspaceId]
   );
+  const createTrialBlockContext = useMemo(() => {
+    if (!jsBlockCapabilityHandlers || !selectedPageId || !tabId) {
+      return undefined;
+    }
+    return (input: NativeTrialBlockContextInput) => {
+      const unavailable = createFrontstageUnavailableBlockContext(input.plan);
+      const capabilities = createNativeBlockContextCapabilities({
+        requestId: input.requestId,
+        instanceEpoch: input.instanceEpoch,
+        isCurrentInstance: input.isCurrentInstance,
+        interfaceHandler: jsBlockCapabilityHandlers.interface,
+        outputs: unavailable.outputs,
+        observeApiCall: input.observeApiCall
+      });
+      return {
+        ...unavailable,
+        ...nativeBlockRuntimeContext,
+        page: {
+          id: selectedPageId,
+          route: activePageContent?.tab.routeSegment ?? selectedPageId,
+          ...(activePageContent?.page.title
+            ? { title: activePageContent.page.title }
+            : {})
+        },
+        ...capabilities,
+        props: { ...input.plan.props }
+      };
+    };
+  }, [
+    activePageContent?.page.title,
+    activePageContent?.tab.routeSegment,
+    jsBlockCapabilityHandlers,
+    nativeBlockRuntimeContext,
+    selectedPageId,
+    tabId
+  ]);
   const blockCompositionState = useMemo(
     () =>
       displayedPageDocument
@@ -1359,7 +1385,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             block={selectedBlock}
             pageBlocks={displayedPageDocument?.blocks}
             catalogEntry={matchingJsBlockCatalogEntry}
-            diagnostics={nativeRuntimeDiagnostics}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
             runPanel={({ code, runRevision }) =>
@@ -1368,6 +1393,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   block={selectedBlock}
                   catalogEntry={matchingJsBlockCatalogEntry}
                   code={code}
+                  createBlockContext={createTrialBlockContext}
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
                   nativeDependencyLock={

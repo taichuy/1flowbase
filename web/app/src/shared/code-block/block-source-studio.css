@@ -335,7 +335,7 @@ body.frontstage-js-block-preview-console--resizing {
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -379,13 +379,6 @@ body.frontstage-js-block-preview-console--resizing {
 
 .frontstage-jsx-studio__monaco {
   min-height: 0;
-}
-
-.frontstage-jsx-studio__problems {
-  max-height: 160px;
-  overflow: auto;
-  border-top: 1px solid var(--border-default, #d5ddd8);
-  padding: 8px 12px;
 }
 
 .frontstage-jsx-studio__status {

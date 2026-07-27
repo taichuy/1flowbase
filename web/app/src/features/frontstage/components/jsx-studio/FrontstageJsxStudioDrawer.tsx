@@ -1,5 +1,4 @@
 import type { OnMount } from '@monaco-editor/react';
-import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
   diagnoseLegacyBlockModuleSource,
@@ -35,7 +34,6 @@ export interface FrontstageJsxStudioDrawerProps {
   block: FrontstageBlockInstance;
   pageBlocks?: readonly FrontstageBlockInstance[];
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
-  diagnostics: BlockRuntimeDiagnostic[];
   runPanel?:
     | ReactNode
     | ((context: { code: string; runRevision: number | null }) => ReactNode);
@@ -84,10 +82,9 @@ export function FrontstageJsxStudioDrawer({
     if (!tabId || draft.trim().length === 0) return [];
     const legacyDiagnostic = diagnoseLegacyBlockModuleSource(draft);
     if (legacyDiagnostic) {
-      return createJsBlockDiagnostics(
-        { pageId, tabId, blockId: block.id },
-        [legacyDiagnostic]
-      );
+      return createJsBlockDiagnostics({ pageId, tabId, blockId: block.id }, [
+        legacyDiagnostic
+      ]);
     }
     const validation = validateNativeTrustedBlockSource(draft, {
       allowedImportSources: projection.allowedImportSources

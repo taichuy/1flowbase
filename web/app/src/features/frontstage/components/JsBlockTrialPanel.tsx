@@ -6,6 +6,7 @@ import {
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
   type NativeReactCatalogDependencyLock,
+  type NativeBlockContextApiCallObservation,
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
@@ -26,6 +27,7 @@ import {
 } from '../lib/native-trusted-block-react-adapter';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../lib/page-document';
+import { JsBlockPreviewConsole } from './JsBlockPreviewConsole';
 
 type NativeTrialDiagnostic =
   | NativeReactCompileDiagnostic
@@ -65,6 +67,7 @@ export interface NativeTrialBlockContextInput {
   instanceEpoch: string;
   plan: NativeTrustedBlockPreparePlan;
   isCurrentInstance(): boolean;
+  observeApiCall(observation: NativeBlockContextApiCallObservation): void;
 }
 
 export interface JsBlockTrialPanelProps {
@@ -112,6 +115,17 @@ export function JsBlockTrialPanel({
   const onRevokeDraftRunRef = useRef(onRevokeDraftRun);
   onRevokeDraftRunRef.current = onRevokeDraftRun;
   const [snapshot, setSnapshot] = useState<NativeTrialSnapshot | null>(null);
+  const [apiCalls, setApiCalls] = useState<
+    NativeBlockContextApiCallObservation[]
+  >([]);
+
+  const observeApiCall = useCallback(
+    (observation: NativeBlockContextApiCallObservation) => {
+      if (activeRunRef.current?.requestId !== observation.requestId) return;
+      setApiCalls((current) => [...current, observation]);
+    },
+    []
+  );
 
   const disposeActiveRun = useCallback(() => {
     const active = activeRunRef.current;
@@ -145,6 +159,7 @@ export function JsBlockTrialPanel({
         requestId
       };
       activeRunRef.current = activeRun;
+      setApiCalls([]);
       setSnapshot({
         status: 'compiling',
         requestId,
@@ -249,7 +264,8 @@ export function JsBlockTrialPanel({
           requestId,
           instanceEpoch,
           plan,
-          isCurrentInstance: () => activeRunRef.current === activeRun
+          isCurrentInstance: () => activeRunRef.current === activeRun,
+          observeApiCall
         }) ?? createFrontstageUnavailableBlockContext(plan);
       setSnapshot({
         status: 'ready',
@@ -269,7 +285,8 @@ export function JsBlockTrialPanel({
       nativeCompilerWorkerFactory,
       nativeDependencyLock,
       nativeDependencyLockError,
-      nativeModuleRegistryFactory
+      nativeModuleRegistryFactory,
+      observeApiCall
     ]
   );
 
@@ -334,7 +351,6 @@ export function JsBlockTrialPanel({
           type="error"
           showIcon
           message={i18nText('frontstage', 'auto.run_failed')}
-          description={snapshot?.diagnostics[0]?.message}
           action={
             <Button size="small" onClick={() => void retry()}>
               {i18nText('frontstage', 'auto.retry')}
@@ -344,7 +360,15 @@ export function JsBlockTrialPanel({
       ) : null}
     </Space>
   );
-  return preview;
+  return (
+    <JsBlockPreviewConsole
+      preview={preview}
+      snapshot={{
+        diagnostics: snapshot?.diagnostics ?? [],
+        apiCalls
+      }}
+    />
+  );
 }
 
 function confirmWriteRun(): Promise<boolean> {

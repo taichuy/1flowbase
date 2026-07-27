@@ -272,7 +272,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={onSaveBlock}
       />
@@ -317,7 +316,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
@@ -358,7 +356,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
@@ -392,7 +389,6 @@ describe('FrontstageJsxStudioDrawer', () => {
       tabId: 'tab-1',
       block,
       catalogEntry,
-      diagnostics: [],
       onClose: vi.fn(),
       onSaveBlock: vi.fn()
     };
@@ -496,7 +492,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
@@ -521,7 +516,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={onSaveBlock}
       />
@@ -552,7 +546,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         block={block}
         pageBlocks={[block]}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={onSaveBlock}
       />
@@ -592,7 +585,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         runPanel={({ code, runRevision }) => (
           <div>{`Preview ${runRevision ?? 'idle'}: ${code}`}</div>
         )}
@@ -674,7 +666,6 @@ export default { main } satisfies BlockModule;`;
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         runPanel={runPanel}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}

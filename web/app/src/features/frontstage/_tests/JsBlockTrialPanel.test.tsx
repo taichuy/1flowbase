@@ -211,7 +211,7 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Frontend block catalog dependency metadata is incomplete for this block.'
+        /Frontend block catalog dependency metadata is incomplete for this block\./u
       )
     ).toBeInTheDocument();
     expect(compiler).not.toHaveBeenCalled();
@@ -255,7 +255,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     );
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
-    expect(screen.getByText('Malformed TSX')).toBeInTheDocument();
+    expect(screen.getByText(/Malformed TSX/u)).toBeInTheDocument();
+    expect(screen.getByTestId('js-block-preview-console')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/u }));
 
     await waitFor(() => expect(compiler).toHaveBeenCalledTimes(2));
@@ -404,6 +405,53 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     ).toBe(2);
   });
 
+  test('R5-AC-003 renders scoped API observations below the Preview', async () => {
+    render(
+      <JsBlockTrialPanel
+        block={block}
+        catalogEntry={catalog}
+        code={source('api-observation')}
+        revision="run:api-observation"
+        nativeCompiler={createCompiler()}
+        createBlockContext={({
+          instanceEpoch,
+          observeApiCall,
+          plan,
+          requestId
+        }) => {
+          observeApiCall({
+            capability: 'api',
+            requestId,
+            instanceEpoch,
+            callId: `${requestId}:call-1`,
+            method: 'GET',
+            path: '/api/console/example',
+            status: 'pending',
+            durationMs: 0
+          });
+          observeApiCall({
+            capability: 'api',
+            requestId,
+            instanceEpoch,
+            callId: `${requestId}:call-1`,
+            method: 'GET',
+            path: '/api/console/example',
+            status: 'succeeded',
+            durationMs: 12
+          });
+          return createFrontstageUnavailableBlockContext(plan);
+        }}
+      />
+    );
+
+    expect(
+      await screen.findByText('[api/pending] GET /api/console/example')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('[api/succeeded] GET /api/console/example 12ms')
+    ).toBeInTheDocument();
+  });
+
   test('D4-AC-006 rejects controlled legacy source before authorization or compilation', async () => {
     const legacySource = `async function main(ctx) { return { view: null, outputs: {} }; }
 export default { main } satisfies BlockModule;`;
@@ -421,7 +469,9 @@ export default { main } satisfies BlockModule;`;
     );
 
     expect(
-      await screen.findByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
+      await screen.findByText((content) =>
+        content.includes(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
+      )
     ).toBeInTheDocument();
     expect(compiler).not.toHaveBeenCalled();
     expect(prepareDraftRun).not.toHaveBeenCalled();
