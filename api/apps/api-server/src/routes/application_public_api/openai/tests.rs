@@ -115,6 +115,99 @@ fn d2_ac_001_openai_malformed_json_uses_the_endpoint_protocol_and_safe_receipt()
 }
 
 #[test]
+fn openai_chat_ingress_builds_one_safe_query_header_and_body_protocol_context() {
+    let mut headers = HeaderMap::new();
+    headers.append("openai-organization", "org-one".parse().unwrap());
+    headers.append("openai-organization", "org-two".parse().unwrap());
+    headers.insert("authorization", "Bearer platform-key".parse().unwrap());
+    headers.insert("cookie", "session=secret".parse().unwrap());
+    headers.insert("host", "api.example.test".parse().unwrap());
+    headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
+    headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
+    let translated = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "future_chat_option": {"shape": "opaque"},
+        "authorization": "body-secret",
+        "__native_transport": {"must_not_cross": true}
+    }))
+    .expect("safe Chat residual fixture should translate");
+
+    let envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiChat,
+        Some("preview=one&preview=two&x_api_key=query-secret&__native_transport=internal"),
+        &headers,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Chat ingress context should produce one envelope");
+
+    assert_eq!(envelope.source_protocol, "openai_chat");
+    assert_eq!(
+        envelope.headers["openai-organization"],
+        vec!["org-one", "org-two"]
+    );
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
+    assert_eq!(envelope.body["future_chat_option"]["shape"], "opaque");
+    for stripped in [
+        "authorization",
+        "cookie",
+        "host",
+        "connection",
+        "x-hop-secret",
+    ] {
+        assert!(!envelope.headers.contains_key(stripped), "{stripped}");
+    }
+    for stripped in ["x_api_key", "__native_transport"] {
+        assert!(!envelope.query.contains_key(stripped), "{stripped}");
+    }
+    for stripped in ["model", "messages", "authorization", "__native_transport"] {
+        assert!(!envelope.body.contains_key(stripped), "{stripped}");
+    }
+}
+
+#[test]
+fn openai_responses_ingress_subtracts_typed_codex_header_and_body_semantics() {
+    let mut headers = HeaderMap::new();
+    headers.insert("openai-project", "project-one".parse().unwrap());
+    headers.insert(
+        "x-codex-turn-metadata",
+        r#"{"compaction":{"implementation":"responses_compact"}}"#
+            .parse()
+            .unwrap(),
+    );
+    headers.insert("x-api-key", "platform-key".parse().unwrap());
+    let translated = translate_response_request_with_context_and_previous(
+        json!({
+            "model": "gpt-compatible",
+            "input": "hello",
+            "stream": true,
+            "future_responses_option": {"shape": "opaque"}
+        }),
+        OpenAiResponsesRequestContext::responses(),
+        None,
+    )
+    .expect("safe Responses residual fixture should translate");
+
+    let envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        Some("preview=one&preview=two"),
+        &headers,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Responses ingress context should produce one envelope");
+
+    assert_eq!(envelope.source_protocol, "openai_responses");
+    assert_eq!(envelope.headers["openai-project"], vec!["project-one"]);
+    assert!(!envelope.headers.contains_key("x-codex-turn-metadata"));
+    assert!(!envelope.headers.contains_key("x-api-key"));
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
+    assert_eq!(envelope.body["future_responses_option"]["shape"], "opaque");
+    for typed in ["model", "input", "stream"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
+}
+
+#[test]
 fn openai_response_projects_native_tool_calls() {
     let callback_task_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
     let run = NativeRunResult {

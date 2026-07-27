@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Bytes,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,7 +13,8 @@ use control_plane::application_public_api::{
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
-        capture_client_protocol_envelope, merge_anthropic_messages_envelopes,
+        capture_client_protocol_envelope, capture_client_protocol_query,
+        merge_anthropic_messages_envelopes, merge_client_protocol_envelopes,
         ClientProtocolIngressPolicy,
     },
     compat::anthropic::{translate_messages_request, AnthropicCompatError},
@@ -29,7 +30,7 @@ use control_plane::application_public_api::{
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use domain::AiNativeOperation;
 use orchestration_runtime::execution_state::NativeOperationTerminal;
-use plugin_framework::provider_contract::ClientProtocolEnvelope;
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tracing::debug;
@@ -159,6 +160,7 @@ pub struct AnthropicCountTokensResponse {
 pub async fn create_message(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
@@ -210,8 +212,9 @@ pub async fn create_message(
     let translated = translate_messages_request(value)?;
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = merge_anthropic_messages_envelopes(
-        anthropic_client_protocol_envelope_from_headers(&headers),
+    request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
+        uri.query(),
+        &headers,
         request.client_protocol_envelope,
     );
     let model = request.model.clone().unwrap_or(model);
@@ -249,14 +252,16 @@ pub async fn create_message(
 pub async fn count_message_tokens(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     merge_claude_code_session_header(&mut value, &headers);
     let mut translation = translate_messages_request(value)?;
-    translation.request.client_protocol_envelope = merge_anthropic_messages_envelopes(
-        anthropic_client_protocol_envelope_from_headers(&headers),
+    translation.request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
+        uri.query(),
+        &headers,
         translation.request.client_protocol_envelope,
     );
     translation
@@ -336,15 +341,26 @@ fn merge_claude_code_session_header(value: &mut Value, headers: &HeaderMap) {
         .or_insert_with(|| Value::String(session_id.to_string()));
 }
 
-fn anthropic_client_protocol_envelope_from_headers(
+fn anthropic_protocol_context_from_ingress(
+    raw_query: Option<&str>,
     headers: &HeaderMap,
-) -> Option<ClientProtocolEnvelope> {
-    capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::AnthropicMessages,
-        headers
-            .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
-    )
+    translated: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
+    let policy = ClientProtocolIngressPolicy::AnthropicMessages;
+    let captured = merge_client_protocol_envelopes(
+        policy,
+        capture_client_protocol_envelope(
+            policy,
+            headers.iter().filter_map(|(name, value)| {
+                value.to_str().ok().map(|value| (name.as_str(), value))
+            }),
+        ),
+        capture_client_protocol_query(
+            policy,
+            form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
+        ),
+    );
+    merge_anthropic_messages_envelopes(captured, translated)
 }
 
 async fn create_native_run(

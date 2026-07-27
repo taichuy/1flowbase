@@ -298,37 +298,68 @@ fn claude_code_session_header_fills_missing_metadata_session_id() {
 }
 
 #[test]
-fn anthropic_ingress_captures_client_protocol_envelope_from_headers() {
+fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     let mut headers = HeaderMap::new();
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("anthropic-beta", "prompt-caching".parse().unwrap());
+    headers.append("anthropic-beta", "private-beta".parse().unwrap());
     headers.insert(
         "x-claude-code-session-id",
         "header-session-123".parse().unwrap(),
     );
     headers.insert("authorization", "Bearer platform-key".parse().unwrap());
+    headers.insert("cookie", "session=secret".parse().unwrap());
+    headers.insert("host", "api.example.test".parse().unwrap());
     headers.insert("content-length", "42".parse().unwrap());
+    headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
+    headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
+    let translated = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
+        "future_anthropic_option": {"shape": "opaque"},
+        "authorization": "body-secret",
+        "__native_transport": {"must_not_cross": true}
+    }))
+    .expect("safe Anthropic residual fixture should translate");
 
-    let envelope = anthropic_client_protocol_envelope_from_headers(&headers)
-        .expect("anthropic headers should produce client protocol envelope");
+    let envelope = anthropic_protocol_context_from_ingress(
+        Some("preview=one&preview=two&authorization=query-secret&__native_transport=internal"),
+        &headers,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Anthropic ingress context should produce one envelope");
 
     assert_eq!(envelope.source_protocol, "anthropic_messages");
+    assert_eq!(envelope.headers["anthropic-version"], vec!["2023-06-01"]);
     assert_eq!(
-        envelope
-            .headers
-            .get("anthropic-version")
-            .map(String::as_str),
-        Some("2023-06-01")
+        envelope.headers["anthropic-beta"],
+        vec!["prompt-caching", "private-beta"]
     );
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
     assert_eq!(
-        envelope
-            .headers
-            .get("x-claude-code-session-id")
-            .map(String::as_str),
-        Some("header-session-123")
+        envelope.body["context_management"]["edits"][0]["type"],
+        "clear_thinking_20251015"
     );
-    assert!(!envelope.headers.contains_key("authorization"));
-    assert!(!envelope.headers.contains_key("content-length"));
+    assert_eq!(envelope.body["future_anthropic_option"]["shape"], "opaque");
+    for stripped in [
+        "x-claude-code-session-id",
+        "authorization",
+        "cookie",
+        "host",
+        "content-length",
+        "connection",
+        "x-hop-secret",
+    ] {
+        assert!(!envelope.headers.contains_key(stripped), "{stripped}");
+    }
+    for stripped in ["authorization", "__native_transport"] {
+        assert!(!envelope.query.contains_key(stripped), "{stripped}");
+        assert!(!envelope.body.contains_key(stripped), "{stripped}");
+    }
+    for typed in ["model", "messages"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
 }
 
 #[test]

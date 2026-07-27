@@ -654,16 +654,49 @@ fn d2_ac_001_openai_trimmed_user_is_recorded_as_normalized() {
 }
 
 #[test]
-fn d2_ac_001_chat_unknown_field_is_rejected_with_a_safe_receipt() {
+fn d2_ac_001_chat_unknown_field_is_preserved_in_one_safe_protocol_residual() {
     let mut request = base_request();
     request["unmapped_top_level_option"] = json!(true);
 
-    let error = translate_chat_completion_request(request)
-        .expect_err("unknown Chat field must not be silently dropped");
+    let translated = translate_chat_completion_request(request)
+        .expect("safe unknown Chat roots should stay protocol-authentic");
 
-    assert!(error
+    assert!(translated
         .report
-        .has_decision("$.<unknown>[0]", TranslationDecisionKind::Rejected));
+        .has_decision("$.<unknown>[0]", TranslationDecisionKind::Exact));
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Chat root should create a protocol residual");
+    assert_eq!(envelope.source_protocol, "openai_chat");
+    assert_eq!(envelope.body["unmapped_top_level_option"], true);
+    for typed in ["model", "messages", "max_tokens"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
+}
+
+#[test]
+fn openai_responses_unknown_root_is_residual_without_duplicating_typed_roots() {
+    let translated = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": "hello",
+        "stream": true,
+        "future_responses_extension": {"shape": "opaque"}
+    }))
+    .expect("safe unknown Responses root should stay protocol-authentic");
+
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Responses root should create a protocol residual");
+    assert_eq!(envelope.source_protocol, "openai_responses");
+    assert_eq!(
+        envelope.body["future_responses_extension"]["shape"],
+        "opaque"
+    );
+    for typed in ["model", "input", "stream"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
 }
 
 #[test]
@@ -1005,17 +1038,17 @@ fn d2_f1_openai_nested_failures_reject_the_messages_and_input_containers() {
 }
 
 #[test]
-fn d2_f1_openai_unknown_defined_keys_are_anonymous_and_complete() {
+fn d2_f1_openai_unknown_defined_keys_are_anonymous_and_preserved_as_residuals() {
     let alpha = "D2-F1-OPENAI-UNKNOWN-KEY-ALPHA";
     let beta = "D2-F1-OPENAI-UNKNOWN-KEY-BETA";
-    let error = translate_chat_completion_request(json!({
+    let translated = translate_chat_completion_request(json!({
         "model": "gpt-compatible",
         "messages": [{"role": "user", "content": "hello"}],
         alpha: true,
         beta: false
     }))
-    .expect_err("unknown Chat keys must not become receipt content");
-    let unknown_paths = error
+    .expect("safe unknown Chat roots should remain protocol-authentic residuals");
+    let unknown_paths = translated
         .report
         .decisions
         .iter()
@@ -1023,9 +1056,21 @@ fn d2_f1_openai_unknown_defined_keys_are_anonymous_and_complete() {
         .map(|decision| decision.source_path.as_str())
         .collect::<Vec<_>>();
     assert_eq!(unknown_paths, ["$.<unknown>[0]", "$.<unknown>[1]"]);
-    let serialized = serde_json::to_string(&error.report).expect("receipt serializes");
+    assert!(translated
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path.starts_with("$.<unknown>"))
+        .all(|decision| decision.kind == TranslationDecisionKind::Exact));
+    let serialized = serde_json::to_string(&translated.report).expect("receipt serializes");
     assert!(!serialized.contains(alpha));
     assert!(!serialized.contains(beta));
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Chat roots should create one residual envelope");
+    assert_eq!(envelope.body[alpha], true);
+    assert_eq!(envelope.body[beta], false);
 }
 
 #[test]

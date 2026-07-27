@@ -5,7 +5,9 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
-use crate::application_public_api::client_protocol_envelope::ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE;
+use crate::application_public_api::client_protocol_envelope::{
+    protocol_context_field_is_safe, ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE,
+};
 use crate::application_public_api::native::{NativeObject, NativeRunRequest};
 use crate::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
@@ -29,6 +31,26 @@ const CLAUDE_CODE_COMPACT_TRANSCRIPT_MARKER: &str =
 const CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER: &str = "Generate a concise, sentence-case title";
 const CLAUDE_CODE_SESSION_TITLE_JSON_MARKER: &str = "Return JSON with a single \"title\" field";
 const ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX: &str = "[1m]";
+const ANTHROPIC_TYPED_ROOT_FIELDS: &[&str] = &[
+    "model",
+    "messages",
+    "max_tokens",
+    "system",
+    "stream",
+    "metadata",
+    "tools",
+    "tool_choice",
+    "container",
+    "mcp_servers",
+    "thinking",
+    "output_config",
+    "service_tier",
+    "temperature",
+    "top_k",
+    "top_p",
+    "stop_sequences",
+    "stream_options",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnthropicCompatError {
@@ -80,7 +102,7 @@ mod request_translation;
 
 pub use request_translation::translate_messages_request;
 
-fn reject_unknown_anthropic_fields(
+fn validate_anthropic_root_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), AnthropicCompatError> {
@@ -107,44 +129,30 @@ fn reject_unknown_anthropic_fields(
         );
         return Err(AnthropicCompatError::unsupported(field).with_report(report.clone()));
     }
-    let unknown_fields = object
+    let mut residual_fields = object
         .keys()
         .filter(|field| {
-            !matches!(
-                field.as_str(),
-                "model"
-                    | "messages"
-                    | "max_tokens"
-                    | "system"
-                    | "stream"
-                    | "metadata"
-                    | "context_management"
-                    | "tools"
-                    | "tool_choice"
-                    | "container"
-                    | "mcp_servers"
-                    | "thinking"
-                    | "output_config"
-                    | "service_tier"
-                    | "temperature"
-                    | "top_k"
-                    | "top_p"
-                    | "stop_sequences"
-                    | "stream_options"
-            )
+            field.as_str() != "context_management"
+                && !ANTHROPIC_TYPED_ROOT_FIELDS.contains(&field.as_str())
         })
         .collect::<Vec<_>>();
-    if report.record_anonymous_unknown_fields(
-        "$",
-        unknown_fields,
-        TranslationDecisionKind::Rejected,
-        "unknown Anthropic Messages field",
-        TranslationSafeRepresentation::Present,
-    ) > 0
-    {
-        return Err(
-            AnthropicCompatError::invalid("unknown Anthropic Messages field")
-                .with_report(report.clone()),
+    residual_fields.sort_unstable();
+    for (index, field) in residual_fields.into_iter().enumerate() {
+        let retained = protocol_context_field_is_safe(field);
+        report.record(
+            &format!("$.<unknown>[{index}]"),
+            None,
+            if retained {
+                TranslationDecisionKind::Exact
+            } else {
+                TranslationDecisionKind::Dropped
+            },
+            Some(if retained {
+                "preserved in the Anthropic protocol context residual"
+            } else {
+                "credential, transport, or internal fields cannot enter protocol context"
+            }),
+            TranslationSafeRepresentation::Redacted,
         );
     }
     Ok(())
@@ -183,10 +191,10 @@ fn record_anthropic_context_management_decision(
     }
     report.record(
         "$.context_management",
-        None,
-        TranslationDecisionKind::Dropped,
-        Some("Native retains the complete supplied message history"),
-        TranslationSafeRepresentation::Present,
+        Some("$.client_protocol_envelope.body.context_management"),
+        TranslationDecisionKind::Exact,
+        Some("preserved only for matching Anthropic protocol projection"),
+        TranslationSafeRepresentation::Redacted,
     );
     Ok(())
 }
@@ -1582,7 +1590,7 @@ fn anthropic_reasoning(
     Option<crate::application_public_api::native::NativeReasoningParameters>,
     AnthropicCompatError,
 > {
-    let mut enabled = true;
+    let mut mode = crate::application_public_api::native::NativeReasoningMode::Enabled;
     let mut budget_tokens = None;
     let mut has_reasoning = false;
     if let Some(value) = object.get("thinking") {
@@ -1631,9 +1639,10 @@ fn anthropic_reasoning(
                     },
                 )
             })?;
-        enabled = match thinking_type {
-            "adaptive" | "enabled" => true,
-            "disabled" => false,
+        mode = match thinking_type {
+            "adaptive" => crate::application_public_api::native::NativeReasoningMode::Adaptive,
+            "enabled" => crate::application_public_api::native::NativeReasoningMode::Enabled,
+            "disabled" => crate::application_public_api::native::NativeReasoningMode::Disabled,
             _ => {
                 return Err(reject_anthropic_nested_field(
                     report,
@@ -1776,8 +1785,8 @@ fn anthropic_reasoning(
         return Ok(None);
     }
     Ok(Some(
-        crate::application_public_api::native::NativeReasoningParameters::with_enabled_budget_and_effort(
-            enabled,
+        crate::application_public_api::native::NativeReasoningParameters::with_mode_budget_and_effort(
+            mode,
             budget_tokens,
             effort.as_deref(),
         ),

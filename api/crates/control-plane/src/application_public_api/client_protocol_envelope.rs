@@ -1,155 +1,350 @@
-use plugin_framework::provider_contract::ClientProtocolEnvelope;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
+use serde_json::{Map, Value};
 
 pub const ANTHROPIC_BETA_HEADER_NAME: &str = "anthropic-beta";
 pub const ANTHROPIC_CONTEXT_1M_BETA_HEADER_VALUE: &str = "context-1m-2025-08-07";
 const ANTHROPIC_MESSAGES_SOURCE_PROTOCOL: &str = "anthropic_messages";
-const ANTHROPIC_MESSAGES_POLICY: &str = "anthropic_messages_v1";
+const OPENAI_CHAT_SOURCE_PROTOCOL: &str = "openai_chat";
+const OPENAI_RESPONSES_SOURCE_PROTOCOL: &str = "openai_responses";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientProtocolIngressPolicy {
     AnthropicMessages,
-    DefaultDeny,
+    OpenAiChat,
+    OpenAiResponses,
+}
+
+impl ClientProtocolIngressPolicy {
+    fn source_protocol(self) -> &'static str {
+        match self {
+            Self::AnthropicMessages => ANTHROPIC_MESSAGES_SOURCE_PROTOCOL,
+            Self::OpenAiChat => OPENAI_CHAT_SOURCE_PROTOCOL,
+            Self::OpenAiResponses => OPENAI_RESPONSES_SOURCE_PROTOCOL,
+        }
+    }
 }
 
 pub fn capture_client_protocol_envelope<I, N, V>(
     policy: ClientProtocolIngressPolicy,
     headers: I,
-) -> Option<ClientProtocolEnvelope>
+) -> Option<ProtocolContextEnvelope>
 where
     I: IntoIterator<Item = (N, V)>,
     N: AsRef<str>,
     V: AsRef<str>,
 {
-    let policy_spec = match policy {
-        ClientProtocolIngressPolicy::AnthropicMessages => anthropic_messages_policy(),
-        ClientProtocolIngressPolicy::DefaultDeny => return None,
-    };
+    let headers = headers
+        .into_iter()
+        .map(|(name, value)| (name.as_ref().to_string(), value.as_ref().to_string()))
+        .collect::<Vec<_>>();
+    let connection_headers = headers
+        .iter()
+        .filter(|(name, _)| name.trim().eq_ignore_ascii_case("connection"))
+        .flat_map(|(_, value)| value.split(','))
+        .map(|name| name.trim().to_ascii_lowercase())
+        .filter(|name| !name.is_empty())
+        .collect::<BTreeSet<_>>();
     let mut captured = BTreeMap::new();
 
     for (name, value) in headers {
-        let header_name = name.as_ref().trim().to_ascii_lowercase();
+        let header_name = name.trim().to_ascii_lowercase();
         if header_name.is_empty()
-            || blocked_header(&header_name)
-            || !policy_spec.allowed_headers.contains(&header_name.as_str())
+            || blocked_header(policy, &header_name)
+            || connection_headers.contains(&header_name)
         {
             continue;
         }
-        let header_value = value.as_ref().trim();
-        if header_value.is_empty() {
-            continue;
-        }
-        captured.insert(header_name, header_value.to_string());
+        captured
+            .entry(header_name)
+            .or_insert_with(Vec::new)
+            .push(value);
     }
 
-    (!captured.is_empty()).then(|| ClientProtocolEnvelope {
-        source_protocol: policy_spec.source_protocol.to_string(),
-        policy: policy_spec.policy.to_string(),
-        headers: captured,
-    })
+    protocol_context(policy, BTreeMap::new(), captured, BTreeMap::new())
 }
 
-pub fn anthropic_messages_envelope_with_beta(beta: &'static str) -> ClientProtocolEnvelope {
-    ClientProtocolEnvelope {
+pub fn capture_client_protocol_query<I, N, V>(
+    policy: ClientProtocolIngressPolicy,
+    query: I,
+) -> Option<ProtocolContextEnvelope>
+where
+    I: IntoIterator<Item = (N, V)>,
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    let mut captured = BTreeMap::new();
+    for (name, value) in query {
+        let name = name.as_ref();
+        if !protocol_context_field_is_safe(name) {
+            continue;
+        }
+        captured
+            .entry(name.to_string())
+            .or_insert_with(Vec::new)
+            .push(value.as_ref().to_string());
+    }
+    protocol_context(policy, captured, BTreeMap::new(), BTreeMap::new())
+}
+
+pub fn capture_client_protocol_body(
+    policy: ClientProtocolIngressPolicy,
+    body: &Map<String, Value>,
+    typed_root_fields: &[&str],
+) -> Option<ProtocolContextEnvelope> {
+    let captured = body
+        .iter()
+        .filter(|(name, _)| {
+            !typed_root_fields.contains(&name.as_str()) && protocol_context_field_is_safe(name)
+        })
+        .map(|(name, value)| (name.clone(), sanitized_protocol_context_value(value)))
+        .collect();
+    protocol_context(policy, BTreeMap::new(), BTreeMap::new(), captured)
+}
+
+pub fn merge_client_protocol_envelopes(
+    policy: ClientProtocolIngressPolicy,
+    first: Option<ProtocolContextEnvelope>,
+    second: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
+    let mut merged = ProtocolContextEnvelope {
+        source_protocol: policy.source_protocol().to_string(),
+        ..ProtocolContextEnvelope::default()
+    };
+    for envelope in [first, second].into_iter().flatten() {
+        debug_assert_eq!(envelope.source_protocol, policy.source_protocol());
+        if envelope.source_protocol != policy.source_protocol() {
+            continue;
+        }
+        extend_multi_values(&mut merged.query, envelope.query);
+        extend_multi_values(&mut merged.headers, envelope.headers);
+        for (name, value) in envelope.body {
+            merged.body.entry(name).or_insert(value);
+        }
+    }
+    non_empty_protocol_context(merged)
+}
+
+pub fn anthropic_messages_envelope_with_beta(beta: &'static str) -> ProtocolContextEnvelope {
+    ProtocolContextEnvelope {
         source_protocol: ANTHROPIC_MESSAGES_SOURCE_PROTOCOL.to_string(),
-        policy: ANTHROPIC_MESSAGES_POLICY.to_string(),
-        headers: BTreeMap::from([(ANTHROPIC_BETA_HEADER_NAME.to_string(), beta.to_string())]),
+        headers: BTreeMap::from([(
+            ANTHROPIC_BETA_HEADER_NAME.to_string(),
+            vec![beta.to_string()],
+        )]),
+        ..ProtocolContextEnvelope::default()
     }
 }
 
 pub fn merge_anthropic_messages_envelopes(
-    captured: Option<ClientProtocolEnvelope>,
-    generated: Option<ClientProtocolEnvelope>,
-) -> Option<ClientProtocolEnvelope> {
+    captured: Option<ProtocolContextEnvelope>,
+    generated: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
     match (captured, generated) {
         (None, None) => None,
         (Some(envelope), None) | (None, Some(envelope)) => Some(envelope),
         (Some(mut captured), Some(generated)) => {
-            for (name, value) in generated.headers {
+            debug_assert_eq!(captured.source_protocol, ANTHROPIC_MESSAGES_SOURCE_PROTOCOL);
+            debug_assert_eq!(
+                generated.source_protocol,
+                ANTHROPIC_MESSAGES_SOURCE_PROTOCOL
+            );
+            if captured.source_protocol != ANTHROPIC_MESSAGES_SOURCE_PROTOCOL
+                || generated.source_protocol != ANTHROPIC_MESSAGES_SOURCE_PROTOCOL
+            {
+                return Some(captured);
+            }
+            extend_multi_values(&mut captured.query, generated.query);
+            for (name, values) in generated.headers {
                 if name == ANTHROPIC_BETA_HEADER_NAME {
-                    merge_anthropic_beta_header(&mut captured.headers, &value);
+                    merge_generated_anthropic_beta_header(&mut captured.headers, values);
                 } else {
-                    captured.headers.entry(name).or_insert(value);
+                    captured.headers.entry(name).or_default().extend(values);
                 }
             }
-            Some(captured)
+            for (name, value) in generated.body {
+                captured.body.entry(name).or_insert(value);
+            }
+            non_empty_protocol_context(captured)
         }
     }
 }
 
-fn merge_anthropic_beta_header(headers: &mut BTreeMap<String, String>, value: &str) {
-    let new_betas = split_anthropic_beta_header(value);
-    if new_betas.is_empty() {
-        return;
+pub(crate) fn protocol_context_field_is_safe(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    if lower.is_empty() || lower.starts_with("__") {
+        return false;
     }
-    let mut betas = headers
-        .get(ANTHROPIC_BETA_HEADER_NAME)
-        .map(|value| split_anthropic_beta_header(value))
-        .unwrap_or_default();
+    let normalized = lower.replace('_', "-");
+    !matches!(
+        normalized.as_str(),
+        "auth"
+            | "authentication"
+            | "authentication-info"
+            | "authorization"
+            | "x-authorization"
+            | "proxy-authorization"
+            | "proxy-authenticate"
+            | "proxy-authentication-info"
+            | "www-authenticate"
+            | "x-api-key"
+            | "api-key"
+            | "x-auth-token"
+            | "auth-token"
+            | "bearer-token"
+            | "x-access-token"
+            | "access-token"
+            | "refresh-token"
+            | "id-token"
+            | "client-secret"
+            | "api-secret"
+            | "password"
+            | "passwd"
+            | "x-csrf-token"
+            | "x-xsrf-token"
+            | "csrf-token"
+            | "cookie"
+            | "set-cookie"
+            | "host"
+            | "connection"
+            | "proxy-connection"
+            | "keep-alive"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+            | "content-length"
+            | "client-protocol-envelope"
+            | "native-model-prompt-context"
+            | "native-model-request-context"
+            | "native-transport"
+            | "provider-transport"
+            | "request-context"
+            | "run-context"
+            | "trace-context"
+            | "compatibility-mode"
+            | "sys"
+            | "env"
+            | "trigger"
+            | "forwarded"
+            | "via"
+            | "x-real-ip"
+            | "true-client-ip"
+            | "cf-connecting-ip"
+            | "cf-ray"
+            | "traceparent"
+            | "tracestate"
+            | "baggage"
+            | "x-request-id"
+            | "internal"
+            | "x-internal"
+            | "1flowbase"
+            | "x-1flowbase"
+    ) && !normalized.starts_with("x-1flowbase-")
+        && !normalized.starts_with("x-internal-")
+        && !normalized.starts_with("internal-")
+        && !normalized.starts_with("x-forwarded-")
+        && !normalized.starts_with("x-envoy-")
+        && !normalized.starts_with("x-amzn-")
+}
 
-    for beta in new_betas {
-        if !betas
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&beta))
+fn protocol_context(
+    policy: ClientProtocolIngressPolicy,
+    query: BTreeMap<String, Vec<String>>,
+    headers: BTreeMap<String, Vec<String>>,
+    body: BTreeMap<String, Value>,
+) -> Option<ProtocolContextEnvelope> {
+    non_empty_protocol_context(ProtocolContextEnvelope {
+        source_protocol: policy.source_protocol().to_string(),
+        query,
+        headers,
+        body,
+    })
+}
+
+fn non_empty_protocol_context(
+    envelope: ProtocolContextEnvelope,
+) -> Option<ProtocolContextEnvelope> {
+    (!envelope.query.is_empty() || !envelope.headers.is_empty() || !envelope.body.is_empty())
+        .then_some(envelope)
+}
+
+fn extend_multi_values(
+    target: &mut BTreeMap<String, Vec<String>>,
+    source: BTreeMap<String, Vec<String>>,
+) {
+    for (name, values) in source {
+        target.entry(name).or_default().extend(values);
+    }
+}
+
+fn merge_generated_anthropic_beta_header(
+    headers: &mut BTreeMap<String, Vec<String>>,
+    generated_values: Vec<String>,
+) {
+    for generated in generated_values {
+        let generated_betas = split_anthropic_beta_header(&generated);
+        if generated_betas.is_empty()
+            || generated_betas.iter().all(|generated_beta| {
+                headers
+                    .get(ANTHROPIC_BETA_HEADER_NAME)
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|value| split_anthropic_beta_header(value))
+                    .any(|captured_beta| captured_beta.eq_ignore_ascii_case(generated_beta))
+            })
         {
-            betas.push(beta);
+            continue;
         }
+        headers
+            .entry(ANTHROPIC_BETA_HEADER_NAME.to_string())
+            .or_default()
+            .push(generated);
     }
-    headers.insert(ANTHROPIC_BETA_HEADER_NAME.to_string(), betas.join(","));
 }
 
-fn split_anthropic_beta_header(value: &str) -> Vec<String> {
+fn split_anthropic_beta_header(value: &str) -> Vec<&str> {
     value
         .split(',')
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
         .collect()
 }
 
-struct ClientProtocolPolicySpec {
-    source_protocol: &'static str,
-    policy: &'static str,
-    allowed_headers: &'static [&'static str],
-}
-
-fn anthropic_messages_policy() -> ClientProtocolPolicySpec {
-    ClientProtocolPolicySpec {
-        source_protocol: ANTHROPIC_MESSAGES_SOURCE_PROTOCOL,
-        policy: ANTHROPIC_MESSAGES_POLICY,
-        allowed_headers: &[
-            "anthropic-version",
-            ANTHROPIC_BETA_HEADER_NAME,
-            "x-claude-code-session-id",
-            "anthropic-client-name",
-            "anthropic-client-version",
-            "x-client-name",
-            "x-client-version",
-            "user-agent",
-        ],
+fn sanitized_protocol_context_value(value: &Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(sanitized_protocol_context_value)
+                .collect(),
+        ),
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .filter(|(name, _)| protocol_context_field_is_safe(name))
+                .map(|(name, value)| (name.clone(), sanitized_protocol_context_value(value)))
+                .collect(),
+        ),
+        _ => value.clone(),
     }
 }
 
-fn blocked_header(name: &str) -> bool {
-    matches!(
-        name,
-        "authorization"
-            | "proxy-authorization"
-            | "x-api-key"
-            | "api-key"
-            | "cookie"
-            | "set-cookie"
-            | "x-csrf-token"
-            | "x-xsrf-token"
-            | "csrf-token"
-            | "host"
-            | "content-length"
-            | "connection"
-            | "transfer-encoding"
-            | "accept-encoding"
-            | "te"
-            | "trailer"
-            | "upgrade"
-            | "keep-alive"
-    )
+fn blocked_header(policy: ClientProtocolIngressPolicy, name: &str) -> bool {
+    !protocol_context_field_is_safe(name)
+        || matches!(
+            name,
+            "content-type" | "accept" | "accept-encoding" | "accept-language" | "origin"
+        )
+        || matches!(
+            (policy, name),
+            (
+                ClientProtocolIngressPolicy::AnthropicMessages,
+                "x-claude-code-session-id"
+            ) | (
+                ClientProtocolIngressPolicy::OpenAiResponses,
+                "x-codex-turn-metadata"
+            )
+        )
 }
