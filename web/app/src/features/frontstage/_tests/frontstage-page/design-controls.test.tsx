@@ -349,6 +349,14 @@ function exitDesignMode() {
   });
 }
 
+function selectCatalogEntry(title: string) {
+  const row = screen.getByText(title).closest('.ant-list-item');
+  expect(row).not.toBeNull();
+  fireEvent.click(
+    within(row as HTMLElement).getByRole('button', { name: '选择' })
+  );
+}
+
 function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
@@ -411,13 +419,14 @@ function createCatalogEntry(
 }
 
 function mockFrontstageBlockCatalog(
-  items: NormalizedFrontstageBlockCatalogEntry[] = []
+  items: NormalizedFrontstageBlockCatalogEntry[] = [],
+  overrides: { loading?: boolean; error?: Error | null } = {}
 ) {
   blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
     items,
     diagnostics: [],
-    loading: false,
-    error: null
+    loading: overrides.loading ?? false,
+    error: overrides.error ?? null
   });
 }
 
@@ -929,15 +938,31 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.getByText('保存中')).toBeInTheDocument();
   });
 
-  test('AC-011 creates the official default JSX block directly with auditable catalog metadata', async () => {
+  test('R5-AC-004 creates the selected non-default Catalog entry atomically', async () => {
     authenticate(['frontstage.page.design']);
+    const selectedTemplate = `export default function ReportBlock() {
+  return <p>Selected report template</p>;
+}`;
     mockFrontstageBlockCatalog([
+      createCatalogEntry(),
       createCatalogEntry({
-        id: 'third-party:other-block',
+        id: 'third-party:report-block',
+        installationId: 'third-party-installation',
         providerCode: 'third-party',
-        contributionCode: 'other-block'
-      }),
-      createCatalogEntry()
+        pluginId: 'third-party-reports',
+        pluginVersion: '3.1.0',
+        contributionCode: 'report-block',
+        title: 'Third-party report',
+        codeCapabilities: {
+          template: {
+            source: selectedTemplate,
+            version: '3.1.0',
+            language: 'tsx'
+          },
+          allowedImports: [],
+          monacoExtraLibs: []
+        }
+      })
     ]);
     const saveState = mockPageContentSaveState();
 
@@ -953,13 +978,10 @@ describe('FrontStagePage - design controls', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    expect(saveState.createBlock).not.toHaveBeenCalled();
+    selectCatalogEntry('Third-party report');
 
-    await waitFor(() => {
-      expect(saveState.createBlock).toHaveBeenCalledTimes(1);
-    });
-    expect(
-      screen.queryByRole('button', { name: '选择' })
-    ).not.toBeInTheDocument();
+    await waitFor(() => expect(saveState.createBlock).toHaveBeenCalledOnce());
 
     expect(
       pageContentSaveHook.useFrontstagePageContentSave
@@ -976,13 +998,13 @@ describe('FrontStagePage - design controls', () => {
     expect(block).toMatchObject({
       renderer_version: 'v1',
       catalog: {
-        providerCode: '1flowbase',
-        installationId: 'builtin-installation'
+        providerCode: 'third-party',
+        installationId: 'third-party-installation'
       },
       contribution: {
-        pluginId: 'builtin-frontstage',
-        pluginVersion: '1.0.0',
-        code: 'frontstage.js-ui-block'
+        pluginId: 'third-party-reports',
+        pluginVersion: '3.1.0',
+        code: 'report-block'
       },
       props: {},
       'x-layout': {
@@ -993,7 +1015,7 @@ describe('FrontStagePage - design controls', () => {
         kind: 'native_react',
         entry: 'index.js',
         hint: 'native_react',
-        code_template_version: '2.4.0',
+        code_template_version: '3.1.0',
         code_template_language: 'tsx'
       }
     });
@@ -1003,7 +1025,7 @@ describe('FrontStagePage - design controls', () => {
     expect(createInput).toEqual({
       payload: createInput.payload,
       code_ref: block.codeRef,
-      code: PLUGIN_CODE_TEMPLATE
+      code: selectedTemplate
     });
   });
 
@@ -1030,12 +1052,66 @@ describe('FrontStagePage - design controls', () => {
     expect(
       await screen.findByText('Catalog entry 缺少代码模板')
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: '选择' })
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '选择' })).toBeDisabled();
     expect(saveState.save).not.toHaveBeenCalled();
     expect(saveState.createBlock).not.toHaveBeenCalled();
     expect(blockCodeApi.saveFrontstageBlockCode).not.toHaveBeenCalled();
+  });
+
+  test('R5-AC-004 shows Catalog empty and permission failures without a fallback', async () => {
+    authenticate(['frontstage.page.design']);
+    const saveState = mockPageContentSaveState();
+    mockFrontstageBlockCatalog([], {
+      error: new Error('Catalog forbidden')
+    });
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+
+    expect(await screen.findByText('Catalog forbidden')).toBeInTheDocument();
+    expect(
+      screen.getByText('当前没有可用区块目录项，暂时无法新增区块。')
+    ).toBeInTheDocument();
+    expect(saveState.createBlock).not.toHaveBeenCalled();
+    expect(blockCodeApi.saveFrontstageBlockCode).not.toHaveBeenCalled();
+  });
+
+  test('closes the Catalog picker when design mode exits', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([createCatalogEntry()]);
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    expect(
+      await screen.findByRole('dialog', { name: '新增区块' })
+    ).toBeInTheDocument();
+
+    exitDesignMode();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: '新增区块' })
+      ).not.toBeInTheDocument()
+    );
   });
 
   test('disables Add Block while page content is saving', () => {
@@ -1077,6 +1153,7 @@ describe('FrontStagePage - design controls', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    selectCatalogEntry('空白 JS Block');
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
     expect(screen.getByText('request failed')).toBeInTheDocument();
@@ -1101,6 +1178,7 @@ describe('FrontStagePage - design controls', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    selectCatalogEntry('空白 JS Block');
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
     expect(screen.getByText('create failed')).toBeInTheDocument();
@@ -1157,6 +1235,7 @@ describe('FrontStagePage - design controls', () => {
 
       activateDesignMode();
       fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+      selectCatalogEntry('空白 JS Block');
 
       await waitFor(() => {
         expect(saveState.createBlock).toHaveBeenCalledTimes(1);

@@ -17,7 +17,8 @@ export interface AddBlockCatalogPickerDrawerProps {
   open: boolean;
   items: NormalizedFrontstageBlockCatalogEntry[];
   loading?: boolean;
-  error?: Error | null;
+  catalogError?: string | null;
+  creationError?: string | null;
   saving?: boolean;
   onSelect: (entry: NormalizedFrontstageBlockCatalogEntry) => void;
   onClose: () => void;
@@ -25,7 +26,16 @@ export interface AddBlockCatalogPickerDrawerProps {
 
 export const AddBlockCatalogPickerDrawer: FC<
   AddBlockCatalogPickerDrawerProps
-> = ({ open, items, loading, error, saving, onSelect, onClose }) => {
+> = ({
+  open,
+  items,
+  loading,
+  catalogError,
+  creationError,
+  saving,
+  onSelect,
+  onClose
+}) => {
   const isBusy = Boolean(loading || saving);
 
   return (
@@ -33,14 +43,22 @@ export const AddBlockCatalogPickerDrawer: FC<
       open={open}
       onClose={onClose}
       placement="right"
-      title={i18nText("frontstage", "auto.add_block")}
-      width={520}
+      title={i18nText('frontstage', 'auto.add_block')}
+      width="min(520px, 100vw)"
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        {error ? (
+        {catalogError ? (
           <Alert
-            message={i18nText("frontstage", "auto.block_catalog_load_failed")}
-            description={error.message}
+            message={i18nText('frontstage', 'auto.block_catalog_load_failed')}
+            description={catalogError}
+            type="error"
+            showIcon
+          />
+        ) : null}
+        {creationError ? (
+          <Alert
+            message={i18nText('frontstage', 'auto.block_save_failed')}
+            description={creationError}
             type="error"
             showIcon
           />
@@ -51,14 +69,20 @@ export const AddBlockCatalogPickerDrawer: FC<
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
               <Typography.Text type="secondary">
-                {i18nText("frontstage", "auto.no_available_block_catalog_entries")}</Typography.Text>
+                {i18nText(
+                  'frontstage',
+                  'auto.no_available_block_catalog_entries'
+                )}
+              </Typography.Text>
             }
           />
         ) : (
           <List
             loading={loading}
             dataSource={items}
-            rowKey={(entry) => entry.id}
+            rowKey={(entry) =>
+              `${entry.providerCode}:${entry.installationId}:${entry.contributionCode}`
+            }
             renderItem={(entry) => {
               const hasCodeTemplate = Boolean(entry.codeCapabilities?.template);
 
@@ -67,20 +91,25 @@ export const AddBlockCatalogPickerDrawer: FC<
                   actions={[
                     <Button
                       key="select"
-                      aria-label={i18nText("frontstage", "auto.select")}
+                      aria-label={i18nText('frontstage', 'auto.select')}
                       type="primary"
                       size="small"
                       disabled={isBusy || !hasCodeTemplate}
                       loading={saving}
                       onClick={() => onSelect(entry)}
                     >
-                      {i18nText("frontstage", "auto.select")}</Button>
+                      {i18nText('frontstage', 'auto.select')}
+                    </Button>
                   ]}
                 >
                   <List.Item.Meta
                     title={entry.title}
                     description={
-                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                      <Space
+                        direction="vertical"
+                        size={6}
+                        style={{ width: '100%' }}
+                      >
                         <Space size={6} wrap>
                           <Tag>{entry.runtimeKind}</Tag>
                           <Typography.Text type="secondary">
@@ -92,7 +121,10 @@ export const AddBlockCatalogPickerDrawer: FC<
                         </Space>
                         {!hasCodeTemplate ? (
                           <Alert
-                            message={i18nText("frontstage", "auto.catalog_entry_missing_code_template")}
+                            message={i18nText(
+                              'frontstage',
+                              'auto.catalog_entry_missing_code_template'
+                            )}
                             type="error"
                             showIcon
                           />

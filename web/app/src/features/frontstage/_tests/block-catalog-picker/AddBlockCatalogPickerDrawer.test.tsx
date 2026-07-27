@@ -73,7 +73,7 @@ describe('AddBlockCatalogPickerDrawer', () => {
     );
 
     expect(screen.getByText('空白 JS Block')).toBeInTheDocument();
-    expect(screen.getByText('iframe')).toBeInTheDocument();
+    expect(screen.getByText('native_react')).toBeInTheDocument();
     expect(screen.getByText('1flowbase')).toBeInTheDocument();
     expect(screen.getByText('frontstage.js-ui-block')).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
@@ -122,5 +122,21 @@ describe('AddBlockCatalogPickerDrawer', () => {
     );
 
     expect(screen.getByRole('button', { name: '选择' })).toBeDisabled();
+  });
+
+  test('keeps catalog and atomic creation failures visible in the picker', () => {
+    render(
+      <AddBlockCatalogPickerDrawer
+        open
+        items={[]}
+        catalogError="Catalog forbidden"
+        creationError="Atomic creation rejected"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Catalog forbidden')).toBeInTheDocument();
+    expect(screen.getByText('Atomic creation rejected')).toBeInTheDocument();
   });
 });

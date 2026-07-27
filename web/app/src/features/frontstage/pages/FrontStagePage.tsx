@@ -17,6 +17,7 @@ import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-m
 import type { FrontstagePageContent } from '../api/page-content';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
+import { AddBlockCatalogPickerDrawer } from '../components/AddBlockCatalogPickerDrawer';
 import {
   JsBlockTrialPanel,
   type NativeTrialBlockContextInput
@@ -39,7 +40,10 @@ import {
   updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
-import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
+import {
+  resolveFrontstageNativeDependencyLock,
+  type NormalizedFrontstageBlockCatalogEntry
+} from '../lib/block-catalog';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
@@ -98,8 +102,6 @@ import {
 } from './frontstage-page/page-tree-operations';
 import './frontstage-page.css';
 
-const DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID = '1flowbase:frontstage.js-ui-block';
-
 export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
   pageId,
@@ -146,6 +148,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
+  const [isBlockCatalogPickerOpen, setIsBlockCatalogPickerOpen] =
+    useState(false);
   const [savedPageContent, setSavedPageContent] =
     useState<FrontstagePageContent | null>(null);
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
@@ -381,6 +385,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION))
     );
   }, [actor, me]);
+  useEffect(() => {
+    setIsBlockCatalogPickerOpen(false);
+  }, [selectedPageId, tabId]);
+  useEffect(() => {
+    if (!canEnterDesignMode || !isDesignMode) {
+      setIsBlockCatalogPickerOpen(false);
+    }
+  }, [canEnterDesignMode, isDesignMode]);
   const hasResolvedDesignModePermission = sessionStatus !== 'unknown';
   const selectedBlockIndex =
     blockCompositionState?.selectedBlockId === selectedBlockId
@@ -1083,7 +1095,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     onNavigatePage?.(nodeId);
   };
 
-  const handleAddBlock = async () => {
+  const handleAddBlock = () => {
+    if (!canAddBlock) return;
+    setBlockSaveError(null);
+    pageContentSave.clearError();
+    setIsBlockCatalogPickerOpen(true);
+  };
+
+  const handleSelectBlockCatalogEntry = async (
+    entry: NormalizedFrontstageBlockCatalogEntry
+  ) => {
     const sourceContent = activePageContent;
     if (!canAddBlock || !sourceContent || !blockCompositionState) {
       return;
@@ -1091,16 +1112,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
     if (blockCatalog.error) {
       setBlockSaveError(toDisplayErrorMessage(blockCatalog.error));
-      return;
-    }
-
-    const entry = blockCatalog.items.find(
-      (item) => item.id === DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID
-    );
-    if (!entry) {
-      setBlockSaveError(
-        i18nText('frontstage', 'auto.no_available_block_catalog_entries')
-      );
       return;
     }
 
@@ -1149,6 +1160,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
       setSavedPageContent(nextContent);
       setSelectedBlockId(nextCompositionState.selectedBlockId);
+      setIsBlockCatalogPickerOpen(false);
     } catch (error) {
       setBlockSaveError(toDisplayErrorMessage(error));
     } finally {
@@ -1257,9 +1269,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         <Button
           size="middle"
           aria-label={i18nText('frontstage', 'auto.create_block')}
-          onClick={() => {
-            void handleAddBlock();
-          }}
+          onClick={handleAddBlock}
           disabled={!canAddBlock || blockCatalog.loading}
           loading={isBlockSavePending}
           style={{
@@ -1373,6 +1383,22 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           onIconPickerOpenChange={setIsPageTreeIconPickerOpen}
           onSubmit={() => {
             void handleSubmitPageTreeForm();
+          }}
+        />
+        <AddBlockCatalogPickerDrawer
+          open={isBlockCatalogPickerOpen && canEnterDesignMode && isDesignMode}
+          items={blockCatalog.items}
+          loading={blockCatalog.loading}
+          catalogError={
+            blockCatalog.error
+              ? toDisplayErrorMessage(blockCatalog.error)
+              : null
+          }
+          creationError={pageContentSaveError}
+          saving={isBlockSavePending}
+          onClose={() => setIsBlockCatalogPickerOpen(false)}
+          onSelect={(entry) => {
+            void handleSelectBlockCatalogEntry(entry);
           }}
         />
         {selectedBlock && selectedPageId ? (
