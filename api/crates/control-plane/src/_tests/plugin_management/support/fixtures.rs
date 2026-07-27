@@ -415,9 +415,12 @@ block_contributions:
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
         exports: [blockSdkVersion]
-        browser_asset:
-          path: "browser-assets/block-sdk.js"
-          sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+        binding: fetched
+        assets:
+          - path: "browser-assets/block-sdk.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
         type_declarations: "export interface BlockComponentProps { readonly ctx: { readonly workspace: { readonly id: string } } }"
     context_contract:
       primitives:

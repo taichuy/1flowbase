@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     error::{FrameworkResult, PluginFrameworkError},
-    FrontendModuleBrowserAssetManifest, PluginManifestV1,
+    FrontendModuleAssetManifest, PluginManifestV1,
 };
 
 pub fn validate_frontend_module_assets(
@@ -13,7 +13,9 @@ pub fn validate_frontend_module_assets(
 ) -> FrameworkResult<()> {
     for contribution in &manifest.block_contributions {
         for module in &contribution.code_modules {
-            load_frontend_module_asset(package_root, &module.browser_asset)?;
+            for asset in &module.assets {
+                load_frontend_module_asset(package_root, asset)?;
+            }
         }
     }
     Ok(())
@@ -21,7 +23,7 @@ pub fn validate_frontend_module_assets(
 
 pub fn load_frontend_module_asset(
     package_root: &Path,
-    asset: &FrontendModuleBrowserAssetManifest,
+    asset: &FrontendModuleAssetManifest,
 ) -> FrameworkResult<Vec<u8>> {
     let root = package_root
         .canonicalize()

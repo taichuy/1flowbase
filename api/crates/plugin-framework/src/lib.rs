@@ -46,7 +46,8 @@ pub use manifest_v1::{
     parse_plugin_manifest, FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
     FrontendBlockPermissionsManifest, FrontendComponentContractManifest,
     FrontendComponentExampleManifest, FrontendComponentPropManifest,
-    FrontendComponentUpstreamManifest, FrontendModuleBrowserAssetManifest,
+    FrontendComponentUpstreamManifest, FrontendModuleAssetManifest,
+    FrontendModuleAssetRoleManifest, FrontendModuleBindingManifest,
     NodeContributionDependencyManifest, NodeContributionManifest, PluginExecutionMode,
     PluginManifestV1, PluginPermissionManifest, PluginRuntimeLimits, PluginRuntimeManifest,
 };

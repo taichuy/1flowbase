@@ -196,11 +196,14 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
                     source: "@1flowbase/block-sdk".into(),
                     version: "1.0.0".into(),
                     exports: vec!["blockSdkVersion".into()],
-                    browser_asset: domain::FrontendModuleBrowserAsset {
+                    binding: domain::FrontendModuleBinding::Fetched,
+                    assets: vec![domain::FrontendModuleAsset {
                         path: "browser-assets/block-sdk.js".into(),
+                        role: domain::FrontendModuleAssetRole::BrowserModule,
+                        media_type: "text/javascript; charset=utf-8".into(),
                         sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
                             .into(),
-                    },
+                    }],
                     type_declarations: "export declare function defineBlock(): unknown;".into(),
                     components: vec![],
                 }],
@@ -276,6 +279,14 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     assert_eq!(entries[0].code_template_language.as_deref(), Some("tsx"));
     assert_eq!(entries[0].code_modules.len(), 1);
     assert_eq!(entries[0].code_modules[0].exports, vec!["blockSdkVersion"]);
+    assert_eq!(
+        entries[0].code_modules[0].binding,
+        domain::FrontendModuleBinding::Fetched
+    );
+    assert_eq!(
+        entries[0].code_modules[0].assets[0].role,
+        domain::FrontendModuleAssetRole::BrowserModule
+    );
 
     let code_modules_column = sqlx::query(
         r#"

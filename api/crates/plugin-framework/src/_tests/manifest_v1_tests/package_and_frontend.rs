@@ -341,16 +341,22 @@ block_contributions:
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
         exports: [defineBlock]
-        browser_asset:
-          path: "assets/block-sdk.js"
-          sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        binding: fetched
+        assets:
+          - path: "assets/block-sdk.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         type_declarations: "export declare function defineBlock(input: unknown): unknown;"
       - source: "@acme/native-components"
         version: "1.2.3"
         exports: [Button]
-        browser_asset:
-          path: "assets/native-components.js"
-          sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        binding: fetched
+        assets:
+          - path: "assets/native-components.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         type_declarations: |
           declare module '@acme/native-components' {}
         components:
@@ -442,10 +448,10 @@ fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
     assert_eq!(native_module.version, "1.0.0");
     assert_eq!(native_module.exports, vec!["Surface"]);
     assert_eq!(
-        native_module.browser_asset.path,
+        native_module.assets[0].path,
         "browser-assets/native-components.js"
     );
-    assert_eq!(native_module.browser_asset.sha256.len(), 64);
+    assert_eq!(native_module.assets[0].sha256.len(), 64);
     assert!(!source.contains("antd_facade"));
     assert!(!source.contains("FacadeCommonProps"));
 }

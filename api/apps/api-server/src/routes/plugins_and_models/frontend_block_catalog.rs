@@ -30,7 +30,9 @@ pub struct FrontendBlockContextContractResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct FrontendBlockBrowserAssetResponse {
+pub struct FrontendBlockModuleAssetResponse {
+    pub role: String,
+    pub media_type: String,
     pub sha256: String,
 }
 
@@ -39,7 +41,8 @@ pub struct FrontendBlockCodeModuleResponse {
     pub source: String,
     pub version: String,
     pub exports: Vec<String>,
-    pub browser_asset: FrontendBlockBrowserAssetResponse,
+    pub binding: String,
+    pub assets: Vec<FrontendBlockModuleAssetResponse>,
     pub type_declarations: String,
 }
 
@@ -100,9 +103,27 @@ fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalog
                     source: code_module.source,
                     version: code_module.version,
                     exports: code_module.exports,
-                    browser_asset: FrontendBlockBrowserAssetResponse {
-                        sha256: code_module.browser_asset.sha256,
+                    binding: match code_module.binding {
+                        domain::FrontendModuleBinding::Host => "host".to_string(),
+                        domain::FrontendModuleBinding::Fetched => "fetched".to_string(),
                     },
+                    assets: code_module
+                        .assets
+                        .into_iter()
+                        .map(|asset| FrontendBlockModuleAssetResponse {
+                            role: match asset.role {
+                                domain::FrontendModuleAssetRole::BrowserModule => {
+                                    "browser_module".to_string()
+                                }
+                                domain::FrontendModuleAssetRole::ShadowStyle => {
+                                    "shadow_style".to_string()
+                                }
+                                domain::FrontendModuleAssetRole::Support => "support".to_string(),
+                            },
+                            media_type: asset.media_type,
+                            sha256: asset.sha256,
+                        })
+                        .collect(),
                     type_declarations,
                 }
             })

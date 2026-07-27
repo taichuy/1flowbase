@@ -48,12 +48,71 @@ block_contributions:
     code_template_version: 5.0.0
     code_template_language: tsx
     code_modules:
+      - source: "react"
+        version: "19.2.5"
+        exports: [default, Activity, Children, Component, Fragment, Profiler, PureComponent, StrictMode, Suspense, act, cache, cacheSignal, captureOwnerStack, cloneElement, createContext, createElement, createRef, forwardRef, isValidElement, lazy, memo, startTransition, use, useActionState, useCallback, useContext, useDebugValue, useDeferredValue, useEffect, useEffectEvent, useId, useImperativeHandle, useInsertionEffect, useLayoutEffect, useMemo, useOptimistic, useReducer, useRef, useState, useSyncExternalStore, useTransition, version]
+        binding: host
+        type_declarations: |
+          declare module 'react' {
+            export type ReactNode = unknown;
+            export type CSSProperties = Record<string, string | number | undefined>;
+            export type ComponentType<P = {}> = (props: P) => ReactNode;
+            export type ElementType = string | ComponentType<any>;
+            export interface HTMLAttributes<T> { className?: string; style?: CSSProperties; children?: ReactNode; [key: string]: unknown; }
+            export const Fragment: ComponentType<{ children?: ReactNode }>;
+            export function createElement(type: ElementType, props?: Record<string, unknown> | null, ...children: ReactNode[]): ReactNode;
+            export function useState<T>(initial: T | (() => T)): [T, (value: T | ((previous: T) => T)) => void];
+            export function useEffect(effect: () => void | (() => void), dependencies?: readonly unknown[]): void;
+            export function useMemo<T>(factory: () => T, dependencies: readonly unknown[]): T;
+            export function useCallback<T extends (...args: any[]) => any>(callback: T, dependencies: readonly unknown[]): T;
+            export function useRef<T>(initial: T): { current: T };
+            export function useSyncExternalStore<T>(subscribe: (listener: () => void) => () => void, getSnapshot: () => T): T;
+            const React: { createElement: typeof createElement; Fragment: typeof Fragment };
+            export default React;
+          }
+      - source: "antd"
+        version: "5.29.3"
+        exports: [Affix, Alert, Anchor, App, AutoComplete, Avatar, BackTop, Badge, Breadcrumb, Button, Calendar, Card, Carousel, Cascader, Checkbox, Col, Collapse, ColorPicker, ConfigProvider, DatePicker, Descriptions, Divider, Drawer, Dropdown, Empty, Flex, FloatButton, Form, Grid, Image, Input, InputNumber, Layout, List, Mentions, Menu, Modal, Pagination, Popconfirm, Popover, Progress, QRCode, Radio, Rate, Result, Row, Segmented, Select, Skeleton, Slider, Space, Spin, Splitter, Statistic, Steps, Switch, Table, Tabs, Tag, TimePicker, Timeline, Tooltip, Tour, Transfer, Tree, TreeSelect, Typography, Upload, Watermark, message, notification, theme, version]
+        binding: host
+        type_declarations: |
+          declare module 'antd' {
+            import type { ComponentType } from 'react';
+            type AntComponent = ComponentType<Record<string, unknown>>;
+            export const Affix: AntComponent; export const Alert: AntComponent; export const Anchor: AntComponent;
+            export const App: AntComponent; export const AutoComplete: AntComponent; export const Avatar: AntComponent;
+            export const BackTop: AntComponent; export const Badge: AntComponent; export const Breadcrumb: AntComponent;
+            export const Button: AntComponent; export const Calendar: AntComponent; export const Card: AntComponent;
+            export const Carousel: AntComponent; export const Cascader: AntComponent; export const Checkbox: AntComponent;
+            export const Col: AntComponent; export const Collapse: AntComponent; export const ColorPicker: AntComponent;
+            export const ConfigProvider: AntComponent; export const DatePicker: AntComponent; export const Descriptions: AntComponent;
+            export const Divider: AntComponent; export const Drawer: AntComponent; export const Dropdown: AntComponent;
+            export const Empty: AntComponent; export const Flex: AntComponent; export const FloatButton: AntComponent;
+            export const Form: AntComponent; export const Grid: Record<string, unknown>; export const Image: AntComponent;
+            export const Input: AntComponent; export const InputNumber: AntComponent; export const Layout: AntComponent;
+            export const List: AntComponent; export const Mentions: AntComponent; export const Menu: AntComponent;
+            export const Modal: AntComponent; export const Pagination: AntComponent; export const Popconfirm: AntComponent;
+            export const Popover: AntComponent; export const Progress: AntComponent; export const QRCode: AntComponent;
+            export const Radio: AntComponent; export const Rate: AntComponent; export const Result: AntComponent;
+            export const Row: AntComponent; export const Segmented: AntComponent; export const Select: AntComponent;
+            export const Skeleton: AntComponent; export const Slider: AntComponent; export const Space: AntComponent;
+            export const Spin: AntComponent; export const Splitter: AntComponent; export const Statistic: AntComponent;
+            export const Steps: AntComponent; export const Switch: AntComponent; export const Table: AntComponent;
+            export const Tabs: AntComponent; export const Tag: AntComponent; export const TimePicker: AntComponent;
+            export const Timeline: AntComponent; export const Tooltip: AntComponent; export const Tour: AntComponent;
+            export const Transfer: AntComponent; export const Tree: AntComponent; export const TreeSelect: AntComponent;
+            export const Typography: AntComponent; export const Upload: AntComponent; export const Watermark: AntComponent;
+            export const message: Record<string, unknown>; export const notification: Record<string, unknown>;
+            export const theme: Record<string, unknown>; export const version: string;
+          }
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
         exports: [blockSdkVersion]
-        browser_asset:
-          path: "browser-assets/block-sdk.js"
-          sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+        binding: fetched
+        assets:
+          - path: "browser-assets/block-sdk.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
         type_declarations: |
           declare module '@1flowbase/block-sdk' {
             export type BlockContextRecord = Record<string, unknown>;
@@ -108,18 +167,27 @@ block_contributions:
           }
       - source: "@1flowbase/native-components"
         version: "1.0.0"
-        exports: [Surface]
-        browser_asset:
-          path: "browser-assets/native-components.js"
-          sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"
+        exports: [ScrollableSurface, Surface]
+        binding: fetched
+        assets:
+          - path: "browser-assets/native-components.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445"
+          - path: "browser-assets/native-components.css"
+            role: shadow_style
+            media_type: "text/css; charset=utf-8"
+            sha256: "e473a5769a89c4a209e1f7d056627b2ff827c6dc29b1602d3374a2078b80a93b"
         type_declarations: |
           declare module '@1flowbase/native-components' {
-            import type { ComponentType, HTMLAttributes, ReactNode } from 'react';
+            import type { ComponentType, ElementType, HTMLAttributes, ReactNode } from 'react';
             export interface SurfaceProps extends HTMLAttributes<HTMLElement> {
-              readonly as?: string;
+              readonly as?: ElementType;
               readonly children?: ReactNode;
             }
+            export interface ScrollableSurfaceProps extends SurfaceProps {}
             export const Surface: ComponentType<SurfaceProps>;
+            export const ScrollableSurface: ComponentType<ScrollableSurfaceProps>;
           }
         components:
           - component_code: surface
@@ -143,6 +211,146 @@ block_contributions:
               - title: "Interactive surface"
                 code: "<Surface className=\"card\" onClick={() => setOpen(true)}>Open</Surface>"
             insert_snippet: "<Surface className=\"card\">Content</Surface>"
+          - component_code: scrollable_surface
+            export_name: ScrollableSurface
+            description: "Native React scroll surface with contained overflow inside the block ShadowRoot."
+            props:
+              - name: className
+                type: string
+                description: "Standard DOM class name scoped by the block ShadowRoot."
+              - name: style
+                type: "import('react').CSSProperties"
+                description: "Standard React inline style object."
+              - name: children
+                type: "import('react').ReactNode"
+                description: "Native React children."
+            limitations: ["Scrolling remains inside the block-owned surface."]
+            examples:
+              - title: "Scrollable content"
+                code: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
+            insert_snippet: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
+      - source: "@ant-design/icons"
+        version: "5.6.1"
+        exports: [ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, CalendarOutlined, CheckCircleOutlined, CheckOutlined, ClockCircleOutlined, CloseCircleOutlined, CloseOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, ExclamationCircleOutlined, EyeInvisibleOutlined, EyeOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, HomeOutlined, InfoCircleOutlined, LeftOutlined, LinkOutlined, LoadingOutlined, LockOutlined, MailOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PlusOutlined, QuestionCircleOutlined, RightOutlined, SaveOutlined, SearchOutlined, SettingOutlined, UpOutlined, UploadOutlined, UserOutlined, WarningOutlined]
+        binding: fetched
+        assets:
+          - path: "browser-assets/ant-design-icons-catalog.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "908c87d3f5ba137167f568487ece77fd0d5463c8e08396c927bec0df12745800"
+        type_declarations: |
+          declare module '@ant-design/icons' {
+            import type { ComponentType, CSSProperties } from 'react';
+            export interface AntDesignIconProps { readonly className?: string; readonly onClick?: (event: unknown) => void; readonly rotate?: number; readonly spin?: boolean; readonly style?: CSSProperties; readonly twoToneColor?: string | readonly [string, string]; }
+            export type AntDesignIcon = ComponentType<AntDesignIconProps>;
+            export const ArrowDownOutlined: AntDesignIcon; export const ArrowLeftOutlined: AntDesignIcon;
+            export const ArrowRightOutlined: AntDesignIcon; export const ArrowUpOutlined: AntDesignIcon;
+            export const CalendarOutlined: AntDesignIcon; export const CheckCircleOutlined: AntDesignIcon;
+            export const CheckOutlined: AntDesignIcon; export const ClockCircleOutlined: AntDesignIcon;
+            export const CloseCircleOutlined: AntDesignIcon; export const CloseOutlined: AntDesignIcon;
+            export const CopyOutlined: AntDesignIcon; export const DeleteOutlined: AntDesignIcon;
+            export const DownloadOutlined: AntDesignIcon; export const EditOutlined: AntDesignIcon;
+            export const ExclamationCircleOutlined: AntDesignIcon; export const EyeInvisibleOutlined: AntDesignIcon;
+            export const EyeOutlined: AntDesignIcon; export const FileOutlined: AntDesignIcon;
+            export const FolderOpenOutlined: AntDesignIcon; export const FolderOutlined: AntDesignIcon;
+            export const HomeOutlined: AntDesignIcon; export const InfoCircleOutlined: AntDesignIcon;
+            export const LeftOutlined: AntDesignIcon; export const LinkOutlined: AntDesignIcon;
+            export const LoadingOutlined: AntDesignIcon; export const LockOutlined: AntDesignIcon;
+            export const MailOutlined: AntDesignIcon; export const MenuOutlined: AntDesignIcon;
+            export const MinusOutlined: AntDesignIcon; export const MoreOutlined: AntDesignIcon;
+            export const PlusOutlined: AntDesignIcon; export const QuestionCircleOutlined: AntDesignIcon;
+            export const RightOutlined: AntDesignIcon; export const SaveOutlined: AntDesignIcon;
+            export const SearchOutlined: AntDesignIcon; export const SettingOutlined: AntDesignIcon;
+            export const UpOutlined: AntDesignIcon; export const UploadOutlined: AntDesignIcon;
+            export const UserOutlined: AntDesignIcon; export const WarningOutlined: AntDesignIcon;
+          }
+      - source: "@1flowbase/charts"
+        version: "1.0.0"
+        exports: [EChart]
+        binding: fetched
+        assets:
+          - path: "browser-assets/charts.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "4959dfbaf362b560d55fb65465b5758a960b304c53e197b4da577c8ccb6dfcaf"
+        type_declarations: |
+          declare module '@1flowbase/charts' {
+            import type { ComponentType, CSSProperties } from 'react';
+            export type EChartPrimitive = string | number | boolean | null;
+            export type EChartValue = EChartPrimitive | readonly EChartValue[] | { readonly [key: string]: EChartValue | undefined };
+            export type EChartOption = Readonly<Record<string, EChartValue | undefined>>;
+            export interface EChartProps { readonly ariaLabel?: string; readonly className?: string; readonly option: EChartOption; readonly style?: CSSProperties; }
+            export const EChart: ComponentType<EChartProps>;
+          }
+        components:
+          - component_code: echarts_report
+            export_name: EChart
+            description: "Controlled ECharts report component with serializable safe options."
+            props:
+              - name: option
+                type: EChartOption
+                required: true
+                description: "Serializable chart option without executable callbacks or unsafe HTML."
+              - name: style
+                type: "import('react').CSSProperties"
+                description: "Chart container size and inline style."
+            limitations: ["Formatter functions, custom series, HTML tooltips, external images and maps are rejected."]
+            examples:
+              - title: "Bar report"
+                code: "<EChart option={{ xAxis: { type: 'category', data: ['A', 'B'] }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: [3, 7] }] }} />"
+            insert_snippet: "<EChart option={{ xAxis: { type: 'category', data: [] }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: [] }] }} />"
+      - source: "@1flowbase/rich-text"
+        version: "1.0.0"
+        exports: [MarkdownEditor, MarkdownPreview]
+        binding: fetched
+        assets:
+          - path: "browser-assets/rich-text.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "873699d22f7785f6881af47196bf32f8b431ee87dd1b7fec406975355c90a3e8"
+          - path: "browser-assets/rich-text.css"
+            role: shadow_style
+            media_type: "text/css; charset=utf-8"
+            sha256: "ae29c715f0a1ca777cd93c846948f054b37dd7cd7a2a708f0f8727d4237e2592"
+        type_declarations: |
+          declare module '@1flowbase/rich-text' {
+            import type { ComponentType, HTMLAttributes } from 'react';
+            export interface MarkdownEditorProps { readonly ariaLabel?: string; readonly className?: string; readonly height?: number | string; readonly placeholder?: string; readonly value: string; readonly onChange: (value: string) => void; }
+            export interface MarkdownPreviewProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> { readonly value: string; }
+            export const MarkdownEditor: ComponentType<MarkdownEditorProps>;
+            export const MarkdownPreview: ComponentType<MarkdownPreviewProps>;
+          }
+        components:
+          - component_code: markdown_editor
+            export_name: MarkdownEditor
+            description: "Controlled same-origin Vditor Markdown editor for a block ShadowRoot."
+            props:
+              - name: value
+                type: string
+                required: true
+                description: "Current Markdown value."
+              - name: onChange
+                type: "(value: string) => void"
+                required: true
+                description: "Receives Markdown changes."
+            limitations: ["External CDN configuration and raw Vditor constructor access are not exposed."]
+            examples:
+              - title: "Markdown field"
+                code: "<MarkdownEditor value={markdown} onChange={setMarkdown} />"
+            insert_snippet: "<MarkdownEditor value={markdown} onChange={setMarkdown} />"
+          - component_code: markdown_preview
+            export_name: MarkdownPreview
+            description: "Controlled Markdown preview scoped to the block ShadowRoot."
+            props:
+              - name: value
+                type: string
+                required: true
+                description: "Markdown source to render."
+            limitations: ["External resources and arbitrary HTML execution are not exposed."]
+            examples:
+              - title: "Markdown preview"
+                code: "<MarkdownPreview value={markdown} />"
+            insert_snippet: "<MarkdownPreview value={markdown} />"
     context_contract:
       primitives: [text, image, link, button, rich_text, data_record]
       input_schema:

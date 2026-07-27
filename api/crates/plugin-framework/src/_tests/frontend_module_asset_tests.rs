@@ -4,7 +4,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    load_frontend_module_asset, parse_plugin_manifest, FrontendModuleBrowserAssetManifest,
+    load_frontend_module_asset, parse_plugin_manifest, FrontendModuleAssetManifest,
+    FrontendModuleAssetRoleManifest,
 };
 
 fn manifest_with_modules(modules: &str) -> String {
@@ -47,9 +48,12 @@ fn valid_module(source: &str, version: &str, path: &str, sha256: &str, export: &
         r#"      - source: "{source}"
         version: "{version}"
         exports: [Fixture]
-        browser_asset:
-          path: "{path}"
-          sha256: "{sha256}"
+        binding: fetched
+        assets:
+          - path: "{path}"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "{sha256}"
         type_declarations: "declare module '{source}' {{}}"
         components:
           - component_code: fixture
@@ -79,7 +83,7 @@ fn d2_ac_004_manifest_rejects_duplicate_identity_export_path_and_digest() {
     assert!(
         duplicate
             .to_string()
-            .contains("source/version must be unique"),
+            .contains("code_modules[].source must be unique"),
         "{duplicate}"
     );
 
@@ -162,6 +166,71 @@ fn d2_ac_004_manifest_rejects_duplicate_identity_export_path_and_digest() {
 }
 
 #[test]
+fn ac_pub_006_manifest_distinguishes_host_and_fetched_module_assets() {
+    let digest = "a".repeat(64);
+    let fetched = valid_module(
+        "@acme/native",
+        "1.0.0",
+        "assets/native.js",
+        &digest,
+        "Fixture",
+    );
+    assert!(parse_plugin_manifest(&manifest_with_modules(&fetched)).is_ok());
+
+    let fetched_with_support = fetched.replace(
+        "        type_declarations:",
+        &format!(
+            "          - path: \"assets/runtime.wasm\"\n            role: support\n            media_type: \"application/wasm\"\n            sha256: \"{}\"\n        type_declarations:",
+            "b".repeat(64)
+        ),
+    );
+    assert!(parse_plugin_manifest(&manifest_with_modules(&fetched_with_support)).is_ok());
+
+    let invalid_media_type = fetched.replace("text/javascript; charset=utf-8", "not-a-media-type");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&invalid_media_type))
+            .unwrap_err()
+            .to_string()
+            .contains("media_type must be a valid MIME type")
+    );
+
+    let host = fetched
+        .replace("@acme/native", "react")
+        .replace("binding: fetched", "binding: host")
+        .replace(
+            &format!(
+                "        assets:\n          - path: \"assets/native.js\"\n            role: browser_module\n            media_type: \"text/javascript; charset=utf-8\"\n            sha256: \"{digest}\"\n"
+            ),
+            "",
+        );
+    assert!(parse_plugin_manifest(&manifest_with_modules(&host)).is_ok());
+
+    let unknown_host = host.replace("source: \"react\"", "source: \"lodash\"");
+    assert!(parse_plugin_manifest(&manifest_with_modules(&unknown_host))
+        .unwrap_err()
+        .to_string()
+        .contains("not part of the Host ABI"));
+
+    let host_with_asset = fetched.replace("binding: fetched", "binding: host");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&host_with_asset))
+            .unwrap_err()
+            .to_string()
+            .contains("host frontend modules must not register fetched assets")
+    );
+
+    let fetched_without_browser = fetched
+        .replace("role: browser_module", "role: shadow_style")
+        .replace("text/javascript; charset=utf-8", "text/css; charset=utf-8");
+    assert!(
+        parse_plugin_manifest(&manifest_with_modules(&fetched_without_browser))
+            .unwrap_err()
+            .to_string()
+            .contains("require exactly one browser_module asset")
+    );
+}
+
+#[test]
 fn d2_ac_004_registered_asset_requires_existing_digest_matching_bytes() {
     let root = std::env::temp_dir().join(format!("1flowbase-module-asset-{}", Uuid::now_v7()));
     fs::create_dir_all(root.join("assets")).unwrap();
@@ -169,14 +238,18 @@ fn d2_ac_004_registered_asset_requires_existing_digest_matching_bytes() {
     fs::write(root.join("assets/native.js"), bytes).unwrap();
     let sha256 = format!("{:x}", Sha256::digest(bytes));
 
-    let valid = FrontendModuleBrowserAssetManifest {
+    let valid = FrontendModuleAssetManifest {
         path: "assets/native.js".into(),
+        role: FrontendModuleAssetRoleManifest::BrowserModule,
+        media_type: "text/javascript; charset=utf-8".into(),
         sha256: sha256.clone(),
     };
     assert_eq!(load_frontend_module_asset(&root, &valid).unwrap(), bytes);
 
-    let mismatch = FrontendModuleBrowserAssetManifest {
+    let mismatch = FrontendModuleAssetManifest {
         path: "assets/native.js".into(),
+        role: FrontendModuleAssetRoleManifest::BrowserModule,
+        media_type: "text/javascript; charset=utf-8".into(),
         sha256: "a".repeat(64),
     };
     assert!(load_frontend_module_asset(&root, &mismatch)
@@ -184,8 +257,10 @@ fn d2_ac_004_registered_asset_requires_existing_digest_matching_bytes() {
         .to_string()
         .contains("SHA-256 mismatch"));
 
-    let missing = FrontendModuleBrowserAssetManifest {
+    let missing = FrontendModuleAssetManifest {
         path: "assets/missing.js".into(),
+        role: FrontendModuleAssetRoleManifest::BrowserModule,
+        media_type: "text/javascript; charset=utf-8".into(),
         sha256,
     };
     assert!(load_frontend_module_asset(&root, &missing)

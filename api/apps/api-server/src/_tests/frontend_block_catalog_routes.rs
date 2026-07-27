@@ -40,6 +40,11 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
         "export function Button() {}\n",
     )
     .unwrap();
+    std::fs::write(
+        installed_path.join("browser-assets/native-components.css"),
+        ".fixture { color: red; }\n",
+    )
+    .unwrap();
 
     sqlx::query(
         r#"
@@ -95,10 +100,21 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
         "source": "@acme/native-components",
         "version": "1.2.3",
         "exports": ["Button"],
-        "browser_asset": {
-            "path": "browser-assets/native-components.js",
-            "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-        },
+        "binding": "fetched",
+        "assets": [
+            {
+                "path": "browser-assets/native-components.js",
+                "role": "browser_module",
+                "media_type": "text/javascript; charset=utf-8",
+                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+            },
+            {
+                "path": "browser-assets/native-components.css",
+                "role": "shadow_style",
+                "media_type": "text/css; charset=utf-8",
+                "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
+            }
+        ],
         "type_declarations": "declare module '@acme/native-components' {}",
         "components": [{
             "component_code": "button",
@@ -189,6 +205,11 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         payload["data"]["items"][0]["browser_asset"]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
     );
+    assert_eq!(payload["data"]["items"][0]["binding"], "fetched");
+    assert_eq!(
+        payload["data"]["items"][0]["assets"][1]["role"],
+        "shadow_style"
+    );
     assert!(!payload["data"]["items"][0]["browser_asset"]["url"]
         .as_str()
         .unwrap()
@@ -250,6 +271,26 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         .await
         .unwrap();
     assert_eq!(asset_bytes.as_ref(), b"export function Button() {}\n");
+
+    let style_url = payload["data"]["items"][0]["assets"][1]["url"]
+        .as_str()
+        .unwrap();
+    let style_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(style_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(style_response.status(), StatusCode::OK);
+    assert_eq!(
+        style_response.headers()["content-type"],
+        "text/css; charset=utf-8"
+    );
 
     let missing_asset_response = app
         .clone()
@@ -372,12 +413,12 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .unwrap();
     assert_eq!(sdk_module["version"], "1.0.0");
     assert_eq!(sdk_module["exports"], json!(["blockSdkVersion"]));
+    assert_eq!(sdk_module["binding"], "fetched");
     assert_eq!(
-        sdk_module["browser_asset"]["sha256"],
+        sdk_module["assets"][0]["sha256"],
         "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
     );
-    assert!(sdk_module["browser_asset"].get("path").is_none());
-    assert!(sdk_module["browser_asset"].get("url").is_none());
+    assert_eq!(sdk_module["assets"][0]["role"], "browser_module");
     let native_module = jsx_block["code_modules"]
         .as_array()
         .unwrap()
@@ -385,13 +426,15 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .find(|module| module["source"] == "@1flowbase/native-components")
         .unwrap();
     assert_eq!(native_module["version"], "1.0.0");
-    assert_eq!(native_module["exports"], json!(["Surface"]));
     assert_eq!(
-        native_module["browser_asset"]["sha256"],
-        "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0"
+        native_module["exports"],
+        json!(["ScrollableSurface", "Surface"])
     );
-    assert!(native_module["browser_asset"].get("path").is_none());
-    assert!(native_module["browser_asset"].get("url").is_none());
+    assert_eq!(
+        native_module["assets"][0]["sha256"],
+        "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445"
+    );
+    assert_eq!(native_module["assets"][1]["role"], "shadow_style");
     assert_eq!(
         jsx_block["code_modules"]
             .as_array()
@@ -399,8 +442,34 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
             .iter()
             .map(|module| module["source"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        vec!["@1flowbase/block-sdk", "@1flowbase/native-components"]
+        vec![
+            "react",
+            "antd",
+            "@1flowbase/block-sdk",
+            "@1flowbase/native-components",
+            "@ant-design/icons",
+            "@1flowbase/charts",
+            "@1flowbase/rich-text"
+        ]
     );
+    for module in jsx_block["code_modules"].as_array().unwrap() {
+        let source = module["source"].as_str().unwrap();
+        if matches!(source, "react" | "antd") {
+            assert_eq!(module["binding"], "host");
+            assert_eq!(module["assets"], json!([]));
+        } else {
+            assert_eq!(module["binding"], "fetched");
+            assert_eq!(
+                module["assets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|asset| asset["role"] == "browser_module")
+                    .count(),
+                1
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -509,15 +578,10 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
     assert_eq!(entry["code_modules"][0]["version"], "1.2.3");
     assert_eq!(entry["code_modules"][0]["exports"], json!(["Button"]));
     assert_eq!(
-        entry["code_modules"][0]["browser_asset"]["sha256"],
+        entry["code_modules"][0]["assets"][0]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
     );
-    assert!(entry["code_modules"][0]["browser_asset"]
-        .get("path")
-        .is_none());
-    assert!(entry["code_modules"][0]["browser_asset"]
-        .get("url")
-        .is_none());
+    assert_eq!(entry["code_modules"][0]["binding"], "fetched");
     assert_eq!(
         entry["context_contract"]["primitives"][0].as_str(),
         Some("text")

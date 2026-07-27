@@ -14,9 +14,12 @@ export interface ConsoleFrontendBlockPermissions {
 export interface ConsoleFrontendBlockCodeModule {
   source: string;
   version: string;
-  browser_asset: {
+  binding: 'host' | 'fetched';
+  assets: Array<{
+    role: 'browser_module' | 'shadow_style' | 'support';
+    media_type: string;
     sha256: string;
-  };
+  }>;
   exports: string[];
   type_declarations: string;
 }

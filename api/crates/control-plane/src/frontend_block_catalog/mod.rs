@@ -43,7 +43,8 @@ pub struct FrontendComponentCapability {
     pub module_source: String,
     pub module_version: String,
     pub exports: Vec<String>,
-    pub browser_asset: domain::FrontendModuleBrowserAsset,
+    pub binding: domain::FrontendModuleBinding,
+    pub assets: Vec<domain::FrontendModuleAsset>,
     pub contract: domain::FrontendComponentContract,
 }
 
@@ -65,6 +66,7 @@ pub struct GetFrontendModuleAssetQuery {
 
 pub struct FrontendComponentModuleAsset {
     pub sha256: String,
+    pub media_type: String,
     pub bytes: Vec<u8>,
 }
 
@@ -161,7 +163,8 @@ where
                         module_source: module.source.clone(),
                         module_version: module.version.clone(),
                         exports: module.exports.clone(),
-                        browser_asset: module.browser_asset.clone(),
+                        binding: module.binding.clone(),
+                        assets: module.assets.clone(),
                         contract,
                     });
                 }
@@ -187,22 +190,36 @@ where
         let registered = blocks
             .flat_map(|block| {
                 let installation_id = block.installation_id;
-                block
-                    .code_modules
-                    .into_iter()
-                    .map(move |module| (installation_id, module.browser_asset))
+                block.code_modules.into_iter().flat_map(move |module| {
+                    module
+                        .assets
+                        .into_iter()
+                        .map(move |asset| (installation_id, asset))
+                })
             })
             .find(|(_, asset)| asset.sha256 == query.sha256);
-        let Some((installation_id, browser_asset)) = registered else {
+        let Some((installation_id, asset)) = registered else {
             return Ok(None);
         };
         let Some(installation) = self.repository.get_installation(installation_id).await? else {
             return Ok(None);
         };
         let root = PathBuf::from(installation.installed_path);
-        let registered = plugin_framework::FrontendModuleBrowserAssetManifest {
-            path: browser_asset.path,
-            sha256: browser_asset.sha256.clone(),
+        let registered = plugin_framework::FrontendModuleAssetManifest {
+            path: asset.path,
+            role: match asset.role {
+                domain::FrontendModuleAssetRole::BrowserModule => {
+                    plugin_framework::FrontendModuleAssetRoleManifest::BrowserModule
+                }
+                domain::FrontendModuleAssetRole::ShadowStyle => {
+                    plugin_framework::FrontendModuleAssetRoleManifest::ShadowStyle
+                }
+                domain::FrontendModuleAssetRole::Support => {
+                    plugin_framework::FrontendModuleAssetRoleManifest::Support
+                }
+            },
+            media_type: asset.media_type.clone(),
+            sha256: asset.sha256.clone(),
         };
         let bytes = tokio::task::spawn_blocking(move || {
             plugin_framework::load_frontend_module_asset(&root, &registered)
@@ -211,7 +228,8 @@ where
         .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?
         .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?;
         Ok(Some(FrontendComponentModuleAsset {
-            sha256: browser_asset.sha256,
+            sha256: asset.sha256,
+            media_type: asset.media_type,
             bytes,
         }))
     }

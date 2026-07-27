@@ -1,6 +1,7 @@
 use crate::{
     FrontendBlockCodeModule, FrontendComponentContract, FrontendComponentExample,
-    FrontendComponentProp, FrontendComponentUpstream, FrontendModuleBrowserAsset,
+    FrontendComponentProp, FrontendComponentUpstream, FrontendModuleAsset, FrontendModuleAssetRole,
+    FrontendModuleBinding,
 };
 
 #[test]
@@ -9,16 +10,25 @@ fn d2_ac_001_module_export_set_is_serialized_as_domain_truth() {
         source: "@1flowbase/block-sdk".into(),
         version: "1.0.0".into(),
         exports: vec!["blockSdkVersion".into()],
-        browser_asset: FrontendModuleBrowserAsset {
+        binding: FrontendModuleBinding::Fetched,
+        assets: vec![FrontendModuleAsset {
             path: "browser-assets/block-sdk.js".into(),
+            role: FrontendModuleAssetRole::BrowserModule,
+            media_type: "text/javascript; charset=utf-8".into(),
             sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f".into(),
-        },
+        }],
         type_declarations: "declare module '@1flowbase/block-sdk' {}".into(),
         components: vec![],
     };
 
     let value = serde_json::to_value(module).unwrap();
     assert_eq!(value["exports"], serde_json::json!(["blockSdkVersion"]));
+    assert_eq!(value["binding"], "fetched");
+    assert_eq!(value["assets"][0]["role"], "browser_module");
+    assert_eq!(
+        value["assets"][0]["media_type"],
+        "text/javascript; charset=utf-8"
+    );
 }
 
 #[test]

@@ -20,16 +20,38 @@ pub struct FrontendBlockCodeModule {
     pub source: String,
     pub version: String,
     pub exports: Vec<String>,
-    pub browser_asset: FrontendModuleBrowserAsset,
+    pub binding: FrontendModuleBinding,
+    #[serde(default)]
+    pub assets: Vec<FrontendModuleAsset>,
     pub type_declarations: String,
     #[serde(default)]
     pub components: Vec<FrontendComponentContract>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FrontendModuleBinding {
+    #[serde(rename = "host")]
+    Host,
+    #[serde(rename = "fetched")]
+    Fetched,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FrontendModuleBrowserAsset {
+pub struct FrontendModuleAsset {
     pub path: String,
+    pub role: FrontendModuleAssetRole,
+    pub media_type: String,
     pub sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FrontendModuleAssetRole {
+    #[serde(rename = "browser_module")]
+    BrowserModule,
+    #[serde(rename = "shadow_style")]
+    ShadowStyle,
+    #[serde(rename = "support")]
+    Support,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

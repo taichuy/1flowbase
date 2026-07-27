@@ -165,17 +165,40 @@ pub struct FrontendBlockCodeModuleManifest {
     pub source: String,
     pub version: String,
     pub exports: Vec<String>,
-    pub browser_asset: FrontendModuleBrowserAssetManifest,
+    pub binding: FrontendModuleBindingManifest,
+    #[serde(default)]
+    pub assets: Vec<FrontendModuleAssetManifest>,
     pub type_declarations: String,
     #[serde(default)]
     pub components: Vec<FrontendComponentContractManifest>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub enum FrontendModuleBindingManifest {
+    #[serde(rename = "host")]
+    Host,
+    #[serde(rename = "fetched")]
+    Fetched,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct FrontendModuleBrowserAssetManifest {
+pub struct FrontendModuleAssetManifest {
     pub path: String,
+    pub role: FrontendModuleAssetRoleManifest,
+    pub media_type: String,
     pub sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum FrontendModuleAssetRoleManifest {
+    #[serde(rename = "browser_module")]
+    BrowserModule,
+    #[serde(rename = "shadow_style")]
+    ShadowStyle,
+    #[serde(rename = "support")]
+    Support,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -523,6 +546,7 @@ const FRONTEND_BLOCK_ALLOWED_PRIMITIVES: &[&str] = &[
 ];
 const FRONTEND_BLOCK_ALLOWED_UI_CAPABILITIES: &[&str] =
     &["responsive", "configurable", "theming", "data_binding"];
+const FRONTEND_BLOCK_HOST_MODULE_SOURCES: &[&str] = &["react", "antd"];
 
 fn validate_frontend_block_contributions(
     contributions: &[FrontendBlockContributionManifest],
@@ -534,6 +558,7 @@ fn validate_frontend_block_contributions(
     }
 
     let mut registered_module_identities = HashSet::new();
+    let mut registered_asset_media_types = BTreeMap::new();
     for contribution in contributions {
         validate_non_empty(
             &contribution.contribution_code,
@@ -590,15 +615,23 @@ fn validate_frontend_block_contributions(
                 &code_module.version,
                 "block_contributions[].code_modules[].version",
             )?;
-            if !registered_module_identities
-                .insert((code_module.source.as_str(), code_module.version.as_str()))
-            {
+            if !registered_module_identities.insert(code_module.source.as_str()) {
                 return Err(PluginFrameworkError::invalid_provider_package(
-                    "block_contributions[].code_modules[] source/version must be unique",
+                    "block_contributions[].code_modules[].source must be unique",
                 ));
             }
-            validate_registered_asset_path(&code_module.browser_asset.path)?;
-            validate_sha256(&code_module.browser_asset.sha256)?;
+            validate_frontend_module_binding(code_module)?;
+            for asset in &code_module.assets {
+                if let Some(existing_media_type) =
+                    registered_asset_media_types.insert(&asset.sha256, &asset.media_type)
+                {
+                    if existing_media_type != &asset.media_type {
+                        return Err(PluginFrameworkError::invalid_provider_package(
+                            "one frontend asset digest cannot declare multiple media types",
+                        ));
+                    }
+                }
+            }
             validate_non_empty(
                 &code_module.type_declarations,
                 "block_contributions[].code_modules[].type_declarations",
@@ -769,6 +802,97 @@ fn validate_frontend_component_contracts(
     Ok(())
 }
 
+fn validate_frontend_module_binding(
+    module: &FrontendBlockCodeModuleManifest,
+) -> FrameworkResult<()> {
+    match module.binding {
+        FrontendModuleBindingManifest::Host if !module.assets.is_empty() => {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "host frontend modules must not register fetched assets",
+            ));
+        }
+        FrontendModuleBindingManifest::Host => {
+            if !FRONTEND_BLOCK_HOST_MODULE_SOURCES.contains(&module.source.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "frontend host module source is not part of the Host ABI",
+                ));
+            }
+            return Ok(());
+        }
+        FrontendModuleBindingManifest::Fetched => {}
+    }
+
+    let mut paths = HashSet::new();
+    let mut browser_module_count = 0;
+    for asset in &module.assets {
+        validate_registered_asset_path(&asset.path)?;
+        validate_non_empty(
+            &asset.media_type,
+            "block_contributions[].code_modules[].assets[].media_type",
+        )?;
+        validate_frontend_asset_media_type(&asset.media_type)?;
+        validate_sha256(&asset.sha256)?;
+        if !paths.insert(asset.path.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "frontend module asset paths must be unique within one module",
+            ));
+        }
+        match asset.role {
+            FrontendModuleAssetRoleManifest::BrowserModule => {
+                browser_module_count += 1;
+                if asset.media_type != "text/javascript; charset=utf-8" {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "browser_module frontend assets must use text/javascript; charset=utf-8",
+                    ));
+                }
+            }
+            FrontendModuleAssetRoleManifest::ShadowStyle => {
+                if asset.media_type != "text/css; charset=utf-8" {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "shadow_style frontend assets must use text/css; charset=utf-8",
+                    ));
+                }
+            }
+            FrontendModuleAssetRoleManifest::Support => {}
+        }
+    }
+    if browser_module_count != 1 {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "fetched frontend modules require exactly one browser_module asset",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_frontend_asset_media_type(value: &str) -> FrameworkResult<()> {
+    let essence = value.split(';').next().unwrap_or_default().trim();
+    let Some((type_name, subtype)) = essence.split_once('/') else {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "frontend module asset media_type must be a valid MIME type",
+        ));
+    };
+    let valid_token = |token: &str| {
+        !token.is_empty()
+            && token.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'!' | b'#' | b'$' | b'&' | b'^' | b'_' | b'.' | b'+' | b'-'
+                    )
+            })
+    };
+    if !value.is_ascii()
+        || value.bytes().any(|byte| byte.is_ascii_control())
+        || !valid_token(type_name)
+        || !valid_token(subtype)
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "frontend module asset media_type must be a valid MIME type",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_javascript_export_name(value: &str, field: &str) -> FrameworkResult<()> {
     let mut chars = value.chars();
     let valid_start = chars.next().is_some_and(|character| {
@@ -787,10 +911,7 @@ fn validate_javascript_export_name(value: &str, field: &str) -> FrameworkResult<
 }
 
 fn validate_registered_asset_path(value: &str) -> FrameworkResult<()> {
-    validate_non_empty(
-        value,
-        "block_contributions[].code_modules[].browser_asset.path",
-    )?;
+    validate_non_empty(value, "block_contributions[].code_modules[].assets[].path")?;
     let path = Path::new(value);
     if path.is_absolute()
         || path
@@ -798,7 +919,7 @@ fn validate_registered_asset_path(value: &str) -> FrameworkResult<()> {
             .any(|component| !matches!(component, Component::Normal(_)))
     {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "block_contributions[].code_modules[].browser_asset.path must stay within the plugin package",
+            "block_contributions[].code_modules[].assets[].path must stay within the plugin package",
         ));
     }
     Ok(())
@@ -811,7 +932,7 @@ fn validate_sha256(value: &str) -> FrameworkResult<()> {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "block_contributions[].code_modules[].browser_asset.sha256 must be a lowercase SHA-256 digest",
+            "block_contributions[].code_modules[].assets[].sha256 must be a lowercase SHA-256 digest",
         ));
     }
     Ok(())

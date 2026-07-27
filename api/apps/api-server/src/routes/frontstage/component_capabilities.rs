@@ -67,6 +67,14 @@ pub struct FrontendModuleBrowserAssetResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontendModuleAssetResponse {
+    pub role: String,
+    pub media_type: String,
+    pub sha256: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FrontstageComponentCapabilitySummaryResponse {
     pub component_id: String,
     pub installation_id: String,
@@ -77,7 +85,9 @@ pub struct FrontstageComponentCapabilitySummaryResponse {
     pub module_source: String,
     pub module_version: String,
     pub exports: Vec<String>,
-    pub browser_asset: FrontendModuleBrowserAssetResponse,
+    pub binding: String,
+    pub assets: Vec<FrontendModuleAssetResponse>,
+    pub browser_asset: Option<FrontendModuleBrowserAssetResponse>,
     pub export_name: String,
     pub upstream: Option<FrontendComponentUpstreamResponse>,
     pub description: String,
@@ -204,7 +214,7 @@ pub async fn get_frontstage_component_capability(
         ("sha256" = String, Path, description = "Registered module asset SHA-256")
     ),
     responses(
-        (status = 200, content_type = "text/javascript", body = String),
+        (status = 200, description = "Digest-verified module asset with its declared Content-Type", body = Vec<u8>),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
         (status = 404, body = crate::error_response::ErrorBody),
@@ -231,7 +241,8 @@ pub async fn get_frontstage_component_module_asset(
     let mut response = Response::new(Body::from(asset.bytes));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("text/javascript; charset=utf-8"),
+        HeaderValue::from_str(&asset.media_type)
+            .map_err(|_| ControlPlaneError::InvalidInput("media_type"))?,
     );
     response.headers_mut().insert(
         header::CACHE_CONTROL,
@@ -264,10 +275,24 @@ fn to_summary_response(
     entry: FrontendComponentCapability,
     workspace_id: Uuid,
 ) -> FrontstageComponentCapabilitySummaryResponse {
-    let asset_url = format!(
-        "/api/console/frontstage/{workspace_id}/component-module-assets/{}",
-        entry.browser_asset.sha256
-    );
+    let assets = entry
+        .assets
+        .iter()
+        .map(|asset| FrontendModuleAssetResponse {
+            role: frontend_asset_role(asset.role).to_string(),
+            media_type: asset.media_type.clone(),
+            sha256: asset.sha256.clone(),
+            url: module_asset_url(workspace_id, &asset.sha256),
+        })
+        .collect::<Vec<_>>();
+    let browser_asset = entry
+        .assets
+        .iter()
+        .find(|asset| asset.role == domain::FrontendModuleAssetRole::BrowserModule)
+        .map(|asset| FrontendModuleBrowserAssetResponse {
+            sha256: asset.sha256.clone(),
+            url: module_asset_url(workspace_id, &asset.sha256),
+        });
     FrontstageComponentCapabilitySummaryResponse {
         component_id: entry.component_id,
         installation_id: entry.installation_id.to_string(),
@@ -278,10 +303,12 @@ fn to_summary_response(
         module_source: entry.module_source,
         module_version: entry.module_version,
         exports: entry.exports,
-        browser_asset: FrontendModuleBrowserAssetResponse {
-            sha256: entry.browser_asset.sha256,
-            url: asset_url,
+        binding: match entry.binding {
+            domain::FrontendModuleBinding::Host => "host",
+            domain::FrontendModuleBinding::Fetched => "fetched",
         },
+        assets,
+        browser_asset,
         export_name: entry.contract.export_name,
         upstream: entry
             .contract
@@ -293,6 +320,18 @@ fn to_summary_response(
             }),
         description: entry.contract.description,
         insert_snippet: entry.contract.insert_snippet,
+    }
+}
+
+fn module_asset_url(workspace_id: Uuid, sha256: &str) -> String {
+    format!("/api/console/frontstage/{workspace_id}/component-module-assets/{sha256}")
+}
+
+fn frontend_asset_role(role: domain::FrontendModuleAssetRole) -> &'static str {
+    match role {
+        domain::FrontendModuleAssetRole::BrowserModule => "browser_module",
+        domain::FrontendModuleAssetRole::ShadowStyle => "shadow_style",
+        domain::FrontendModuleAssetRole::Support => "support",
     }
 }
 

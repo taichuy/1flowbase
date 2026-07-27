@@ -245,10 +245,34 @@ fn build_frontend_block_sync_input(
                         source: code_module.source.clone(),
                         version: code_module.version.clone(),
                         exports: code_module.exports.clone(),
-                        browser_asset: domain::FrontendModuleBrowserAsset {
-                            path: code_module.browser_asset.path.clone(),
-                            sha256: code_module.browser_asset.sha256.clone(),
+                        binding: match code_module.binding {
+                            plugin_framework::FrontendModuleBindingManifest::Host => {
+                                domain::FrontendModuleBinding::Host
+                            }
+                            plugin_framework::FrontendModuleBindingManifest::Fetched => {
+                                domain::FrontendModuleBinding::Fetched
+                            }
                         },
+                        assets: code_module
+                            .assets
+                            .iter()
+                            .map(|asset| domain::FrontendModuleAsset {
+                                path: asset.path.clone(),
+                                role: match asset.role {
+                                    plugin_framework::FrontendModuleAssetRoleManifest::BrowserModule => {
+                                        domain::FrontendModuleAssetRole::BrowserModule
+                                    }
+                                    plugin_framework::FrontendModuleAssetRoleManifest::ShadowStyle => {
+                                        domain::FrontendModuleAssetRole::ShadowStyle
+                                    }
+                                    plugin_framework::FrontendModuleAssetRoleManifest::Support => {
+                                        domain::FrontendModuleAssetRole::Support
+                                    }
+                                },
+                                media_type: asset.media_type.clone(),
+                                sha256: asset.sha256.clone(),
+                            })
+                            .collect(),
                         type_declarations: code_module.type_declarations.clone(),
                         components: code_module
                             .components

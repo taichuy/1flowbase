@@ -36,10 +36,15 @@ describe('console-frontend-blocks client', () => {
         {
           source: '@1flowbase/block-sdk',
           version: '1.0.0',
-          browser_asset: {
-            sha256:
-              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-          },
+          binding: 'fetched',
+          assets: [
+            {
+              role: 'browser_module',
+              media_type: 'text/javascript; charset=utf-8',
+              sha256:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            }
+          ],
           exports: ['blockSdkVersion'],
           type_declarations: 'export declare function defineBlock(): unknown;'
         }
@@ -52,10 +57,15 @@ describe('console-frontend-blocks client', () => {
     expect(entry.code_modules?.[0]).toMatchObject({
       source: '@1flowbase/block-sdk',
       version: '1.0.0',
-      browser_asset: {
-        sha256:
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-      },
+      binding: 'fetched',
+      assets: [
+        {
+          role: 'browser_module',
+          media_type: 'text/javascript; charset=utf-8',
+          sha256:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        }
+      ],
       exports: ['blockSdkVersion']
     });
   });

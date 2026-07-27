@@ -10,7 +10,7 @@ use control_plane::{
 use domain::{
     FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
     FrontendBlockPermissions, FrontendComponentContract, FrontendComponentExample,
-    FrontendModuleBrowserAsset,
+    FrontendModuleAsset, FrontendModuleAssetRole, FrontendModuleBinding,
 };
 use uuid::Uuid;
 
@@ -53,10 +53,13 @@ fn sample_block(installation_id: Uuid) -> FrontendBlockCatalogEntry {
             source: "@1flowbase/native-components".into(),
             version: "1.0.0".into(),
             exports: vec!["Button".into(), "Alert".into()],
-            browser_asset: FrontendModuleBrowserAsset {
+            binding: FrontendModuleBinding::Fetched,
+            assets: vec![FrontendModuleAsset {
                 path: "browser-assets/native-components.js".into(),
+                role: FrontendModuleAssetRole::BrowserModule,
+                media_type: "text/javascript; charset=utf-8".into(),
                 sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0".into(),
-            },
+            }],
             type_declarations: "declare module '@1flowbase/native-components' {}".into(),
             components: vec![
                 sample_component("button", "Button"),
