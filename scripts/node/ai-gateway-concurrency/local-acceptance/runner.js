@@ -75,6 +75,7 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
       pluginRunnerBin: manifest.artifacts.pluginRunner.path,
       openaiPackage: manifest.artifacts.openaiPackage.path,
       anthropicPackage: manifest.artifacts.anthropicPackage.path,
+      openaiCompatiblePackage: manifest.artifacts.openaiCompatiblePackage.path,
       upstreamBaseUrl: endpoints.httpBaseUrl,
       artifactRoot: evidenceRoot,
       apiPort: 7800,

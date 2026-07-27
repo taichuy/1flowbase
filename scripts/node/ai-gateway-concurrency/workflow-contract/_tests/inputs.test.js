@@ -33,10 +33,16 @@ test('AC-001: run inputs preserve the default PostgreSQL pool owner outside work
   fs.chmodSync(executable, 0o755);
   const openai = path.join(root, 'openai');
   const anthropic = path.join(root, 'anthropic');
+  const openaiCompatible = path.join(root, 'openai_compatible');
   fs.mkdirSync(openai);
   fs.mkdirSync(anthropic);
+  fs.mkdirSync(openaiCompatible);
   fs.writeFileSync(path.join(openai, 'openai.1flowbasepkg'), 'fixture');
   fs.writeFileSync(path.join(anthropic, 'anthropic.1flowbasepkg'), 'fixture');
+  fs.writeFileSync(
+    path.join(openaiCompatible, 'openai_compatible.1flowbasepkg'),
+    'fixture'
+  );
   const normalized = normalizeRunInputs({
     mainSourceSha: 'a'.repeat(40),
     officialSourceSha: 'b'.repeat(40),
@@ -47,6 +53,7 @@ test('AC-001: run inputs preserve the default PostgreSQL pool owner outside work
     pluginRunnerBin: executable,
     openaiPackageDir: openai,
     anthropicPackageDir: anthropic,
+    openaiCompatiblePackageDir: openaiCompatible,
     hostTarget: 'x86_64-unknown-linux-gnu',
   });
   assert.equal(Object.hasOwn(normalized, 'databasePoolMaxConnections'), false);
@@ -57,5 +64,9 @@ test('AC-028/029: paired provider lock is portable and exact', () => {
   assert.equal(lock.schema_version, '1flowbase.ai-gateway-paired-source/v1');
   assert.equal(lock.official_plugins.repository, 'taichuy/1flowbase-official-plugins');
   assert.match(lock.official_plugins.revision, /^[a-f0-9]{40}$/u);
+  assert.equal(
+    lock.official_plugins.revision,
+    'ee940f10fb3dbee2d50e4ad05206c53b642ccd4a'
+  );
   assert.doesNotMatch(JSON.stringify(lock), /\/home\//u);
 });

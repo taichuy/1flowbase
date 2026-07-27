@@ -35,6 +35,7 @@ test('CLI accepts the complete explicit environment contract', () => {
     AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN: '/tmp/plugin-runner',
     AI_GATEWAY_FIXTURE_OPENAI_PACKAGE: '/tmp/openai.pkg',
     AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE: '/tmp/anthropic.pkg',
+    AI_GATEWAY_FIXTURE_OPENAI_COMPATIBLE_PACKAGE: '/tmp/openai-compatible.pkg',
     AI_GATEWAY_FIXTURE_UPSTREAM_BASE_URL: 'http://127.0.0.1:9123',
   });
   assert.equal(parsed.databaseUrl, 'postgres://fixture/fixture_db');
@@ -55,6 +56,7 @@ test('normalization requires executable binaries and exact package files', () =>
       pluginRunnerBin: file('plugin-runner', 0o700),
       openaiPackage: file('openai.1flowbasepkg'),
       anthropicPackage: file('anthropic.1flowbasepkg'),
+      openaiCompatiblePackage: file('openai_compatible.1flowbasepkg'),
       upstreamBaseUrl: 'http://127.0.0.1:9123/',
     });
     assert.equal(options.upstreamBaseUrl, 'http://127.0.0.1:9123');

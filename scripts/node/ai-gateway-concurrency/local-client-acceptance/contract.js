@@ -111,7 +111,11 @@ function targetsFromReady(ready) {
   }
   const openai = targetFromProvider(ready.targets?.openai, ready.gateway_base_url);
   const anthropic = targetFromProvider(ready.targets?.anthropic, ready.gateway_base_url);
-  return { claude: anthropic, opencode: openai, codex: openai };
+  const openaiCompatible = targetFromProvider(
+    ready.targets?.openai_compatible,
+    ready.gateway_base_url
+  );
+  return { claude: anthropic, opencode: openaiCompatible, codex: openai };
 }
 
 function codexProviderArguments(target, provider, websocket) {

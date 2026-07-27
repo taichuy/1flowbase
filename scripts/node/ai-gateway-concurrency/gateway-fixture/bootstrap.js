@@ -65,7 +65,7 @@ function configureDraft(document, provider) {
   start.config.model_list = [{
     id: provider.model,
     name: provider.model,
-    context_window: 128000,
+    context_window: 1000000,
     max_output_tokens: 4096,
     capabilities: {
       reasoning: true,
@@ -152,17 +152,25 @@ async function bootstrapGateway(client, options) {
   const packages = await Promise.all([
     installProvider(client, options.openaiPackage, 'openai'),
     installProvider(client, options.anthropicPackage, 'anthropic'),
+    installProvider(client, options.openaiCompatiblePackage, 'openai_compatible'),
   ]);
   const openaiInstallation = packages.find((item) => item.provider_code === 'openai');
   const anthropicInstallation = packages.find((item) => item.provider_code === 'anthropic');
+  const openaiCompatibleInstallation = packages.find(
+    (item) => item.provider_code === 'openai_compatible'
+  );
   const openaiInstance = await createProviderInstance(
     client, openaiInstallation, options.upstreamBaseUrl, options.model
   );
   const anthropicInstances = await Promise.all([1, 2].map((ordinal) => createProviderInstance(
     client, anthropicInstallation, options.upstreamBaseUrl, options.model, ordinal
   )));
+  const openaiCompatibleInstance = await createProviderInstance(
+    client, openaiCompatibleInstallation, `${options.upstreamBaseUrl}/v1`, options.model
+  );
   return {
     openai: await createPublishedApplication(client, openaiInstance),
+    openai_compatible: await createPublishedApplication(client, openaiCompatibleInstance),
     anthropic: await Promise.all(anthropicInstances.map(
       (instance, index) => createPublishedApplication(client, instance, index + 1)
     )),

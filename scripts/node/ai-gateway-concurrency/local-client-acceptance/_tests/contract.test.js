@@ -65,7 +65,7 @@ test('AC-009 Codex Responses SSE and WebSocket plans differ only in explicit web
   assert.deepEqual(CLIENT_PROTOCOLS.codex, ['responses_sse', 'responses_websocket']);
 });
 
-test('WP-14A maps one OpenAI and one Anthropic published fixture application to three clients', () => {
+test('WP-D4C maps protocol-matched published fixture applications to three clients', () => {
   const provider = (code) => ({
     application_id: `${code}-app`, model: 'fixture-model', api_key: `${code}-secret`,
     gateway: { base_url: 'http://127.0.0.1:7800' },
@@ -74,10 +74,14 @@ test('WP-14A maps one OpenAI and one Anthropic published fixture application to 
   const targets = targetsFromReady({
     schema_version: '1flowbase.ai-gateway-fixture/v1',
     gateway_base_url: 'http://127.0.0.1:7800',
-    targets: { openai: provider('openai'), anthropic: provider('anthropic') },
+    targets: {
+      openai: provider('openai'),
+      anthropic: provider('anthropic'),
+      openai_compatible: provider('openai_compatible'),
+    },
   });
   assert.equal(targets.codex.applicationId, 'openai-app');
-  assert.equal(targets.opencode.apiKey, 'openai-secret');
+  assert.equal(targets.opencode.apiKey, 'openai_compatible-secret');
   assert.equal(targets.claude.applicationId, 'anthropic-app');
   assert.equal(targets.codex.gatewayBaseUrl, 'http://127.0.0.1:7800');
 });

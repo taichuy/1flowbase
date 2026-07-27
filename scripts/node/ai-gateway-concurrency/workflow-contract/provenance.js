@@ -1,6 +1,6 @@
 'use strict';
 
-const PROVIDERS = Object.freeze(['openai', 'anthropic']);
+const PROVIDERS = Object.freeze(['openai', 'anthropic', 'openai_compatible']);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const SOURCE_SHA_PATTERN = /^[a-f0-9]{40}$/u;
 

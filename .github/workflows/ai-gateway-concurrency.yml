@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: taichuy/1flowbase-official-plugins
-          ref: 2df02d3c08d156d948c334cbf4420091b1ae52aa
+          ref: ee940f10fb3dbee2d50e4ad05206c53b642ccd4a
           path: tmp/ai-gateway-concurrency/official-source
           fetch-depth: 1
 
@@ -85,6 +85,8 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ai-gateway-protocol-conformance-${{ github.sha }}
-          path: tmp/test-governance/**
+          path: |
+            tmp/test-governance/ai-gateway-quality-gate/**
+            tmp/test-governance/ai-gateway-concurrency/**
           if-no-files-found: error
           retention-days: 14
