@@ -117,6 +117,16 @@ function conversationTestInvocations(repoRoot) {
       "application_public_api",
     ),
     invocation(
+      "control-plane-answer-node-truth-tests",
+      "control-plane",
+      "ac_004_answer_node_truth",
+    ),
+    invocation(
+      "api-server-answer-node-truth-tests",
+      "api-server",
+      "ac_004_answer_node_truth",
+    ),
+    invocation(
       "api-server-protocol-projection-tests",
       "api-server",
       "routes::application_public_api::compat_sse::tests::protocol_projection",

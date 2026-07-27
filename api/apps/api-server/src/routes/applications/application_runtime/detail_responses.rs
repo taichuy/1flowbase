@@ -142,9 +142,9 @@ fn stitched_trace_node_run_is_trace_step(run: &domain::NodeRunRecord) -> bool {
     !matches!(run.node_type.as_str(), "start" | "answer")
 }
 
-fn is_waiting_prefix_answer_node_run(run: &domain::NodeRunRecord) -> bool {
+fn waiting_answer_snapshot_marker(run: &domain::NodeRunRecord) -> Option<&str> {
     if run.node_type != "answer" {
-        return false;
+        return None;
     }
 
     let input_marker = run
@@ -160,7 +160,14 @@ fn is_waiting_prefix_answer_node_run(run: &domain::NodeRunRecord) -> bool {
         .and_then(|presentation| presentation.get("materialized_from"))
         .and_then(serde_json::Value::as_str);
 
-    input_marker == Some("waiting_prefix") || debug_marker == Some("waiting_prefix")
+    [input_marker, debug_marker]
+        .into_iter()
+        .flatten()
+        .find(|marker| matches!(*marker, "waiting_prefix" | "canonical_stream_state"))
+}
+
+fn is_legacy_waiting_answer_snapshot_node_run(run: &domain::NodeRunRecord) -> bool {
+    waiting_answer_snapshot_marker(run).is_some()
 }
 
 fn split_answer_snapshot_node_runs(
@@ -170,7 +177,7 @@ fn split_answer_snapshot_node_runs(
     let mut node_runs = Vec::new();
 
     for node_run in detail.node_runs.iter().cloned() {
-        if is_waiting_prefix_answer_node_run(&node_run) {
+        if is_legacy_waiting_answer_snapshot_node_run(&node_run) {
             answer_snapshot = Some(node_run);
         } else {
             node_runs.push(node_run);
@@ -247,6 +254,7 @@ fn to_answer_snapshot_response(
     detail: &domain::ApplicationRunDetail,
 ) -> Option<AnswerSnapshotResponse> {
     let text = answer_snapshot_text(&run.output_payload)?;
+    let materialized_from = waiting_answer_snapshot_marker(run)?.to_string();
     let (waiting_node_id, waiting_node_run_id) = waiting_node_for_answer_snapshot(detail);
 
     Some(AnswerSnapshotResponse {
@@ -254,9 +262,28 @@ fn to_answer_snapshot_response(
         text,
         output_payload: run.output_payload.clone(),
         complete: answer_snapshot_complete(run),
-        materialized_from: "waiting_prefix".to_string(),
-        answer_node_id: run.node_id.clone(),
-        answer_node_run_id: run.id.to_string(),
+        materialized_from,
+        answer_node_id: Some(run.node_id.clone()),
+        answer_node_run_id: Some(run.id.to_string()),
+        waiting_node_id,
+        waiting_node_run_id,
+    })
+}
+
+fn to_flow_run_answer_snapshot_response(
+    detail: &domain::ApplicationRunDetail,
+) -> Option<AnswerSnapshotResponse> {
+    let text = answer_snapshot_text(&detail.flow_run.output_payload)?;
+    let (waiting_node_id, waiting_node_run_id) = waiting_node_for_answer_snapshot(detail);
+
+    Some(AnswerSnapshotResponse {
+        kind: "answer".to_string(),
+        text,
+        output_payload: detail.flow_run.output_payload.clone(),
+        complete: false,
+        materialized_from: "flow_run_output".to_string(),
+        answer_node_id: None,
+        answer_node_run_id: None,
         waiting_node_id,
         waiting_node_run_id,
     })
@@ -279,6 +306,7 @@ fn to_application_run_detail_response(
         answer_snapshot_node_run
             .as_ref()
             .and_then(|node_run| to_answer_snapshot_response(node_run, &detail))
+            .or_else(|| to_flow_run_answer_snapshot_response(&detail))
     } else {
         None
     };

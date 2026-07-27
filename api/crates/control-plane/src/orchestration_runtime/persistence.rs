@@ -44,7 +44,7 @@ use super::{
 #[cfg(test)]
 use answer_presentation_persistence::answer_presentation_terminal_events;
 use answer_presentation_persistence::{
-    canonical_terminal_output_payload, materialize_ready_answer_node_run,
+    canonical_terminal_output_payload, ready_waiting_answer_output_payload,
 };
 pub(in crate::orchestration_runtime) use checkpoint_locator::{
     checkpoint_node_id, checkpoint_snapshot_from_record, CheckpointLocatorPayload,
@@ -220,15 +220,9 @@ where
                 .ok_or_else(|| anyhow!("waiting_human outcome is missing checkpoint"))?;
             let waiting_node_run = waiting_node_run
                 .ok_or_else(|| anyhow!("waiting_human outcome is missing node run"))?;
-            let answer_output_payload = materialize_ready_answer_node_run(
-                repository,
-                flow_run.id,
-                compiled_plan,
-                outcome,
-                OffsetDateTime::now_utc(),
-            )
-            .await?
-            .unwrap_or_else(|| json!({}));
+            let answer_output_payload =
+                ready_waiting_answer_output_payload(compiled_plan, outcome)?
+                    .unwrap_or_else(|| json!({}));
             let updated = repository
                 .update_flow_run_if_status(
                     &UpdateFlowRunInput {
@@ -294,15 +288,9 @@ where
                 .ok_or_else(|| anyhow!("waiting_callback outcome is missing checkpoint"))?;
             let waiting_node_run = waiting_node_run
                 .ok_or_else(|| anyhow!("waiting_callback outcome is missing node run"))?;
-            let answer_output_payload = materialize_ready_answer_node_run(
-                repository,
-                flow_run.id,
-                compiled_plan,
-                outcome,
-                OffsetDateTime::now_utc(),
-            )
-            .await?
-            .unwrap_or_else(|| json!({}));
+            let answer_output_payload =
+                ready_waiting_answer_output_payload(compiled_plan, outcome)?
+                    .unwrap_or_else(|| json!({}));
             let (checkpoint_status, checkpoint_reason) =
                 if wait.callback_kind == "data_model_side_effect_confirmation" {
                     (

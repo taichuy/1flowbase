@@ -6,16 +6,10 @@ use crate::orchestration_runtime::{
 use serde_json::Map;
 use std::collections::BTreeMap;
 
-pub(super) async fn materialize_ready_answer_node_run<R>(
-    repository: &R,
-    flow_run_id: Uuid,
+pub(super) fn ready_waiting_answer_output_payload(
     compiled_plan: Option<&orchestration_runtime::compiled_plan::CompiledPlan>,
     outcome: &orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
-    started_at: OffsetDateTime,
-) -> Result<Option<Value>>
-where
-    R: OrchestrationRuntimeRepository,
-{
+) -> Result<Option<Value>> {
     let Some(compiled_plan) = compiled_plan else {
         return Ok(None);
     };
@@ -34,56 +28,7 @@ where
     ) else {
         return Ok(None);
     };
-    let Some(answer_node) = compiled_plan.nodes.get(&ready.answer_node_id) else {
-        return Ok(None);
-    };
     let output_payload = answer_presentation::ready_answer_output_payload(&ready, variable_pool);
-    let node_run = repository
-        .create_node_run(&CreateNodeRunInput {
-            flow_run_id,
-            node_id: answer_node.node_id.clone(),
-            node_type: answer_node.node_type.clone(),
-            node_alias: answer_node.alias.clone(),
-            status: domain::NodeRunStatus::Running,
-            input_payload: json!({
-                "presentation": {
-                    "kind": "answer",
-                    "complete": ready.complete,
-                    "materialized_from": "canonical_stream_state"
-                }
-            }),
-            debug_payload: json!({}),
-            started_at,
-        })
-        .await?;
-    ensure_node_run_transition(
-        domain::NodeRunStatus::Running,
-        domain::NodeRunStatus::Succeeded,
-        "materialize_waiting_answer_node",
-    )?;
-    repository
-        .update_node_run(&UpdateNodeRunInput {
-            node_run_id: node_run.id,
-            status: domain::NodeRunStatus::Succeeded,
-            output_payload: output_payload.clone(),
-            error_payload: None,
-            metrics_payload: json!({
-                "preview_mode": true,
-                "answer_presentation": {
-                    "partial": !ready.complete,
-                    "materialized_from": "canonical_stream_state"
-                }
-            }),
-            debug_payload: json!({
-                "answer_presentation": {
-                    "partial": !ready.complete,
-                    "materialized_from": "canonical_stream_state"
-                }
-            }),
-            finished_at: Some(started_at),
-        })
-        .await?;
-
     if ready.text.is_empty() {
         Ok(None)
     } else {

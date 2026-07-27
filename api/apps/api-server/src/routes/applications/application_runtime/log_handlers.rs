@@ -389,6 +389,7 @@ fn answer_snapshot_for_log_overview(
     answer_snapshot_node_run
         .as_ref()
         .and_then(|node_run| to_answer_snapshot_response(node_run, detail))
+        .or_else(|| to_flow_run_answer_snapshot_response(detail))
 }
 
 fn to_application_run_overview_response(

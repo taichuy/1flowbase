@@ -59,6 +59,8 @@ test("quality gate limits conversation Cargo probes to deterministic library sui
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
       ["control-plane-conversation-tests", "application_public_api"],
+      ["control-plane-answer-node-truth-tests", "ac_004_answer_node_truth"],
+      ["api-server-answer-node-truth-tests", "ac_004_answer_node_truth"],
       [
         "api-server-protocol-projection-tests",
         "routes::application_public_api::compat_sse::tests::protocol_projection",

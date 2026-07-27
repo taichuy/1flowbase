@@ -41,12 +41,10 @@ async fn continue_flow_debug_run_stops_at_human_input_and_persists_waiting_state
         .find(|node_run| node_run.node_id == "node-human")
         .expect("human node run should exist");
     assert_eq!(human_node.status.as_str(), "waiting_human");
-    let answer_node = detail
+    assert!(detail
         .node_runs
         .iter()
-        .find(|node_run| node_run.node_id == "node-answer")
-        .expect("answer node should be materialized while waiting");
-    assert_eq!(answer_node.status.as_str(), "succeeded");
+        .all(|node_run| node_run.node_id != "node-answer"));
     assert_eq!(detail.checkpoints.len(), 1);
 }
 
@@ -99,14 +97,14 @@ async fn resume_flow_run_with_human_input_finishes_downstream_answer_node() {
             .map(|event| (&event.event_type, event.payload.get("node_run_id")))
             .collect::<Vec<_>>()
     );
-    let waiting_answer = detail
-        .node_runs
-        .iter()
-        .find(|node_run| node_run.node_id == "node-answer" && node_run.id != resumed_answer.id)
-        .expect("waiting state should materialize a partial answer node");
-    assert!(
-        waiting_answer.started_at <= resumed_answer.started_at,
-        "waiting answer timestamp must precede resumed execution"
+    assert_eq!(
+        detail
+            .node_runs
+            .iter()
+            .filter(|node_run| node_run.node_id == "node-answer")
+            .count(),
+        1,
+        "only the executed terminal Answer node may create a node run"
     );
 }
 
