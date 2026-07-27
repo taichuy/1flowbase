@@ -15,7 +15,12 @@
         "runtime": {
           "protocol": "stdio_json_worker",
           "entry": "bin/openai-provider",
-          "capabilities": []
+          "capabilities": [
+            "compact.responses_compact",
+            "compact.responses_compaction_v2",
+            "responses.native_passthrough",
+            "protocol_context"
+          ]
         }
       },
       "input": {
@@ -87,7 +92,9 @@
           "capabilities": [
             "end_user_reference",
             "system_prompt_blocks",
-            "system_prompt_cache_control"
+            "system_prompt_cache_control",
+            "count_tokens",
+            "protocol_context"
           ]
         }
       },
@@ -382,7 +389,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/openai_compatible-provider",
-          "capabilities": []
+          "capabilities": ["protocol_context"]
         }
       },
       "input": {
@@ -458,6 +465,12 @@
         "expected_error": "package digest mismatch"
       }
     ],
+    "stale_artifact_receipt": {
+      "target_provider": "openai",
+      "expected_manifest_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_status_family": 4,
+      "expected_error": "manifest_fingerprint_mismatch"
+    },
     "legacy_input": {
       "target_provider": "openai",
       "contract_version": "1flowbase.provider/v1",
