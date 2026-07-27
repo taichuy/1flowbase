@@ -99,7 +99,6 @@ function FirstBlock({
   const hookIdentity = useFixtureBlockCounters('first');
   const count = Number(ctx.inputs.count ?? 0);
   if (firstThrowPending) {
-    firstThrowPending = false;
     throw new Error('controlled Native render failure');
   }
   return (
@@ -315,7 +314,10 @@ function NativeReactTrialFixture() {
             setSourceRevision((value) => value + 1);
           }}
         >
-          render throw once
+          render failure
+        </button>
+        <button onClick={() => { firstThrowPending = false; }}>
+          allow render recovery
         </button>
         <button onClick={() => setPreparationFailure(true)}>
           compile failure

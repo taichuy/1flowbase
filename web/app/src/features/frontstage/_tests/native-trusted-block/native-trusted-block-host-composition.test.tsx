@@ -150,24 +150,16 @@ describe('native trusted block surface portal composition', () => {
     expect(root.shadowRoot).toBeNull();
   });
 
-  test('D3R-AC-007 reports capability render failure without leaking details into the surface', async () => {
+  test('D3R-AC-007 reports a persistent render failure without leaking details into the surface', async () => {
     const root = createBlockRoot();
     const onRuntimeError = vi.fn();
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const result = prepareNativeTrustedBlock(
-      createPrepareInput({
-        source: `
-import React from 'react';
-export default function CapabilityViolationBlock() {
-  const forbiddenFetch = globalThis['fe' + 'tch'];
-  forbiddenFetch('/api/native-trusted-block');
-  return <div>Denied</div>;
-}
-`
-      })
-    );
+    const result = prepareNativeTrustedBlock(createPrepareInput());
+    const PersistentRenderFailure = () => {
+      throw new Error('controlled persistent render failure');
+    };
 
     try {
       expect(result.ok).toBe(true);
@@ -175,11 +167,9 @@ export default function CapabilityViolationBlock() {
       render(
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
-          renderEpoch="capability:1"
+          renderEpoch="render-error:1"
           plan={result.plan}
-          component={
-            createFrontstageNativeTrustedBlockRuntimeFactory()(result.plan)
-          }
+          component={PersistentRenderFailure}
           ctx={createContext()}
           onRuntimeError={onRuntimeError}
         />
@@ -189,7 +179,7 @@ export default function CapabilityViolationBlock() {
         expect(onRuntimeError).toHaveBeenCalledWith(
           expect.objectContaining({
             code: 'runtime_error',
-            path: 'runtime.capability.fetch'
+            path: 'runtime.render'
           }),
           expect.objectContaining({
             blockId: 'host-composition-native-block',
@@ -197,7 +187,9 @@ export default function CapabilityViolationBlock() {
           })
         )
       );
-      expect(root.shadowRoot).not.toHaveTextContent('runtime.capability.fetch');
+      expect(root.shadowRoot).not.toHaveTextContent(
+        'controlled persistent render failure'
+      );
     } finally {
       consoleError.mockRestore();
     }

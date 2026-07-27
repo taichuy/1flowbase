@@ -41,9 +41,10 @@ describe('native trusted block portal surface', () => {
     });
     const shadowRoot = first.shadowRoot;
 
-    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-root', '');
-    expect(root).toHaveAttribute(
-      'data-flowbase-native-trusted-block-id',
+    expect(root.getAttribute('data-flowbase-native-trusted-block-root')).toBe(
+      ''
+    );
+    expect(root.getAttribute('data-flowbase-native-trusted-block-id')).toBe(
       'epoch-1'
     );
 
@@ -51,9 +52,10 @@ describe('native trusted block portal surface', () => {
     first.dispose();
 
     expect(shadowRoot.childNodes).toHaveLength(0);
-    expect(root).not.toHaveAttribute('data-flowbase-native-trusted-block-root');
-    expect(root).toHaveAttribute(
-      'data-flowbase-native-trusted-block-id',
+    expect(root.hasAttribute('data-flowbase-native-trusted-block-root')).toBe(
+      false
+    );
+    expect(root.getAttribute('data-flowbase-native-trusted-block-id')).toBe(
       'host-value'
     );
 

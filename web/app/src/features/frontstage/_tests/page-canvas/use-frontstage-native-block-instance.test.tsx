@@ -192,7 +192,6 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     const RecoveringBlock = ({ ctx }: { ctx: BlockContext }) => {
       contexts.push(ctx);
       if (shouldThrow) {
-        shouldThrow = false;
         throw new Error('controlled render failure');
       }
       return <div data-testid="recovered-native-block">recovered</div>;
@@ -208,7 +207,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         />
       );
       const firstPublish = contexts.at(-1)!.outputs.publish;
-      fireEvent.click(await screen.findByRole('button', { name: /重\s*试/ }));
+      const retry = await screen.findByRole('button', { name: /重\s*试/ });
+      shouldThrow = false;
+      fireEvent.click(retry);
 
       const root = await nativeRoot();
       await within(root.shadow).findByTestId('recovered-native-block');

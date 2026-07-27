@@ -346,6 +346,13 @@ describe('JsBlockTrialPanel Native React run revision', () => {
       />
     );
     await waitFor(() => expect(prepareDraftRun).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(
+        view.container.querySelector<HTMLElement>(
+          '[data-testid="native-react-trial-root"]'
+        )?.shadowRoot
+      ).not.toBeNull()
+    );
     const queries = trialQueries(view.container);
     const local = await queries.findByRole('button', { name: 'Local' });
     fireEvent.click(queries.getByRole('button', { name: 'Register' }));
