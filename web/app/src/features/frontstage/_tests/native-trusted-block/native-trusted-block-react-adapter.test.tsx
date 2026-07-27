@@ -382,11 +382,15 @@ describe('frontstage native trusted block declarative portal host', () => {
     const root = createBlockRoot();
     const DirectShadowPortal: FrontstageNativeTrustedBlockReactComponent = ({
       portalContainment
-    }) =>
-      createPortal(
+    }) => {
+      if (!(portalContainment.root instanceof ShadowRoot)) {
+        throw new Error('Expected a ShadowRoot portal containment handle.');
+      }
+      return createPortal(
         <output data-testid="direct-shadow-child">Direct child</output>,
         portalContainment.root
       );
+    };
     const view = render(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
