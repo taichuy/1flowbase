@@ -100,6 +100,9 @@ importers:
       '@1flowbase/flow-schema':
         specifier: workspace:^
         version: link:../packages/flow-schema
+      '@1flowbase/native-components':
+        specifier: workspace:*
+        version: link:../packages/native-components
       '@1flowbase/rich-text':
         specifier: workspace:*
         version: link:../packages/rich-text

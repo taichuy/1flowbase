@@ -10,6 +10,7 @@
     "@1flowbase/embed-sdk": "workspace:*",
     "@1flowbase/embedded-contracts": "workspace:*",
     "@1flowbase/flow-schema": "workspace:^",
+    "@1flowbase/native-components": "workspace:*",
     "@1flowbase/rich-text": "workspace:*",
     "@1flowbase/shared-types": "workspace:*",
     "@1flowbase/ui": "workspace:*",
