@@ -1,5 +1,7 @@
 use super::*;
 
+use anyhow::anyhow;
+
 #[tokio::test]
 async fn provider_failure_preserves_the_runtime_error_message() {
     let outcome = start_flow_debug_run(

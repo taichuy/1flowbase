@@ -23,6 +23,7 @@ import {
   modelProviderOptionsProviders
 } from '../../../../test/model-provider-contract-fixtures';
 
+import { createEdgeDocument } from '../../lib/document/edge-factory';
 import { createNodeDocument } from '../../lib/document/node-factory';
 import * as dataModelOptionsApi from '../../api/data-model-options';
 import * as modelProviderOptionsApi from '../../api/model-provider-options';

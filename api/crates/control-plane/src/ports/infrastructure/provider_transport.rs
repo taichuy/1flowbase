@@ -67,7 +67,7 @@ impl ProviderProtocolContextSlotId {
         }
     }
 
-    pub const fn belongs_to(self, flow_run_id: Uuid) -> bool {
+    pub fn belongs_to(self, flow_run_id: Uuid) -> bool {
         self.flow_run_id == flow_run_id
     }
 
