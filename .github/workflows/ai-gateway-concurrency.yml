@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: taichuy/1flowbase-official-plugins
-          ref: 0c2a111017b7c30787f3204674afb3fb3754899e
+          ref: 8317ac5c11ed21f2a941ac2dc9f6fe0dbb3b054b
           path: tmp/ai-gateway-concurrency/official-source
           fetch-depth: 1
 
