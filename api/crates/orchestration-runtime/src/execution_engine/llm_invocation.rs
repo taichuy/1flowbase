@@ -101,7 +101,7 @@ pub(super) struct SystemPromptPart {
     pub(super) source: Value,
 }
 
-pub(super) fn build_provider_invocation(
+pub(super) async fn build_provider_invocation<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
@@ -109,7 +109,11 @@ pub(super) fn build_provider_invocation(
     rendered_templates: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
-) -> Result<BuiltProviderInvocation, Value> {
+    invoker: &I,
+) -> Result<BuiltProviderInvocation, Value>
+where
+    I: ProviderInvoker + ?Sized,
+{
     let (operation, profile) = provider_operation(runtime_context.operation());
     let previous_response_id =
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
@@ -173,7 +177,8 @@ pub(super) fn build_provider_invocation(
         run_context.insert("visible_internal_llm_media_tools".to_string(), media_tools);
     }
 
-    let protocol_context = resolve_protocol_context(node, variable_pool, runtime_context)?;
+    let protocol_context =
+        resolve_protocol_context(node, variable_pool, runtime_context, invoker).await?;
     let mut required_capabilities = runtime_context.provider_invocation_capabilities.clone();
     let protocol_context_capability =
         plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext;
@@ -220,11 +225,15 @@ pub(super) fn build_provider_invocation(
     })
 }
 
-fn resolve_protocol_context(
+async fn resolve_protocol_context<I>(
     node: &CompiledNode,
     variable_pool: &Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
-) -> Result<Option<plugin_framework::provider_contract::ProtocolContextEnvelope>, Value> {
+    invoker: &I,
+) -> Result<Option<plugin_framework::provider_contract::ProtocolContextEnvelope>, Value>
+where
+    I: ProviderInvoker + ?Sized,
+{
     let reference = node.protocol_context_reference().map_err(|error| {
         protocol_context_resolution_error(node, None, format!("invalid VariableReference: {error}"))
     })?;
@@ -232,7 +241,15 @@ fn resolve_protocol_context(
         return Ok(None);
     };
     if reference.is_system_protocol_context() {
-        return Ok(runtime_context.protocol_context.clone());
+        return runtime_context
+            .resolved_protocol_context()
+            .map_err(|reason| {
+                protocol_context_resolution_error(
+                    node,
+                    Some(reference.selector_path()),
+                    reason.into(),
+                )
+            });
     }
 
     let selector = reference.selector_path();
@@ -243,13 +260,28 @@ fn resolve_protocol_context(
         return Ok(None);
     }
 
-    serde_json::from_value(value).map(Some).map_err(|error| {
-        protocol_context_resolution_error(
-            node,
-            Some(selector),
-            format!("selected JSON does not match ProtocolContextEnvelope: {error}"),
-        )
-    })
+    match serde_json::from_value(value.clone()) {
+        Ok(protocol_context) => Ok(Some(protocol_context)),
+        Err(_) => match invoker.resolve_protocol_context_locator(&value).await {
+            Ok(Some(raw_value)) => serde_json::from_value(raw_value).map(Some).map_err(|_| {
+                protocol_context_resolution_error(
+                    node,
+                    Some(selector),
+                    "selected ephemeral value does not match ProtocolContextEnvelope".to_string(),
+                )
+            }),
+            Ok(None) => Err(protocol_context_resolution_error(
+                node,
+                Some(selector),
+                "selected JSON does not match ProtocolContextEnvelope".to_string(),
+            )),
+            Err(error) => Err(protocol_context_resolution_error(
+                node,
+                Some(selector),
+                error.to_string(),
+            )),
+        },
+    }
 }
 
 fn protocol_context_resolution_error(

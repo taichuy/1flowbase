@@ -35,13 +35,17 @@ use control_plane::{
     },
     file_management::{FileUploadService, UploadFileCommand},
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
-    ports::AuthRepository,
+    ports::{
+        AuthRepository, ProviderProtocolContextSlotId, ProviderProtocolContextValue,
+        ProviderTransportStore,
+    },
 };
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -63,6 +67,50 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
     )
+}
+
+pub(crate) async fn stage_client_protocol_context(
+    store: &dyn ProviderTransportStore,
+    run: &NativeRunResult,
+    protocol_context: Option<ProtocolContextEnvelope>,
+) -> Result<(), NativeApiError> {
+    let Some(protocol_context) = protocol_context else {
+        return Ok(());
+    };
+    if matches!(
+        run.status,
+        NativeRunStatus::Succeeded
+            | NativeRunStatus::Incomplete
+            | NativeRunStatus::Failed
+            | NativeRunStatus::Cancelled
+    ) {
+        return Ok(());
+    }
+    let value = ProviderProtocolContextValue::from_envelope(protocol_context).map_err(|_| {
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "protocol_context_staging_failed",
+            "protocol context could not be sealed",
+        )
+    })?;
+    store
+        .put_protocol_context(
+            ProviderProtocolContextSlotId::for_original_flow_run(run.id),
+            value,
+        )
+        .await
+        .map_err(|error| {
+            warn!(
+                flow_run_id = %run.id,
+                error = %error,
+                "protocol context ephemeral staging failed"
+            );
+            NativeApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "protocol_context_staging_failed",
+                "protocol context storage is temporarily unavailable",
+            )
+        })
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -698,6 +746,7 @@ async fn start_native_run_stream(
         .with_file_storage_registry(background_state.file_storage_registry.clone())
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
+        .with_provider_transport_store(background_state.infrastructure.provider_transport_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         if let Err(runtime_error) = scope_application_activity(
             background_run.application_id,
@@ -834,6 +883,7 @@ pub async fn resume_native_run(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)

@@ -11,12 +11,26 @@ use std::sync::Arc;
 pub struct ExecutionRuntimeContext {
     operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
-    pub(super) protocol_context: Option<ProtocolContextEnvelope>,
+    protocol_context: RuntimeProtocolContext,
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
+}
+
+#[derive(Clone, Default)]
+enum RuntimeProtocolContext {
+    #[default]
+    Absent,
+    Available {
+        envelope: ProtocolContextEnvelope,
+        locator: Option<Value>,
+    },
+    Unavailable {
+        locator: Value,
+        reason: String,
+    },
 }
 
 impl ExecutionRuntimeContext {
@@ -27,7 +41,7 @@ impl ExecutionRuntimeContext {
         Ok(Self {
             operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools: run_level_provider_tools(plan, variable_pool),
-            protocol_context: None,
+            protocol_context: RuntimeProtocolContext::Absent,
             native_model_prompt_context: native_model_prompt_context_from_variable_pool(
                 variable_pool,
             )?,
@@ -69,8 +83,53 @@ impl ExecutionRuntimeContext {
     }
 
     pub fn with_protocol_context(mut self, protocol_context: ProtocolContextEnvelope) -> Self {
-        self.protocol_context = Some(protocol_context);
+        self.protocol_context = RuntimeProtocolContext::Available {
+            envelope: protocol_context,
+            locator: None,
+        };
         self
+    }
+
+    pub fn with_ephemeral_protocol_context(
+        mut self,
+        locator: Value,
+        protocol_context: ProtocolContextEnvelope,
+    ) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Available {
+            envelope: protocol_context,
+            locator: Some(locator),
+        };
+        self
+    }
+
+    pub fn with_unavailable_ephemeral_protocol_context(
+        mut self,
+        locator: Value,
+        reason: impl Into<String>,
+    ) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Unavailable {
+            locator,
+            reason: reason.into(),
+        };
+        self
+    }
+
+    pub(super) fn resolved_protocol_context(
+        &self,
+    ) -> std::result::Result<Option<ProtocolContextEnvelope>, &str> {
+        match &self.protocol_context {
+            RuntimeProtocolContext::Absent => Ok(None),
+            RuntimeProtocolContext::Available { envelope, .. } => Ok(Some(envelope.clone())),
+            RuntimeProtocolContext::Unavailable { reason, .. } => Err(reason),
+        }
+    }
+
+    fn protocol_context_locator(&self) -> Option<&Value> {
+        match &self.protocol_context {
+            RuntimeProtocolContext::Available { locator, .. } => locator.as_ref(),
+            RuntimeProtocolContext::Unavailable { locator, .. } => Some(locator),
+            RuntimeProtocolContext::Absent => None,
+        }
     }
 
     pub(super) async fn next_llm_routing_counter(
@@ -170,6 +229,18 @@ pub(super) fn synchronize_runtime_global_variables(
     } else {
         prior_user_turn_count(&runtime_context.native_model_prompt_context.messages)
     };
+
+    if let Some(protocol_context_locator) = runtime_context.protocol_context_locator() {
+        let sys = variable_pool
+            .entry("sys".to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(sys) = sys.as_object_mut() {
+            sys.insert(
+                "protocol_context".to_string(),
+                protocol_context_locator.clone(),
+            );
+        }
+    }
 
     let Some(sys) = variable_pool.get_mut("sys").and_then(Value::as_object_mut) else {
         return;

@@ -1,4 +1,6 @@
 use super::*;
+use std::collections::BTreeMap;
+
 use axum::body::Bytes;
 use control_plane::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
@@ -6,8 +8,10 @@ use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
 use control_plane::ports::{
-    ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+    ProviderProtocolContextSlotId, ProviderTransportPayload, ProviderTransportSlotId,
+    ProviderTransportStore,
 };
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use storage_ephemeral::MemoryProviderTransportStore;
 use time::Duration;
 use time::OffsetDateTime;
@@ -39,6 +43,35 @@ fn provider_transport_payload(canary: &str) -> ProviderTransportPayload {
         "input": canary,
     }))
     .expect("fixture provider payload should be valid")
+}
+
+#[tokio::test]
+async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_payload() {
+    const CANARY: &str = "WP-D1C-INGRESS-RAW-CANARY";
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let mut run = blocking_run(NativeRunStatus::Queued);
+    run.id = Uuid::now_v7();
+    let protocol_context = ProtocolContextEnvelope {
+        source_protocol: "openai_chat".to_string(),
+        query: BTreeMap::new(),
+        headers: BTreeMap::from([("openai-organization".to_string(), vec![CANARY.to_string()])]),
+        body: BTreeMap::new(),
+    };
+
+    native::stage_client_protocol_context(&store, &run, Some(protocol_context.clone()))
+        .await
+        .expect("compatible ingress context should stage");
+
+    let stored = store
+        .get_protocol_context(ProviderProtocolContextSlotId::for_original_flow_run(run.id))
+        .await
+        .unwrap()
+        .expect("original flow context should stay available inside its TTL");
+    assert_eq!(
+        stored.into_value(),
+        serde_json::to_value(protocol_context).unwrap()
+    );
+    assert!(!run.node_input_payload.to_string().contains(CANARY));
 }
 
 #[tokio::test]

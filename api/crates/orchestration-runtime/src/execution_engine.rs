@@ -39,7 +39,7 @@ use crate::{
 };
 
 pub use crate::code_runtime::{
-    execute_code_node, CodeInvocationOutput, CodeInvoker, QuickJsCodeInvoker,
+    execute_code_node, CodeInvocationOutput, CodeInvoker, ConsoleLogEntry, QuickJsCodeInvoker,
 };
 
 pub mod branching;
@@ -119,6 +119,13 @@ pub trait ProviderInvoker: Send + Sync {
         _input: ProviderInvocationInput,
     ) -> Result<ProviderCompactResult> {
         bail!("provider Compact is not supported by this invoker")
+    }
+
+    /// Resolves a durable-safe protocol-context locator immediately before Provider invocation.
+    /// Implementations return `Ok(None)` for ordinary JSON values and must never log the resolved
+    /// raw value.
+    async fn resolve_protocol_context_locator(&self, _locator: &Value) -> Result<Option<Value>> {
+        Ok(None)
     }
 }
 
@@ -964,7 +971,7 @@ where
                 );
             }
             "code" => {
-                let execution = execute_code_node(node, &resolved_inputs, invoker).await?;
+                let execution = execute_code_node(plan, node, &resolved_inputs, invoker).await?;
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
@@ -1196,7 +1203,10 @@ where
             rendered_templates,
             variable_pool,
             runtime_context,
-        ) {
+            invoker,
+        )
+        .await
+        {
             Ok(invocation) => invocation,
             Err(error_payload) => {
                 return build_failed_llm_execution(
@@ -1552,7 +1562,10 @@ where
         rendered_templates,
         variable_pool,
         runtime_context,
-    ) {
+        invoker,
+    )
+    .await
+    {
         Ok(invocation) => invocation,
         Err(error_payload) => {
             return Ok(LlmNodeExecution {

@@ -287,7 +287,7 @@ where
             execution.provider_events,
         )
     } else if node.node_type == "code" {
-        let execution = execute_code_node(node, &resolved_inputs, invoker).await?;
+        let execution = execute_code_node(plan, node, &resolved_inputs, invoker).await?;
         (
             execution.output_payload,
             execution.error_payload,

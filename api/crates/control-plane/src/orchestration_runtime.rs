@@ -570,6 +570,13 @@ where
         };
         let mut runtime_context =
             self.execution_runtime_context(input.compiled_plan, &input.snapshot.variable_pool)?;
+        runtime_context = self
+            .attach_provider_protocol_context(
+                input.flow_run.id,
+                &input.flow_run.input_payload,
+                runtime_context,
+            )
+            .await;
         if let Some(http_file_persister) = self.http_response_file_persister(input.actor.clone()) {
             runtime_context =
                 runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
@@ -1542,6 +1549,15 @@ where
                     }
                 }
             }
+        }
+        if matches!(
+            persisted.flow_run.status,
+            domain::FlowRunStatus::Succeeded
+                | domain::FlowRunStatus::Incomplete
+                | domain::FlowRunStatus::Failed
+                | domain::FlowRunStatus::Cancelled
+        ) {
+            self.clear_provider_protocol_contexts(flow_run_id).await;
         }
         Ok(persisted.flow_run)
     }

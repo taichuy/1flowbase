@@ -7,9 +7,9 @@ pub use orchestration_runtime::answer_projection::{
     AnswerProjectionSegment, AnswerProjectionSegmentKind, ANSWER_SEGMENTS_KEY,
 };
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext, NativePromptBlock,
-    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY, NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
-    NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+    NativeModelPromptContext, NativeModelRequestContext, NativePromptBlock,
+    ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+    NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
@@ -32,7 +32,8 @@ use super::{
 use crate::flow_run_title::build_flow_run_title;
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-    ApplicationRepository, AuthRepository, CacheStore, RuntimeEventDurability, RuntimeEventStream,
+    ApplicationRepository, AuthRepository, CacheStore, ProviderProtocolContextValue,
+    RuntimeEventDurability, RuntimeEventStream,
 };
 
 mod compaction;
@@ -88,7 +89,7 @@ pub struct NativeRunRequest {
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub title: Option<String>,
     #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
 }
 
 impl NativeRunRequest {
@@ -833,12 +834,11 @@ fn operation_target(
     Ok(format!("{start_selector}.operation"))
 }
 
-fn client_protocol_envelope_payload(envelope: &ClientProtocolEnvelope) -> Value {
-    json!({
-        "source_protocol": &envelope.source_protocol,
-        "policy": &envelope.policy,
-        "headers": &envelope.headers,
-    })
+fn client_protocol_envelope_payload(envelope: &ProtocolContextEnvelope) -> Value {
+    ProviderProtocolContextValue::from_envelope(envelope.clone())
+        .expect("the typed protocol context must serialize")
+        .original_locator()
+        .as_value()
 }
 
 fn split_system_context_from_history(

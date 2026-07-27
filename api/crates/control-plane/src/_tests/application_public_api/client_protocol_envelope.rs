@@ -8,6 +8,7 @@ use control_plane::application_public_api::{
     mapping::ApplicationApiMappingConfig,
     native::{NativeInputMapper, NativeRunRequest},
 };
+use control_plane::ports::ProviderProtocolContextLocator;
 use plugin_framework::provider_contract::{
     ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
 };
@@ -144,7 +145,7 @@ fn query_headers_and_body_merge_into_one_protocol_context_envelope() {
 }
 
 #[test]
-fn native_input_mapper_places_the_single_typed_envelope_in_the_reserved_payload() {
+fn wp_d1c_native_input_mapper_places_only_the_ephemeral_locator_in_durable_input() {
     let mut request: NativeRunRequest = serde_json::from_value(json!({
         "query": "hello",
         "model": "claude",
@@ -164,15 +165,17 @@ fn native_input_mapper_places_the_single_typed_envelope_in_the_reserved_payload(
     let mapped = NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
         .expect("native input mapping should succeed");
 
-    assert_eq!(
-        mapped.node_input_payload[CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY],
-        json!({
-            "source_protocol": "anthropic_messages",
-            "query": {"preview": ["one"]},
-            "headers": {"anthropic-version": ["2023-06-01"]},
-            "body": {"context_management": {"edits": []}}
-        })
-    );
+    let durable_locator = &mapped.node_input_payload[CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY];
+    let locator = ProviderProtocolContextLocator::parse(durable_locator)
+        .expect("durable context projection should be valid")
+        .expect("durable context projection should be a locator");
+    assert!(locator.digest().starts_with("sha256:"));
+    assert!(locator.size_bytes() > 0);
+    let durable_text = durable_locator.to_string();
+    assert!(durable_text.contains("anthropic_messages"));
+    assert!(!durable_text.contains("anthropic-version"));
+    assert!(!durable_text.contains("context_management"));
+    assert!(!durable_text.contains("2023-06-01"));
     assert!(mapped.node_input_payload["node-start"]
         .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
         .is_none());

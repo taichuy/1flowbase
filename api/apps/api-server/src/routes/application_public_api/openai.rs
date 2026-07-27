@@ -1004,14 +1004,22 @@ async fn create_native_run(
     bearer_token: String,
     request: NativeRunRequest,
 ) -> Result<NativeRunResult, native::NativeApiError> {
-    ApplicationNativeRunService::new(state.store.clone())
+    let protocol_context = request.client_protocol_envelope.clone();
+    let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
         })
         .await
-        .map_err(native::native_error)
+        .map_err(native::native_error)?;
+    native::stage_client_protocol_context(
+        state.infrastructure.provider_transport_store().as_ref(),
+        &run,
+        protocol_context,
+    )
+    .await?;
+    Ok(run)
 }
 
 async fn execute_openai_tool_resume(
@@ -1031,6 +1039,7 @@ async fn execute_openai_tool_resume(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
