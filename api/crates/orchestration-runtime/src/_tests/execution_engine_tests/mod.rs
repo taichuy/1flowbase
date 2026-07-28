@@ -12,7 +12,7 @@ use plugin_framework::{
         ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
         ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
         ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation,
+        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::{json, Value};
@@ -454,7 +454,12 @@ impl ProviderInvoker for ToolMcpMetadataInvoker {
                     arguments: json!({ "id": "order_123" }),
                 }],
                 finish_reason: Some(ProviderFinishReason::ToolCall),
-                provider_metadata: json!({ "raw_id": "provider-response-1" }),
+                provider_metadata: json!({
+                    "raw_id": "provider-response-1",
+                    (PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY): {
+                        "decisions": ["omitted_foreign_protocol_envelope"]
+                    }
+                }),
                 ..ProviderInvocationResult::default()
             },
             first_token_at: None,

@@ -7,12 +7,12 @@ use plugin_framework::{
         NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType,
         ProtocolContextEnvelope, ProviderBalanceInfo, ProviderBalanceResult, ProviderCompactError,
         ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensError,
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationCapability,
-        ProviderInvocationInput, ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
-        ProviderNativeTransport, ProviderOutputItemPhase, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderGenerateTranslationDecision,
+        ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
+        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderOutputItemPhase,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
+        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::json;
@@ -299,28 +299,132 @@ fn d4_ac_002_native_responses_passthrough_has_one_manifest_capability_name() {
 }
 
 #[test]
-fn ac_002_current_provider_fails_closed_when_required_capability_is_missing() {
+fn wp_r1_generate_omits_undeclared_optional_context_with_a_bounded_receipt() {
+    const CACHE_CANARY: &str = "cache-control-raw-canary";
+    const USER_CANARY: &str = "end-user-raw-canary";
     let input = ProviderInvocationInput {
+        protocol: "openai_compatible".to_string(),
         system: vec![NativePromptBlock::Text {
-            text: "Cache this block".to_string(),
+            text: CACHE_CANARY.to_string(),
             cache_control: Some(NativePromptCacheControl {
                 cache_type: NativePromptCacheControlType::Ephemeral,
                 ttl: None,
             }),
         }],
         request_context: NativeModelRequestContext {
-            end_user_reference: Some("external-user-123".to_string()),
+            end_user_reference: Some(USER_CANARY.to_string()),
         },
+        client_protocol_envelope: Some(ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            query: BTreeMap::from([("preview".to_string(), vec!["raw-query-canary".to_string()])]),
+            ..ProtocolContextEnvelope::default()
+        }),
         ..ProviderInvocationInput::default()
     };
 
-    let error = input
-        .to_current_provider_wire_value(&["system_prompt_blocks".to_string()])
-        .unwrap_err();
+    let (wire, receipt) = input
+        .to_current_provider_generate_wire_value(&[])
+        .expect("undeclared optional foreign context should degrade for Generate");
 
-    let message = error.to_string();
-    assert!(message.contains("system_prompt_cache_control"));
-    assert!(message.contains("end_user_reference"));
+    assert_eq!(wire["system"][0]["text"], CACHE_CANARY);
+    assert!(wire["system"][0].get("cache_control").is_none());
+    assert!(wire.get("request_context").is_none());
+    assert!(wire.get("client_protocol_envelope").is_none());
+    assert_eq!(
+        receipt.decisions,
+        BTreeSet::from([
+            ProviderGenerateTranslationDecision::OmittedSystemPromptCacheControl,
+            ProviderGenerateTranslationDecision::OmittedEndUserReference,
+            ProviderGenerateTranslationDecision::OmittedForeignProtocolEnvelope,
+        ])
+    );
+    let encoded = serde_json::to_string(&receipt).unwrap();
+    assert!(encoded.len() <= 512);
+    for raw in [CACHE_CANARY, USER_CANARY, "raw-query-canary"] {
+        assert!(!encoded.contains(raw));
+    }
+
+    let mut provider_metadata = json!({"provider": "fixture"});
+    receipt
+        .attach_to_provider_metadata(&mut provider_metadata)
+        .expect("receipt should share the existing provider metadata ledger");
+    assert_eq!(
+        provider_metadata[PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY]["decisions"],
+        json!([
+            "omitted_system_prompt_cache_control",
+            "omitted_end_user_reference",
+            "omitted_foreign_protocol_envelope"
+        ])
+    );
+    let mut conflicting_metadata = json!({
+        (PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY): {"provider_owned": true}
+    });
+    assert!(receipt
+        .attach_to_provider_metadata(&mut conflicting_metadata)
+        .is_err());
+}
+
+#[test]
+fn wp_r1_generate_keeps_same_protocol_and_native_passthrough_capabilities_fail_closed() {
+    let same_protocol = ProviderInvocationInput {
+        protocol: "openai_responses".to_string(),
+        client_protocol_envelope: Some(ProtocolContextEnvelope {
+            source_protocol: "openai_responses".to_string(),
+            body: BTreeMap::from([("future_option".to_string(), json!({"enabled": true}))]),
+            ..ProtocolContextEnvelope::default()
+        }),
+        required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
+        ..ProviderInvocationInput::default()
+    };
+    let error = same_protocol
+        .to_current_provider_generate_wire_value(&[])
+        .unwrap_err();
+    assert!(error.to_string().contains("protocol_context"));
+
+    let native_passthrough = ProviderInvocationInput {
+        required_capabilities: BTreeSet::from([
+            ProviderInvocationCapability::ResponsesNativePassthrough,
+        ]),
+        ..ProviderInvocationInput::default()
+    };
+    let error = native_passthrough
+        .to_current_provider_generate_wire_value(&[])
+        .unwrap_err();
+    assert!(error.to_string().contains("responses.native_passthrough"));
+}
+
+#[test]
+fn wp_r1_generate_rejects_protocol_envelope_collisions_and_authentication_fields() {
+    for envelope in [
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            body: BTreeMap::from([("model".to_string(), json!("collision"))]),
+            ..ProtocolContextEnvelope::default()
+        },
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            headers: BTreeMap::from([(
+                "authorization".to_string(),
+                vec!["Bearer secret-canary".to_string()],
+            )]),
+            ..ProtocolContextEnvelope::default()
+        },
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            body: BTreeMap::from([(
+                "future_extension".to_string(),
+                json!({"nested": {"api_key": "secret-canary"}}),
+            )]),
+            ..ProtocolContextEnvelope::default()
+        },
+    ] {
+        let input = ProviderInvocationInput {
+            protocol: "openai_compatible".to_string(),
+            client_protocol_envelope: Some(envelope),
+            ..ProviderInvocationInput::default()
+        };
+        assert!(input.to_current_provider_generate_wire_value(&[]).is_err());
+    }
 }
 
 #[test]
@@ -471,6 +575,30 @@ fn k2_compact_wire_derives_the_selected_profile_capability_and_closed_result_sha
             profile: ProviderCompactProfile::ResponsesCompactionV2,
             capabilities,
         }) if capabilities == vec!["compact.responses_compaction_v2"]
+    ));
+}
+
+#[test]
+fn wp_r1_compact_keeps_optional_context_capabilities_strict() {
+    let input = ProviderInvocationInput {
+        operation: ProviderWireOperation::Compact,
+        profile: Some(ProviderCompactProfile::ResponsesCompact),
+        system: vec![NativePromptBlock::Text {
+            text: "Cache this compact block".to_string(),
+            cache_control: Some(NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: None,
+            }),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    assert!(matches!(
+        input.to_current_provider_compact_wire_value(&[
+            "compact.responses_compact".to_string()
+        ]),
+        Err(ProviderCompactError::Unsupported { capabilities, .. })
+            if capabilities.contains(&"system_prompt_cache_control")
     ));
 }
 
