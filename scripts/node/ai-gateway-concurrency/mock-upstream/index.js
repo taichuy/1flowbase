@@ -464,6 +464,7 @@ function createMockUpstream(options = {}) {
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
       const toolPlan = clientToolPlan(body, toolResponses.get(body?.previous_response_id));
       const isToolResult = toolPlan.hasToolResult;
+      const emitsToolCallRound = (isToolTurn || isToolResult) && !toolPlan.final;
       const clientText = textVectorOutput(body, continuityResponses);
       if (clientText === CONTINUITY_SEED_SENTINEL) {
         continuityResponses.add(`resp_${requestTimeline.nonce}`);
@@ -476,8 +477,8 @@ function createMockUpstream(options = {}) {
         toolResponses.set(`resp_${requestTimeline.nonce}`, toolPlan.nextState);
       }
       const wireAuditVector = wireAuditVectorFromBody(body);
-      if (isToolTurn && !toolPlan.final) requestTimeline.record('tool_call');
       if (isToolResult) requestTimeline.record('second_upstream_request');
+      if (emitsToolCallRound) requestTimeline.record('tool_call');
       const stream = path === MOCK_ROUTE.RESPONSES
         ? (wireAuditVector && wireAuditVector !== 'gateway-executor-probe'
           ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
@@ -594,6 +595,7 @@ function createMockUpstream(options = {}) {
       const payload = body.response ?? body;
       const isToolTurn = containsValue(payload, '1flowbase-client-tool-vector');
       const toolPlan = clientToolPlan(payload, toolResponses.get(payload?.previous_response_id));
+      const emitsToolCallRound = (isToolTurn || toolPlan.hasToolResult) && !toolPlan.final;
       const clientText = textVectorOutput(payload, continuityResponses);
       if (clientText === CONTINUITY_SEED_SENTINEL) {
         continuityResponses.add(`resp_${requestTimeline.nonce}`);
@@ -604,8 +606,8 @@ function createMockUpstream(options = {}) {
       const textChunks = clientText === TEXT_SENTINEL
         ? ['1flowbase gateway sentinel ', 'ok']
         : [clientText, ''];
-      if (isToolTurn && !toolPlan.final) requestTimeline.record('tool_call');
       if (toolPlan.hasToolResult) requestTimeline.record('second_upstream_request');
+      if (emitsToolCallRound) requestTimeline.record('tool_call');
       const stream = isToolTurn || toolPlan.hasToolResult
         ? responsesToolEvents(
           requestTimeline.nonce, toolPlan.paths, toolPlan.final,

@@ -575,11 +575,109 @@ test('Root #1477 local client fixture emits parallel calls and two sequential ca
     );
 
     const snapshot = upstream.snapshot();
-    assert.equal(snapshot.entries.filter((event) => event.event === 'tool_call').length, 3);
-    assert.equal(
-      snapshot.entries.filter((event) => event.event === 'second_upstream_request').length,
-      2,
+    const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
+    assert.equal(toolCallRounds.length, 3);
+    assert.deepEqual(
+      toolCallRounds.map((event) => event.nonce),
+      [parallel, first, second].map((events) => responseId(events).slice('resp_'.length)),
     );
+    const callbackRequests = snapshot.entries.filter(
+      (event) => event.event === 'second_upstream_request',
+    );
+    assert.equal(callbackRequests.length, 2);
+    assert.deepEqual(
+      callbackRequests.map((event) => event.nonce),
+      [second, third].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    assert.ok(toolCallRounds[1].sequence < callbackRequests[0].sequence);
+    assert.ok(callbackRequests[0].sequence < toolCallRounds[2].sequence);
+    assert.ok(toolCallRounds[2].sequence < callbackRequests[1].sequence);
+  });
+});
+
+test('Root #1477 Responses WebSocket records parallel and sequential Provider tool-call rounds', async () => {
+  await withMockUpstream(async ({ websocketBaseUrl, upstream }) => {
+    const request = (input, previousResponseId = null) => new Promise((resolve, reject) => {
+      const received = [];
+      const socket = new WebSocket(`${websocketBaseUrl}${MOCK_ROUTE.RESPONSES}`);
+      socket.addEventListener('open', () => socket.send(JSON.stringify({
+        type: 'response.create',
+        response: {
+          model: 'mock-model', input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+        },
+      })));
+      socket.addEventListener('message', (message) => received.push(JSON.parse(message.data)));
+      socket.addEventListener('close', () => resolve(received));
+      socket.addEventListener('error', reject);
+    });
+    const toolItems = (events) => events
+      .filter((event) => event.type === 'response.output_item.done')
+      .map((event) => event.item)
+      .filter((item) => item.type === 'function_call');
+    const responseId = (events) => events.find(
+      (event) => event.type === 'response.completed',
+    )?.response.id;
+
+    const parallel = await request(
+      '1flowbase-client-tool-vector tools-parallel-one-callback-task '
+        + 'TOOL_VECTOR_PATH=/tmp/ws-parallel-a PARALLEL_TOOL_A_PATH=/tmp/ws-parallel-a '
+        + 'PARALLEL_TOOL_B_PATH=/tmp/ws-parallel-b',
+    );
+    assert.deepEqual(
+      toolItems(parallel).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-parallel-a', '/tmp/ws-parallel-b'],
+    );
+
+    const sequentialPrompt = '1flowbase-client-tool-vector '
+      + 'tools-sequential-callback-tasks-one-turn TOOL_VECTOR_PATH=/tmp/ws-sequential-a '
+      + 'SEQUENTIAL_TOOL_A_PATH=/tmp/ws-sequential-a SEQUENTIAL_TOOL_B_PATH=/tmp/ws-sequential-b';
+    const first = await request(sequentialPrompt);
+    assert.deepEqual(
+      toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-sequential-a'],
+    );
+    const second = await request([{
+      type: 'function_call_output', call_id: 'call-ws-a',
+      output: '1flowbase-client-tool-result sequential-a',
+    }], responseId(first));
+    assert.deepEqual(
+      toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-sequential-b'],
+    );
+    const third = await request([{
+      type: 'function_call_output', call_id: 'call-ws-b',
+      output: '1flowbase-client-tool-result sequential-b',
+    }], responseId(second));
+    assert.equal(toolItems(third).length, 0);
+    assert.equal(
+      third
+        .filter((event) => event.type === 'response.output_text.delta')
+        .map((event) => event.delta)
+        .join(''),
+      '1flowbase sequential callback sentinel ok',
+    );
+    assert.equal(third.filter((event) => event.type === 'response.completed').length, 1);
+
+    const snapshot = upstream.snapshot();
+    const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
+    assert.equal(toolCallRounds.length, 3);
+    assert.deepEqual(
+      toolCallRounds.map((event) => event.nonce),
+      [parallel, first, second].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    const callbackRequests = snapshot.entries.filter(
+      (event) => event.event === 'second_upstream_request',
+    );
+    assert.equal(callbackRequests.length, 2);
+    assert.deepEqual(
+      callbackRequests.map((event) => event.nonce),
+      [second, third].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    assert.ok(toolCallRounds[1].sequence < callbackRequests[0].sequence);
+    assert.ok(callbackRequests[0].sequence < toolCallRounds[2].sequence);
+    assert.ok(toolCallRounds[2].sequence < callbackRequests[1].sequence);
   });
 });
 
