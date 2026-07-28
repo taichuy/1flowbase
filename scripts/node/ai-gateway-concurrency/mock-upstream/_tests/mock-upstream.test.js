@@ -565,9 +565,13 @@ test('Root #1477 local client fixture emits parallel calls and two sequential ca
       output: '1flowbase-client-tool-result sequential-b',
     }], responseId(second));
     assert.equal(toolItems(third).length, 0);
-    assert.match(
-      third.map((event) => JSON.stringify(event.data)).join(''),
-      /1flowbase sequential callback sentinel ok/u,
+    assert.equal(
+      third
+        .filter((event) => event.event === 'response.output_text.delta'
+          && event.data.type === 'response.output_text.delta')
+        .map((event) => event.data.delta)
+        .join(''),
+      '1flowbase sequential callback sentinel ok',
     );
 
     const snapshot = upstream.snapshot();
