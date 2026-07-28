@@ -676,15 +676,17 @@ impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
         let revision = WorkspaceCatalogRevision::new(first.get("revision"))?;
         let messages = rows
             .into_iter()
-            .filter_map(|row| {
-                let module = row.get::<Option<String>, _>("module")?;
-                Some(Ok(RuntimeCatalogMessage {
+            .try_fold(Vec::new(), |mut messages, row| -> Result<_> {
+                let Some(module) = row.get::<Option<String>, _>("module") else {
+                    return Ok(messages);
+                };
+                messages.push(RuntimeCatalogMessage {
                     module: CatalogModuleId::new(module)?,
                     msgid: row.get("msgid"),
                     value: row.get("value"),
-                }))
-            })
-            .collect::<Result<Vec<_>>>()?;
+                });
+                Ok(messages)
+            })?;
         Ok(RuntimeCatalogProjection { revision, messages })
     }
 }

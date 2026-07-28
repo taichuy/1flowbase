@@ -9,7 +9,7 @@ use control_plane::i18n_catalog::management::{
 use control_plane::ports::{
     BootstrapRepository, CatalogManagementOrigin, CatalogResolutionRepository,
     DeleteCatalogTranslationInput, DeleteCustomCatalogMessageInput, I18nCatalogRepository,
-    UpsertCatalogTranslationInput,
+    RuntimeI18nCatalogRepository, UpsertCatalogTranslationInput,
 };
 use domain::{
     ActorContext, CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId,
@@ -738,6 +738,55 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
     assert_eq!(overridden.active_official.as_deref(), Some("设置"));
     assert_eq!(alternate.root_override, None);
     assert_eq!(alternate.active_official, None);
+}
+
+#[tokio::test]
+async fn runtime_projection_rejects_a_corrupt_stored_module_identity() {
+    let store = empty_store().await;
+    let tenant = BootstrapRepository::upsert_root_tenant(&store)
+        .await
+        .unwrap();
+    let workspace = BootstrapRepository::upsert_root_workspace_with_official_catalog(
+        &store,
+        tenant.id,
+        "Corrupt runtime catalog workspace",
+        &official_seed(Uuid::now_v7()),
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        alter table workspace_i18n_catalog_custom_translations
+        drop constraint workspace_i18n_catalog_custom_translations_module_check
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into workspace_i18n_catalog_custom_translations (
+          workspace_id, module, msgid, locale, translation
+        ) values ($1, 'invalid/module', 'corrupt.key', 'zh_Hans', '损坏')
+        "#,
+    )
+    .bind(workspace.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let error = RuntimeI18nCatalogRepository::project_runtime_catalog(
+        &store,
+        workspace.id,
+        &CatalogLocale::new("zh_Hans").unwrap(),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(
+        error.downcast_ref::<domain::I18nCatalogInvariantError>(),
+        Some(&domain::I18nCatalogInvariantError::InvalidModuleId)
+    );
 }
 
 fn root_access(workspace_id: Uuid) -> CatalogManagementAccess {
