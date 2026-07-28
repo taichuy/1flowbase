@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
@@ -14,7 +14,7 @@ use control_plane::role::{
     UpdateRoleCommand,
 };
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -127,28 +127,6 @@ pub struct RoleDataModelOptionResponse {
     pub id: Uuid,
     pub code: String,
     pub title: String,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
-pub enum ConsolePolicyLocale {
-    #[serde(rename = "en_US")]
-    EnUs,
-    #[serde(rename = "zh_Hans")]
-    ZhHans,
-}
-
-impl ConsolePolicyLocale {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::EnUs => "en_US",
-            Self::ZhHans => "zh_Hans",
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct ConsolePolicyCatalogQuery {
-    pub locale: ConsolePolicyLocale,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -471,6 +449,87 @@ fn to_console_policy_catalog_response(
     }
 }
 
+async fn resolve_console_policy_catalog_display(
+    state: &ApiState,
+    locale: &domain::CatalogLocale,
+    catalog: &mut control_plane::role::ConsolePolicyCatalog,
+) -> Result<(), ApiError> {
+    catalog.locale = locale.as_str().to_string();
+    for option in &mut catalog.group_strategy_options {
+        option.label = super::super::core_console_i18n::resolve_core_console_display(
+            state,
+            locale,
+            &option.label,
+        )
+        .await?;
+        option.description = super::super::core_console_i18n::resolve_core_console_display(
+            state,
+            locale,
+            &option.description,
+        )
+        .await?;
+    }
+    for group in &mut catalog.groups {
+        group.label = super::super::core_console_i18n::resolve_core_console_display(
+            state,
+            locale,
+            &group.label,
+        )
+        .await?;
+        group.description = super::super::core_console_i18n::resolve_core_console_display(
+            state,
+            locale,
+            &group.description,
+        )
+        .await?;
+        for operation in &mut group.operations {
+            for option in &mut operation.allowed_row_scopes {
+                option.label = super::super::core_console_i18n::resolve_core_console_display(
+                    state,
+                    locale,
+                    &option.label,
+                )
+                .await?;
+                option.description = super::super::core_console_i18n::resolve_core_console_display(
+                    state,
+                    locale,
+                    &option.description,
+                )
+                .await?;
+            }
+        }
+    }
+    for resource in &mut catalog.resources {
+        resource.label = super::super::core_console_i18n::resolve_core_console_display(
+            state,
+            locale,
+            &resource.label,
+        )
+        .await?;
+        resource.description = super::super::core_console_i18n::resolve_core_console_display(
+            state,
+            locale,
+            &resource.description,
+        )
+        .await?;
+        for action in &mut resource.actions {
+            action.label = super::super::core_console_i18n::resolve_core_console_display(
+                state,
+                locale,
+                &action.label,
+            )
+            .await?;
+            action.description = super::super::core_console_i18n::resolve_core_console_display(
+                state,
+                locale,
+                &action.description,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
 fn to_role_console_policy_response(
     role_code: String,
     policy: domain::RoleConsolePolicy,
@@ -652,7 +711,6 @@ pub async fn list_data_model_options(
 #[utoipa::path(
     get,
     path = "/api/console/settings/roles/console-policy-catalog",
-    params(ConsolePolicyCatalogQuery),
     responses(
         (status = 200, body = ConsolePolicyCatalogResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -662,17 +720,18 @@ pub async fn list_data_model_options(
 )]
 pub async fn get_console_policy_catalog(
     State(state): State<Arc<ApiState>>,
-    Query(query): Query<ConsolePolicyCatalogQuery>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let catalog = RoleService::new(state.store.clone())
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    let mut catalog = RoleService::new(state.store.clone())
         .get_console_policy_catalog(
             context.user.id,
             state.console_operation_registry.inventory(),
-            query.locale.as_str(),
+            locale.as_str(),
         )
         .await?;
+    resolve_console_policy_catalog_display(&state, &locale, &mut catalog).await?;
 
     Ok(Json(ApiSuccess::new(to_console_policy_catalog_response(
         catalog,

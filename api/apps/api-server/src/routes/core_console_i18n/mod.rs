@@ -2,22 +2,20 @@ use access_control::{
     ConsoleLocaleCatalogContribution, ConsoleLocaleText, ConsoleOperationOwner,
     ConsoleOtherPolicyGroupDisplay, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
 };
+use domain::CatalogLocale;
+
+use crate::{app_state::ApiState, error_response::ApiError};
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct CoreConsoleLocaleText {
-    pub(super) reference: &'static str,
-    pub(super) en_us: &'static str,
-    pub(super) zh_hans: &'static str,
+pub(super) struct CoreConsoleDisplayText {
+    pub(super) module: &'static str,
+    pub(super) msgid: &'static str,
 }
 
-macro_rules! text {
-    ($reference:expr, $en_us:expr, $zh_hans:expr $(,)?) => {
-        CoreConsoleLocaleText {
-            reference: $reference,
-            en_us: $en_us,
-            zh_hans: $zh_hans,
-        }
-    };
+impl CoreConsoleDisplayText {
+    pub(super) const fn new(module: &'static str, msgid: &'static str) -> Self {
+        Self { module, msgid }
+    }
 }
 
 mod catalog;
@@ -27,9 +25,9 @@ pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalog
         .into_iter()
         .flat_map(|texts| texts.iter())
         .map(|text| ConsoleLocaleText {
-            reference: text.reference.to_string(),
-            en_us: text.en_us.to_string(),
-            zh_hans: text.zh_hans.to_string(),
+            reference: text.msgid.to_string(),
+            en_us: text.msgid.to_string(),
+            zh_hans: text.msgid.to_string(),
         })
         .collect();
 
@@ -60,8 +58,69 @@ fn other_policy_group_displays() -> Vec<ConsoleOtherPolicyGroupDisplay> {
     .into_iter()
     .map(|group_id| ConsoleOtherPolicyGroupDisplay {
         group_id: group_id.to_string(),
-        label_ref: format!("console.policy_groups.other.{group_id}.label"),
-        description_ref: format!("console.policy_groups.other.{group_id}.description"),
+        label_ref: other_policy_group_msgids(group_id).0.to_string(),
+        description_ref: other_policy_group_msgids(group_id).1.to_string(),
     })
     .collect()
+}
+
+fn other_policy_group_msgids(group_id: &str) -> (&'static str, &'static str) {
+    match group_id {
+        "core.authenticated" => (
+            "Signed-in console",
+            "Console routes available to every signed-in user",
+        ),
+        "other.agent-flow" => (
+            "Agent Flow",
+            "Registered Agent Flow operations outside system settings",
+        ),
+        "other.data-sources" => (
+            "Data source utilities",
+            "Registered data source operations outside system settings",
+        ),
+        "other.frontend-blocks" => (
+            "Frontend blocks",
+            "Registered frontend block catalog operations",
+        ),
+        "other.js-dependencies" => (
+            "JavaScript dependencies",
+            "Registered JavaScript dependency operations",
+        ),
+        "other.model-providers" => (
+            "Model provider utilities",
+            "Registered model provider operations outside system settings",
+        ),
+        "other.node-contributions" => (
+            "Node contributions",
+            "Registered node contribution catalog operations",
+        ),
+        "other.plugins" => (
+            "Plugins",
+            "Registered plugin catalog and lifecycle operations",
+        ),
+        "other.workspace" => (
+            "Current workspace",
+            "Registered operations for the current workspace",
+        ),
+        _ => unreachable!("compiled Core policy group id must be known"),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn core_console_display_inventory() -> Vec<(&'static str, &'static str)> {
+    catalog::TEXTS
+        .iter()
+        .map(|text| (text.module, text.msgid))
+        .collect()
+}
+
+pub(super) async fn resolve_core_console_display(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    msgid: &str,
+) -> Result<String, ApiError> {
+    let Some(text) = catalog::TEXTS.iter().find(|text| text.msgid == msgid) else {
+        return Ok(msgid.to_string());
+    };
+    crate::app_state::resolve_request_text(state, locale, text.module, text.msgid).await
 }

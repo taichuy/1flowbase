@@ -135,31 +135,31 @@ struct ConsoleCatalogOptionSpec {
 const CONSOLE_POLICY_GROUP_STRATEGY_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
     ConsoleCatalogOptionSpec {
         value: "full",
-        label_ref: "console.policy.group_strategies.full.label",
-        description_ref: "console.policy.group_strategies.full.description",
+        label_ref: "Full access",
+        description_ref: "Grant every operation in this group",
     },
     ConsoleCatalogOptionSpec {
         value: "custom",
-        label_ref: "console.policy.group_strategies.custom.label",
-        description_ref: "console.policy.group_strategies.custom.description",
+        label_ref: "Custom access",
+        description_ref: "Choose operations and row scopes individually",
     },
 ];
 
 const CONSOLE_POLICY_ROW_SCOPE_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
     ConsoleCatalogOptionSpec {
         value: "disabled",
-        label_ref: "console.policy.row_scopes.disabled.label",
-        description_ref: "console.policy.row_scopes.disabled.description",
+        label_ref: "Disabled",
+        description_ref: "Do not grant this operation",
     },
     ConsoleCatalogOptionSpec {
         value: "own",
-        label_ref: "console.policy.row_scopes.own.label",
-        description_ref: "console.policy.row_scopes.own.description",
+        label_ref: "Own records",
+        description_ref: "Allow records created by the current user",
     },
     ConsoleCatalogOptionSpec {
         value: "scope_all",
-        label_ref: "console.policy.row_scopes.scope_all.label",
-        description_ref: "console.policy.row_scopes.scope_all.description",
+        label_ref: "Current workspace",
+        description_ref: "Allow records in the current workspace",
     },
 ];
 

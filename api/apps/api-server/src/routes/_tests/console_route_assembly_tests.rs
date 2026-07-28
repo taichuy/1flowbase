@@ -245,14 +245,20 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
             .collect::<Vec<_>>(),
         vec!["create", "delete", "update", "view"]
     );
-    assert_eq!(resource.label_ref, "console.resources.applications.label");
-    assert!(resource.actions.iter().all(|action| {
-        action.label_ref
-            == format!(
-                "console.resources.applications.actions.{}.label",
-                action.action_code
-            )
-    }));
+    assert_eq!(resource.label_ref, "Applications");
+    assert_eq!(
+        resource
+            .actions
+            .iter()
+            .map(|action| (action.action_code.as_str(), action.label_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("create", "Create"),
+            ("delete", "Delete"),
+            ("update", "Update"),
+            ("view", "View"),
+        ]
+    );
 }
 
 #[test]

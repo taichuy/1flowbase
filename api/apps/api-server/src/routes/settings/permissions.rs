@@ -27,7 +27,7 @@ pub struct PermissionResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SettingsFeaturePermissionResponse {
     pub feature_id: String,
-    pub label_key: String,
+    pub label: String,
     pub order: i32,
 }
 
@@ -57,33 +57,42 @@ pub async fn list_permissions(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<PermissionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let permissions = RoleService::new(state.store.clone())
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    let permission_options = RoleService::new(state.store.clone())
         .list_permission_options(context.user.id)
-        .await?
-        .into_iter()
-        .map(|permission| {
-            let settings_feature = state
-                .settings_feature_registry
-                .inventory()
-                .features
-                .iter()
-                .find(|feature| feature.permission_code == permission.code)
-                .map(|feature| SettingsFeaturePermissionResponse {
-                    feature_id: feature.feature_id.clone(),
-                    label_key: feature.console_surface.label_key.clone(),
-                    order: feature.console_surface.order,
-                });
+        .await?;
+    let mut permissions = Vec::with_capacity(permission_options.len());
+    for permission in permission_options {
+        let settings_feature = state
+            .settings_feature_registry
+            .inventory()
+            .features
+            .iter()
+            .find(|feature| feature.permission_code == permission.code);
+        let settings_feature = if let Some(feature) = settings_feature {
+            Some(SettingsFeaturePermissionResponse {
+                feature_id: feature.feature_id.clone(),
+                label: super::super::core_console_i18n::resolve_core_console_display(
+                    &state,
+                    &locale,
+                    &feature.console_surface.label_key,
+                )
+                .await?,
+                order: feature.console_surface.order,
+            })
+        } else {
+            None
+        };
 
-            PermissionResponse {
-                code: permission.code,
-                resource: permission.resource,
-                action: permission.action,
-                scope: permission.scope,
-                name: permission.name,
-                settings_feature,
-            }
-        })
-        .collect::<Vec<_>>();
+        permissions.push(PermissionResponse {
+            code: permission.code,
+            resource: permission.resource,
+            action: permission.action,
+            scope: permission.scope,
+            name: permission.name,
+            settings_feature,
+        });
+    }
 
     Ok(Json(ApiSuccess::new(permissions)))
 }

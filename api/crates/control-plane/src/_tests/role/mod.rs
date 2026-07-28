@@ -109,22 +109,18 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             identity_field: "id".to_string(),
             scope_field: Some("scope_id".to_string()),
             owner_field: Some("created_by".to_string()),
-            label_ref: "console.resources.applications.label".to_string(),
-            description_ref: Some("console.resources.applications.description".to_string()),
+            label_ref: "Applications".to_string(),
+            description_ref: Some("Applications in the current workspace".to_string()),
             actions: vec![
                 ResourceAccessAction {
                     action_code: "create".to_string(),
-                    label_ref: "console.resources.applications.actions.create.label".to_string(),
-                    description_ref: Some(
-                        "console.resources.applications.actions.create.description".to_string(),
-                    ),
+                    label_ref: "Create".to_string(),
+                    description_ref: Some("Create an application".to_string()),
                 },
                 ResourceAccessAction {
                     action_code: "view".to_string(),
-                    label_ref: "console.resources.applications.actions.view.label".to_string(),
-                    description_ref: Some(
-                        "console.resources.applications.actions.view.description".to_string(),
-                    ),
+                    label_ref: "View".to_string(),
+                    description_ref: Some("View an application".to_string()),
                 },
             ],
         }],
@@ -239,16 +235,16 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         }
     }
     for reference in [
-        "console.policy.group_strategies.full.label",
-        "console.policy.group_strategies.full.description",
-        "console.policy.group_strategies.custom.label",
-        "console.policy.group_strategies.custom.description",
-        "console.policy.row_scopes.disabled.label",
-        "console.policy.row_scopes.disabled.description",
-        "console.policy.row_scopes.own.label",
-        "console.policy.row_scopes.own.description",
-        "console.policy.row_scopes.scope_all.label",
-        "console.policy.row_scopes.scope_all.description",
+        "Full access",
+        "Grant every operation in this group",
+        "Custom access",
+        "Choose operations and row scopes individually",
+        "Disabled",
+        "Do not grant this operation",
+        "Own records",
+        "Allow records created by the current user",
+        "Current workspace",
+        "Allow records in the current workspace",
         "console.policy_groups.other.other.files.label",
         "console.policy_groups.other.other.files.description",
     ] {
@@ -258,12 +254,12 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         .into_iter()
         .map(|reference| {
             let (en_us, zh_hans) = match reference.as_str() {
-                "console.resources.applications.actions.view.label" => ("View", "查看"),
-                "console.policy.row_scopes.own.label" => ("Own records", "仅自己"),
-                "console.policy.row_scopes.scope_all.label" => ("Current workspace", "当前空间"),
-                "console.policy.row_scopes.disabled.label" => ("Disabled", "关闭"),
-                "console.policy.group_strategies.full.label" => ("Full access", "完全开放"),
-                "console.policy.group_strategies.custom.label" => ("Custom access", "自定义"),
+                "View" => ("View", "查看"),
+                "Own records" => ("Own records", "仅自己"),
+                "Current workspace" => ("Current workspace", "当前空间"),
+                "Disabled" => ("Disabled", "关闭"),
+                "Full access" => ("Full access", "完全开放"),
+                "Custom access" => ("Custom access", "自定义"),
                 _ if reference.ends_with(".description") => ("Test description", "测试说明"),
                 _ => ("Test label", "测试标签"),
             };

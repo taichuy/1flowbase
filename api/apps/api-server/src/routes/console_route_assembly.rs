@@ -800,8 +800,8 @@ pub(crate) fn compile_migrated_console_operation_registry(
         // maps its workspace_id storage field; that enforcement cutover belongs to #1271.
         scope_field: Some("scope_id".to_string()),
         owner_field: Some("created_by".to_string()),
-        label_ref: "console.resources.applications.label".to_string(),
-        description_ref: Some("console.resources.applications.description".to_string()),
+        label_ref: "Applications".to_string(),
+        description_ref: Some("Applications in the current workspace".to_string()),
         actions: [
             APPLICATIONS_CREATE_ACTION_CODE,
             APPLICATIONS_VIEW_ACTION_CODE,
@@ -811,10 +811,24 @@ pub(crate) fn compile_migrated_console_operation_registry(
         .into_iter()
         .map(|action_code| ResourceAccessAction {
             action_code: action_code.to_string(),
-            label_ref: format!("console.resources.applications.actions.{action_code}.label"),
-            description_ref: Some(format!(
-                "console.resources.applications.actions.{action_code}.description"
-            )),
+            label_ref: match action_code {
+                APPLICATIONS_CREATE_ACTION_CODE => "Create",
+                APPLICATIONS_VIEW_ACTION_CODE => "View",
+                APPLICATIONS_UPDATE_ACTION_CODE => "Update",
+                APPLICATIONS_DELETE_ACTION_CODE => "Delete",
+                _ => unreachable!("compiled application action code must be known"),
+            }
+            .to_string(),
+            description_ref: Some(
+                match action_code {
+                    APPLICATIONS_CREATE_ACTION_CODE => "Create an application",
+                    APPLICATIONS_VIEW_ACTION_CODE => "View an application",
+                    APPLICATIONS_UPDATE_ACTION_CODE => "Update an application",
+                    APPLICATIONS_DELETE_ACTION_CODE => "Delete an application",
+                    _ => unreachable!("compiled application action code must be known"),
+                }
+                .to_string(),
+            ),
         })
         .collect(),
     };
@@ -826,14 +840,14 @@ pub(crate) fn compile_migrated_console_operation_registry(
         identity_field: "id".to_string(),
         scope_field: Some("scope_id".to_string()),
         owner_field: Some("created_by".to_string()),
-        label_ref: "console.resources.data_source_instances.label".to_string(),
-        description_ref: Some("console.resources.data_source_instances.description".to_string()),
+        label_ref: "Data source instances".to_string(),
+        description_ref: Some(
+            "Configured data source instances in the current workspace".to_string(),
+        ),
         actions: vec![ResourceAccessAction {
             action_code: DATA_SOURCES_VIEW_ACTION_CODE.to_string(),
-            label_ref: "console.resources.data_source_instances.actions.view.label".to_string(),
-            description_ref: Some(
-                "console.resources.data_source_instances.actions.view.description".to_string(),
-            ),
+            label_ref: "View".to_string(),
+            description_ref: Some("View a data source instance".to_string()),
         }],
     };
     registrations.extend(

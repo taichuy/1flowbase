@@ -178,7 +178,7 @@ console_surfaces:
     - item_id: file-security.settings
       route_id: file-security.settings
       parent_item_id: settings
-      label_key: auto.api_documentation
+      label_key: API documentation
       navigation_slot: settings
       order: 1300
   permission_bindings:
