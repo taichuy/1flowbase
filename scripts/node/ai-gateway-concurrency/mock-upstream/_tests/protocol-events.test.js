@@ -40,7 +40,10 @@ test('Root #1477 R7 emits client-owned Git commands for all three protocol surfa
   const chat = chatToolEvents('git', [repo], false, 'done', [command]);
   const chatTool = chat.chunks[0].choices[0].delta.tool_calls[0].function;
   assert.equal(chatTool.name, 'bash');
-  assert.equal(JSON.parse(chatTool.arguments).command, command);
+  assert.deepEqual(JSON.parse(chatTool.arguments), {
+    command,
+    description: 'Inspect the isolated Git fixture',
+  });
 });
 
 test('AC-001/006: every provider transport fixture has all deltas and one success terminal', () => {

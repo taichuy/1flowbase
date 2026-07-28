@@ -152,7 +152,11 @@ function codexPlan(binary, target, paths, vector, protocol, execution) {
   }
   args.push(promptFor(vector, paths, execution.turnIndex));
   return {
-    invocation: { executable: binary, args, cwd: paths.output },
+    invocation: {
+      executable: binary,
+      args,
+      cwd: vector.id === MEANINGFUL_GIT_VECTOR.id ? paths.gitRepo : paths.output,
+    },
     environment: {
       CODEX_HOME: paths.config,
       ONEFLOWBASE_APPLICATION_API_KEY: target.apiKey,
@@ -183,7 +187,11 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
     '--disable-slash-commands', '--no-chrome',
   );
   return {
-    invocation: { executable: binary, args, cwd: paths.output },
+    invocation: {
+      executable: binary,
+      args,
+      cwd: vector.id === MEANINGFUL_GIT_VECTOR.id ? paths.gitRepo : paths.output,
+    },
     environment: {
       CLAUDE_CONFIG_DIR: paths.config,
       ANTHROPIC_BASE_URL: target.gatewayBaseUrl,
@@ -236,16 +244,21 @@ function opencodePlan(binary, target, paths, vector, protocol, execution) {
       args.push('--session', execution.sessionId);
     }
     args.push(promptFor(vector, paths, execution.turnIndex));
-    invocation = { executable: binary, args, cwd: paths.output };
+    invocation = {
+      executable: binary,
+      args,
+      cwd: vector.id === MEANINGFUL_GIT_VECTOR.id ? paths.gitRepo : paths.output,
+    };
   } else {
     const adapter = path.resolve(__dirname, '../cli-smoke/opencode-headless-client.js');
     invocation = {
       executable: process.execPath,
       args: [
-        adapter, '--opencode', binary, '--directory', paths.output,
+        adapter, '--opencode', binary, '--directory',
+        vector.id === MEANINGFUL_GIT_VECTOR.id ? paths.gitRepo : paths.output,
         '--model', model, '--prompt', promptFor(vector, paths, execution.turnIndex),
       ],
-      cwd: paths.output,
+      cwd: vector.id === MEANINGFUL_GIT_VECTOR.id ? paths.gitRepo : paths.output,
     };
   }
   return {

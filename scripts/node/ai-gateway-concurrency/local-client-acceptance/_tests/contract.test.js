@@ -160,10 +160,17 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
     'claude', '/machine/claude', target, paths, MEANINGFUL_GIT_VECTOR, 'anthropic_sse',
   );
   assert.ok(claude.invocation.args.includes('Read,Edit,Bash'));
+  assert.equal(claude.invocation.cwd, paths.gitRepo);
   const codex = buildClientPlan(
     'codex', '/machine/codex', target, paths, MEANINGFUL_GIT_VECTOR, 'responses_sse',
   );
   assert.ok(codex.invocation.args.includes('workspace-write'));
+  assert.equal(codex.invocation.cwd, paths.gitRepo);
+  const opencode = buildClientPlan(
+    'opencode', '/machine/opencode', target, paths, MEANINGFUL_GIT_VECTOR, 'openai_chat_sse',
+  );
+  assert.equal(opencode.invocation.cwd, paths.gitRepo);
+  assert.ok(opencode.invocation.args.includes(paths.gitRepo));
 });
 
 test('WP-D4B records only observed Claude profile evidence without injecting it into Codex or OpenCode', () => {

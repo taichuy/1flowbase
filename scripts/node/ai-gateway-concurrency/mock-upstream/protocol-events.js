@@ -337,7 +337,7 @@ function chatToolEvents(
         index, id: `call_${nonce}_${index}`, type: 'function', function: {
           name: commands ? 'bash' : 'read',
           arguments: JSON.stringify(commands
-            ? { command: commands[index], workdir: currentPath, description: 'Inspect the isolated Git fixture' }
+            ? { command: commands[index], description: 'Inspect the isolated Git fixture' }
             : { filePath: currentPath }),
         },
       })),
