@@ -83,13 +83,16 @@ impl CatalogLocale {
         let value = value.into();
         let mut parts = value.split('_');
         let language = parts.next().unwrap_or_default();
-        let region = parts.next().unwrap_or_default();
-        if parts.next().is_some()
-            || language.len() != 2
-            || region.len() != 2
-            || !language.bytes().all(|byte| byte.is_ascii_lowercase())
-            || !region.bytes().all(|byte| byte.is_ascii_uppercase())
-        {
+        let suffix = parts.next();
+        let language_is_valid = (2..=3).contains(&language.len())
+            && language.bytes().all(|byte| byte.is_ascii_lowercase());
+        let suffix_is_valid = suffix.map_or(true, |suffix| {
+            let mut bytes = suffix.bytes();
+            bytes.next().is_some_and(|byte| byte.is_ascii_uppercase())
+                && (1..=7).contains(&bytes.len())
+                && bytes.all(|byte| byte.is_ascii_alphabetic())
+        });
+        if !language_is_valid || !suffix_is_valid || parts.next().is_some() {
             return Err(I18nCatalogInvariantError::InvalidLocale);
         }
         Ok(Self(value))

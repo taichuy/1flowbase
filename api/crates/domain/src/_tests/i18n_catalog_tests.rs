@@ -8,8 +8,29 @@ fn seed_contract_types_reject_noncanonical_identifiers_and_digests() {
     assert!(CatalogModuleId::new("@1flowbase/console/settings").is_ok());
     assert!(CatalogDigest::new(format!("sha256:{}", "a".repeat(64))).is_ok());
     assert!(CatalogDigest::new(format!("sha256:{}", "A".repeat(64))).is_err());
-    assert!(CatalogLocale::new("zh_CN").is_ok());
     assert!(CatalogLocale::new("zh-cn").is_err());
+}
+
+#[test]
+fn catalog_locale_matches_the_canonical_seed_grammar() {
+    for locale in ["en_US", "zh_Hans", "fil_Latn", "en"] {
+        assert_eq!(CatalogLocale::new(locale).unwrap().as_str(), locale);
+    }
+    for locale in [
+        "zh_hans",
+        "zh_",
+        "zh_Hans_CN",
+        "zh_H4ns",
+        "z_CN",
+        "engl_US",
+        "zh__Hans",
+    ] {
+        assert_eq!(
+            CatalogLocale::new(locale).unwrap_err(),
+            I18nCatalogInvariantError::InvalidLocale,
+            "{locale} must be rejected"
+        );
+    }
 }
 
 #[test]
