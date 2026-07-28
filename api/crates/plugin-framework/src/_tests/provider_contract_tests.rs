@@ -323,8 +323,10 @@ fn wp_r1_generate_omits_undeclared_optional_context_with_a_bounded_receipt() {
     };
 
     let (wire, receipt) = input
-        .to_current_provider_generate_wire_value(&[])
-        .expect("undeclared optional foreign context should degrade for Generate");
+        .to_current_provider_generate_wire_value(&[ProviderInvocationCapability::ProtocolContext
+            .manifest_capability_name()
+            .to_string()])
+        .expect("foreign context should degrade even when same-protocol restoration is supported");
 
     assert_eq!(wire["system"][0]["text"], CACHE_CANARY);
     assert!(wire["system"][0].get("cache_control").is_none());
