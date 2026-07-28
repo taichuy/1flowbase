@@ -112,7 +112,11 @@ describe('JsxStudioRunPanel Native React run revision', () => {
         )?.shadowRoot
       ).not.toBeNull()
     );
-    await trialQueries(view.container).findByTestId('native-output');
+    await waitFor(() =>
+      expect(
+        trialQueries(view.container).getByTestId('native-output')
+      ).toBeInTheDocument()
+    );
     expect(
       trialQueries(view.container).getByTestId('native-output')
     ).toHaveTextContent('first');

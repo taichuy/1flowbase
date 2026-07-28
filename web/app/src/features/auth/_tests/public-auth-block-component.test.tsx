@@ -15,9 +15,13 @@ vi.mock('@1flowbase/api-client', async () => {
 });
 
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
+import { appI18n } from '../../../shared/i18n/app-i18n';
 
 describe('PublicAuthBlock Native Host composition', () => {
-  beforeEach(() => apiFetch.mockReset());
+  beforeEach(async () => {
+    apiFetch.mockReset();
+    await appI18n.changeLanguage('en_US');
+  });
 
   test('R6-AC-003 exposes a production fallback without editor diagnostics', async () => {
     const onAuthenticated = vi.fn();

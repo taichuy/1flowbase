@@ -169,8 +169,8 @@ describe('AuthenticatorUiBlockStudio', () => {
     );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("declare module 'react'"),
-      'file:///node_modules/@types/react/index.d.ts'
+      expect.stringContaining('declare namespace JSX'),
+      'file:///1flowbase/native-react-jsx.d.ts'
     );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       2,
