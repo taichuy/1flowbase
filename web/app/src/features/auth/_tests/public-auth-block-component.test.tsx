@@ -1,17 +1,32 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   compileNativeReactComponent,
   createNativeReactRuntimeFingerprint
 } from '@1flowbase/page-runtime';
 
-const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+const { apiFetch, passwordSignIn } = vi.hoisted(() => ({
+  apiFetch: vi.fn(),
+  passwordSignIn: vi.fn()
+}));
 vi.mock('@1flowbase/api-client', async () => {
   const actual = await vi.importActual<typeof import('@1flowbase/api-client')>(
     '@1flowbase/api-client'
   );
   return { ...actual, apiFetch };
+});
+vi.mock('../api/session', async () => {
+  const actual =
+    await vi.importActual<typeof import('../api/session')>('../api/session');
+  return { ...actual, signInWithPassword: passwordSignIn };
 });
 
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
@@ -20,10 +35,15 @@ import { appI18n } from '../../../shared/i18n/app-i18n';
 describe('PublicAuthBlock Native Host composition', () => {
   beforeEach(async () => {
     apiFetch.mockReset();
+    passwordSignIn.mockReset();
     await appI18n.changeLanguage('en_US');
   });
 
-  test('R6-AC-003 exposes a production fallback without editor diagnostics', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('AC-002 switches an enabled builtin password authenticator to the bundled form after compilation fails', async () => {
     const onAuthenticated = vi.fn();
     render(
       <PublicAuthBlock
@@ -43,50 +63,155 @@ describe('PublicAuthBlock Native Host composition', () => {
       />
     );
 
-    const alert = await documentAlert();
-    expect(alert).toHaveTextContent(
-      'Failed to load sign-in options. Please refresh the page and try again.'
-    );
-    expect(alert).not.toHaveTextContent('Authenticator component is invalid');
+    expect(
+      await screen.findByRole('heading', { name: 'Welcome' })
+    ).toBeVisible();
+    expect(screen.getByLabelText('Account or email')).toBeVisible();
+    expect(screen.getByLabelText('Password')).toBeVisible();
+    expect(screen.queryByText('Authenticator component is invalid')).toBeNull();
     expectNoEditorDebugSurface();
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
 
-  test('R6-AC-003 retries production preparation without creating editor UI', async () => {
-    const source = `
+  test.each([
+    ['non-builtin password', { is_builtin: false }],
+    ['non-password', { is_builtin: true, auth_type: 'qr-code' }]
+  ])(
+    'AC-005 keeps the existing retry error for %s authenticators',
+    async (_case, overrides) => {
+      const source = `
       export default function AuthFixture() {
         return <button type="button">Sign in</button>;
       }
     `;
-    const nativeCompiler = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        diagnostics: [
-          {
-            phase: 'compile',
-            code: 'syntax_invalid',
-            path: 'source',
-            message: 'temporary compile failure'
-          }
-        ]
-      })
-      .mockResolvedValueOnce(compiledResult(source));
+      const nativeCompiler = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          diagnostics: [
+            {
+              phase: 'compile',
+              code: 'syntax_invalid',
+              path: 'source',
+              message: 'temporary compile failure'
+            }
+          ]
+        })
+        .mockResolvedValueOnce(compiledResult(source));
+      render(
+        <PublicAuthBlock
+          instance={instance(source, overrides)}
+          onAuthenticated={vi.fn()}
+          nativeCompiler={nativeCompiler}
+        />
+      );
+
+      const alert = await documentAlert();
+      fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+
+      const shadow = await publicAuthShadow();
+      expect(
+        within(shadow).getByRole('button', { name: 'Sign in' })
+      ).toBeVisible();
+      expect(nativeCompiler).toHaveBeenCalledTimes(2);
+      expect(
+        screen.queryByRole('button', { name: 'Use built-in sign-in' })
+      ).toBeNull();
+      expectNoEditorDebugSurface();
+    }
+  );
+
+  test('AC-003 switches to the bundled form after the preparation deadline and ignores a late compiler result', async () => {
+    vi.useFakeTimers();
+    const source = `
+      export default function AuthFixture() {
+        return <button type="button">Configured sign in</button>;
+      }
+    `;
+    const preparation = deferred<ReturnType<typeof compiledResult>>();
     render(
       <PublicAuthBlock
         instance={instance(source)}
         onAuthenticated={vi.fn()}
-        nativeCompiler={nativeCompiler}
+        nativeCompiler={vi.fn().mockReturnValue(preparation.promise)}
       />
     );
 
-    const alert = await documentAlert();
-    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      await Promise.resolve();
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 
-    const shadow = await publicAuthShadow();
-    expect(within(shadow).getByRole('button', { name: 'Sign in' })).toBeVisible();
-    expect(nativeCompiler).toHaveBeenCalledTimes(2);
-    expectNoEditorDebugSurface();
+    preparation.resolve(compiledResult(source));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+    expect(document.body).not.toHaveTextContent('Configured sign in');
+  });
+
+  test('AC-004 offers a manual emergency switch while the configured builtin password UI is healthy', async () => {
+    const source = `
+      export default function AuthFixture() {
+        return <button type="button">Configured sign in</button>;
+      }
+    `;
+    render(
+      <PublicAuthBlock
+        instance={instance(source)}
+        onAuthenticated={vi.fn()}
+        nativeCompiler={compiler(source)}
+      />
+    );
+
+    const shadow = await publicAuthShadow('Configured sign in');
+    expect(
+      within(shadow).getByRole('button', { name: 'Configured sign in' })
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use built-in sign-in' })
+    );
+
+    expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+    expect(document.body).not.toHaveTextContent('Configured sign in');
+  });
+
+  test('AC-006 submits the bundled form through the existing password sign-in flow', async () => {
+    const session = {
+      csrf_token: 'csrf-fallback',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace-fallback'
+    };
+    passwordSignIn.mockResolvedValue(session);
+    const onAuthenticated = vi.fn();
+    render(
+      <PublicAuthBlock
+        instance={instance('broken source')}
+        onAuthenticated={onAuthenticated}
+        nativeCompiler={vi.fn().mockResolvedValue({
+          ok: false,
+          diagnostics: []
+        })}
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText('Account or email'), {
+      target: { value: 'root' }
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'change-me' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() =>
+      expect(passwordSignIn).toHaveBeenCalledWith({
+        authenticator_id: 'auth-password-local',
+        identifier: 'root',
+        password: 'change-me'
+      })
+    );
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(session));
   });
 
   test('D4-AC-001/003/004 accepts only a canonical session response and keeps local state while the API is pending', async () => {
@@ -158,15 +283,23 @@ describe('PublicAuthBlock Native Host composition', () => {
   });
 });
 
-function instance(publicUiBlock: string) {
+function instance(
+  publicUiBlock: string,
+  overrides: Partial<{
+    is_builtin: boolean;
+    auth_type: string;
+  }> = {}
+) {
   return {
     id: 'auth-password-local',
     auth_type: 'password-local',
+    is_builtin: true,
     title: 'Password',
     description: null,
     sort_order: 0,
     public_ui_block: publicUiBlock,
-    public_variables: { self_registration_enabled: true }
+    public_variables: { self_registration_enabled: true },
+    ...overrides
   };
 }
 
@@ -188,12 +321,14 @@ function compiledResult(source: string) {
   } as const;
 }
 
-async function publicAuthShadow(): Promise<HTMLElement> {
+async function publicAuthShadow(
+  expectedText = 'Sign in'
+): Promise<HTMLElement> {
   await waitFor(() => {
     const shadow = document.querySelector(
       '[data-testid="native-react-public-auth-root"]'
     )?.shadowRoot;
-    expect(shadow?.textContent).toContain('Sign in');
+    expect(shadow?.textContent).toContain(expectedText);
   });
   return document.querySelector(
     '[data-testid="native-react-public-auth-root"]'

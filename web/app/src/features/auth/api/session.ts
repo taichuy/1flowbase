@@ -14,7 +14,7 @@ import {
   type PublicLoginInstancesResponse
 } from '@1flowbase/api-client';
 
-export type { PublicLoginInstance };
+export type { PasswordSignInResponse, PublicLoginInstance };
 
 export function getAuthApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'

@@ -3,6 +3,12 @@
     "product_tagline": "对话即是壁垒，AI应用原生底座"
   },
   "sign_in": {
+    "fallback_authentication_failed": "登录失败，请检查账号和密码后重试。",
+    "fallback_identifier_label": "账号或邮箱",
+    "fallback_password_label": "密码",
+    "fallback_submit": "登录",
+    "fallback_switch": "使用内置账号密码登录",
+    "fallback_title": "欢迎",
     "footer": "Powered by 1flowbase",
     "login_instances_load_failed": "登录入口加载失败，请刷新页面后重试。",
     "no_login_instances": "当前没有可用登录入口。"

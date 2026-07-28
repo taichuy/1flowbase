@@ -15,6 +15,7 @@ export interface PasswordSignInResponse {
 export interface PublicLoginInstance {
   id: string;
   auth_type: string;
+  is_builtin: boolean;
   title: string;
   description?: string | null;
   sort_order: number;

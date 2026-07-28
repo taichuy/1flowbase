@@ -19,6 +19,7 @@ import {
 const instance = {
   id: 'auth-password-local',
   auth_type: 'password-local',
+  is_builtin: true,
   title: 'Password',
   description: null,
   sort_order: 0,
