@@ -31,7 +31,6 @@ const CLAUDE_PROTOCOL_PROFILE = Object.freeze({
   expected_evidence: Object.freeze({
     configured_model: 'claude-opus-4-6[1m]',
     base_model: 'claude-opus-4-6',
-    thinking_type: 'adaptive',
     context_management: true,
   }),
 });
@@ -236,7 +235,7 @@ const CLAUDE_PROTOCOL_VECTOR = Object.freeze({
   })]),
   expected: successfulExpected({
     assistantTexts: [TEXT_SENTINEL],
-    requestBodyKeys: ['context_management', 'thinking'],
+    requestBodyKeys: ['context_management'],
     requestBodyModel: 'claude-opus-4-6',
   }),
 });

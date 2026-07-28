@@ -158,12 +158,9 @@ test('WP-D4B records only observed Claude profile evidence without injecting it 
   assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.protocol_profile.expected_evidence, {
     configured_model: 'claude-opus-4-6[1m]',
     base_model: 'claude-opus-4-6',
-    thinking_type: 'adaptive',
     context_management: true,
   });
-  assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.expected.request_body_keys, [
-    'context_management', 'thinking',
-  ]);
+  assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.expected.request_body_keys, ['context_management']);
   assert.equal(CLAUDE_PROTOCOL_VECTOR.expected.request_body_model, 'claude-opus-4-6');
   assert.doesNotMatch(promptFor(CLAUDE_PROTOCOL_VECTOR, paths), /output_config|effort/u);
 
@@ -176,14 +173,14 @@ test('WP-D4B records only observed Claude profile evidence without injecting it 
   }
 });
 
-test('BLO-05 leaves Claude retry ownership visible to the raw-error vector', () => {
+test('BLO-05 bounds Claude SDK retries while preserving every observed raw-error attempt', () => {
   const errorPlan = buildClientPlan(
     'claude', '/machine/claude', target, paths, PROVIDER_ERROR_VECTOR, 'anthropic_sse',
   );
   const textPlan = buildClientPlan(
     'claude', '/machine/claude', target, paths, TEXT_VECTOR, 'anthropic_sse',
   );
-  assert.equal(errorPlan.environment.CLAUDE_CODE_MAX_RETRIES, undefined);
+  assert.equal(errorPlan.environment.CLAUDE_CODE_MAX_RETRIES, '0');
   assert.equal(textPlan.environment.CLAUDE_CODE_MAX_RETRIES, undefined);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.provider_requests, undefined);

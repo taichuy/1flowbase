@@ -27,6 +27,10 @@ test('Root #1477 AC-001/005: live request pairs target protocol-matched provider
   assert.match(rows.openai_responses.gatewayUrl, /\/v1\/responses/u);
   assert.match(rows.anthropic_messages.gatewayUrl, /\/v1\/messages/u);
   assert.deepEqual(rows.openai_chat.directBody.stream_options, { include_usage: true });
+  assert.equal(rows.openai_chat.directBody.max_tokens, 4096);
+  assert.equal(rows.openai_chat.gatewayBody.max_tokens, 4096);
   assert.equal(rows.anthropic_messages.directBody.messages[0].content[0].text, 'Root #1477 request fidelity probe');
   assert.equal(rows.openai_responses.gatewayBody.input, 'Root #1477 request fidelity probe');
+  assert.equal(rows.openai_responses.directBody.max_output_tokens, 4096);
+  assert.equal(rows.openai_responses.gatewayBody.max_output_tokens, 4096);
 });

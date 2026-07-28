@@ -16,6 +16,7 @@ function requestPair(vector, ready, upstreamBaseUrl) {
       model: ready.targets.openai_compatible.model,
       messages: [{ role: 'user', content: PROMPT }],
       stream: true,
+      max_tokens: 4096,
       reasoning_effort: residual.body.reasoning_effort,
       service_tier: residual.body.service_tier,
       fixture_body_extension: residual.body.fixture_body_extension,
@@ -63,6 +64,7 @@ function requestPair(vector, ready, upstreamBaseUrl) {
   const common = {
     model: ready.targets.openai.model,
     stream: true,
+    max_output_tokens: 4096,
     reasoning: residual.body.reasoning,
     truncation: residual.body.truncation,
     fixture_body_extension: residual.body.fixture_body_extension,
