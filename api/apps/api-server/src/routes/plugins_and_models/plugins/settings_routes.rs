@@ -73,10 +73,9 @@ pub async fn list_official_catalog(
             requested_locales(&locale_meta),
         )
         .await?;
-    Ok(Json(ApiSuccess::new(to_official_catalog_response(
-        locale_meta,
-        catalog,
-    ))))
+    Ok(Json(ApiSuccess::new(
+        to_official_catalog_response(&state, locale_meta, catalog).await?,
+    )))
 }
 
 #[utoipa::path(

@@ -3,13 +3,17 @@ use std::{
     sync::Arc,
 };
 
+use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
+use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{OfficialPluginSourcePort, RuntimeEventStream, SessionStore};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId};
 use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
 use storage_durable::MainDurableStore;
 use time::OffsetDateTime;
 
+use crate::error_response::ApiError;
 use crate::host_infrastructure::HostInfrastructureRegistry;
 use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
@@ -38,6 +42,76 @@ pub fn build_official_i18n_catalog_update_service(
         config.resolve_official_i18n_catalog_source(),
     ));
     Arc::new(control_plane::i18n_catalog::OfficialI18nCatalogUpdateService::new(store, source))
+}
+
+pub(crate) fn request_catalog_locale(
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+) -> CatalogLocale {
+    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+        query_locale: None,
+        explicit_header_locale: headers
+            .get("x-1flowbase-locale")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        user_preferred_locale: preferred_locale,
+        accept_language: headers
+            .get(ACCEPT_LANGUAGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        fallback_locale: runtime_profile::FALLBACK_LOCALE,
+        supported_locales: runtime_profile::SUPPORTED_LOCALES
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+    });
+    CatalogLocale::new(resolved.resolved_locale)
+        .expect("runtime profile must resolve a supported catalog locale")
+}
+
+pub(crate) async fn resolve_request_text(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    module: &'static str,
+    msgid: &'static str,
+) -> Result<String, ApiError> {
+    let identity = CatalogMessageIdentity::new(
+        CatalogModuleId::new(module).expect("backend display catalog module must be valid"),
+        msgid,
+    )
+    .expect("backend display catalog msgid must be valid");
+    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
+    Ok(resolver
+        .resolve(state.bootstrap_workspace_id, &identity, locale)
+        .await?
+        .value)
+}
+
+pub(crate) async fn project_canonical_display(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    module: &'static str,
+    msgid: &'static str,
+    stored: &str,
+) -> Result<String, ApiError> {
+    if !stored.trim().is_empty() && stored != msgid {
+        return Ok(stored.to_owned());
+    }
+    resolve_request_text(state, locale, module, msgid).await
+}
+
+pub(crate) async fn resolve_official_source_label(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    source_kind: &str,
+    fallback: String,
+) -> Result<String, ApiError> {
+    let msgid = match source_kind {
+        "official_registry" => "Official source",
+        "mirror_registry" => "Mirror source",
+        _ => return Ok(fallback),
+    };
+    resolve_request_text(state, locale, "@taichuy/platform/official-sources", msgid).await
 }
 
 pub fn compile_core_settings_feature_registry() -> Result<

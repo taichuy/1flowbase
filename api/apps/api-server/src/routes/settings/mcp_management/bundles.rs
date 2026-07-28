@@ -111,7 +111,15 @@ async fn list_official_bundles(
     McpManagementService::new(state.store.clone())
         .authorize_bundle_management(context.user.id)
         .await?;
-    let catalog = state.official_mcp_bundle_source.list_catalog().await?;
+    let mut catalog = state.official_mcp_bundle_source.list_catalog().await?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    catalog.source.source_label = crate::app_state::resolve_official_source_label(
+        &state,
+        &locale,
+        &catalog.source.source_kind,
+        catalog.source.source_label,
+    )
+    .await?;
     Ok(Json(ApiSuccess::new(catalog)))
 }
 

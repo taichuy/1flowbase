@@ -619,12 +619,19 @@ pub async fn create_frontstage_page(
             slug: body.slug,
         })
         .await?;
-    let default_tab =
+    let mut default_tab =
         creation
             .default_tab
             .ok_or(control_plane::errors::ControlPlaneError::Conflict(
                 "frontstage_page_requires_tab",
             ))?;
+    project_default_tab_title(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        &mut default_tab,
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -660,7 +667,7 @@ pub async fn get_frontstage_page_detail(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    let detail = FrontstagePageService::new(state.store.clone())
+    let mut detail = FrontstagePageService::new(state.store.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -668,6 +675,13 @@ pub async fn get_frontstage_page_detail(
             tab_reference,
         })
         .await?;
+    project_default_tab_title(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        &mut detail.tab,
+    )
+    .await?;
 
     Ok(Json(ApiSuccess::new(to_page_detail_response(detail))))
 }
@@ -805,9 +819,13 @@ pub async fn list_frontstage_page_tabs(
     let context = require_session(&state, &headers).await?;
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
-    let tabs = FrontstagePageService::new(state.store.clone())
+    let mut tabs = FrontstagePageService::new(state.store.clone())
         .list_page_tabs(context.user.id, workspace_id, page_id)
         .await?;
+    for tab in &mut tabs {
+        project_default_tab_title(&state, &headers, context.user.preferred_locale.clone(), tab)
+            .await?;
+    }
     Ok(Json(ApiSuccess::new(
         tabs.into_iter().map(to_tab_response).collect(),
     )))
@@ -1106,6 +1124,30 @@ fn to_page_response(page: domain::FrontstagePageRecord) -> FrontstagePageRespons
         content_presentation: to_content_presentation_response(page.content_presentation),
         slug: page.slug,
     }
+}
+
+async fn project_default_tab_title(
+    state: &ApiState,
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+    tab: &mut domain::frontstage::FrontstagePageTabRecord,
+) -> Result<(), ApiError> {
+    if !tab.is_default {
+        return Ok(());
+    }
+    let locale = crate::app_state::request_catalog_locale(headers, preferred_locale);
+    let stored = tab.title.as_deref().unwrap_or_default();
+    tab.title = Some(
+        crate::app_state::project_canonical_display(
+            state,
+            &locale,
+            "@taichuy/platform/frontstage",
+            "Default",
+            stored,
+        )
+        .await?,
+    );
+    Ok(())
 }
 
 fn to_tab_response(tab: domain::frontstage::FrontstagePageTabRecord) -> FrontstagePageTabResponse {

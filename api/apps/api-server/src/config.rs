@@ -343,7 +343,7 @@ impl ApiConfig {
         {
             return ResolvedOfficialPluginSourceConfig {
                 source_kind: "mirror_registry".into(),
-                source_label: "镜像源".into(),
+                source_label: "Mirror source".into(),
                 registry_url: mirror_url,
                 github_proxy_url: self.official_plugin_github_proxy_url.clone(),
                 trust_mode: self.official_plugin_trust_mode(),
@@ -352,7 +352,7 @@ impl ApiConfig {
 
         ResolvedOfficialPluginSourceConfig {
             source_kind: "official_registry".into(),
-            source_label: "官方源".into(),
+            source_label: "Official source".into(),
             registry_url: self.official_plugin_default_registry_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
             trust_mode: self.official_plugin_trust_mode(),
@@ -377,7 +377,7 @@ impl ApiConfig {
         {
             return ResolvedOfficialAgentFlowTemplateSourceConfig {
                 source_kind: "mirror_registry".into(),
-                source_label: "镜像源".into(),
+                source_label: "Mirror source".into(),
                 index_url: mirror_url,
                 github_proxy_url: self.official_plugin_github_proxy_url.clone(),
             };
@@ -385,7 +385,7 @@ impl ApiConfig {
 
         ResolvedOfficialAgentFlowTemplateSourceConfig {
             source_kind: "official_registry".into(),
-            source_label: "官方源".into(),
+            source_label: "Official source".into(),
             index_url: self.official_agent_flow_template_default_index_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
         }
@@ -399,14 +399,14 @@ impl ApiConfig {
         {
             return ResolvedOfficialMcpBundleSourceConfig {
                 source_kind: "mirror_registry".into(),
-                source_label: "镜像源".into(),
+                source_label: "Mirror source".into(),
                 catalog_url: mirror_url,
                 github_proxy_url: self.official_plugin_github_proxy_url.clone(),
             };
         }
         ResolvedOfficialMcpBundleSourceConfig {
             source_kind: "official_registry".into(),
-            source_label: "官方源".into(),
+            source_label: "Official source".into(),
             catalog_url: self.official_mcp_bundle_default_catalog_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
         }

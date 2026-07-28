@@ -349,6 +349,71 @@ fn auth_center_overview_response(
     }
 }
 
+async fn localize_authenticator_response(
+    state: &ApiState,
+    locale: &domain::CatalogLocale,
+    response: &mut AuthCenterAuthenticatorResponse,
+) -> Result<(), ApiError> {
+    if response.id == domain::PASSWORD_LOCAL_AUTHENTICATOR_ID {
+        response.title = crate::app_state::project_canonical_display(
+            state,
+            locale,
+            "@taichuy/platform/authentication",
+            "Password",
+            &response.title,
+        )
+        .await?;
+        response
+            .config_values
+            .insert("title".to_owned(), Value::String(response.title.clone()));
+        if let Some(public_variables) = &mut response.public_variables {
+            public_variables.insert("title".to_owned(), Value::String(response.title.clone()));
+        }
+    }
+    for variable in &mut response.context_variables {
+        let msgid = match variable.member_path.as_str() {
+            "inputs.authenticator_id" => Some("Authenticator ID"),
+            "inputs.auth_event" => Some("Authentication event"),
+            "api" => Some("API"),
+            _ => None,
+        };
+        if let Some(msgid) = msgid {
+            variable.label = crate::app_state::resolve_request_text(
+                state,
+                locale,
+                "@taichuy/platform/authentication",
+                msgid,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn localize_overview_response(
+    state: &ApiState,
+    locale: &domain::CatalogLocale,
+    response: &mut AuthCenterOverviewResponse,
+) -> Result<(), ApiError> {
+    for authenticator in &mut response.authenticators {
+        localize_authenticator_response(state, locale, authenticator).await?;
+    }
+    Ok(())
+}
+
+async fn localized_authenticator_response(
+    state: &ApiState,
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+    authenticator: domain::AuthenticatorRecord,
+) -> Result<AuthCenterAuthenticatorResponse, ApiError> {
+    let locale = crate::app_state::request_catalog_locale(headers, preferred_locale);
+    let mut response =
+        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref());
+    localize_authenticator_response(state, &locale, &mut response).await?;
+    Ok(response)
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/settings/auth-center/overview",
@@ -369,10 +434,11 @@ pub async fn get_auth_center_overview(
     )
     .overview(&context.actor)
     .await?;
-    Ok(Json(ApiSuccess::new(auth_center_overview_response(
-        overview,
-        state.authenticator_registry.as_ref(),
-    ))))
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    let mut response =
+        auth_center_overview_response(overview, state.authenticator_registry.as_ref());
+    localize_overview_response(&state, &locale, &mut response).await?;
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -415,14 +481,15 @@ pub async fn create_auth_center_authenticator(
         },
     )
     .await?;
+    let response = localized_authenticator_response(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        authenticator,
+    )
+    .await?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_auth_center_authenticator_response(
-            authenticator,
-            state.authenticator_registry.as_ref(),
-        ))),
-    ))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(
@@ -465,14 +532,15 @@ pub async fn copy_auth_center_authenticator(
         },
     )
     .await?;
+    let response = localized_authenticator_response(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        authenticator,
+    )
+    .await?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_auth_center_authenticator_response(
-            authenticator,
-            state.authenticator_registry.as_ref(),
-        ))),
-    ))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(
@@ -527,10 +595,11 @@ pub async fn reorder_auth_center_authenticators(
     )
     .reorder_authenticators(&context.actor, &body.ids)
     .await?;
-    Ok(Json(ApiSuccess::new(auth_center_overview_response(
-        overview,
-        state.authenticator_registry.as_ref(),
-    ))))
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    let mut response =
+        auth_center_overview_response(overview, state.authenticator_registry.as_ref());
+    localize_overview_response(&state, &locale, &mut response).await?;
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -556,10 +625,15 @@ pub async fn enable_auth_center_authenticator(
     )
     .enable_authenticator(&context.actor, id)
     .await?;
+    let response = localized_authenticator_response(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        authenticator,
+    )
+    .await?;
 
-    Ok(Json(ApiSuccess::new(
-        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref()),
-    )))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -598,10 +672,15 @@ pub async fn update_auth_center_authenticator_config(
         },
     )
     .await?;
+    let response = localized_authenticator_response(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        authenticator,
+    )
+    .await?;
 
-    Ok(Json(ApiSuccess::new(
-        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref()),
-    )))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -636,8 +715,13 @@ pub async fn update_auth_center_authenticator_public_ui_block(
         },
     )
     .await?;
+    let response = localized_authenticator_response(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        authenticator,
+    )
+    .await?;
 
-    Ok(Json(ApiSuccess::new(
-        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref()),
-    )))
+    Ok(Json(ApiSuccess::new(response)))
 }

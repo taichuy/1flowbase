@@ -1,0 +1,24 @@
+{
+  "packet": "D3-P6",
+  "count": 18,
+  "consumers": [
+    {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Password","path":"api/crates/control-plane/src/bootstrap/mod.rs","projection":"public auth and auth-center title"},
+    {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Local","path":"api/apps/api-server/src/lib.rs","projection":"default file-storage title"},
+    {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Authenticator ID","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
+    {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Authentication event","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
+    {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"API","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
+    {"category":"application_type","module":"@taichuy/platform/applications","msgid":"Agent Flow","path":"api/apps/api-server/src/routes/applications/applications.rs","projection":"application catalog type label"},
+    {"category":"application_type","module":"@taichuy/platform/applications","msgid":"Workflow","path":"api/apps/api-server/src/routes/applications/applications.rs","projection":"application catalog type label"},
+    {"category":"frontstage_default_tab","module":"@taichuy/platform/frontstage","msgid":"Default","path":"api/crates/control-plane/src/frontstage/mod.rs","projection":"frontstage default-tab title"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Mirror source","path":"api/apps/api-server/src/config.rs","projection":"plugin source canonical label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Official source","path":"api/apps/api-server/src/config.rs","projection":"plugin source canonical label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Mirror source","path":"api/apps/api-server/src/config.rs","projection":"Agent Flow template source canonical label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Official source","path":"api/apps/api-server/src/config.rs","projection":"Agent Flow template source canonical label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Mirror source","path":"api/apps/api-server/src/config.rs","projection":"MCP bundle source canonical label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Official source","path":"api/apps/api-server/src/config.rs","projection":"MCP bundle source canonical label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Official source","path":"api/apps/api-server/src/routes/plugins_and_models/plugins.rs","projection":"plugin official-catalog source label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Mirror source","path":"api/apps/api-server/src/routes/plugins_and_models/plugins/settings_routes.rs","projection":"model-provider plugin official-catalog source label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Official source","path":"api/apps/api-server/src/routes/applications/application_orchestration.rs","projection":"Agent Flow template official-catalog source label"},
+    {"category":"official_source","module":"@taichuy/platform/official-sources","msgid":"Mirror source","path":"api/apps/api-server/src/routes/settings/mcp_management/bundles.rs","projection":"MCP bundle official-catalog source label"}
+  ]
+}

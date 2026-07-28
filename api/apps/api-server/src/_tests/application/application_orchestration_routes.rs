@@ -358,6 +358,18 @@ async fn application_orchestration_official_template_routes_list_and_download_ca
     assert_eq!(catalog.status(), StatusCode::OK);
     let catalog_body: Value =
         serde_json::from_slice(&to_bytes(catalog.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        catalog_body["data"]["source"]["source_label"],
+        "Official source"
+    );
+    assert_eq!(
+        catalog_body["data"]["source"]["source_kind"],
+        "official_registry"
+    );
+    assert_eq!(
+        catalog_body["data"]["source"]["index_url"],
+        "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json"
+    );
     let entry = &catalog_body["data"]["entries"][0];
 
     assert_eq!(entry["workflow_id"], json!("multimodal-mount-test"));

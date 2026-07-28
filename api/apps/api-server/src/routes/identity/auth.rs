@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::State,
+    http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
@@ -105,8 +106,9 @@ fn to_public_login_instance(
 )]
 pub async fn list_providers(
     State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<AuthProviderResponse>>>, ApiError> {
-    let provider = state
+    let mut provider = state
         .store
         .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
         .await?
@@ -115,6 +117,17 @@ pub async fn list_providers(
             auth_type: authenticator.auth_type,
             title: authenticator.title,
         });
+    if let Some(provider) = &mut provider {
+        let locale = crate::app_state::request_catalog_locale(&headers, None);
+        provider.title = crate::app_state::project_canonical_display(
+            &state,
+            &locale,
+            "@taichuy/platform/authentication",
+            "Password",
+            &provider.title,
+        )
+        .await?;
+    }
 
     Ok(Json(ApiSuccess::new(provider.into_iter().collect())))
 }
@@ -126,15 +139,27 @@ pub async fn list_providers(
 )]
 pub async fn list_login_instances(
     State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
     let registry = state.authenticator_registry.as_ref();
-    let login_instances = state
+    let mut login_instances = state
         .store
         .list_authenticators()
         .await?
         .into_iter()
         .filter_map(|authenticator| to_public_login_instance(authenticator, registry))
         .collect::<Vec<_>>();
+    let locale = crate::app_state::request_catalog_locale(&headers, None);
+    for instance in &mut login_instances {
+        instance.title = crate::app_state::project_canonical_display(
+            &state,
+            &locale,
+            "@taichuy/platform/authentication",
+            "Password",
+            &instance.title,
+        )
+        .await?;
+    }
     let default_authenticator_id = login_instances
         .first()
         .map(|instance| instance.id)

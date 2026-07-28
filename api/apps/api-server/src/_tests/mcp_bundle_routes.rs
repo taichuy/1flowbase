@@ -602,6 +602,15 @@ async fn mcp_bundle_official_catalog_and_preview_are_served_through_the_backend(
         .unwrap();
     assert_eq!(catalog_response.status(), StatusCode::OK);
     let catalog = response_json(catalog_response).await;
+    assert_eq!(catalog["data"]["source"]["source_label"], "Official source");
+    assert_eq!(
+        catalog["data"]["source"]["source_kind"],
+        "official_registry"
+    );
+    assert_eq!(
+        catalog["data"]["source"]["catalog_url"],
+        "https://example.com/mcp/catalog.json"
+    );
     assert_eq!(
         catalog["data"]["entries"][0]["organization"],
         json!("taichuy")

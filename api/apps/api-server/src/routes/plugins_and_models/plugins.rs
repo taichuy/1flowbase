@@ -755,16 +755,21 @@ fn to_official_catalog_entry_response(
     }
 }
 
-fn to_official_catalog_response(
+async fn to_official_catalog_response(
+    state: &ApiState,
     locale_meta: LocaleMetaResponse,
     catalog: OfficialPluginCatalogView,
-) -> OfficialPluginCatalogResponse {
-    let source_label = localized_official_source_label(
+) -> Result<OfficialPluginCatalogResponse, ApiError> {
+    let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
+        .expect("runtime profile must resolve a supported catalog locale");
+    let source_label = crate::app_state::resolve_official_source_label(
+        state,
+        &locale,
         &catalog.source_kind,
         catalog.source_label,
-        &locale_meta.resolved_locale,
-    );
-    OfficialPluginCatalogResponse {
+    )
+    .await?;
+    Ok(OfficialPluginCatalogResponse {
         source_kind: catalog.source_kind,
         source_label,
         registry_url: catalog.registry_url,
@@ -778,7 +783,7 @@ fn to_official_catalog_response(
             .into_iter()
             .map(to_official_catalog_entry_response)
             .collect(),
-    }
+    })
 }
 
 fn to_installed_version_response(
@@ -902,16 +907,6 @@ fn official_filter_from_query(query: &OfficialPluginCatalogQuery) -> OfficialPlu
     }
 }
 
-fn localized_official_source_label(source_kind: &str, fallback: String, locale: &str) -> String {
-    match (source_kind, locale) {
-        ("official_registry", "en_US") => "Official source".to_string(),
-        ("official_registry", _) => "官方源".to_string(),
-        ("mirror_registry", "en_US") => "Mirror source".to_string(),
-        ("mirror_registry", _) => "镜像源".to_string(),
-        _ => fallback,
-    }
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/plugins/catalog",
@@ -1009,10 +1004,9 @@ pub async fn list_official_catalog(
             requested_locales(&locale_meta),
         )
         .await?;
-    Ok(Json(ApiSuccess::new(to_official_catalog_response(
-        locale_meta,
-        catalog,
-    ))))
+    Ok(Json(ApiSuccess::new(
+        to_official_catalog_response(&state, locale_meta, catalog).await?,
+    )))
 }
 
 #[utoipa::path(

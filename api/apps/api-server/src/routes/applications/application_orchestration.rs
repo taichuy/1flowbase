@@ -651,11 +651,19 @@ pub async fn list_official_agent_flow_template_catalog(
     headers: HeaderMap,
     Query(query): Query<OfficialAgentFlowTemplateCatalogQuery>,
 ) -> Result<Json<ApiSuccess<OfficialAgentFlowTemplateCatalogResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let catalog = state
+    let context = require_session(&state, &headers).await?;
+    let mut catalog = state
         .official_agent_flow_template_source
         .list_catalog_page(query.cursor)
         .await?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    catalog.source.source_label = crate::app_state::resolve_official_source_label(
+        &state,
+        &locale,
+        &catalog.source.source_kind,
+        catalog.source.source_label,
+    )
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         to_official_agent_flow_template_catalog_response(catalog),
