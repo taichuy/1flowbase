@@ -15,6 +15,32 @@ import {
 beforeEach(setupNodeInspectorTest);
 
 describe('NodeInspector protocol context', () => {
+  test('FUA-WEB enables system protocol context for a legacy document without the field', async () => {
+    const state = createInitialStateWithProtocolContextCodeNode();
+    delete getLlmNodeConfig(state.draft.document).protocol_context;
+
+    const view = renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state}>
+        <SelectionSeed nodeId="node-llm" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    const field = await view.findByTestId(
+      'inspector-field-config.protocol_context'
+    );
+    expect(
+      within(field).getByRole('switch', { name: '协议上下文' })
+    ).toBeChecked();
+    expect(
+      within(field).getByRole('combobox', { name: '协议上下文变量' })
+    ).toBeEnabled();
+    expect(field).toHaveTextContent('sys.protocol_context');
+    expect(getLlmNodeConfig(state.draft.document)).not.toHaveProperty(
+      'protocol_context'
+    );
+  });
+
   test('WP-D1D drives enablement and whole-object selection from one nullable reference', async () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     let latestDocument = state.draft.document;

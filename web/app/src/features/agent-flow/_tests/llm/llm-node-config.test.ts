@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
+import { DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE } from '@1flowbase/flow-schema';
+
 import {
   DEFAULT_LLM_PARAMETERS,
   DEFAULT_LLM_CONTEXT_POLICY,
@@ -89,7 +91,13 @@ describe('llm-node-config', () => {
     });
   });
 
-  test('WP-D1D reads protocol context as one exact nullable variable reference', () => {
+  test('FUA-WEB reads protocol context with legacy three-state compatibility', () => {
+    expect(getLlmProtocolContextReference({})).toEqual(
+      DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE
+    );
+    expect(
+      getLlmProtocolContextReference({ protocol_context: null })
+    ).toBeNull();
     expect(
       getLlmProtocolContextReference({
         protocol_context: {
@@ -101,8 +109,6 @@ describe('llm-node-config', () => {
       kind: 'selector',
       value: ['node-code', 'result', 'protocol_context']
     });
-    expect(getLlmProtocolContextReference({ protocol_context: null })).toBeNull();
-    expect(getLlmProtocolContextReference({})).toBeNull();
     expect(
       getLlmProtocolContextReference({
         protocol_context: {
