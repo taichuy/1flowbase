@@ -107,6 +107,41 @@ async fn d1_ac_008_provider_runtime_contract_error_stays_out_of_llm_output() {
 }
 
 #[tokio::test]
+async fn invalid_provider_contract_message_reaches_durable_and_client_failure_projection() {
+    let outcome = start_flow_debug_run(
+        &base_plan(),
+        &json!({ "node-start": { "query": "退款政策" } }),
+        &InvalidProviderContractInvoker,
+    )
+    .await
+    .unwrap();
+
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(ref failure) => {
+            assert_eq!(failure.node_id, "node-llm");
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("provider_invalid_response")
+            );
+            assert_eq!(
+                failure.error_payload["message"],
+                json!(INVALID_PROVIDER_CONTRACT_DISPLAY)
+            );
+            assert_eq!(
+                outcome.node_traces[1].error_payload.as_ref().unwrap()["message"],
+                json!(INVALID_PROVIDER_CONTRACT_DISPLAY)
+            );
+            assert_eq!(
+                outcome.node_traces[1].metrics_payload["attempts"][0]["error_payload"]["message"],
+                json!(INVALID_PROVIDER_CONTRACT_DISPLAY)
+            );
+            assert!(outcome.node_traces[1].output_payload.get("text").is_none());
+        }
+        other => panic!("expected failed stop reason, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn d1_ac_008_partial_delta_remains_separate_from_failed_output() {
     let outcome = start_flow_debug_run(
         &base_plan(),

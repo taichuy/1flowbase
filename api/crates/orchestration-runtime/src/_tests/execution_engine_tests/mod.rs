@@ -204,6 +204,7 @@ impl_noop_code_invoker!(
     UnknownCapabilityOutputInvoker,
     ReservedCapabilityOutputInvoker,
     RuntimeContractErrorInvoker,
+    InvalidProviderContractInvoker,
     ProviderUpstreamErrorInvoker,
     FailsAfterFirstTokenInvoker,
     InputCacheUsageSnapshotInvoker,
@@ -236,6 +237,37 @@ impl ProviderInvoker for RuntimeContractErrorInvoker {
 
 #[async_trait]
 impl CapabilityInvoker for RuntimeContractErrorInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("base plan does not execute capability nodes")
+    }
+}
+
+struct InvalidProviderContractInvoker;
+
+const INVALID_PROVIDER_CONTRACT_DISPLAY: &str =
+    "invalid provider contract: provider stream invocation must declare operation=generate";
+
+#[async_trait]
+impl ProviderInvoker for InvalidProviderContractInvoker {
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        Err(PluginFrameworkError::invalid_provider_contract(
+            "provider stream invocation must declare operation=generate",
+        )
+        .into())
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for InvalidProviderContractInvoker {
     async fn invoke_capability_node(
         &self,
         _runtime: &CompiledPluginRuntime,

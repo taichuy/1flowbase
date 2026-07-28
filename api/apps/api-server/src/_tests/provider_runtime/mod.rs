@@ -549,6 +549,44 @@ async fn provider_runtime_preserves_contract_error_for_llm_invocation() {
 }
 
 #[tokio::test]
+async fn provider_runtime_preserves_invalid_provider_contract_display_message() {
+    let package = TempProviderPackage::new();
+    write_failing_provider_package(&package);
+    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
+        Arc::new(RwLock::new(ProviderHost::default())),
+        Arc::new(RwLock::new(CapabilityHost::default())),
+        Arc::new(RwLock::new(DataSourceHost::default())),
+    )));
+
+    let error = runtime
+        .invoke_stream(
+            &fixture_installation(&package),
+            ProviderInvocationInput {
+                operation: ProviderWireOperation::Compact,
+                provider_instance_id: "provider-1".to_string(),
+                provider_code: "fixture_provider".to_string(),
+                protocol: "openai_compatible".to_string(),
+                model: "fixture_chat".to_string(),
+                provider_config: json!({
+                    "base_url": "https://api.example.test",
+                    "api_key": "bad-key"
+                }),
+                ..ProviderInvocationInput::default()
+            },
+        )
+        .await
+        .expect_err("invalid provider contracts must retain their framework diagnostic");
+
+    let framework_error = error
+        .downcast_ref::<PluginFrameworkError>()
+        .expect("invalid provider contracts should keep the framework error type");
+    assert_eq!(
+        framework_error.to_string(),
+        "invalid provider contract: provider stream invocation must declare operation=generate"
+    );
+}
+
+#[tokio::test]
 async fn provider_runtime_compact_preserves_typed_v2_opaque_result() {
     let package = TempProviderPackage::new();
     write_compact_provider_package(

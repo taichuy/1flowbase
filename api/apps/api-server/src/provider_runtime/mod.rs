@@ -779,7 +779,7 @@ impl ApiProviderRuntime {
                 &installation.installed_path,
                 Some(source_identity.as_str()),
             )
-            .map_err(|error| map_framework_error(error, "provider_runtime"));
+            .map_err(map_provider_framework_error);
         tracing::debug!(
             plugin_id = %installation.plugin_id,
             provider_ensure_loaded_ms = ensure_loaded_started.elapsed().as_millis() as u64,
@@ -825,7 +825,8 @@ fn provider_source_identity(installation: &domain::PluginInstallationRecord) -> 
 
 fn map_provider_framework_error(error: PluginFrameworkError) -> anyhow::Error {
     match error {
-        runtime_error @ PluginFrameworkError::RuntimeContract { .. } => runtime_error.into(),
+        preserved_error @ (PluginFrameworkError::RuntimeContract { .. }
+        | PluginFrameworkError::InvalidProviderContract { .. }) => preserved_error.into(),
         other => map_framework_error(other, "provider_runtime"),
     }
 }

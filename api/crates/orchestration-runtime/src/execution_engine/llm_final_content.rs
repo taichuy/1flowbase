@@ -241,6 +241,14 @@ pub(super) fn recoverable_provider_error_message(error: &ProviderRuntimeError) -
 }
 
 pub(super) fn provider_runtime_error_from_anyhow(error: &anyhow::Error) -> ProviderRuntimeError {
+    if let Some(contract_error @ PluginFrameworkError::InvalidProviderContract { .. }) =
+        error.downcast_ref::<PluginFrameworkError>()
+    {
+        return ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            contract_error.to_string(),
+        );
+    }
     if let Some(PluginFrameworkError::RuntimeContract { error }) =
         error.downcast_ref::<PluginFrameworkError>()
     {
