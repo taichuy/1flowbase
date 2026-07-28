@@ -129,6 +129,45 @@ test('getServiceDefinitions reads frontend env from web app env file', () => {
   assert.equal(buildServiceEnv(services['plugin-runner'], {}).PLUGIN_RUNNER_ADDR, '0.0.0.0:7901');
 });
 
+test('AC-001 dev-up points API Server at the resolved Plugin Runner port', () => {
+  const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-runner-url-'));
+  const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
+  fs.mkdirSync(apiServerDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(apiServerDir, '.env'),
+    ['API_SERVER_ADDR=0.0.0.0:7900', 'PLUGIN_RUNNER_ADDR=0.0.0.0:7901'].join('\n')
+  );
+
+  const services = getServiceDefinitions(tempRepoRoot);
+
+  assert.equal(
+    buildServiceEnv(services['api-server'], {}).API_PLUGIN_RUNNER_INTERNAL_BASE_URL,
+    'http://127.0.0.1:7901'
+  );
+});
+
+test('AC-002 dev-up preserves an explicit Plugin Runner internal URL', () => {
+  const tempRepoRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'oneflowbase-dev-up-explicit-runner-url-')
+  );
+  const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
+  fs.mkdirSync(apiServerDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(apiServerDir, '.env'),
+    [
+      'PLUGIN_RUNNER_ADDR=0.0.0.0:7901',
+      'API_PLUGIN_RUNNER_INTERNAL_BASE_URL=http://plugin-runner.internal:8801',
+    ].join('\n')
+  );
+
+  const services = getServiceDefinitions(tempRepoRoot);
+
+  assert.equal(
+    buildServiceEnv(services['api-server'], {}).API_PLUGIN_RUNNER_INTERNAL_BASE_URL,
+    'http://plugin-runner.internal:8801'
+  );
+});
+
 test('dev-up seeds a new web env from existing worktree port configuration', () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-web-env-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');

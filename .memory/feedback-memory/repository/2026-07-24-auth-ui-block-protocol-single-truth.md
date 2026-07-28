@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: 认证插件公开 UI 必须由完整代码区块协议驱动
-summary: 后端认证插件不能改 Core 前端，因此每个认证器的完整公开 Block 是唯一 UI 真值，Core 只能选择和挂载。
+summary: 后端认证插件不能改 Core 前端，因此每个认证器的完整公开 Block 是唯一 UI 真值；所有代码渲染表面只输出区块视觉结果，运行控制与 Console 完全由 TSX 编辑器拥有。
 keywords:
   - auth-provider
   - public-ui-block
@@ -12,8 +12,8 @@ match_when:
   - 设计认证、支付或其他后端插件安装后需要新增前端交互的扩展协议
   - 在 Schema UI、TSX 复用、代码区块和 Core 硬编码之间选择职责边界
 created_at: 2026-07-24 14
-updated_at: 2026-07-26 00
-last_verified_at: 2026-07-26 00
+updated_at: 2026-07-28 00
+last_verified_at: 2026-07-28 00
 decision_policy: direct_reference
 scope:
   - api/crates/plugin-framework
@@ -51,3 +51,7 @@ scope:
 允许 Auth Center 的后台配置表单继续使用后端 `config_schema`；该 schema 是后台配置入口，不是公开登录/注册 UI 的第二真值。
 
 `2026-07-26 00` 用户补充：认证中心当前 Studio UI 更接近期望；普通区块既然复用同一 Studio，就不应再因调用方选择不同 presentation 而出现另一套运行预览交互。用户进一步纠正统一基线：顶部只有“运行”，不新增“停止”；预览区只复用认证中心现有的“实际区块预览 + 单一输出控制台”，不增加变量、接口调用或问题标签。配置字段可因领域 owner 不同而不同，但共享壳层、动作层级与运行预览基准应一致。
+
+`2026-07-28 00` 用户纠正：上述 Console 只属于认证中心 / Frontstage 的后台 Studio 运行预览，不属于公开认证页面。公开登录、注册等生产渲染表面只能显示 `public_ui_block` 的视觉结果和必要的区块内错误反馈，不得把 Studio 的 Console、分隔条或调试交互一并挂载。
+
+`2026-07-28 00` 用户进一步澄清全局不变量：不是由各渲染调用方选择是否显示 Console，而是代码 Renderer 本身必须保持纯粹，只把准备好的组件渲染到隔离 DOM。Run、草稿冻结、诊断、API observation、Console、写操作确认和调试重试全部属于 TSX 编辑器；正式 Frontstage、Public Auth 及其他生产渲染入口不得消费编辑器调试组件。生产 Host 可以在 Renderer 外拥有 loading、用户可见 failure fallback 和业务重试，但不得显示原始调试 Console。

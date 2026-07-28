@@ -82,6 +82,9 @@ function getServiceDefinitions(repoRoot) {
     DEFAULT_PLUGIN_RUNNER_ADDR,
     DEFAULT_PLUGIN_RUNNER_PORT
   );
+  const pluginRunnerInternalBaseUrl =
+    localEnv.API_PLUGIN_RUNNER_INTERNAL_BASE_URL ||
+    `http://127.0.0.1:${pluginRunnerAddress.port}`;
   const webPort = parsePositivePort(
     webEnv.VITE_DEV_SERVER_PORT || localEnv.VITE_DEV_SERVER_PORT,
     DEFAULT_WEB_PORT
@@ -121,6 +124,9 @@ function getServiceDefinitions(repoRoot) {
       startupTimeoutMs: CARGO_COLD_STARTUP_TIMEOUT_MS,
       envFile: apiServerEnvFile,
       envExampleFile: apiServerEnvExampleFile,
+      envOverrides: {
+        API_PLUGIN_RUNNER_INTERNAL_BASE_URL: pluginRunnerInternalBaseUrl,
+      },
       logFile: path.join(paths.logDir, 'api-server.log'),
       pidFile: path.join(paths.pidDir, 'api-server.json'),
     },
