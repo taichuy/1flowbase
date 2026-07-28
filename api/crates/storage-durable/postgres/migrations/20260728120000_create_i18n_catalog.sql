@@ -31,7 +31,7 @@ for each row execute function reject_i18n_catalog_release_update();
 create table i18n_catalog_release_files (
   release_id uuid not null references i18n_catalog_releases(id) on delete cascade,
   module text not null check (module ~ '^@[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+){2,}$'),
-  locale text not null check (locale ~ '^[a-z]{2}_[A-Z]{2}$'),
+  locale text not null check (locale ~ '^[a-z]{2,3}(_[A-Z][A-Za-z]{1,7})?$'),
   path text not null check (btrim(path) <> ''),
   sha256 text not null check (sha256 ~ '^sha256:[0-9a-f]{64}$'),
   primary key (release_id, module, locale, path)
@@ -48,7 +48,7 @@ create table i18n_catalog_release_translations (
   release_id uuid not null,
   module text not null,
   msgid text not null,
-  locale text not null check (locale ~ '^[a-z]{2}_[A-Z]{2}$' and locale <> 'en_US'),
+  locale text not null check (locale ~ '^[a-z]{2,3}(_[A-Z][A-Za-z]{1,7})?$' and locale <> 'en_US'),
   translation text not null,
   primary key (release_id, module, msgid, locale),
   foreign key (release_id, module, msgid)
@@ -89,7 +89,7 @@ create table workspace_i18n_catalog_overrides (
   workspace_id uuid not null references workspaces(id) on delete cascade,
   module text not null check (module ~ '^@[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+){2,}$'),
   msgid text not null check (msgid <> ''),
-  locale text not null check (locale ~ '^[a-z]{2}_[A-Z]{2}$' and locale <> 'en_US'),
+  locale text not null check (locale ~ '^[a-z]{2,3}(_[A-Z][A-Za-z]{1,7})?$' and locale <> 'en_US'),
   translation text not null,
   updated_at timestamptz not null default now(),
   primary key (workspace_id, module, msgid, locale)
@@ -99,7 +99,7 @@ create table workspace_i18n_catalog_custom_translations (
   workspace_id uuid not null references workspaces(id) on delete cascade,
   module text not null check (module ~ '^@[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+){2,}$'),
   msgid text not null check (msgid <> ''),
-  locale text not null check (locale ~ '^[a-z]{2}_[A-Z]{2}$' and locale <> 'en_US'),
+  locale text not null check (locale ~ '^[a-z]{2,3}(_[A-Z][A-Za-z]{1,7})?$' and locale <> 'en_US'),
   translation text not null,
   updated_at timestamptz not null default now(),
   primary key (workspace_id, module, msgid, locale)

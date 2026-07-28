@@ -46,7 +46,12 @@ fn identity(msgid: &str) -> CatalogMessageIdentity {
 }
 
 fn translation(msgid: &str, value: &str) -> CatalogTranslation {
-    CatalogTranslation::new(identity(msgid), CatalogLocale::new("zh_CN").unwrap(), value).unwrap()
+    CatalogTranslation::new(
+        identity(msgid),
+        CatalogLocale::new("zh_Hans").unwrap(),
+        value,
+    )
+    .unwrap()
 }
 
 fn release(
@@ -60,7 +65,7 @@ fn release(
         .map(|(msgid, translated)| {
             let mut translations = BTreeMap::new();
             translations.insert(
-                CatalogLocale::new("zh_CN").unwrap(),
+                CatalogLocale::new("zh_Hans").unwrap(),
                 (*translated).to_owned(),
             );
             OfficialCatalogMessage::new(identity(msgid), translations).unwrap()
@@ -72,13 +77,13 @@ fn release(
         CatalogVersion::new(version).unwrap(),
         vec![
             CatalogLocale::source(),
-            CatalogLocale::new("zh_CN").unwrap(),
+            CatalogLocale::new("zh_Hans").unwrap(),
         ],
         vec![module()],
         vec![CatalogSeedFile::new(
             module(),
-            CatalogLocale::new("zh_CN").unwrap(),
-            "console/settings/zh_CN.json",
+            CatalogLocale::new("zh_Hans").unwrap(),
+            "console/settings/zh_Hans.json",
             digest('b'),
         )
         .unwrap()],
@@ -288,6 +293,14 @@ async fn activation_preserves_overrides_and_custom_rows_and_marks_english_rename
         official[0].message().identity().msgid(),
         "Workspace settings"
     );
+    assert_eq!(
+        official[0]
+            .message()
+            .translations()
+            .get(&CatalogLocale::new("zh_Hans").unwrap())
+            .map(String::as_str),
+        Some("工作区设置")
+    );
     assert_eq!(obsolete.len(), 1);
     assert_eq!(obsolete[0].identity().msgid(), "Settings");
 }
@@ -395,6 +408,37 @@ async fn migration_constraints_reject_invalid_revision_digest_and_cross_workspac
     I18nCatalogRepository::import_verified_release(&store, &valid)
         .await
         .unwrap();
+
+    for locale in ["en_US", "zh_Hans", "fil_Latn", "en"] {
+        sqlx::query(
+            r#"
+            insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
+            values ($1, '@1flowbase/console/settings', $2, $3, $4)
+            "#,
+        )
+        .bind(release_id)
+        .bind(locale)
+        .bind(format!("locale-grammar/{locale}.json"))
+        .bind(format!("sha256:{}", "c".repeat(64)))
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+    for locale in ["zh_hans", "zh_", "zh_Hans_CN", "zh_H4ns", "zh__Hans"] {
+        assert!(sqlx::query(
+            r#"
+            insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
+            values ($1, '@1flowbase/console/settings', $2, $3, $4)
+            "#,
+        )
+        .bind(release_id)
+        .bind(locale)
+        .bind(format!("invalid-locale/{locale}.json"))
+        .bind(format!("sha256:{}", "d".repeat(64)))
+        .execute(store.pool())
+        .await
+        .is_err());
+    }
 
     assert!(sqlx::query(
         "insert into workspace_i18n_catalog_states (workspace_id, revision) values ($1, -1)",
