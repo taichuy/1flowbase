@@ -958,7 +958,10 @@ impl ProviderInvocationInput {
         }
 
         if let Some(envelope) = invocation.client_protocol_envelope.as_ref() {
-            if envelope.source_protocol.trim() != invocation.protocol.trim() {
+            if !declared_capabilities
+                .contains(ProviderInvocationCapability::ProtocolContext.manifest_capability_name())
+                && envelope.source_protocol.trim() != invocation.protocol.trim()
+            {
                 invocation.client_protocol_envelope = None;
                 invocation
                     .required_capabilities
