@@ -19,9 +19,9 @@ import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSideb
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import { AddBlockCatalogPickerDrawer } from '../components/AddBlockCatalogPickerDrawer';
 import {
-  JsBlockTrialPanel,
-  type NativeTrialBlockContextInput
-} from '../components/JsBlockTrialPanel';
+  JsxStudioRunPanel,
+  type JsxStudioRunBlockContextInput
+} from '../components/jsx-studio/JsxStudioRunPanel';
 import {
   PageCanvas,
   type FrontstagePageCanvasRuntimeContext
@@ -315,7 +315,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     if (!jsBlockCapabilityHandlers || !selectedPageId || !tabId) {
       return undefined;
     }
-    return (input: NativeTrialBlockContextInput) => {
+    return (input: JsxStudioRunBlockContextInput) => {
       const unavailable = createFrontstageUnavailableBlockContext(input.plan);
       const capabilities = createNativeBlockContextCapabilities({
         requestId: input.requestId,
@@ -1415,9 +1415,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             onSaveBlock={saveStudioBlock}
             runPanel={({ code, runRevision }) =>
               runRevision === null ? undefined : (
-                <JsBlockTrialPanel
+                <JsxStudioRunPanel
                   block={selectedBlock}
-                  catalogEntry={matchingJsBlockCatalogEntry}
                   code={code}
                   createBlockContext={createTrialBlockContext}
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}

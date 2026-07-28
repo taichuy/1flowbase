@@ -80,13 +80,42 @@ describe('Native React author contract inventory', () => {
     const currentSurfaces = [
       'web/packages/page-runtime/src/index.ts',
       'web/packages/block-sdk/src/index.ts',
-      'web/app/src/features/frontstage/components/JsBlockTrialPanel.tsx',
+      'web/app/src/features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx',
       'web/app/src/features/frontstage/components/PageCanvas.tsx',
-      'web/app/src/features/auth/components/public-auth-block-host.ts'
+      'web/app/src/features/auth/components/PublicAuthBlock.tsx'
     ].map((file) => readFileSync(resolve(repoRoot, file), 'utf8'));
 
     expect(currentSurfaces.join('\n')).not.toMatch(
       /(?:type|interface)\s+BlockModule|BlockResult|JsBlockWorker|RestrictedBlockRuntime|runtimeSessionEntries|createPublicAuthRunRequest|\bformValues\b/u
     );
+  });
+
+  test('R6-AC-001/003 keeps editor debug UI out of renderers and production hosts', () => {
+    const renderer = readFileSync(
+      resolve(
+        repoRoot,
+        'web/app/src/features/frontstage/lib/native-trusted-block-react-adapter.tsx'
+      ),
+      'utf8'
+    );
+    const productionHosts = [
+      'web/app/src/features/frontstage/components/PageCanvas.tsx',
+      'web/app/src/features/auth/components/PublicAuthBlock.tsx'
+    ].map((file) => readFileSync(resolve(repoRoot, file), 'utf8'));
+    const editorRun = readFileSync(
+      resolve(
+        repoRoot,
+        'web/app/src/features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx'
+      ),
+      'utf8'
+    );
+
+    expect(renderer).not.toMatch(
+      /JsxStudioPreviewConsole|prepareNativeReactSource|\bModal\b|\bretry\b/u
+    );
+    expect(productionHosts.join('\n')).not.toMatch(
+      /JsxStudioRunPanel|JsxStudioPreviewConsole|js-block-console/u
+    );
+    expect(editorRun).toContain('JsxStudioPreviewConsole');
   });
 });

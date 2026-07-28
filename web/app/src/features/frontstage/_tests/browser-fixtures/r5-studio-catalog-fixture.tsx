@@ -15,7 +15,7 @@ import { createRoot } from 'react-dom/client';
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { compileNativeReactComponentInBrowser } from '../../../../shared/code-block/native-react-compiler-browser';
 import { AddBlockCatalogPickerDrawer } from '../../components/AddBlockCatalogPickerDrawer';
-import { JsBlockPreviewConsole } from '../../components/JsBlockPreviewConsole';
+import { JsxStudioPreviewConsole } from '../../components/jsx-studio/JsxStudioPreviewConsole';
 import type {
   NormalizedFrontstageBlockCatalogEntry,
   NormalizedFrontstageBlockCodeModule
@@ -220,7 +220,7 @@ function R5StudioCatalogFixture() {
         />
 
         <section className="r5-fixture-run-panel">
-          <JsBlockPreviewConsole
+          <JsxStudioPreviewConsole
             preview={<div data-testid="r5-preview-content">Preview ready</div>}
             snapshot={{
               diagnostics: displayedDiagnostics,

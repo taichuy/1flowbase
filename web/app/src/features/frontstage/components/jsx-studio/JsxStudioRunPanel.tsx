@@ -1,9 +1,7 @@
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import {
-  evaluateNativeReactComponentArtifactWithRegistry,
   sha256Text,
   diagnoseLegacyBlockModuleSource,
-  type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic,
   type NativeReactCatalogDependencyLock,
   type NativeBlockContextApiCallObservation,
@@ -14,33 +12,37 @@ import type { BlockContext } from '@1flowbase/page-protocol';
 import { Alert, Button, Modal, Space } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { i18nText } from '../../../shared/i18n/text';
+import { i18nText } from '../../../../shared/i18n/text';
 import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompilerWorkerFactory
-} from '../../../shared/code-block/native-react-compiler-browser';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
+} from '../../../../shared/code-block/native-react-compiler-browser';
+import {
+  prepareNativeReactSource,
+  type NativeReactModuleRegistryFactory,
+  type NativeReactSourcePreparationDiagnostic
+} from '../../../../shared/code-block/native-react-source-preparation';
 import {
   createFrontstageUnavailableBlockContext,
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
-} from '../lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
-import type { FrontstageBlockInstance } from '../lib/page-document';
-import { JsBlockPreviewConsole } from './JsBlockPreviewConsole';
+} from '../../lib/native-trusted-block-react-adapter';
+import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
+import type { FrontstageBlockInstance } from '../../lib/page-document';
+import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
 
-type NativeTrialDiagnostic =
-  | NativeReactCompileDiagnostic
+type StudioRunDiagnostic =
+  | NativeReactSourcePreparationDiagnostic
   | NativeReactRuntimeDiagnostic;
 const EMPTY_NATIVE_REACT_DEPENDENCY_LOCK: NativeReactCatalogDependencyLock = [];
 
-interface NativeTrialPendingSnapshot {
+interface StudioRunPendingSnapshot {
   status: 'compiling' | 'failed';
   requestId: string;
-  diagnostics: NativeTrialDiagnostic[];
+  diagnostics: StudioRunDiagnostic[];
 }
 
-interface NativeTrialReadySnapshot {
+interface StudioRunReadySnapshot {
   status: 'ready';
   requestId: string;
   diagnostics: [];
@@ -51,18 +53,16 @@ interface NativeTrialReadySnapshot {
   moduleAssets: NativeReactResolvedModuleAsset[];
 }
 
-type NativeTrialSnapshot =
-  | NativeTrialPendingSnapshot
-  | NativeTrialReadySnapshot;
+type StudioRunSnapshot = StudioRunPendingSnapshot | StudioRunReadySnapshot;
 
-interface ActiveNativeTrialRun {
+interface ActiveStudioRun {
   block: FrontstageBlockInstance;
   source: string;
   revision: string;
   requestId: string;
 }
 
-export interface NativeTrialBlockContextInput {
+export interface JsxStudioRunBlockContextInput {
   requestId: string;
   instanceEpoch: string;
   plan: NativeTrustedBlockPreparePlan;
@@ -70,9 +70,8 @@ export interface NativeTrialBlockContextInput {
   observeApiCall(observation: NativeBlockContextApiCallObservation): void;
 }
 
-export interface JsBlockTrialPanelProps {
+export interface JsxStudioRunPanelProps {
   block: FrontstageBlockInstance;
-  catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   code: string;
   onPrepareDraftRun?: (input: {
     blockId: string;
@@ -86,11 +85,11 @@ export interface JsBlockTrialPanelProps {
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
   nativeDependencyLockError?: string | null;
-  nativeModuleRegistryFactory?: typeof createFrontstageNativeReactModuleRegistry;
-  createBlockContext?(input: NativeTrialBlockContextInput): BlockContext;
+  nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
+  createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContext;
 }
 
-export function JsBlockTrialPanel({
+export function JsxStudioRunPanel({
   block,
   code,
   revision,
@@ -102,10 +101,10 @@ export function JsBlockTrialPanel({
   createBlockContext,
   onPrepareDraftRun,
   onRevokeDraftRun
-}: JsBlockTrialPanelProps) {
+}: JsxStudioRunPanelProps) {
   const [previewRoot, setPreviewRoot] = useState<HTMLDivElement | null>(null);
   const generationRef = useRef(0);
-  const activeRunRef = useRef<ActiveNativeTrialRun | null>(null);
+  const activeRunRef = useRef<ActiveStudioRun | null>(null);
   const latestDraftRef = useRef({ block, code, revision });
   latestDraftRef.current = { block, code, revision };
   const createBlockContextRef = useRef(createBlockContext);
@@ -114,7 +113,7 @@ export function JsBlockTrialPanel({
   onPrepareDraftRunRef.current = onPrepareDraftRun;
   const onRevokeDraftRunRef = useRef(onRevokeDraftRun);
   onRevokeDraftRunRef.current = onRevokeDraftRun;
-  const [snapshot, setSnapshot] = useState<NativeTrialSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<StudioRunSnapshot | null>(null);
   const [apiCalls, setApiCalls] = useState<
     NativeBlockContextApiCallObservation[]
   >([]);
@@ -152,7 +151,7 @@ export function JsBlockTrialPanel({
         ? `draft:${frozenBlock.id}:${generation}`
         : `native:${frozenBlock.id}:${frozenRevision}`;
       const instanceEpoch = `${requestId}:epoch`;
-      const activeRun: ActiveNativeTrialRun = {
+      const activeRun: ActiveStudioRun = {
         block: frozenBlock,
         source: frozenSource,
         revision: frozenRevision,
@@ -217,47 +216,27 @@ export function JsBlockTrialPanel({
         return;
       }
 
-      const compiled = await nativeCompiler({
-        source: frozenSource,
+      const prepared = await prepareNativeReactSource({
+        frozenSource,
         requestId,
+        dependencyLock: nativeDependencyLock,
+        compiler: nativeCompiler,
         ...(nativeCompilerWorkerFactory
           ? { workerFactory: nativeCompilerWorkerFactory }
           : {}),
-        dependencyLock: nativeDependencyLock
+        registryFactory: nativeModuleRegistryFactory
       });
       if (generationRef.current !== generation) return;
-      if (!compiled.ok) {
+      if (!prepared.ok) {
         setSnapshot({
           status: 'failed',
           requestId,
-          diagnostics: compiled.diagnostics
+          diagnostics: prepared.diagnostics
         });
         return;
       }
 
-      const moduleRegistry = nativeModuleRegistryFactory(
-        compiled.artifact.dependencyLock
-      );
-      const evaluated = await evaluateNativeReactComponentArtifactWithRegistry(
-        compiled.artifact,
-        moduleRegistry
-      );
-      if (generationRef.current !== generation) return;
-      if (!evaluated.ok) {
-        setSnapshot({
-          status: 'failed',
-          requestId,
-          diagnostics: evaluated.diagnostics
-        });
-        return;
-      }
-
-      const plan = createNativeTrialPlan(frozenBlock, frozenSource);
-      const moduleAssets = await moduleRegistry.resolveModuleAssets(
-        evaluated.artifact.program.injectedModules.map(
-          (module) => module.source
-        )
-      );
+      const plan = createStudioRunPlan(frozenBlock, frozenSource);
       if (generationRef.current !== generation) return;
       const context =
         createBlockContextRef.current?.({
@@ -272,11 +251,11 @@ export function JsBlockTrialPanel({
         requestId,
         diagnostics: [],
         component:
-          evaluated.component as FrontstageNativeTrustedBlockReactComponent,
+          prepared.component as FrontstageNativeTrustedBlockReactComponent,
         plan,
         context,
         renderEpoch: instanceEpoch,
-        moduleAssets
+        moduleAssets: prepared.moduleAssets
       });
     },
     [
@@ -323,7 +302,7 @@ export function JsBlockTrialPanel({
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
       <div
         ref={setPreviewRoot}
-        data-testid="native-react-trial-root"
+        data-testid="native-react-studio-preview-root"
         style={{ width: '100%' }}
       />
       {snapshot?.status === 'ready' && previewRoot ? (
@@ -361,7 +340,7 @@ export function JsBlockTrialPanel({
     </Space>
   );
   return (
-    <JsBlockPreviewConsole
+    <JsxStudioPreviewConsole
       preview={preview}
       snapshot={{
         diagnostics: snapshot?.diagnostics ?? [],
@@ -388,7 +367,7 @@ function getErrorMessage(error: unknown): string {
     : 'Native React preview authorization failed.';
 }
 
-function createNativeTrialPlan(
+function createStudioRunPlan(
   block: FrontstageBlockInstance,
   source: string
 ): NativeTrustedBlockPreparePlan {

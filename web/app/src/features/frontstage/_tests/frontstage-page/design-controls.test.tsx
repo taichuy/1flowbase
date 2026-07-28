@@ -104,10 +104,10 @@ vi.mock(
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
-vi.mock('../../components/JsBlockTrialPanel', () => ({
-  JsBlockTrialPanel: (props: unknown) => {
+vi.mock('../../components/jsx-studio/JsxStudioRunPanel', () => ({
+  JsxStudioRunPanel: (props: unknown) => {
     trialPanel.render(props);
-    return <div data-testid="captured-js-block-trial-panel" />;
+    return <div data-testid="captured-jsx-studio-run-panel" />;
   }
 }));
 
