@@ -95,7 +95,8 @@ test('Root #1477 AC-001/004/005/006/008/009: workflow invokes the complete deter
   const inventory = protocolOracleInventory();
   assert.equal(inventory.rows, 16);
   assert.equal(inventory.request_fidelity.positive_rows.length, 3);
-  assert.equal(inventory.request_fidelity.negative_rows.length, 4);
+  assert.equal(inventory.request_fidelity.negative_rows.length, 3);
+  assert.equal(inventory.request_fidelity.translation_rows.length, 1);
   assert.equal(inventory.error_fidelity.rows, 20);
   assert.deepEqual(inventory.canonical_stream_regression.partitions, ['whole', 'bytewise', 'uneven']);
   assert.equal(inventory.canonical_stream_regression.successTerminalCount, 1);

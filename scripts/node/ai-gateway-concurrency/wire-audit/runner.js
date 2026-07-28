@@ -4,6 +4,7 @@ const {
   EPHEMERAL_NO_LEAK_ORACLE,
   REQUEST_FIDELITY_VECTORS,
   REQUEST_NEGATIVE_VECTORS,
+  REQUEST_TRANSLATION_VECTORS,
   assertNoEphemeralRawLeak,
 } = require('../protocol-oracle/request-fidelity');
 const {
@@ -17,14 +18,18 @@ function requestFidelityInventory() {
   if (new Set(ingresses).size !== 3) throw new Error('request fidelity oracle must cover three distinct ingresses');
   const negativeKinds = REQUEST_NEGATIVE_VECTORS.map((row) => row.kind);
   for (const expected of [
-    'typed-opaque-conflict', 'reserved-field', 'foreign-protocol', 'unconsumed-residual',
+    'typed-opaque-conflict', 'reserved-field', 'unconsumed-residual',
   ]) {
     if (!negativeKinds.includes(expected)) throw new Error(`request negative oracle omitted ${expected}`);
+  }
+  if (!REQUEST_TRANSLATION_VECTORS.some((row) => row.kind === 'foreign-protocol')) {
+    throw new Error('request translation oracle omitted foreign-protocol');
   }
   return {
     schema_version: '1flowbase.ai-gateway-request-fidelity/v1',
     positive_rows: REQUEST_FIDELITY_VECTORS.map((row) => row.id),
     negative_rows: REQUEST_NEGATIVE_VECTORS.map((row) => row.id),
+    translation_rows: REQUEST_TRANSLATION_VECTORS.map((row) => row.id),
     ephemeral_lifetime: EPHEMERAL_NO_LEAK_ORACLE.raw_lifetime,
     raw_sinks_forbidden: EPHEMERAL_NO_LEAK_ORACLE.forbidden_sinks,
   };
@@ -62,6 +67,17 @@ function assertRequestFidelityAudit(evidence, { rawCanaries = [] } = {}) {
       throw new Error(`request negative did not fail before upstream for ${id}`);
     }
   }
+  const expectedTranslation = requestFidelityInventory().translation_rows;
+  const translation = new Map((evidence.translation ?? []).map((row) => [row.id, row]));
+  for (const id of expectedTranslation) {
+    const row = translation.get(id);
+    if (!row?.succeeded || row.upstream_arrivals !== 1 || row.foreign_raw_in_upstream !== false) {
+      throw new Error(`request translation did not omit foreign wire context for ${id}`);
+    }
+    if (!row.decisions?.includes('omitted_foreign_protocol_envelope')) {
+      throw new Error(`request translation receipt omitted foreign-context decision for ${id}`);
+    }
+  }
   for (const phase of EPHEMERAL_NO_LEAK_ORACLE.raw_lifetime) {
     if (!evidence.ephemeral?.preserved_phases?.includes(phase)) {
       throw new Error(`ephemeral raw context was not preserved through ${phase}`);
@@ -81,6 +97,7 @@ function assertRequestFidelityAudit(evidence, { rawCanaries = [] } = {}) {
     verdict: 'PASS',
     positive_rows: expectedPositive.length,
     negative_rows: expectedNegative.length,
+    translation_rows: expectedTranslation.length,
   };
 }
 

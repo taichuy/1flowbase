@@ -122,12 +122,20 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
 test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail closed', () => {
   const inventory = requestFidelityInventory();
   assert.equal(inventory.positive_rows.length, 3);
-  assert.equal(inventory.negative_rows.length, 4);
+  assert.equal(inventory.negative_rows.length, 3);
+  assert.equal(inventory.translation_rows.length, 1);
   assert.equal(inventory.raw_sinks_forbidden.includes('durable'), true);
   const digest = 'a'.repeat(64);
   const evidence = {
     positive: inventory.positive_rows.map((id) => ({ id, direct_sha256: digest, gateway_sha256: digest })),
     negative: inventory.negative_rows.map((id) => ({ id, failed: true, upstream_arrivals: 0 })),
+    translation: inventory.translation_rows.map((id) => ({
+      id,
+      succeeded: true,
+      upstream_arrivals: 1,
+      foreign_raw_in_upstream: false,
+      decisions: ['omitted_foreign_protocol_envelope'],
+    })),
     ephemeral: {
       preserved_phases: ['initial-invocation', 'tool-callback', 'retry'],
       cleanup_phases: ['terminal-success', 'terminal-failure'],
@@ -137,6 +145,9 @@ test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail 
   assert.equal(assertRequestFidelityAudit(evidence).verdict, 'PASS');
   evidence.negative[0].upstream_arrivals = 1;
   assert.throws(() => assertRequestFidelityAudit(evidence), /did not fail before upstream/u);
+  evidence.negative[0].upstream_arrivals = 0;
+  evidence.translation[0].foreign_raw_in_upstream = true;
+  assert.throws(() => assertRequestFidelityAudit(evidence), /did not omit foreign wire context/u);
 });
 
 test('Root #1477 AC-008: error audit requires 5 fixtures across all 4 public surfaces', () => {

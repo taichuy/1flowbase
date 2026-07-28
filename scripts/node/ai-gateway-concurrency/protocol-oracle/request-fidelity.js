@@ -129,14 +129,21 @@ const REQUEST_NEGATIVE_VECTORS = Object.freeze([
     protocol_context: Object.freeze({ source_protocol: 'openai_chat', headers: Object.freeze({ authorization: Object.freeze(['<forbidden-fixture-value>']) }) }),
   }),
   Object.freeze({
-    id: 'foreign-protocol-context', kind: 'foreign-protocol',
-    expected: 'fail-before-upstream', provider: 'anthropic',
-    protocol_context: Object.freeze({ source_protocol: 'openai_responses', body: Object.freeze({ fixture_extension: true }) }),
-  }),
-  Object.freeze({
     id: 'unconsumed-safe-residual', kind: 'unconsumed-residual',
     expected: 'fail-before-upstream', provider: 'openai_chat',
     protocol_context: Object.freeze({ source_protocol: 'openai_chat', body: Object.freeze({ cannot_be_consumed: true }) }),
+  }),
+]);
+
+const REQUEST_TRANSLATION_VECTORS = Object.freeze([
+  Object.freeze({
+    id: 'foreign-protocol-context', kind: 'foreign-protocol',
+    expected: 'generate-without-foreign-wire', provider: 'anthropic',
+    protocol_context: Object.freeze({
+      source_protocol: 'openai_responses',
+      body: Object.freeze({ fixture_extension: 'foreign-raw-canary' }),
+    }),
+    expected_decision: 'omitted_foreign_protocol_envelope',
   }),
 ]);
 
@@ -162,6 +169,7 @@ module.exports = {
   IGNORED_WIRE_HEADERS,
   REQUEST_FIDELITY_VECTORS,
   REQUEST_NEGATIVE_VECTORS,
+  REQUEST_TRANSLATION_VECTORS,
   assertNoEphemeralRawLeak,
   assertRequestPair,
   normalizedRequest,

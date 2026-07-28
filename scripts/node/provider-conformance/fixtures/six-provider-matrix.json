@@ -480,16 +480,9 @@
     "undeclared_capability": {
       "target_provider": "openai",
       "required_capabilities": [
-        "system_prompt_blocks",
-        "system_prompt_cache_control"
+        "compact.responses_compact"
       ],
-      "system": [
-        {
-          "type": "text",
-          "text": "$SYSTEM_PROMPT_CANARY",
-          "cache_control": { "type": "ephemeral" }
-        }
-      ],
+      "system": [],
       "expected_status_family": 4,
       "expected_upstream_requests": 0
     }
