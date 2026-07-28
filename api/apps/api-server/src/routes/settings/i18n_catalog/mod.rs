@@ -91,7 +91,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/settings/i18n/modules/{module}/messages",
+            "/settings/i18n/modules/:module/messages",
             console_get(
                 get_resolved_i18n_catalog_bundle,
                 ConsoleOperation("i18n_catalog.bundle.get".to_string()),

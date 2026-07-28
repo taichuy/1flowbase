@@ -41,6 +41,12 @@ async fn activate_seed(state: &crate::app_state::ApiState) {
 
 #[test]
 fn ac_004_settings_feature_route_assembly_and_openapi_are_exact() {
+    let route_assembly = crate::routes::i18n_catalog::route_assembly();
+    assert!(route_assembly.bindings().iter().any(|binding| {
+        binding.route.method == "GET"
+            && binding.route.path == "/api/console/settings/i18n/modules/:module/messages"
+    }));
+
     let registry = crate::app_state::compile_core_settings_feature_registry().unwrap();
     let feature = registry
         .inventory()
@@ -129,7 +135,7 @@ async fn ac_004_root_reads_catalog_state_and_backend_resolved_bundle() {
     let state_payload = response_json(state_response).await;
     assert_eq!(
         state_payload["data"]["active_catalog_version"],
-        json!("1.0.0")
+        json!("1.1.0")
     );
     assert_eq!(state_payload["data"]["source"], json!("official"));
     assert_eq!(state_payload["data"]["source_locale"], json!("en_US"));

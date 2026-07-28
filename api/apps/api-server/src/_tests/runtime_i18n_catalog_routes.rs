@@ -50,7 +50,7 @@ fn ac_011_runtime_routes_are_authenticated_and_documented() {
     let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly();
     for path in [
         "/api/console/i18n/manifest",
-        "/api/console/i18n/bundles/{digest}",
+        "/api/console/i18n/bundles/:digest",
     ] {
         let binding = assembly
             .bindings()

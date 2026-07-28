@@ -65,7 +65,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(get_runtime_i18n_manifest, Authenticated),
         )
         .route(
-            "/i18n/bundles/{digest}",
+            "/i18n/bundles/:digest",
             console_get(get_runtime_i18n_bundle, Authenticated),
         )
 }
