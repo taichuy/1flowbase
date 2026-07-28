@@ -2,16 +2,16 @@
   "schema_version": "1flowbase.local-ai-gateway-acceptance/v1",
   "repo": {
     "host": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection",
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly",
       "revision": "HEAD"
     },
     "officialPlugins": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-official-assembly",
-      "revision": "e032003f478e732ef0ce3be5d178d944609e6505"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-official-providers",
+      "revision": "69929fbc0f2ea40a708acb2d7d17c68958be0276"
     },
     "protectedMain": {
       "path": "/home/taichuy/git/1flowbase",
-      "revision": "f0d55c2c612ca5aba70bf6d6680bcc3d52c8e51d",
+      "revision": "49303ad876a508320b49498a6f78d55c67a66469",
       "require_clean": false
     }
   },
@@ -35,24 +35,24 @@
   },
   "artifacts": {
     "apiServer": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/api/target/release/api-server",
-      "sha256": "a920b7d521a0e7822eed57cfaaca1e09e77e04fed420cc691f1a7f08101c3eda"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/api/target/release/api-server",
+      "sha256": "931334df26ef3051feb59727aea2cf88dbd73a2aa6010d03cb9139af1b858dcc"
     },
     "pluginRunner": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/api/target/release/plugin-runner",
-      "sha256": "e51d7cb4325f52363e339da24ef58dc466ccf9dff7a30b227ecae6b666d35cc6"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/api/target/release/plugin-runner",
+      "sha256": "7cfee9867b496847cd0da0d998f2fb490bd842319e1934eea660de4722f5f4dd"
     },
     "openaiPackage": {
-      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
-      "filename_pattern": "^1flowbase@openai@0\\.2\\.15@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
+      "filename_pattern": "^1flowbase@openai@0\\.2\\.20@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "anthropicPackage": {
-      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
-      "filename_pattern": "^1flowbase@anthropic@0\\.1\\.24@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
+      "filename_pattern": "^1flowbase@anthropic@0\\.1\\.29@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "openaiCompatiblePackage": {
-      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/openai_compatible",
-      "filename_pattern": "^1flowbase@openai_compatible@0\\.3\\.33@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/openai_compatible",
+      "filename_pattern": "^1flowbase@openai_compatible@0\\.3\\.38@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "codex": {
       "path": "/home/linuxbrew/.linuxbrew/bin/codex",
