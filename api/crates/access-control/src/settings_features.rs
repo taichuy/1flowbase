@@ -131,6 +131,16 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ),
                 ("GET", "/api/console/settings/i18n/update-check"),
                 ("POST", "/api/console/settings/i18n/activate"),
+                ("GET", "/api/console/settings/i18n/entries"),
+                ("GET", "/api/console/settings/i18n/entries/detail"),
+                ("PUT", "/api/console/settings/i18n/overrides"),
+                ("DELETE", "/api/console/settings/i18n/overrides"),
+                (
+                    "PUT",
+                    "/api/console/settings/i18n/custom-translations",
+                ),
+                ("DELETE", "/api/console/settings/i18n/custom-keys"),
+                ("POST", "/api/console/settings/i18n/restore-overrides"),
             ]),
         },
         SettingsFeatureRegistration {

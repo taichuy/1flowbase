@@ -25,6 +25,18 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
+mod management;
+
+pub use management::{
+    delete_custom_catalog_key, get_catalog_entry, list_catalog_entries,
+    restore_all_catalog_overrides, restore_catalog_override, upsert_catalog_override,
+    upsert_custom_catalog_translation, CatalogEntryMutationResponse,
+    CatalogManagementEntryResponse, CatalogManagementOriginDto, CatalogManagementPageResponse,
+    CatalogRevisionResponse, DeleteCustomCatalogKeyBody, GetCatalogEntryQuery,
+    ListCatalogEntriesQuery, RestoreCatalogOverrideBody, RestoreCatalogOverridesBody,
+    UpsertCatalogTranslationBody,
+};
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct I18nCatalogStateResponse {
     pub active_catalog_version: Option<String>,
@@ -109,9 +121,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ConsoleOperation("i18n_catalog.update.activate".to_string()),
             ),
         )
+        .merge(management::route_assembly())
 }
 
-fn require_root_catalog_actor(
+pub(super) fn require_root_catalog_actor(
     state: &ApiState,
     actor: &domain::ActorContext,
 ) -> Result<(), ApiError> {
@@ -121,7 +134,7 @@ fn require_root_catalog_actor(
     Ok(())
 }
 
-fn invalid_input(name: &'static str) -> ApiError {
+pub(super) fn invalid_input(name: &'static str) -> ApiError {
     ControlPlaneError::InvalidInput(name).into()
 }
 

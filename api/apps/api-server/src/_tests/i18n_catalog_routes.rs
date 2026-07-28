@@ -65,6 +65,13 @@ fn ac_004_settings_feature_route_assembly_and_openapi_are_exact() {
             ),
             ("GET", "/api/console/settings/i18n/update-check"),
             ("POST", "/api/console/settings/i18n/activate"),
+            ("GET", "/api/console/settings/i18n/entries"),
+            ("GET", "/api/console/settings/i18n/entries/detail"),
+            ("PUT", "/api/console/settings/i18n/overrides"),
+            ("DELETE", "/api/console/settings/i18n/overrides"),
+            ("PUT", "/api/console/settings/i18n/custom-translations"),
+            ("DELETE", "/api/console/settings/i18n/custom-keys"),
+            ("POST", "/api/console/settings/i18n/restore-overrides"),
         ]
     );
 
@@ -77,6 +84,13 @@ fn ac_004_settings_feature_route_assembly_and_openapi_are_exact() {
         ),
         ("get", "/api/console/settings/i18n/update-check"),
         ("post", "/api/console/settings/i18n/activate"),
+        ("get", "/api/console/settings/i18n/entries"),
+        ("get", "/api/console/settings/i18n/entries/detail"),
+        ("put", "/api/console/settings/i18n/overrides"),
+        ("delete", "/api/console/settings/i18n/overrides"),
+        ("put", "/api/console/settings/i18n/custom-translations"),
+        ("delete", "/api/console/settings/i18n/custom-keys"),
+        ("post", "/api/console/settings/i18n/restore-overrides"),
     ] {
         let operation = &openapi["paths"][path][method];
         assert!(operation["operationId"].as_str().is_some());
@@ -248,7 +262,7 @@ async fn ac_006_feature_grant_and_effective_root_in_foreign_workspace_both_fail_
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/catalog")
+                .uri("/api/console/settings/i18n/entries")
                 .header("cookie", member_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -282,7 +296,7 @@ async fn ac_006_feature_grant_and_effective_root_in_foreign_workspace_both_fail_
     let foreign_response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/catalog")
+                .uri("/api/console/settings/i18n/entries")
                 .header("cookie", root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -294,4 +308,289 @@ async fn ac_006_feature_grant_and_effective_root_in_foreign_workspace_both_fail_
         response_json(foreign_response).await["code"],
         json!("root_i18n_catalog_actor")
     );
+}
+
+#[tokio::test]
+async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filters() {
+    let (state, _) = test_api_state_with_database_url().await;
+    activate_seed(&state).await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/entries?module=%40taichuy%2Fplatform%2Fcommon&locale=zh_Hans&search=Settings&origin=official&offset=0&limit=20")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let payload = response_json(list).await;
+    assert_eq!(payload["data"]["total"], json!(1));
+    assert!(payload["data"]["revision"].as_i64().is_some());
+    let entry = &payload["data"]["entries"][0];
+    assert_eq!(entry["module"], json!("@taichuy/platform/common"));
+    assert_eq!(entry["msgid"], json!("Settings"));
+    assert_eq!(entry["locale"], json!("zh_Hans"));
+    assert_eq!(entry["official_translation"], json!("设置"));
+    assert_eq!(entry["override_translation"], Value::Null);
+    assert_eq!(entry["custom_translation"], Value::Null);
+    assert_eq!(entry["effective_value"], json!("设置"));
+    assert_eq!(entry["origin"], json!("official"));
+    assert_eq!(entry["missing"], json!(false));
+    assert_eq!(entry["obsolete"], json!(false));
+    assert_eq!(entry["revision"], payload["data"]["revision"]);
+
+    let detail = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=Settings&locale=zh_Hans")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail.status(), StatusCode::OK);
+    let detail = response_json(detail).await;
+    assert_eq!(detail["data"], entry.clone());
+
+    let invalid_page = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/entries?limit=0")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid_page.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(invalid_page).await["code"],
+        json!("i18n_catalog_page_limit")
+    );
+}
+
+async fn catalog_mutation(
+    app: &axum::Router,
+    method: &str,
+    path: &str,
+    cookie: &str,
+    csrf: Option<&str>,
+    body: Value,
+) -> axum::response::Response {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("cookie", cookie)
+        .header("content-type", "application/json");
+    if let Some(csrf) = csrf {
+        request = request.header("x-csrf-token", csrf);
+    }
+    app.clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped() {
+    let (state, _) = test_api_state_with_database_url().await;
+    activate_seed(&state).await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let catalog = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/catalog")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let initial_revision = response_json(catalog).await["data"]["revision"]
+        .as_i64()
+        .unwrap();
+    let official_override = json!({
+        "module": "@taichuy/platform/common",
+        "msgid": "Settings",
+        "locale": "zh_Hans",
+        "translation": "覆盖",
+        "expected_revision": initial_revision,
+    });
+
+    let missing_csrf = catalog_mutation(
+        &app,
+        "PUT",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        None,
+        official_override.clone(),
+    )
+    .await;
+    assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+
+    let mut stale_body = official_override.clone();
+    stale_body["expected_revision"] = json!(initial_revision - 1);
+    let stale = catalog_mutation(
+        &app,
+        "PUT",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        Some(&csrf),
+        stale_body,
+    )
+    .await;
+    assert_eq!(stale.status(), StatusCode::CONFLICT);
+    let stale_error = response_json(stale).await;
+    assert_eq!(stale_error["status"], json!(409));
+    assert_eq!(stale_error["code"], json!("i18n_catalog_revision"));
+    assert!(stale_error["message"].as_str().is_some());
+
+    let upserted = catalog_mutation(
+        &app,
+        "PUT",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        Some(&csrf),
+        official_override,
+    )
+    .await;
+    assert_eq!(upserted.status(), StatusCode::OK);
+    let upserted = response_json(upserted).await;
+    assert_eq!(
+        upserted["data"]["entry"]["override_translation"],
+        json!("覆盖")
+    );
+    let override_revision = upserted["data"]["revision"].as_i64().unwrap();
+
+    let restored = catalog_mutation(
+        &app,
+        "DELETE",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        Some(&csrf),
+        json!({
+            "module": "@taichuy/platform/common",
+            "msgid": "Settings",
+            "locale": "zh_Hans",
+            "expected_revision": override_revision,
+        }),
+    )
+    .await;
+    assert_eq!(restored.status(), StatusCode::OK);
+    let restored = response_json(restored).await;
+    assert_eq!(
+        restored["data"]["entry"]["override_translation"],
+        Value::Null
+    );
+    let restored_revision = restored["data"]["revision"].as_i64().unwrap();
+
+    let overridden_again = catalog_mutation(
+        &app,
+        "PUT",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        Some(&csrf),
+        json!({
+            "module": "@taichuy/platform/common",
+            "msgid": "Settings",
+            "locale": "zh_Hans",
+            "translation": "再次覆盖",
+            "expected_revision": restored_revision,
+        }),
+    )
+    .await;
+    let overridden_again = response_json(overridden_again).await;
+    let overridden_again_revision = overridden_again["data"]["revision"].as_i64().unwrap();
+
+    let custom = catalog_mutation(
+        &app,
+        "PUT",
+        "/api/console/settings/i18n/custom-translations",
+        &cookie,
+        Some(&csrf),
+        json!({
+            "module": "@taichuy/platform/common",
+            "msgid": "custom.packet.key",
+            "locale": "zh_Hans",
+            "translation": "自定义",
+            "expected_revision": overridden_again_revision,
+        }),
+    )
+    .await;
+    assert_eq!(custom.status(), StatusCode::OK);
+    let custom = response_json(custom).await;
+    assert_eq!(custom["data"]["entry"]["origin"], json!("custom"));
+    let custom_revision = custom["data"]["revision"].as_i64().unwrap();
+
+    let globally_restored = catalog_mutation(
+        &app,
+        "POST",
+        "/api/console/settings/i18n/restore-overrides",
+        &cookie,
+        Some(&csrf),
+        json!({ "expected_revision": custom_revision }),
+    )
+    .await;
+    assert_eq!(globally_restored.status(), StatusCode::OK);
+    let global_revision = response_json(globally_restored).await["data"]["revision"]
+        .as_i64()
+        .unwrap();
+
+    let custom_after_restore = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=custom.packet.key&locale=zh_Hans")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(custom_after_restore.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(custom_after_restore).await["data"]["custom_translation"],
+        json!("自定义")
+    );
+
+    let deleted = catalog_mutation(
+        &app,
+        "DELETE",
+        "/api/console/settings/i18n/custom-keys",
+        &cookie,
+        Some(&csrf),
+        json!({
+            "module": "@taichuy/platform/common",
+            "msgid": "custom.packet.key",
+            "expected_revision": global_revision,
+        }),
+    )
+    .await;
+    assert_eq!(deleted.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(deleted).await["data"]["revision"],
+        json!(global_revision + 1)
+    );
+
+    let deleted_detail = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=custom.packet.key&locale=zh_Hans")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted_detail.status(), StatusCode::NOT_FOUND);
 }
