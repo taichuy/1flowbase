@@ -104,12 +104,38 @@ describe('style boundary registry', () => {
     ]);
     expect(
       getSceneIdsForFiles([
+        'web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css'
+      ])
+    ).toEqual(['page.settings-i18n']);
+    expect(
+      getSceneIdsForFiles([
+        'web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx',
+        'web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx'
+      ])
+    ).toEqual(['page.settings-i18n']);
+    expect(
+      getSceneIdsForFiles([
         'web/app/src/features/settings/components/application-management/ApplicationManagementPanel.tsx'
       ])
     ).toEqual(['page.settings-applications']);
     expect(
       getSceneIdsForFiles(['web/app/src/features/me/pages/me-page.css'])
     ).toEqual(['page.me']);
+  });
+
+  test('registers the translation catalog page readiness and responsive browse boundaries', () => {
+    const scene = getRuntimeScene('page.settings-i18n');
+
+    expect(scene.boundaryNodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'catalog-ready',
+          selector: '[data-testid="i18n-catalog-page"][data-ready="true"]'
+        }),
+        expect.objectContaining({ id: 'catalog-desktop-browse' }),
+        expect.objectContaining({ id: 'catalog-mobile-browse' })
+      ])
+    );
   });
 
   test('renders the home page scene inside the shared shell frame', async () => {

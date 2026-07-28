@@ -482,6 +482,12 @@ function getStyleBoundaryCommonResponse(
             surface_key: 'docs',
             path: '/settings/docs',
             surface_kind: 'system'
+          },
+          {
+            route_id: 'settings.i18n',
+            surface_key: 'i18n',
+            path: '/settings/i18n',
+            surface_kind: 'system'
           }
         ],
         navigation_items: [
@@ -532,6 +538,14 @@ function getStyleBoundaryCommonResponse(
             label_key: 'auto.api_documentation',
             navigation_slot: 'settings',
             order: 3
+          },
+          {
+            item_id: 'i18n',
+            route_id: 'settings.i18n',
+            parent_item_id: 'settings',
+            label_key: 'auto.translation_catalog_title',
+            navigation_slot: 'settings',
+            order: 4
           }
         ],
         permission_bindings: []
@@ -845,6 +859,34 @@ export function seedStyleBoundarySettingsFetch() {
               metrics: createStyleBoundaryRuntimeMetrics(8.5, 134_217_728)
             }
           ]
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/settings/i18n/entries'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          entries: [
+            {
+              module: '@1flowbase/common',
+              msgid: 'Settings',
+              locale: 'zh_Hans',
+              official_translation: '设置',
+              override_translation: null,
+              custom_translation: null,
+              effective_value: '设置',
+              origin: 'official',
+              missing: false,
+              obsolete: false,
+              revision: 1
+            }
+          ],
+          total: 1,
+          revision: 1
         },
         meta: null
       });
