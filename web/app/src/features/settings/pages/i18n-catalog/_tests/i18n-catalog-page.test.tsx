@@ -73,6 +73,29 @@ function renderPage() {
   );
 }
 
+async function selectCatalogFilterOption(testId: string, label: string) {
+  const combobox = within(screen.getByTestId(testId)).getByRole('combobox');
+
+  fireEvent.mouseDown(combobox.closest('.ant-select-selector') ?? combobox);
+  const option = await screen.findByText(label, {
+    selector: '.ant-select-item-option-content'
+  });
+  expect(option).toBeVisible();
+  fireEvent.click(option);
+}
+
+async function findLoadedDesktopEntry(value: string) {
+  const desktopTable = screen.getByTestId('i18n-catalog-desktop-table');
+  const entry = await within(desktopTable).findByText(value);
+
+  await waitFor(() =>
+    expect(
+      desktopTable.querySelector('.ant-spin-spinning')
+    ).not.toBeInTheDocument()
+  );
+  return entry;
+}
+
 describe('I18nCatalogPage batch fixtures', () => {
   beforeEach(() => {
     const catalogServer = createSettingsI18nCatalogTestServer();
@@ -107,7 +130,7 @@ describe('I18nCatalogPage batch fixtures', () => {
     renderPage();
 
     expect(settingsI18nCatalogTestLocales).toEqual(['en_US', 'zh_Hans']);
-    expect((await screen.findAllByText('系统设置')).length).toBeGreaterThan(0);
+    await findLoadedDesktopEntry('系统设置');
     expect(
       screen.getByTestId('i18n-catalog-desktop-table')
     ).toBeInTheDocument();
@@ -118,7 +141,7 @@ describe('I18nCatalogPage batch fixtures', () => {
 
   test('AC-008 sends search, module, locale and origin filters to the list query', async () => {
     renderPage();
-    await screen.findAllByText('系统设置');
+    await findLoadedDesktopEntry('系统设置');
 
     fireEvent.change(screen.getByPlaceholderText('搜索消息标识或翻译'), {
       target: { value: 'Settings' }
@@ -126,18 +149,8 @@ describe('I18nCatalogPage batch fixtures', () => {
     fireEvent.change(screen.getByPlaceholderText('翻译模块'), {
       target: { value: '@1flowbase/common' }
     });
-    fireEvent.mouseDown(
-      within(screen.getByTestId('i18n-catalog-locale-filter')).getByRole(
-        'combobox'
-      )
-    );
-    fireEvent.click(await screen.findByRole('option', { name: 'zh_Hans' }));
-    fireEvent.mouseDown(
-      within(screen.getByTestId('i18n-catalog-origin-filter')).getByRole(
-        'combobox'
-      )
-    );
-    fireEvent.click(await screen.findByRole('option', { name: '官方覆盖值' }));
+    await selectCatalogFilterOption('i18n-catalog-locale-filter', 'zh_Hans');
+    await selectCatalogFilterOption('i18n-catalog-origin-filter', '官方覆盖值');
     fireEvent.click(screen.getByRole('button', { name: '应用翻译筛选' }));
 
     await waitFor(() =>
@@ -154,14 +167,13 @@ describe('I18nCatalogPage batch fixtures', () => {
         })
       )
     );
+    expect(await screen.findByText('1 条翻译 · 修订 8')).toBeInTheDocument();
+    await findLoadedDesktopEntry('系统设置');
   });
 
   test('AC-008 opens all source layers and saves with the selected entry revision', async () => {
     renderPage();
-    const desktopTable = await screen.findByTestId(
-      'i18n-catalog-desktop-table'
-    );
-    fireEvent.click(within(desktopTable).getByText('系统设置'));
+    fireEvent.click(await findLoadedDesktopEntry('系统设置'));
 
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
     await within(drawer).findByLabelText('覆盖翻译');
@@ -190,10 +202,7 @@ describe('I18nCatalogPage batch fixtures', () => {
       new ApiClientError({ status: 409, message: 'revision conflict' })
     );
     renderPage();
-    const desktopTable = await screen.findByTestId(
-      'i18n-catalog-desktop-table'
-    );
-    fireEvent.click(within(desktopTable).getByText('系统设置'));
+    fireEvent.click(await findLoadedDesktopEntry('系统设置'));
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
     await within(drawer).findByLabelText('覆盖翻译');
     fireEvent.click(within(drawer).getByRole('button', { name: '保存翻译' }));
@@ -210,7 +219,7 @@ describe('I18nCatalogPage batch fixtures', () => {
 
   test('AC-013 keeps global restore and custom deletion as distinct confirmed actions', async () => {
     renderPage();
-    await screen.findAllByText('系统设置');
+    await findLoadedDesktopEntry('系统设置');
 
     fireEvent.click(screen.getByRole('button', { name: /恢复全部官方翻译/ }));
     const restoreDialog = await screen.findByTestId(
@@ -227,9 +236,9 @@ describe('I18nCatalogPage batch fixtures', () => {
         catalogApi.restoreAllSettingsI18nCatalogOverrides
       ).toHaveBeenCalledWith({ expected_revision: 8 }, 'csrf-123')
     );
+    expect(await screen.findByText('5 条翻译 · 修订 9')).toBeInTheDocument();
 
-    const desktopTable = screen.getByTestId('i18n-catalog-desktop-table');
-    fireEvent.click(within(desktopTable).getByText('欢迎'));
+    fireEvent.click(await findLoadedDesktopEntry('欢迎'));
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
     fireEvent.click(
       await within(drawer).findByRole('button', {
