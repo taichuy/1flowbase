@@ -81,7 +81,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     );
 
     const alert = await documentAlert();
-    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
 
     const shadow = await publicAuthShadow();
     expect(within(shadow).getByRole('button', { name: 'Sign in' })).toBeVisible();

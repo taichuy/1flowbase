@@ -436,7 +436,11 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       revision: 'run:layout'
     });
 
-    await trialQueries(view.container).findByTestId('native-output');
+    await waitFor(() =>
+      expect(
+        trialQueries(view.container).getByTestId('native-output')
+      ).toBeInTheDocument()
+    );
     expect(screen.getByTestId('js-block-preview-console')).toHaveStyle({
       gridTemplateRows: 'minmax(0, 65fr) 8px minmax(0, 35fr)'
     });
