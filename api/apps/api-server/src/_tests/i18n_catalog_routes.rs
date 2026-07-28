@@ -58,20 +58,20 @@ fn ac_004_settings_feature_route_assembly_and_openapi_are_exact() {
             .map(|route| (route.method.as_str(), route.path.as_str()))
             .collect::<Vec<_>>(),
         vec![
+            ("DELETE", "/api/console/settings/i18n/custom-keys"),
+            ("DELETE", "/api/console/settings/i18n/overrides"),
             ("GET", "/api/console/settings/i18n/catalog"),
+            ("GET", "/api/console/settings/i18n/entries"),
+            ("GET", "/api/console/settings/i18n/entries/detail"),
             (
                 "GET",
-                "/api/console/settings/i18n/modules/{module}/messages"
+                "/api/console/settings/i18n/modules/{module}/messages",
             ),
             ("GET", "/api/console/settings/i18n/update-check"),
             ("POST", "/api/console/settings/i18n/activate"),
-            ("GET", "/api/console/settings/i18n/entries"),
-            ("GET", "/api/console/settings/i18n/entries/detail"),
-            ("PUT", "/api/console/settings/i18n/overrides"),
-            ("DELETE", "/api/console/settings/i18n/overrides"),
-            ("PUT", "/api/console/settings/i18n/custom-translations"),
-            ("DELETE", "/api/console/settings/i18n/custom-keys"),
             ("POST", "/api/console/settings/i18n/restore-overrides"),
+            ("PUT", "/api/console/settings/i18n/custom-translations"),
+            ("PUT", "/api/console/settings/i18n/overrides"),
         ]
     );
 

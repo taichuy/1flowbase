@@ -25,17 +25,7 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
-mod management;
-
-pub use management::{
-    delete_custom_catalog_key, get_catalog_entry, list_catalog_entries,
-    restore_all_catalog_overrides, restore_catalog_override, upsert_catalog_override,
-    upsert_custom_catalog_translation, CatalogEntryMutationResponse,
-    CatalogManagementEntryResponse, CatalogManagementOriginDto, CatalogManagementPageResponse,
-    CatalogRevisionResponse, DeleteCustomCatalogKeyBody, GetCatalogEntryQuery,
-    ListCatalogEntriesQuery, RestoreCatalogOverrideBody, RestoreCatalogOverridesBody,
-    UpsertCatalogTranslationBody,
-};
+pub(crate) mod management;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct I18nCatalogStateResponse {

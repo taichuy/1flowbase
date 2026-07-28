@@ -22,7 +22,11 @@ use control_plane::{
     i18n_catalog::CatalogResolver,
 };
 use domain::{CatalogMessageIdentity, CatalogModuleId};
-use orchestration_runtime::compiled_plan::CompiledI18nTextRef;
+use orchestration_runtime::{
+    binding_runtime::referenced_i18n_text_refs,
+    compiled_plan::CompiledI18nTextRef,
+    compiler::{FlowCompileContext, FlowCompiler},
+};
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
@@ -326,13 +330,13 @@ fn to_official_agent_flow_template_catalog_response(
 }
 
 fn collect_referenced_i18n_text_refs(document: &serde_json::Value) -> Vec<CompiledI18nTextRef> {
-    let mut references = orchestration_runtime::compiler::FlowCompiler::compile(
+    let mut references = FlowCompiler::compile(
         Uuid::nil(),
         "i18n-projection",
         document,
-        &orchestration_runtime::compiler::FlowCompileContext::default(),
+        &FlowCompileContext::default(),
     )
-    .map(|plan| orchestration_runtime::binding_runtime::referenced_i18n_text_refs(&plan))
+    .map(|plan| referenced_i18n_text_refs(&plan))
     .unwrap_or_default()
     .into_iter()
     .collect::<BTreeSet<_>>();

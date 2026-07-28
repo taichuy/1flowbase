@@ -81,6 +81,7 @@ dependencies = [
  "hmac 0.12.1",
  "jsonschema",
  "observability",
+ "orchestration-runtime",
  "plugin-framework",
  "plugin-runner",
  "postgres-test-support",
