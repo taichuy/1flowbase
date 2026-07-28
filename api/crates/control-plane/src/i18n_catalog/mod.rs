@@ -1,4 +1,5 @@
 pub mod bootstrap;
+pub mod management;
 pub mod resolver;
 pub mod update;
 

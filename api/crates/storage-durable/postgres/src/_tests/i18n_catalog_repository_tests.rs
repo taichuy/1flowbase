@@ -1,13 +1,20 @@
 use std::collections::BTreeMap;
 
+use control_plane::i18n_catalog::management::{
+    CatalogManagementAccess, DeleteCustomMessageCommand, GetCatalogEntryCommand,
+    I18nCatalogManagementService, ListCatalogEntriesCommand, RestoreAllOfficialOverridesCommand,
+    RestoreOfficialTranslationCommand, UpsertCustomTranslationCommand,
+    UpsertOfficialOverrideCommand,
+};
 use control_plane::ports::{
-    BootstrapRepository, CatalogResolutionRepository, DeleteCatalogTranslationInput,
-    DeleteCustomCatalogMessageInput, I18nCatalogRepository, UpsertCatalogTranslationInput,
+    BootstrapRepository, CatalogManagementOrigin, CatalogResolutionRepository,
+    DeleteCatalogTranslationInput, DeleteCustomCatalogMessageInput, I18nCatalogRepository,
+    UpsertCatalogTranslationInput,
 };
 use domain::{
-    CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogSeedFile,
-    CatalogTranslation, CatalogVersion, OfficialCatalogMessage, VerifiedCatalogRelease,
-    WorkspaceCatalogRevision,
+    ActorContext, CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId,
+    CatalogSeedFile, CatalogTranslation, CatalogVersion, OfficialCatalogMessage,
+    VerifiedCatalogRelease, WorkspaceCatalogRevision,
 };
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use time::OffsetDateTime;
@@ -731,4 +738,280 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
     assert_eq!(overridden.active_official.as_deref(), Some("设置"));
     assert_eq!(alternate.root_override, None);
     assert_eq!(alternate.active_official, None);
+}
+
+fn root_access(workspace_id: Uuid) -> CatalogManagementAccess {
+    CatalogManagementAccess {
+        actor: ActorContext::root(Uuid::now_v7(), workspace_id, "root"),
+        current_workspace_id: workspace_id,
+    }
+}
+
+async fn management_store() -> (PgControlPlaneStore, Uuid, WorkspaceCatalogRevision) {
+    let store = empty_store().await;
+    let tenant = BootstrapRepository::upsert_root_tenant(&store)
+        .await
+        .unwrap();
+    let workspace = BootstrapRepository::upsert_root_workspace_with_official_catalog(
+        &store,
+        tenant.id,
+        "Management catalog workspace",
+        &official_seed(Uuid::now_v7()),
+    )
+    .await
+    .unwrap();
+    let state = I18nCatalogRepository::get_workspace_catalog_state(&store, workspace.id)
+        .await
+        .unwrap()
+        .unwrap();
+    (store, workspace.id, state.revision())
+}
+
+#[tokio::test]
+async fn ac_007_management_is_root_bootstrap_only_and_projects_searchable_entries() {
+    let (store, workspace_id, revision) = management_store().await;
+    let service = I18nCatalogManagementService::new(store, workspace_id);
+    let page = service
+        .list(ListCatalogEntriesCommand {
+            access: root_access(workspace_id),
+            module: Some(module()),
+            locale: Some(CatalogLocale::new("zh_Hans").unwrap()),
+            search: Some("settings".into()),
+            origin: Some(CatalogManagementOrigin::Official),
+            offset: 0,
+            limit: 20,
+        })
+        .await
+        .unwrap();
+    assert_eq!(page.revision, revision);
+    assert_eq!(page.total, 1);
+    assert_eq!(page.entries[0].msgid, "Settings");
+    assert_eq!(
+        page.entries[0].official_translation.as_deref(),
+        Some("设置")
+    );
+    assert_eq!(page.entries[0].effective_value, "设置");
+    assert!(!page.entries[0].missing);
+    assert!(!page.entries[0].obsolete);
+    let detail = service
+        .detail(GetCatalogEntryCommand {
+            access: root_access(workspace_id),
+            identity: identity("Settings"),
+            locale: CatalogLocale::new("zh_Hans").unwrap(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(detail.msgid, "Settings");
+
+    let non_root = CatalogManagementAccess {
+        actor: ActorContext::scoped(Uuid::now_v7(), workspace_id, "admin", std::iter::empty()),
+        current_workspace_id: workspace_id,
+    };
+    assert!(service
+        .list(ListCatalogEntriesCommand {
+            access: non_root,
+            module: None,
+            locale: None,
+            search: None,
+            origin: None,
+            offset: 0,
+            limit: 20,
+        })
+        .await
+        .is_err());
+    let foreign = Uuid::now_v7();
+    assert!(service
+        .list(ListCatalogEntriesCommand {
+            access: CatalogManagementAccess {
+                actor: ActorContext::root(Uuid::now_v7(), foreign, "root"),
+                current_workspace_id: foreign,
+            },
+            module: None,
+            locale: None,
+            search: None,
+            origin: None,
+            offset: 0,
+            limit: 20,
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn ac_008_expected_revision_serializes_atomic_mutation_and_audit() {
+    let (store, workspace_id, revision) = management_store().await;
+    let service = I18nCatalogManagementService::new(store.clone(), workspace_id);
+    let actor = root_access(workspace_id);
+    let state = service
+        .upsert_official_override(UpsertOfficialOverrideCommand {
+            access: actor.clone(),
+            value: translation("Settings", "覆盖"),
+            expected_revision: revision,
+        })
+        .await
+        .unwrap();
+    assert_eq!(state.revision().value(), revision.value() + 1);
+
+    let audit_row: (i64, Option<Uuid>, String) = sqlx::query_as(
+        r#"select count(*) over(), actor_user_id, payload ->> 'locale'
+           from audit_logs where workspace_id = $1 and event_code = $2"#,
+    )
+    .bind(workspace_id)
+    .bind("i18n_catalog.official_override.upserted")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(audit_row.0, 1);
+    assert_eq!(audit_row.1, Some(actor.actor.user_id));
+    assert_eq!(audit_row.2, "zh_Hans");
+
+    assert!(service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: actor,
+            value: translation("custom.stale", "不会写入"),
+            expected_revision: revision,
+        })
+        .await
+        .is_err());
+    let custom_count: i64 = sqlx::query_scalar(
+        "select count(*) from workspace_i18n_catalog_custom_translations where workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let all_audits: i64 =
+        sqlx::query_scalar("select count(*) from audit_logs where workspace_id = $1")
+            .bind(workspace_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!((custom_count, all_audits), (0, 1));
+}
+
+#[tokio::test]
+async fn ac_009_restore_and_explicit_custom_delete_preserve_distinct_lifecycles() {
+    let (store, workspace_id, revision) = management_store().await;
+    let service = I18nCatalogManagementService::new(store.clone(), workspace_id);
+    let overridden = service
+        .upsert_official_override(UpsertOfficialOverrideCommand {
+            access: root_access(workspace_id),
+            value: translation("Settings", "覆盖"),
+            expected_revision: revision,
+        })
+        .await
+        .unwrap();
+    let custom = service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: root_access(workspace_id),
+            value: translation("custom.message", "自定义"),
+            expected_revision: overridden.revision(),
+        })
+        .await
+        .unwrap();
+    assert!(service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: root_access(workspace_id),
+            value: translation("Settings", "冲突"),
+            expected_revision: custom.revision(),
+        })
+        .await
+        .is_err());
+
+    let restored = service
+        .restore_official_translation(RestoreOfficialTranslationCommand {
+            access: root_access(workspace_id),
+            identity: identity("Settings"),
+            locale: CatalogLocale::new("zh_Hans").unwrap(),
+            expected_revision: custom.revision(),
+        })
+        .await
+        .unwrap();
+    let official = CatalogResolutionRepository::find_catalog_resolution_candidate(
+        &store,
+        workspace_id,
+        &identity("Settings"),
+        &CatalogLocale::new("zh_Hans").unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(official.root_override, None);
+    assert_eq!(official.active_official.as_deref(), Some("设置"));
+
+    let overridden_again = service
+        .upsert_official_override(UpsertOfficialOverrideCommand {
+            access: root_access(workspace_id),
+            value: translation("Settings", "再次覆盖"),
+            expected_revision: restored.revision(),
+        })
+        .await
+        .unwrap();
+    let globally_restored = service
+        .restore_all_official_overrides(RestoreAllOfficialOverridesCommand {
+            access: root_access(workspace_id),
+            expected_revision: overridden_again.revision(),
+        })
+        .await
+        .unwrap();
+    let custom_count: i64 = sqlx::query_scalar(
+        "select count(*) from workspace_i18n_catalog_custom_translations where workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let override_count: i64 = sqlx::query_scalar(
+        "select count(*) from workspace_i18n_catalog_overrides where workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!((override_count, custom_count), (0, 1));
+
+    service
+        .delete_custom_message(DeleteCustomMessageCommand {
+            access: root_access(workspace_id),
+            identity: identity("custom.message"),
+            expected_revision: globally_restored.revision(),
+        })
+        .await
+        .unwrap();
+    let delete_audits: i64 = sqlx::query_scalar(
+        "select count(*) from audit_logs where workspace_id = $1 and event_code = $2",
+    )
+    .bind(workspace_id)
+    .bind("i18n_catalog.custom_message.deleted")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(delete_audits, 1);
+}
+
+#[tokio::test]
+async fn ac_008_concurrent_expected_revision_has_exactly_one_winner() {
+    let (store, workspace_id, revision) = management_store().await;
+    let first = I18nCatalogManagementService::new(store.clone(), workspace_id);
+    let second = I18nCatalogManagementService::new(store.clone(), workspace_id);
+    let left = first.upsert_official_override(UpsertOfficialOverrideCommand {
+        access: root_access(workspace_id),
+        value: translation("Settings", "一"),
+        expected_revision: revision,
+    });
+    let right = second.upsert_official_override(UpsertOfficialOverrideCommand {
+        access: root_access(workspace_id),
+        value: translation("Settings", "二"),
+        expected_revision: revision,
+    });
+    let (left, right) = tokio::join!(left, right);
+    assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
+    let audits: i64 = sqlx::query_scalar(
+        "select count(*) from audit_logs where workspace_id = $1 and event_code = $2",
+    )
+    .bind(workspace_id)
+    .bind("i18n_catalog.official_override.upserted")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(audits, 1);
 }

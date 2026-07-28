@@ -42,6 +42,113 @@ pub trait CatalogResolutionRepository: Send + Sync {
     ) -> anyhow::Result<CatalogResolutionCandidate>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatalogManagementOrigin {
+    Official,
+    OfficialOverride,
+    Custom,
+    English,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogManagementQuery {
+    pub workspace_id: Uuid,
+    pub module: Option<domain::CatalogModuleId>,
+    pub msgid: Option<String>,
+    pub locale: Option<domain::CatalogLocale>,
+    pub search: Option<String>,
+    pub origin: Option<CatalogManagementOrigin>,
+    pub offset: u32,
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogManagementEntry {
+    pub module: domain::CatalogModuleId,
+    pub msgid: String,
+    pub locale: domain::CatalogLocale,
+    pub official_translation: Option<String>,
+    pub override_translation: Option<String>,
+    pub custom_translation: Option<String>,
+    pub effective_value: String,
+    pub origin: CatalogManagementOrigin,
+    pub missing: bool,
+    pub obsolete: bool,
+    pub revision: domain::WorkspaceCatalogRevision,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogManagementPage {
+    pub entries: Vec<CatalogManagementEntry>,
+    pub total: u64,
+    pub revision: domain::WorkspaceCatalogRevision,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditedCatalogTranslationInput {
+    pub workspace_id: Uuid,
+    pub value: domain::CatalogTranslation,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+    pub audit: domain::AuditLogRecord,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditedDeleteCatalogTranslationInput {
+    pub workspace_id: Uuid,
+    pub identity: domain::CatalogMessageIdentity,
+    pub locale: domain::CatalogLocale,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+    pub audit: domain::AuditLogRecord,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditedRestoreAllCatalogOverridesInput {
+    pub workspace_id: Uuid,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+    pub audit: domain::AuditLogRecord,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditedDeleteCustomCatalogMessageInput {
+    pub workspace_id: Uuid,
+    pub identity: domain::CatalogMessageIdentity,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+    pub audit: domain::AuditLogRecord,
+}
+
+#[async_trait]
+pub trait I18nCatalogManagementRepository: Send + Sync {
+    async fn list_catalog_management_entries(
+        &self,
+        query: &CatalogManagementQuery,
+    ) -> anyhow::Result<CatalogManagementPage>;
+
+    async fn upsert_official_catalog_override(
+        &self,
+        input: &AuditedCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn upsert_custom_catalog_translation_audited(
+        &self,
+        input: &AuditedCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn restore_official_catalog_translation(
+        &self,
+        input: &AuditedDeleteCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn restore_all_official_catalog_overrides(
+        &self,
+        input: &AuditedRestoreAllCatalogOverridesInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn delete_custom_catalog_message_audited(
+        &self,
+        input: &AuditedDeleteCustomCatalogMessageInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+}
+
 #[derive(Debug, Clone)]
 pub struct UpsertCatalogTranslationInput {
     pub workspace_id: Uuid,

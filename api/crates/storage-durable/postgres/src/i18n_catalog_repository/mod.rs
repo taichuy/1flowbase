@@ -18,6 +18,8 @@ use uuid::Uuid;
 
 use crate::PgControlPlaneStore;
 
+mod management;
+
 fn state_from_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceCatalogState> {
     Ok(WorkspaceCatalogState::restored(
         row.get("workspace_id"),
@@ -50,7 +52,7 @@ fn obsolete_from_row(row: &sqlx::postgres::PgRow) -> Result<ObsoleteCatalogMessa
     ))
 }
 
-async fn lock_expected_state(
+pub(super) async fn lock_expected_state(
     transaction: &mut Transaction<'_, Postgres>,
     workspace_id: Uuid,
     expected_revision: WorkspaceCatalogRevision,
@@ -74,7 +76,7 @@ async fn lock_expected_state(
     Ok(state)
 }
 
-async fn increment_state_revision(
+pub(super) async fn increment_state_revision(
     transaction: &mut Transaction<'_, Postgres>,
     workspace_id: Uuid,
 ) -> Result<WorkspaceCatalogState> {
@@ -90,6 +92,33 @@ async fn increment_state_revision(
     .fetch_one(&mut **transaction)
     .await?;
     state_from_row(&row)
+}
+
+pub(super) async fn insert_catalog_audit(
+    transaction: &mut Transaction<'_, Postgres>,
+    audit: &domain::AuditLogRecord,
+) -> Result<()> {
+    let scope_id = audit.workspace_id.unwrap_or(domain::SYSTEM_SCOPE_ID);
+    sqlx::query(
+        r#"
+        insert into audit_logs (
+          id, workspace_id, scope_id, actor_user_id, target_type, target_id,
+          event_code, payload, created_by, updated_by, created_at, updated_at
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $4, $4, $9, $9)
+        "#,
+    )
+    .bind(audit.id)
+    .bind(audit.workspace_id)
+    .bind(scope_id)
+    .bind(audit.actor_user_id)
+    .bind(&audit.target_type)
+    .bind(audit.target_id)
+    .bind(&audit.event_code)
+    .bind(&audit.payload)
+    .bind(audit.created_at)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
 }
 
 async fn reconcile_obsolete_rows(
