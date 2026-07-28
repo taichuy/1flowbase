@@ -1323,7 +1323,7 @@ export function RolePermissionPanel({
                       operation: ConsolePolicyCatalogGroup['operations'][number]
                     ) => (
                       <Space direction="vertical" size={0}>
-                        <Typography.Text>{operation.label}</Typography.Text>
+                        <Typography.Text>{operation.summary}</Typography.Text>
                         {operation.description ? (
                           <Typography.Text type="secondary">
                             {operation.description}
@@ -1354,7 +1354,7 @@ export function RolePermissionPanel({
                       if (operation.full_profile.kind === 'simple') {
                         return (
                           <Switch
-                            aria-label={operation.label}
+                            aria-label={operation.summary}
                             checked={
                               policyOperation.kind === 'simple' &&
                               policyOperation.enabled
@@ -1380,7 +1380,7 @@ export function RolePermissionPanel({
                           : 'disabled';
                       return (
                         <Select
-                          aria-label={`${operation.label} ${i18nText(
+                          aria-label={`${operation.summary} ${i18nText(
                             'settings',
                             'auto.scope'
                           )}`}

@@ -1,14 +1,18 @@
 # Scope
+
 - 作用域：`api/` 及其子目录。
 - 下述路径默认相对 `api/`。
 - 角色可配置 console operation 必须保持 `1 operation ↔ 1 method + route template`；group 的 `enabled` 与 `full/custom` 独立持久化，关闭不得清空自定义 operation。只有 `Authenticated` 可聚合 routes。
+- Console operation 只承载授权语义，不得包含 UI `label_ref / description_ref`。每个 `/api/console/*` 的 `method + route template` 必须由 API owner 提供一组独立静态英文 `summary + description`，编译进全量 interface catalog；角色 UI 只消费其中可配置接口投影。
 
 ## Skills
+
 - 做后端实现、接口、状态流转、分层边界时：使用 `backend-development`。
 - 做质量评估、回归审计时：使用 `qa-evaluation`。
 - 后端实现判断、新增资源模板和回归门禁不在本文件展开，分别由上述 skill 承载。
 
 ## Directory Rules
+
 按 `api/` 目录树顺序阅读和维护：
 
 - `apps/api-server` 是 Axum HTTP API 宿主，负责 public / console / runtime route、middleware、response、OpenAPI、loader、policy、inventory、infra bootstrap、route mount 与 boot assembly。
@@ -32,12 +36,13 @@
 - 同一目录文件接近 `15` 个时收纳子目录；单文件接近 `1500` 行时拆职责。
 
 ## Local Truths
+
 - 后端验证在同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器全部逻辑 CPU 并行编译和测试，不把 `CARGO_BUILD_JOBS=1/4` 或 `--test-threads=1` 写死进开发命令或仓库配置。
 - `apps/api-server/src/routes` 是协议层：参数解析、上下文提取、调用 service / action、响应与错误映射、OpenAPI 暴露。
 - API DTO 字段名优先跟领域模型 / 持久化语义一致；不要为了前端展示创建新的语义别名字段。
 - `apps/api-server/src/middleware` 是请求链路约束层。
 - 后台注册设置项是后端安全对象：稳定 `feature_id` 同时拥有 console surface 与 Settings API scope；前端只消费注册结果，不定义权限真值。
-- 角色只授权后台设置 `feature_id`；Settings API 在 Core 启动或 HostExtension 加载时绑定到唯一 feature，不把 API action 展开成第二份角色授权。
+- SettingsFeature 是后台设置分组；组内角色授权使用单接口 operation，不得恢复为整组 feature grant 或聚合 routes。
 - Settings API 未注册、重复归属或 owner inactive 时 fail closed；不得按前端 URL 推断、allow-by-default，或建立管理员可编辑的 route-to-permission 映射。
 - 新增或调整后台设置注册必须使用统一 CLI 与 compiled inventory。统一入口尚未落地时，只能在已批准的 registry foundation Issue 内建立它，不新增平行手写注册表。
 - 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。

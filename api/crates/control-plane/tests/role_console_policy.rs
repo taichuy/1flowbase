@@ -83,8 +83,6 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
             owner: owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
-            label_ref: "console.simple.label".into(),
-            description_ref: Some("console.simple.description".into()),
             order: 10,
             routes: vec![],
             authorization: ConsoleAuthorization::Simple,
@@ -95,8 +93,6 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
             owner: owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
-            label_ref: "console.create.label".into(),
-            description_ref: Some("console.create.description".into()),
             order: 20,
             routes: vec![],
             authorization: ConsoleAuthorization::Simple,
@@ -107,8 +103,6 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
             owner: owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
-            label_ref: "console.records.view.label".into(),
-            description_ref: Some("console.records.view.description".into()),
             order: 30,
             routes: vec![],
             authorization: ConsoleAuthorization::ResourceAction {
@@ -123,6 +117,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
 
     ConsoleOperationCompiledInventory {
         schema_version: "test.console-policy-migration/v1",
+        interfaces: vec![],
         operations,
         resources: vec![ResourceAccessRegistration {
             resource_code: "records".into(),

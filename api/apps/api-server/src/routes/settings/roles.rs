@@ -256,7 +256,7 @@ pub struct ConsolePolicyCatalogGroupResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConsolePolicyCatalogOperationResponse {
     pub operation_id: String,
-    pub label: String,
+    pub summary: String,
     pub description: String,
     pub order: i32,
     pub route: ConsolePolicyCatalogRouteResponse,
@@ -406,19 +406,12 @@ fn to_console_policy_catalog_response(
                     .into_iter()
                     .map(|operation| ConsolePolicyCatalogOperationResponse {
                         operation_id: operation.operation_id,
-                        label: operation.label,
+                        summary: operation.summary,
                         description: operation.description,
                         order: operation.order,
-                        route: {
-                            let route = operation
-                                .routes
-                                .into_iter()
-                                .next()
-                                .expect("validated configurable operation route");
-                            ConsolePolicyCatalogRouteResponse {
-                                method: route.method,
-                                path: route.path,
-                            }
+                        route: ConsolePolicyCatalogRouteResponse {
+                            method: operation.route.method,
+                            path: operation.route.path,
                         },
                         full_profile: match operation.full_profile {
                             control_plane::role::ConsolePolicyCatalogFullProfile::Simple {

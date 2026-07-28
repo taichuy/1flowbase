@@ -1,13 +1,13 @@
 use std::collections::BTreeSet;
 
 use access_control::{
-    ConsoleAuthorization, ConsoleLocaleCatalogContribution, ConsoleLocaleText,
-    ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry, ConsoleOperationOwner,
-    ConsoleOperationRegistration, ConsoleOperationRegistry, ConsoleOtherPolicyGroupDisplay,
-    ConsolePolicyGroup, ConsoleRouteBinding, ResourceAccessAction, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsApiRoute, SettingsFeatureConsoleSurface,
-    SettingsFeatureLifecycle, SettingsFeatureOwnerKind, SettingsFeatureRegistration,
-    SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleInterfaceRegistration, ConsoleLocaleCatalogContribution,
+    ConsoleLocaleText, ConsoleOperationCompiledInventory, ConsoleOperationInventoryEntry,
+    ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
+    ConsoleOtherPolicyGroupDisplay, ConsolePolicyGroup, ConsoleRouteBinding, ResourceAccessAction,
+    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsApiRoute,
+    SettingsFeatureConsoleSurface, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
+    SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 
 use crate::_tests::support::{memory_actor_context, MemoryRoleRepository};
@@ -41,6 +41,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
 
     let legacy_inventory = ConsoleOperationCompiledInventory {
         schema_version: "1flowbase.console-operation-inventory/v1",
+        interfaces: vec![],
         operations: vec![
             ConsoleOperationInventoryEntry {
                 operation_id: "applications.create".to_string(),
@@ -48,10 +49,6 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: applications.clone(),
-                label_ref: "console.operations.applications.create.label".to_string(),
-                description_ref: Some(
-                    "console.operations.applications.create.description".to_string(),
-                ),
                 order: 100,
                 routes: vec![],
                 authorization: ConsoleAuthorization::Simple,
@@ -62,10 +59,6 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: applications,
-                label_ref: "console.operations.applications.view.label".to_string(),
-                description_ref: Some(
-                    "console.operations.applications.view.description".to_string(),
-                ),
                 order: 110,
                 routes: vec![],
                 authorization: ConsoleAuthorization::ResourceAction {
@@ -79,8 +72,6 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: files.clone(),
-                label_ref: "console.operations.files.upload.label".to_string(),
-                description_ref: Some("console.operations.files.upload.description".to_string()),
                 order: 200,
                 routes: vec![],
                 authorization: ConsoleAuthorization::Simple,
@@ -91,10 +82,6 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 owner,
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: other_files,
-                label_ref: "console.operations.files.content.download.label".to_string(),
-                description_ref: Some(
-                    "console.operations.files.content.download.description".to_string(),
-                ),
                 order: 210,
                 routes: vec![],
                 authorization: ConsoleAuthorization::Simple,
@@ -105,8 +92,6 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 owner: host_owner,
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: files,
-                label_ref: "console.operations.files.upload.label".to_string(),
-                description_ref: Some("console.operations.files.upload.description".to_string()),
                 order: 205,
                 routes: vec![],
                 authorization: ConsoleAuthorization::Simple,
@@ -210,8 +195,6 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             owner: entry.owner,
             lifecycle: entry.lifecycle,
             policy_group: entry.policy_group,
-            label_ref: entry.label_ref,
-            description_ref: entry.description_ref,
             order: entry.order,
             routes: vec![ConsoleRouteBinding {
                 method: method.to_string(),
@@ -220,19 +203,22 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             authorization: entry.authorization,
         })
         .collect::<Vec<_>>();
+    let interfaces = registrations
+        .iter()
+        .map(|operation| ConsoleInterfaceRegistration {
+            interface_id: operation.operation_id.clone(),
+            route: operation.routes[0].clone(),
+            summary: operation.operation_id.replace('.', " "),
+            description: format!(
+                "{} in the system backend.",
+                operation.operation_id.replace('.', " ")
+            ),
+        })
+        .collect::<Vec<_>>();
     let mut references = BTreeSet::new();
     for feature in &settings.inventory().features {
         references.insert(feature.console_surface.label_key.clone());
         references.insert(feature.console_surface.description_key.clone());
-    }
-    for operation in &operation_entries {
-        references.insert(operation.label_ref.clone());
-        references.insert(
-            operation
-                .description_ref
-                .clone()
-                .expect("test operation description ref"),
-        );
     }
     for resource in &resources {
         references.insert(resource.label_ref.clone());
@@ -253,12 +239,10 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         }
     }
     for reference in [
-        "console.policy.group_modes.disabled.label",
-        "console.policy.group_modes.disabled.description",
-        "console.policy.group_modes.full.label",
-        "console.policy.group_modes.full.description",
-        "console.policy.group_modes.custom.label",
-        "console.policy.group_modes.custom.description",
+        "console.policy.group_strategies.full.label",
+        "console.policy.group_strategies.full.description",
+        "console.policy.group_strategies.custom.label",
+        "console.policy.group_strategies.custom.description",
         "console.policy.row_scopes.disabled.label",
         "console.policy.row_scopes.disabled.description",
         "console.policy.row_scopes.own.label",
@@ -274,17 +258,12 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         .into_iter()
         .map(|reference| {
             let (en_us, zh_hans) = match reference.as_str() {
-                "console.operations.applications.create.label" => {
-                    ("Create application", "创建应用")
-                }
-                "console.operations.applications.view.label" => ("View applications", "查看应用"),
                 "console.resources.applications.actions.view.label" => ("View", "查看"),
                 "console.policy.row_scopes.own.label" => ("Own records", "仅自己"),
                 "console.policy.row_scopes.scope_all.label" => ("Current workspace", "当前空间"),
                 "console.policy.row_scopes.disabled.label" => ("Disabled", "关闭"),
-                "console.policy.group_modes.disabled.label" => ("Disabled", "关闭"),
-                "console.policy.group_modes.full.label" => ("Full access", "完全开放"),
-                "console.policy.group_modes.custom.label" => ("Custom access", "自定义"),
+                "console.policy.group_strategies.full.label" => ("Full access", "完全开放"),
+                "console.policy.group_strategies.custom.label" => ("Custom access", "自定义"),
                 _ if reference.ends_with(".description") => ("Test description", "测试说明"),
                 _ => ("Test label", "测试标签"),
             };
@@ -316,6 +295,8 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         }],
     )
     .expect("test locale catalog must compile")
+    .with_interface_metadata(interfaces)
+    .expect("test interface metadata must compile")
     .inventory()
     .clone()
 }
@@ -590,7 +571,10 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
     assert!(!catalog.group_strategy_options[1].description.is_empty());
     assert_eq!(catalog.groups.len(), 3);
     assert_eq!(catalog.groups[0].group_id, "system.applications");
-    assert_eq!(catalog.groups[0].operations[0].label, "创建应用");
+    assert_eq!(
+        catalog.groups[0].operations[0].summary,
+        "applications create"
+    );
     assert_eq!(catalog.groups[0].operations[0].order, 100);
     assert!(catalog.groups[0].operations[0]
         .allowed_row_scopes
@@ -613,9 +597,10 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
     );
     assert_eq!(catalog.resources[0].resource_code, "applications");
     assert_eq!(catalog.resources[0].actions[1].label, "查看");
-    assert!(!catalog.groups[0].operations[0]
-        .label
-        .contains("applications.create"));
+    assert_eq!(
+        catalog.groups[0].operations[0].description,
+        "applications create in the system backend."
+    );
 }
 
 // AC-004: the catalog gives clients the compiled full profile; clients must not infer it from
@@ -807,8 +792,7 @@ async fn role_service_console_policy_rejects_unknown_operation() {
 // AC-004/AC-006: the role-policy write boundary must reject malformed policy
 // shapes rather than normalizing an ambiguous or wider grant.
 #[tokio::test]
-async fn role_service_console_policy_rejects_duplicate_groups_operations_type_mismatches_and_group_shapes(
-) {
+async fn role_service_console_policy_rejects_duplicate_groups_operations_and_type_mismatches() {
     let repository = MemoryRoleRepository::default();
     let service = RoleService::new(repository.clone());
     editable_role(&service, &repository, "policy-editor").await;
@@ -892,29 +876,6 @@ async fn role_service_console_policy_rejects_duplicate_groups_operations_type_mi
     assert!(type_mismatch
         .to_string()
         .contains("console_policy_operation_type"));
-
-    for mode in ["disabled", "full"] {
-        let error = service
-            .replace_console_policy(
-                ReplaceRoleConsolePolicyCommand {
-                    actor_user_id: repository.root_user_id(),
-                    role_code: "policy-editor".to_string(),
-                    groups: vec![policy_group(
-                        "settings_feature",
-                        "system.applications",
-                        mode,
-                        vec![ConsolePolicyOperationInput::Simple {
-                            operation_id: "applications.create".to_string(),
-                            enabled: true,
-                        }],
-                    )],
-                },
-                &console_policy_inventory(),
-            )
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("console_policy_group_shape"));
-    }
 
     assert_eq!(repository.audit_events(), vec!["role.created"]);
 }

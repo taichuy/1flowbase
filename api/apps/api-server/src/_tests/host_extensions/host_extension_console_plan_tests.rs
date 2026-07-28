@@ -49,16 +49,17 @@ fn ac_001_active_linked_host_console_contribution_is_compiled_and_mounted() {
             && binding.ownership
                 == ConsoleRouteOwnership::ConsoleOperation("fixture-host.scan".to_string())
     }));
-    assert_eq!(
-        plan.console_operation_registry
-            .inventory()
-            .locale_catalog
-            .as_ref()
-            .and_then(
-                |catalog| catalog.text("zh_Hans", "fixture-host.console.operations.scan.label")
-            ),
-        Some("扫描记录")
-    );
+    let interface = plan
+        .console_operation_registry
+        .inventory()
+        .interfaces
+        .iter()
+        .find(|interface| {
+            interface.authorization_operation_id.as_deref() == Some("fixture-host.scan")
+        })
+        .expect("linked HostExtension route must have static interface metadata");
+    assert!(!interface.summary.trim().is_empty());
+    assert!(!interface.description.trim().is_empty());
 }
 
 #[test]
@@ -106,9 +107,7 @@ fn fixture_host_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> 
             "/fixture-host/settings",
             console_get(
                 fixture_host_settings,
-                ConsoleRouteOwnership::ConsoleOperation(
-                    "settings_feature.access.fixture-host.settings".to_string(),
-                ),
+                ConsoleRouteOwnership::ConsoleOperation("fixture-host.settings.view".to_string()),
             ),
         )
         .route(
@@ -159,6 +158,19 @@ settings_features:
       - method: GET
         path: /api/console/fixture-host/settings
 console_operations:
+  - operation_id: fixture-host.settings.view
+    owner:
+      kind: host_extension
+      owner_id: fixture-host
+      version: 0.1.0
+    lifecycle: active
+    policy_group: !settings_feature fixture-host.settings
+    order: 100
+    routes:
+      - method: GET
+        path: /api/console/fixture-host/settings
+    authorization:
+      kind: simple
   - operation_id: fixture-host.scan
     owner:
       kind: host_extension
@@ -166,8 +178,6 @@ console_operations:
       version: 0.1.0
     lifecycle: active
     policy_group: !settings_feature fixture-host.settings
-    label_ref: fixture-host.console.operations.scan.label
-    description_ref: fixture-host.console.operations.scan.description
     order: 110
     routes:
       - method: GET
@@ -201,12 +211,6 @@ console_locale_catalog:
     - reference: fixture-host.console.settings.description
       en_us: Manage fixture settings
       zh_hans: 管理示例设置
-    - reference: fixture-host.console.operations.scan.label
-      en_us: Scan records
-      zh_hans: 扫描记录
-    - reference: fixture-host.console.operations.scan.description
-      en_us: Read fixture scan records
-      zh_hans: 读取示例扫描记录
     - reference: fixture-host.console.resources.scans.label
       en_us: Scan records
       zh_hans: 扫描记录

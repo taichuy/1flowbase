@@ -1,5 +1,31 @@
 {
   "schema_version": "1flowbase.console-operation-inventory/v1",
+  "interfaces": [
+    {
+      "interface_id": "health",
+      "route": { "method": "GET", "path": "/api/console/health" },
+      "summary": "Get Console health",
+      "description": "Get Console health in the system backend.",
+      "authorization_operation_id": null
+    },
+    {
+      "interface_id": "applications.view",
+      "route": { "method": "GET", "path": "/api/console/applications" },
+      "summary": "View applications",
+      "description": "View applications in the system backend.",
+      "authorization_operation_id": "applications.view"
+    },
+    {
+      "interface_id": "applications.run",
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/run"
+      },
+      "summary": "Run application",
+      "description": "Run an application in the system backend.",
+      "authorization_operation_id": "applications.run"
+    }
+  ],
   "operations": [
     {
       "operation_id": "core.authenticated",
@@ -12,8 +38,6 @@
       "policy_group": {
         "Other": "core.authenticated"
       },
-      "label_ref": "console.operations.core_authenticated.label",
-      "description_ref": null,
       "order": 0,
       "routes": [
         {
@@ -36,8 +60,6 @@
       "policy_group": {
         "SettingsFeature": "system.applications"
       },
-      "label_ref": "console.operations.applications.view.label",
-      "description_ref": "console.operations.applications.view.description",
       "order": 100,
       "routes": [
         {
@@ -62,8 +84,6 @@
       "policy_group": {
         "Other": "other.applications"
       },
-      "label_ref": "console.operations.applications.run.label",
-      "description_ref": "console.operations.applications.run.description",
       "order": 190,
       "routes": [
         {

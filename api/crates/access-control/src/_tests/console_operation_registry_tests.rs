@@ -1,10 +1,11 @@
 use crate::{
-    ConsoleAuthorization, ConsoleLocaleCatalogContribution, ConsoleLocaleText,
-    ConsoleOperationOwner, ConsoleOperationRegistration, ConsoleOperationRegistry,
-    ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding, ConsoleRouteOwnership,
-    ResourceAccessAction, ResourceAccessRegistration, ResourceAccessScopeKind, SettingsApiRoute,
-    SettingsFeatureConsoleSurface, SettingsFeatureLifecycle, SettingsFeatureOwner,
-    SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleInterfaceRegistration, ConsoleLocaleCatalogContribution,
+    ConsoleLocaleText, ConsoleOperationOwner, ConsoleOperationRegistration,
+    ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
+    ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
+    ResourceAccessScopeKind, SettingsApiRoute, SettingsFeatureConsoleSurface,
+    SettingsFeatureLifecycle, SettingsFeatureOwner, SettingsFeatureOwnerKind,
+    SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 
 fn owner(kind: SettingsFeatureOwnerKind, owner_id: &str) -> ConsoleOperationOwner {
@@ -46,6 +47,21 @@ fn route(method: &str, path: &str) -> ConsoleRouteBinding {
     }
 }
 
+fn interface(
+    interface_id: &str,
+    method: &str,
+    path: &str,
+    summary: &str,
+    description: &str,
+) -> ConsoleInterfaceRegistration {
+    ConsoleInterfaceRegistration {
+        interface_id: interface_id.to_string(),
+        route: route(method, path),
+        summary: summary.to_string(),
+        description: description.to_string(),
+    }
+}
+
 fn assembled_route(
     method: &str,
     path: &str,
@@ -69,8 +85,6 @@ fn operation(
         owner: owner(SettingsFeatureOwnerKind::Core, "boot-core"),
         lifecycle: SettingsFeatureLifecycle::Active,
         policy_group,
-        label_ref: format!("console.operations.{operation_id}.label"),
-        description_ref: Some(format!("console.operations.{operation_id}.description")),
         order: 100,
         routes,
         authorization,
@@ -101,42 +115,22 @@ fn complete_locale_catalog() -> ConsoleLocaleCatalogContribution {
                 "应用管理操作",
             ),
             locale_text(
-                "console.operations.applications.create.label",
-                "Create application",
-                "创建应用",
-            ),
-            locale_text(
-                "console.operations.applications.create.description",
-                "Create an application in the current workspace",
-                "在当前工作区创建应用",
-            ),
-            locale_text(
-                "console.policy.group_modes.disabled.label",
-                "Disabled",
-                "关闭",
-            ),
-            locale_text(
-                "console.policy.group_modes.disabled.description",
-                "Do not grant operations in this group",
-                "不授予此组中的操作",
-            ),
-            locale_text(
-                "console.policy.group_modes.full.label",
+                "console.policy.group_strategies.full.label",
                 "Full access",
                 "完全开放",
             ),
             locale_text(
-                "console.policy.group_modes.full.description",
+                "console.policy.group_strategies.full.description",
                 "Grant every operation in this group",
                 "授予此组中的全部操作",
             ),
             locale_text(
-                "console.policy.group_modes.custom.label",
+                "console.policy.group_strategies.custom.label",
                 "Custom access",
                 "自定义",
             ),
             locale_text(
-                "console.policy.group_modes.custom.description",
+                "console.policy.group_strategies.custom.description",
                 "Choose operations and row scopes individually",
                 "逐项选择操作和行范围",
             ),
@@ -184,6 +178,15 @@ fn applications_settings_registry() -> SettingsFeatureRegistry {
     .expect("settings fixture must compile")
 }
 
+fn applications_settings_access_operation() -> ConsoleOperationRegistration {
+    operation(
+        "settings.applications.view",
+        ConsolePolicyGroup::SettingsFeature("system.applications".to_string()),
+        ConsoleAuthorization::Simple,
+        vec![route("GET", "/api/console/settings/applications")],
+    )
+}
+
 // AC-009: all display references must be compiled before a catalog can serve either locale.
 #[test]
 fn ac_009_compiled_locale_catalog_rejects_missing_empty_duplicate_and_unreferenced_references() {
@@ -197,7 +200,10 @@ fn ac_009_compiled_locale_catalog_rejects_missing_empty_duplicate_and_unreferenc
 
     let missing = ConsoleOperationRegistry::compile_with_locale_catalog(
         &settings_registry,
-        [registration.clone()],
+        [
+            applications_settings_access_operation(),
+            registration.clone(),
+        ],
         [],
         [],
     )
@@ -208,7 +214,10 @@ fn ac_009_compiled_locale_catalog_rejects_missing_empty_duplicate_and_unreferenc
     empty.texts[0].zh_hans.clear();
     let empty = ConsoleOperationRegistry::compile_with_locale_catalog(
         &settings_registry,
-        [registration.clone()],
+        [
+            applications_settings_access_operation(),
+            registration.clone(),
+        ],
         [],
         [empty],
     )
@@ -217,13 +226,16 @@ fn ac_009_compiled_locale_catalog_rejects_missing_empty_duplicate_and_unreferenc
 
     let mut duplicate = complete_locale_catalog();
     duplicate.texts.push(locale_text(
-        "console.operations.applications.create.label",
-        "Create application again",
-        "再次创建应用",
+        "settings.system.applications.label",
+        "Application management again",
+        "再次管理应用",
     ));
     let duplicate = ConsoleOperationRegistry::compile_with_locale_catalog(
         &settings_registry,
-        [registration.clone()],
+        [
+            applications_settings_access_operation(),
+            registration.clone(),
+        ],
         [],
         [duplicate],
     )
@@ -232,24 +244,26 @@ fn ac_009_compiled_locale_catalog_rejects_missing_empty_duplicate_and_unreferenc
 
     let mut unreferenced = complete_locale_catalog();
     unreferenced.texts.push(locale_text(
-        "console.operations.unused.label",
-        "Unused operation",
-        "未使用操作",
+        "console.unused.label",
+        "Unused text",
+        "未使用文案",
     ));
     let unreferenced = ConsoleOperationRegistry::compile_with_locale_catalog(
         &settings_registry,
-        [registration],
+        [applications_settings_access_operation(), registration],
         [],
         [unreferenced],
     )
     .expect_err("unreferenced locale text must fail registry compilation");
-    assert!(unreferenced
-        .to_string()
-        .contains("unreferenced locale reference"));
+    let message = unreferenced.to_string();
+    assert!(
+        message.contains("unreferenced locale reference"),
+        "{message}"
+    );
 }
 
 #[test]
-fn explicit_operation_claim_only_removes_its_route_from_legacy_feature_projection() {
+fn settings_feature_routes_require_explicit_single_interface_operations() {
     let mut feature = settings_feature(
         "system.files",
         "GET",
@@ -262,7 +276,7 @@ fn explicit_operation_claim_only_removes_its_route_from_legacy_feature_projectio
     let settings_registry =
         SettingsFeatureRegistry::compile([feature]).expect("settings fixture must compile");
 
-    let registry = ConsoleOperationRegistry::compile(
+    let error = ConsoleOperationRegistry::compile(
         &settings_registry,
         [operation(
             "file_storages.create",
@@ -272,31 +286,11 @@ fn explicit_operation_claim_only_removes_its_route_from_legacy_feature_projectio
         )],
         [],
     )
-    .expect("partial stable operation claim must compile");
-
-    let legacy = registry
-        .inventory()
-        .operations
-        .iter()
-        .find(|operation| operation.operation_id == "settings_feature.access.system.files")
-        .expect("unclaimed legacy route must remain projected");
-    assert_eq!(
-        legacy.routes,
-        vec![route("GET", "/api/console/settings/files/storages")]
-    );
-    assert_eq!(
-        registry
-            .access_for_console_route("POST", "/api/console/settings/files/storages")
-            .unwrap()
-            .operation_id,
-        "file_storages.create"
-    );
-    assert_eq!(
-        registry
-            .access_for_console_route("GET", "/api/console/settings/files/storages")
-            .unwrap()
-            .operation_id,
-        "settings_feature.access.system.files"
+    .expect_err("an unclaimed Settings API route must fail closed");
+    let message = error.to_string();
+    assert!(
+        message.contains("system.files") && message.contains("route"),
+        "{message}"
     );
 }
 
@@ -358,6 +352,7 @@ fn ac_001_core_and_host_extension_compile_one_operation_resource_route_inventory
     let registry = ConsoleOperationRegistry::compile(
         &settings_registry,
         [
+            applications_settings_access_operation(),
             operation(
                 "applications.publish",
                 ConsolePolicyGroup::SettingsFeature("system.applications".to_string()),
@@ -384,7 +379,7 @@ fn ac_001_core_and_host_extension_compile_one_operation_resource_route_inventory
         vec![
             "applications.publish",
             "file-security.scan",
-            "settings_feature.access.system.applications",
+            "settings.applications.view",
         ]
     );
     assert_eq!(registry.inventory().resources[0].identity_field, "id");
@@ -400,10 +395,7 @@ fn ac_001_core_and_host_extension_compile_one_operation_resource_route_inventory
     let settings_access = registry
         .access_for_console_route("GET", "/api/console/settings/applications")
         .expect("#1256 Settings API ownership must be projected, not copied");
-    assert_eq!(
-        settings_access.operation_id,
-        "settings_feature.access.system.applications"
-    );
+    assert_eq!(settings_access.operation_id, "settings.applications.view");
     assert_eq!(
         settings_access.policy_group,
         &ConsolePolicyGroup::SettingsFeature("system.applications".to_string())
@@ -416,6 +408,7 @@ fn ac_002_console_route_assembly_literal_specificity_resolves_before_parameter_r
     let registry = ConsoleOperationRegistry::compile(
         &settings_registry,
         [
+            applications_settings_access_operation(),
             operation(
                 "applications.read",
                 ConsolePolicyGroup::Other("other.general".to_string()),
@@ -458,6 +451,7 @@ fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_rout
     let duplicate_templates = ConsoleOperationRegistry::compile(
         &settings_registry,
         [
+            applications_settings_access_operation(),
             operation(
                 "applications.read",
                 ConsolePolicyGroup::Other("other.general".to_string()),
@@ -481,6 +475,7 @@ fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_rout
     let crossing_specificity = ConsoleOperationRegistry::compile(
         &settings_registry,
         [
+            applications_settings_access_operation(),
             operation(
                 "applications.read-catalog",
                 ConsolePolicyGroup::Other("other.general".to_string()),
@@ -503,12 +498,15 @@ fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_rout
 
     let dangling_feature = ConsoleOperationRegistry::compile(
         &settings_registry,
-        [operation(
-            "missing-feature.operation",
-            ConsolePolicyGroup::SettingsFeature("system.missing".to_string()),
-            ConsoleAuthorization::Simple,
-            vec![route("POST", "/api/console/missing-feature/run")],
-        )],
+        [
+            applications_settings_access_operation(),
+            operation(
+                "missing-feature.operation",
+                ConsolePolicyGroup::SettingsFeature("system.missing".to_string()),
+                ConsoleAuthorization::Simple,
+                vec![route("POST", "/api/console/missing-feature/run")],
+            ),
+        ],
         [],
     )
     .unwrap_err();
@@ -518,15 +516,18 @@ fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_rout
 
     let dangling_action = ConsoleOperationRegistry::compile(
         &settings_registry,
-        [operation(
-            "applications.update",
-            ConsolePolicyGroup::Other("other.general".to_string()),
-            ConsoleAuthorization::ResourceAction {
-                resource_code: "applications".to_string(),
-                action_code: "update".to_string(),
-            },
-            vec![route("PATCH", "/api/console/applications/{id}")],
-        )],
+        [
+            applications_settings_access_operation(),
+            operation(
+                "applications.update",
+                ConsolePolicyGroup::Other("other.general".to_string()),
+                ConsoleAuthorization::ResourceAction {
+                    resource_code: "applications".to_string(),
+                    action_code: "update".to_string(),
+                },
+                vec![route("PATCH", "/api/console/applications/{id}")],
+            ),
+        ],
         [],
     )
     .unwrap_err();
@@ -541,13 +542,22 @@ fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_rout
         vec![route("POST", "/api/console/inactive/run")],
     );
     inactive.lifecycle = SettingsFeatureLifecycle::Inactive;
-    let inactive_owner =
-        ConsoleOperationRegistry::compile(&settings_registry, [inactive], []).unwrap_err();
+    let inactive_owner = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [applications_settings_access_operation(), inactive],
+        [],
+    )
+    .unwrap_err();
     assert!(inactive_owner
         .to_string()
         .contains("inactive operation inactive.operation"));
 
-    let registry = ConsoleOperationRegistry::compile(&settings_registry, [], []).unwrap();
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [applications_settings_access_operation()],
+        [],
+    )
+    .unwrap();
     assert!(registry
         .access_for_console_route("GET", "/api/console/unregistered")
         .unwrap_err()
@@ -567,15 +577,18 @@ fn ac_002_console_route_assembly_fails_closed_for_ambiguous_or_unregistered_rout
 #[test]
 fn ac_002_console_route_assembly_rejects_duplicate_ownership() {
     let settings_registry = applications_settings_registry();
-    let registry = ConsoleOperationRegistry::compile(&settings_registry, [], []).unwrap();
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [applications_settings_access_operation()],
+        [],
+    )
+    .unwrap();
     let duplicate = registry
         .validate_console_route_coverage([
             assembled_route(
                 "GET",
                 "/api/console/settings/applications",
-                ConsoleRouteOwnership::ConsoleOperation(
-                    "settings_feature.access.system.applications".to_string(),
-                ),
+                ConsoleRouteOwnership::ConsoleOperation("settings.applications.view".to_string()),
             ),
             assembled_route(
                 "GET",
@@ -593,7 +606,12 @@ fn ac_002_console_route_assembly_rejects_duplicate_ownership() {
 #[test]
 fn ac_002_console_route_assembly_rejects_unmounted_compiled_route() {
     let settings_registry = applications_settings_registry();
-    let registry = ConsoleOperationRegistry::compile(&settings_registry, [], []).unwrap();
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [applications_settings_access_operation()],
+        [],
+    )
+    .unwrap();
     let unmounted = registry.validate_console_route_coverage([]).unwrap_err();
 
     assert!(unmounted
@@ -616,12 +634,20 @@ fn ac_003_other_to_settings_feature_changes_only_compiled_grouping() {
             "/api/console/applications/{application_id}/publish",
         )],
     );
-    let baseline = ConsoleOperationRegistry::compile(&settings_registry, [other.clone()], [])
-        .expect("Other registration must compile");
+    let baseline = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [applications_settings_access_operation(), other.clone()],
+        [],
+    )
+    .expect("Other registration must compile");
     let mut grouped = other;
     grouped.policy_group = ConsolePolicyGroup::SettingsFeature("system.applications".to_string());
-    let current = ConsoleOperationRegistry::compile(&settings_registry, [grouped], [])
-        .expect("SettingsFeature registration must compile");
+    let current = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [applications_settings_access_operation(), grouped],
+        [],
+    )
+    .expect("SettingsFeature registration must compile");
 
     let before = baseline
         .access_for_console_route(
@@ -655,6 +681,7 @@ fn ac_007_non_crud_simple_operation_and_authenticated_route_are_explicit() {
     let registry = ConsoleOperationRegistry::compile(
         &settings_registry,
         [
+            applications_settings_access_operation(),
             operation(
                 "applications.publish",
                 ConsolePolicyGroup::Other("other.general".to_string()),
@@ -692,4 +719,94 @@ fn ac_007_non_crud_simple_operation_and_authenticated_route_are_explicit() {
             .authorization,
         &ConsoleAuthorization::Authenticated
     );
+}
+
+#[test]
+fn ac_003_interface_metadata_rejects_missing_duplicate_blank_and_non_english_entries() {
+    let compile_registry = || {
+        let settings_registry = applications_settings_registry();
+        ConsoleOperationRegistry::compile(
+            &settings_registry,
+            [operation(
+                "settings.applications.view",
+                ConsolePolicyGroup::SettingsFeature("system.applications".to_string()),
+                ConsoleAuthorization::Simple,
+                vec![route("GET", "/api/console/settings/applications")],
+            )],
+            [],
+        )
+        .unwrap()
+    };
+
+    let missing = compile_registry()
+        .with_interface_metadata([])
+        .expect_err("every compiled Console route requires interface metadata");
+    assert!(missing.to_string().contains("missing interface metadata"));
+
+    let duplicate_id = compile_registry()
+        .with_interface_metadata([
+            interface(
+                "get_settings_applications",
+                "GET",
+                "/api/console/settings/applications",
+                "Get application settings",
+                "Get application settings in the system backend.",
+            ),
+            interface(
+                "get_settings_applications",
+                "GET",
+                "/api/console/settings/applications",
+                "Get application settings again",
+                "Get application settings again in the system backend.",
+            ),
+        ])
+        .expect_err("interface IDs must be unique");
+    assert!(duplicate_id.to_string().contains("duplicate interface_id"));
+
+    let duplicate_route = compile_registry()
+        .with_interface_metadata([
+            interface(
+                "get_settings_applications",
+                "GET",
+                "/api/console/settings/applications",
+                "Get application settings",
+                "Get application settings in the system backend.",
+            ),
+            interface(
+                "read_settings_applications",
+                "GET",
+                "/api/console/settings/applications",
+                "Read application settings",
+                "Read application settings in the system backend.",
+            ),
+        ])
+        .expect_err("each Console route has exactly one interface entry");
+    assert!(duplicate_route
+        .to_string()
+        .contains("duplicate interface metadata route"));
+
+    for (summary, description, expected) in [
+        ("", "Description", "interface summary must not be empty"),
+        (
+            "Get application settings",
+            "",
+            "interface description must not be empty",
+        ),
+        (
+            "获取应用设置",
+            "Description",
+            "metadata must be static English ASCII",
+        ),
+    ] {
+        let error = compile_registry()
+            .with_interface_metadata([interface(
+                "get_settings_applications",
+                "GET",
+                "/api/console/settings/applications",
+                summary,
+                description,
+            )])
+            .expect_err("invalid interface metadata must fail closed");
+        assert!(error.to_string().contains(expected), "{error}");
+    }
 }

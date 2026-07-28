@@ -85,7 +85,7 @@ fn ac_003_unknown_core_operation_metadata_fails_instead_of_becoming_other() {
 }
 
 #[test]
-fn ac_003_every_compiled_core_operation_has_declared_non_empty_i18n_metadata() {
+fn ac_003_every_console_route_is_owned_by_a_compiled_authorization_operation() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let registry =
@@ -110,27 +110,55 @@ fn ac_003_every_compiled_core_operation_has_declared_non_empty_i18n_metadata() {
         .map(|operation| operation.authorization_profile_id.as_str())
         .collect::<BTreeSet<_>>();
     assert_eq!(compiled_operation_ids, expected_operation_ids);
-    assert!(registry.inventory().operations.iter().all(|operation| {
-        !operation.label_ref.trim().is_empty()
-            && operation
-                .description_ref
-                .as_deref()
-                .is_some_and(|reference| !reference.trim().is_empty())
+}
+
+#[test]
+fn ac_003_005_all_console_routes_have_distinct_static_english_interface_metadata() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let assembly = migrated_core_console_route_assembly();
+    let registry =
+        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+
+    assert_eq!(
+        registry.inventory().interfaces.len(),
+        assembly.bindings().len(),
+        "every assembled /api/console route must have one interface metadata entry"
+    );
+    assert!(registry.inventory().interfaces.iter().all(|interface| {
+        !interface.summary.trim().is_empty()
+            && !interface.description.trim().is_empty()
+            && interface.summary.is_ascii()
+            && interface.description.is_ascii()
     }));
-    let label_refs = registry
+
+    let user_api_key_interfaces = registry
         .inventory()
-        .operations
+        .interfaces
         .iter()
-        .map(|operation| operation.label_ref.as_str())
-        .collect::<BTreeSet<_>>();
-    let description_refs = registry
-        .inventory()
-        .operations
-        .iter()
-        .filter_map(|operation| operation.description_ref.as_deref())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(label_refs.len(), expected_operation_ids.len());
-    assert_eq!(description_refs.len(), expected_operation_ids.len());
+        .filter(|interface| {
+            interface
+                .route
+                .path
+                .starts_with("/api/console/user-api-keys")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(user_api_key_interfaces.len(), 4);
+    assert_eq!(
+        user_api_key_interfaces
+            .iter()
+            .map(|interface| interface.summary.as_str())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        4
+    );
+    assert_eq!(
+        user_api_key_interfaces
+            .iter()
+            .map(|interface| interface.description.as_str())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        4
+    );
 }
 
 #[test]
@@ -147,20 +175,6 @@ fn ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_
 
     for locale in ["en_US", "zh_Hans"] {
         for operation in &registry.inventory().operations {
-            assert!(catalog
-                .text(locale, &operation.label_ref)
-                .is_some_and(|text| !text.trim().is_empty()));
-            let description_ref = operation
-                .description_ref
-                .as_deref()
-                .expect("Core operation descriptions are compiled");
-            assert!(catalog
-                .text(locale, description_ref)
-                .is_some_and(|text| !text.trim().is_empty()));
-            assert_ne!(
-                catalog.text(locale, &operation.label_ref),
-                Some(operation.operation_id.as_str())
-            );
             assert!(catalog
                 .policy_group_display(&operation.policy_group, locale)
                 .is_ok());
@@ -330,7 +344,7 @@ fn ac_002_009_operation_semantics_are_explicit_before_legacy_mapping() {
 }
 
 #[test]
-fn ac_013_role_console_policy_workers_have_explicit_metadata() {
+fn ac_013_role_console_policy_workers_have_explicit_interface_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let registry =
@@ -359,19 +373,24 @@ fn ac_013_role_console_policy_workers_have_explicit_metadata() {
             .iter()
             .find(|operation| operation.operation_id == operation_id)
             .expect("role console policy worker must be registered");
-        let expected_label = format!("console.operations.{operation_id}.label");
-        let expected_description = format!("console.operations.{operation_id}.description");
+        let interface = registry
+            .inventory()
+            .interfaces
+            .iter()
+            .find(|interface| {
+                interface.authorization_operation_id.as_deref() == Some(operation_id)
+                    && interface.route.method == method
+                    && interface.route.path == path
+            })
+            .expect("role console policy worker must have interface metadata");
 
         assert_eq!(
             operation.policy_group,
             ConsolePolicyGroup::SettingsFeature(SYSTEM_ROLES_SETTINGS_FEATURE_ID.to_string())
         );
         assert_eq!(operation.authorization, ConsoleAuthorization::Simple);
-        assert_eq!(operation.label_ref, expected_label);
-        assert_eq!(
-            operation.description_ref.as_deref(),
-            Some(expected_description.as_str())
-        );
+        assert!(!interface.summary.trim().is_empty());
+        assert!(!interface.description.trim().is_empty());
         assert!(operation
             .routes
             .iter()

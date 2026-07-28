@@ -20,28 +20,18 @@ macro_rules! text {
     };
 }
 
-mod applications_and_data;
 mod catalog;
-mod identity_and_roles;
-mod infrastructure_and_mcp;
-mod plugins_and_models;
 
 pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalogContribution {
-    let texts = [
-        applications_and_data::TEXTS,
-        catalog::TEXTS,
-        identity_and_roles::TEXTS,
-        infrastructure_and_mcp::TEXTS,
-        plugins_and_models::TEXTS,
-    ]
-    .into_iter()
-    .flat_map(|texts| texts.iter())
-    .map(|text| ConsoleLocaleText {
-        reference: text.reference.to_string(),
-        en_us: text.en_us.to_string(),
-        zh_hans: text.zh_hans.to_string(),
-    })
-    .collect();
+    let texts = [catalog::TEXTS]
+        .into_iter()
+        .flat_map(|texts| texts.iter())
+        .map(|text| ConsoleLocaleText {
+            reference: text.reference.to_string(),
+            en_us: text.en_us.to_string(),
+            zh_hans: text.zh_hans.to_string(),
+        })
+        .collect();
 
     ConsoleLocaleCatalogContribution {
         owner: ConsoleOperationOwner {

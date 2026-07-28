@@ -86,20 +86,16 @@ pub fn compile_core_console_operation_inventory_snapshot(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Core console operation inventory has no locale catalog"))?;
     let references = inventory
-        .operations
+        .resources
         .iter()
-        .flat_map(|operation| {
-            std::iter::once(operation.label_ref.as_str())
-                .chain(operation.description_ref.as_deref())
-        })
-        .chain(inventory.resources.iter().flat_map(|resource| {
+        .flat_map(|resource| {
             std::iter::once(resource.label_ref.as_str())
                 .chain(resource.description_ref.as_deref())
                 .chain(resource.actions.iter().flat_map(|action| {
                     std::iter::once(action.label_ref.as_str())
                         .chain(action.description_ref.as_deref())
                 }))
-        }))
+        })
         .collect::<BTreeSet<_>>();
     let locales = ["zh_Hans", "en_US"]
         .into_iter()

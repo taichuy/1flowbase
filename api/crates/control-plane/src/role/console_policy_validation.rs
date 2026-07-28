@@ -38,10 +38,10 @@ pub struct ConsolePolicyCatalogGroup {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsolePolicyCatalogOperation {
     pub operation_id: String,
-    pub label: String,
+    pub summary: String,
     pub description: String,
     pub order: i32,
-    pub routes: Vec<ConsoleRouteBinding>,
+    pub route: ConsoleRouteBinding,
     pub full_profile: ConsolePolicyCatalogFullProfile,
     pub allowed_row_scopes: Vec<ConsolePolicyCatalogOption>,
     pub authorization: ConsolePolicyAuthorization,

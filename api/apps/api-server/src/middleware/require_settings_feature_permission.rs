@@ -143,8 +143,6 @@ mod tests {
                     owner: owner.clone(),
                     lifecycle: SettingsFeatureLifecycle::Active,
                     policy_group: group.clone(),
-                    label_ref: "test.simple".to_string(),
-                    description_ref: None,
                     order: 1,
                     routes: vec![ConsoleRouteBinding {
                         method: "GET".to_string(),
@@ -158,8 +156,6 @@ mod tests {
                     owner: owner.clone(),
                     lifecycle: SettingsFeatureLifecycle::Active,
                     policy_group: group.clone(),
-                    label_ref: "test.row".to_string(),
-                    description_ref: None,
                     order: 2,
                     routes: vec![ConsoleRouteBinding {
                         method: "GET".to_string(),
@@ -176,8 +172,6 @@ mod tests {
                     owner,
                     lifecycle: SettingsFeatureLifecycle::Active,
                     policy_group: group,
-                    label_ref: "test.authenticated".to_string(),
-                    description_ref: None,
                     order: 3,
                     routes: vec![ConsoleRouteBinding {
                         method: "GET".to_string(),

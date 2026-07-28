@@ -5,13 +5,14 @@ use std::{
 };
 
 use access_control::{
-    ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
-    ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAssemblyBinding, ConsoleRouteBinding,
-    ConsoleRouteOwnership, ResourceAccessAction, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
-    SettingsFeatureRegistry, APPLICATIONS_CREATE_ACTION_CODE, APPLICATIONS_DELETE_ACTION_CODE,
-    APPLICATIONS_RESOURCE_CODE, APPLICATIONS_UPDATE_ACTION_CODE, APPLICATIONS_VIEW_ACTION_CODE,
-    DATA_SOURCES_VIEW_ACTION_CODE, DATA_SOURCE_INSTANCES_RESOURCE_CODE,
+    ConsoleAuthorization, ConsoleInterfaceRegistration, ConsoleOperationOwner,
+    ConsoleOperationRegistration, ConsoleOperationRegistry, ConsolePolicyGroup,
+    ConsoleRouteAssemblyBinding, ConsoleRouteBinding, ConsoleRouteOwnership, ResourceAccessAction,
+    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
+    SettingsFeatureOwnerKind, SettingsFeatureRegistry, APPLICATIONS_CREATE_ACTION_CODE,
+    APPLICATIONS_DELETE_ACTION_CODE, APPLICATIONS_RESOURCE_CODE, APPLICATIONS_UPDATE_ACTION_CODE,
+    APPLICATIONS_VIEW_ACTION_CODE, DATA_SOURCES_VIEW_ACTION_CODE,
+    DATA_SOURCE_INSTANCES_RESOURCE_CODE,
 };
 use axum::{
     handler::Handler,
@@ -442,6 +443,16 @@ fn core_openapi_operation_ids() -> anyhow::Result<BTreeMap<(String, String), Str
             "get_model_provider_icon",
         ),
         (
+            "POST",
+            "/api/console/frontstage/{}/pages/{}/tabs/{}/actions/dispatch",
+            "dispatch_frontstage_tab_action",
+        ),
+        (
+            "POST",
+            "/api/console/frontstage/{}/pages/{}/tabs/{}/queries/dispatch",
+            "dispatch_frontstage_tab_query",
+        ),
+        (
             "GET",
             "/api/console/settings/members/role-options",
             "list_member_role_options",
@@ -542,7 +553,7 @@ fn expand_core_interface_registrations(
     let mut missing = Vec::new();
     for registration in registrations {
         if registration.authorization == ConsoleAuthorization::Authenticated
-            || registration.routes.len() == 1
+            || registration.routes.len() <= 1
         {
             expanded.push(registration);
             continue;
@@ -574,6 +585,136 @@ fn expand_core_interface_registrations(
     Ok(expanded)
 }
 
+fn static_english_interface_summary(interface_id: &str) -> String {
+    const ACTIONS: &[&str] = &[
+        "get",
+        "list",
+        "create",
+        "update",
+        "replace",
+        "delete",
+        "patch",
+        "revoke",
+        "enable",
+        "disable",
+        "copy",
+        "move",
+        "export",
+        "import",
+        "preview",
+        "refresh",
+        "install",
+        "publish",
+        "unpublish",
+        "restore",
+        "start",
+        "cancel",
+        "complete",
+        "resume",
+        "resolve",
+        "search",
+        "save",
+        "test",
+        "discover",
+        "execute",
+        "clear",
+        "reveal",
+        "reset",
+        "upload",
+        "upsert",
+        "bind",
+        "check",
+        "subscribe",
+        "manage",
+        "view",
+    ];
+    let mut words = interface_id
+        .split(['.', '_', '-'])
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    if words.len() > 1
+        && !ACTIONS.contains(&words[0])
+        && words.last().is_some_and(|word| ACTIONS.contains(word))
+    {
+        let action = words.pop().expect("non-empty interface words");
+        words.insert(0, action);
+    }
+    let mut summary = words
+        .into_iter()
+        .map(|word| match word {
+            "api" => "API".to_string(),
+            "apis" => "APIs".to_string(),
+            "id" => "ID".to_string(),
+            "ids" => "IDs".to_string(),
+            "js" => "JS".to_string(),
+            "llm" => "LLM".to_string(),
+            "mcp" => "MCP".to_string(),
+            "ui" => "UI".to_string(),
+            "url" => "URL".to_string(),
+            _ => word.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if let Some(first) = summary.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    summary
+}
+
+fn compile_console_interface_metadata(
+    bindings: &[ConsoleRouteAssemblyBinding],
+    registry: &ConsoleOperationRegistry,
+) -> anyhow::Result<Vec<ConsoleInterfaceRegistration>> {
+    let openapi_ids = core_openapi_operation_ids()?;
+    let mut missing = Vec::new();
+    let mut interfaces = Vec::with_capacity(bindings.len());
+    for binding in bindings {
+        let operation = registry.inventory().operations.iter().find(|operation| {
+            operation.routes.iter().any(|route| {
+                route.method.eq_ignore_ascii_case(&binding.route.method)
+                    && route_templates_match(&route.path, &binding.route.path)
+            })
+        });
+        let interface_id = match operation {
+            Some(operation)
+                if !matches!(operation.authorization, ConsoleAuthorization::Authenticated) =>
+            {
+                operation.operation_id.clone()
+            }
+            Some(_) => {
+                let key = (
+                    binding.route.method.to_ascii_uppercase(),
+                    route_identity_shape(&binding.route.path),
+                );
+                let Some(interface_id) = openapi_ids.get(&key) else {
+                    missing.push(format!("{} {}", binding.route.method, binding.route.path));
+                    continue;
+                };
+                interface_id.clone()
+            }
+            None => {
+                missing.push(format!("{} {}", binding.route.method, binding.route.path));
+                continue;
+            }
+        };
+        let summary = static_english_interface_summary(&interface_id);
+        interfaces.push(ConsoleInterfaceRegistration {
+            interface_id,
+            route: binding.route.clone(),
+            description: format!("{summary} in the system backend."),
+            summary,
+        });
+    }
+    if !missing.is_empty() {
+        missing.sort();
+        anyhow::bail!(
+            "console routes have no static interface identity: {}",
+            missing.join(", ")
+        );
+    }
+    Ok(interfaces)
+}
+
 fn validate_explicit_operation_specs(
     bindings: &[ConsoleRouteAssemblyBinding],
     host_operation_ids: &BTreeSet<String>,
@@ -596,7 +737,7 @@ fn validate_explicit_operation_specs(
             && !projected_settings_feature_operations.contains(operation_id)
         {
             anyhow::bail!(
-                "no explicit Core or HostExtension operation specification for {operation_id}; register policy group, i18n refs, and authorization before mounting its route"
+                "no explicit Core or HostExtension operation specification for {operation_id}; register policy group and authorization before mounting its route"
             );
         }
     }
@@ -641,8 +782,6 @@ pub(crate) fn compile_migrated_console_operation_registry(
             owner: core_owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: policy_group_for_spec(spec),
-            label_ref: spec.label_ref.to_string(),
-            description_ref: Some(spec.description_ref.to_string()),
             order: order as i32,
             routes: routes_for_core_operation_spec(spec, bindings),
             authorization: authorization_for_spec(spec),
@@ -719,6 +858,8 @@ pub(crate) fn compile_migrated_console_operation_registry(
         resources,
         locale_contributions,
     )?;
+    let interfaces = compile_console_interface_metadata(bindings, &registry)?;
+    let registry = registry.with_interface_metadata(interfaces)?;
     let interface_bindings = bindings.iter().cloned().map(|mut binding| {
         if !matches!(binding.ownership, ConsoleRouteOwnership::Authenticated) {
             if let Some(operation) = registry.inventory().operations.iter().find(|operation| {

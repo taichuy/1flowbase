@@ -17,13 +17,6 @@ const FIXTURE_PATH = path.join(__dirname, 'fixtures', 'compiled-healthy.json');
 
 const LOCALE_SOURCE = {
   console: {
-    operations: {
-      core_authenticated: { label: '已登录' },
-      applications: {
-        view: { label: '查看应用', description: '查看当前空间应用' },
-        run: { label: '运行应用', description: '运行当前空间应用' },
-      },
-    },
     resources: {
       applications: {
         label: '应用',
@@ -58,6 +51,8 @@ function createFixtureRepo({ drift = false } = {}) {
   const current = structuredClone(baseline);
 
   if (drift) {
+    current.resources[0].actions[0].label_ref =
+      'console.resources.applications.actions.missing.label';
     current.operations = current.operations.filter(
       (operation) => operation.operation_id !== 'applications.view'
     );
@@ -76,8 +71,6 @@ function createFixtureRepo({ drift = false } = {}) {
       },
       lifecycle: 'active',
       policy_group: { Other: 'other.applications' },
-      label_ref: 'console.operations.applications.publish.label',
-      description_ref: 'console.operations.applications.publish.description',
       order: 200,
       routes: [{ method: 'POST', path: '/api/console/applications/:id/publish' }],
       authorization: { kind: 'simple' },
@@ -85,6 +78,13 @@ function createFixtureRepo({ drift = false } = {}) {
     current.route_assembly.push({
       route: { method: 'POST', path: '/api/console/applications/:application_id/publish' },
       ownership: { kind: 'console_operation', operation_id: 'applications.publish' },
+    });
+    current.interfaces.push({
+      interface_id: 'applications.publish',
+      route: { method: 'POST', path: '/api/console/applications/:id/publish' },
+      summary: 'Publish application',
+      description: 'Publish an application in the system backend.',
+      authorization_operation_id: 'applications.publish',
     });
     current.migration = {
       unknown_permissions: ['applications.publish.all'],

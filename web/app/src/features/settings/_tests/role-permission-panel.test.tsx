@@ -404,7 +404,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'applications.read',
-              label: '查询应用',
+              summary: 'List applications',
               description: '查看应用记录',
               order: 1,
               route: {
@@ -421,7 +421,7 @@ describe('RolePermissionPanel', () => {
             },
             {
               operation_id: 'applications.publish',
-              label: '发布应用',
+              summary: 'Publish application',
               description: null,
               order: 2,
               route: {
@@ -442,7 +442,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'audit.export',
-              label: '导出审计记录',
+              summary: 'Export audit records',
               description: null,
               order: 1,
               route: { method: 'GET', path: '/api/console/test' },
@@ -561,7 +561,9 @@ describe('RolePermissionPanel', () => {
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '详细配置 其他' }));
     const otherDrawer = await screen.findByRole('dialog');
-    expect(within(otherDrawer).getByText('导出审计记录')).toBeInTheDocument();
+    expect(
+      within(otherDrawer).getByText('Export audit records')
+    ).toBeInTheDocument();
 
     expect(
       screen.queryByRole('tab', { name: '基础通用' })
@@ -610,7 +612,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'applications.read',
-              label: '查询应用',
+              summary: 'List applications',
               description: null,
               order: 1,
               route: { method: 'GET', path: '/api/console/test' },
@@ -624,7 +626,7 @@ describe('RolePermissionPanel', () => {
             },
             {
               operation_id: 'applications.publish',
-              label: '发布应用',
+              summary: 'Publish application',
               description: null,
               order: 2,
               route: { method: 'GET', path: '/api/console/test' },
@@ -677,16 +679,18 @@ describe('RolePermissionPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '详细配置 应用管理' }));
     const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByText('查询应用')).toBeInTheDocument();
+    expect(within(drawer).getByText('List applications')).toBeInTheDocument();
     expect(
-      within(drawer).getByRole('switch', { name: '发布应用' })
+      within(drawer).getByRole('switch', { name: 'Publish application' })
     ).not.toBeChecked();
 
     fireEvent.mouseDown(
-      within(drawer).getByRole('combobox', { name: '查询应用 作用域' })
+      within(drawer).getByRole('combobox', { name: 'List applications 作用域' })
     );
     fireEvent.click((await screen.findAllByTitle('当前空间')).at(-1)!);
-    fireEvent.click(within(drawer).getByRole('switch', { name: '发布应用' }));
+    fireEvent.click(
+      within(drawer).getByRole('switch', { name: 'Publish application' })
+    );
     fireEvent.click(
       within(drawer).getByRole('button', { name: '保存权限配置' })
     );
@@ -748,7 +752,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'missing.read',
-              label: '查看缺失资源',
+              summary: 'View missing resource',
               description: '读取当前空间资源',
               order: 1,
               route: { method: 'GET', path: '/api/console/test' },
@@ -811,7 +815,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'full-profile.read',
-              label: '查询记录',
+              summary: 'List records',
               description: '',
               order: 1,
               route: { method: 'GET', path: '/api/console/test' },
@@ -825,7 +829,7 @@ describe('RolePermissionPanel', () => {
             },
             {
               operation_id: 'full-profile.publish',
-              label: '发布记录',
+              summary: 'Publish record',
               description: '',
               order: 2,
               route: { method: 'GET', path: '/api/console/test' },
@@ -862,11 +866,11 @@ describe('RolePermissionPanel', () => {
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('当前空间')).toBeInTheDocument();
     expect(
-      within(drawer).getByRole('switch', { name: '发布记录' })
+      within(drawer).getByRole('switch', { name: 'Publish record' })
     ).toBeChecked();
 
     fireEvent.mouseDown(
-      within(drawer).getByRole('combobox', { name: '查询记录 作用域' })
+      within(drawer).getByRole('combobox', { name: 'List records 作用域' })
     );
     fireEvent.click((await screen.findAllByTitle('仅自己')).at(-1)!);
     fireEvent.click(
@@ -914,7 +918,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'restore-full.publish',
-              label: '发布',
+              summary: 'Publish',
               description: '',
               order: 1,
               route: { method: 'GET', path: '/api/console/test' },
@@ -996,7 +1000,7 @@ describe('RolePermissionPanel', () => {
           operations: [
             {
               operation_id: 'limited-scope.read',
-              label: '读取受限记录',
+              summary: 'Read limited records',
               description: '',
               order: 1,
               route: { method: 'GET', path: '/api/console/test' },
@@ -1037,7 +1041,9 @@ describe('RolePermissionPanel', () => {
     const drawer = await screen.findByRole('dialog');
 
     fireEvent.mouseDown(
-      within(drawer).getByRole('combobox', { name: '读取受限记录 作用域' })
+      within(drawer).getByRole('combobox', {
+        name: 'Read limited records 作用域'
+      })
     );
     expect((await screen.findAllByTitle('目录关闭')).length).toBeGreaterThan(0);
     expect(
@@ -1306,7 +1312,7 @@ describe('RolePermissionPanel', () => {
               operations: [
                 {
                   operation_id: 'audit.export',
-                  label: isEnglish ? 'Export audit records' : '导出审计记录',
+                  summary: 'Export audit records',
                   description: null,
                   order: 1,
                   route: { method: 'GET', path: '/api/console/test' },
@@ -1372,7 +1378,9 @@ describe('RolePermissionPanel', () => {
     expect(await screen.findByText('其他设置')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '详细配置 其他设置' }));
     const chineseDrawer = await screen.findByRole('dialog');
-    expect(within(chineseDrawer).getByText('导出审计记录')).toBeInTheDocument();
+    expect(
+      within(chineseDrawer).getByText('Export audit records')
+    ).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
     expect(

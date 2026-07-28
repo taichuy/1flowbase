@@ -63,7 +63,7 @@ export interface ConsolePolicyCatalogRoute {
 
 export interface ConsolePolicyCatalogOperation {
   operation_id: string;
-  label: string;
+  summary: string;
   description: string;
   order: number;
   route: ConsolePolicyCatalogRoute;

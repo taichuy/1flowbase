@@ -2,9 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use access_control::{
     ConsoleAuthorization, ConsoleLocaleCatalog, ConsoleOperationCompiledInventory,
-    ConsoleOperationInventoryEntry, ConsolePolicyGroup as RegisteredConsolePolicyGroup,
-    ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
-    SYSTEM_ROLES_SETTINGS_FEATURE_ID,
+    ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessRegistration,
+    ResourceAccessScopeKind, SettingsFeatureLifecycle, SYSTEM_ROLES_SETTINGS_FEATURE_ID,
 };
 use anyhow::Result;
 use uuid::Uuid;
@@ -245,29 +244,26 @@ fn compiled_console_policy_operations(
     Ok(groups)
 }
 
-fn operation_text(
-    locale_catalog: &ConsoleLocaleCatalog,
-    operation: &ConsoleOperationInventoryEntry,
-    locale: &str,
-) -> Result<(String, String), ControlPlaneError> {
-    let label = localized_reference(locale_catalog, &operation.label_ref, locale)?;
-    let description = operation
-        .description_ref
-        .as_deref()
-        .map(|reference| localized_reference(locale_catalog, reference, locale))
-        .transpose()?
-        .ok_or(ControlPlaneError::InvalidInput(
-            "console_policy_description",
-        ))?;
-    Ok((label, description))
-}
-
 fn build_console_policy_catalog_for_locale(
     inventory: &ConsoleOperationCompiledInventory,
     locale_catalog: &ConsoleLocaleCatalog,
     locale: &str,
 ) -> Result<ConsolePolicyCatalog, ControlPlaneError> {
     let operation_index = compiled_console_policy_operations(inventory)?;
+    let mut interfaces_by_operation = BTreeMap::new();
+    for interface in &inventory.interfaces {
+        let Some(operation_id) = interface.authorization_operation_id.as_deref() else {
+            continue;
+        };
+        if interfaces_by_operation
+            .insert(operation_id, interface)
+            .is_some()
+        {
+            return Err(ControlPlaneError::InvalidInput(
+                "console_policy_interface_duplicate",
+            ));
+        }
+    }
     let group_strategy_options = locale_catalog
         .group_strategy_options(locale)
         .map_err(|_| ControlPlaneError::InvalidInput("console_policy_translation"))?
@@ -306,7 +302,9 @@ fn build_console_policy_catalog_for_locale(
                     && !matches!(operation.authorization, ConsoleAuthorization::Authenticated)
             })
             .map(|operation| {
-                let (label, description) = operation_text(locale_catalog, operation, locale)?;
+                let interface = interfaces_by_operation
+                    .get(operation.operation_id.as_str())
+                    .ok_or(ControlPlaneError::InvalidInput("console_policy_interface"))?;
                 let full_profile = operations
                     .get(&operation.operation_id)
                     .ok_or(ControlPlaneError::InvalidInput("console_policy_operation"))?;
@@ -332,10 +330,10 @@ fn build_console_policy_catalog_for_locale(
                     operation.operation_id.clone(),
                     ConsolePolicyCatalogOperation {
                         operation_id: operation.operation_id.clone(),
-                        label,
-                        description,
+                        summary: interface.summary.clone(),
+                        description: interface.description.clone(),
                         order: operation.order,
-                        routes: operation.routes.clone(),
+                        route: interface.route.clone(),
                         full_profile: full_profile.clone(),
                         allowed_row_scopes,
                         authorization,
