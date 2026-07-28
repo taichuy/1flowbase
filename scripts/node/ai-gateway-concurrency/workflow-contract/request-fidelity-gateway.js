@@ -77,7 +77,7 @@ function requestPair(vector, ready, upstreamBaseUrl) {
     gatewayHeaders: residual.headers,
     directBody: {
       ...common,
-      input: [{ role: 'user', content: PROMPT }],
+      input: PROMPT,
     },
     gatewayBody: { ...common, input: PROMPT },
   };
