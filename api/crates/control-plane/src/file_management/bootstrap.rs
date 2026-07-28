@@ -3,7 +3,7 @@ use domain::{DataModelScopeKind, FileTableScopeKind, ModelFieldKind, SYSTEM_SCOP
 use uuid::Uuid;
 
 use crate::{
-    file_management::attachments_template_fields,
+    file_management::{attachments_template_fields, ATTACHMENTS_DEFAULT_TITLE},
     ports::{
         AddModelFieldInput, CreateFileTableRegistrationInput, CreateModelDefinitionInput,
         CreateScopeDataModelGrantInput, FileManagementRepository, ModelDefinitionRepository,
@@ -277,7 +277,7 @@ where
                 grant_scope_kind: DataModelScopeKind::System,
                 grant_scope_id: SYSTEM_SCOPE_ID,
                 code: default_code.to_string(),
-                title: "Attachments".into(),
+                title: ATTACHMENTS_DEFAULT_TITLE.into(),
                 file_table_scope_kind: FileTableScopeKind::System,
                 file_table_scope_id: SYSTEM_SCOPE_ID,
                 bound_storage_id: default_storage_id,

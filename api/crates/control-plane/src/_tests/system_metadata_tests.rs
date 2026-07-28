@@ -1,15 +1,40 @@
 use control_plane::_tests::support::MemoryProvisioningRepository;
+use control_plane::file_management::file_metadata_title_references;
+use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{
-    AddModelFieldInput, CreateModelDefinitionInput, ModelDefinitionRepository,
+    AddModelFieldInput, CatalogResolutionCandidate, CatalogResolutionRepository,
+    CreateModelDefinitionInput, ModelDefinitionRepository,
 };
 use control_plane::system_metadata::{
-    role_metadata_template, user_metadata_template, SystemMetadataBootstrapService,
+    project_system_metadata_titles, role_metadata_template, system_metadata_title_references,
+    user_metadata_template, SystemMetadataBootstrapService, SYSTEM_METADATA_CATALOG_MODULE,
 };
 use domain::{
     DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
     ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
 };
 use uuid::Uuid;
+
+#[derive(Clone, Copy)]
+struct MetadataTranslationFixture {
+    provide_zh_hans: bool,
+}
+
+#[async_trait::async_trait]
+impl CatalogResolutionRepository for MetadataTranslationFixture {
+    async fn find_catalog_resolution_candidate(
+        &self,
+        _workspace_id: Uuid,
+        identity: &domain::CatalogMessageIdentity,
+        locale: &domain::CatalogLocale,
+    ) -> anyhow::Result<CatalogResolutionCandidate> {
+        Ok(CatalogResolutionCandidate {
+            root_override: None,
+            active_official: (self.provide_zh_hans && locale.as_str() == "zh_Hans")
+                .then(|| format!("zh:{}", identity.msgid())),
+        })
+    }
+}
 
 #[test]
 fn user_and_role_metadata_templates_match_system_table_contract() {
@@ -87,6 +112,104 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
     assert_eq!(sorted_role_codes, role_contract_codes);
 }
 
+#[test]
+fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
+    let references = system_metadata_title_references();
+    assert_eq!(references.len(), 36);
+    assert!(references
+        .iter()
+        .all(|reference| reference.module == SYSTEM_METADATA_CATALOG_MODULE));
+    assert_eq!(
+        references
+            .iter()
+            .map(|reference| (reference.model_code, reference.field_code, reference.msgid))
+            .collect::<Vec<_>>(),
+        vec![
+            ("users", None, "Users"),
+            ("users", Some("id"), "User ID"),
+            ("users", Some("created_by"), "Created By"),
+            ("users", Some("updated_by"), "Updated By"),
+            ("users", Some("account"), "Account"),
+            ("users", Some("email"), "Email"),
+            ("users", Some("phone"), "Phone"),
+            ("users", Some("name"), "Name"),
+            ("users", Some("nickname"), "Nickname"),
+            ("users", Some("avatar_url"), "Avatar"),
+            ("users", Some("introduction"), "Introduction"),
+            ("users", Some("preferred_locale"), "Preferred Language"),
+            ("users", Some("meta"), "Metadata"),
+            (
+                "users",
+                Some("default_display_role"),
+                "Default Display Role"
+            ),
+            ("users", Some("email_login_enabled"), "Email Login"),
+            ("users", Some("phone_login_enabled"), "Phone Login"),
+            ("users", Some("status"), "Status"),
+            ("users", Some("created_at"), "Created At"),
+            ("users", Some("updated_at"), "Updated At"),
+            ("roles", None, "Roles"),
+            ("roles", Some("id"), "Role ID"),
+            ("roles", Some("created_by"), "Created By"),
+            ("roles", Some("updated_by"), "Updated By"),
+            ("roles", Some("scope_id"), "Scope ID"),
+            ("roles", Some("scope_kind"), "Scope"),
+            ("roles", Some("workspace_id"), "Workspace ID"),
+            ("roles", Some("code"), "Role Code"),
+            ("roles", Some("name"), "Role Name"),
+            ("roles", Some("introduction"), "Introduction"),
+            ("roles", Some("is_builtin"), "Builtin Role"),
+            ("roles", Some("is_editable"), "Editable"),
+            (
+                "roles",
+                Some("auto_grant_new_permissions"),
+                "Automatically Grant New Permissions",
+            ),
+            (
+                "roles",
+                Some("is_default_member_role"),
+                "Default Member Role"
+            ),
+            ("roles", Some("system_kind"), "System Role Type"),
+            ("roles", Some("created_at"), "Created At"),
+            ("roles", Some("updated_at"), "Updated At"),
+        ]
+    );
+}
+
+#[test]
+fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_46_refs() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/metadata_i18n_consumers.json")).unwrap();
+    let expected = fixture.as_array().unwrap();
+    let actual = system_metadata_title_references()
+        .into_iter()
+        .map(|reference| {
+            serde_json::json!({
+                "module": reference.module,
+                "msgid": reference.msgid,
+                "resource": reference.model_code,
+                "field": reference.field_code,
+            })
+        })
+        .chain(
+            file_metadata_title_references()
+                .into_iter()
+                .map(|reference| {
+                    serde_json::json!({
+                        "module": reference.module,
+                        "msgid": reference.msgid,
+                        "resource": reference.resource_code,
+                        "field": reference.field_code,
+                    })
+                }),
+        )
+        .collect::<Vec<_>>();
+
+    assert_eq!(actual.len(), 46);
+    assert_eq!(&actual, expected);
+}
+
 #[tokio::test]
 async fn bootstrap_creates_builtin_user_and_role_models_once() {
     let repository = MemoryProvisioningRepository::default();
@@ -119,8 +242,8 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
         .expect("roles metadata model should exist");
 
     assert_eq!(models.len(), 2);
-    assert_eq!(users.title, "用户");
-    assert_eq!(roles.title, "角色");
+    assert_eq!(users.title, "Users");
+    assert_eq!(roles.title, "Roles");
     assert_eq!(users.scope_kind, DataModelScopeKind::System);
     assert_eq!(users.scope_id, SYSTEM_SCOPE_ID);
     assert_eq!(users.source_kind, DataModelSourceKind::MainSource);
@@ -255,6 +378,7 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
     assert!(user_field_codes.contains(&"created_at"));
     assert!(user_field_codes.contains(&"custom_note"));
     assert_eq!(repaired_users.physical_table_name, "users");
+    assert_eq!(repaired_users.title, "用户");
     assert_eq!(
         repaired_users.protection.owner_kind,
         domain::DataModelOwnerKind::Core
@@ -303,4 +427,85 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
     assert!(grants
         .iter()
         .any(|grant| grant.data_model_id == partial_users.id));
+}
+
+#[tokio::test]
+async fn ac_012_013_system_metadata_projection_localizes_defaults_and_preserves_custom_titles() {
+    let repository = MemoryProvisioningRepository::default();
+    let mut users = SystemMetadataBootstrapService::new(repository)
+        .ensure_builtin_user_and_role_models(Uuid::now_v7())
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|model| model.code == "users")
+        .expect("users metadata model should exist");
+    users.title.clear();
+    users
+        .fields
+        .iter_mut()
+        .find(|field| field.code == "account")
+        .expect("account field")
+        .title = "Administrator Account Label".into();
+
+    let workspace_id = Uuid::now_v7();
+    let zh_hans = domain::CatalogLocale::new("zh_Hans").unwrap();
+    project_system_metadata_titles(
+        &CatalogResolver::new(
+            MetadataTranslationFixture {
+                provide_zh_hans: true,
+            },
+            workspace_id,
+        ),
+        workspace_id,
+        &zh_hans,
+        &mut users,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(users.title, "zh:Users");
+    assert_eq!(
+        users
+            .fields
+            .iter()
+            .find(|field| field.code == "email")
+            .unwrap()
+            .title,
+        "zh:Email"
+    );
+    assert_eq!(
+        users
+            .fields
+            .iter()
+            .find(|field| field.code == "account")
+            .unwrap()
+            .title,
+        "Administrator Account Label"
+    );
+
+    let roles = role_metadata_template();
+    let mut role_record =
+        SystemMetadataBootstrapService::new(MemoryProvisioningRepository::default())
+            .ensure_builtin_user_and_role_models(Uuid::now_v7())
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|model| model.code == roles.code)
+            .unwrap();
+    role_record.title = roles.title.into();
+    let en_us = domain::CatalogLocale::new("en_US").unwrap();
+    project_system_metadata_titles(
+        &CatalogResolver::new(
+            MetadataTranslationFixture {
+                provide_zh_hans: false,
+            },
+            workspace_id,
+        ),
+        workspace_id,
+        &en_us,
+        &mut role_record,
+    )
+    .await
+    .unwrap();
+    assert_eq!(role_record.title, "Roles");
 }

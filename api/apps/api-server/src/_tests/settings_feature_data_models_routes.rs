@@ -1,17 +1,88 @@
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_legacy_permissions_only, replace_role_permissions, seed_workspace,
-    test_app_with_database_url,
+    test_api_state_with_database_url, test_app_with_database_url, test_config,
 };
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation};
 use serde_json::Value;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 const DATA_MODELS_FEATURE_PERMISSION: &str = "settings_feature.access.system.data-models";
+
+#[tokio::test]
+async fn ac_012_013_model_definition_dto_localizes_existing_title_fields_server_side() {
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let workspace_id = state.bootstrap_workspace_id;
+    let catalog_state =
+        I18nCatalogRepository::bootstrap_workspace_catalog_state(&state.store, workspace_id)
+            .await
+            .unwrap();
+    I18nCatalogRepository::upsert_catalog_override(
+        &state.store,
+        &UpsertCatalogTranslationInput {
+            workspace_id,
+            value: CatalogTranslation::new(
+                CatalogMessageIdentity::new(
+                    CatalogModuleId::new("@taichuy/platform/system-metadata").unwrap(),
+                    "Users",
+                )
+                .unwrap(),
+                CatalogLocale::new("zh_Hans").unwrap(),
+                "用户",
+            )
+            .unwrap(),
+            expected_revision: catalog_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    sqlx::query(
+        "update model_fields set title = 'Administrator Account Label' where data_model_id = (select id from model_definitions where code = 'users' and scope_kind = 'system') and code = 'account'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/data-models/model-definitions")
+                .header("cookie", root_cookie)
+                .header("x-1flowbase-locale", "zh-Hans")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    let users = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["code"] == "users")
+        .unwrap();
+    assert_eq!(users["title"], "用户");
+    assert!(users.get("localized_title").is_none());
+    let account = users["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|field| field["code"] == "account")
+        .unwrap();
+    assert_eq!(account["title"], "Administrator Account Label");
+    assert!(account.get("localized_title").is_none());
+}
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()

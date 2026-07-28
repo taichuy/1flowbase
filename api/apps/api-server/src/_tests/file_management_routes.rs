@@ -1,17 +1,72 @@
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
-    replace_role_legacy_permissions_only, replace_role_permissions, seed_workspace, test_app,
-    test_app_with_database_url,
+    replace_role_legacy_permissions_only, replace_role_permissions, seed_workspace,
+    test_api_state_with_database_url, test_app, test_app_with_database_url, test_config,
 };
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 const FILES_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
+
+#[tokio::test]
+async fn ac_012_file_table_dto_localizes_existing_title_field_server_side() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let workspace_id = state.bootstrap_workspace_id;
+    let catalog_state =
+        I18nCatalogRepository::bootstrap_workspace_catalog_state(&state.store, workspace_id)
+            .await
+            .unwrap();
+    I18nCatalogRepository::upsert_catalog_override(
+        &state.store,
+        &UpsertCatalogTranslationInput {
+            workspace_id,
+            value: CatalogTranslation::new(
+                CatalogMessageIdentity::new(
+                    CatalogModuleId::new("@taichuy/platform/file-management").unwrap(),
+                    "Attachments",
+                )
+                .unwrap(),
+                CatalogLocale::new("zh_Hans").unwrap(),
+                "附件",
+            )
+            .unwrap(),
+            expected_revision: catalog_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/files/tables")
+                .header("cookie", root_cookie)
+                .header("x-1flowbase-locale", "zh_Hans")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    let attachments = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|table| table["is_builtin"] == true && table["is_default"] == true)
+        .unwrap();
+    assert_eq!(attachments["title"], "附件");
+    assert!(attachments.get("localized_title").is_none());
+}
 
 fn build_file_upload_body(
     boundary: &str,
