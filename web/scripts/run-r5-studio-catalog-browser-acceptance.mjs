@@ -132,34 +132,10 @@ async function verifyFixture(browserInstance, fixture) {
     await waitForAttribute(page, 'data-compiler-status', 'failed');
     await page.getByText(/Import source 'dayjs' is not allowed\./u).waitFor();
 
-    await page.getByRole('button', { name: 'Add Block' }).click();
-    const drawer = page.getByRole('dialog', { name: '新增区块' });
-    await drawer.waitFor();
-    const drawerBox = await drawer.boundingBox();
-    if (!drawerBox || drawerBox.width > fixture.viewport.width + 1) {
-      throw new Error(
-        `${fixture.name} Catalog Drawer exceeds viewport: ${JSON.stringify(drawerBox)}`
-      );
-    }
     await page.screenshot({
       path: resolve(output, `r5-${fixture.name}.png`),
       fullPage: true
     });
-    const reportRow = drawer
-      .locator('.ant-list-item')
-      .filter({ hasText: 'Third-party report' });
-    await reportRow.getByRole('button', { name: '选择' }).click();
-    await waitForAttribute(
-      page,
-      'data-selected-entry',
-      'third-party-installation:report-block'
-    );
-    assertAttribute(
-      fixture.name,
-      'selected Catalog template',
-      await stats.getAttribute('data-selected-template'),
-      'selected'
-    );
 
     assertNetworkAndConsole(
       fixture.name,
@@ -173,10 +149,7 @@ async function verifyFixture(browserInstance, fixture) {
       compilerApproved: 'passed',
       compilerDenied: 'failed',
       deniedLocation: { line: 1, column: 1 },
-      selectedEntry: await stats.getAttribute('data-selected-entry'),
-      selectedTemplate: await stats.getAttribute('data-selected-template'),
       runtimeConsoleCaptured: true,
-      drawerWidth: drawerBox.width,
       externalRequests: externalRequests.length,
       httpErrors,
       failedRequests,

@@ -1,7 +1,6 @@
 {
   "auto": {
     "actions": "Actions",
-    "add_block": "Add new block",
     "add_block_button": "+ Create block",
     "add_group": "Add new group",
     "add_menu": "Add menu",
@@ -249,7 +248,6 @@
     "save_as_template_unavailable": "Save as template is not available yet",
     "saving": "Saving",
     "schema_validation_options": "Schema validation options",
-    "select": "Choose",
     "select_interface": "Search and select an interface",
     "select_block": "Please select a block",
     "select_block_for_configuration": "Please select a block to view the configuration.",
