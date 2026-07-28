@@ -838,7 +838,7 @@ fn compile_i18n_text_ref(binding: &Value) -> Result<CompiledI18nTextRef> {
         .as_str()
         .ok_or_else(|| anyhow!("i18n_text module must be a string"))?;
     if !is_canonical_i18n_module(module) {
-        bail!("i18n_text module must use canonical @org/path syntax");
+        bail!("i18n_text module must use canonical @org/group/module syntax");
     }
 
     let key = value["key"]
@@ -862,7 +862,7 @@ fn is_canonical_i18n_module(module: &str) -> bool {
     }
 
     let path = segments.collect::<Vec<_>>();
-    !path.is_empty()
+    path.len() >= 2
         && path
             .iter()
             .all(|segment| is_canonical_i18n_module_segment(segment))
@@ -874,7 +874,7 @@ fn is_canonical_i18n_module_segment(segment: &str) -> bool {
         && characters.all(|character| {
             character.is_ascii_lowercase()
                 || character.is_ascii_digit()
-                || matches!(character, '_' | '-')
+                || matches!(character, '.' | '_' | '-')
         })
 }
 

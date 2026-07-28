@@ -389,14 +389,14 @@ export type I18nTextRefValidationResult =
 function isCanonicalI18nModule(module: string): boolean {
   const segments = module.split('/');
 
-  if (segments.length < 2 || !segments[0]?.startsWith('@')) {
+  if (segments.length < 3 || !segments[0]?.startsWith('@')) {
     return false;
   }
 
   return segments.every((segment, index) => {
     const candidate = index === 0 ? segment.slice(1) : segment;
 
-    return candidate.length > 0 && /^[a-z0-9][a-z0-9_-]*$/.test(candidate);
+    return candidate.length > 0 && /^[a-z0-9][a-z0-9._-]*$/.test(candidate);
   });
 }
 

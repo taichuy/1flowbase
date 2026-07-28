@@ -5,10 +5,28 @@ use crate::i18n_catalog::*;
 #[test]
 fn seed_contract_types_reject_noncanonical_identifiers_and_digests() {
     assert!(CatalogModuleId::new("console/settings").is_err());
-    assert!(CatalogModuleId::new("@1flowbase/console/settings").is_ok());
     assert!(CatalogDigest::new(format!("sha256:{}", "a".repeat(64))).is_ok());
     assert!(CatalogDigest::new(format!("sha256:{}", "A".repeat(64))).is_err());
     assert!(CatalogLocale::new("zh-cn").is_err());
+}
+
+#[test]
+fn catalog_module_id_matches_the_shared_canonical_identity_fixture() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/i18n-module-identity.json")).unwrap();
+
+    for module in fixture["valid"].as_array().unwrap() {
+        let module = module.as_str().unwrap();
+        assert_eq!(CatalogModuleId::new(module).unwrap().as_str(), module);
+    }
+    for module in fixture["invalid"].as_array().unwrap() {
+        let module = module.as_str().unwrap();
+        assert_eq!(
+            CatalogModuleId::new(module).unwrap_err(),
+            I18nCatalogInvariantError::InvalidModuleId,
+            "{module} must be rejected"
+        );
+    }
 }
 
 #[test]

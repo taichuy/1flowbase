@@ -4,6 +4,54 @@ fn set_start_i18n_binding(document: &mut Value, binding_key: &str, binding: Valu
     document["graph"]["nodes"][0]["bindings"][binding_key] = binding;
 }
 
+fn shared_i18n_module_identity_fixture() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../../domain/src/_tests/fixtures/i18n-module-identity.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn compiler_matches_the_shared_canonical_i18n_module_identity_fixture() {
+    let fixture = shared_i18n_module_identity_fixture();
+
+    for module in fixture["valid"].as_array().unwrap() {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        set_start_i18n_binding(
+            &mut document,
+            "message",
+            json!({
+                "kind": "i18n_text",
+                "value": { "module": module, "key": "Continue" }
+            }),
+        );
+
+        FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+            .expect("canonical module identity should compile");
+    }
+
+    for module in fixture["invalid"].as_array().unwrap() {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        set_start_i18n_binding(
+            &mut document,
+            "message",
+            json!({
+                "kind": "i18n_text",
+                "value": { "module": module, "key": "Continue" }
+            }),
+        );
+
+        let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+            .expect_err("noncanonical module identity should be rejected");
+        assert!(
+            format!("{error:#}").contains("canonical @org/group/module syntax"),
+            "fixture {module} failed with an unrelated error: {error}"
+        );
+    }
+}
+
 #[test]
 fn compile_and_runtime_roundtrip_typed_i18n_text_without_execution() {
     let flow_id = Uuid::now_v7();
@@ -61,19 +109,17 @@ fn compile_and_runtime_roundtrip_typed_i18n_text_without_execution() {
 fn compile_rejects_invalid_i18n_text_shapes_and_non_plain_keys() {
     let invalid_bindings = [
         json!({ "kind": "i18n_text", "value": { "key": "Welcome" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome", "extra": true } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome" }, "extra": true }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "Welcome", "extra": true } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "Welcome" }, "extra": true }),
         json!({ "kind": "i18n_text", "value": "Welcome" }),
         json!({ "kind": "i18n_text", "value": { "module": 7, "key": "Welcome" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": 7 } }),
-        json!({ "kind": "i18n_text", "value": { "module": "org/messages", "key": "Welcome" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@Org/messages", "key": "Welcome" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "   " } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "<strong>Welcome</strong>" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "javascript:alert(1)" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome {{node-start.query}}" } }),
-        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome {user.name}" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": 7 } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "   " } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "<strong>Welcome</strong>" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "javascript:alert(1)" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "Welcome {{node-start.query}}" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/group/messages", "key": "Welcome {user.name}" } }),
     ];
 
     for (index, binding) in invalid_bindings.into_iter().enumerate() {
