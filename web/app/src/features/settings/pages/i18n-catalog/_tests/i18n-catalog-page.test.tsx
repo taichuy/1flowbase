@@ -153,10 +153,10 @@ describe('I18nCatalogPage batch fixtures', () => {
     fireEvent.change(screen.getByPlaceholderText('翻译模块'), {
       target: { value: '@1flowbase/common' }
     });
-    fireEvent.mouseDown(screen.getByText('翻译语言'));
-    fireEvent.click(await screen.findByText('zh_Hans'));
-    fireEvent.mouseDown(screen.getByText('值来源'));
-    fireEvent.click(await screen.findByText('官方覆盖值'));
+    fireEvent.mouseDown(screen.getByTestId('i18n-catalog-locale-filter'));
+    fireEvent.click(await screen.findByRole('option', { name: 'zh_Hans' }));
+    fireEvent.mouseDown(screen.getByTestId('i18n-catalog-origin-filter'));
+    fireEvent.click(await screen.findByRole('option', { name: '官方覆盖值' }));
     fireEvent.click(screen.getByRole('button', { name: '应用翻译筛选' }));
 
     await waitFor(() =>
@@ -177,9 +177,13 @@ describe('I18nCatalogPage batch fixtures', () => {
 
   test('AC-008 opens all source layers and saves with the selected entry revision', async () => {
     renderPage();
-    fireEvent.click((await screen.findAllByText('系统设置'))[0]);
+    const desktopTable = await screen.findByTestId(
+      'i18n-catalog-desktop-table'
+    );
+    fireEvent.click(within(desktopTable).getByText('系统设置'));
 
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    await within(drawer).findByLabelText('覆盖翻译');
     expect(within(drawer).getByText('设置')).toBeInTheDocument();
     fireEvent.change(within(drawer).getByLabelText('覆盖翻译'), {
       target: { value: '新设置' }
@@ -205,8 +209,12 @@ describe('I18nCatalogPage batch fixtures', () => {
       new ApiClientError({ status: 409, message: 'revision conflict' })
     );
     renderPage();
-    fireEvent.click((await screen.findAllByText('系统设置'))[0]);
+    const desktopTable = await screen.findByTestId(
+      'i18n-catalog-desktop-table'
+    );
+    fireEvent.click(within(desktopTable).getByText('系统设置'));
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    await within(drawer).findByLabelText('覆盖翻译');
     fireEvent.click(within(drawer).getByRole('button', { name: '保存翻译' }));
 
     expect(
@@ -239,10 +247,13 @@ describe('I18nCatalogPage batch fixtures', () => {
       ).toHaveBeenCalledWith({ expected_revision: 8 }, 'csrf-123')
     );
 
-    fireEvent.click((await screen.findAllByText('欢迎'))[0]);
+    const desktopTable = screen.getByTestId('i18n-catalog-desktop-table');
+    fireEvent.click(within(desktopTable).getByText('欢迎'));
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
     fireEvent.click(
-      within(drawer).getByRole('button', { name: '删除自定义翻译键' })
+      await within(drawer).findByRole('button', {
+        name: '删除自定义翻译键'
+      })
     );
     expect(
       await screen.findByTestId('i18n-catalog-delete-confirmation')

@@ -54,7 +54,12 @@ function NamedBindingsFocusHarness() {
 describe('NodeInspector core', () => {
   test('AC-012/013 renders backend-projected i18n_text as inert text and falls back to the typed English key', () => {
     const translatedState = createInitialState();
-    const answerNode = createNodeDocument('answer', 'node-answer', 720, 240);
+    const answerNode = createNodeDocument(
+      'answer',
+      'node-answer-i18n',
+      720,
+      240
+    );
     answerNode.bindings.answer_template = {
       kind: 'i18n_text',
       value: {
@@ -73,7 +78,7 @@ describe('NodeInspector core', () => {
 
     const { unmount } = renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={translatedState}>
-        <SelectionSeed nodeId="node-answer" />
+        <SelectionSeed nodeId="node-answer-i18n" />
         <NodeConfigTab />
       </AgentFlowEditorStoreProvider>
     );
@@ -86,13 +91,18 @@ describe('NodeInspector core', () => {
     unmount();
 
     const fallbackState = createInitialState();
-    const fallbackNode = createNodeDocument('answer', 'node-answer', 720, 240);
+    const fallbackNode = createNodeDocument(
+      'answer',
+      'node-answer-i18n-fallback',
+      720,
+      240
+    );
     fallbackNode.bindings.answer_template = answerNode.bindings.answer_template;
     fallbackState.draft.document.graph.nodes.push(fallbackNode);
 
     renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={fallbackState}>
-        <SelectionSeed nodeId="node-answer" />
+        <SelectionSeed nodeId="node-answer-i18n-fallback" />
         <NodeConfigTab />
       </AgentFlowEditorStoreProvider>
     );
