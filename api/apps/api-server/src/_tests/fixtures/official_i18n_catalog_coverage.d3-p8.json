@@ -1,0 +1,30 @@
+{
+  "packet": "D3-P8",
+  "catalog_version": "1.1.0",
+  "semantic_sha256": "sha256:d89b23226d7d2bfb2b1f4e095a47b826d50884845012e735861f7be9012a1958",
+  "official_commit": "f0ac7987cbf0b731c106282a62cf9f82070bcb55",
+  "expected": {
+    "catalog_modules": 11,
+    "catalog_identities": 629,
+    "frozen_identities": 627,
+    "p3_identities": 508,
+    "p4_identities": 68,
+    "p5_consumers": 46,
+    "p5_identities": 41,
+    "p6_consumers": 18,
+    "p6_identities": 10
+  },
+  "p7_references": [
+    {
+      "module": "@taichuy/platform/common",
+      "msgid": "Cancel",
+      "classification": "official_demonstration"
+    },
+    {
+      "module": "@taichuy/platform/common",
+      "msgid": "Missing English",
+      "classification": "custom_fallback_not_official"
+    }
+  ],
+  "p7_source": "api/apps/api-server/src/_tests/application/application_orchestration_routes.rs"
+}

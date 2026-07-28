@@ -1,7 +1,31 @@
 {
   "manifest": {
-    "catalog_version": "1.0.0",
+    "catalog_version": "1.1.0",
     "files": [
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/applications",
+        "path": "i18n/@taichuy/platform/applications/en_US.json",
+        "sha256": "sha256:084dcd50f887ea3a23fdd224225940682d21bbae085ca4b425d3e7895df9b227"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/applications",
+        "path": "i18n/@taichuy/platform/applications/zh_Hans.json",
+        "sha256": "sha256:0bb3a6b0ab386fc876b89fa6339f9a5d17c54502357cd52923a206a73bc89b8f"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/authentication",
+        "path": "i18n/@taichuy/platform/authentication/en_US.json",
+        "sha256": "sha256:6221cbc8976cb886107a1fdc479b89beaef318c658ae36fe4e22c13ecf156afa"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/authentication",
+        "path": "i18n/@taichuy/platform/authentication/zh_Hans.json",
+        "sha256": "sha256:12e94bc36a0d6fc877c10f24f3f5344952643e4730a372d734256d38cedeaa19"
+      },
       {
         "locale": "en_US",
         "module": "@taichuy/platform/common",
@@ -13,6 +37,102 @@
         "module": "@taichuy/platform/common",
         "path": "i18n/@taichuy/platform/common/zh_Hans.json",
         "sha256": "sha256:985a144b1612a38734c5f69d13faea93dc8da2bc6acb72b0e80fa049f5ebb43a"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/console/interfaces",
+        "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
+        "sha256": "sha256:dab649f2cbb9c987c423cdf94b8e688202b8a148d9ffb7112e0889ff398044fe"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/console/interfaces",
+        "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
+        "sha256": "sha256:9c9526cddab0f4916d72a1e7895eb0d9d7f63ecf881967c41f89ecc6e57a6bbf"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/console/settings",
+        "path": "i18n/@taichuy/platform/console/settings/en_US.json",
+        "sha256": "sha256:5f64e6ed8f07f520c4810f9c38ea3b76f9066e735201ee42521d3bfa868d1c44"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/console/settings",
+        "path": "i18n/@taichuy/platform/console/settings/zh_Hans.json",
+        "sha256": "sha256:30192715efc2e209302e8c8d1f8a91932ec8f6dc8e1f124f109a8bf3f8b7e405"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/console/settings/policy",
+        "path": "i18n/@taichuy/platform/console/settings/policy/en_US.json",
+        "sha256": "sha256:c3ae4e3182ca1e2bb0cfdbd48a5efa4c0c3b651421705618e54e999d82c3cde4"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/console/settings/policy",
+        "path": "i18n/@taichuy/platform/console/settings/policy/zh_Hans.json",
+        "sha256": "sha256:e57e78d00607baee784aeb6d29c4c1271eed9098e018265dd277443fc2008027"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/console/settings/resources",
+        "path": "i18n/@taichuy/platform/console/settings/resources/en_US.json",
+        "sha256": "sha256:f752b810b5d83c03ac3e8b94430df2132d056de67c7e5ffe9fe36548a6011f47"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/console/settings/resources",
+        "path": "i18n/@taichuy/platform/console/settings/resources/zh_Hans.json",
+        "sha256": "sha256:b7c5b4210127515950030879b0f931cfa33fac38fb6aaf89c90112a89dae8401"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/file-management",
+        "path": "i18n/@taichuy/platform/file-management/en_US.json",
+        "sha256": "sha256:95fcb64d1e95a96f0f6d4b7863ff777674f20e8c4c34c42a9a9f4783b25ccd2e"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/file-management",
+        "path": "i18n/@taichuy/platform/file-management/zh_Hans.json",
+        "sha256": "sha256:5cd5d236002209c042608f03ad09ed34d5ec084eef3fddcf5af6e4d02b4fc1d9"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/frontstage",
+        "path": "i18n/@taichuy/platform/frontstage/en_US.json",
+        "sha256": "sha256:85c535b40a968645767ecbd38441cf0f0f1477edda6c2dff6d3a81433e1a65e9"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/frontstage",
+        "path": "i18n/@taichuy/platform/frontstage/zh_Hans.json",
+        "sha256": "sha256:96729380a67cf0f2a58e642c4bada6e2fb5da9e63547c3c3bf15f76accf802ad"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/official-sources",
+        "path": "i18n/@taichuy/platform/official-sources/en_US.json",
+        "sha256": "sha256:ebd0f2d1bcb4ce77fb417ee44683edc619f7ee4f16c27518e9574859b728f994"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/official-sources",
+        "path": "i18n/@taichuy/platform/official-sources/zh_Hans.json",
+        "sha256": "sha256:1397e3f42685c87d88b09b445fc717d39106ff5b2ddf128e7ff046590e869a55"
+      },
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/system-metadata",
+        "path": "i18n/@taichuy/platform/system-metadata/en_US.json",
+        "sha256": "sha256:ad7f51bcc7aab4dc433b6c066dd77567bf90d2213e08d3fe4a4c92882d1a9143"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/system-metadata",
+        "path": "i18n/@taichuy/platform/system-metadata/zh_Hans.json",
+        "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
     "generated_at": "2026-07-28T00:00:00.000Z",
@@ -21,13 +141,75 @@
       "zh_Hans"
     ],
     "modules": [
-      "@taichuy/platform/common"
+      "@taichuy/platform/applications",
+      "@taichuy/platform/authentication",
+      "@taichuy/platform/common",
+      "@taichuy/platform/console/interfaces",
+      "@taichuy/platform/console/settings",
+      "@taichuy/platform/console/settings/policy",
+      "@taichuy/platform/console/settings/resources",
+      "@taichuy/platform/file-management",
+      "@taichuy/platform/frontstage",
+      "@taichuy/platform/official-sources",
+      "@taichuy/platform/system-metadata"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v1",
-    "semantic_sha256": "sha256:f70d918fe026101f675ff0aa3973dc1941a5641cde2ff0800b5eb0ef6e8d7e5f",
+    "semantic_sha256": "sha256:d89b23226d7d2bfb2b1f4e095a47b826d50884845012e735861f7be9012a1958",
     "source_locale": "en_US"
   },
   "modules": [
+    {
+      "id": "@taichuy/platform/applications",
+      "messages": [
+        {
+          "msgid": "Agent Flow",
+          "translations": {
+            "zh_Hans": "Agent Flow"
+          }
+        },
+        {
+          "msgid": "Workflow",
+          "translations": {
+            "zh_Hans": "工作流"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/authentication",
+      "messages": [
+        {
+          "msgid": "API",
+          "translations": {
+            "zh_Hans": "API"
+          }
+        },
+        {
+          "msgid": "Authentication event",
+          "translations": {
+            "zh_Hans": "认证事件"
+          }
+        },
+        {
+          "msgid": "Authenticator ID",
+          "translations": {
+            "zh_Hans": "认证器 ID"
+          }
+        },
+        {
+          "msgid": "Local",
+          "translations": {
+            "zh_Hans": "本地"
+          }
+        },
+        {
+          "msgid": "Password",
+          "translations": {
+            "zh_Hans": "密码"
+          }
+        }
+      ]
+    },
     {
       "id": "@taichuy/platform/common",
       "messages": [
@@ -41,6 +223,3766 @@
           "msgid": "Save {name}",
           "translations": {
             "zh_Hans": "保存{name}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/console/interfaces",
+      "messages": [
+        {
+          "msgid": "Applications API set enabled",
+          "translations": {
+            "zh_Hans": "设置应用 API 启用状态"
+          }
+        },
+        {
+          "msgid": "Applications API set enabled in the system backend.",
+          "translations": {
+            "zh_Hans": "设置应用 API 启用状态（系统后端）"
+          }
+        },
+        {
+          "msgid": "Auth center authenticators order",
+          "translations": {
+            "zh_Hans": "调整认证中心认证器顺序"
+          }
+        },
+        {
+          "msgid": "Auth center authenticators order in the system backend.",
+          "translations": {
+            "zh_Hans": "调整认证中心认证器顺序（系统后端）"
+          }
+        },
+        {
+          "msgid": "Batch delete models",
+          "translations": {
+            "zh_Hans": "批量删除模型"
+          }
+        },
+        {
+          "msgid": "Batch delete models in the system backend.",
+          "translations": {
+            "zh_Hans": "批量删除模型（系统后端）"
+          }
+        },
+        {
+          "msgid": "Bind file tables storage",
+          "translations": {
+            "zh_Hans": "绑定文件表存储"
+          }
+        },
+        {
+          "msgid": "Bind file tables storage in the system backend.",
+          "translations": {
+            "zh_Hans": "绑定文件表存储（系统后端）"
+          }
+        },
+        {
+          "msgid": "Cancel flow run",
+          "translations": {
+            "zh_Hans": "取消流程运行"
+          }
+        },
+        {
+          "msgid": "Cancel flow run in the system backend.",
+          "translations": {
+            "zh_Hans": "取消流程运行（系统后端）"
+          }
+        },
+        {
+          "msgid": "Check MCP tools description",
+          "translations": {
+            "zh_Hans": "检查 MCP 工具描述"
+          }
+        },
+        {
+          "msgid": "Check MCP tools description in the system backend.",
+          "translations": {
+            "zh_Hans": "检查 MCP 工具描述（系统后端）"
+          }
+        },
+        {
+          "msgid": "Clear host infrastructure cache domain",
+          "translations": {
+            "zh_Hans": "清除宿主基础设施缓存域"
+          }
+        },
+        {
+          "msgid": "Clear host infrastructure cache domain in the system backend.",
+          "translations": {
+            "zh_Hans": "清除宿主基础设施缓存域（系统后端）"
+          }
+        },
+        {
+          "msgid": "Clear host infrastructure cache entry",
+          "translations": {
+            "zh_Hans": "清除宿主基础设施缓存条目"
+          }
+        },
+        {
+          "msgid": "Clear host infrastructure cache entry in the system backend.",
+          "translations": {
+            "zh_Hans": "清除宿主基础设施缓存条目（系统后端）"
+          }
+        },
+        {
+          "msgid": "Clear model providers request logs",
+          "translations": {
+            "zh_Hans": "清除模型供应商请求日志"
+          }
+        },
+        {
+          "msgid": "Clear model providers request logs in the system backend.",
+          "translations": {
+            "zh_Hans": "清除模型供应商请求日志（系统后端）"
+          }
+        },
+        {
+          "msgid": "Complete callback task",
+          "translations": {
+            "zh_Hans": "完成回调任务"
+          }
+        },
+        {
+          "msgid": "Complete callback task in the system backend.",
+          "translations": {
+            "zh_Hans": "完成回调任务（系统后端）"
+          }
+        },
+        {
+          "msgid": "Complete run archive upload session",
+          "translations": {
+            "zh_Hans": "完成运行归档上传会话"
+          }
+        },
+        {
+          "msgid": "Complete run archive upload session in the system backend.",
+          "translations": {
+            "zh_Hans": "完成运行归档上传会话（系统后端）"
+          }
+        },
+        {
+          "msgid": "Copy auth center authenticators",
+          "translations": {
+            "zh_Hans": "复制认证中心认证器"
+          }
+        },
+        {
+          "msgid": "Copy auth center authenticators in the system backend.",
+          "translations": {
+            "zh_Hans": "复制认证中心认证器（系统后端）"
+          }
+        },
+        {
+          "msgid": "Copy MCP instances",
+          "translations": {
+            "zh_Hans": "复制 MCP 实例"
+          }
+        },
+        {
+          "msgid": "Copy MCP instances in the system backend.",
+          "translations": {
+            "zh_Hans": "复制 MCP 实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create application",
+          "translations": {
+            "zh_Hans": "创建应用"
+          }
+        },
+        {
+          "msgid": "Create application API key",
+          "translations": {
+            "zh_Hans": "创建应用 API 密钥"
+          }
+        },
+        {
+          "msgid": "Create application API key in the system backend.",
+          "translations": {
+            "zh_Hans": "创建应用 API 密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create application in the system backend.",
+          "translations": {
+            "zh_Hans": "创建应用（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create application tag",
+          "translations": {
+            "zh_Hans": "创建应用标签"
+          }
+        },
+        {
+          "msgid": "Create application tag in the system backend.",
+          "translations": {
+            "zh_Hans": "创建应用标签（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create auth center authenticators",
+          "translations": {
+            "zh_Hans": "创建认证中心认证器"
+          }
+        },
+        {
+          "msgid": "Create auth center authenticators in the system backend.",
+          "translations": {
+            "zh_Hans": "创建认证中心认证器（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create data sources",
+          "translations": {
+            "zh_Hans": "创建数据源"
+          }
+        },
+        {
+          "msgid": "Create data sources in the system backend.",
+          "translations": {
+            "zh_Hans": "创建数据源（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create file storages",
+          "translations": {
+            "zh_Hans": "创建文件存储"
+          }
+        },
+        {
+          "msgid": "Create file storages in the system backend.",
+          "translations": {
+            "zh_Hans": "创建文件存储（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create file tables",
+          "translations": {
+            "zh_Hans": "创建文件表"
+          }
+        },
+        {
+          "msgid": "Create file tables in the system backend.",
+          "translations": {
+            "zh_Hans": "创建文件表（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create MCP instances",
+          "translations": {
+            "zh_Hans": "创建 MCP 实例"
+          }
+        },
+        {
+          "msgid": "Create MCP instances in the system backend.",
+          "translations": {
+            "zh_Hans": "创建 MCP 实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create MCP tool bindings",
+          "translations": {
+            "zh_Hans": "创建 MCP 工具绑定"
+          }
+        },
+        {
+          "msgid": "Create MCP tool bindings in the system backend.",
+          "translations": {
+            "zh_Hans": "创建 MCP 工具绑定（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create MCP tools",
+          "translations": {
+            "zh_Hans": "创建 MCP 工具"
+          }
+        },
+        {
+          "msgid": "Create MCP tools in the system backend.",
+          "translations": {
+            "zh_Hans": "创建 MCP 工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create MCP upstream connections",
+          "translations": {
+            "zh_Hans": "创建 MCP 上游连接"
+          }
+        },
+        {
+          "msgid": "Create MCP upstream connections in the system backend.",
+          "translations": {
+            "zh_Hans": "创建 MCP 上游连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create members",
+          "translations": {
+            "zh_Hans": "创建成员"
+          }
+        },
+        {
+          "msgid": "Create members in the system backend.",
+          "translations": {
+            "zh_Hans": "创建成员（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create model definitions",
+          "translations": {
+            "zh_Hans": "创建模型定义"
+          }
+        },
+        {
+          "msgid": "Create model definitions in the system backend.",
+          "translations": {
+            "zh_Hans": "创建模型定义（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create model fields",
+          "translations": {
+            "zh_Hans": "创建模型字段"
+          }
+        },
+        {
+          "msgid": "Create model fields in the system backend.",
+          "translations": {
+            "zh_Hans": "创建模型字段（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create model providers instances",
+          "translations": {
+            "zh_Hans": "创建模型供应商实例"
+          }
+        },
+        {
+          "msgid": "Create model providers instances in the system backend.",
+          "translations": {
+            "zh_Hans": "创建模型供应商实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create model scope grants",
+          "translations": {
+            "zh_Hans": "创建模型范围授权"
+          }
+        },
+        {
+          "msgid": "Create model scope grants in the system backend.",
+          "translations": {
+            "zh_Hans": "创建模型范围授权（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create roles",
+          "translations": {
+            "zh_Hans": "创建角色"
+          }
+        },
+        {
+          "msgid": "Create roles in the system backend.",
+          "translations": {
+            "zh_Hans": "创建角色（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create run archive upload session",
+          "translations": {
+            "zh_Hans": "创建运行归档上传会话"
+          }
+        },
+        {
+          "msgid": "Create run archive upload session in the system backend.",
+          "translations": {
+            "zh_Hans": "创建运行归档上传会话（系统后端）"
+          }
+        },
+        {
+          "msgid": "Create user API key",
+          "translations": {
+            "zh_Hans": "创建用户 API 密钥"
+          }
+        },
+        {
+          "msgid": "Create user API key in the system backend.",
+          "translations": {
+            "zh_Hans": "创建用户 API 密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "Data sources map to model",
+          "translations": {
+            "zh_Hans": "将数据源映射到模型"
+          }
+        },
+        {
+          "msgid": "Data sources map to model in the system backend.",
+          "translations": {
+            "zh_Hans": "将数据源映射到模型（系统后端）"
+          }
+        },
+        {
+          "msgid": "Data sources secret rotate",
+          "translations": {
+            "zh_Hans": "轮换数据源密钥"
+          }
+        },
+        {
+          "msgid": "Data sources secret rotate in the system backend.",
+          "translations": {
+            "zh_Hans": "轮换数据源密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "Data sources validate",
+          "translations": {
+            "zh_Hans": "验证数据源"
+          }
+        },
+        {
+          "msgid": "Data sources validate in the system backend.",
+          "translations": {
+            "zh_Hans": "验证数据源（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete applications",
+          "translations": {
+            "zh_Hans": "删除应用"
+          }
+        },
+        {
+          "msgid": "Delete applications in the system backend.",
+          "translations": {
+            "zh_Hans": "删除应用（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete auth center authenticators",
+          "translations": {
+            "zh_Hans": "删除认证中心认证器"
+          }
+        },
+        {
+          "msgid": "Delete auth center authenticators in the system backend.",
+          "translations": {
+            "zh_Hans": "删除认证中心认证器（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete debug variable cache entries",
+          "translations": {
+            "zh_Hans": "删除调试变量缓存条目"
+          }
+        },
+        {
+          "msgid": "Delete debug variable cache entries in the system backend.",
+          "translations": {
+            "zh_Hans": "删除调试变量缓存条目（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete file storages",
+          "translations": {
+            "zh_Hans": "删除文件存储"
+          }
+        },
+        {
+          "msgid": "Delete file storages in the system backend.",
+          "translations": {
+            "zh_Hans": "删除文件存储（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete file tables",
+          "translations": {
+            "zh_Hans": "删除文件表"
+          }
+        },
+        {
+          "msgid": "Delete file tables in the system backend.",
+          "translations": {
+            "zh_Hans": "删除文件表（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP client credential",
+          "translations": {
+            "zh_Hans": "删除 MCP 客户端凭据"
+          }
+        },
+        {
+          "msgid": "Delete MCP client credential in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 客户端凭据（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP groups",
+          "translations": {
+            "zh_Hans": "删除 MCP 分组"
+          }
+        },
+        {
+          "msgid": "Delete MCP groups in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 分组（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP instances",
+          "translations": {
+            "zh_Hans": "删除 MCP 实例"
+          }
+        },
+        {
+          "msgid": "Delete MCP instances in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP tool bindings",
+          "translations": {
+            "zh_Hans": "删除 MCP 工具绑定"
+          }
+        },
+        {
+          "msgid": "Delete MCP tool bindings in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 工具绑定（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP tools",
+          "translations": {
+            "zh_Hans": "删除 MCP 工具"
+          }
+        },
+        {
+          "msgid": "Delete MCP tools in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP upstream connections",
+          "translations": {
+            "zh_Hans": "删除 MCP 上游连接"
+          }
+        },
+        {
+          "msgid": "Delete MCP upstream connections in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 上游连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete MCP upstream credentials",
+          "translations": {
+            "zh_Hans": "删除 MCP 上游凭据"
+          }
+        },
+        {
+          "msgid": "Delete MCP upstream credentials in the system backend.",
+          "translations": {
+            "zh_Hans": "删除 MCP 上游凭据（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete members",
+          "translations": {
+            "zh_Hans": "删除成员"
+          }
+        },
+        {
+          "msgid": "Delete members in the system backend.",
+          "translations": {
+            "zh_Hans": "删除成员（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete model",
+          "translations": {
+            "zh_Hans": "删除模型"
+          }
+        },
+        {
+          "msgid": "Delete model fields",
+          "translations": {
+            "zh_Hans": "删除模型字段"
+          }
+        },
+        {
+          "msgid": "Delete model fields in the system backend.",
+          "translations": {
+            "zh_Hans": "删除模型字段（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete model in the system backend.",
+          "translations": {
+            "zh_Hans": "删除模型（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete model provider plugins families",
+          "translations": {
+            "zh_Hans": "删除模型供应商插件系列"
+          }
+        },
+        {
+          "msgid": "Delete model provider plugins families in the system backend.",
+          "translations": {
+            "zh_Hans": "删除模型供应商插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete model providers instances",
+          "translations": {
+            "zh_Hans": "删除模型供应商实例"
+          }
+        },
+        {
+          "msgid": "Delete model providers instances in the system backend.",
+          "translations": {
+            "zh_Hans": "删除模型供应商实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete model providers request logs",
+          "translations": {
+            "zh_Hans": "删除模型供应商请求日志"
+          }
+        },
+        {
+          "msgid": "Delete model providers request logs in the system backend.",
+          "translations": {
+            "zh_Hans": "删除模型供应商请求日志（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete plugins families",
+          "translations": {
+            "zh_Hans": "删除插件系列"
+          }
+        },
+        {
+          "msgid": "Delete plugins families in the system backend.",
+          "translations": {
+            "zh_Hans": "删除插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "Delete roles",
+          "translations": {
+            "zh_Hans": "删除角色"
+          }
+        },
+        {
+          "msgid": "Delete roles in the system backend.",
+          "translations": {
+            "zh_Hans": "删除角色（系统后端）"
+          }
+        },
+        {
+          "msgid": "Disable members",
+          "translations": {
+            "zh_Hans": "停用成员"
+          }
+        },
+        {
+          "msgid": "Disable members in the system backend.",
+          "translations": {
+            "zh_Hans": "停用成员（系统后端）"
+          }
+        },
+        {
+          "msgid": "Discover data sources",
+          "translations": {
+            "zh_Hans": "发现数据源"
+          }
+        },
+        {
+          "msgid": "Discover data sources in the system backend.",
+          "translations": {
+            "zh_Hans": "发现数据源（系统后端）"
+          }
+        },
+        {
+          "msgid": "Discover MCP upstream connections",
+          "translations": {
+            "zh_Hans": "发现 MCP 上游连接"
+          }
+        },
+        {
+          "msgid": "Discover MCP upstream connections in the system backend.",
+          "translations": {
+            "zh_Hans": "发现 MCP 上游连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "Enable auth center authenticators",
+          "translations": {
+            "zh_Hans": "启用认证中心认证器"
+          }
+        },
+        {
+          "msgid": "Enable auth center authenticators in the system backend.",
+          "translations": {
+            "zh_Hans": "启用认证中心认证器（系统后端）"
+          }
+        },
+        {
+          "msgid": "Enable members",
+          "translations": {
+            "zh_Hans": "启用成员"
+          }
+        },
+        {
+          "msgid": "Enable members in the system backend.",
+          "translations": {
+            "zh_Hans": "启用成员（系统后端）"
+          }
+        },
+        {
+          "msgid": "Enable plugins",
+          "translations": {
+            "zh_Hans": "启用插件"
+          }
+        },
+        {
+          "msgid": "Enable plugins in the system backend.",
+          "translations": {
+            "zh_Hans": "启用插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "Execute MCP debug",
+          "translations": {
+            "zh_Hans": "执行 MCP 调试"
+          }
+        },
+        {
+          "msgid": "Execute MCP debug in the system backend.",
+          "translations": {
+            "zh_Hans": "执行 MCP 调试（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export application run archive",
+          "translations": {
+            "zh_Hans": "导出应用运行归档"
+          }
+        },
+        {
+          "msgid": "Export application run archive in the system backend.",
+          "translations": {
+            "zh_Hans": "导出应用运行归档（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export application run trace dump",
+          "translations": {
+            "zh_Hans": "导出应用运行追踪转储"
+          }
+        },
+        {
+          "msgid": "Export application run trace dump in the system backend.",
+          "translations": {
+            "zh_Hans": "导出应用运行追踪转储（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export application runs archive",
+          "translations": {
+            "zh_Hans": "导出应用运行归档"
+          }
+        },
+        {
+          "msgid": "Export application runs archive in the system backend.",
+          "translations": {
+            "zh_Hans": "导出应用运行归档（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export application runs zip",
+          "translations": {
+            "zh_Hans": "导出应用运行 ZIP"
+          }
+        },
+        {
+          "msgid": "Export application runs zip in the system backend.",
+          "translations": {
+            "zh_Hans": "导出应用运行 ZIP（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export applications orchestration template",
+          "translations": {
+            "zh_Hans": "导出应用编排模板"
+          }
+        },
+        {
+          "msgid": "Export applications orchestration template in the system backend.",
+          "translations": {
+            "zh_Hans": "导出应用编排模板（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export MCP bundle",
+          "translations": {
+            "zh_Hans": "导出 MCP 配置包"
+          }
+        },
+        {
+          "msgid": "Export MCP bundle in the system backend.",
+          "translations": {
+            "zh_Hans": "导出 MCP 配置包（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export MCP catalog",
+          "translations": {
+            "zh_Hans": "导出 MCP 目录"
+          }
+        },
+        {
+          "msgid": "Export MCP catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "导出 MCP 目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "Export MCP instances",
+          "translations": {
+            "zh_Hans": "导出 MCP 实例"
+          }
+        },
+        {
+          "msgid": "Export MCP instances in the system backend.",
+          "translations": {
+            "zh_Hans": "导出 MCP 实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application",
+          "translations": {
+            "zh_Hans": "获取应用"
+          }
+        },
+        {
+          "msgid": "Get application API docs catalog",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档目录"
+          }
+        },
+        {
+          "msgid": "Get application API docs catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application API docs category openapi",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档分类 OpenAPI"
+          }
+        },
+        {
+          "msgid": "Get application API docs category openapi in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档分类 OpenAPI（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application API docs category operations",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档分类操作"
+          }
+        },
+        {
+          "msgid": "Get application API docs category operations in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档分类操作（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application API docs operation openapi",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档操作 OpenAPI"
+          }
+        },
+        {
+          "msgid": "Get application API docs operation openapi in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用 API 文档操作 OpenAPI（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application API mapping",
+          "translations": {
+            "zh_Hans": "获取应用 API 映射"
+          }
+        },
+        {
+          "msgid": "Get application API mapping in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用 API 映射（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application API publication",
+          "translations": {
+            "zh_Hans": "获取应用 API 发布信息"
+          }
+        },
+        {
+          "msgid": "Get application API publication in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用 API 发布信息（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application catalog",
+          "translations": {
+            "zh_Hans": "获取应用目录"
+          }
+        },
+        {
+          "msgid": "Get application catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application operation bindings",
+          "translations": {
+            "zh_Hans": "获取应用操作绑定"
+          }
+        },
+        {
+          "msgid": "Get application operation bindings in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用操作绑定（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run monitoring report",
+          "translations": {
+            "zh_Hans": "获取应用运行监控报告"
+          }
+        },
+        {
+          "msgid": "Get application run monitoring report in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行监控报告（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run node last run",
+          "translations": {
+            "zh_Hans": "获取应用运行节点最近一次运行"
+          }
+        },
+        {
+          "msgid": "Get application run node last run in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行节点最近一次运行（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run overview",
+          "translations": {
+            "zh_Hans": "获取应用运行概览"
+          }
+        },
+        {
+          "msgid": "Get application run overview in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行概览（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run resume timeline",
+          "translations": {
+            "zh_Hans": "获取应用运行恢复时间线"
+          }
+        },
+        {
+          "msgid": "Get application run resume timeline in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行恢复时间线（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run trace node children",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪节点子项"
+          }
+        },
+        {
+          "msgid": "Get application run trace node children in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪节点子项（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run trace node content",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪节点内容"
+          }
+        },
+        {
+          "msgid": "Get application run trace node content in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪节点内容（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run trace node detail",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪节点详情"
+          }
+        },
+        {
+          "msgid": "Get application run trace node detail in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪节点详情（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run trace tool callback content",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪工具回调内容"
+          }
+        },
+        {
+          "msgid": "Get application run trace tool callback content in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪工具回调内容（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application run trace tree",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪树"
+          }
+        },
+        {
+          "msgid": "Get application run trace tree in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行追踪树（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get application runtime activity",
+          "translations": {
+            "zh_Hans": "获取应用运行时活动"
+          }
+        },
+        {
+          "msgid": "Get application runtime activity in the system backend.",
+          "translations": {
+            "zh_Hans": "获取应用运行时活动（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get console docs catalog",
+          "translations": {
+            "zh_Hans": "获取控制台文档目录"
+          }
+        },
+        {
+          "msgid": "Get console docs catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "获取控制台文档目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get console docs category openapi",
+          "translations": {
+            "zh_Hans": "获取控制台文档分类 OpenAPI"
+          }
+        },
+        {
+          "msgid": "Get console docs category openapi in the system backend.",
+          "translations": {
+            "zh_Hans": "获取控制台文档分类 OpenAPI（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get console docs operation openapi",
+          "translations": {
+            "zh_Hans": "获取控制台文档操作 OpenAPI"
+          }
+        },
+        {
+          "msgid": "Get console docs operation openapi in the system backend.",
+          "translations": {
+            "zh_Hans": "获取控制台文档操作 OpenAPI（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get debug variable snapshot",
+          "translations": {
+            "zh_Hans": "获取调试变量快照"
+          }
+        },
+        {
+          "msgid": "Get debug variable snapshot in the system backend.",
+          "translations": {
+            "zh_Hans": "获取调试变量快照（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get flow debug run snapshot",
+          "translations": {
+            "zh_Hans": "获取流程调试运行快照"
+          }
+        },
+        {
+          "msgid": "Get flow debug run snapshot in the system backend.",
+          "translations": {
+            "zh_Hans": "获取流程调试运行快照（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure cache overview",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施缓存概览"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure cache overview in the system backend.",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施缓存概览（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure memory overview",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施内存概览"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure memory overview in the system backend.",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施内存概览（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure memory stats",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施内存统计"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure memory stats in the system backend.",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施内存统计（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure memory stats overview",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施内存统计概览"
+          }
+        },
+        {
+          "msgid": "Get host infrastructure memory stats overview in the system backend.",
+          "translations": {
+            "zh_Hans": "获取宿主基础设施内存统计概览（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get MCP bundle export defaults",
+          "translations": {
+            "zh_Hans": "获取 MCP 配置包导出默认值"
+          }
+        },
+        {
+          "msgid": "Get MCP bundle export defaults in the system backend.",
+          "translations": {
+            "zh_Hans": "获取 MCP 配置包导出默认值（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get MCP catalog",
+          "translations": {
+            "zh_Hans": "获取 MCP 目录"
+          }
+        },
+        {
+          "msgid": "Get MCP catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "获取 MCP 目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get MCP tool",
+          "translations": {
+            "zh_Hans": "获取 MCP 工具"
+          }
+        },
+        {
+          "msgid": "Get MCP tool in the system backend.",
+          "translations": {
+            "zh_Hans": "获取 MCP 工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get node last run",
+          "translations": {
+            "zh_Hans": "获取节点最近一次运行"
+          }
+        },
+        {
+          "msgid": "Get node last run in the system backend.",
+          "translations": {
+            "zh_Hans": "获取节点最近一次运行（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get orchestration",
+          "translations": {
+            "zh_Hans": "获取编排"
+          }
+        },
+        {
+          "msgid": "Get orchestration in the system backend.",
+          "translations": {
+            "zh_Hans": "获取编排（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get run archive import job",
+          "translations": {
+            "zh_Hans": "获取运行归档导入任务"
+          }
+        },
+        {
+          "msgid": "Get run archive import job in the system backend.",
+          "translations": {
+            "zh_Hans": "获取运行归档导入任务（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get runtime debug artifact",
+          "translations": {
+            "zh_Hans": "获取运行时调试产物"
+          }
+        },
+        {
+          "msgid": "Get runtime debug artifact in the system backend.",
+          "translations": {
+            "zh_Hans": "获取运行时调试产物（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get runtime debug stream",
+          "translations": {
+            "zh_Hans": "获取运行时调试流"
+          }
+        },
+        {
+          "msgid": "Get runtime debug stream in the system backend.",
+          "translations": {
+            "zh_Hans": "获取运行时调试流（系统后端）"
+          }
+        },
+        {
+          "msgid": "Get workflow schedule trigger",
+          "translations": {
+            "zh_Hans": "获取工作流计划触发器"
+          }
+        },
+        {
+          "msgid": "Get workflow schedule trigger in the system backend.",
+          "translations": {
+            "zh_Hans": "获取工作流计划触发器（系统后端）"
+          }
+        },
+        {
+          "msgid": "Host infrastructure providers configure",
+          "translations": {
+            "zh_Hans": "配置宿主基础设施供应商"
+          }
+        },
+        {
+          "msgid": "Host infrastructure providers configure in the system backend.",
+          "translations": {
+            "zh_Hans": "配置宿主基础设施供应商（系统后端）"
+          }
+        },
+        {
+          "msgid": "Import applications orchestration template",
+          "translations": {
+            "zh_Hans": "导入应用编排模板"
+          }
+        },
+        {
+          "msgid": "Import applications orchestration template in the system backend.",
+          "translations": {
+            "zh_Hans": "导入应用编排模板（系统后端）"
+          }
+        },
+        {
+          "msgid": "Import MCP upstream tools",
+          "translations": {
+            "zh_Hans": "导入 MCP 上游工具"
+          }
+        },
+        {
+          "msgid": "Import MCP upstream tools in the system backend.",
+          "translations": {
+            "zh_Hans": "导入 MCP 上游工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "Import official MCP bundle",
+          "translations": {
+            "zh_Hans": "导入官方 MCP 配置包"
+          }
+        },
+        {
+          "msgid": "Import official MCP bundle in the system backend.",
+          "translations": {
+            "zh_Hans": "导入官方 MCP 配置包（系统后端）"
+          }
+        },
+        {
+          "msgid": "Import uploaded MCP bundle",
+          "translations": {
+            "zh_Hans": "导入已上传的 MCP 配置包"
+          }
+        },
+        {
+          "msgid": "Import uploaded MCP bundle in the system backend.",
+          "translations": {
+            "zh_Hans": "导入已上传的 MCP 配置包（系统后端）"
+          }
+        },
+        {
+          "msgid": "Install model provider plugins artifact",
+          "translations": {
+            "zh_Hans": "安装模型供应商插件产物"
+          }
+        },
+        {
+          "msgid": "Install model provider plugins artifact in the system backend.",
+          "translations": {
+            "zh_Hans": "安装模型供应商插件产物（系统后端）"
+          }
+        },
+        {
+          "msgid": "Install plugins",
+          "translations": {
+            "zh_Hans": "安装插件"
+          }
+        },
+        {
+          "msgid": "Install plugins artifact",
+          "translations": {
+            "zh_Hans": "安装插件产物"
+          }
+        },
+        {
+          "msgid": "Install plugins artifact in the system backend.",
+          "translations": {
+            "zh_Hans": "安装插件产物（系统后端）"
+          }
+        },
+        {
+          "msgid": "Install plugins in the system backend.",
+          "translations": {
+            "zh_Hans": "安装插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "List agent flow data model options",
+          "translations": {
+            "zh_Hans": "列出 Agent Flow 数据模型选项"
+          }
+        },
+        {
+          "msgid": "List agent flow data model options in the system backend.",
+          "translations": {
+            "zh_Hans": "列出 Agent Flow 数据模型选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "List application API keys",
+          "translations": {
+            "zh_Hans": "列出应用 API 密钥"
+          }
+        },
+        {
+          "msgid": "List application API keys in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用 API 密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "List application conversation messages",
+          "translations": {
+            "zh_Hans": "列出应用会话消息"
+          }
+        },
+        {
+          "msgid": "List application conversation messages in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用会话消息（系统后端）"
+          }
+        },
+        {
+          "msgid": "List application environment variables",
+          "translations": {
+            "zh_Hans": "列出应用环境变量"
+          }
+        },
+        {
+          "msgid": "List application environment variables in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用环境变量（系统后端）"
+          }
+        },
+        {
+          "msgid": "List application JS dependency selections",
+          "translations": {
+            "zh_Hans": "列出应用 JavaScript 依赖选择"
+          }
+        },
+        {
+          "msgid": "List application JS dependency selections in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用 JavaScript 依赖选择（系统后端）"
+          }
+        },
+        {
+          "msgid": "List application run conversation messages",
+          "translations": {
+            "zh_Hans": "列出应用运行会话消息"
+          }
+        },
+        {
+          "msgid": "List application run conversation messages in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用运行会话消息（系统后端）"
+          }
+        },
+        {
+          "msgid": "List application runs",
+          "translations": {
+            "zh_Hans": "列出应用运行"
+          }
+        },
+        {
+          "msgid": "List application runs in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用运行（系统后端）"
+          }
+        },
+        {
+          "msgid": "List applications",
+          "translations": {
+            "zh_Hans": "列出应用"
+          }
+        },
+        {
+          "msgid": "List applications in the system backend.",
+          "translations": {
+            "zh_Hans": "列出应用（系统后端）"
+          }
+        },
+        {
+          "msgid": "List console docs category operations",
+          "translations": {
+            "zh_Hans": "列出控制台文档分类操作"
+          }
+        },
+        {
+          "msgid": "List console docs category operations in the system backend.",
+          "translations": {
+            "zh_Hans": "列出控制台文档分类操作（系统后端）"
+          }
+        },
+        {
+          "msgid": "List data sources",
+          "translations": {
+            "zh_Hans": "列出数据源"
+          }
+        },
+        {
+          "msgid": "List data sources in the system backend.",
+          "translations": {
+            "zh_Hans": "列出数据源（系统后端）"
+          }
+        },
+        {
+          "msgid": "List file storages",
+          "translations": {
+            "zh_Hans": "列出文件存储"
+          }
+        },
+        {
+          "msgid": "List file storages in the system backend.",
+          "translations": {
+            "zh_Hans": "列出文件存储（系统后端）"
+          }
+        },
+        {
+          "msgid": "List file tables",
+          "translations": {
+            "zh_Hans": "列出文件表"
+          }
+        },
+        {
+          "msgid": "List file tables in the system backend.",
+          "translations": {
+            "zh_Hans": "列出文件表（系统后端）"
+          }
+        },
+        {
+          "msgid": "List host infrastructure cache entries",
+          "translations": {
+            "zh_Hans": "列出宿主基础设施缓存条目"
+          }
+        },
+        {
+          "msgid": "List host infrastructure cache entries in the system backend.",
+          "translations": {
+            "zh_Hans": "列出宿主基础设施缓存条目（系统后端）"
+          }
+        },
+        {
+          "msgid": "List host infrastructure memory entries",
+          "translations": {
+            "zh_Hans": "列出宿主基础设施内存条目"
+          }
+        },
+        {
+          "msgid": "List host infrastructure memory entries in the system backend.",
+          "translations": {
+            "zh_Hans": "列出宿主基础设施内存条目（系统后端）"
+          }
+        },
+        {
+          "msgid": "List host infrastructure memory tree",
+          "translations": {
+            "zh_Hans": "列出宿主基础设施内存树"
+          }
+        },
+        {
+          "msgid": "List host infrastructure memory tree in the system backend.",
+          "translations": {
+            "zh_Hans": "列出宿主基础设施内存树（系统后端）"
+          }
+        },
+        {
+          "msgid": "List MCP bundles official",
+          "translations": {
+            "zh_Hans": "列出官方 MCP 配置包"
+          }
+        },
+        {
+          "msgid": "List MCP bundles official in the system backend.",
+          "translations": {
+            "zh_Hans": "列出官方 MCP 配置包（系统后端）"
+          }
+        },
+        {
+          "msgid": "List MCP interface capabilities",
+          "translations": {
+            "zh_Hans": "列出 MCP 接口能力"
+          }
+        },
+        {
+          "msgid": "List MCP interface capabilities in the system backend.",
+          "translations": {
+            "zh_Hans": "列出 MCP 接口能力（系统后端）"
+          }
+        },
+        {
+          "msgid": "List MCP items",
+          "translations": {
+            "zh_Hans": "列出 MCP 项目"
+          }
+        },
+        {
+          "msgid": "List MCP items in the system backend.",
+          "translations": {
+            "zh_Hans": "列出 MCP 项目（系统后端）"
+          }
+        },
+        {
+          "msgid": "List MCP tools",
+          "translations": {
+            "zh_Hans": "列出 MCP 工具"
+          }
+        },
+        {
+          "msgid": "List MCP tools in the system backend.",
+          "translations": {
+            "zh_Hans": "列出 MCP 工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "List members",
+          "translations": {
+            "zh_Hans": "列出成员"
+          }
+        },
+        {
+          "msgid": "List members in the system backend.",
+          "translations": {
+            "zh_Hans": "列出成员（系统后端）"
+          }
+        },
+        {
+          "msgid": "List members role options",
+          "translations": {
+            "zh_Hans": "列出成员角色选项"
+          }
+        },
+        {
+          "msgid": "List members role options in the system backend.",
+          "translations": {
+            "zh_Hans": "列出成员角色选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "List model definitions",
+          "translations": {
+            "zh_Hans": "列出模型定义"
+          }
+        },
+        {
+          "msgid": "List model definitions in the system backend.",
+          "translations": {
+            "zh_Hans": "列出模型定义（系统后端）"
+          }
+        },
+        {
+          "msgid": "List model scope grants",
+          "translations": {
+            "zh_Hans": "列出模型范围授权"
+          }
+        },
+        {
+          "msgid": "List model scope grants in the system backend.",
+          "translations": {
+            "zh_Hans": "列出模型范围授权（系统后端）"
+          }
+        },
+        {
+          "msgid": "List roles",
+          "translations": {
+            "zh_Hans": "列出角色"
+          }
+        },
+        {
+          "msgid": "List roles data model options",
+          "translations": {
+            "zh_Hans": "列出角色数据模型选项"
+          }
+        },
+        {
+          "msgid": "List roles data model options in the system backend.",
+          "translations": {
+            "zh_Hans": "列出角色数据模型选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "List roles in the system backend.",
+          "translations": {
+            "zh_Hans": "列出角色（系统后端）"
+          }
+        },
+        {
+          "msgid": "List roles permission options",
+          "translations": {
+            "zh_Hans": "列出角色权限选项"
+          }
+        },
+        {
+          "msgid": "List roles permission options in the system backend.",
+          "translations": {
+            "zh_Hans": "列出角色权限选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "List user API key role options",
+          "translations": {
+            "zh_Hans": "列出用户 API 密钥角色选项"
+          }
+        },
+        {
+          "msgid": "List user API key role options in the system backend.",
+          "translations": {
+            "zh_Hans": "列出用户 API 密钥角色选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "List user API keys",
+          "translations": {
+            "zh_Hans": "列出用户 API 密钥"
+          }
+        },
+        {
+          "msgid": "List user API keys in the system backend.",
+          "translations": {
+            "zh_Hans": "列出用户 API 密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "MCP upstream tools debug",
+          "translations": {
+            "zh_Hans": "调试 MCP 上游工具"
+          }
+        },
+        {
+          "msgid": "MCP upstream tools debug in the system backend.",
+          "translations": {
+            "zh_Hans": "调试 MCP 上游工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "Model provider plugins families switch",
+          "translations": {
+            "zh_Hans": "切换模型供应商插件系列"
+          }
+        },
+        {
+          "msgid": "Model provider plugins families switch in the system backend.",
+          "translations": {
+            "zh_Hans": "切换模型供应商插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "Model provider plugins families upgrade",
+          "translations": {
+            "zh_Hans": "升级模型供应商插件系列"
+          }
+        },
+        {
+          "msgid": "Model provider plugins families upgrade in the system backend.",
+          "translations": {
+            "zh_Hans": "升级模型供应商插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "Model provider plugins install official",
+          "translations": {
+            "zh_Hans": "安装官方模型供应商插件"
+          }
+        },
+        {
+          "msgid": "Model provider plugins install official in the system backend.",
+          "translations": {
+            "zh_Hans": "安装官方模型供应商插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "Model providers instances validate",
+          "translations": {
+            "zh_Hans": "验证模型供应商实例"
+          }
+        },
+        {
+          "msgid": "Model providers instances validate in the system backend.",
+          "translations": {
+            "zh_Hans": "验证模型供应商实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Move MCP groups",
+          "translations": {
+            "zh_Hans": "移动 MCP 分组"
+          }
+        },
+        {
+          "msgid": "Move MCP groups in the system backend.",
+          "translations": {
+            "zh_Hans": "移动 MCP 分组（系统后端）"
+          }
+        },
+        {
+          "msgid": "Patch application",
+          "translations": {
+            "zh_Hans": "局部更新应用"
+          }
+        },
+        {
+          "msgid": "Patch application in the system backend.",
+          "translations": {
+            "zh_Hans": "局部更新应用（系统后端）"
+          }
+        },
+        {
+          "msgid": "Plugin get task",
+          "translations": {
+            "zh_Hans": "插件获取任务"
+          }
+        },
+        {
+          "msgid": "Plugin get task in the system backend.",
+          "translations": {
+            "zh_Hans": "插件获取任务（系统后端）"
+          }
+        },
+        {
+          "msgid": "Plugin list tasks",
+          "translations": {
+            "zh_Hans": "插件列出任务"
+          }
+        },
+        {
+          "msgid": "Plugin list tasks in the system backend.",
+          "translations": {
+            "zh_Hans": "插件列出任务（系统后端）"
+          }
+        },
+        {
+          "msgid": "Plugins assign",
+          "translations": {
+            "zh_Hans": "分配插件"
+          }
+        },
+        {
+          "msgid": "Plugins assign in the system backend.",
+          "translations": {
+            "zh_Hans": "分配插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "Plugins families switch",
+          "translations": {
+            "zh_Hans": "切换插件系列"
+          }
+        },
+        {
+          "msgid": "Plugins families switch in the system backend.",
+          "translations": {
+            "zh_Hans": "切换插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "Plugins families upgrade",
+          "translations": {
+            "zh_Hans": "升级插件系列"
+          }
+        },
+        {
+          "msgid": "Plugins families upgrade in the system backend.",
+          "translations": {
+            "zh_Hans": "升级插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "Plugins install official",
+          "translations": {
+            "zh_Hans": "安装官方插件"
+          }
+        },
+        {
+          "msgid": "Plugins install official in the system backend.",
+          "translations": {
+            "zh_Hans": "安装官方插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "Preview data sources",
+          "translations": {
+            "zh_Hans": "预览数据源"
+          }
+        },
+        {
+          "msgid": "Preview data sources in the system backend.",
+          "translations": {
+            "zh_Hans": "预览数据源（系统后端）"
+          }
+        },
+        {
+          "msgid": "Preview official MCP bundle",
+          "translations": {
+            "zh_Hans": "预览官方 MCP 配置包"
+          }
+        },
+        {
+          "msgid": "Preview official MCP bundle in the system backend.",
+          "translations": {
+            "zh_Hans": "预览官方 MCP 配置包（系统后端）"
+          }
+        },
+        {
+          "msgid": "Preview uploaded MCP bundle",
+          "translations": {
+            "zh_Hans": "预览已上传的 MCP 配置包"
+          }
+        },
+        {
+          "msgid": "Preview uploaded MCP bundle in the system backend.",
+          "translations": {
+            "zh_Hans": "预览已上传的 MCP 配置包（系统后端）"
+          }
+        },
+        {
+          "msgid": "Publish application API",
+          "translations": {
+            "zh_Hans": "发布应用 API"
+          }
+        },
+        {
+          "msgid": "Publish application API in the system backend.",
+          "translations": {
+            "zh_Hans": "发布应用 API（系统后端）"
+          }
+        },
+        {
+          "msgid": "Refresh MCP tools description",
+          "translations": {
+            "zh_Hans": "刷新 MCP 工具描述"
+          }
+        },
+        {
+          "msgid": "Refresh MCP tools description in the system backend.",
+          "translations": {
+            "zh_Hans": "刷新 MCP 工具描述（系统后端）"
+          }
+        },
+        {
+          "msgid": "Refresh model provider plugins artifact",
+          "translations": {
+            "zh_Hans": "刷新模型供应商插件产物"
+          }
+        },
+        {
+          "msgid": "Refresh model provider plugins artifact in the system backend.",
+          "translations": {
+            "zh_Hans": "刷新模型供应商插件产物（系统后端）"
+          }
+        },
+        {
+          "msgid": "Refresh model providers instances models",
+          "translations": {
+            "zh_Hans": "刷新模型供应商实例模型"
+          }
+        },
+        {
+          "msgid": "Refresh model providers instances models in the system backend.",
+          "translations": {
+            "zh_Hans": "刷新模型供应商实例模型（系统后端）"
+          }
+        },
+        {
+          "msgid": "Refresh plugins artifact",
+          "translations": {
+            "zh_Hans": "刷新插件产物"
+          }
+        },
+        {
+          "msgid": "Refresh plugins artifact in the system backend.",
+          "translations": {
+            "zh_Hans": "刷新插件产物（系统后端）"
+          }
+        },
+        {
+          "msgid": "Refresh plugins catalog projection",
+          "translations": {
+            "zh_Hans": "刷新插件目录投影"
+          }
+        },
+        {
+          "msgid": "Refresh plugins catalog projection in the system backend.",
+          "translations": {
+            "zh_Hans": "刷新插件目录投影（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace application API mapping",
+          "translations": {
+            "zh_Hans": "替换应用 API 映射"
+          }
+        },
+        {
+          "msgid": "Replace application API mapping in the system backend.",
+          "translations": {
+            "zh_Hans": "替换应用 API 映射（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace application environment variables",
+          "translations": {
+            "zh_Hans": "替换应用环境变量"
+          }
+        },
+        {
+          "msgid": "Replace application environment variables in the system backend.",
+          "translations": {
+            "zh_Hans": "替换应用环境变量（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace application JS dependency selection",
+          "translations": {
+            "zh_Hans": "替换应用 JavaScript 依赖选择"
+          }
+        },
+        {
+          "msgid": "Replace application JS dependency selection in the system backend.",
+          "translations": {
+            "zh_Hans": "替换应用 JavaScript 依赖选择（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace members roles",
+          "translations": {
+            "zh_Hans": "替换成员角色"
+          }
+        },
+        {
+          "msgid": "Replace members roles in the system backend.",
+          "translations": {
+            "zh_Hans": "替换成员角色（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace roles console policy",
+          "translations": {
+            "zh_Hans": "替换角色控制台策略"
+          }
+        },
+        {
+          "msgid": "Replace roles console policy in the system backend.",
+          "translations": {
+            "zh_Hans": "替换角色控制台策略（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace roles data policy",
+          "translations": {
+            "zh_Hans": "替换角色数据策略"
+          }
+        },
+        {
+          "msgid": "Replace roles data policy in the system backend.",
+          "translations": {
+            "zh_Hans": "替换角色数据策略（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace roles frontstage routes",
+          "translations": {
+            "zh_Hans": "替换角色前台路由"
+          }
+        },
+        {
+          "msgid": "Replace roles frontstage routes in the system backend.",
+          "translations": {
+            "zh_Hans": "替换角色前台路由（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace roles permissions",
+          "translations": {
+            "zh_Hans": "替换角色权限"
+          }
+        },
+        {
+          "msgid": "Replace roles permissions in the system backend.",
+          "translations": {
+            "zh_Hans": "替换角色权限（系统后端）"
+          }
+        },
+        {
+          "msgid": "Replace workflow schedule trigger",
+          "translations": {
+            "zh_Hans": "替换工作流计划触发器"
+          }
+        },
+        {
+          "msgid": "Replace workflow schedule trigger in the system backend.",
+          "translations": {
+            "zh_Hans": "替换工作流计划触发器（系统后端）"
+          }
+        },
+        {
+          "msgid": "Reset members password",
+          "translations": {
+            "zh_Hans": "重置成员密码"
+          }
+        },
+        {
+          "msgid": "Reset members password in the system backend.",
+          "translations": {
+            "zh_Hans": "重置成员密码（系统后端）"
+          }
+        },
+        {
+          "msgid": "Resolve runtime debug artifacts",
+          "translations": {
+            "zh_Hans": "解析运行时调试产物"
+          }
+        },
+        {
+          "msgid": "Resolve runtime debug artifacts in the system backend.",
+          "translations": {
+            "zh_Hans": "解析运行时调试产物（系统后端）"
+          }
+        },
+        {
+          "msgid": "Restore applications orchestration version",
+          "translations": {
+            "zh_Hans": "恢复应用编排版本"
+          }
+        },
+        {
+          "msgid": "Restore applications orchestration version in the system backend.",
+          "translations": {
+            "zh_Hans": "恢复应用编排版本（系统后端）"
+          }
+        },
+        {
+          "msgid": "Resume flow run",
+          "translations": {
+            "zh_Hans": "恢复流程运行"
+          }
+        },
+        {
+          "msgid": "Resume flow run in the system backend.",
+          "translations": {
+            "zh_Hans": "恢复流程运行（系统后端）"
+          }
+        },
+        {
+          "msgid": "Reveal host infrastructure cache",
+          "translations": {
+            "zh_Hans": "显示宿主基础设施缓存"
+          }
+        },
+        {
+          "msgid": "Reveal host infrastructure cache in the system backend.",
+          "translations": {
+            "zh_Hans": "显示宿主基础设施缓存（系统后端）"
+          }
+        },
+        {
+          "msgid": "Reveal host infrastructure memory",
+          "translations": {
+            "zh_Hans": "显示宿主基础设施内存"
+          }
+        },
+        {
+          "msgid": "Reveal host infrastructure memory in the system backend.",
+          "translations": {
+            "zh_Hans": "显示宿主基础设施内存（系统后端）"
+          }
+        },
+        {
+          "msgid": "Reveal MCP client credential",
+          "translations": {
+            "zh_Hans": "显示 MCP 客户端凭据"
+          }
+        },
+        {
+          "msgid": "Reveal MCP client credential in the system backend.",
+          "translations": {
+            "zh_Hans": "显示 MCP 客户端凭据（系统后端）"
+          }
+        },
+        {
+          "msgid": "Reveal model providers instances secrets",
+          "translations": {
+            "zh_Hans": "显示模型供应商实例密钥"
+          }
+        },
+        {
+          "msgid": "Reveal model providers instances secrets in the system backend.",
+          "translations": {
+            "zh_Hans": "显示模型供应商实例密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "Revoke application API key",
+          "translations": {
+            "zh_Hans": "撤销应用 API 密钥"
+          }
+        },
+        {
+          "msgid": "Revoke application API key in the system backend.",
+          "translations": {
+            "zh_Hans": "撤销应用 API 密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "Revoke user API key",
+          "translations": {
+            "zh_Hans": "撤销用户 API 密钥"
+          }
+        },
+        {
+          "msgid": "Revoke user API key in the system backend.",
+          "translations": {
+            "zh_Hans": "撤销用户 API 密钥（系统后端）"
+          }
+        },
+        {
+          "msgid": "Save draft",
+          "translations": {
+            "zh_Hans": "保存草稿"
+          }
+        },
+        {
+          "msgid": "Save draft in the system backend.",
+          "translations": {
+            "zh_Hans": "保存草稿（系统后端）"
+          }
+        },
+        {
+          "msgid": "Save MCP client credential",
+          "translations": {
+            "zh_Hans": "保存 MCP 客户端凭据"
+          }
+        },
+        {
+          "msgid": "Save MCP client credential in the system backend.",
+          "translations": {
+            "zh_Hans": "保存 MCP 客户端凭据（系统后端）"
+          }
+        },
+        {
+          "msgid": "Search host infrastructure memory entries",
+          "translations": {
+            "zh_Hans": "搜索宿主基础设施内存条目"
+          }
+        },
+        {
+          "msgid": "Search host infrastructure memory entries in the system backend.",
+          "translations": {
+            "zh_Hans": "搜索宿主基础设施内存条目（系统后端）"
+          }
+        },
+        {
+          "msgid": "Settings feature access system applications",
+          "translations": {
+            "zh_Hans": "访问系统应用设置功能"
+          }
+        },
+        {
+          "msgid": "Settings feature access system applications in the system backend.",
+          "translations": {
+            "zh_Hans": "访问系统应用设置功能（系统后端）"
+          }
+        },
+        {
+          "msgid": "Settings feature access system data models",
+          "translations": {
+            "zh_Hans": "访问系统数据模型设置功能"
+          }
+        },
+        {
+          "msgid": "Settings feature access system data models in the system backend.",
+          "translations": {
+            "zh_Hans": "访问系统数据模型设置功能（系统后端）"
+          }
+        },
+        {
+          "msgid": "Start flow debug run",
+          "translations": {
+            "zh_Hans": "启动流程调试运行"
+          }
+        },
+        {
+          "msgid": "Start flow debug run in the system backend.",
+          "translations": {
+            "zh_Hans": "启动流程调试运行（系统后端）"
+          }
+        },
+        {
+          "msgid": "Start flow debug run stream",
+          "translations": {
+            "zh_Hans": "启动流程调试运行流"
+          }
+        },
+        {
+          "msgid": "Start flow debug run stream in the system backend.",
+          "translations": {
+            "zh_Hans": "启动流程调试运行流（系统后端）"
+          }
+        },
+        {
+          "msgid": "Start node debug preview",
+          "translations": {
+            "zh_Hans": "启动节点调试预览"
+          }
+        },
+        {
+          "msgid": "Start node debug preview in the system backend.",
+          "translations": {
+            "zh_Hans": "启动节点调试预览（系统后端）"
+          }
+        },
+        {
+          "msgid": "Subscribe flow debug run stream",
+          "translations": {
+            "zh_Hans": "订阅流程调试运行流"
+          }
+        },
+        {
+          "msgid": "Subscribe flow debug run stream in the system backend.",
+          "translations": {
+            "zh_Hans": "订阅流程调试运行流（系统后端）"
+          }
+        },
+        {
+          "msgid": "Test connection",
+          "translations": {
+            "zh_Hans": "测试连接"
+          }
+        },
+        {
+          "msgid": "Test connection in the system backend.",
+          "translations": {
+            "zh_Hans": "测试连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "Test draft connection",
+          "translations": {
+            "zh_Hans": "测试草稿连接"
+          }
+        },
+        {
+          "msgid": "Test draft connection in the system backend.",
+          "translations": {
+            "zh_Hans": "测试草稿连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "Unpublish application API",
+          "translations": {
+            "zh_Hans": "取消发布应用 API"
+          }
+        },
+        {
+          "msgid": "Unpublish application API in the system backend.",
+          "translations": {
+            "zh_Hans": "取消发布应用 API（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update auth center authenticator config",
+          "translations": {
+            "zh_Hans": "更新认证中心认证器配置"
+          }
+        },
+        {
+          "msgid": "Update auth center authenticator config in the system backend.",
+          "translations": {
+            "zh_Hans": "更新认证中心认证器配置（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update auth center authenticator public UI block",
+          "translations": {
+            "zh_Hans": "更新认证中心认证器公共界面区块"
+          }
+        },
+        {
+          "msgid": "Update auth center authenticator public UI block in the system backend.",
+          "translations": {
+            "zh_Hans": "更新认证中心认证器公共界面区块（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update data sources defaults",
+          "translations": {
+            "zh_Hans": "更新数据源默认值"
+          }
+        },
+        {
+          "msgid": "Update data sources defaults in the system backend.",
+          "translations": {
+            "zh_Hans": "更新数据源默认值（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update file storages",
+          "translations": {
+            "zh_Hans": "更新文件存储"
+          }
+        },
+        {
+          "msgid": "Update file storages in the system backend.",
+          "translations": {
+            "zh_Hans": "更新文件存储（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update MCP discovery policy",
+          "translations": {
+            "zh_Hans": "更新 MCP 发现策略"
+          }
+        },
+        {
+          "msgid": "Update MCP discovery policy in the system backend.",
+          "translations": {
+            "zh_Hans": "更新 MCP 发现策略（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update MCP instances",
+          "translations": {
+            "zh_Hans": "更新 MCP 实例"
+          }
+        },
+        {
+          "msgid": "Update MCP instances in the system backend.",
+          "translations": {
+            "zh_Hans": "更新 MCP 实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update MCP tool bindings",
+          "translations": {
+            "zh_Hans": "更新 MCP 工具绑定"
+          }
+        },
+        {
+          "msgid": "Update MCP tool bindings in the system backend.",
+          "translations": {
+            "zh_Hans": "更新 MCP 工具绑定（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update MCP tools",
+          "translations": {
+            "zh_Hans": "更新 MCP 工具"
+          }
+        },
+        {
+          "msgid": "Update MCP tools in the system backend.",
+          "translations": {
+            "zh_Hans": "更新 MCP 工具（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update MCP upstream connections",
+          "translations": {
+            "zh_Hans": "更新 MCP 上游连接"
+          }
+        },
+        {
+          "msgid": "Update MCP upstream connections in the system backend.",
+          "translations": {
+            "zh_Hans": "更新 MCP 上游连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update MCP upstream credentials",
+          "translations": {
+            "zh_Hans": "更新 MCP 上游凭据"
+          }
+        },
+        {
+          "msgid": "Update MCP upstream credentials in the system backend.",
+          "translations": {
+            "zh_Hans": "更新 MCP 上游凭据（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update members",
+          "translations": {
+            "zh_Hans": "更新成员"
+          }
+        },
+        {
+          "msgid": "Update members in the system backend.",
+          "translations": {
+            "zh_Hans": "更新成员（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update model definitions",
+          "translations": {
+            "zh_Hans": "更新模型定义"
+          }
+        },
+        {
+          "msgid": "Update model definitions in the system backend.",
+          "translations": {
+            "zh_Hans": "更新模型定义（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update model fields",
+          "translations": {
+            "zh_Hans": "更新模型字段"
+          }
+        },
+        {
+          "msgid": "Update model fields in the system backend.",
+          "translations": {
+            "zh_Hans": "更新模型字段（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update model providers instances",
+          "translations": {
+            "zh_Hans": "更新模型供应商实例"
+          }
+        },
+        {
+          "msgid": "Update model providers instances in the system backend.",
+          "translations": {
+            "zh_Hans": "更新模型供应商实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update model providers main instance",
+          "translations": {
+            "zh_Hans": "更新模型供应商主实例"
+          }
+        },
+        {
+          "msgid": "Update model providers main instance in the system backend.",
+          "translations": {
+            "zh_Hans": "更新模型供应商主实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update model scope grants",
+          "translations": {
+            "zh_Hans": "更新模型范围授权"
+          }
+        },
+        {
+          "msgid": "Update model scope grants in the system backend.",
+          "translations": {
+            "zh_Hans": "更新模型范围授权（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update roles",
+          "translations": {
+            "zh_Hans": "更新角色"
+          }
+        },
+        {
+          "msgid": "Update roles in the system backend.",
+          "translations": {
+            "zh_Hans": "更新角色（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update version",
+          "translations": {
+            "zh_Hans": "更新版本"
+          }
+        },
+        {
+          "msgid": "Update version in the system backend.",
+          "translations": {
+            "zh_Hans": "更新版本（系统后端）"
+          }
+        },
+        {
+          "msgid": "Update workspace",
+          "translations": {
+            "zh_Hans": "更新工作区"
+          }
+        },
+        {
+          "msgid": "Update workspace in the system backend.",
+          "translations": {
+            "zh_Hans": "更新工作区（系统后端）"
+          }
+        },
+        {
+          "msgid": "Upload model provider plugins install",
+          "translations": {
+            "zh_Hans": "上传并安装模型供应商插件"
+          }
+        },
+        {
+          "msgid": "Upload model provider plugins install in the system backend.",
+          "translations": {
+            "zh_Hans": "上传并安装模型供应商插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "Upload plugins install",
+          "translations": {
+            "zh_Hans": "上传并安装插件"
+          }
+        },
+        {
+          "msgid": "Upload plugins install in the system backend.",
+          "translations": {
+            "zh_Hans": "上传并安装插件（系统后端）"
+          }
+        },
+        {
+          "msgid": "Upload run archive chunk",
+          "translations": {
+            "zh_Hans": "上传运行归档分块"
+          }
+        },
+        {
+          "msgid": "Upload run archive chunk in the system backend.",
+          "translations": {
+            "zh_Hans": "上传运行归档分块（系统后端）"
+          }
+        },
+        {
+          "msgid": "Upsert debug variable cache entry",
+          "translations": {
+            "zh_Hans": "更新或创建调试变量缓存条目"
+          }
+        },
+        {
+          "msgid": "Upsert debug variable cache entry in the system backend.",
+          "translations": {
+            "zh_Hans": "更新或创建调试变量缓存条目（系统后端）"
+          }
+        },
+        {
+          "msgid": "Upsert MCP groups",
+          "translations": {
+            "zh_Hans": "更新或创建 MCP 分组"
+          }
+        },
+        {
+          "msgid": "Upsert MCP groups in the system backend.",
+          "translations": {
+            "zh_Hans": "更新或创建 MCP 分组（系统后端）"
+          }
+        },
+        {
+          "msgid": "View auth center overview",
+          "translations": {
+            "zh_Hans": "查看认证中心概览"
+          }
+        },
+        {
+          "msgid": "View auth center overview in the system backend.",
+          "translations": {
+            "zh_Hans": "查看认证中心概览（系统后端）"
+          }
+        },
+        {
+          "msgid": "View data sources",
+          "translations": {
+            "zh_Hans": "查看数据源"
+          }
+        },
+        {
+          "msgid": "View data sources in the system backend.",
+          "translations": {
+            "zh_Hans": "查看数据源（系统后端）"
+          }
+        },
+        {
+          "msgid": "View frontend blocks",
+          "translations": {
+            "zh_Hans": "查看前端区块"
+          }
+        },
+        {
+          "msgid": "View frontend blocks in the system backend.",
+          "translations": {
+            "zh_Hans": "查看前端区块（系统后端）"
+          }
+        },
+        {
+          "msgid": "View host infrastructure providers",
+          "translations": {
+            "zh_Hans": "查看宿主基础设施供应商"
+          }
+        },
+        {
+          "msgid": "View host infrastructure providers in the system backend.",
+          "translations": {
+            "zh_Hans": "查看宿主基础设施供应商（系统后端）"
+          }
+        },
+        {
+          "msgid": "View JS dependencies",
+          "translations": {
+            "zh_Hans": "查看 JavaScript 依赖"
+          }
+        },
+        {
+          "msgid": "View JS dependencies in the system backend.",
+          "translations": {
+            "zh_Hans": "查看 JavaScript 依赖（系统后端）"
+          }
+        },
+        {
+          "msgid": "View MCP discovery policy",
+          "translations": {
+            "zh_Hans": "查看 MCP 发现策略"
+          }
+        },
+        {
+          "msgid": "View MCP discovery policy in the system backend.",
+          "translations": {
+            "zh_Hans": "查看 MCP 发现策略（系统后端）"
+          }
+        },
+        {
+          "msgid": "View MCP instances",
+          "translations": {
+            "zh_Hans": "查看 MCP 实例"
+          }
+        },
+        {
+          "msgid": "View MCP instances in the system backend.",
+          "translations": {
+            "zh_Hans": "查看 MCP 实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "View MCP upstream connections",
+          "translations": {
+            "zh_Hans": "查看 MCP 上游连接"
+          }
+        },
+        {
+          "msgid": "View MCP upstream connections in the system backend.",
+          "translations": {
+            "zh_Hans": "查看 MCP 上游连接（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model definitions advisor",
+          "translations": {
+            "zh_Hans": "查看模型定义助手"
+          }
+        },
+        {
+          "msgid": "View model definitions advisor in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型定义助手（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model definitions openapi",
+          "translations": {
+            "zh_Hans": "查看模型定义 OpenAPI"
+          }
+        },
+        {
+          "msgid": "View model definitions openapi in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型定义 OpenAPI（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model provider plugins families",
+          "translations": {
+            "zh_Hans": "查看模型供应商插件系列"
+          }
+        },
+        {
+          "msgid": "View model provider plugins families in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model provider plugins official catalog",
+          "translations": {
+            "zh_Hans": "查看模型供应商插件官方目录"
+          }
+        },
+        {
+          "msgid": "View model provider plugins official catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商插件官方目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model provider plugins tasks",
+          "translations": {
+            "zh_Hans": "查看模型供应商插件任务"
+          }
+        },
+        {
+          "msgid": "View model provider plugins tasks in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商插件任务（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers balance",
+          "translations": {
+            "zh_Hans": "查看模型供应商余额"
+          }
+        },
+        {
+          "msgid": "View model providers balance in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商余额（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers catalog",
+          "translations": {
+            "zh_Hans": "查看模型供应商目录"
+          }
+        },
+        {
+          "msgid": "View model providers catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers icons",
+          "translations": {
+            "zh_Hans": "查看模型供应商图标"
+          }
+        },
+        {
+          "msgid": "View model providers icons in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商图标（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers instances",
+          "translations": {
+            "zh_Hans": "查看模型供应商实例"
+          }
+        },
+        {
+          "msgid": "View model providers instances in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers instances models",
+          "translations": {
+            "zh_Hans": "查看模型供应商实例模型"
+          }
+        },
+        {
+          "msgid": "View model providers instances models in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商实例模型（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers main instance",
+          "translations": {
+            "zh_Hans": "查看模型供应商主实例"
+          }
+        },
+        {
+          "msgid": "View model providers main instance in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商主实例（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers options",
+          "translations": {
+            "zh_Hans": "查看模型供应商选项"
+          }
+        },
+        {
+          "msgid": "View model providers options in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers preview",
+          "translations": {
+            "zh_Hans": "查看模型供应商预览"
+          }
+        },
+        {
+          "msgid": "View model providers preview in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商预览（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers request logs",
+          "translations": {
+            "zh_Hans": "查看模型供应商请求日志"
+          }
+        },
+        {
+          "msgid": "View model providers request logs in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商请求日志（系统后端）"
+          }
+        },
+        {
+          "msgid": "View model providers settings options",
+          "translations": {
+            "zh_Hans": "查看模型供应商设置选项"
+          }
+        },
+        {
+          "msgid": "View model providers settings options in the system backend.",
+          "translations": {
+            "zh_Hans": "查看模型供应商设置选项（系统后端）"
+          }
+        },
+        {
+          "msgid": "View node contributions",
+          "translations": {
+            "zh_Hans": "查看节点贡献"
+          }
+        },
+        {
+          "msgid": "View node contributions in the system backend.",
+          "translations": {
+            "zh_Hans": "查看节点贡献（系统后端）"
+          }
+        },
+        {
+          "msgid": "View plugins catalog",
+          "translations": {
+            "zh_Hans": "查看插件目录"
+          }
+        },
+        {
+          "msgid": "View plugins catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "查看插件目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "View plugins families",
+          "translations": {
+            "zh_Hans": "查看插件系列"
+          }
+        },
+        {
+          "msgid": "View plugins families in the system backend.",
+          "translations": {
+            "zh_Hans": "查看插件系列（系统后端）"
+          }
+        },
+        {
+          "msgid": "View plugins official catalog",
+          "translations": {
+            "zh_Hans": "查看插件官方目录"
+          }
+        },
+        {
+          "msgid": "View plugins official catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "查看插件官方目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "View roles console policy",
+          "translations": {
+            "zh_Hans": "查看角色控制台策略"
+          }
+        },
+        {
+          "msgid": "View roles console policy catalog",
+          "translations": {
+            "zh_Hans": "查看角色控制台策略目录"
+          }
+        },
+        {
+          "msgid": "View roles console policy catalog in the system backend.",
+          "translations": {
+            "zh_Hans": "查看角色控制台策略目录（系统后端）"
+          }
+        },
+        {
+          "msgid": "View roles console policy in the system backend.",
+          "translations": {
+            "zh_Hans": "查看角色控制台策略（系统后端）"
+          }
+        },
+        {
+          "msgid": "View roles data policy",
+          "translations": {
+            "zh_Hans": "查看角色数据策略"
+          }
+        },
+        {
+          "msgid": "View roles data policy in the system backend.",
+          "translations": {
+            "zh_Hans": "查看角色数据策略（系统后端）"
+          }
+        },
+        {
+          "msgid": "View roles frontstage routes",
+          "translations": {
+            "zh_Hans": "查看角色前台路由"
+          }
+        },
+        {
+          "msgid": "View roles frontstage routes in the system backend.",
+          "translations": {
+            "zh_Hans": "查看角色前台路由（系统后端）"
+          }
+        },
+        {
+          "msgid": "View roles permissions",
+          "translations": {
+            "zh_Hans": "查看角色权限"
+          }
+        },
+        {
+          "msgid": "View roles permissions in the system backend.",
+          "translations": {
+            "zh_Hans": "查看角色权限（系统后端）"
+          }
+        },
+        {
+          "msgid": "View system release status",
+          "translations": {
+            "zh_Hans": "查看系统发布状态"
+          }
+        },
+        {
+          "msgid": "View system release status in the system backend.",
+          "translations": {
+            "zh_Hans": "查看系统发布状态（系统后端）"
+          }
+        },
+        {
+          "msgid": "View system runtime profile",
+          "translations": {
+            "zh_Hans": "查看系统运行时配置"
+          }
+        },
+        {
+          "msgid": "View system runtime profile in the system backend.",
+          "translations": {
+            "zh_Hans": "查看系统运行时配置（系统后端）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/console/settings",
+      "messages": [
+        {
+          "msgid": "API documentation",
+          "translations": {
+            "zh_Hans": "API 文档"
+          }
+        },
+        {
+          "msgid": "API documentation operations",
+          "translations": {
+            "zh_Hans": "API 文档操作"
+          }
+        },
+        {
+          "msgid": "API key authentication",
+          "translations": {
+            "zh_Hans": "API 密钥认证"
+          }
+        },
+        {
+          "msgid": "API key authentication operations",
+          "translations": {
+            "zh_Hans": "API 密钥认证操作"
+          }
+        },
+        {
+          "msgid": "Application management",
+          "translations": {
+            "zh_Hans": "应用管理"
+          }
+        },
+        {
+          "msgid": "Application management operations",
+          "translations": {
+            "zh_Hans": "应用管理操作"
+          }
+        },
+        {
+          "msgid": "Authentication center",
+          "translations": {
+            "zh_Hans": "认证中心"
+          }
+        },
+        {
+          "msgid": "Authentication center operations",
+          "translations": {
+            "zh_Hans": "认证中心操作"
+          }
+        },
+        {
+          "msgid": "Data model and data source operations",
+          "translations": {
+            "zh_Hans": "数据模型与数据源操作"
+          }
+        },
+        {
+          "msgid": "Data source",
+          "translations": {
+            "zh_Hans": "数据源"
+          }
+        },
+        {
+          "msgid": "File management",
+          "translations": {
+            "zh_Hans": "文件管理"
+          }
+        },
+        {
+          "msgid": "File management operations",
+          "translations": {
+            "zh_Hans": "文件管理操作"
+          }
+        },
+        {
+          "msgid": "Host infrastructure operations",
+          "translations": {
+            "zh_Hans": "宿主基础设施操作"
+          }
+        },
+        {
+          "msgid": "Infrastructure",
+          "translations": {
+            "zh_Hans": "基础设施"
+          }
+        },
+        {
+          "msgid": "Language catalog",
+          "translations": {
+            "zh_Hans": "语言目录"
+          }
+        },
+        {
+          "msgid": "MCP management",
+          "translations": {
+            "zh_Hans": "MCP 管理"
+          }
+        },
+        {
+          "msgid": "MCP management operations",
+          "translations": {
+            "zh_Hans": "MCP 管理操作"
+          }
+        },
+        {
+          "msgid": "Member management operations",
+          "translations": {
+            "zh_Hans": "成员管理操作"
+          }
+        },
+        {
+          "msgid": "Memory observation",
+          "translations": {
+            "zh_Hans": "内存观测"
+          }
+        },
+        {
+          "msgid": "Memory observation operations",
+          "translations": {
+            "zh_Hans": "内存观测操作"
+          }
+        },
+        {
+          "msgid": "Model provider operations",
+          "translations": {
+            "zh_Hans": "模型供应商操作"
+          }
+        },
+        {
+          "msgid": "Model providers",
+          "translations": {
+            "zh_Hans": "模型供应商"
+          }
+        },
+        {
+          "msgid": "Permission management",
+          "translations": {
+            "zh_Hans": "权限管理"
+          }
+        },
+        {
+          "msgid": "Role and permission operations",
+          "translations": {
+            "zh_Hans": "角色与权限操作"
+          }
+        },
+        {
+          "msgid": "Root language catalog operations",
+          "translations": {
+            "zh_Hans": "根级语言目录操作"
+          }
+        },
+        {
+          "msgid": "System runtime",
+          "translations": {
+            "zh_Hans": "系统运行时"
+          }
+        },
+        {
+          "msgid": "System runtime operations",
+          "translations": {
+            "zh_Hans": "系统运行时操作"
+          }
+        },
+        {
+          "msgid": "User management",
+          "translations": {
+            "zh_Hans": "用户管理"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/console/settings/policy",
+      "messages": [
+        {
+          "msgid": "Agent Flow",
+          "translations": {
+            "zh_Hans": "Agent Flow"
+          }
+        },
+        {
+          "msgid": "Allow records created by the current user",
+          "translations": {
+            "zh_Hans": "允许当前用户创建的记录"
+          }
+        },
+        {
+          "msgid": "Allow records in the current workspace",
+          "translations": {
+            "zh_Hans": "允许当前工作区中的记录"
+          }
+        },
+        {
+          "msgid": "Choose operations and row scopes individually",
+          "translations": {
+            "zh_Hans": "逐项选择操作和行范围"
+          }
+        },
+        {
+          "msgid": "Console routes available to every signed-in user",
+          "translations": {
+            "zh_Hans": "所有已登录用户可用的控制台路由"
+          }
+        },
+        {
+          "msgid": "Current workspace",
+          "translations": {
+            "zh_Hans": "当前工作区"
+          }
+        },
+        {
+          "msgid": "Custom access",
+          "translations": {
+            "zh_Hans": "自定义访问"
+          }
+        },
+        {
+          "msgid": "Data source utilities",
+          "translations": {
+            "zh_Hans": "数据源工具"
+          }
+        },
+        {
+          "msgid": "Disabled",
+          "translations": {
+            "zh_Hans": "已禁用"
+          }
+        },
+        {
+          "msgid": "Do not grant this operation",
+          "translations": {
+            "zh_Hans": "不授予此操作"
+          }
+        },
+        {
+          "msgid": "Frontend blocks",
+          "translations": {
+            "zh_Hans": "前端区块"
+          }
+        },
+        {
+          "msgid": "Full access",
+          "translations": {
+            "zh_Hans": "完全访问"
+          }
+        },
+        {
+          "msgid": "Grant every operation in this group",
+          "translations": {
+            "zh_Hans": "授予此分组中的全部操作"
+          }
+        },
+        {
+          "msgid": "JavaScript dependencies",
+          "translations": {
+            "zh_Hans": "JavaScript 依赖"
+          }
+        },
+        {
+          "msgid": "Model provider utilities",
+          "translations": {
+            "zh_Hans": "模型供应商工具"
+          }
+        },
+        {
+          "msgid": "Node contributions",
+          "translations": {
+            "zh_Hans": "节点贡献"
+          }
+        },
+        {
+          "msgid": "Own records",
+          "translations": {
+            "zh_Hans": "仅自己"
+          }
+        },
+        {
+          "msgid": "Plugins",
+          "translations": {
+            "zh_Hans": "插件"
+          }
+        },
+        {
+          "msgid": "Registered Agent Flow operations outside system settings",
+          "translations": {
+            "zh_Hans": "系统设置之外已注册的 Agent Flow 操作"
+          }
+        },
+        {
+          "msgid": "Registered data source operations outside system settings",
+          "translations": {
+            "zh_Hans": "系统设置之外已注册的数据源操作"
+          }
+        },
+        {
+          "msgid": "Registered frontend block catalog operations",
+          "translations": {
+            "zh_Hans": "已注册的前端区块目录操作"
+          }
+        },
+        {
+          "msgid": "Registered JavaScript dependency operations",
+          "translations": {
+            "zh_Hans": "已注册的 JavaScript 依赖操作"
+          }
+        },
+        {
+          "msgid": "Registered model provider operations outside system settings",
+          "translations": {
+            "zh_Hans": "系统设置之外已注册的模型供应商操作"
+          }
+        },
+        {
+          "msgid": "Registered node contribution catalog operations",
+          "translations": {
+            "zh_Hans": "已注册的节点贡献目录操作"
+          }
+        },
+        {
+          "msgid": "Registered operations for the current workspace",
+          "translations": {
+            "zh_Hans": "当前工作区的已注册操作"
+          }
+        },
+        {
+          "msgid": "Registered plugin catalog and lifecycle operations",
+          "translations": {
+            "zh_Hans": "已注册的插件目录与生命周期操作"
+          }
+        },
+        {
+          "msgid": "Signed-in console",
+          "translations": {
+            "zh_Hans": "已登录控制台"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/console/settings/resources",
+      "messages": [
+        {
+          "msgid": "Applications",
+          "translations": {
+            "zh_Hans": "应用"
+          }
+        },
+        {
+          "msgid": "Applications in the current workspace",
+          "translations": {
+            "zh_Hans": "当前工作区中的应用"
+          }
+        },
+        {
+          "msgid": "Configured data source instances in the current workspace",
+          "translations": {
+            "zh_Hans": "当前工作区中已配置的数据源实例"
+          }
+        },
+        {
+          "msgid": "Create",
+          "translations": {
+            "zh_Hans": "创建"
+          }
+        },
+        {
+          "msgid": "Create an application",
+          "translations": {
+            "zh_Hans": "创建应用"
+          }
+        },
+        {
+          "msgid": "Data source instances",
+          "translations": {
+            "zh_Hans": "数据源实例"
+          }
+        },
+        {
+          "msgid": "Delete",
+          "translations": {
+            "zh_Hans": "删除"
+          }
+        },
+        {
+          "msgid": "Delete an application",
+          "translations": {
+            "zh_Hans": "删除应用"
+          }
+        },
+        {
+          "msgid": "Update",
+          "translations": {
+            "zh_Hans": "更新"
+          }
+        },
+        {
+          "msgid": "Update an application",
+          "translations": {
+            "zh_Hans": "更新应用"
+          }
+        },
+        {
+          "msgid": "View",
+          "translations": {
+            "zh_Hans": "查看"
+          }
+        },
+        {
+          "msgid": "View a data source instance",
+          "translations": {
+            "zh_Hans": "查看数据源实例"
+          }
+        },
+        {
+          "msgid": "View an application",
+          "translations": {
+            "zh_Hans": "查看应用"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/file-management",
+      "messages": [
+        {
+          "msgid": "Attachments",
+          "translations": {
+            "zh_Hans": "附件"
+          }
+        },
+        {
+          "msgid": "Cached URL",
+          "translations": {
+            "zh_Hans": "缓存 URL"
+          }
+        },
+        {
+          "msgid": "Extension",
+          "translations": {
+            "zh_Hans": "扩展名"
+          }
+        },
+        {
+          "msgid": "Filename",
+          "translations": {
+            "zh_Hans": "文件名"
+          }
+        },
+        {
+          "msgid": "Metadata",
+          "translations": {
+            "zh_Hans": "元数据"
+          }
+        },
+        {
+          "msgid": "MIME Type",
+          "translations": {
+            "zh_Hans": "MIME 类型"
+          }
+        },
+        {
+          "msgid": "Size",
+          "translations": {
+            "zh_Hans": "大小"
+          }
+        },
+        {
+          "msgid": "Storage ID",
+          "translations": {
+            "zh_Hans": "存储 ID"
+          }
+        },
+        {
+          "msgid": "Storage Path",
+          "translations": {
+            "zh_Hans": "存储路径"
+          }
+        },
+        {
+          "msgid": "Title",
+          "translations": {
+            "zh_Hans": "标题"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/frontstage",
+      "messages": [
+        {
+          "msgid": "Default",
+          "translations": {
+            "zh_Hans": "默认"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/official-sources",
+      "messages": [
+        {
+          "msgid": "Mirror source",
+          "translations": {
+            "zh_Hans": "镜像源"
+          }
+        },
+        {
+          "msgid": "Official source",
+          "translations": {
+            "zh_Hans": "官方源"
+          }
+        }
+      ]
+    },
+    {
+      "id": "@taichuy/platform/system-metadata",
+      "messages": [
+        {
+          "msgid": "Account",
+          "translations": {
+            "zh_Hans": "账号"
+          }
+        },
+        {
+          "msgid": "Automatically Grant New Permissions",
+          "translations": {
+            "zh_Hans": "自动授予新增权限"
+          }
+        },
+        {
+          "msgid": "Avatar",
+          "translations": {
+            "zh_Hans": "头像"
+          }
+        },
+        {
+          "msgid": "Builtin Role",
+          "translations": {
+            "zh_Hans": "内建角色"
+          }
+        },
+        {
+          "msgid": "Created At",
+          "translations": {
+            "zh_Hans": "创建时间"
+          }
+        },
+        {
+          "msgid": "Created By",
+          "translations": {
+            "zh_Hans": "创建者"
+          }
+        },
+        {
+          "msgid": "Default Display Role",
+          "translations": {
+            "zh_Hans": "默认展示角色"
+          }
+        },
+        {
+          "msgid": "Default Member Role",
+          "translations": {
+            "zh_Hans": "默认成员角色"
+          }
+        },
+        {
+          "msgid": "Editable",
+          "translations": {
+            "zh_Hans": "可编辑"
+          }
+        },
+        {
+          "msgid": "Email",
+          "translations": {
+            "zh_Hans": "邮箱"
+          }
+        },
+        {
+          "msgid": "Email Login",
+          "translations": {
+            "zh_Hans": "邮箱登录"
+          }
+        },
+        {
+          "msgid": "Introduction",
+          "translations": {
+            "zh_Hans": "简介"
+          }
+        },
+        {
+          "msgid": "Metadata",
+          "translations": {
+            "zh_Hans": "元数据"
+          }
+        },
+        {
+          "msgid": "Name",
+          "translations": {
+            "zh_Hans": "名称"
+          }
+        },
+        {
+          "msgid": "Nickname",
+          "translations": {
+            "zh_Hans": "昵称"
+          }
+        },
+        {
+          "msgid": "Phone",
+          "translations": {
+            "zh_Hans": "手机号"
+          }
+        },
+        {
+          "msgid": "Phone Login",
+          "translations": {
+            "zh_Hans": "手机号登录"
+          }
+        },
+        {
+          "msgid": "Preferred Language",
+          "translations": {
+            "zh_Hans": "首选语言"
+          }
+        },
+        {
+          "msgid": "Role Code",
+          "translations": {
+            "zh_Hans": "角色代码"
+          }
+        },
+        {
+          "msgid": "Role ID",
+          "translations": {
+            "zh_Hans": "角色 ID"
+          }
+        },
+        {
+          "msgid": "Role Name",
+          "translations": {
+            "zh_Hans": "角色名称"
+          }
+        },
+        {
+          "msgid": "Roles",
+          "translations": {
+            "zh_Hans": "角色"
+          }
+        },
+        {
+          "msgid": "Scope",
+          "translations": {
+            "zh_Hans": "范围"
+          }
+        },
+        {
+          "msgid": "Scope ID",
+          "translations": {
+            "zh_Hans": "范围 ID"
+          }
+        },
+        {
+          "msgid": "Status",
+          "translations": {
+            "zh_Hans": "状态"
+          }
+        },
+        {
+          "msgid": "System Role Type",
+          "translations": {
+            "zh_Hans": "系统角色类型"
+          }
+        },
+        {
+          "msgid": "Updated At",
+          "translations": {
+            "zh_Hans": "更新时间"
+          }
+        },
+        {
+          "msgid": "Updated By",
+          "translations": {
+            "zh_Hans": "更新者"
+          }
+        },
+        {
+          "msgid": "User ID",
+          "translations": {
+            "zh_Hans": "用户 ID"
+          }
+        },
+        {
+          "msgid": "Users",
+          "translations": {
+            "zh_Hans": "用户"
+          }
+        },
+        {
+          "msgid": "Workspace ID",
+          "translations": {
+            "zh_Hans": "工作区 ID"
           }
         }
       ]
