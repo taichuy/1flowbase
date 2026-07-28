@@ -435,6 +435,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         cookie_name: config.cookie_name.clone(),
         cookie_secure: config.cookie_secure,
         session_ttl_days: config.session_ttl_days,
+        bootstrap_workspace_id: bootstrap_result.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());

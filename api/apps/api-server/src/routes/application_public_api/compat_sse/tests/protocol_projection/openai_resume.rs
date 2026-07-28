@@ -94,6 +94,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
         cookie_name: base_state.cookie_name.clone(),
         cookie_secure: base_state.cookie_secure,
         session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_id: base_state.bootstrap_workspace_id,
         bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
     });
     let (sender, mut receiver) = mpsc::channel(32);
@@ -386,6 +387,7 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
         cookie_name: base_state.cookie_name.clone(),
         cookie_secure: base_state.cookie_secure,
         session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_id: base_state.bootstrap_workspace_id,
         bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
     });
     let (sender, mut receiver) = mpsc::channel(32);

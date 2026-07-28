@@ -54,6 +54,19 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             .collect::<Vec<_>>()
     };
 
+    assert_eq!(
+        routes("system.i18n-catalog"),
+        vec![
+            ("GET", "/api/console/settings/i18n/catalog"),
+            (
+                "GET",
+                "/api/console/settings/i18n/modules/{module}/messages",
+            ),
+            ("GET", "/api/console/settings/i18n/update-check"),
+            ("POST", "/api/console/settings/i18n/activate"),
+        ]
+    );
+
     assert_eq!(routes("system.model-providers").len(), 26);
     assert_eq!(
         routes("system.model-providers"),

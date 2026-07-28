@@ -263,6 +263,7 @@ async fn test_state_with_runtime_profile_state(
             cookie_name: config.cookie_name.clone(),
             cookie_secure: config.cookie_secure,
             session_ttl_days: config.session_ttl_days,
+            bootstrap_workspace_id: bootstrap.workspace_id,
             bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
         }),
         config.database_url,

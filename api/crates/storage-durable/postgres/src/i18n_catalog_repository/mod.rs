@@ -342,7 +342,7 @@ impl I18nCatalogRepository for PgControlPlaneStore {
     ) -> Result<Option<StoredI18nCatalogReleaseDescriptor>> {
         let row = sqlx::query(
             r#"
-            select catalog_version, semantic_sha256
+            select catalog_version, semantic_sha256, source_locale, locales, modules
             from i18n_catalog_releases
             where workspace_id = $1 and id = $2
             "#,
@@ -359,6 +359,17 @@ impl I18nCatalogRepository for PgControlPlaneStore {
                 semantic_sha256: domain::CatalogDigest::new(
                     row.get::<String, _>("semantic_sha256"),
                 )?,
+                source_locale: CatalogLocale::new(row.get::<String, _>("source_locale"))?,
+                locales: row
+                    .get::<Vec<String>, _>("locales")
+                    .into_iter()
+                    .map(CatalogLocale::new)
+                    .collect::<Result<Vec<_>, _>>()?,
+                modules: row
+                    .get::<Vec<String>, _>("modules")
+                    .into_iter()
+                    .map(CatalogModuleId::new)
+                    .collect::<Result<Vec<_>, _>>()?,
             })
         })
         .transpose()

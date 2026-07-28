@@ -690,6 +690,7 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
         cookie_name: base_state.cookie_name.clone(),
         cookie_secure: base_state.cookie_secure,
         session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_id: base_state.bootstrap_workspace_id,
         bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
     });
     let (sender, mut receiver) = mpsc::channel(32);
@@ -794,6 +795,7 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         cookie_name: base_state.cookie_name.clone(),
         cookie_secure: base_state.cookie_secure,
         session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_id: base_state.bootstrap_workspace_id,
         bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
     });
     let (sender, mut receiver) = mpsc::channel(32);

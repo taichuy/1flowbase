@@ -30,6 +30,18 @@ pub enum OfficialI18nCatalogUpdateOutcome {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OfficialI18nCatalogUpdateStatus {
+    Current {
+        active_catalog_version: CatalogVersion,
+        latest_catalog_version: CatalogVersion,
+    },
+    UpdateAvailable {
+        active_catalog_version: Option<CatalogVersion>,
+        latest_catalog_version: CatalogVersion,
+    },
+}
+
 pub struct OfficialI18nCatalogUpdateService<R> {
     repository: R,
     source: Arc<dyn OfficialI18nCatalogSourcePort>,
@@ -59,7 +71,10 @@ where
 
         // All mutable remote reads and fixed artifact verification finish before
         // staging opens its own short database transaction.
-        let latest = self.source.check_latest_release().await?;
+        let latest =
+            self.source.check_latest_release().await.map_err(|_| {
+                ControlPlaneError::UpstreamUnavailable("official_i18n_catalog_source")
+            })?;
         if let Some(active) = active.as_ref() {
             match compare_releases(active, &latest)? {
                 ReleaseDifference::Current => {
@@ -77,7 +92,11 @@ where
             }
         }
 
-        let seed = self.source.fetch_verified_release(&latest).await?;
+        let seed = self
+            .source
+            .fetch_verified_release(&latest)
+            .await
+            .map_err(|_| ControlPlaneError::UpstreamUnavailable("official_i18n_catalog_source"))?;
         if seed.catalog_version() != &latest.catalog_version
             || seed.semantic_sha256() != &latest.semantic_sha256
         {
@@ -99,6 +118,42 @@ where
             catalog_version: latest.catalog_version,
             state,
         })
+    }
+
+    pub async fn check_update(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<OfficialI18nCatalogUpdateStatus> {
+        let state = self
+            .repository
+            .get_workspace_catalog_state(workspace_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("workspace_i18n_catalog_state"))?;
+        let active = self.active_release_descriptor(&state).await?;
+        let latest =
+            self.source.check_latest_release().await.map_err(|_| {
+                ControlPlaneError::UpstreamUnavailable("official_i18n_catalog_source")
+            })?;
+        let Some(active) = active else {
+            return Ok(OfficialI18nCatalogUpdateStatus::UpdateAvailable {
+                active_catalog_version: None,
+                latest_catalog_version: latest.catalog_version,
+            });
+        };
+        match compare_releases(&active, &latest)? {
+            ReleaseDifference::Current => Ok(OfficialI18nCatalogUpdateStatus::Current {
+                active_catalog_version: active.catalog_version,
+                latest_catalog_version: latest.catalog_version,
+            }),
+            ReleaseDifference::ContentDrift => Err(ControlPlaneError::Conflict(
+                "official_i18n_catalog_version_content_drift",
+            )
+            .into()),
+            ReleaseDifference::Newer => Ok(OfficialI18nCatalogUpdateStatus::UpdateAvailable {
+                active_catalog_version: Some(active.catalog_version),
+                latest_catalog_version: latest.catalog_version,
+            }),
+        }
     }
 
     async fn active_release_descriptor(

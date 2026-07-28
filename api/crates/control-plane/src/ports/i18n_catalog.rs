@@ -21,6 +21,9 @@ pub trait OfficialI18nCatalogSourcePort: Send + Sync {
 pub struct StoredI18nCatalogReleaseDescriptor {
     pub catalog_version: domain::CatalogVersion,
     pub semantic_sha256: domain::CatalogDigest,
+    pub source_locale: domain::CatalogLocale,
+    pub locales: Vec<domain::CatalogLocale>,
+    pub modules: Vec<domain::CatalogModuleId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

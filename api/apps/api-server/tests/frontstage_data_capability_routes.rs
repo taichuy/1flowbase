@@ -175,7 +175,7 @@ async fn fixture() -> Fixture {
         .hash_password(config.bootstrap_root_password.as_bytes(), &salt)
         .unwrap()
         .to_string();
-    BootstrapService::new(store.clone())
+    let bootstrap = BootstrapService::new(store.clone())
         .run(&BootstrapConfig {
             workspace_name: config.bootstrap_workspace_name.clone(),
             root_account: config.bootstrap_root_account.clone(),
@@ -261,6 +261,7 @@ async fn fixture() -> Fixture {
         cookie_name: config.cookie_name.clone(),
         cookie_secure: config.cookie_secure,
         session_ttl_days: config.session_ttl_days,
+        bootstrap_workspace_id: bootstrap.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
     Fixture {

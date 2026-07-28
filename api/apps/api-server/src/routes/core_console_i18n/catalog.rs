@@ -2,6 +2,7 @@ use super::CoreConsoleLocaleText;
 
 pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
     text!("auto.api_documentation", "API documentation", "API 文档"),
+    text!("auto.i18n_catalog", "Language catalog", "语言目录"),
     text!(
         "auto.api_key_authentication",
         "API key authentication",
@@ -30,6 +31,11 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "console.policy_groups.settings.system.docs.description",
         "API documentation operations",
         "API 文档操作",
+    ),
+    text!(
+        "console.policy_groups.settings.system.i18n-catalog.description",
+        "Root language catalog operations",
+        "Root 语言目录操作",
     ),
     text!(
         "console.policy_groups.settings.system.api-key-authentication.description",

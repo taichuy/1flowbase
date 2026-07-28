@@ -63,6 +63,7 @@ struct FakeSource {
     checks: AtomicUsize,
     fetches: AtomicUsize,
     repository_transaction_open: Arc<AtomicBool>,
+    fail_check: AtomicBool,
 }
 
 #[async_trait]
@@ -70,6 +71,9 @@ impl OfficialI18nCatalogSourcePort for FakeSource {
     async fn check_latest_release(&self) -> Result<OfficialI18nCatalogReleaseDescriptor> {
         assert!(!self.repository_transaction_open.load(Ordering::SeqCst));
         self.checks.fetch_add(1, Ordering::SeqCst);
+        if self.fail_check.load(Ordering::SeqCst) {
+            bail!("controlled source failure");
+        }
         Ok(self.descriptor.clone())
     }
 
@@ -122,6 +126,9 @@ impl I18nCatalogRepository for FakeRepository {
                 StoredI18nCatalogReleaseDescriptor {
                     catalog_version: release.catalog_version().clone(),
                     semantic_sha256: release.semantic_sha256().clone(),
+                    source_locale: CatalogLocale::source(),
+                    locales: release.locales().to_vec(),
+                    modules: release.modules().to_vec(),
                 },
             );
             Ok(())
@@ -234,6 +241,12 @@ fn fixture(
                 StoredI18nCatalogReleaseDescriptor {
                     catalog_version: CatalogVersion::new("1.0.0").unwrap(),
                     semantic_sha256: digest('a'),
+                    source_locale: CatalogLocale::source(),
+                    locales: vec![
+                        CatalogLocale::source(),
+                        CatalogLocale::new("zh_Hans").unwrap(),
+                    ],
+                    modules: vec![CatalogModuleId::new("@taichuy/platform/common").unwrap()],
                 },
             )]),
             fail_stage: false,
@@ -253,8 +266,49 @@ fn fixture(
         checks: AtomicUsize::new(0),
         fetches: AtomicUsize::new(0),
         repository_transaction_open: transaction_open,
+        fail_check: AtomicBool::new(false),
     });
     (repository, source, workspace_id, active_release_id)
+}
+
+#[tokio::test]
+async fn ac_005_update_check_reports_current_and_newer_without_fetching() {
+    for (latest, expected_available) in [("1.0.0", false), ("1.1.0", true)] {
+        let (repository, source, workspace_id, _) = fixture(
+            latest,
+            if expected_available {
+                digest('b')
+            } else {
+                digest('a')
+            },
+        );
+        let service = OfficialI18nCatalogUpdateService::new(repository, source.clone());
+        let status = service.check_update(workspace_id).await.unwrap();
+        assert_eq!(
+            matches!(
+                status,
+                crate::i18n_catalog::OfficialI18nCatalogUpdateStatus::UpdateAvailable { .. }
+            ),
+            expected_available,
+        );
+        assert_eq!(source.fetches.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn ac_005_update_check_maps_source_failure_to_upstream_unavailable() {
+    let (repository, source, workspace_id, _) = fixture("1.1.0", digest('b'));
+    source.fail_check.store(true, Ordering::SeqCst);
+    let error = OfficialI18nCatalogUpdateService::new(repository, source)
+        .check_update(workspace_id)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(&crate::errors::ControlPlaneError::UpstreamUnavailable(
+            "official_i18n_catalog_source"
+        ))
+    );
 }
 
 #[tokio::test]

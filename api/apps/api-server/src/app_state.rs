@@ -246,5 +246,6 @@ pub struct ApiState {
     pub cookie_name: String,
     pub cookie_secure: bool,
     pub session_ttl_days: i64,
+    pub bootstrap_workspace_id: uuid::Uuid,
     pub bootstrap_workspace_name: String,
 }

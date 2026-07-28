@@ -27,6 +27,9 @@ pub const SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.acc
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.host-infrastructure";
+pub const SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_ID: &str = "system.i18n-catalog";
+pub const SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.i18n-catalog";
 pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID: &str = "system.memory-observation";
 pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.memory-observation";
@@ -103,6 +106,33 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.i18n".to_string(),
+                surface_key: "i18n".to_string(),
+                path: "/settings/i18n".to_string(),
+                label_key: "auto.i18n_catalog".to_string(),
+                description_key: "console.policy_groups.settings.system.i18n-catalog.description"
+                    .to_string(),
+                order: 150,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/i18n/catalog"),
+                (
+                    "GET",
+                    "/api/console/settings/i18n/modules/{module}/messages",
+                ),
+                ("GET", "/api/console/settings/i18n/update-check"),
+                ("POST", "/api/console/settings/i18n/activate"),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_DOCS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
