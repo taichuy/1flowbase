@@ -276,7 +276,7 @@ test('publication source binds Generate and protocol context for all gateway pro
       model_id: 'gateway-fixture-model',
     });
     assert.deepEqual(llmConfig.protocol_context, {
-      kind: 'variable',
+      kind: 'selector',
       value: ['sys', 'protocol_context'],
     });
   }

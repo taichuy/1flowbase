@@ -80,7 +80,7 @@ function configureDraft(document, provider) {
     model_id: provider.model,
   };
   llm.config.protocol_context = {
-    kind: 'variable',
+    kind: 'selector',
     value: ['sys', 'protocol_context'],
   };
   return document;
