@@ -45,8 +45,8 @@ vi.mock(
     }
   })
 );
-vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
-  JsBlockTrialPanel: (props: {
+vi.mock('../../frontstage/components/jsx-studio/JsxStudioRunPanel', () => ({
+  JsxStudioRunPanel: (props: {
     block: {
       catalog: { providerCode: string; installationId: string };
       contribution: { pluginId: string; pluginVersion: string; code: string };
@@ -58,10 +58,11 @@ vi.mock('../../frontstage/components/JsBlockTrialPanel', () => ({
       instanceEpoch: string;
       plan: Record<string, unknown>;
       isCurrentInstance(): boolean;
+      observeApiCall(observation: Record<string, unknown>): void;
     }) => { inputs: Record<string, unknown>; application: unknown };
   }) => {
     trialPanelHook.render(props);
-    return <div>Auth Trial</div>;
+    return <div>Auth Studio Run</div>;
   }
 }));
 vi.mock('@monaco-editor/react', () => ({
@@ -168,8 +169,8 @@ describe('AuthenticatorUiBlockStudio', () => {
     );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("declare module 'react'"),
-      'file:///node_modules/@types/react/index.d.ts'
+      expect.stringContaining('declare namespace JSX'),
+      'file:///1flowbase/native-react-jsx.d.ts'
     );
     expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
       2,
@@ -285,7 +286,7 @@ describe('AuthenticatorUiBlockStudio', () => {
     expect(resourcePanelHook.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ runPanel: expect.anything() })
     );
-    expect(screen.getByText('Auth Trial')).toBeInTheDocument();
+    expect(screen.getByText('Auth Studio Run')).toBeInTheDocument();
     const trialProps = trialPanelHook.render.mock.calls.at(-1)?.[0];
     expect(trialProps.block).toMatchObject({
       catalog: {
@@ -327,6 +328,7 @@ describe('AuthenticatorUiBlockStudio', () => {
         revision: firstRevision
       })
     );
+    const observeApiCall = vi.fn();
     const previewContext = trialProps.createBlockContext({
       requestId: 'draft:public-auth:password-local:1',
       instanceEpoch: 'auth-preview-1',
@@ -339,7 +341,8 @@ describe('AuthenticatorUiBlockStudio', () => {
         props: {},
         requiredPermissions: ['ui_block.javascript.native']
       },
-      isCurrentInstance: () => true
+      isCurrentInstance: () => true,
+      observeApiCall
     });
     expect(previewContext.inputs).toEqual({
       authenticator_id: 'password-local',

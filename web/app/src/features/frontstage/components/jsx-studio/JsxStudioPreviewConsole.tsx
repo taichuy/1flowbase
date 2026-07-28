@@ -7,9 +7,9 @@ import { Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { i18nText } from '../../../shared/i18n/text';
+import { i18nText } from '../../../../shared/i18n/text';
 
-export interface JsBlockPreviewConsoleSnapshot {
+export interface JsxStudioPreviewConsoleSnapshot {
   diagnostics: ReadonlyArray<
     NativeReactCompileDiagnostic | NativeReactRuntimeDiagnostic
   >;
@@ -21,12 +21,12 @@ const MIN_PREVIEW_PERCENT = 20;
 const MAX_PREVIEW_PERCENT = 80;
 const KEYBOARD_STEP_PERCENT = 5;
 
-export function JsBlockPreviewConsole({
+export function JsxStudioPreviewConsole({
   preview,
   snapshot
 }: {
   preview: ReactNode;
-  snapshot: JsBlockPreviewConsoleSnapshot;
+  snapshot: JsxStudioPreviewConsoleSnapshot;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{
@@ -200,7 +200,7 @@ function clampPreviewPercent(value: number) {
 }
 
 function formatDiagnostic(
-  diagnostic: JsBlockPreviewConsoleSnapshot['diagnostics'][number]
+  diagnostic: JsxStudioPreviewConsoleSnapshot['diagnostics'][number]
 ): string {
   const location = diagnostic.sourceLocation
     ? `:${diagnostic.sourceLocation.line}:${diagnostic.sourceLocation.column}`

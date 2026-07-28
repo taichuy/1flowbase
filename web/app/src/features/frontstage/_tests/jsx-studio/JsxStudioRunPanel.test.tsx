@@ -14,12 +14,11 @@ import {
   type NativeReactCatalogDependencyLock
 } from '@1flowbase/page-runtime';
 
-import { appI18n } from '../../../shared/i18n/app-i18n';
-import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
-import type { FrontstageBlockInstance } from '../lib/page-document';
-import type { NativeReactBrowserCompileResult } from '../../../shared/code-block/native-react-compiler-browser';
-import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
+import { appI18n } from '../../../../shared/i18n/app-i18n';
+import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
+import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
+import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block-react-adapter';
+import type { FrontstageBlockInstance } from '../../lib/page-document';
 
 const block = {
   id: 'block-1',
@@ -40,22 +39,6 @@ const block = {
   order: 0,
   runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
 } satisfies FrontstageBlockInstance;
-
-const catalog = {
-  id: 'official:tsx',
-  runtimeKind: 'native_react',
-  installationId: 'installation-1',
-  providerCode: 'official',
-  pluginId: 'official.blocks',
-  pluginVersion: '1.0.0',
-  contributionCode: 'tsx',
-  title: 'TSX',
-  entry: 'index.js',
-  permissions: { network: 'none', storage: 'none', secrets: 'none' },
-  contextContract: { primitives: [], inputSchema: {} },
-  uiCapabilities: [],
-  raw: {}
-} as unknown as NormalizedFrontstageBlockCatalogEntry;
 
 function source(label: string): string {
   return `export default function Block() {
@@ -86,9 +69,8 @@ function renderPanel({
   currentBlock?: FrontstageBlockInstance;
 }) {
   return render(
-    <JsBlockTrialPanel
+    <JsxStudioRunPanel
       block={currentBlock}
-      catalogEntry={catalog}
       code={code}
       revision={revision}
       nativeCompiler={nativeCompiler}
@@ -100,7 +82,7 @@ function renderPanel({
 
 function trialShadowRoot(container: HTMLElement): ShadowRoot {
   const host = container.querySelector<HTMLElement>(
-    '[data-testid="native-react-trial-root"]'
+    '[data-testid="native-react-studio-preview-root"]'
   );
   if (!host?.shadowRoot) throw new Error('Expected native trial ShadowRoot.');
   return host.shadowRoot;
@@ -110,7 +92,7 @@ function trialQueries(container: HTMLElement) {
   return within(trialShadowRoot(container) as unknown as HTMLElement);
 }
 
-describe('JsBlockTrialPanel Native React run revision', () => {
+describe('JsxStudioRunPanel Native React run revision', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
   });
@@ -126,20 +108,23 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     await waitFor(() =>
       expect(
         view.container.querySelector<HTMLElement>(
-          '[data-testid="native-react-trial-root"]'
+          '[data-testid="native-react-studio-preview-root"]'
         )?.shadowRoot
       ).not.toBeNull()
     );
-    await trialQueries(view.container).findByTestId('native-output');
+    await waitFor(() =>
+      expect(
+        trialQueries(view.container).getByTestId('native-output')
+      ).toBeInTheDocument()
+    );
     expect(
       trialQueries(view.container).getByTestId('native-output')
     ).toHaveTextContent('first');
     expect(compiler).toHaveBeenCalledTimes(1);
 
     view.rerender(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={source('edited without run')}
         revision="run:1"
         nativeCompiler={compiler}
@@ -152,9 +137,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     ).toHaveTextContent('first');
 
     view.rerender(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={source('second')}
         revision="run:2"
         nativeCompiler={compiler}
@@ -243,9 +227,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     const prepareDraftRun = vi.fn().mockResolvedValue(undefined);
     const revokeDraftRun = vi.fn();
     const view = render(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={source('frozen')}
         revision="run:compile-error"
         nativeCompiler={compiler}
@@ -263,7 +246,7 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     await waitFor(() =>
       expect(
         view.container.querySelector<HTMLElement>(
-          '[data-testid="native-react-trial-root"]'
+          '[data-testid="native-react-studio-preview-root"]'
         )?.shadowRoot
       ).not.toBeNull()
     );
@@ -285,16 +268,14 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     const stableBlock = { ...block, id: 'stable-block' };
     const { container } = render(
       <>
-        <JsBlockTrialPanel
+        <JsxStudioRunPanel
           block={crashingBlock}
-          catalogEntry={catalog}
           code="export default function Block() { throw new Error('render exploded'); }"
           revision="run:crash"
           nativeCompiler={compiler}
         />
-        <JsBlockTrialPanel
+        <JsxStudioRunPanel
           block={stableBlock}
-          catalogEntry={catalog}
           code={source('stable')}
           revision="run:stable"
           nativeCompiler={compiler}
@@ -303,7 +284,7 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     );
 
     const hosts = container.querySelectorAll<HTMLElement>(
-      '[data-testid="native-react-trial-root"]'
+      '[data-testid="native-react-studio-preview-root"]'
     );
     await waitFor(() => expect(compiler).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hosts[1]?.shadowRoot).not.toBeNull());
@@ -334,9 +315,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     `;
     const compiler = createCompiler();
     const view = render(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={code}
         revision="run:auth-studio"
         nativeCompiler={compiler}
@@ -355,7 +335,7 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     await waitFor(() =>
       expect(
         view.container.querySelector<HTMLElement>(
-          '[data-testid="native-react-trial-root"]'
+          '[data-testid="native-react-studio-preview-root"]'
         )?.shadowRoot
       ).not.toBeNull()
     );
@@ -371,9 +351,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     expect(compiler).toHaveBeenCalledOnce();
 
     view.rerender(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={code}
         revision="run:auth-studio:2"
         nativeCompiler={compiler}
@@ -407,9 +386,8 @@ describe('JsBlockTrialPanel Native React run revision', () => {
 
   test('R5-AC-003 renders scoped API observations below the Preview', async () => {
     render(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={source('api-observation')}
         revision="run:api-observation"
         nativeCompiler={createCompiler()}
@@ -452,15 +430,40 @@ describe('JsBlockTrialPanel Native React run revision', () => {
     ).toBeInTheDocument();
   });
 
+  test('R6-AC-002 keeps the resizable Console inside the editor run surface', async () => {
+    const view = renderPanel({
+      code: source('layout'),
+      revision: 'run:layout'
+    });
+
+    await waitFor(() =>
+      expect(
+        trialQueries(view.container).getByTestId('native-output')
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByTestId('js-block-preview-console')).toHaveStyle({
+      gridTemplateRows: 'minmax(0, 65fr) 8px minmax(0, 35fr)'
+    });
+    expect(screen.getByRole('log')).toBeInTheDocument();
+    const separator = screen.getByRole('separator');
+    expect(separator).toHaveAttribute('aria-valuenow', '65');
+
+    fireEvent.keyDown(separator, { key: 'ArrowDown' });
+    expect(separator).toHaveAttribute('aria-valuenow', '70');
+    fireEvent.keyDown(separator, { key: 'Home' });
+    expect(separator).toHaveAttribute('aria-valuenow', '20');
+    fireEvent.keyDown(separator, { key: 'End' });
+    expect(separator).toHaveAttribute('aria-valuenow', '80');
+  });
+
   test('D4-AC-006 rejects controlled legacy source before authorization or compilation', async () => {
     const legacySource = `async function main(ctx) { return { view: null, outputs: {} }; }
 export default { main } satisfies BlockModule;`;
     const compiler = createCompiler();
     const prepareDraftRun = vi.fn();
     render(
-      <JsBlockTrialPanel
+      <JsxStudioRunPanel
         block={block}
-        catalogEntry={catalog}
         code={legacySource}
         revision="run:legacy"
         nativeCompiler={compiler}

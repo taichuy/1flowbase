@@ -10,9 +10,9 @@ import {
   createPublicAuthPreviewCapabilityHandlers
 } from '../../../auth/components/public-auth-block-host';
 import {
-  JsBlockTrialPanel,
-  type NativeTrialBlockContextInput
-} from '../../../frontstage/components/JsBlockTrialPanel';
+  JsxStudioRunPanel,
+  type JsxStudioRunBlockContextInput
+} from '../../../frontstage/components/jsx-studio/JsxStudioRunPanel';
 import {
   JsxStudioResourcePanel,
   type JsxStudioContextVariable
@@ -115,8 +115,9 @@ export function AuthenticatorUiBlockStudio({
       requestId,
       instanceEpoch,
       plan,
-      isCurrentInstance
-    }: NativeTrialBlockContextInput) => {
+      isCurrentInstance,
+      observeApiCall
+    }: JsxStudioRunBlockContextInput) => {
       const unavailable = createFrontstageUnavailableBlockContext(plan);
       return {
         ...unavailable,
@@ -128,7 +129,8 @@ export function AuthenticatorUiBlockStudio({
           instanceEpoch,
           isCurrentInstance,
           outputs: unavailable.outputs,
-          interfaceHandler: previewCapabilities.interface
+          interfaceHandler: previewCapabilities.interface,
+          observeApiCall
         })
       };
     },
@@ -239,10 +241,9 @@ export function AuthenticatorUiBlockStudio({
           projection={editorProjection}
           runPanel={
             publicVariables && authoringCatalogEntry && previewRequest ? (
-              <JsBlockTrialPanel
+              <JsxStudioRunPanel
                 key={authenticatorId}
                 block={authoringBlock}
-                catalogEntry={authoringCatalogEntry}
                 code={previewRequest.source}
                 createBlockContext={createPreviewBlockContext}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}

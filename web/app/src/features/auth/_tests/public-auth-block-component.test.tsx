@@ -15,11 +15,15 @@ vi.mock('@1flowbase/api-client', async () => {
 });
 
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
+import { appI18n } from '../../../shared/i18n/app-i18n';
 
 describe('PublicAuthBlock Native Host composition', () => {
-  beforeEach(() => apiFetch.mockReset());
+  beforeEach(async () => {
+    apiFetch.mockReset();
+    await appI18n.changeLanguage('en_US');
+  });
 
-  test('D4-AC-001/007 exposes a Native compile failure as a local alert', async () => {
+  test('R6-AC-003 exposes a production fallback without editor diagnostics', async () => {
     const onAuthenticated = vi.fn();
     render(
       <PublicAuthBlock
@@ -39,10 +43,50 @@ describe('PublicAuthBlock Native Host composition', () => {
       />
     );
 
-    expect(await documentAlert()).toHaveTextContent(
-      'Authenticator component is invalid'
+    const alert = await documentAlert();
+    expect(alert).toHaveTextContent(
+      'Failed to load sign-in options. Please refresh the page and try again.'
     );
+    expect(alert).not.toHaveTextContent('Authenticator component is invalid');
+    expectNoEditorDebugSurface();
     expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  test('R6-AC-003 retries production preparation without creating editor UI', async () => {
+    const source = `
+      export default function AuthFixture() {
+        return <button type="button">Sign in</button>;
+      }
+    `;
+    const nativeCompiler = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        diagnostics: [
+          {
+            phase: 'compile',
+            code: 'syntax_invalid',
+            path: 'source',
+            message: 'temporary compile failure'
+          }
+        ]
+      })
+      .mockResolvedValueOnce(compiledResult(source));
+    render(
+      <PublicAuthBlock
+        instance={instance(source)}
+        onAuthenticated={vi.fn()}
+        nativeCompiler={nativeCompiler}
+      />
+    );
+
+    const alert = await documentAlert();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+
+    const shadow = await publicAuthShadow();
+    expect(within(shadow).getByRole('button', { name: 'Sign in' })).toBeVisible();
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
+    expectNoEditorDebugSurface();
   });
 
   test('D4-AC-001/003/004 accepts only a canonical session response and keeps local state while the API is pending', async () => {
@@ -69,6 +113,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       />
     );
     const shadow = await publicAuthShadow();
+    expectNoEditorDebugSurface();
     fireEvent.click(within(shadow).getByRole('button', { name: 'Sign in' }));
     fireEvent.click(within(shadow).getByRole('button', { name: 'Local' }));
 
@@ -106,6 +151,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       />
     );
     const shadow = await publicAuthShadow();
+    expectNoEditorDebugSurface();
     fireEvent.click(within(shadow).getByRole('button', { name: 'Sign in' }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
     expect(onAuthenticated).not.toHaveBeenCalled();
@@ -125,28 +171,46 @@ function instance(publicUiBlock: string) {
 }
 
 function compiler(source: string) {
+  return vi.fn().mockResolvedValue(compiledResult(source));
+}
+
+function compiledResult(source: string) {
   const compiled = compileNativeReactComponent(
     source,
     [],
     createNativeReactRuntimeFingerprint('/auth-test-worker.js')
   );
   if (!compiled.ok) throw new Error(compiled.diagnostics[0]?.message);
-  return vi.fn().mockResolvedValue({
+  return {
     ok: true,
     artifact: compiled.artifact,
     diagnostics: []
-  });
+  } as const;
 }
 
 async function publicAuthShadow(): Promise<HTMLElement> {
   await waitFor(() => {
     const shadow = document.querySelector(
-      '[data-testid="native-react-trial-root"]'
+      '[data-testid="native-react-public-auth-root"]'
     )?.shadowRoot;
     expect(shadow?.textContent).toContain('Sign in');
   });
-  return document.querySelector('[data-testid="native-react-trial-root"]')!
-    .shadowRoot as unknown as HTMLElement;
+  return document.querySelector(
+    '[data-testid="native-react-public-auth-root"]'
+  )!.shadowRoot as unknown as HTMLElement;
+}
+
+function expectNoEditorDebugSurface() {
+  expect(
+    document.querySelector('[data-testid="js-block-preview-console"]')
+  ).toBeNull();
+  expect(
+    document.querySelector('[data-testid="js-block-console-pane"]')
+  ).toBeNull();
+  expect(
+    document.querySelector('[data-testid="js-block-console-prompt"]')
+  ).toBeNull();
+  expect(document.querySelector('[role="separator"]')).toBeNull();
 }
 
 async function documentAlert(): Promise<HTMLElement> {
