@@ -1135,6 +1135,45 @@ async fn ac_005_llm_runtime_follows_external_max_output_tokens_by_default() {
 }
 
 #[tokio::test]
+async fn ac_005_llm_runtime_preserves_external_requested_context_window() {
+    let plan = base_plan();
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::new(Mutex::new(None)),
+        final_content: "ok".to_string(),
+    };
+
+    start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": {
+                "model_parameters": {
+                    "requested_context_window": 1_000_000
+                }
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+
+    assert_eq!(
+        captured_input
+            .model_parameters
+            .get("requested_context_window"),
+        Some(&json!(1_000_000))
+    );
+}
+
+#[tokio::test]
 async fn ac_005_llm_runtime_can_disable_external_max_output_tokens_and_trace_provider_default() {
     let mut plan = base_plan();
     let llm = plan

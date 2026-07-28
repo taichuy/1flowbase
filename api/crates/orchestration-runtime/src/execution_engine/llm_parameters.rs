@@ -32,6 +32,14 @@ pub(super) fn resolve_model_parameters(
     if llm_follows_external_reasoning(&node.config) {
         apply_external_reasoning_parameters(&mut parameters, runtime, variable_pool);
     }
+    if !parameters.contains_key("requested_context_window") {
+        if let Some(requested_context_window) = external_requested_context_window(variable_pool) {
+            parameters.insert(
+                "requested_context_window".to_string(),
+                json!(requested_context_window),
+            );
+        }
+    }
     if !parameters.contains_key("tool_choice") {
         let external_tool_choice = resolved_inputs
             .get("tool_choice")
@@ -144,6 +152,15 @@ fn external_max_output_tokens(variable_pool: &Map<String, Value>) -> Option<u64>
         .get("sys")
         .and_then(|value| value.get("model_parameters"))
         .and_then(|value| value.get("max_output_tokens"))
+        .and_then(Value::as_u64)
+        .filter(|value| *value > 0)
+}
+
+fn external_requested_context_window(variable_pool: &Map<String, Value>) -> Option<u64> {
+    variable_pool
+        .get("sys")
+        .and_then(|value| value.get("model_parameters"))
+        .and_then(|value| value.get("requested_context_window"))
         .and_then(Value::as_u64)
         .filter(|value| *value > 0)
 }
