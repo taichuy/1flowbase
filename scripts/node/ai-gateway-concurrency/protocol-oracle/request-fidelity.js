@@ -8,6 +8,7 @@ const IGNORED_WIRE_HEADERS = new Set([
   'transfer-encoding', 'upgrade', 'content-length', 'accept-encoding',
   'user-agent', 'traceparent', 'tracestate', 'baggage', 'x-request-id',
 ]);
+const COMMA_LIST_HEADERS = new Set(['anthropic-beta']);
 
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -18,7 +19,13 @@ function stableValue(value) {
 function normalizedHeaders(headers = {}) {
   const pairs = headers instanceof Headers ? [...headers.entries()] : Object.entries(headers);
   return Object.fromEntries(pairs
-    .map(([name, value]) => [name.toLowerCase(), Array.isArray(value) ? value.map(String) : [String(value)]])
+    .map(([name, value]) => {
+      const normalizedName = name.toLowerCase();
+      const values = (Array.isArray(value) ? value : [value]).map(String);
+      return [normalizedName, COMMA_LIST_HEADERS.has(normalizedName)
+        ? values.flatMap((entry) => entry.split(',').map((token) => token.trim()).filter(Boolean))
+        : values];
+    })
     .filter(([name]) => !IGNORED_WIRE_HEADERS.has(name) && !name.startsWith('sec-websocket-'))
     .sort(([left], [right]) => left.localeCompare(right)));
 }

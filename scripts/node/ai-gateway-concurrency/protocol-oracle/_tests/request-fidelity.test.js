@@ -47,6 +47,20 @@ test('Root #1477 AC-005: normalized request comparison ignores only approved wir
   assert.equal(normalizedRequestFingerprint(direct), normalizedRequestFingerprint(gateway));
   assert.doesNotThrow(() => assertRequestPair({ direct, gateway }));
 
+  gateway.headers['anthropic-beta'] = [
+    'context-1m-2025-08-07',
+    'fixture-safe-beta',
+  ];
+  assert.equal(normalizedRequestFingerprint(direct), normalizedRequestFingerprint(gateway));
+  assert.doesNotThrow(() => assertRequestPair({ direct, gateway }));
+
+  gateway.headers['anthropic-beta'] = ['context-1m-2025-08-07', 'different-beta'];
+  assert.throws(() => assertRequestPair({ direct, gateway }), /request fidelity mismatch/u);
+  gateway.headers['anthropic-beta'] = [
+    'context-1m-2025-08-07',
+    'fixture-safe-beta',
+  ];
+
   gateway.body = { ...gateway.body, thinking: { type: 'enabled', budget_tokens: 1024 } };
   assert.throws(() => assertRequestPair({ direct, gateway }), /request fidelity mismatch/u);
 });
