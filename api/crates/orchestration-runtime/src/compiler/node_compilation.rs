@@ -25,11 +25,14 @@ pub(super) fn compile_node(
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
     if node_type == "llm" {
-        let protocol_context =
-            compile_variable_reference("config.protocol_context", config.get("protocol_context"))
-                .with_context(|| {
-                format!("failed to compile protocol context reference for node {node_id}")
-            })?;
+        let protocol_context = match config.get("protocol_context") {
+            None => Some(crate::compiled_plan::VariableReference::system_protocol_context()),
+            value => {
+                compile_variable_reference("config.protocol_context", value).with_context(|| {
+                    format!("failed to compile protocol context reference for node {node_id}")
+                })?
+            }
+        };
         config
             .as_object_mut()
             .ok_or_else(|| anyhow!("node {node_id} config must be an object"))?

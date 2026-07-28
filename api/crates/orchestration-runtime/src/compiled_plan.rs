@@ -54,7 +54,8 @@ impl CompiledNode {
     ) -> Result<Option<VariableReference>, serde_json::Error> {
         match self.config.get("protocol_context") {
             Some(value) if !value.is_null() => serde_json::from_value(value.clone()).map(Some),
-            Some(_) | None => Ok(None),
+            Some(_) => Ok(None),
+            None => Ok(Some(VariableReference::system_protocol_context())),
         }
     }
 }
@@ -68,6 +69,14 @@ pub enum VariableReference {
 impl VariableReference {
     pub fn selector(value: Vec<String>) -> Self {
         Self::Selector { value }
+    }
+
+    pub(crate) fn system_protocol_context() -> Self {
+        Self::selector(
+            SYSTEM_PROTOCOL_CONTEXT_SELECTOR
+                .map(str::to_string)
+                .to_vec(),
+        )
     }
 
     pub fn selector_path(&self) -> &[String] {

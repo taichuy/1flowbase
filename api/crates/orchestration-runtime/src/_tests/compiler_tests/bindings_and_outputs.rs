@@ -497,21 +497,36 @@ fn compile_llm_node_carries_context_policy_into_routing() {
 }
 
 #[test]
-fn wp_d1b_compiled_llm_protocol_context_is_one_nullable_variable_reference() {
+fn wp_fua_host_compiled_llm_protocol_context_preserves_three_state_compatibility() {
     let flow_id = Uuid::now_v7();
     let document = sample_document(flow_id);
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
     let llm = &plan.nodes["node-llm"];
 
+    let system_protocol_context =
+        VariableReference::selector(vec!["sys".to_string(), "protocol_context".to_string()]);
+    assert_eq!(
+        llm.config["protocol_context"],
+        serde_json::to_value(&system_protocol_context).unwrap()
+    );
+    assert_eq!(
+        llm.protocol_context_reference().unwrap(),
+        Some(system_protocol_context.clone())
+    );
+
+    let mut document = document;
+    document["graph"]["nodes"][1]["config"]["protocol_context"] = Value::Null;
+    let plan = FlowCompiler::compile(flow_id, "draft-2", &document, &compile_context()).unwrap();
+    let llm = &plan.nodes["node-llm"];
+
     assert_eq!(llm.config["protocol_context"], Value::Null);
     assert_eq!(llm.protocol_context_reference().unwrap(), None);
 
-    let mut document = document;
     document["graph"]["nodes"][1]["config"]["protocol_context"] = json!({
         "kind": "selector",
         "value": ["sys", "protocol_context"]
     });
-    let plan = FlowCompiler::compile(flow_id, "draft-2", &document, &compile_context()).unwrap();
+    let plan = FlowCompiler::compile(flow_id, "draft-3", &document, &compile_context()).unwrap();
     let llm = &plan.nodes["node-llm"];
 
     assert_eq!(
@@ -523,10 +538,7 @@ fn wp_d1b_compiled_llm_protocol_context_is_one_nullable_variable_reference() {
     );
     assert_eq!(
         llm.protocol_context_reference().unwrap(),
-        Some(VariableReference::selector(vec![
-            "sys".to_string(),
-            "protocol_context".to_string(),
-        ]))
+        Some(system_protocol_context)
     );
     assert!(!plan.compile_issues.iter().any(|issue| {
         issue.node_id == "node-llm"
