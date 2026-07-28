@@ -20,6 +20,9 @@ const PARALLEL_RESULT_A = `${TOOL_RESULT_SENTINEL} parallel-a`;
 const PARALLEL_RESULT_B = `${TOOL_RESULT_SENTINEL} parallel-b`;
 const SEQUENTIAL_RESULT_A = `${TOOL_RESULT_SENTINEL} sequential-a`;
 const SEQUENTIAL_RESULT_B = `${TOOL_RESULT_SENTINEL} sequential-b`;
+const GIT_INSPECT_RESULT = `${TOOL_RESULT_SENTINEL} git-inspect`;
+const GIT_EDIT_RESULT = `${TOOL_RESULT_SENTINEL} git-edit`;
+const GIT_WORKFLOW_FINAL = '1flowbase meaningful git workflow verified';
 const PROVIDER_ERROR_BODY = HTTP_500_ERROR_BODY;
 const CLAUDE_REAL_CLIENT_PROFILE_MARKER =
   '1flowbase-client-vector=claude-real-client-1m-adaptive-context-management';
@@ -224,6 +227,30 @@ const SEQUENTIAL_TOOL_VECTOR = Object.freeze({
   }),
 });
 
+const MEANINGFUL_GIT_VECTOR = Object.freeze({
+  id: 'tools-meaningful-git-workflow',
+  kind: 'tools',
+  clients: ALL_CLIENTS,
+  turns: Object.freeze([Object.freeze({
+    prompt: [
+      '1flowbase-client-tool-vector',
+      '1flowbase-client-vector=meaningful-git-workflow',
+      'GIT_REPO_PATH={{GIT_REPO_PATH}}',
+      'Use client-owned local tools to inspect git status, the two recent commits, and task.txt diff.',
+      'Then change task.txt from state=BEFORE to state=AFTER and inspect the resulting diff.',
+      'Do not commit, push, fetch, pull, or access the network.',
+      `After both callback tasks complete, print exactly: ${GIT_WORKFLOW_FINAL}`,
+    ].join(' '),
+  })]),
+  expected: successfulExpected({
+    assistantTexts: [GIT_WORKFLOW_FINAL],
+    minimumProviderRequests: 3,
+    toolMode: 'meaningful_git_workflow',
+    toolResultMarkers: [GIT_INSPECT_RESULT, GIT_EDIT_RESULT],
+    minimumCallbackResumes: 2,
+  }),
+});
+
 const CLAUDE_PROTOCOL_VECTOR = Object.freeze({
   id: 'claude-1m-adaptive-context-management',
   kind: 'text',
@@ -257,6 +284,7 @@ const VECTOR_MANIFEST = Object.freeze({
     PROVIDER_ERROR_VECTOR,
     PARALLEL_TOOL_VECTOR,
     SEQUENTIAL_TOOL_VECTOR,
+    MEANINGFUL_GIT_VECTOR,
     CLAUDE_PROTOCOL_VECTOR,
   ]),
 });
@@ -277,6 +305,10 @@ module.exports = {
   CONTINUITY_VECTOR,
   LONG_REPEATED_UNICODE_TEXT,
   LONG_TEXT_VECTOR,
+  MEANINGFUL_GIT_VECTOR,
+  GIT_EDIT_RESULT,
+  GIT_INSPECT_RESULT,
+  GIT_WORKFLOW_FINAL,
   PARALLEL_FINAL_SENTINEL,
   PARALLEL_RESULT_A,
   PARALLEL_RESULT_B,

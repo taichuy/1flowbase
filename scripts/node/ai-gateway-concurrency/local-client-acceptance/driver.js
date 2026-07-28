@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,6 +9,7 @@ const { writeArtifact, createTimeline } = require('./artifacts');
 const {
   ARTIFACT_SCHEMA,
   CLIENT_PROTOCOLS,
+  MEANINGFUL_GIT_VECTOR,
   TOOL_ASSETS,
   VECTOR_MANIFEST,
   buildClientPlan,
@@ -26,6 +28,7 @@ function clientPaths(root, client) {
     config: path.join(clientRoot, 'config'),
     output: path.join(clientRoot, 'output'),
     toolAssets: {},
+    gitRepo: path.join(clientRoot, 'git-workflow'),
   };
   fs.mkdirSync(result.config, { recursive: true, mode: 0o700 });
   fs.mkdirSync(result.output, { recursive: true, mode: 0o700 });
@@ -35,7 +38,72 @@ function clientPaths(root, client) {
     result.toolAssets[placeholder] = filePath;
   }
   result.toolFile = result.toolAssets.TOOL_PATH;
+  fs.mkdirSync(result.gitRepo, { recursive: true, mode: 0o700 });
+  const git = (...args) => {
+    const completed = childProcess.spawnSync('git', args, {
+      cwd: result.gitRepo,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: '1flowbase Fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@localhost',
+        GIT_COMMITTER_NAME: '1flowbase Fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@localhost',
+      },
+    });
+    if (completed.status !== 0) {
+      throw new Error(`scratch git setup failed: ${completed.stderr || completed.stdout}`);
+    }
+  };
+  git('init', '--quiet');
+  fs.writeFileSync(path.join(result.gitRepo, 'task.txt'), 'state=SEED\n', { mode: 0o600 });
+  git('add', 'task.txt');
+  git('commit', '--quiet', '-m', 'gateway fixture first');
+  fs.writeFileSync(path.join(result.gitRepo, 'task.txt'), 'state=BEFORE\n', { mode: 0o600 });
+  git('add', 'task.txt');
+  git('commit', '--quiet', '-m', 'gateway fixture second');
   return result;
+}
+
+function verifyMeaningfulGitWorkspace(repoPath) {
+  const run = (...args) => {
+    const completed = childProcess.spawnSync('git', args, {
+      cwd: repoPath,
+      encoding: 'utf8',
+    });
+    if (completed.status !== 0) {
+      throw new Error(`scratch git verification failed: ${completed.stderr || completed.stdout}`);
+    }
+    return completed.stdout;
+  };
+  const task = fs.readFileSync(path.join(repoPath, 'task.txt'), 'utf8');
+  const status = run('status', '--short');
+  const log = run('log', '-2', '--pretty=%s');
+  const diff = run('diff', '--', 'task.txt');
+  if (task !== 'state=AFTER\n') throw new Error('meaningful Git vector did not edit task.txt');
+  if (!status.includes(' M task.txt')) throw new Error('meaningful Git vector did not leave a controlled worktree diff');
+  if (!log.includes('gateway fixture second') || !log.includes('gateway fixture first')) {
+    throw new Error('meaningful Git vector did not preserve the two fixture commits');
+  }
+  if (!diff.includes('-state=BEFORE') || !diff.includes('+state=AFTER')) {
+    throw new Error('meaningful Git vector did not produce the expected diff');
+  }
+  return {
+    status: status.trim(),
+    commit_subjects: log.trim().split('\n'),
+    diff_sha256: crypto.createHash('sha256').update(diff).digest('hex'),
+    task_sha256: crypto.createHash('sha256').update(task).digest('hex'),
+  };
+}
+
+function resetMeaningfulGitWorkspace(repoPath) {
+  const completed = childProcess.spawnSync('git', ['checkout', '--', 'task.txt'], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  });
+  if (completed.status !== 0) {
+    throw new Error(`scratch git reset failed: ${completed.stderr || completed.stdout}`);
+  }
 }
 
 function writeConfigs(plan) {
@@ -262,6 +330,9 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
       for (const protocol of CLIENT_PROTOCOLS[client]) {
         for (const vector of selectVectors(client, protocol)) {
           timeline.append('attempt_started', { protocol, vector_id: vector.id });
+          if (vector.id === MEANINGFUL_GIT_VECTOR.id) {
+            resetMeaningfulGitWorkspace(paths.gitRepo);
+          }
           const durableBefore = await snapshotRuns(target, dependencies.fetchImpl);
           const mockBefore = await options.mockSnapshot();
           const executor = dependencies.executePlan
@@ -333,6 +404,9 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
                 expectedErrorBody: vector.expected.error_body ?? null,
                 fetchImpl: dependencies.fetchImpl,
               }),
+              ...(vector.id === MEANINGFUL_GIT_VECTOR.id
+                ? { git_workspace: verifyMeaningfulGitWorkspace(paths.gitRepo) }
+                : {}),
             };
           } catch (error) {
             evidenceError = { name: error.name || 'Error', message: error.message || String(error) };

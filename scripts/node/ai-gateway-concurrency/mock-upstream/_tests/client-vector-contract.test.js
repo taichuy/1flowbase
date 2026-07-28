@@ -7,6 +7,7 @@ const {
   CONTINUITY_FINAL_SENTINEL,
   CONTINUITY_SEED_SENTINEL,
   LONG_REPEATED_UNICODE_TEXT,
+  GIT_WORKFLOW_FINAL,
   PARALLEL_FINAL_SENTINEL,
   SEQUENTIAL_FINAL_SENTINEL,
   TEXT_SENTINEL,
@@ -47,5 +48,9 @@ test('BLO-05/06/07 requires real Claude profile fields and selects vector-specif
   assert.equal(
     toolVectorFinalOutput({ input: 'tools-sequential-callback-tasks-one-turn' }),
     SEQUENTIAL_FINAL_SENTINEL,
+  );
+  assert.equal(
+    toolVectorFinalOutput({ input: '1flowbase-client-vector=meaningful-git-workflow' }),
+    GIT_WORKFLOW_FINAL,
   );
 });

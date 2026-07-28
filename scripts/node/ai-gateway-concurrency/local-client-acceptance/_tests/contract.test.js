@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   CLAUDE_PROTOCOL_VECTOR, CLIENT_PROTOCOLS, CONTINUITY_VECTOR, LONG_TEXT_VECTOR,
-  PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR,
+  MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR,
   TEXT_SENTINEL, TEXT_VECTOR, TOOL_RESULT_SENTINEL, TOOL_VECTOR, VECTOR_MANIFEST,
   buildClientPlan, promptFor, selectExecutionSurface, targetsFromReady, vectorsFor,
 } = require('../contract');
@@ -17,6 +17,7 @@ const {
 const paths = {
   config: '/tmp/local-client/config',
   output: '/tmp/local-client/output',
+  gitRepo: '/tmp/local-client/git-workflow',
   toolFile: '/tmp/local-client/output/tool-vector.txt',
   toolAssets: {
     TOOL_PATH: '/tmp/local-client/output/tool-vector.txt',
@@ -109,6 +110,7 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
     PROVIDER_ERROR_VECTOR.id,
     PARALLEL_TOOL_VECTOR.id,
     SEQUENTIAL_TOOL_VECTOR.id,
+    MEANINGFUL_GIT_VECTOR.id,
     CLAUDE_PROTOCOL_VECTOR.id,
   ]);
   for (const vector of VECTOR_MANIFEST.vectors) {
@@ -128,6 +130,7 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
   assert.equal(vectorsFor('codex', 'responses_websocket').includes(PROVIDER_ERROR_VECTOR), false);
   assert.equal(vectorsFor('claude', 'anthropic_sse').includes(CLAUDE_PROTOCOL_VECTOR), true);
   assert.equal(vectorsFor('opencode', 'openai_chat_sse').includes(CLAUDE_PROTOCOL_VECTOR), false);
+  assert.equal(vectorsFor('codex', 'responses_websocket').includes(MEANINGFUL_GIT_VECTOR), true);
 });
 
 test('WP-D4B pins exact long Unicode and callback grouping expectations', () => {
@@ -145,6 +148,22 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_provider_requests, 3);
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.tool_call_count, 2);
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_callback_resumes, 2);
+  assert.deepEqual(MEANINGFUL_GIT_VECTOR.expected.tool_result_markers, [
+    '1flowbase-client-tool-result git-inspect',
+    '1flowbase-client-tool-result git-edit',
+  ]);
+  assert.equal(MEANINGFUL_GIT_VECTOR.expected.minimum_callback_resumes, 2);
+  const prompt = promptFor(MEANINGFUL_GIT_VECTOR, paths);
+  assert.match(prompt, /git status/u);
+  assert.match(prompt, /GIT_REPO_PATH=\/tmp\/local-client\/git-workflow/u);
+  const claude = buildClientPlan(
+    'claude', '/machine/claude', target, paths, MEANINGFUL_GIT_VECTOR, 'anthropic_sse',
+  );
+  assert.ok(claude.invocation.args.includes('Read,Edit,Bash'));
+  const codex = buildClientPlan(
+    'codex', '/machine/codex', target, paths, MEANINGFUL_GIT_VECTOR, 'responses_sse',
+  );
+  assert.ok(codex.invocation.args.includes('workspace-write'));
 });
 
 test('WP-D4B records only observed Claude profile evidence without injecting it into Codex or OpenCode', () => {

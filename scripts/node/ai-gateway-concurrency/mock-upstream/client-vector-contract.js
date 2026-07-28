@@ -6,6 +6,7 @@ const TEXT_SENTINEL = '1flowbase gateway sentinel ok';
 const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
 const PARALLEL_FINAL_SENTINEL = '1flowbase parallel callback sentinel ok';
 const SEQUENTIAL_FINAL_SENTINEL = '1flowbase sequential callback sentinel ok';
+const GIT_WORKFLOW_FINAL = '1flowbase meaningful git workflow verified';
 const CONTINUITY_SEED_SENTINEL = '1flowbase continuity seed 中🙂';
 const CONTINUITY_FINAL_SENTINEL = '1flowbase complete conversation continuity ok';
 const CLAUDE_PROTOCOL_SENTINEL = '1flowbase claude protocol context ok';
@@ -48,6 +49,7 @@ function textVectorOutput(body, knownContinuityResponses = new Set()) {
 }
 
 function toolVectorFinalOutput(body) {
+  if (containsValue(body, '1flowbase-client-vector=meaningful-git-workflow')) return GIT_WORKFLOW_FINAL;
   if (containsValue(body, 'tools-parallel-one-callback-task')) return PARALLEL_FINAL_SENTINEL;
   if (containsValue(body, 'tools-sequential-callback-tasks-one-turn')) return SEQUENTIAL_FINAL_SENTINEL;
   return TOOL_FINAL_SENTINEL;
@@ -59,6 +61,7 @@ module.exports = {
   CONTINUITY_SEED_SENTINEL,
   HTTP_500_ERROR_BODY,
   LONG_REPEATED_UNICODE_TEXT,
+  GIT_WORKFLOW_FINAL,
   PARALLEL_FINAL_SENTINEL,
   SEQUENTIAL_FINAL_SENTINEL,
   TEXT_SENTINEL,

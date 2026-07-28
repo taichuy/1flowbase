@@ -205,8 +205,35 @@ function namedToolVectorPath(body, name) {
   return match?.[1] ?? null;
 }
 
+function meaningfulGitRepoPath(body) {
+  return namedToolVectorPath(body, 'GIT_REPO_PATH');
+}
+
 function clientToolPlan(body, previousState = null) {
   const hasToolResult = containsValue(body, '1flowbase-client-tool-result');
+  if (containsValue(body, '1flowbase-client-vector=meaningful-git-workflow')
+      || previousState?.mode === 'meaningful-git') {
+    const repoPath = meaningfulGitRepoPath(body) ?? previousState?.paths?.[0];
+    const hasInspect = containsValue(body, '1flowbase-client-tool-result git-inspect');
+    const hasEdit = containsValue(body, '1flowbase-client-tool-result git-edit');
+    const final = hasEdit;
+    const finalText = previousState?.finalText ?? toolVectorFinalOutput(body);
+    const inspectCommand = "git status --short && git log -2 --oneline && git diff -- task.txt && echo '1flowbase-client-tool-result git-inspect'";
+    const editCommand = "sed -i 's/^state=BEFORE$/state=AFTER/' task.txt && git status --short && git diff -- task.txt && echo '1flowbase-client-tool-result git-edit'";
+    return {
+      hasToolResult,
+      final,
+      paths: [repoPath],
+      commands: final ? [] : [hasInspect ? editCommand : inspectCommand],
+      finalText,
+      nextState: final ? null : {
+        mode: 'meaningful-git',
+        stage: hasInspect ? 'awaiting-edit' : 'awaiting-inspect',
+        paths: [repoPath],
+        finalText,
+      },
+    };
+  }
   if (hasToolResult && (previousState?.mode === 'parallel' || previousState?.mode === 'single')) {
     return {
       hasToolResult: true,
@@ -522,7 +549,8 @@ function createMockUpstream(options = {}) {
           : isToolTurn || isToolResult
           ? responsesToolEvents(
             requestTimeline.nonce, toolPlan.paths, toolPlan.final,
-            gatewayExecutorProbeUrl(body), requestedResponsesTool(body), toolPlan.finalText ?? toolFinalText
+            gatewayExecutorProbeUrl(body), requestedResponsesTool(body), toolPlan.finalText ?? toolFinalText,
+            toolPlan.commands,
           )
           : clientText !== null
             ? responsesEvents(requestTimeline.nonce, ...textChunks)
@@ -531,6 +559,7 @@ function createMockUpstream(options = {}) {
           ? (isToolTurn || isToolResult
             ? chatToolEvents(
               requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
+              toolPlan.commands,
             )
             : clientText !== null
               ? chatTextEvents(requestTimeline.nonce, ...textChunks)
@@ -538,6 +567,7 @@ function createMockUpstream(options = {}) {
           : (isToolTurn || isToolResult
             ? anthropicToolEvents(
               requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
+              toolPlan.commands,
             )
             : clientText !== null
               ? anthropicEvents(requestTimeline.nonce, ...textChunks)
@@ -649,6 +679,7 @@ function createMockUpstream(options = {}) {
         ? responsesToolEvents(
           requestTimeline.nonce, toolPlan.paths, toolPlan.final,
           gatewayExecutorProbeUrl(payload), requestedResponsesTool(payload), toolPlan.finalText,
+          toolPlan.commands,
         )
         : clientText !== null
           ? responsesEvents(requestTimeline.nonce, ...textChunks)

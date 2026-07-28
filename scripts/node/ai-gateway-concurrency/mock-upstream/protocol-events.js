@@ -223,6 +223,7 @@ function responsesToolEvents(
   executorProbeUrl = null,
   toolName = 'shell_command',
   finalText = '1flowbase gateway tool sentinel ok',
+  commands = null,
 ) {
   if (final && finalText !== '1flowbase gateway tool sentinel ok') {
     const split = Math.ceil(finalText.length / 2);
@@ -243,10 +244,10 @@ function responsesToolEvents(
     name: toolName, status: 'completed', arguments: JSON.stringify(toolName === 'read'
       ? { filePath: currentPath }
       : {
-        command: executorProbeUrl
+        command: commands?.[index] ?? (executorProbeUrl
           ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
-          : `cat -- ${posixShellArgument(currentPath)}`,
-        workdir: path.dirname(currentPath),
+          : `cat -- ${posixShellArgument(currentPath)}`),
+        workdir: commands ? currentPath : path.dirname(currentPath),
       }),
   }));
   const chunks = [{ type: 'response.created', sequence_number: 0, response }];
@@ -267,7 +268,9 @@ function responsesToolEvents(
   };
 }
 
-function anthropicToolEvents(nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok') {
+function anthropicToolEvents(
+  nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok', commands = null,
+) {
   if (final && finalText !== '1flowbase gateway tool sentinel ok') {
     const split = Math.ceil(finalText.length / 2);
     return {
@@ -291,7 +294,11 @@ function anthropicToolEvents(nonce, toolPath, final = false, finalText = '1flowb
       },
       ...toolPaths.flatMap((currentPath, index) => [
         { event: 'content_block_start', data: { type: 'content_block_start', index, content_block: {
-          type: 'tool_use', id: `toolu_${nonce}_${index}`, name: 'Read', input: { file_path: currentPath },
+          type: 'tool_use', id: `toolu_${nonce}_${index}`,
+          name: commands ? 'Bash' : 'Read',
+          input: commands
+            ? { command: commands[index], description: 'Inspect the isolated Git fixture' }
+            : { file_path: currentPath },
         } } },
         { event: 'content_block_stop', data: { type: 'content_block_stop', index } },
       ]),
@@ -303,7 +310,9 @@ function anthropicToolEvents(nonce, toolPath, final = false, finalText = '1flowb
   };
 }
 
-function chatToolEvents(nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok') {
+function chatToolEvents(
+  nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok', commands = null,
+) {
   if (final && finalText !== '1flowbase gateway tool sentinel ok') {
     const split = Math.ceil(finalText.length / 2);
     return {
@@ -326,7 +335,10 @@ function chatToolEvents(nonce, toolPath, final = false, finalText = '1flowbase g
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       role: 'assistant', tool_calls: toolPaths.map((currentPath, index) => ({
         index, id: `call_${nonce}_${index}`, type: 'function', function: {
-          name: 'read', arguments: JSON.stringify({ filePath: currentPath }),
+          name: commands ? 'bash' : 'read',
+          arguments: JSON.stringify(commands
+            ? { command: commands[index], workdir: currentPath, description: 'Inspect the isolated Git fixture' }
+            : { filePath: currentPath }),
         },
       })),
     }, finish_reason: null }] }],

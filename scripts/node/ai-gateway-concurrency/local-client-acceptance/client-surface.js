@@ -273,7 +273,10 @@ function evaluateToolSurface(client, vector, surface) {
     && vector.expected.tool_mode === 'parallel_one_callback_task';
   let chronology = false;
   if (!codexParallelCompletionEvidence
-    && paired && vector.expected.tool_mode === 'sequential_callback_tasks_one_turn') {
+    && paired && [
+      'sequential_callback_tasks_one_turn',
+      'meaningful_git_workflow',
+    ].includes(vector.expected.tool_mode)) {
     const [firstResult, secondResult] = markedResults;
     chronology = callsById.get(firstResult.id).index < firstResult.index
       && firstResult.index < callsById.get(secondResult.id).index
