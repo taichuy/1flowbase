@@ -161,6 +161,7 @@ async function verifyFixture(browserInstance, fixture) {
       waitUntil: 'networkidle'
     });
     await page.locator('[data-testid=public-auth-native-content]').waitFor();
+    await assertNoEditorDebugSurface(page, fixture.name);
     await page.getByRole('button', { name: 'local state 0' }).click();
     await page.getByRole('button', { name: 'local state 1' }).waitFor();
     await page.getByRole('button', { name: 'Create an account' }).click();
@@ -186,6 +187,7 @@ async function verifyFixture(browserInstance, fixture) {
       nativeEvidence,
       nativeCleanup,
       authCleanup,
+      authEditorDebugSurface: false,
       pageCanvasRendersBefore,
       pageCanvasRendersAfter,
       publishCompleted,
@@ -196,6 +198,23 @@ async function verifyFixture(browserInstance, fixture) {
     };
   } finally {
     await context.close();
+  }
+}
+
+async function assertNoEditorDebugSurface(page, name) {
+  const selectors = [
+    '[data-testid=js-block-preview-console]',
+    '[data-testid=js-block-console-pane]',
+    '[data-testid=js-block-console-prompt]',
+    '[role=separator]'
+  ];
+  for (const selector of selectors) {
+    const count = await page.locator(selector).count();
+    if (count !== 0) {
+      throw new Error(
+        `${name} Public Auth leaked editor debug UI ${selector}: ${count}`
+      );
+    }
   }
 }
 
