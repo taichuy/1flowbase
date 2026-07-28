@@ -308,7 +308,7 @@ fn blocked_header(policy: ClientProtocolIngressPolicy, name: &str) -> bool {
     !protocol_context_field_is_safe(name)
         || matches!(
             name,
-            "content-type" | "accept" | "accept-encoding" | "accept-language" | "origin"
+            "content-type" | "accept" | "accept-encoding" | "origin"
         )
         || matches!(
             (policy, name),

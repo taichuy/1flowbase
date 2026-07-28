@@ -54,6 +54,7 @@ function successfulExpected({
   callbackResumes = null,
   requestBodyKeys = [],
   requestBodyModel = null,
+  requestBodyFacts = null,
 }) {
   return Object.freeze({
     exit: 'success',
@@ -77,6 +78,7 @@ function successfulExpected({
     } : {}),
     ...(requestBodyKeys.length ? { request_body_keys: Object.freeze(requestBodyKeys) } : {}),
     ...(requestBodyModel === null ? {} : { request_body_model: requestBodyModel }),
+    ...(requestBodyFacts === null ? {} : { request_body_facts: Object.freeze(requestBodyFacts) }),
   });
 }
 
@@ -237,6 +239,11 @@ const CLAUDE_PROTOCOL_VECTOR = Object.freeze({
     assistantTexts: [TEXT_SENTINEL],
     requestBodyKeys: ['context_management'],
     requestBodyModel: 'gateway-fixture-model',
+    requestBodyFacts: {
+      thinkingAdaptive: true,
+      outputConfigEffortHigh: true,
+      contextManagementPresent: true,
+    },
   }),
 });
 

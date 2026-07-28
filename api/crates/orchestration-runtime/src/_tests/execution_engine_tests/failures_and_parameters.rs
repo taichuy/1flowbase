@@ -830,7 +830,7 @@ async fn llm_runtime_ignores_external_reasoning_parameters_without_node_opt_in()
             "sys": {
                 "model_parameters": {
                     "reasoning": {
-                        "enabled": true,
+                        "mode": "adaptive",
                         "effort": "high",
                         "budget_tokens": 4096
                     }
@@ -849,16 +849,14 @@ async fn llm_runtime_ignores_external_reasoning_parameters_without_node_opt_in()
         .clone()
         .expect("provider input should be captured");
 
-    assert!(!captured_input
-        .model_parameters
-        .contains_key("reasoning_effort"));
+    assert!(!captured_input.model_parameters.contains_key("reasoning"));
     assert!(!captured_input
         .model_parameters
         .contains_key("thinking_budget_tokens"));
 }
 
 #[tokio::test]
-async fn llm_runtime_maps_external_reasoning_parameters_when_node_opts_in() {
+async fn llm_runtime_preserves_typed_external_reasoning_for_openai_runtime() {
     let mut plan = base_plan();
     let llm = plan
         .nodes
@@ -885,7 +883,7 @@ async fn llm_runtime_maps_external_reasoning_parameters_when_node_opts_in() {
             "sys": {
                 "model_parameters": {
                     "reasoning": {
-                        "enabled": true,
+                        "mode": "adaptive",
                         "effort": "high",
                         "budget_tokens": 4096
                     }
@@ -905,13 +903,67 @@ async fn llm_runtime_maps_external_reasoning_parameters_when_node_opts_in() {
         .expect("provider input should be captured");
 
     assert_eq!(
-        captured_input.model_parameters.get("reasoning_effort"),
-        Some(&json!("high"))
+        captured_input.model_parameters.get("reasoning"),
+        Some(&json!({
+            "mode": "adaptive",
+            "effort": "high",
+            "budget_tokens": 4096
+        }))
     );
+    assert!(!captured_input
+        .model_parameters
+        .contains_key("reasoning_effort"));
 }
 
 #[tokio::test]
-async fn llm_runtime_maps_external_reasoning_parameters_for_anthropic_runtime() {
+async fn llm_runtime_preserves_typed_external_reasoning_for_openai_compatible_runtime() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config = json!({
+        "external_reasoning_policy": { "follow_external_reasoning": true }
+    });
+    let runtime = llm.llm_runtime.as_mut().expect("llm runtime should exist");
+    runtime.provider_code = "openai_compatible".to_string();
+    runtime.protocol = "openai_compatible".to_string();
+    let invoker = StubProviderInvoker {
+        fail: false,
+        captured_input: Arc::new(Mutex::new(None)),
+        final_content: "ok".to_string(),
+    };
+
+    start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": { "query": "hello" },
+            "sys": { "model_parameters": { "reasoning": {
+                "mode": "enabled", "effort": "medium", "budget_tokens": 2048
+            } } }
+        }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    let captured_input = invoker
+        .captured_input
+        .lock()
+        .expect("captured input mutex poisoned")
+        .clone()
+        .expect("provider input should be captured");
+    assert_eq!(
+        captured_input.model_parameters.get("reasoning"),
+        Some(&json!({ "mode": "enabled", "effort": "medium", "budget_tokens": 2048 }))
+    );
+    assert!(!captured_input
+        .model_parameters
+        .contains_key("reasoning_effort"));
+}
+
+#[tokio::test]
+async fn llm_runtime_preserves_typed_external_reasoning_for_anthropic_runtime() {
     let mut plan = base_plan();
     let llm = plan
         .nodes
@@ -938,7 +990,7 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_anthropic_runtime() 
             "sys": {
                 "model_parameters": {
                     "reasoning": {
-                        "enabled": true,
+                        "mode": "adaptive",
                         "effort": "high",
                         "budget_tokens": 4096
                     }
@@ -958,15 +1010,19 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_anthropic_runtime() 
         .expect("provider input should be captured");
 
     assert_eq!(
-        captured_input.model_parameters.get("thinking_type"),
-        Some(&json!("enabled"))
+        captured_input.model_parameters.get("reasoning"),
+        Some(&json!({
+            "mode": "adaptive",
+            "effort": "high",
+            "budget_tokens": 4096
+        }))
     );
-    assert_eq!(
-        captured_input
-            .model_parameters
-            .get("thinking_budget_tokens"),
-        Some(&json!(4096))
-    );
+    assert!(!captured_input
+        .model_parameters
+        .contains_key("thinking_type"));
+    assert!(!captured_input
+        .model_parameters
+        .contains_key("thinking_budget_tokens"));
     assert!(!captured_input
         .model_parameters
         .contains_key("reasoning_effort"));
@@ -1000,7 +1056,7 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_bailian_runtime() {
             "sys": {
                 "model_parameters": {
                     "reasoning": {
-                        "enabled": true,
+                        "mode": "enabled",
                         "effort": "high",
                         "budget_tokens": 4096
                     }

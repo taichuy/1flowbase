@@ -20,6 +20,7 @@ fn anthropic_policy_preserves_repeated_safe_headers_and_subtracts_typed_or_unsaf
         ClientProtocolIngressPolicy::AnthropicMessages,
         [
             ("Anthropic-Version", "2023-06-01"),
+            ("Accept-Language", "en-US, zh-CN;q=0.9"),
             ("anthropic-beta", "prompt-caching"),
             ("anthropic-beta", "context-1m-2025-08-07, private-beta"),
             ("x-claude-code-session-id", "typed-session"),
@@ -31,12 +32,20 @@ fn anthropic_policy_preserves_repeated_safe_headers_and_subtracts_typed_or_unsaf
             ("connection", "keep-alive, x-hop-secret"),
             ("x-hop-secret", "must-not-cross"),
             ("x-internal-route", "must-not-cross"),
+            ("accept", "text/event-stream"),
+            ("content-type", "application/json"),
+            ("accept-encoding", "gzip"),
+            ("origin", "https://client.example.test"),
         ],
     )
     .expect("safe Anthropic headers should produce protocol context");
 
     assert_eq!(envelope.source_protocol, "anthropic_messages");
     assert_eq!(envelope.headers["anthropic-version"], vec!["2023-06-01"]);
+    assert_eq!(
+        envelope.headers["accept-language"],
+        vec!["en-US, zh-CN;q=0.9"]
+    );
     assert_eq!(
         envelope.headers["anthropic-beta"],
         vec!["prompt-caching", "private-beta"]
@@ -51,6 +60,10 @@ fn anthropic_policy_preserves_repeated_safe_headers_and_subtracts_typed_or_unsaf
         "connection",
         "x-hop-secret",
         "x-internal-route",
+        "accept",
+        "content-type",
+        "accept-encoding",
+        "origin",
     ] {
         assert!(!envelope.headers.contains_key(stripped), "{stripped}");
     }

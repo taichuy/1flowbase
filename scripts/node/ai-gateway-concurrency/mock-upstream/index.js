@@ -50,6 +50,11 @@ function requestBodySummary(body) {
   if (Array.isArray(body.input)) summary.inputItems = body.input.length;
   if (typeof body.input === 'string') summary.inputCharacters = body.input.length;
   if (Array.isArray(body.messages)) summary.messageCount = body.messages.length;
+  if (body.thinking !== undefined) summary.thinkingAdaptive = body.thinking?.type === 'adaptive';
+  if (body.output_config !== undefined) {
+    summary.outputConfigEffortHigh = body.output_config?.effort === 'high';
+  }
+  if (body.context_management !== undefined) summary.contextManagementPresent = true;
   return summary;
 }
 

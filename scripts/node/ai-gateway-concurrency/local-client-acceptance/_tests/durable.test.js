@@ -93,6 +93,9 @@ test('WP-D4B mock evidence fixes terminal counts, observed Claude fields, and ex
           body: {
             keys: ['context_management', 'messages', 'thinking'],
             model: 'gateway-fixture-model',
+            thinkingAdaptive: true,
+            outputConfigEffortHigh: true,
+            contextManagementPresent: true,
           },
         },
       },
@@ -110,6 +113,14 @@ test('WP-D4B mock evidence fixes terminal counts, observed Claude fields, and ex
   assert.equal(evidence.gateway_executor_invocations, 0);
   assert.equal(evidence.network_observer_outbound, 0);
   assert.deepEqual(evidence.success_terminal_counts, [1]);
+  for (const field of ['thinkingAdaptive', 'outputConfigEffortHigh', 'contextManagementPresent']) {
+    assert.throws(() => evaluateMockAttempt(before, {
+      entries: after.entries.map((entry) => entry.event === 'arrival'
+        ? { ...entry, request: { body: { ...entry.request.body, [field]: undefined } } }
+        : entry),
+      counters: after.counters,
+    }, CLAUDE_PROTOCOL_VECTOR.expected), new RegExp(`Provider request ${field} did not match`, 'u'));
+  }
   assert.throws(() => evaluateMockAttempt(before, {
     entries: after.entries.map((entry) => entry.event === 'arrival'
       ? { ...entry, request: { body: { ...entry.request.body, model: 'claude-opus-4-6[1m]' } } }

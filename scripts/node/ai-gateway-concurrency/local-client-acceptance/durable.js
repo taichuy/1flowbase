@@ -236,6 +236,11 @@ function evaluateMockAttempt(before, after, rawExpectation) {
       && arrival.request?.body?.model !== expectation.request_body_model) {
       throw new Error(`Provider request model did not match ${expectation.request_body_model}`);
     }
+    for (const [name, value] of Object.entries(expectation.request_body_facts ?? {})) {
+      if (arrival.request?.body?.[name] !== value) {
+        throw new Error(`Provider request ${name} did not match ${String(value)}`);
+      }
+    }
   }
   const executor = expectation.gateway_executor_invocations === undefined
     ? null

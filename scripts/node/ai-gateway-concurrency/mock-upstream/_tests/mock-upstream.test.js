@@ -324,12 +324,18 @@ test('Root #1477 AC-005/006: arrival evidence stores a semantic digest without r
       },
       body: JSON.stringify({
         model: 'mock-model', stream: true,
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'high' },
+        context_management: { edits: [{ type: 'clear_tool_uses_20250919' }] },
         messages: [{ role: 'user', content: 'raw-body-canary' }],
       }),
     });
     await response.text();
     const evidence = arrivalEntries(upstream)[0].request;
     assert.match(evidence.semantic_sha256, /^[a-f0-9]{64}$/u);
+    assert.equal(evidence.body.thinkingAdaptive, true);
+    assert.equal(evidence.body.outputConfigEffortHigh, true);
+    assert.equal(evidence.body.contextManagementPresent, true);
     for (const canary of ['raw-auth-canary', 'raw-key-canary', 'raw-body-canary']) {
       assert.doesNotMatch(JSON.stringify(evidence), new RegExp(canary, 'u'));
     }

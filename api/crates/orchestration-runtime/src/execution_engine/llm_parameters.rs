@@ -170,34 +170,16 @@ pub(super) fn apply_external_reasoning_parameters(
         return;
     };
     let enabled = reasoning
-        .get("enabled")
-        .and_then(Value::as_bool)
+        .get("mode")
+        .and_then(Value::as_str)
+        .map(|mode| mode != "disabled")
+        .or_else(|| reasoning.get("enabled").and_then(Value::as_bool))
         .unwrap_or(true);
     let effort = reasoning
         .get("effort")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let budget_tokens = reasoning.get("budget_tokens").and_then(Value::as_u64);
-
-    if is_anthropic_reasoning_runtime(runtime) {
-        insert_model_parameter_if_absent(
-            parameters,
-            "thinking_type",
-            json!(if enabled { "enabled" } else { "disabled" }),
-        );
-        if enabled {
-            if let Some(budget_tokens) = budget_tokens {
-                insert_model_parameter_if_absent(
-                    parameters,
-                    "thinking_budget_tokens",
-                    json!(budget_tokens),
-                );
-            }
-        }
-        return;
-    }
-
     if is_bailian_reasoning_runtime(runtime) {
         insert_model_parameter_if_absent(parameters, "enable_thinking", json!(enabled));
         if enabled {
@@ -208,9 +190,18 @@ pub(super) fn apply_external_reasoning_parameters(
         return;
     }
 
-    if is_openai_reasoning_runtime(runtime) && enabled {
-        if let Some(effort) = effort {
-            insert_model_parameter_if_absent(parameters, "reasoning_effort", json!(effort));
+    if is_anthropic_reasoning_runtime(runtime) || is_openai_reasoning_runtime(runtime) {
+        let reasoning = ["mode", "effort", "budget_tokens"]
+            .into_iter()
+            .filter_map(|key| {
+                reasoning
+                    .get(key)
+                    .cloned()
+                    .map(|value| (key.to_string(), value))
+            })
+            .collect::<Map<_, _>>();
+        if !reasoning.is_empty() {
+            insert_model_parameter_if_absent(parameters, "reasoning", Value::Object(reasoning));
         }
     }
 }
