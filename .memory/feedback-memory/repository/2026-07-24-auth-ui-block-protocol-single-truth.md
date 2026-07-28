@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: 认证插件公开 UI 必须由完整代码区块协议驱动
-summary: 后端认证插件不能改 Core 前端，因此每个认证器的完整公开 Block 是唯一 UI 真值；所有代码渲染表面只输出区块视觉结果，运行控制与 Console 完全由 TSX 编辑器拥有。
+summary: 后端认证插件不能改 Core 前端，因此每个认证器的完整公开 Block 是正常运行时唯一 UI 真值；Core 只允许为已启用的内置账号密码认证保留渲染失败时的紧急登录表单，所有代码渲染表面仍只输出区块视觉结果，运行控制与 Console 完全由 TSX 编辑器拥有。
 keywords:
   - auth-provider
   - public-ui-block
@@ -12,8 +12,8 @@ match_when:
   - 设计认证、支付或其他后端插件安装后需要新增前端交互的扩展协议
   - 在 Schema UI、TSX 复用、代码区块和 Core 硬编码之间选择职责边界
 created_at: 2026-07-24 14
-updated_at: 2026-07-28 00
-last_verified_at: 2026-07-28 00
+updated_at: 2026-07-28 19
+last_verified_at: 2026-07-28 19
 decision_policy: direct_reference
 scope:
   - api/crates/plugin-framework
@@ -30,7 +30,7 @@ scope:
 
 ## 规则
 
-后端插件安装后无法修改 Core 前端时，不得把简单登录交给 Schema UI、复杂登录交给 TSX，或保留 Core 默认表单形成两套维护路径。每个认证器实例持久化一个完整 `public_ui_block`，区块本身决定登录、注册、扫码、跳转和布局；Core 仅发现实例、选择实例、注入后端公开变量与 canonical Block context、挂载共享 renderer/runtime，并隔离错误。
+后端插件安装后无法修改 Core 前端时，不得把简单登录交给 Schema UI、复杂登录交给 TSX，或在正常路径保留 Core 默认表单形成两套维护路径。每个认证器实例持久化一个完整 `public_ui_block`，区块本身决定登录、注册、扫码、跳转和布局；Core 仅发现实例、选择实例、注入后端公开变量与 canonical Block context、挂载共享 renderer/runtime，并隔离错误。唯一例外是已启用的内置账号密码认证：其公开 Block 渲染失败时，Core 可切换到代码内置的最小登录表单，作为防止错误 UI 锁死整站的故障兜底；该表单不得成为可配置、常态展示或其他认证器共享的第二 UI 真值。
 
 认证中心的 `UI` 作者入口同样必须复用 Frontstage 代码区块的标准浮动 TSX Studio 基准，包括共享窗口、编辑器、状态与窗口动作；不得只抽 Monaco 后再包一层 Auth 专用 Drawer / Modal，形成第二套作者交互。
 
@@ -55,3 +55,5 @@ scope:
 `2026-07-28 00` 用户纠正：上述 Console 只属于认证中心 / Frontstage 的后台 Studio 运行预览，不属于公开认证页面。公开登录、注册等生产渲染表面只能显示 `public_ui_block` 的视觉结果和必要的区块内错误反馈，不得把 Studio 的 Console、分隔条或调试交互一并挂载。
 
 `2026-07-28 00` 用户进一步澄清全局不变量：不是由各渲染调用方选择是否显示 Console，而是代码 Renderer 本身必须保持纯粹，只把准备好的组件渲染到隔离 DOM。Run、草稿冻结、诊断、API observation、Console、写操作确认和调试重试全部属于 TSX 编辑器；正式 Frontstage、Public Auth 及其他生产渲染入口不得消费编辑器调试组件。生产 Host 可以在 Renderer 外拥有 loading、用户可见 failure fallback 和业务重试，但不得显示原始调试 Console。
+
+`2026-07-28 19` 用户增加认证锁死保护例外：只有已启用的内置账号密码认证，其账号密码 Block 渲染失败时，生产 Auth Host 才切换到 Core 代码内置的账号密码登录表单；认证关闭、其他认证器或正常渲染时不得显示该表单。该例外不改变 `public_ui_block` 作为正常 UI 真值，也不允许内置表单进入认证中心作者配置。

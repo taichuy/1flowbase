@@ -51,6 +51,7 @@ import { SignInPage } from '../pages/SignInPage';
 const passwordInstance = {
   id: 'auth-password-local',
   auth_type: 'password-local',
+  is_builtin: true,
   title: 'Password',
   description: 'Local password login',
   sort_order: 0,
@@ -107,6 +108,7 @@ describe('SignInPage', () => {
       ...passwordInstance,
       id: 'auth-qr',
       auth_type: 'qr-code',
+      is_builtin: false,
       title: 'QR code',
       sort_order: 10,
       public_ui_block: 'qr block'

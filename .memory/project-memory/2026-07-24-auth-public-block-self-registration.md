@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 认证器协议驱动的公开认证区块与自行注册
-summary: 用户确认代码区块是认证器公开 UI 的唯一真值，Core 登录页只做实例选择与共享 Block 宿主；#1444 已进入用户验收，认证中心完整共享 Studio、动态 Auth 上下文和直接区块预览已合入 beta。
+summary: 用户确认代码区块是认证器正常公开 UI 的唯一真值，Core 登录页只做实例选择与共享 Block 宿主；已启用的内置账号密码认证新增 Block 故障时的 Core 紧急登录表单，#1444 继续处于用户验收。
 keywords:
   - auth center
   - authenticator
@@ -15,8 +15,8 @@ match_when:
   - 调整认证器 public projection、HostExtension Auth Provider contract 或注册接口
   - 讨论登录页应由 Core、Schema UI 还是代码区块拥有
 created_at: 2026-07-24 00
-updated_at: 2026-07-26 00
-last_verified_at: 2026-07-26 00
+updated_at: 2026-07-28 19
+last_verified_at: 2026-07-28 19
 decision_policy: verify_before_decision
 status: phase_user_acceptance
 source_issue: "#1444"
@@ -72,3 +72,4 @@ scope:
 - Auth `direct-preview` 使用 65% / 35% 的预览与控制台垂直分屏；控制台直接消费 runtime 已清洗的 `snapshot.logs`，展示 level、message 与结构化 data。中间 splitter 支持鼠标和键盘调节，两侧独立滚动；Frontstage debugger 保持原控制台能力。交付提交：implementation `4589fa9e1`，beta merge `56cc7f370`。
 - Auth 内嵌控制台使用白色轻量 DevTools 风格而非深色终端：空状态只显示左侧高亮 `>` prompt，日志行使用固定 gutter，info/debug/warn/error 通过符号和颜色区分；不提供输入或 REPL。交付提交：implementation `0d4c1db14`，beta merge `cbc428360`。
 - `2026-07-26 00` 用户批准普通区块与认证中心 Studio 统一：顶部仅运行，运行区固定为“实际区块预览 + 单一输出控制台”，不包含停止、多标签或调试浮窗；设置共享同一 `Descriptions` 骨架并保留领域字段与编辑性。实现已进入任务级 QA，未修改后端或 runtime contract。
+- `2026-07-28 19` 用户批准内置账号密码认证锁死保护：正常路径继续以 `public_ui_block` 为唯一 UI 真值；只有后端投影为已启用、`is_builtin` 且 `auth_type=password-local` 的实例，才在编译、准备、运行时失败或 10 秒超时后自动切换 Core 最小登录表单，并保留手动紧急切换。实现与集中 QA 已合入 `beta`，提交 `7ca5fd92e`；等待用户重启后人工验收。

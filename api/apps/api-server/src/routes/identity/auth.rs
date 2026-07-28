@@ -28,6 +28,7 @@ pub struct AuthProviderResponse {
 pub struct PublicLoginInstanceResponse {
     pub id: Uuid,
     pub auth_type: String,
+    pub is_builtin: bool,
     pub title: String,
     pub description: Option<String>,
     pub sort_order: i32,
@@ -91,6 +92,7 @@ fn to_public_login_instance(
     Some(PublicLoginInstanceResponse {
         id: authenticator.id,
         auth_type: authenticator.auth_type,
+        is_builtin: authenticator.is_builtin,
         title: authenticator.title,
         description: public_authenticator_description(&authenticator.options),
         sort_order: authenticator.sort_order,
