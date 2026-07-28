@@ -8,6 +8,10 @@ import {
   modelProviderOptionsContract,
   primaryContractProviderEnabledModelIds
 } from '../test/model-provider-contract-fixtures';
+import {
+  createSettingsI18nCatalogTestServer,
+  settingsI18nCatalogTestNavigation
+} from '../features/settings/pages/i18n-catalog/_tests/i18n-catalog-test-fixture';
 
 const styleBoundaryProviderInstances = [
   {
@@ -483,12 +487,7 @@ function getStyleBoundaryCommonResponse(
             path: '/settings/docs',
             surface_kind: 'system'
           },
-          {
-            route_id: 'settings.i18n',
-            surface_key: 'i18n',
-            path: '/settings/i18n',
-            surface_kind: 'system'
-          }
+          ...settingsI18nCatalogTestNavigation.route_definitions
         ],
         navigation_items: [
           {
@@ -539,14 +538,7 @@ function getStyleBoundaryCommonResponse(
             navigation_slot: 'settings',
             order: 3
           },
-          {
-            item_id: 'i18n',
-            route_id: 'settings.i18n',
-            parent_item_id: 'settings',
-            label_key: 'auto.translation_catalog_title',
-            navigation_slot: 'settings',
-            order: 4
-          }
+          ...settingsI18nCatalogTestNavigation.navigation_items
         ],
         permission_bindings: []
       },
@@ -777,6 +769,7 @@ export function seedStyleBoundarySettingsFetch() {
 
   styleBoundaryOriginalFetch ??= globalThis.fetch.bind(globalThis);
   const originalFetch = styleBoundaryOriginalFetch;
+  const i18nCatalogServer = createSettingsI18nCatalogTestServer();
 
   globalThis.fetch = async (input, init) => {
     const url = getStyleBoundaryRequestUrl(input);
@@ -869,25 +862,9 @@ export function seedStyleBoundarySettingsFetch() {
       requestUrl.pathname === '/api/console/settings/i18n/entries'
     ) {
       return createStyleBoundaryJsonResponse({
-        data: {
-          entries: [
-            {
-              module: '@1flowbase/common',
-              msgid: 'Settings',
-              locale: 'zh_Hans',
-              official_translation: '设置',
-              override_translation: null,
-              custom_translation: null,
-              effective_value: '设置',
-              origin: 'official',
-              missing: false,
-              obsolete: false,
-              revision: 1
-            }
-          ],
-          total: 1,
-          revision: 1
-        },
+        data: await i18nCatalogServer.listEntriesFromSearchParams(
+          requestUrl.searchParams
+        ),
         meta: null
       });
     }

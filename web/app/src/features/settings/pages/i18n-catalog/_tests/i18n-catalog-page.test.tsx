@@ -36,34 +36,10 @@ vi.mock('../../../api/i18n-catalog', () => catalogApi);
 import { AppProviders } from '../../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 import { I18nCatalogPage } from '../I18nCatalogPage';
-
-const officialEntry = {
-  module: '@1flowbase/common',
-  msgid: 'Settings',
-  locale: 'zh_Hans',
-  official_translation: '设置',
-  override_translation: '系统设置',
-  custom_translation: null,
-  effective_value: '系统设置',
-  origin: 'official_override' as const,
-  missing: false,
-  obsolete: true,
-  revision: 8
-};
-
-const customEntry = {
-  module: 'workspace/custom',
-  msgid: 'Greeting',
-  locale: 'zh_Hans',
-  official_translation: null,
-  override_translation: null,
-  custom_translation: '欢迎',
-  effective_value: '欢迎',
-  origin: 'custom' as const,
-  missing: false,
-  obsolete: false,
-  revision: 8
-};
+import {
+  createSettingsI18nCatalogTestServer,
+  settingsI18nCatalogTestLocales
+} from './i18n-catalog-test-fixture';
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
@@ -99,41 +75,38 @@ function renderPage() {
 
 describe('I18nCatalogPage batch fixtures', () => {
   beforeEach(() => {
+    const catalogServer = createSettingsI18nCatalogTestServer();
+
     resetAuthStore();
     authenticate();
     vi.clearAllMocks();
-    catalogApi.fetchSettingsI18nCatalogEntries.mockResolvedValue({
-      entries: [officialEntry, customEntry],
-      total: 2,
-      revision: 8
-    });
-    catalogApi.fetchSettingsI18nCatalogEntry.mockImplementation(
-      async (identity) =>
-        identity.msgid === 'Greeting' ? customEntry : officialEntry
+    catalogApi.fetchSettingsI18nCatalogEntries.mockImplementation(
+      catalogServer.listEntries
     );
-    catalogApi.saveSettingsI18nCatalogOverride.mockResolvedValue({
-      revision: 9,
-      entry: officialEntry
-    });
-    catalogApi.saveSettingsCustomI18nCatalogTranslation.mockResolvedValue({
-      revision: 9,
-      entry: customEntry
-    });
-    catalogApi.restoreSettingsI18nCatalogOverride.mockResolvedValue({
-      revision: 9,
-      entry: officialEntry
-    });
-    catalogApi.deleteSettingsCustomI18nCatalogKey.mockResolvedValue({
-      revision: 9
-    });
-    catalogApi.restoreAllSettingsI18nCatalogOverrides.mockResolvedValue({
-      revision: 9
-    });
+    catalogApi.fetchSettingsI18nCatalogEntry.mockImplementation(
+      catalogServer.getEntry
+    );
+    catalogApi.saveSettingsI18nCatalogOverride.mockImplementation(
+      catalogServer.saveOverride
+    );
+    catalogApi.saveSettingsCustomI18nCatalogTranslation.mockImplementation(
+      catalogServer.saveCustomTranslation
+    );
+    catalogApi.restoreSettingsI18nCatalogOverride.mockImplementation(
+      catalogServer.restoreOverride
+    );
+    catalogApi.deleteSettingsCustomI18nCatalogKey.mockImplementation(
+      catalogServer.deleteCustomKey
+    );
+    catalogApi.restoreAllSettingsI18nCatalogOverrides.mockImplementation(
+      catalogServer.restoreAllOverrides
+    );
   });
 
   test('AC-007 renders compact desktop and honest mobile browse contracts from real entries', async () => {
     renderPage();
 
+    expect(settingsI18nCatalogTestLocales).toEqual(['en_US', 'zh_Hans']);
     expect((await screen.findAllByText('系统设置')).length).toBeGreaterThan(0);
     expect(
       screen.getByTestId('i18n-catalog-desktop-table')
@@ -153,9 +126,17 @@ describe('I18nCatalogPage batch fixtures', () => {
     fireEvent.change(screen.getByPlaceholderText('翻译模块'), {
       target: { value: '@1flowbase/common' }
     });
-    fireEvent.mouseDown(screen.getByTestId('i18n-catalog-locale-filter'));
+    fireEvent.mouseDown(
+      within(screen.getByTestId('i18n-catalog-locale-filter')).getByRole(
+        'combobox'
+      )
+    );
     fireEvent.click(await screen.findByRole('option', { name: 'zh_Hans' }));
-    fireEvent.mouseDown(screen.getByTestId('i18n-catalog-origin-filter'));
+    fireEvent.mouseDown(
+      within(screen.getByTestId('i18n-catalog-origin-filter')).getByRole(
+        'combobox'
+      )
+    );
     fireEvent.click(await screen.findByRole('option', { name: '官方覆盖值' }));
     fireEvent.click(screen.getByRole('button', { name: '应用翻译筛选' }));
 
