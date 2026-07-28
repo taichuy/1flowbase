@@ -165,7 +165,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
         exports: ['Surface']
       }
     ];
-    const view = renderPanel({
+    renderPanel({
       code: "import { Surface } from '@1flowbase/native-components'; export default () => <Surface />;",
       revision: 'run:catalog-lock',
       nativeCompiler: compiler,
@@ -427,7 +427,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
   });
 
   test('R6-AC-002 keeps the resizable Console inside the editor run surface', async () => {
-    renderPanel({
+    const view = renderPanel({
       code: source('layout'),
       revision: 'run:layout'
     });
