@@ -1,5 +1,183 @@
 use super::*;
 
+fn set_start_i18n_binding(document: &mut Value, binding_key: &str, binding: Value) {
+    document["graph"]["nodes"][0]["bindings"][binding_key] = binding;
+}
+
+#[test]
+fn compile_and_runtime_roundtrip_typed_i18n_text_without_execution() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    set_start_i18n_binding(
+        &mut document,
+        "welcome",
+        json!({
+            "kind": "i18n_text",
+            "value": {
+                "module": "@org/agent-flow/messages",
+                "key": "Welcome, {name}!"
+            }
+        }),
+    );
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect("valid i18n_text binding should compile");
+    let serialized = serde_json::to_value(&plan).expect("compiled plan should serialize");
+    let roundtrip: orchestration_runtime::compiled_plan::CompiledPlan =
+        serde_json::from_value(serialized).expect("compiled plan should roundtrip");
+    let binding = &roundtrip.nodes["node-start"].bindings["welcome"];
+
+    assert_eq!(
+        binding.i18n_text_ref,
+        Some(orchestration_runtime::compiled_plan::CompiledI18nTextRef {
+            module: "@org/agent-flow/messages".to_string(),
+            key: "Welcome, {name}!".to_string(),
+        })
+    );
+    assert_eq!(
+        binding.raw_value,
+        json!({
+            "module": "@org/agent-flow/messages",
+            "key": "Welcome, {name}!"
+        })
+    );
+    assert!(binding.selector_paths.is_empty());
+
+    let resolved = orchestration_runtime::binding_runtime::resolve_node_inputs(
+        &roundtrip.nodes["node-start"],
+        &serde_json::Map::new(),
+    )
+    .expect("i18n_text resolution should preserve the reference");
+    assert_eq!(
+        resolved["welcome"],
+        json!({
+            "module": "@org/agent-flow/messages",
+            "key": "Welcome, {name}!"
+        })
+    );
+}
+
+#[test]
+fn compile_rejects_invalid_i18n_text_shapes_and_non_plain_keys() {
+    let invalid_bindings = [
+        json!({ "kind": "i18n_text", "value": { "key": "Welcome" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome", "extra": true } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome" }, "extra": true }),
+        json!({ "kind": "i18n_text", "value": "Welcome" }),
+        json!({ "kind": "i18n_text", "value": { "module": 7, "key": "Welcome" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": 7 } }),
+        json!({ "kind": "i18n_text", "value": { "module": "org/messages", "key": "Welcome" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@Org/messages", "key": "Welcome" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "   " } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "<strong>Welcome</strong>" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "javascript:alert(1)" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome {{node-start.query}}" } }),
+        json!({ "kind": "i18n_text", "value": { "module": "@org/messages", "key": "Welcome {user.name}" } }),
+    ];
+
+    for (index, binding) in invalid_bindings.into_iter().enumerate() {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        set_start_i18n_binding(&mut document, "welcome", binding);
+
+        let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+            .expect_err("invalid i18n_text binding should be rejected");
+        assert!(
+            format!("{error:#}").contains("invalid i18n_text payload"),
+            "fixture {index} failed with an unrelated error: {error}"
+        );
+    }
+}
+
+#[test]
+fn referenced_i18n_projection_is_deduplicated_sorted_and_referenced_only() {
+    use orchestration_runtime::binding_runtime::{
+        project_referenced_i18n_messages, referenced_i18n_text_refs,
+    };
+    use orchestration_runtime::compiled_plan::CompiledI18nTextRef;
+
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    set_start_i18n_binding(
+        &mut document,
+        "z_duplicate",
+        json!({ "kind": "i18n_text", "value": { "module": "@org/zeta/messages", "key": "Retry" } }),
+    );
+    set_start_i18n_binding(
+        &mut document,
+        "a_first",
+        json!({ "kind": "i18n_text", "value": { "module": "@org/alpha/messages", "key": "Continue" } }),
+    );
+    set_start_i18n_binding(
+        &mut document,
+        "z_original",
+        json!({ "kind": "i18n_text", "value": { "module": "@org/zeta/messages", "key": "Retry" } }),
+    );
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+    assert_eq!(
+        referenced_i18n_text_refs(&plan),
+        vec![
+            CompiledI18nTextRef {
+                module: "@org/alpha/messages".to_string(),
+                key: "Continue".to_string(),
+            },
+            CompiledI18nTextRef {
+                module: "@org/zeta/messages".to_string(),
+                key: "Retry".to_string(),
+            },
+        ]
+    );
+
+    let translations = BTreeMap::from([
+        (
+            CompiledI18nTextRef {
+                module: "@org/zeta/messages".to_string(),
+                key: "Retry".to_string(),
+            },
+            "重试".to_string(),
+        ),
+        (
+            CompiledI18nTextRef {
+                module: "@org/unused/messages".to_string(),
+                key: "Unused".to_string(),
+            },
+            "未引用".to_string(),
+        ),
+    ]);
+    let projection = project_referenced_i18n_messages(&plan, &translations);
+
+    assert_eq!(projection.len(), 2);
+    assert_eq!(projection[0].module, "@org/alpha/messages");
+    assert_eq!(projection[0].key, "Continue");
+    assert_eq!(projection[0].text, "Continue");
+    assert_eq!(projection[1].module, "@org/zeta/messages");
+    assert_eq!(projection[1].text, "重试");
+}
+
+#[test]
+fn i18n_text_does_not_change_existing_templated_selector_resolution() {
+    let flow_id = Uuid::now_v7();
+    let document = sample_document(flow_id);
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+    let variable_pool = serde_json::Map::from_iter([(
+        "node-start".to_string(),
+        json!({ "query": "How are you?" }),
+    )]);
+
+    let resolved = orchestration_runtime::binding_runtime::resolve_node_inputs(
+        &plan.nodes["node-llm"],
+        &variable_pool,
+    )
+    .unwrap();
+
+    assert_eq!(
+        resolved["prompt_messages"][1]["content"],
+        json!("Question: How are you?")
+    );
+}
+
 #[test]
 fn execution_contract_rejects_unsupported_node_type_missing_from_legacy_issues() {
     let flow_id = Uuid::now_v7();

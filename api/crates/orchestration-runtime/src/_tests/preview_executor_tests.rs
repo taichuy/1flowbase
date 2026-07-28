@@ -100,6 +100,7 @@ fn sample_compiled_plan() -> CompiledPlan {
     bindings.insert(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             raw_value: json!([
                 {
@@ -316,6 +317,7 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
             bindings: BTreeMap::from([(
                 "branches".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "if_else_branches".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!({
@@ -360,6 +362,7 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
                 bindings: BTreeMap::from([(
                     "operations".to_string(),
                     CompiledBinding {
+                        i18n_text_ref: None,
                         kind: "state_write".to_string(),
                         selector_paths: Vec::new(),
                         raw_value: json!([{
@@ -391,6 +394,7 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
     target.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["conversation".to_string(), "branch".to_string()]],
             raw_value: json!([{
@@ -461,6 +465,7 @@ async fn preview_executor_code_node_executes_runner() {
         node.bindings = BTreeMap::from([(
             "query".to_string(),
             CompiledBinding {
+                i18n_text_ref: None,
                 kind: "selector".to_string(),
                 raw_value: json!({ "kind": "selector", "value": ["node-start", "query"] }),
                 selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
@@ -519,6 +524,7 @@ async fn preview_executor_materializes_start_builtin_defaults_for_downstream_pre
         node.bindings = BTreeMap::from([(
             "named_bindings".to_string(),
             CompiledBinding {
+                i18n_text_ref: None,
                 kind: "named_bindings".to_string(),
                 raw_value: json!([
                     { "name": "query", "selector": ["node-start", "query"] },
@@ -584,6 +590,7 @@ async fn preview_executor_preserves_provided_start_builtin_values() {
         node.bindings = BTreeMap::from([(
             "named_bindings".to_string(),
             CompiledBinding {
+                i18n_text_ref: None,
                 kind: "named_bindings".to_string(),
                 raw_value: json!([
                     { "name": "history", "selector": ["node-start", "history"] },

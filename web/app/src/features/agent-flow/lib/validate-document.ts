@@ -2,6 +2,7 @@ import {
   getLlmNodeOutputs,
   getStartCompactDispatch,
   isFlowCompactDispatch,
+  validateI18nTextRef,
   validatePublicOutputKey,
   type FlowAuthoringDocument
 } from '@1flowbase/flow-schema';
@@ -116,6 +117,8 @@ function isMissingRequiredField(
   switch (binding.kind) {
     case 'templated_text':
       return binding.value.trim().length === 0;
+    case 'i18n_text':
+      return !validateI18nTextRef(binding.value).ok;
     case 'selector':
       return binding.value.length === 0;
     case 'selector_list':
@@ -272,6 +275,8 @@ function collectBindingSelectors(binding: FlowBinding): string[][] {
   switch (binding.kind) {
     case 'templated_text':
       return parseTemplateSelectorTokens(binding.value);
+    case 'i18n_text':
+      return [];
     case 'selector':
       return [binding.value];
     case 'selector_list':

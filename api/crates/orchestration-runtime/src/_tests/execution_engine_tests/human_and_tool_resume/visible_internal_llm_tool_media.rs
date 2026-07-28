@@ -41,6 +41,7 @@ fn configure_image_llm_tool(plan: &mut CompiledPlan) {
     mounted_llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec![
                 "visible_internal_llm_tool".to_string(),

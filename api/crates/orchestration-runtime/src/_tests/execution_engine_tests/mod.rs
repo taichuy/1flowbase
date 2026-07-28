@@ -810,6 +810,7 @@ fn base_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt_messages".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "prompt_messages".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!([
@@ -859,6 +860,7 @@ fn base_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     selector_paths: vec![vec!["node-llm".to_string(), "text".to_string()]],
                     raw_value: json!("请审核：{{ node-llm.text }}"),
@@ -889,6 +891,7 @@ fn base_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "answer_template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "selector".to_string(),
                     selector_paths: vec![vec!["node-human".to_string(), "input".to_string()]],
                     raw_value: json!(["node-human", "input"]),
@@ -945,6 +948,7 @@ fn llm_answer_plan() -> CompiledPlan {
     answer.bindings = BTreeMap::from([(
         "answer_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "selector".to_string(),
             selector_paths: vec![vec!["node-llm".to_string(), "text".to_string()]],
             raw_value: json!(["node-llm", "text"]),
@@ -980,6 +984,7 @@ fn multi_llm_answer_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt_messages".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "prompt_messages".to_string(),
                     selector_paths: vec![vec!["node-llm".to_string(), "text".to_string()]],
                     raw_value: json!([
@@ -1026,6 +1031,7 @@ fn multi_llm_answer_plan() -> CompiledPlan {
     answer.bindings = BTreeMap::from([(
         "answer_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "selector".to_string(),
             selector_paths: vec![vec!["node-llm-2".to_string(), "text".to_string()]],
             raw_value: json!(["node-llm-2", "text"]),

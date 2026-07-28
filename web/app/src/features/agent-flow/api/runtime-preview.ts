@@ -242,6 +242,8 @@ function extractStateWriteValueSelectors(value: unknown): string[][] {
 
 function extractSelectors(binding: FlowBinding): string[][] {
   switch (binding.kind) {
+    case 'i18n_text':
+      return [];
     case 'selector': {
       const selector = normalizeSelectorPath(binding.value);
 

@@ -76,8 +76,16 @@ pub struct CompiledNode {
     pub code_runtime: Option<CompiledCodeRuntime>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CompiledI18nTextRef {
+    pub module: String,
+    pub key: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledBinding {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub i18n_text_ref: Option<CompiledI18nTextRef>,
     pub kind: String,
     pub raw_value: serde_json::Value,
     pub selector_paths: Vec<Vec<String>>,

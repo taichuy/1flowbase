@@ -41,6 +41,7 @@ fn compiled_code_node(binding: CompiledBinding) -> CompiledNode {
 #[test]
 fn resolve_named_bindings_preserves_selector_and_constant_json_types() {
     let node = compiled_code_node(CompiledBinding {
+        i18n_text_ref: None,
         kind: "named_bindings".to_string(),
         raw_value: json!([
             {
@@ -93,6 +94,7 @@ fn resolve_named_bindings_preserves_selector_and_constant_json_types() {
 #[test]
 fn reject_named_bindings_numeric_formula_with_non_numeric_selector() {
     let node = compiled_code_node(CompiledBinding {
+        i18n_text_ref: None,
         kind: "named_bindings".to_string(),
         raw_value: json!([
             {
@@ -118,6 +120,7 @@ fn reject_named_bindings_numeric_formula_with_non_numeric_selector() {
 #[test]
 fn resolve_data_model_query_binding_with_constant_and_selector_values() {
     let node = compiled_node(CompiledBinding {
+        i18n_text_ref: None,
         kind: "data_model_query".to_string(),
         raw_value: json!({
             "filters": [
@@ -156,6 +159,7 @@ fn resolve_data_model_query_binding_with_constant_and_selector_values() {
 #[test]
 fn resolve_data_model_query_rejects_invalid_operator() {
     let node = compiled_node(CompiledBinding {
+        i18n_text_ref: None,
         kind: "data_model_query".to_string(),
         raw_value: json!({
             "filters": [

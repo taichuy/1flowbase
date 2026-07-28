@@ -9,6 +9,7 @@ pub(super) fn visible_internal_llm_tool_plan_with_result() -> CompiledPlan {
     tool_result.bindings = BTreeMap::from([(
         "result_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "templated_text".to_string(),
             selector_paths: vec![vec!["node-mounted-llm".to_string(), "text".to_string()]],
             raw_value: json!("tool-result: {{ node-mounted-llm.text }}"),
@@ -64,6 +65,7 @@ pub(super) fn visible_internal_llm_tool_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt_messages".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "prompt_messages".to_string(),
                     selector_paths: vec![vec![
                         "visible_internal_llm_tool".to_string(),
@@ -123,6 +125,7 @@ pub(super) fn visible_internal_llm_tool_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "result_template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     selector_paths: vec![vec!["node-mounted-llm".to_string(), "text".to_string()]],
                     raw_value: json!("{{ node-mounted-llm.text }}"),
@@ -213,6 +216,7 @@ pub(super) fn visible_internal_llm_tool_plan_behind_if_else() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "branches".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "if_else_branches".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!({
@@ -284,6 +288,7 @@ pub(super) fn visible_internal_llm_tool_chain_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     selector_paths: vec![vec![
                         "visible_internal_llm_tool".to_string(),
@@ -315,6 +320,7 @@ pub(super) fn visible_internal_llm_tool_chain_plan() -> CompiledPlan {
     mounted_llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["node-tool-transform".to_string(), "text".to_string()]],
             raw_value: json!([

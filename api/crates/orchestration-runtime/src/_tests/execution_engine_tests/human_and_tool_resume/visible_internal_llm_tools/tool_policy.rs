@@ -134,6 +134,7 @@ async fn visible_internal_llm_tool_inherited_policy_keeps_run_context_tools_with
     mounted_llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec![
                 "visible_internal_llm_tool".to_string(),

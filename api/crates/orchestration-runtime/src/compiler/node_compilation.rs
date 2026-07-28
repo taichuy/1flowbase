@@ -791,12 +791,21 @@ fn compile_bindings(
         let kind = required_string(binding_value, "kind")
             .with_context(|| format!("binding {binding_key} missing kind"))?;
         let raw_value = binding_value.get("value").cloned().unwrap_or(Value::Null);
+        let i18n_text_ref =
+            if kind == "i18n_text" {
+                Some(compile_i18n_text_ref(binding_value).with_context(|| {
+                    format!("binding {binding_key} has invalid i18n_text payload")
+                })?)
+            } else {
+                None
+            };
         let selector_paths = extract_selector_paths(kind, &raw_value)
             .with_context(|| format!("binding {binding_key} has invalid selector payload"))?;
 
         bindings.insert(
             binding_key.clone(),
             CompiledBinding {
+                i18n_text_ref,
                 kind: kind.to_string(),
                 raw_value,
                 selector_paths,
@@ -805,6 +814,111 @@ fn compile_bindings(
     }
 
     Ok(bindings)
+}
+
+fn compile_i18n_text_ref(binding: &Value) -> Result<CompiledI18nTextRef> {
+    let binding_object = binding
+        .as_object()
+        .ok_or_else(|| anyhow!("i18n_text binding must be an object"))?;
+    if binding_object.len() != 2
+        || !binding_object.contains_key("kind")
+        || !binding_object.contains_key("value")
+    {
+        bail!("i18n_text binding must contain only kind and value");
+    }
+
+    let value = binding_object["value"]
+        .as_object()
+        .ok_or_else(|| anyhow!("i18n_text value must be an object"))?;
+    if value.len() != 2 || !value.contains_key("module") || !value.contains_key("key") {
+        bail!("i18n_text value must contain only module and key");
+    }
+
+    let module = value["module"]
+        .as_str()
+        .ok_or_else(|| anyhow!("i18n_text module must be a string"))?;
+    if !is_canonical_i18n_module(module) {
+        bail!("i18n_text module must use canonical @org/path syntax");
+    }
+
+    let key = value["key"]
+        .as_str()
+        .ok_or_else(|| anyhow!("i18n_text key must be a string"))?;
+    validate_i18n_english_key(key)?;
+
+    Ok(CompiledI18nTextRef {
+        module: module.to_string(),
+        key: key.to_string(),
+    })
+}
+
+fn is_canonical_i18n_module(module: &str) -> bool {
+    let mut segments = module.split('/');
+    let Some(scope) = segments.next().and_then(|value| value.strip_prefix('@')) else {
+        return false;
+    };
+    if !is_canonical_i18n_module_segment(scope) {
+        return false;
+    }
+
+    let path = segments.collect::<Vec<_>>();
+    !path.is_empty()
+        && path
+            .iter()
+            .all(|segment| is_canonical_i18n_module_segment(segment))
+}
+
+fn is_canonical_i18n_module_segment(segment: &str) -> bool {
+    let mut characters = segment.chars();
+    matches!(characters.next(), Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit())
+        && characters.all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-')
+        })
+}
+
+fn validate_i18n_english_key(key: &str) -> Result<()> {
+    if key.trim().is_empty() {
+        bail!("i18n_text key must be nonempty English text");
+    }
+    if key.contains("{{") || key.contains("}}") {
+        bail!("i18n_text key must not contain workflow template delimiters");
+    }
+
+    let lowercase_key = key.to_ascii_lowercase();
+    if key.contains('<')
+        || key.contains('>')
+        || lowercase_key.contains("javascript:")
+        || lowercase_key.contains("data:text/html")
+    {
+        bail!("i18n_text key must be plain text without HTML or JavaScript content");
+    }
+
+    let mut cursor = 0;
+    while let Some(start_offset) = key[cursor..].find('{') {
+        let start = cursor + start_offset;
+        if key[cursor..start].contains('}') {
+            bail!("i18n_text key contains an invalid named placeholder");
+        }
+        let Some(end_offset) = key[start + 1..].find('}') else {
+            bail!("i18n_text key contains an invalid named placeholder");
+        };
+        let end = start + 1 + end_offset;
+        let placeholder = &key[start + 1..end];
+        let mut characters = placeholder.chars();
+        let valid = matches!(characters.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+            && characters.all(|character| character.is_ascii_alphanumeric() || character == '_');
+        if !valid {
+            bail!("i18n_text key contains an invalid named placeholder");
+        }
+        cursor = end + 1;
+    }
+    if key[cursor..].contains('}') {
+        bail!("i18n_text key contains an invalid named placeholder");
+    }
+
+    Ok(())
 }
 
 fn active_binding_values(

@@ -12,6 +12,7 @@ fn answer_node(node_id: &str, text: &str) -> CompiledNode {
         bindings: BTreeMap::from([(
             "answer_template".to_string(),
             CompiledBinding {
+                i18n_text_ref: None,
                 kind: "templated_text".to_string(),
                 selector_paths: Vec::new(),
                 raw_value: json!(text),
@@ -68,6 +69,7 @@ fn branch_plan(include_else_if_edge: bool, regex_pattern: Option<&str>) -> Compi
             bindings: BTreeMap::from([(
                 "branches".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "if_else_branches".to_string(),
                     selector_paths: vec![
                         vec!["node-start".to_string(), "status".to_string()],

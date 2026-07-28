@@ -90,6 +90,7 @@ fn compact_dispatch_plan() -> CompiledPlan {
         bindings: BTreeMap::from([(
             "answer_template".to_string(),
             CompiledBinding {
+                i18n_text_ref: None,
                 kind: "templated_text".to_string(),
                 raw_value: json!("ordinary answer"),
                 selector_paths: Vec::new(),

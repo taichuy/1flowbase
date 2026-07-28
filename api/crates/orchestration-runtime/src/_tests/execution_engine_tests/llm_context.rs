@@ -60,6 +60,7 @@ fn plan_with_llm_behind_if_else() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "branches".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "if_else_branches".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!({
@@ -313,6 +314,7 @@ async fn ac_003_prompt_binding_appends_text_block_without_stringifying_system_bl
     llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![
                 vec!["node-start".to_string(), "system".to_string()],
@@ -415,6 +417,7 @@ async fn llm_runtime_exposes_effective_system_and_promotes_legacy_history_system
     llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
             raw_value: json!([
@@ -608,6 +611,7 @@ async fn llm_runtime_context_policy_can_disable_run_level_system_context() {
     llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
             raw_value: json!([
