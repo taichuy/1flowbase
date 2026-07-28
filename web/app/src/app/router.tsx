@@ -580,6 +580,13 @@ const settingsMemoryObservationRoute = createRoute({
   component: () => renderSettingsRoute('memory-observation')
 });
 
+const settingsI18nRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/i18n',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('i18n')
+});
+
 const settingsFilesRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/files',
@@ -769,6 +776,7 @@ const routeTree = rootRoute.addChildren([
     settingsSystemRuntimeRoute,
     settingsHostInfrastructureRoute,
     settingsMemoryObservationRoute,
+    settingsI18nRoute,
     settingsApplicationsRoute,
     settingsFilesRoute,
     settingsDataModelsRoute,

@@ -56,6 +56,11 @@ const ApplicationManagementPanel = lazy(() =>
     })
   )
 );
+const I18nCatalogPage = lazy(() =>
+  import('../i18n-catalog/I18nCatalogPage').then((module) => ({
+    default: module.I18nCatalogPage
+  }))
+);
 
 function SettingsSectionFallback() {
   return <LoadingState compact />;
@@ -151,6 +156,12 @@ export function SettingsSectionBody({
               canManage={access.canManageHostInfrastructure}
             />
           </SettingsSectionSurface>
+        </SettingsSectionBoundary>
+      );
+    case 'i18n':
+      return (
+        <SettingsSectionBoundary>
+          <I18nCatalogPage />
         </SettingsSectionBoundary>
       );
     case 'roles':
