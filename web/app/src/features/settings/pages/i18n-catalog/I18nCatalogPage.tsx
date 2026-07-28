@@ -160,7 +160,7 @@ export function I18nCatalogPage() {
       if (action.kind === 'create') setCreateOpen(false);
       setDeleteEntry(null);
       setRestoreAllOpen(false);
-      messageApi.success(t('auto.i18n_catalog_change_saved'));
+      messageApi.success(t('auto.translation_catalog_change_saved'));
     },
     onError: async (error) => {
       if (error instanceof ApiClientError && error.status === 409) {
@@ -168,15 +168,15 @@ export function I18nCatalogPage() {
         await refreshCatalog();
         return;
       }
-      messageApi.error(t('auto.i18n_catalog_change_failed'));
+      messageApi.error(t('auto.translation_catalog_change_failed'));
     }
   });
 
   const originLabels: Record<SettingsI18nCatalogOrigin, string> = {
-    official: t('auto.i18n_catalog_origin_official'),
-    official_override: t('auto.i18n_catalog_origin_official_override'),
-    custom: t('auto.i18n_catalog_origin_custom'),
-    english: t('auto.i18n_catalog_origin_english')
+    official: t('auto.translation_catalog_origin_official'),
+    official_override: t('auto.translation_catalog_origin_official_override'),
+    custom: t('auto.translation_catalog_origin_custom'),
+    english: t('auto.translation_catalog_origin_english')
   };
   const originOptions = Object.entries(originLabels).map(([value, label]) => ({
     value: value as SettingsI18nCatalogOrigin,
@@ -186,38 +186,42 @@ export function I18nCatalogPage() {
   const statusTags = (entry: SettingsI18nCatalogEntry) => (
     <Space size={4} wrap>
       {entry.missing ? (
-        <Tag color="error">{t('auto.i18n_catalog_missing')}</Tag>
+        <Tag color="error">{t('auto.translation_catalog_missing')}</Tag>
       ) : null}
       {entry.obsolete ? (
-        <Tag color="warning">{t('auto.i18n_catalog_obsolete')}</Tag>
+        <Tag color="warning">{t('auto.translation_catalog_obsolete')}</Tag>
       ) : null}
       {!entry.missing && !entry.obsolete ? (
-        <Tag>{t('auto.i18n_catalog_current')}</Tag>
+        <Tag>{t('auto.translation_catalog_current')}</Tag>
       ) : null}
     </Space>
   );
 
   const columns: TableProps<SettingsI18nCatalogEntry>['columns'] = [
     {
-      title: t('auto.i18n_catalog_module'),
+      title: t('auto.translation_catalog_module'),
       dataIndex: 'module',
       width: 180,
       ellipsis: true
     },
     {
-      title: t('auto.i18n_catalog_msgid'),
+      title: t('auto.translation_catalog_msgid'),
       dataIndex: 'msgid',
       width: 220,
       ellipsis: true
     },
-    { title: t('auto.i18n_catalog_locale'), dataIndex: 'locale', width: 100 },
     {
-      title: t('auto.i18n_catalog_effective_value'),
+      title: t('auto.translation_catalog_locale'),
+      dataIndex: 'locale',
+      width: 100
+    },
+    {
+      title: t('auto.translation_catalog_effective_value'),
       dataIndex: 'effective_value',
       ellipsis: true
     },
     {
-      title: t('auto.i18n_catalog_origin'),
+      title: t('auto.translation_catalog_origin'),
       dataIndex: 'origin',
       width: 150,
       render: (origin: SettingsI18nCatalogOrigin) => (
@@ -225,7 +229,7 @@ export function I18nCatalogPage() {
       )
     },
     {
-      title: t('auto.i18n_catalog_status'),
+      title: t('auto.translation_catalog_status'),
       width: 160,
       render: (_, entry) => statusTags(entry)
     }
@@ -251,10 +255,10 @@ export function I18nCatalogPage() {
         >
           <div>
             <Typography.Title level={3}>
-              {t('auto.i18n_catalog_title')}
+              {t('auto.translation_catalog_title')}
             </Typography.Title>
             <Typography.Text type="secondary">
-              {t('auto.i18n_catalog_description')}
+              {t('auto.translation_catalog_description')}
             </Typography.Text>
           </div>
           <Button
@@ -262,7 +266,7 @@ export function I18nCatalogPage() {
             icon={<PlusOutlined />}
             onClick={() => setCreateOpen(true)}
           >
-            {t('auto.i18n_catalog_create_custom_key')}
+            {t('auto.translation_catalog_create_custom_key')}
           </Button>
         </Flex>
 
@@ -272,7 +276,7 @@ export function I18nCatalogPage() {
             onClose={() => setConflictVisible(false)}
             showIcon
             type="warning"
-            message={t('auto.i18n_catalog_revision_conflict')}
+            message={t('auto.translation_catalog_revision_conflict')}
             data-testid="i18n-catalog-conflict"
           />
         ) : null}
@@ -288,7 +292,7 @@ export function I18nCatalogPage() {
         >
           <Form.Item name="search">
             <Input.Search
-              placeholder={t('auto.i18n_catalog_search')}
+              placeholder={t('auto.translation_catalog_search')}
               onSearch={() => filterForm.submit()}
               allowClear
               data-testid="i18n-catalog-search"
@@ -296,7 +300,7 @@ export function I18nCatalogPage() {
           </Form.Item>
           <Form.Item name="module">
             <Input
-              placeholder={t('auto.i18n_catalog_module')}
+              placeholder={t('auto.translation_catalog_module')}
               allowClear
               data-testid="i18n-catalog-module-filter"
             />
@@ -304,7 +308,7 @@ export function I18nCatalogPage() {
           <Form.Item name="locale">
             <Select
               allowClear
-              placeholder={t('auto.i18n_catalog_locale')}
+              placeholder={t('auto.translation_catalog_locale')}
               data-testid="i18n-catalog-locale-filter"
               options={[
                 { value: 'zh_Hans', label: 'zh_Hans' },
@@ -315,13 +319,13 @@ export function I18nCatalogPage() {
           <Form.Item name="origin">
             <Select
               allowClear
-              placeholder={t('auto.i18n_catalog_origin')}
+              placeholder={t('auto.translation_catalog_origin')}
               options={originOptions}
               data-testid="i18n-catalog-origin-filter"
             />
           </Form.Item>
           <Button htmlType="submit" data-testid="i18n-catalog-apply-filters">
-            {t('auto.i18n_catalog_apply_filters')}
+            {t('auto.translation_catalog_apply_filters')}
           </Button>
         </Form>
 
@@ -333,7 +337,7 @@ export function I18nCatalogPage() {
           wrap
         >
           <Typography.Text type="secondary">
-            {t('auto.i18n_catalog_summary', {
+            {t('auto.translation_catalog_summary', {
               total: listQuery.data?.total ?? 0,
               revision
             })}
@@ -342,7 +346,7 @@ export function I18nCatalogPage() {
             icon={<UndoOutlined />}
             onClick={() => setRestoreAllOpen(true)}
           >
-            {t('auto.i18n_catalog_restore_all')}
+            {t('auto.translation_catalog_restore_all')}
           </Button>
         </Flex>
 
@@ -350,7 +354,7 @@ export function I18nCatalogPage() {
           <Alert
             type="error"
             showIcon
-            message={t('auto.i18n_catalog_load_failed')}
+            message={t('auto.translation_catalog_load_failed')}
           />
         ) : null}
 
@@ -449,10 +453,10 @@ export function I18nCatalogPage() {
         />
         <Modal
           open={deleteEntry !== null}
-          title={t('auto.i18n_catalog_delete_custom_key')}
+          title={t('auto.translation_catalog_delete_custom_key')}
           okButtonProps={{ danger: true, loading: mutation.isPending }}
-          okText={t('auto.i18n_catalog_delete')}
-          cancelText={t('auto.i18n_catalog_cancel')}
+          okText={t('auto.translation_catalog_delete')}
+          cancelText={t('auto.translation_catalog_cancel')}
           onCancel={() => setDeleteEntry(null)}
           onOk={() =>
             deleteEntry &&
@@ -460,19 +464,19 @@ export function I18nCatalogPage() {
           }
           data-testid="i18n-catalog-delete-confirmation"
         >
-          {t('auto.i18n_catalog_delete_confirmation')}
+          {t('auto.translation_catalog_delete_confirmation')}
         </Modal>
         <Modal
           open={restoreAllOpen}
-          title={t('auto.i18n_catalog_restore_all')}
-          okText={t('auto.i18n_catalog_restore')}
-          cancelText={t('auto.i18n_catalog_cancel')}
+          title={t('auto.translation_catalog_restore_all')}
+          okText={t('auto.translation_catalog_restore')}
+          cancelText={t('auto.translation_catalog_cancel')}
           confirmLoading={mutation.isPending}
           onCancel={() => setRestoreAllOpen(false)}
           onOk={() => mutation.mutate({ kind: 'restore-all', revision })}
           data-testid="i18n-catalog-restore-all-confirmation"
         >
-          {t('auto.i18n_catalog_restore_all_confirmation')}
+          {t('auto.translation_catalog_restore_all_confirmation')}
         </Modal>
       </div>
     </SettingsSectionSurface>

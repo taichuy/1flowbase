@@ -11,7 +11,7 @@ describe('dynamic translation settings section', () => {
     expect(isSettingsSectionKey('i18n')).toBe(true);
     expect(settingsSectionDefinitions).toContainEqual({
       key: 'i18n',
-      label_key: 'auto.i18n_catalog_title',
+      label_key: 'auto.translation_catalog_title',
       to: '/settings/i18n'
     });
 
@@ -28,7 +28,7 @@ describe('dynamic translation settings section', () => {
           {
             route_id: 'settings.i18n',
             parent_item_id: 'settings',
-            label_key: 'auto.i18n_catalog_title',
+            label_key: 'auto.translation_catalog_title',
             navigation_slot: 'settings',
             order: 1
           }
@@ -37,7 +37,7 @@ describe('dynamic translation settings section', () => {
     ).toEqual([
       {
         key: 'i18n',
-        label_key: 'auto.i18n_catalog_title',
+        label_key: 'auto.translation_catalog_title',
         to: '/settings/i18n'
       }
     ]);

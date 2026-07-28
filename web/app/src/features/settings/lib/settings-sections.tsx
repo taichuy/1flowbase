@@ -144,7 +144,7 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
   },
   {
     key: 'i18n',
-    label_key: 'auto.i18n_catalog_title',
+    label_key: 'auto.translation_catalog_title',
     to: '/settings/i18n'
   },
   {

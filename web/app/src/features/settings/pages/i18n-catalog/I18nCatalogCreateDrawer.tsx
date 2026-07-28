@@ -27,7 +27,7 @@ export function I18nCatalogCreateDrawer({
       destroyOnClose
       onClose={onClose}
       open={open}
-      title={t('auto.i18n_catalog_create_custom_key')}
+      title={t('auto.translation_catalog_create_custom_key')}
       width="min(480px, 100vw)"
       data-testid="i18n-catalog-create-drawer"
     >
@@ -38,21 +38,21 @@ export function I18nCatalogCreateDrawer({
         onFinish={onCreate}
       >
         <Form.Item
-          label={t('auto.i18n_catalog_module')}
+          label={t('auto.translation_catalog_module')}
           name="module"
           rules={[{ required: true, whitespace: true }]}
         >
           <Input />
         </Form.Item>
         <Form.Item
-          label={t('auto.i18n_catalog_msgid')}
+          label={t('auto.translation_catalog_msgid')}
           name="msgid"
           rules={[{ required: true, whitespace: true }]}
         >
           <Input />
         </Form.Item>
         <Form.Item
-          label={t('auto.i18n_catalog_locale')}
+          label={t('auto.translation_catalog_locale')}
           name="locale"
           rules={[{ required: true }]}
         >
@@ -64,7 +64,7 @@ export function I18nCatalogCreateDrawer({
           />
         </Form.Item>
         <Form.Item
-          label={t('auto.i18n_catalog_custom_translation')}
+          label={t('auto.translation_catalog_custom_translation')}
           name="translation"
           rules={[{ required: true, whitespace: true }]}
         >
@@ -72,9 +72,11 @@ export function I18nCatalogCreateDrawer({
         </Form.Item>
         <Space>
           <Button type="primary" htmlType="submit" loading={saving}>
-            {t('auto.i18n_catalog_create')}
+            {t('auto.translation_catalog_create')}
           </Button>
-          <Button onClick={onClose}>{t('auto.i18n_catalog_cancel')}</Button>
+          <Button onClick={onClose}>
+            {t('auto.translation_catalog_cancel')}
+          </Button>
         </Space>
       </Form>
     </Drawer>

@@ -54,10 +54,12 @@ export function I18nCatalogEntryDrawer({
   const canRestore = Boolean(entry?.override_translation);
   const originLabel = entry
     ? {
-        official: t('auto.i18n_catalog_origin_official'),
-        official_override: t('auto.i18n_catalog_origin_official_override'),
-        custom: t('auto.i18n_catalog_origin_custom'),
-        english: t('auto.i18n_catalog_origin_english')
+        official: t('auto.translation_catalog_origin_official'),
+        official_override: t(
+          'auto.translation_catalog_origin_official_override'
+        ),
+        custom: t('auto.translation_catalog_origin_custom'),
+        english: t('auto.translation_catalog_origin_english')
       }[entry.origin]
     : '';
 
@@ -68,38 +70,46 @@ export function I18nCatalogEntryDrawer({
       onClose={onClose}
       open={open}
       placement="right"
-      title={t('auto.i18n_catalog_entry_details')}
+      title={t('auto.translation_catalog_entry_details')}
       width="min(480px, 100vw)"
       data-testid="i18n-catalog-entry-drawer"
     >
       {entry ? (
         <>
           <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label={t('auto.i18n_catalog_module')}>
+            <Descriptions.Item label={t('auto.translation_catalog_module')}>
               <Typography.Text code>{entry.module}</Typography.Text>
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_msgid')}>
+            <Descriptions.Item label={t('auto.translation_catalog_msgid')}>
               <Typography.Text code>{entry.msgid}</Typography.Text>
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_locale')}>
+            <Descriptions.Item label={t('auto.translation_catalog_locale')}>
               {entry.locale}
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_origin')}>
+            <Descriptions.Item label={t('auto.translation_catalog_origin')}>
               <Tag>{originLabel}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_official_layer')}>
+            <Descriptions.Item
+              label={t('auto.translation_catalog_official_layer')}
+            >
               {entry.official_translation ?? '—'}
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_override_layer')}>
+            <Descriptions.Item
+              label={t('auto.translation_catalog_override_layer')}
+            >
               {entry.override_translation ?? '—'}
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_custom_layer')}>
+            <Descriptions.Item
+              label={t('auto.translation_catalog_custom_layer')}
+            >
               {entry.custom_translation ?? '—'}
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_effective_value')}>
+            <Descriptions.Item
+              label={t('auto.translation_catalog_effective_value')}
+            >
               {entry.effective_value}
             </Descriptions.Item>
-            <Descriptions.Item label={t('auto.i18n_catalog_revision')}>
+            <Descriptions.Item label={t('auto.translation_catalog_revision')}>
               {entry.revision}
             </Descriptions.Item>
           </Descriptions>
@@ -113,8 +123,8 @@ export function I18nCatalogEntryDrawer({
             <Form.Item
               label={
                 entry.origin === 'custom'
-                  ? t('auto.i18n_catalog_custom_translation')
-                  : t('auto.i18n_catalog_override_translation')
+                  ? t('auto.translation_catalog_custom_translation')
+                  : t('auto.translation_catalog_override_translation')
               }
               name="translation"
               rules={[{ required: true, whitespace: true }]}
@@ -123,16 +133,16 @@ export function I18nCatalogEntryDrawer({
             </Form.Item>
             <Space wrap>
               <Button type="primary" htmlType="submit" loading={saving}>
-                {t('auto.i18n_catalog_save')}
+                {t('auto.translation_catalog_save')}
               </Button>
               {canRestore ? (
                 <Button onClick={onRestore} loading={saving}>
-                  {t('auto.i18n_catalog_restore_entry')}
+                  {t('auto.translation_catalog_restore_entry')}
                 </Button>
               ) : null}
               {canDelete ? (
                 <Button danger onClick={onDelete} disabled={saving}>
-                  {t('auto.i18n_catalog_delete_custom_key')}
+                  {t('auto.translation_catalog_delete_custom_key')}
                 </Button>
               ) : null}
             </Space>
