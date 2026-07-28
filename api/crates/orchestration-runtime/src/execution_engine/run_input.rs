@@ -1,7 +1,7 @@
 use super::*;
 use domain::AiNativeOperation;
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext,
+    NativeModelPromptContext, NativeModelRequestContext, ProtocolContextEnvelope,
     ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
     NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
@@ -11,12 +11,26 @@ use std::sync::Arc;
 pub struct ExecutionRuntimeContext {
     operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
-    pub(super) client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    protocol_context: RuntimeProtocolContext,
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
+}
+
+#[derive(Clone, Default)]
+enum RuntimeProtocolContext {
+    #[default]
+    Absent,
+    Available {
+        envelope: ProtocolContextEnvelope,
+        locator: Option<Value>,
+    },
+    Unavailable {
+        locator: Value,
+        reason: String,
+    },
 }
 
 impl ExecutionRuntimeContext {
@@ -27,7 +41,7 @@ impl ExecutionRuntimeContext {
         Ok(Self {
             operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools: run_level_provider_tools(plan, variable_pool),
-            client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool)?,
+            protocol_context: RuntimeProtocolContext::Absent,
             native_model_prompt_context: native_model_prompt_context_from_variable_pool(
                 variable_pool,
             )?,
@@ -66,6 +80,56 @@ impl ExecutionRuntimeContext {
     ) -> Self {
         self.provider_invocation_capabilities.insert(capability);
         self
+    }
+
+    pub fn with_protocol_context(mut self, protocol_context: ProtocolContextEnvelope) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Available {
+            envelope: protocol_context,
+            locator: None,
+        };
+        self
+    }
+
+    pub fn with_ephemeral_protocol_context(
+        mut self,
+        locator: Value,
+        protocol_context: ProtocolContextEnvelope,
+    ) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Available {
+            envelope: protocol_context,
+            locator: Some(locator),
+        };
+        self
+    }
+
+    pub fn with_unavailable_ephemeral_protocol_context(
+        mut self,
+        locator: Value,
+        reason: impl Into<String>,
+    ) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Unavailable {
+            locator,
+            reason: reason.into(),
+        };
+        self
+    }
+
+    pub(super) fn resolved_protocol_context(
+        &self,
+    ) -> std::result::Result<Option<ProtocolContextEnvelope>, &str> {
+        match &self.protocol_context {
+            RuntimeProtocolContext::Absent => Ok(None),
+            RuntimeProtocolContext::Available { envelope, .. } => Ok(Some(envelope.clone())),
+            RuntimeProtocolContext::Unavailable { reason, .. } => Err(reason),
+        }
+    }
+
+    fn protocol_context_locator(&self) -> Option<&Value> {
+        match &self.protocol_context {
+            RuntimeProtocolContext::Available { locator, .. } => locator.as_ref(),
+            RuntimeProtocolContext::Unavailable { locator, .. } => Some(locator),
+            RuntimeProtocolContext::Absent => None,
+        }
     }
 
     pub(super) async fn next_llm_routing_counter(
@@ -126,20 +190,16 @@ fn native_model_request_context_from_variable_pool(
         .map_err(|error| anyhow!("invalid {NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY}: {error}"))
 }
 
-fn client_protocol_envelope_from_variable_pool(
-    variable_pool: &Map<String, Value>,
-) -> Result<Option<ClientProtocolEnvelope>> {
-    variable_pool
-        .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
-        .cloned()
-        .map(|value| {
-            serde_json::from_value(value)
-                .map_err(|error| anyhow!("invalid {CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY}: {error}"))
-        })
-        .transpose()
-}
-
 pub fn normalize_plan_variable_pool(plan: &CompiledPlan, variable_pool: &mut Map<String, Value>) {
+    variable_pool.remove(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
+    let [namespace, field] = crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR;
+    if let Some(sys) = variable_pool
+        .get_mut(namespace)
+        .and_then(Value::as_object_mut)
+    {
+        sys.remove(field);
+    }
+
     for (node_id, node) in &plan.nodes {
         if node.node_type != "start" {
             continue;
@@ -169,6 +229,18 @@ pub(super) fn synchronize_runtime_global_variables(
     } else {
         prior_user_turn_count(&runtime_context.native_model_prompt_context.messages)
     };
+
+    if let Some(protocol_context_locator) = runtime_context.protocol_context_locator() {
+        let sys = variable_pool
+            .entry("sys".to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(sys) = sys.as_object_mut() {
+            sys.insert(
+                "protocol_context".to_string(),
+                protocol_context_locator.clone(),
+            );
+        }
+    }
 
     let Some(sys) = variable_pool.get_mut("sys").and_then(Value::as_object_mut) else {
         return;

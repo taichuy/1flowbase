@@ -2,6 +2,7 @@ use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 use crate::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
+use crate::application_public_api::client_protocol_envelope::protocol_context_field_is_safe;
 
 pub use crate::application_public_api::model_catalog::{
     extract_agent_model_catalog_from_start_node as extract_model_list_from_start_node,
@@ -11,6 +12,54 @@ use crate::application_public_api::native::NativeRunRequest;
 use crate::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
 };
+
+const OPENAI_CHAT_TYPED_ROOT_FIELDS: &[&str] = &[
+    "model",
+    "messages",
+    "stream",
+    "user",
+    "metadata",
+    "max_completion_tokens",
+    "max_tokens",
+    "audio",
+    "modalities",
+    "tools",
+    "tool_choice",
+    "function_call",
+    "parallel_tool_calls",
+    "response_format",
+    "reasoning_effort",
+    "temperature",
+    "top_p",
+    "presence_penalty",
+    "frequency_penalty",
+    "seed",
+    "stop",
+    "stream_options",
+];
+const OPENAI_RESPONSES_TYPED_ROOT_FIELDS: &[&str] = &[
+    "model",
+    "input",
+    "instructions",
+    "stream",
+    "user",
+    "metadata",
+    "max_output_tokens",
+    "store",
+    "previous_response_id",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
+    "response_format",
+    "text",
+    "reasoning",
+    "background",
+    "include",
+    "prompt_cache_key",
+    "client_metadata",
+    "max_tool_calls",
+    "truncation",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiCompatError {
@@ -116,7 +165,7 @@ pub fn run_id_from_response_id(response_id: &str) -> Result<Uuid, OpenAiCompatEr
         .map_err(|_| OpenAiCompatError::invalid("previous_response_id", "invalid response id"))
 }
 
-fn reject_unknown_chat_fields(
+fn validate_chat_root_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
@@ -147,47 +196,27 @@ fn reject_unknown_chat_fields(
         );
         return Err(OpenAiCompatError::unsupported(field).with_report(report.clone()));
     }
-    let unknown_fields = object
+    let mut residual_fields = object
         .keys()
-        .filter(|field| {
-            !matches!(
-                field.as_str(),
-                "model"
-                    | "messages"
-                    | "stream"
-                    | "user"
-                    | "metadata"
-                    | "max_completion_tokens"
-                    | "max_tokens"
-                    | "audio"
-                    | "modalities"
-                    | "tools"
-                    | "tool_choice"
-                    | "function_call"
-                    | "parallel_tool_calls"
-                    | "response_format"
-                    | "reasoning_effort"
-                    | "temperature"
-                    | "top_p"
-                    | "presence_penalty"
-                    | "frequency_penalty"
-                    | "seed"
-                    | "stop"
-                    | "stream_options"
-            )
-        })
+        .filter(|field| !OPENAI_CHAT_TYPED_ROOT_FIELDS.contains(&field.as_str()))
         .collect::<Vec<_>>();
-    if report.record_anonymous_unknown_fields(
-        "$",
-        unknown_fields,
-        TranslationDecisionKind::Rejected,
-        "unknown OpenAI Chat field",
-        TranslationSafeRepresentation::Present,
-    ) > 0
-    {
-        return Err(
-            OpenAiCompatError::invalid("body", "unknown OpenAI Chat field")
-                .with_report(report.clone()),
+    residual_fields.sort_unstable();
+    for (index, field) in residual_fields.into_iter().enumerate() {
+        let retained = protocol_context_field_is_safe(field);
+        report.record(
+            &format!("$.<unknown>[{index}]"),
+            None,
+            if retained {
+                TranslationDecisionKind::Exact
+            } else {
+                TranslationDecisionKind::Dropped
+            },
+            Some(if retained {
+                "preserved in the OpenAI Chat protocol context residual"
+            } else {
+                "credential, transport, or internal fields cannot enter protocol context"
+            }),
+            TranslationSafeRepresentation::Redacted,
         );
     }
     Ok(())
@@ -590,32 +619,7 @@ fn validate_response_transport_fields(
         }
         let unknown_fields = object
             .keys()
-            .filter(|field| {
-                !matches!(
-                    field.as_str(),
-                    "model"
-                        | "input"
-                        | "instructions"
-                        | "stream"
-                        | "user"
-                        | "metadata"
-                        | "max_output_tokens"
-                        | "store"
-                        | "previous_response_id"
-                        | "tools"
-                        | "tool_choice"
-                        | "parallel_tool_calls"
-                        | "response_format"
-                        | "text"
-                        | "reasoning"
-                        | "background"
-                        | "include"
-                        | "prompt_cache_key"
-                        | "client_metadata"
-                        | "max_tool_calls"
-                        | "truncation"
-                )
-            })
+            .filter(|field| !OPENAI_RESPONSES_TYPED_ROOT_FIELDS.contains(&field.as_str()))
             .collect::<Vec<_>>();
         report.record_anonymous_unknown_fields(
             "$",
@@ -632,32 +636,7 @@ fn validate_response_transport_fields(
     accept_responses_codex_metadata_hints(object, report)?;
     let unknown_fields = object
         .keys()
-        .filter(|field| {
-            !matches!(
-                field.as_str(),
-                "model"
-                    | "input"
-                    | "instructions"
-                    | "stream"
-                    | "user"
-                    | "metadata"
-                    | "max_output_tokens"
-                    | "store"
-                    | "previous_response_id"
-                    | "tools"
-                    | "tool_choice"
-                    | "parallel_tool_calls"
-                    | "response_format"
-                    | "text"
-                    | "reasoning"
-                    | "background"
-                    | "include"
-                    | "prompt_cache_key"
-                    | "client_metadata"
-                    | "max_tool_calls"
-                    | "truncation"
-            )
-        })
+        .filter(|field| !OPENAI_RESPONSES_TYPED_ROOT_FIELDS.contains(&field.as_str()))
         .collect::<Vec<_>>();
     report.record_anonymous_unknown_fields(
         "$",
@@ -1329,8 +1308,8 @@ fn openai_reasoning(
         TranslationSafeRepresentation::Present,
     );
     Ok(Some(
-        crate::application_public_api::native::NativeReasoningParameters::with_enabled_budget_and_effort(
-            true,
+        crate::application_public_api::native::NativeReasoningParameters::with_mode_budget_and_effort(
+            crate::application_public_api::native::NativeReasoningMode::Enabled,
             None,
             Some(effort),
         ),

@@ -2,6 +2,7 @@ import type {
   ConsolePluginFormFieldSchema,
   ConsolePluginFormSchema
 } from '@1flowbase/api-client';
+import type { FlowVariableReference } from '@1flowbase/flow-schema';
 
 export interface LlmNodeModelProvider {
   provider_code: string;
@@ -283,6 +284,30 @@ export function getLlmContextPolicy(
           (segment): segment is string => typeof segment === 'string'
         )
       : DEFAULT_LLM_CONTEXT_POLICY.context_selector
+  };
+}
+
+export function getLlmProtocolContextReference(
+  config: Record<string, unknown>
+): FlowVariableReference | null {
+  const reference = config.protocol_context;
+
+  if (
+    !isRecord(reference) ||
+    Object.keys(reference).length !== 2 ||
+    reference.kind !== 'selector' ||
+    !Array.isArray(reference.value) ||
+    reference.value.length < 2 ||
+    reference.value.some(
+      (segment) => typeof segment !== 'string' || segment.trim().length === 0
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    kind: 'selector',
+    value: [...(reference.value as string[])]
   };
 }
 

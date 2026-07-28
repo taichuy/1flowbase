@@ -11,6 +11,94 @@ const {
 } = require("../workflow-contract/runner");
 const { createDatabase } = require("../local-acceptance/system");
 
+const OFFICIAL_PROVIDER_CODES = Object.freeze([
+  "openai",
+  "anthropic",
+  "openai_compatible",
+]);
+const MAX_COMMAND_LOG_BYTES = 2 * 1024 * 1024;
+const MAX_GATE_ARTIFACT_BYTES = 64 * 1024 * 1024;
+
+function boundedCommandLog(output) {
+  const redacted = redactCredentialUris(output);
+  const encoded = Buffer.from(redacted);
+  if (encoded.length <= MAX_COMMAND_LOG_BYTES) return redacted;
+  const marker = Buffer.from(
+    `\n[ai-gateway-quality-gate] log truncated from ${encoded.length} bytes\n`,
+  );
+  const remaining = MAX_COMMAND_LOG_BYTES - marker.length;
+  const headLength = Math.floor(remaining / 2);
+  return Buffer.concat([
+    encoded.subarray(0, headLength),
+    marker,
+    encoded.subarray(encoded.length - (remaining - headLength)),
+  ]).toString("utf8");
+}
+
+function redactCredentialUris(output) {
+  let cursor = 0;
+  let searchFrom = 0;
+  let redacted = "";
+
+  while (true) {
+    const separator = output.indexOf("://", searchFrom);
+    if (separator === -1) break;
+
+    let schemeStart = separator;
+    while (schemeStart > cursor && /[a-z0-9+.-]/iu.test(output[schemeStart - 1])) {
+      schemeStart -= 1;
+    }
+    if (
+      schemeStart === separator ||
+      !/[a-z]/iu.test(output[schemeStart]) ||
+      (schemeStart > 0 && /[a-z0-9+.-]/iu.test(output[schemeStart - 1]))
+    ) {
+      searchFrom = separator + 3;
+      continue;
+    }
+
+    const authorityStart = separator + 3;
+    let authorityEnd = authorityStart;
+    while (
+      authorityEnd < output.length &&
+      !/[\s/?#]/u.test(output[authorityEnd])
+    ) {
+      authorityEnd += 1;
+    }
+    const at = output.indexOf("@", authorityStart);
+    const colon = output.indexOf(":", authorityStart);
+    if (
+      at !== -1 &&
+      at < authorityEnd &&
+      colon > authorityStart &&
+      colon < at &&
+      colon + 1 < at
+    ) {
+      redacted += output.slice(cursor, authorityStart);
+      redacted += "<redacted>@";
+      cursor = at + 1;
+    }
+    searchFrom = authorityEnd > separator ? authorityEnd : separator + 3;
+  }
+
+  return redacted + output.slice(cursor);
+}
+
+function artifactBytes(roots) {
+  let total = 0;
+  const visit = (target) => {
+    if (!fs.existsSync(target)) return;
+    const stat = fs.statSync(target);
+    if (stat.isFile()) {
+      total += stat.size;
+      return;
+    }
+    for (const entry of fs.readdirSync(target)) visit(path.join(target, entry));
+  };
+  for (const root of roots) visit(root);
+  return total;
+}
+
 function dockerDatabaseContract(databaseUrl, containerIds) {
   const url = new URL(databaseUrl);
   const host = url.hostname;
@@ -63,7 +151,10 @@ function command(root, artifactRoot, name, command, args, options = {}) {
     maxBuffer: 32 * 1024 * 1024,
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;
-  fs.writeFileSync(path.join(artifactRoot, `${name}.log`), output);
+  fs.writeFileSync(
+    path.join(artifactRoot, `${name}.log`),
+    boundedCommandLog(output),
+  );
   if (output) process.stdout.write(output);
   if (result.error) throw result.error;
   if (result.status !== 0)
@@ -81,6 +172,7 @@ function testFiles(repoRoot) {
     "mock-upstream",
     "gateway-fixture",
     "local-acceptance",
+    "local-client-acceptance",
     "quality-gate",
   ];
   return suites.flatMap((suite) => {
@@ -179,7 +271,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
 }
 
 function officialProviderTestInvocations(officialSourceRoot) {
-  return ["openai", "anthropic"].map((providerCode) => ({
+  return OFFICIAL_PROVIDER_CODES.map((providerCode) => ({
     name: `${providerCode}-provider-tests`,
     args: [
       "test",
@@ -192,7 +284,6 @@ function officialProviderTestInvocations(officialSourceRoot) {
       ),
       "--lib",
       "--locked",
-      "upstream",
     ],
   }));
 }
@@ -204,8 +295,13 @@ async function runQualityGate(rawOptions) {
     repoRoot,
     "tmp/test-governance/ai-gateway-quality-gate",
   );
+  const workflowArtifactRoot = path.join(
+    repoRoot,
+    "tmp/test-governance/ai-gateway-concurrency",
+  );
   const packageRoot = path.join(artifactRoot, "packages");
   fs.rmSync(artifactRoot, { recursive: true, force: true });
+  fs.rmSync(workflowArtifactRoot, { recursive: true, force: true });
   fs.mkdirSync(packageRoot, { recursive: true });
 
   const failures = [];
@@ -288,7 +384,7 @@ async function runQualityGate(rawOptions) {
       attempt(invocation.name, "cargo", invocation.args);
     }
 
-    for (const providerCode of ["openai", "anthropic"]) {
+    for (const providerCode of OFFICIAL_PROVIDER_CODES) {
       const pluginRoot = path.join(
         officialSourceRoot,
         "runtime-extensions/model-providers",
@@ -348,6 +444,10 @@ async function runQualityGate(rawOptions) {
           ),
           openaiPackageDir: path.join(packageRoot, "openai"),
           anthropicPackageDir: path.join(packageRoot, "anthropic"),
+          openaiCompatiblePackageDir: path.join(
+            packageRoot,
+            "openai_compatible",
+          ),
           hostTarget,
         });
         if (result.status !== "pass")
@@ -365,6 +465,17 @@ async function runQualityGate(rawOptions) {
     } catch (error) {
       failures.push({ name: "database-cleanup", message: error.message });
     }
+  }
+  const evidenceRoots = [
+    artifactRoot,
+    workflowArtifactRoot,
+  ];
+  const evidenceBytes = artifactBytes(evidenceRoots);
+  if (evidenceBytes > MAX_GATE_ARTIFACT_BYTES) {
+    failures.push({
+      name: "artifact-budget",
+      message: `AI Gateway evidence used ${evidenceBytes} bytes; budget is ${MAX_GATE_ARTIFACT_BYTES}`,
+    });
   }
   const secretValues = [
     rawOptions.databaseUrl,
@@ -396,6 +507,9 @@ async function runQualityGate(rawOptions) {
         official_source_sha: officialSourceSha,
         host_target: hostTarget,
         blocking_transports: BLOCKING_TRANSPORTS,
+        official_provider_codes: OFFICIAL_PROVIDER_CODES,
+        artifact_bytes: evidenceBytes,
+        artifact_budget_bytes: MAX_GATE_ARTIFACT_BYTES,
         failures: publicFailures,
         protocol_result: result,
         client_diagnostics: "non-blocking-local-only",
@@ -428,6 +542,8 @@ if (require.main === module) {
 
 module.exports = {
   conversationTestInvocations,
+  artifactBytes,
+  boundedCommandLog,
   dockerDatabaseContract,
   main,
   officialProviderTestInvocations,

@@ -8,11 +8,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensInput,
-        ProviderCountTokensResult, ProviderFinishReason, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
+        ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Value};
@@ -20,9 +20,9 @@ use uuid::Uuid;
 
 use crate::{
     compiled_plan::{
-        CompiledBinding, CompiledCodeRuntime, CompiledEdge, CompiledLlmRouteTarget,
-        CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput, CompiledPlan,
-        CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
+        CodeIsolationProfile, CompiledBinding, CompiledCodeRuntime, CompiledEdge,
+        CompiledLlmRouteTarget, CompiledLlmRouting, CompiledLlmRuntime, CompiledNode,
+        CompiledOutput, CompiledPlan, CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
     },
     execution_engine::{
         resume_flow_debug_run, start_flow_debug_run, start_flow_debug_run_with_runtime_context,

@@ -50,6 +50,10 @@
       "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
       "filename_pattern": "^1flowbase@anthropic@0\\.1\\.24@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
+    "openaiCompatiblePackage": {
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1461-live-projection/tmp/test-governance/ai-gateway-quality-gate/packages/openai_compatible",
+      "filename_pattern": "^1flowbase@openai_compatible@0\\.3\\.33@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
+    },
     "codex": {
       "path": "/home/linuxbrew/.linuxbrew/bin/codex",
       "sha256": "a96f944d1a596dbfb7fdd84f482be5c50e34b04bb371126840d873e4ebf26902"

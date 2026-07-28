@@ -6,12 +6,40 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  artifactBytes,
+  boundedCommandLog,
   conversationTestInvocations,
   dockerDatabaseContract,
   officialProviderTestInvocations,
   parseArgs,
   testFiles,
 } = require("../cli");
+
+test("quality gate measures the exact bounded artifact inventory", () => {
+  const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "gate-artifact-"));
+  fs.mkdirSync(path.join(root, "nested"));
+  fs.writeFileSync(path.join(root, "a.log"), "1234");
+  fs.writeFileSync(path.join(root, "nested/b.json"), "123456");
+  assert.equal(artifactBytes([root]), 10);
+});
+
+test("quality gate bounds each command log without hiding both failure edges", () => {
+  const value = `head-marker${"x".repeat(3 * 1024 * 1024)}tail-marker`;
+  const bounded = boundedCommandLog(value);
+  assert.equal(Buffer.byteLength(bounded) <= 2 * 1024 * 1024, true);
+  assert.match(bounded, /^head-marker/u);
+  assert.match(bounded, /tail-marker$/u);
+  assert.match(bounded, /log truncated/u);
+});
+
+test("quality gate redacts credential-bearing URIs from command artifacts", () => {
+  const bounded = boundedCommandLog(
+    "database=postgres://fixture:secret@127.0.0.1:5432/gate endpoint=http://public.invalid/path",
+  );
+  assert.equal(bounded.includes("fixture:secret"), false);
+  assert.match(bounded, /postgres:\/\/<redacted>@127\.0\.0\.1:5432\/gate/u);
+  assert.match(bounded, /http:\/\/public\.invalid\/path/u);
+});
 
 test("quality gate exposes one explicit command with local source and database inputs", () => {
   assert.deepEqual(
@@ -33,13 +61,13 @@ test("quality gate exposes one explicit command with local source and database i
   assert.throws(() => parseArgs(["run"]), /required/u);
 });
 
-test("quality gate runs both official provider library suites from the paired source", () => {
+test("quality gate runs all three official provider library suites from the paired source", () => {
   assert.deepEqual(
     officialProviderTestInvocations("/official").map(({ name, args }) => [
       name,
       args,
     ]),
-    ["openai", "anthropic"].map((provider) => [
+    ["openai", "anthropic", "openai_compatible"].map((provider) => [
       `${provider}-provider-tests`,
       [
         "test",
@@ -47,13 +75,12 @@ test("quality gate runs both official provider library suites from the paired so
         `/official/runtime-extensions/model-providers/${provider}/Cargo.toml`,
         "--lib",
         "--locked",
-        "upstream",
       ],
     ]),
   );
 });
 
-test("quality gate inventory contains the four blocking protocol harness suites", () => {
+test("quality gate inventory contains protocol and local-client contract suites", () => {
   const repoRoot = path.resolve(__dirname, "../../../../../");
   const files = testFiles(repoRoot);
   for (const suite of [
@@ -73,7 +100,7 @@ test("quality gate inventory contains the four blocking protocol harness suites"
   }
   assert.equal(
     files.some((file) => file.includes("/local-client-acceptance/")),
-    false,
+    true,
   );
 });
 

@@ -35,6 +35,7 @@ function providerTarget(baseUrl, pluginRunnerBaseUrl, client, provider) {
     gateway: {
       base_url: baseUrl,
       responses_url: `${baseUrl}/v1/responses`,
+      chat_completions_url: `${baseUrl}/v1/chat/completions`,
       anthropic_messages_url: `${baseUrl}/v1/messages`,
       authorization: `Bearer ${provider.api_key}`,
     },
@@ -91,6 +92,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     })();
     const applicationKeys = providers ? [
       providers.openai.api_key,
+      providers.openai_compatible.api_key,
       ...providers.anthropic.map((provider) => provider.api_key),
     ] : [];
     return [
@@ -101,6 +103,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       ownerClient?.cookie,
       'fixture-openai-token',
       'fixture-anthropic-token',
+      'fixture-openai_compatible-token',
       ...applicationKeys,
     ];
   };
@@ -188,8 +191,9 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     const currentDigests = {
       openai: sha256File(options.openaiPackage),
       anthropic: sha256File(options.anthropicPackage),
+      openai_compatible: sha256File(options.openaiCompatiblePackage),
     };
-    for (const code of ['openai', 'anthropic']) {
+    for (const code of ['openai', 'anthropic', 'openai_compatible']) {
       const candidates = Array.isArray(providers[code]) ? providers[code] : [providers[code]];
       if (candidates.some((provider) => provider.package_sha256 !== currentDigests[code])) {
         throw new Error(`official ${code} package archive changed during bootstrap`);
@@ -200,6 +204,12 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     );
     const targets = {
       openai: providerTarget(gatewayBaseUrl, pluginRunnerBaseUrl, client, providers.openai),
+      openai_compatible: providerTarget(
+        gatewayBaseUrl,
+        pluginRunnerBaseUrl,
+        client,
+        providers.openai_compatible
+      ),
       anthropic: anthropicPool[0],
     };
     const result = {
@@ -211,6 +221,10 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       packages: {
         openai: { path: options.openaiPackage, sha256: currentDigests.openai },
         anthropic: { path: options.anthropicPackage, sha256: currentDigests.anthropic },
+        openai_compatible: {
+          path: options.openaiCompatiblePackage,
+          sha256: currentDigests.openai_compatible,
+        },
       },
       targets,
       pools: { anthropic: anthropicPool },

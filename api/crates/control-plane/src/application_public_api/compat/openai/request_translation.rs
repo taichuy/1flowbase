@@ -6,12 +6,17 @@ use serde_json::{Map, Value};
 
 use super::{
     chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
-    openai_reasoning, reject_unknown_chat_fields, response_max_output_tokens, response_stream_mode,
+    openai_reasoning, response_max_output_tokens, response_stream_mode,
     responses_input_to_native_run_input, responses_native_input_to_run_input,
     responses_previous_history, responses_transport_requirement, system_from_parts,
-    validate_chat_message_fields, validate_native_mcp_approval_continuation,
-    validate_native_responses_input, validate_response_transport_fields, validate_responses_input,
-    OpenAiCompatError, OpenAiPreviousResponseContext, OpenAiResponsesRequestContext,
+    validate_chat_message_fields, validate_chat_root_fields,
+    validate_native_mcp_approval_continuation, validate_native_responses_input,
+    validate_response_transport_fields, validate_responses_input, OpenAiCompatError,
+    OpenAiPreviousResponseContext, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
+};
+use crate::application_public_api::client_protocol_envelope::{
+    capture_client_protocol_body, ClientProtocolIngressPolicy,
 };
 use crate::application_public_api::native::{
     compaction_intent, CompactionProfile, NativeExecution, NativeObject, NativeRequestMetadata,
@@ -28,7 +33,12 @@ pub fn translate_chat_completion_request(
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiChat);
     let object = openai_request_object(&request, &mut report)?;
-    reject_unknown_chat_fields(object, &mut report)?;
+    validate_chat_root_fields(object, &mut report)?;
+    let protocol_context = capture_client_protocol_body(
+        ClientProtocolIngressPolicy::OpenAiChat,
+        object,
+        OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    );
     let model = required_openai_string(object, "model", &mut report)?;
     let messages = required_openai_array(object, "messages", &mut report)?;
 
@@ -196,7 +206,7 @@ pub fn translate_chat_completion_request(
         metadata,
         request_context: NativeModelRequestContext::default(),
         title: None,
-        client_protocol_envelope: None,
+        client_protocol_envelope: protocol_context,
     };
     report
         .ensure_consistent()
@@ -224,6 +234,11 @@ pub fn translate_response_request_with_context_and_previous(
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let object = openai_request_object(&request, &mut report)?;
+    let protocol_context = capture_client_protocol_body(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        object,
+        OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
+    );
     let transport_requirement = responses_transport_requirement(object);
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
@@ -347,7 +362,7 @@ pub fn translate_response_request_with_context_and_previous(
         metadata,
         request_context: NativeModelRequestContext::default(),
         title: None,
-        client_protocol_envelope: None,
+        client_protocol_envelope: protocol_context,
     };
     report
         .ensure_consistent()
@@ -586,6 +601,7 @@ fn native_execution(
 ) -> NativeExecution {
     let mut execution = NativeExecution::with_model_parameters(
         max_output_tokens.and_then(NonZeroU64::new),
+        None,
         reasoning,
     );
     execution.set_execution_operation(operation);

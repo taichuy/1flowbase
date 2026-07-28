@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const http = require('node:http');
 const {
   MOCK_ROUTE,
@@ -19,6 +20,19 @@ const {
   responsesWireEvents,
 } = require('./protocol-events');
 const { acceptWebSocket, createFrameReader, sendClose, sendJson } = require('./websocket');
+const {
+  normalizedRequest,
+  normalizedRequestFingerprint,
+} = require('../protocol-oracle/request-fidelity');
+const { errorFixtureFromBody } = require('../protocol-oracle/error-fidelity');
+const {
+  CONTINUITY_SEED_SENTINEL,
+  HTTP_500_ERROR_BODY,
+  TEXT_SENTINEL,
+  containsValue,
+  textVectorOutput,
+  toolVectorFinalOutput,
+} = require('./client-vector-contract');
 
 const SAFE_HEADER_NAMES = Object.freeze([
   'accept',
@@ -26,8 +40,6 @@ const SAFE_HEADER_NAMES = Object.freeze([
   'user-agent',
   'x-request-id',
 ]);
-const HTTP_500_ERROR_BODY =
-  ' \n{"future_error":{"shape":"unknown"},"message":"keep complete body"}\n ';
 const SUCCESS_TERMINALS = new Set(['response.completed', 'message_stop']);
 
 function requestBodySummary(body) {
@@ -38,7 +50,36 @@ function requestBodySummary(body) {
   if (Array.isArray(body.input)) summary.inputItems = body.input.length;
   if (typeof body.input === 'string') summary.inputCharacters = body.input.length;
   if (Array.isArray(body.messages)) summary.messageCount = body.messages.length;
+  if (body.thinking !== undefined) summary.thinkingAdaptive = body.thinking?.type === 'adaptive';
+  if (body.output_config !== undefined) {
+    summary.outputConfigEffortHigh = body.output_config?.effort === 'high';
+  }
+  if (body.context_management !== undefined) summary.contextManagementPresent = true;
   return summary;
+}
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function fidelityFixtureDigest(request, body) {
+  const normalized = normalizedRequest({
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    body,
+  });
+  return {
+    method: normalized.method,
+    url_sha256: sha256(normalized.url),
+    header_sha256: Object.fromEntries(
+      Object.entries(normalized.headers).map(([name, value]) => [name, sha256(value)]),
+    ),
+    body_sha256: sha256(normalized.body),
+    body_field_sha256: Object.fromEntries(
+      Object.entries(normalized.body).map(([name, value]) => [name, sha256(value)]),
+    ),
+  };
 }
 
 function safeRequestSummary(request, body) {
@@ -46,11 +87,21 @@ function safeRequestSummary(request, body) {
   for (const name of SAFE_HEADER_NAMES) {
     if (typeof request.headers[name] === 'string') headers[name] = request.headers[name];
   }
+  const requestUrl = new URL(request.url, 'http://mock.invalid');
   return {
     method: request.method,
     path: new URL(request.url, 'http://mock.invalid').pathname,
     headers,
     body: requestBodySummary(body),
+    semantic_sha256: normalizedRequestFingerprint({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body,
+    }),
+    ...(requestUrl.searchParams.has('fixture_query') ? {
+      fidelity_fixture: fidelityFixtureDigest(request, body),
+    } : {}),
   };
 }
 
@@ -142,17 +193,83 @@ function createTimeline() {
   };
 }
 
-function containsValue(value, marker) {
-  if (typeof value === 'string') return value.includes(marker);
-  if (Array.isArray(value)) return value.some((item) => containsValue(item, marker));
-  if (value && typeof value === 'object') return Object.values(value).some((item) => containsValue(item, marker));
-  return false;
-}
-
 function toolVectorPath(body) {
   const encoded = JSON.stringify(body);
   const match = /TOOL_VECTOR_PATH=([^\\"\s]+)/u.exec(encoded);
   return match?.[1] ?? '/tmp/1flowbase-missing-tool-vector';
+}
+
+function namedToolVectorPath(body, name) {
+  const encoded = JSON.stringify(body);
+  const match = new RegExp(`${name}=([^\\\\"\\s]+)`, 'u').exec(encoded);
+  return match?.[1] ?? null;
+}
+
+function clientToolPlan(body, previousState = null) {
+  const hasToolResult = containsValue(body, '1flowbase-client-tool-result');
+  if (hasToolResult && (previousState?.mode === 'parallel' || previousState?.mode === 'single')) {
+    return {
+      hasToolResult: true,
+      final: true,
+      paths: previousState.paths,
+      finalText: previousState.finalText,
+      nextState: null,
+    };
+  }
+  if (hasToolResult && previousState?.mode === 'sequential') {
+    const final = previousState.stage === 'awaiting-b';
+    return {
+      hasToolResult: true,
+      final,
+      paths: final ? previousState.paths : [previousState.paths[1]],
+      finalText: previousState.finalText,
+      nextState: final ? null : { ...previousState, stage: 'awaiting-b' },
+    };
+  }
+  if (containsValue(body, 'tools-parallel-one-callback-task')) {
+    const paths = [
+      namedToolVectorPath(body, 'PARALLEL_TOOL_A_PATH'),
+      namedToolVectorPath(body, 'PARALLEL_TOOL_B_PATH'),
+    ];
+    const normalizedPaths = paths.every(Boolean) ? paths : [toolVectorPath(body)];
+    return {
+      hasToolResult,
+      final: hasToolResult,
+      paths: normalizedPaths,
+      finalText: toolVectorFinalOutput(body),
+      nextState: hasToolResult ? null : {
+        mode: 'parallel', paths: normalizedPaths, finalText: toolVectorFinalOutput(body),
+      },
+    };
+  }
+  if (containsValue(body, 'tools-sequential-callback-tasks-one-turn')) {
+    const hasFirstResult = containsValue(body, '1flowbase-client-tool-result sequential-a');
+    const hasSecondResult = containsValue(body, '1flowbase-client-tool-result sequential-b');
+    const firstPath = namedToolVectorPath(body, 'SEQUENTIAL_TOOL_A_PATH') ?? toolVectorPath(body);
+    const secondPath = namedToolVectorPath(body, 'SEQUENTIAL_TOOL_B_PATH') ?? toolVectorPath(body);
+    return {
+      hasToolResult,
+      final: hasSecondResult,
+      paths: hasFirstResult && !hasSecondResult ? [secondPath] : [firstPath],
+      finalText: toolVectorFinalOutput(body),
+      nextState: hasSecondResult ? null : {
+        mode: 'sequential',
+        stage: hasFirstResult ? 'awaiting-b' : 'awaiting-a',
+        paths: [firstPath, secondPath],
+        finalText: toolVectorFinalOutput(body),
+      },
+    };
+  }
+  const paths = [toolVectorPath(body)];
+  return {
+    hasToolResult,
+    final: hasToolResult,
+    paths,
+    finalText: toolVectorFinalOutput(body),
+    nextState: hasToolResult ? null : {
+      mode: 'single', paths, finalText: toolVectorFinalOutput(body),
+    },
+  };
 }
 
 function gatewayExecutorProbeUrl(body) {
@@ -246,7 +363,7 @@ async function emitHttpStream({
   for (const chunk of stream.chunks) {
     const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
     if (!write(event, chunk.data ?? chunk)) break;
-    const visibleMarker = JSON.stringify(chunk).includes(barrier.marker);
+    const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
     if (!visibleDeltaReleased && barrier.enabled && visibleMarker && barrierEvents.includes(event)) {
       visibleDeltaReleased = true;
       timeline.record('barrier_waiting', { protocolEvent: event });
@@ -300,6 +417,9 @@ function createMockUpstream(options = {}) {
   const cancelObservationMs = options.cancelObservationMs ?? 250;
   const timeline = createTimeline();
   const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
+  const errorFixtureAttempts = new Map();
+  const continuityResponses = new Set();
+  const toolResponses = new Map();
   const sockets = new Set();
   const barrierWaiters = new Set();
   const barrier = {
@@ -354,6 +474,23 @@ function createMockUpstream(options = {}) {
         : path === MOCK_ROUTE.CHAT_COMPLETIONS ? 'chat-completions-sse' : TRANSPORT.ANTHROPIC_SSE;
       const requestTimeline = timeline.arrive(transport, scenario, safeRequestSummary(request, body));
       observeWireVectors(body, requestTimeline, counters);
+      const errorFixture = errorFixtureFromBody(body);
+      const errorFixtureKey = `${errorFixture?.id ?? ''}:${body.fixture_retry_key ?? ''}`;
+      const errorFixtureAttempt = (errorFixtureAttempts.get(errorFixtureKey) ?? 0) + 1;
+      if (errorFixture) errorFixtureAttempts.set(errorFixtureKey, errorFixtureAttempt);
+      const shouldEmitFixtureError = errorFixture
+        && (errorFixture.id !== 'retry' || errorFixtureAttempt === 1);
+      if (shouldEmitFixtureError) {
+        response.writeHead(errorFixture.status, { 'content-type': errorFixture.contentType });
+        response.end(errorFixture.body);
+        requestTimeline.finish(`http-${errorFixture.status}`, {
+          status: errorFixture.status,
+          errorFixture: errorFixture.id,
+          errorFixtureAttempt,
+          successTerminalCount: 0,
+        });
+        return;
+      }
       if (scenario === SCENARIO.HTTP_500) {
         response.writeHead(500, { 'content-type': 'application/json' });
         response.end(HTTP_500_ERROR_BODY);
@@ -362,30 +499,48 @@ function createMockUpstream(options = {}) {
       }
       beginSse(response);
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
-      const isToolResult = containsValue(body, '1flowbase-client-tool-result');
-      const isClientTextTurn = containsValue(body, '1flowbase gateway sentinel ok');
+      const toolPlan = clientToolPlan(body, toolResponses.get(body?.previous_response_id));
+      const isToolResult = toolPlan.hasToolResult;
+      const emitsToolCallRound = (isToolTurn || isToolResult) && !toolPlan.final;
+      const clientText = textVectorOutput(body, continuityResponses);
+      if (clientText === CONTINUITY_SEED_SENTINEL) {
+        continuityResponses.add(`resp_${requestTimeline.nonce}`);
+      }
+      const textChunks = clientText === TEXT_SENTINEL
+        ? ['1flowbase gateway sentinel ', 'ok']
+        : [clientText, ''];
+      const toolFinalText = toolVectorFinalOutput(body);
+      if ((isToolTurn || isToolResult) && toolPlan.nextState) {
+        toolResponses.set(`resp_${requestTimeline.nonce}`, toolPlan.nextState);
+      }
       const wireAuditVector = wireAuditVectorFromBody(body);
-      if (isToolTurn && !isToolResult) requestTimeline.record('tool_call');
       if (isToolResult) requestTimeline.record('second_upstream_request');
+      if (emitsToolCallRound) requestTimeline.record('tool_call');
       const stream = path === MOCK_ROUTE.RESPONSES
         ? (wireAuditVector && wireAuditVector !== 'gateway-executor-probe'
           ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
           : isToolTurn || isToolResult
           ? responsesToolEvents(
-            requestTimeline.nonce, toolVectorPath(body), isToolResult,
-            gatewayExecutorProbeUrl(body), requestedResponsesTool(body)
+            requestTimeline.nonce, toolPlan.paths, toolPlan.final,
+            gatewayExecutorProbeUrl(body), requestedResponsesTool(body), toolPlan.finalText ?? toolFinalText
           )
-          : isClientTextTurn
-            ? responsesEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+          : clientText !== null
+            ? responsesEvents(requestTimeline.nonce, ...textChunks)
             : responsesEvents(requestTimeline.nonce))
         : path === MOCK_ROUTE.CHAT_COMPLETIONS
           ? (isToolTurn || isToolResult
-            ? chatToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
-            : chatTextEvents(requestTimeline.nonce))
+            ? chatToolEvents(
+              requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
+            )
+            : clientText !== null
+              ? chatTextEvents(requestTimeline.nonce, ...textChunks)
+              : chatTextEvents(requestTimeline.nonce))
           : (isToolTurn || isToolResult
-            ? anthropicToolEvents(requestTimeline.nonce, toolVectorPath(body), isToolResult)
-            : isClientTextTurn
-              ? anthropicEvents(requestTimeline.nonce, '1flowbase gateway sentinel ', 'ok')
+            ? anthropicToolEvents(
+              requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
+            )
+            : clientText !== null
+              ? anthropicEvents(requestTimeline.nonce, ...textChunks)
               : anthropicEvents(requestTimeline.nonce));
       observeProviderWireOutput(stream, requestTimeline, counters);
       await emitHttpStream({
@@ -446,6 +601,25 @@ function createMockUpstream(options = {}) {
         scenario,
         safeRequestSummary(request, body),
       );
+      const errorFixture = errorFixtureFromBody(body.response ?? body);
+      if (errorFixture) {
+        sendJson(socket, {
+          type: 'error',
+          error: {
+            type: 'mock_upstream_error',
+            message: errorFixture.body,
+            status: errorFixture.status,
+            nonce: requestTimeline.nonce,
+          },
+        });
+        requestTimeline.finish('upstream-error', {
+          status: errorFixture.status,
+          errorFixture: errorFixture.id,
+          successTerminalCount: 0,
+        });
+        sendClose(socket, 1011, 'mock upstream error');
+        return;
+      }
       if (scenario === SCENARIO.HTTP_500) {
         sendJson(socket, {
           type: 'error',
@@ -455,11 +629,43 @@ function createMockUpstream(options = {}) {
         sendClose(socket, 1011, 'mock upstream error');
         return;
       }
-      const stream = responsesEvents(requestTimeline.nonce);
+      const payload = body.response ?? body;
+      const isToolTurn = containsValue(payload, '1flowbase-client-tool-vector');
+      const toolPlan = clientToolPlan(payload, toolResponses.get(payload?.previous_response_id));
+      const emitsToolCallRound = (isToolTurn || toolPlan.hasToolResult) && !toolPlan.final;
+      const clientText = textVectorOutput(payload, continuityResponses);
+      if (clientText === CONTINUITY_SEED_SENTINEL) {
+        continuityResponses.add(`resp_${requestTimeline.nonce}`);
+      }
+      if ((isToolTurn || toolPlan.hasToolResult) && toolPlan.nextState) {
+        toolResponses.set(`resp_${requestTimeline.nonce}`, toolPlan.nextState);
+      }
+      const textChunks = clientText === TEXT_SENTINEL
+        ? ['1flowbase gateway sentinel ', 'ok']
+        : [clientText, ''];
+      if (toolPlan.hasToolResult) requestTimeline.record('second_upstream_request');
+      if (emitsToolCallRound) requestTimeline.record('tool_call');
+      const stream = isToolTurn || toolPlan.hasToolResult
+        ? responsesToolEvents(
+          requestTimeline.nonce, toolPlan.paths, toolPlan.final,
+          gatewayExecutorProbeUrl(payload), requestedResponsesTool(payload), toolPlan.finalText,
+        )
+        : clientText !== null
+          ? responsesEvents(requestTimeline.nonce, ...textChunks)
+          : responsesEvents(requestTimeline.nonce);
+      let visibleDeltaReleased = false;
       for (const chunk of stream.chunks) {
         if (cancelRequested || socket.destroyed) return;
         sendJson(socket, chunk);
         requestTimeline.record('chunk', { protocolEvent: chunk.type });
+        const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
+        const barrierEvent = stream.barrierEvent ?? chunk.type;
+        if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
+          visibleDeltaReleased = true;
+          requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
+          await barrier.wait();
+          requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+        }
         if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
       }
       if (scenario === SCENARIO.STREAM_INTERRUPTION) {

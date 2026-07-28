@@ -23,6 +23,10 @@ function fixtureManifest() {
       pluginRunner: { path: '/bin/plugin-runner', sha256: '2'.repeat(64) },
       openaiPackage: { path: '/packages/openai', sha256: '3'.repeat(64) },
       anthropicPackage: { path: '/packages/anthropic', sha256: '4'.repeat(64) },
+      openaiCompatiblePackage: {
+        path: '/packages/openai-compatible',
+        sha256: '8'.repeat(64),
+      },
       codex: { path: '/bin/codex', sha256: '5'.repeat(64) },
       claude: { path: '/bin/claude', sha256: '6'.repeat(64) },
       claudeManifest: { path: '/package.json', sha256: '7'.repeat(64) },
@@ -49,6 +53,7 @@ function fixtureReady() {
     gateway: {
       base_url: 'http://127.0.0.1:4100',
       responses_url: 'http://127.0.0.1:4100/v1/responses',
+      chat_completions_url: 'http://127.0.0.1:4100/v1/chat/completions',
       anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages',
     },
     durable: { query_run: {}, list_runs: {} },
@@ -59,7 +64,11 @@ function fixtureReady() {
   return {
     schema_version: '1flowbase.ai-gateway-fixture/v1',
     gateway_base_url: 'http://127.0.0.1:4100',
-    targets: { openai: target('openai', 1), anthropic: anthropic[0] },
+    targets: {
+      openai: target('openai', 1),
+      openai_compatible: target('openai_compatible', 1),
+      anthropic: anthropic[0],
+    },
     pools: { anthropic },
     controlled_upstream: {
       snapshot_url: 'http://127.0.0.1:4000/__control/snapshot',

@@ -3,7 +3,15 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { runWireAudit, vectorBodies } = require('../runner');
+const {
+  assertErrorFidelityAudit,
+  assertRequestFidelityAudit,
+  errorFidelityInventory,
+  requestFidelityInventory,
+  runWireAudit,
+  vectorBodies,
+} = require('../runner');
+const { ERROR_SURFACES, UPSTREAM_ERROR_FIXTURES } = require('../../protocol-oracle/error-fidelity');
 
 // Root AC-019/020/023/024/027: finite vectors preserve owner and observer boundaries.
 test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approval, and canary paths', () => {
@@ -109,4 +117,41 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
   assert.deepEqual(continuation.input, [{
     type: 'mcp_approval_response', approval_request_id: approvalRequestId, approve: true,
   }]);
+});
+
+test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail closed', () => {
+  const inventory = requestFidelityInventory();
+  assert.equal(inventory.positive_rows.length, 3);
+  assert.equal(inventory.negative_rows.length, 4);
+  assert.equal(inventory.raw_sinks_forbidden.includes('durable'), true);
+  const digest = 'a'.repeat(64);
+  const evidence = {
+    positive: inventory.positive_rows.map((id) => ({ id, direct_sha256: digest, gateway_sha256: digest })),
+    negative: inventory.negative_rows.map((id) => ({ id, failed: true, upstream_arrivals: 0 })),
+    ephemeral: {
+      preserved_phases: ['initial-invocation', 'tool-callback', 'retry'],
+      cleanup_phases: ['terminal-success', 'terminal-failure'],
+      missing_before_terminal_failed: true,
+    },
+  };
+  assert.equal(assertRequestFidelityAudit(evidence).verdict, 'PASS');
+  evidence.negative[0].upstream_arrivals = 1;
+  assert.throws(() => assertRequestFidelityAudit(evidence), /did not fail before upstream/u);
+});
+
+test('Root #1477 AC-008: error audit requires 5 fixtures across all 4 public surfaces', () => {
+  const inventory = errorFidelityInventory();
+  assert.equal(inventory.rows, 20);
+  const rows = UPSTREAM_ERROR_FIXTURES.flatMap((fixture) => ERROR_SURFACES.map((surface) => {
+    const message = fixture.body || `upstream returned HTTP ${fixture.status}`;
+    return {
+      fixture: fixture.id, surface, attempts: fixture.attempts,
+      native_message: message, durable_message: message, client_message: message,
+    };
+  }));
+  assert.deepEqual(assertErrorFidelityAudit({ rows }), {
+    schema_version: '1flowbase.ai-gateway-error-fidelity-result/v1', verdict: 'PASS', rows: 20,
+  });
+  rows.pop();
+  assert.throws(() => assertErrorFidelityAudit({ rows }), /evidence omitted/u);
 });

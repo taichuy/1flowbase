@@ -1,7 +1,7 @@
 'use strict';
 
 const { PUBLIC_PROTOCOL, SUCCESS_TERMINAL, TRANSPORT } = require('../contracts');
-const { LOSSLESS_SENTINEL_SEGMENTS } = require('./fixtures');
+const { LOSSLESS_SENTINEL_SEGMENTS, PARTITIONS } = require('./fixtures');
 
 const PUBLIC_PROTOCOLS = Object.freeze(Object.values(PUBLIC_PROTOCOL));
 const PROVIDER_TRANSPORTS = Object.freeze(Object.values(TRANSPORT));
@@ -68,7 +68,24 @@ const LIFECYCLE_PAIRWISE_ORACLES = Object.freeze(PROTOCOL_TRANSPORT_ORACLES.map(
   cancelBeforeTerminal: 'cancelled-no-success-terminal',
 })));
 
+const CANONICAL_STREAM_REGRESSION_ORACLE = Object.freeze({
+  origin: 'Root #1461',
+  providerTransports: PROVIDER_TRANSPORTS,
+  partitions: Object.freeze(Object.keys(PARTITIONS)),
+  utf8: 'fatal-across-provider-chunk-boundaries',
+  delivery: 'write-each-complete-provider-event-immediately',
+  ordering: 'exact-segment-order-with-repetitions',
+  successTerminalCount: 1,
+  terminalIsAbsorbing: true,
+  durableParity: Object.freeze({
+    text: LOSSLESS_SENTINEL_SEGMENTS.join(''),
+    terminal: 'finished',
+    preservesRepeatedContent: true,
+  }),
+});
+
 module.exports = {
+  CANONICAL_STREAM_REGRESSION_ORACLE,
   LIFECYCLE_PAIRWISE_ORACLES,
   PROTOCOL_TRANSPORT_ORACLES,
   PROVIDER_TRANSPORTS,

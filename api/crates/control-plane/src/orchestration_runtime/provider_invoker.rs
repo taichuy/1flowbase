@@ -6,6 +6,8 @@ use super::canonical_stream::{
     CanonicalStreamState, CanonicalStreamTransitionError,
 };
 
+mod protocol_context;
+
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
@@ -59,6 +61,10 @@ where
         .await?;
 
         self.runtime.count_tokens(&installation, input).await
+    }
+
+    async fn resolve_protocol_context_locator(&self, locator: &Value) -> Result<Option<Value>> {
+        self.open_protocol_context_locator_value(locator).await
     }
 
     async fn invoke_llm(
@@ -1117,6 +1123,7 @@ where
         config_payload: Value,
         input_payload: Value,
     ) -> Result<orchestration_runtime::execution_engine::CodeInvocationOutput> {
+        let input_payload = self.expose_protocol_contexts_to_code(input_payload).await?;
         orchestration_runtime::execution_engine::CodeInvoker::invoke_code_node(
             &orchestration_runtime::execution_engine::QuickJsCodeInvoker::default(),
             runtime,
@@ -1124,6 +1131,22 @@ where
             input_payload,
         )
         .await
+    }
+
+    async fn protect_protocol_context_output(
+        &self,
+        output: &mut orchestration_runtime::execution_engine::CodeInvocationOutput,
+        selected_output_paths: &[Vec<String>],
+    ) -> Result<()> {
+        self.protect_code_protocol_context_output(output, selected_output_paths)
+            .await
+    }
+
+    async fn protect_protocol_context_logs(
+        &self,
+        console_logs: &mut Vec<orchestration_runtime::execution_engine::ConsoleLogEntry>,
+    ) -> Result<()> {
+        self.protect_code_console_logs(console_logs).await
     }
 }
 

@@ -1,11 +1,15 @@
 use anyhow::{anyhow, Result};
-use serde_json::json;
+use plugin_framework::provider_contract::{
+    ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+};
+use serde_json::{json, Value};
 use time::OffsetDateTime;
 
 use crate::{
     ports::{
         CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, OrchestrationRuntimeRepository,
-        ProviderTransportPayload, ProviderTransportSlotId,
+        ProviderProtocolContextLocator, ProviderProtocolContextSlotId, ProviderTransportPayload,
+        ProviderTransportSlotId,
     },
     state_transition::ensure_flow_run_transition,
 };
@@ -24,6 +28,75 @@ impl<R, H> OrchestrationRuntimeService<R, H>
 where
     R: OrchestrationRuntimeRepository,
 {
+    pub(super) async fn attach_provider_protocol_context(
+        &self,
+        flow_run_id: uuid::Uuid,
+        input_payload: &Value,
+        context: orchestration_runtime::execution_engine::ExecutionRuntimeContext,
+    ) -> orchestration_runtime::execution_engine::ExecutionRuntimeContext {
+        let Some(locator_value) = input_payload
+            .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
+            .cloned()
+        else {
+            return context;
+        };
+        let locator = match ProviderProtocolContextLocator::parse(&locator_value) {
+            Ok(Some(locator)) => locator,
+            Ok(None) | Err(_) => {
+                return context.with_unavailable_ephemeral_protocol_context(
+                    locator_value,
+                    "ephemeral_protocol_context_locator_invalid",
+                );
+            }
+        };
+        let stored = match &self.provider_transport_store {
+            Some(store) => {
+                store
+                    .get_protocol_context(ProviderProtocolContextSlotId::for_locator(
+                        flow_run_id,
+                        &locator,
+                    ))
+                    .await
+            }
+            None => {
+                return context.with_unavailable_ephemeral_protocol_context(
+                    locator_value,
+                    "ephemeral_protocol_context_missing",
+                );
+            }
+        };
+        let stored = match stored {
+            Ok(Some(stored)) if stored.matches_locator(&locator) => stored,
+            Ok(Some(_)) => {
+                return context.with_unavailable_ephemeral_protocol_context(
+                    locator_value,
+                    "ephemeral_protocol_context_integrity_mismatch",
+                );
+            }
+            Ok(None) => {
+                return context.with_unavailable_ephemeral_protocol_context(
+                    locator_value,
+                    "ephemeral_protocol_context_missing",
+                );
+            }
+            Err(_) => {
+                return context.with_unavailable_ephemeral_protocol_context(
+                    locator_value,
+                    "ephemeral_protocol_context_unavailable",
+                );
+            }
+        };
+        match serde_json::from_value::<ProtocolContextEnvelope>(stored.into_value()) {
+            Ok(protocol_context) => {
+                context.with_ephemeral_protocol_context(locator_value, protocol_context)
+            }
+            Err(_) => context.with_unavailable_ephemeral_protocol_context(
+                locator_value,
+                "ephemeral_protocol_context_invalid",
+            ),
+        }
+    }
+
     pub(super) async fn resolve_provider_transport_payload(
         &self,
         flow_run: &domain::FlowRunRecord,
@@ -73,6 +146,19 @@ where
         }
     }
 
+    pub(super) async fn clear_provider_protocol_contexts(&self, flow_run_id: uuid::Uuid) {
+        let Some(store) = &self.provider_transport_store else {
+            return;
+        };
+        if let Err(error) = store.delete_flow_run_protocol_contexts(flow_run_id).await {
+            tracing::warn!(
+                flow_run_id = %flow_run_id,
+                error = %error,
+                "protocol context cleanup deferred to retention policy"
+            );
+        }
+    }
+
     async fn fail_published_run_for_missing_provider_transport(
         &self,
         flow_run: &domain::FlowRunRecord,
@@ -113,7 +199,9 @@ where
                 winner
             }
         };
-        self.ensure_durable_terminal_projection(&winner).await
+        self.ensure_durable_terminal_projection(&winner).await?;
+        self.clear_provider_protocol_contexts(flow_run.id).await;
+        Ok(())
     }
 }
 
@@ -133,6 +221,12 @@ mod tests {
     #[derive(Default)]
     struct TestProviderTransportStore {
         entry: Mutex<Option<(ProviderTransportSlotId, ProviderTransportPayload)>>,
+        protocol_context: Mutex<
+            Option<(
+                crate::ports::ProviderProtocolContextSlotId,
+                crate::ports::ProviderProtocolContextValue,
+            )>,
+        >,
         continuation: Mutex<
             Option<(
                 crate::ports::ProviderContinuationSlotId,
@@ -175,6 +269,43 @@ mod tests {
                 return Ok(true);
             }
             Ok(false)
+        }
+
+        async fn put_protocol_context(
+            &self,
+            slot_id: crate::ports::ProviderProtocolContextSlotId,
+            value: crate::ports::ProviderProtocolContextValue,
+        ) -> anyhow::Result<()> {
+            *self.protocol_context.lock().await = Some((slot_id, value));
+            Ok(())
+        }
+
+        async fn get_protocol_context(
+            &self,
+            slot_id: crate::ports::ProviderProtocolContextSlotId,
+        ) -> anyhow::Result<Option<crate::ports::ProviderProtocolContextValue>> {
+            Ok(self
+                .protocol_context
+                .lock()
+                .await
+                .as_ref()
+                .filter(|(stored_slot, _)| *stored_slot == slot_id)
+                .map(|(_, value)| value.clone()))
+        }
+
+        async fn delete_flow_run_protocol_contexts(
+            &self,
+            flow_run_id: uuid::Uuid,
+        ) -> anyhow::Result<usize> {
+            let mut context = self.protocol_context.lock().await;
+            if context
+                .as_ref()
+                .is_some_and(|(slot_id, _)| slot_id.belongs_to(flow_run_id))
+            {
+                context.take();
+                return Ok(1);
+            }
+            Ok(0)
         }
 
         async fn put_continuation(

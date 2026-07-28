@@ -222,40 +222,65 @@ function responsesToolEvents(
   final = false,
   executorProbeUrl = null,
   toolName = 'shell_command',
+  finalText = '1flowbase gateway tool sentinel ok',
 ) {
+  if (final && finalText !== '1flowbase gateway tool sentinel ok') {
+    const split = Math.ceil(finalText.length / 2);
+    return {
+      ...responsesObservableItemEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      barrierMarker: finalText.slice(0, split),
+    };
+  }
   if (final) return responsesObservableItemEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
-    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
   );
+  const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
-  const item = {
-    id: `item_${nonce}`, type: 'function_call', call_id: `call_${nonce}`,
+  const items = toolPaths.map((currentPath, index) => ({
+    id: `item_${nonce}_${index}`, type: 'function_call', call_id: `call_${nonce}_${index}`,
     name: toolName, status: 'completed', arguments: JSON.stringify(toolName === 'read'
-      ? { filePath: toolPath }
+      ? { filePath: currentPath }
       : {
         command: executorProbeUrl
           ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
-          : `cat -- ${posixShellArgument(toolPath)}`,
-        workdir: path.dirname(toolPath),
+          : `cat -- ${posixShellArgument(currentPath)}`,
+        workdir: path.dirname(currentPath),
       }),
-  };
+  }));
+  const chunks = [{ type: 'response.created', sequence_number: 0, response }];
+  for (const [outputIndex, item] of items.entries()) {
+    chunks.push({
+      type: 'response.output_item.added', sequence_number: chunks.length, output_index: outputIndex, item,
+    });
+    chunks.push({
+      type: 'response.output_item.done', sequence_number: chunks.length, output_index: outputIndex, item,
+    });
+  }
   return {
-    chunks: [
-      { type: 'response.created', sequence_number: 0, response },
-      { type: 'response.output_item.added', sequence_number: 1, output_index: 0, item },
-      { type: 'response.output_item.done', sequence_number: 2, output_index: 0, item },
-    ],
-    terminal: { type: 'response.completed', sequence_number: 3, response: { ...response, status: 'completed', output: [item] } },
+    chunks,
+    terminal: {
+      type: 'response.completed', sequence_number: chunks.length,
+      response: { ...response, status: 'completed', output: items },
+    },
   };
 }
 
-function anthropicToolEvents(nonce, toolPath, final = false) {
+function anthropicToolEvents(nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok') {
+  if (final && finalText !== '1flowbase gateway tool sentinel ok') {
+    const split = Math.ceil(finalText.length / 2);
+    return {
+      ...anthropicEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      barrierMarker: finalText.slice(0, split),
+    };
+  }
   if (final) return anthropicEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
-    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
   );
+  const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   return {
     chunks: [
       {
@@ -264,10 +289,12 @@ function anthropicToolEvents(nonce, toolPath, final = false) {
           stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 },
         } },
       },
-      { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: {
-        type: 'tool_use', id: `toolu_${nonce}`, name: 'Read', input: { file_path: toolPath },
-      } } },
-      { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+      ...toolPaths.flatMap((currentPath, index) => [
+        { event: 'content_block_start', data: { type: 'content_block_start', index, content_block: {
+          type: 'tool_use', id: `toolu_${nonce}_${index}`, name: 'Read', input: { file_path: currentPath },
+        } } },
+        { event: 'content_block_stop', data: { type: 'content_block_stop', index } },
+      ]),
     ],
     terminal: [
       { event: 'message_delta', data: { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 1 } } },
@@ -276,22 +303,32 @@ function anthropicToolEvents(nonce, toolPath, final = false) {
   };
 }
 
-function chatToolEvents(nonce, toolPath, final = false) {
+function chatToolEvents(nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok') {
+  if (final && finalText !== '1flowbase gateway tool sentinel ok') {
+    const split = Math.ceil(finalText.length / 2);
+    return {
+      ...chatTextEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      barrierMarker: finalText.slice(0, split),
+    };
+  }
   if (final) return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       content: `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
-      content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} 1flowbase gateway tool sentinel ok`,
+      content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`,
     }, finish_reason: 'stop' }] },
   };
+  const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
-      role: 'assistant', tool_calls: [{ index: 0, id: `call_${nonce}`, type: 'function', function: {
-        name: 'read', arguments: JSON.stringify({ filePath: toolPath }),
-      } }],
+      role: 'assistant', tool_calls: toolPaths.map((currentPath, index) => ({
+        index, id: `call_${nonce}_${index}`, type: 'function', function: {
+          name: 'read', arguments: JSON.stringify({ filePath: currentPath }),
+        },
+      })),
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'tool_calls',
@@ -299,12 +336,17 @@ function chatToolEvents(nonce, toolPath, final = false) {
   };
 }
 
-function chatTextEvents(nonce) {
+function chatTextEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
   return {
     doneSentinel: true,
-    chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
-      index: 0, delta: { role: 'assistant', content: '1flowbase gateway sentinel ok' }, finish_reason: null,
-    }] }],
+    chunks: [
+      { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
+        index: 0, delta: { role: 'assistant', content: firstText }, finish_reason: null,
+      }] },
+      { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
+        index: 0, delta: { content: secondText }, finish_reason: null,
+      }] },
+    ],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'stop',
     }] },

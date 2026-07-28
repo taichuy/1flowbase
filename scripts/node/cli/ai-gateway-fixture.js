@@ -12,6 +12,7 @@ const OPTION_FIELDS = new Map([
   ['--plugin-runner-bin', 'pluginRunnerBin'],
   ['--openai-package', 'openaiPackage'],
   ['--anthropic-package', 'anthropicPackage'],
+  ['--openai-compatible-package', 'openaiCompatiblePackage'],
   ['--upstream-base-url', 'upstreamBaseUrl'],
   ['--ready-file', 'readyFile'],
 ]);
@@ -21,11 +22,13 @@ function usage() {
   --database-url <temporary-postgres-url> \\
   --api-server-bin <path> --plugin-runner-bin <path> \\
   --openai-package <archive> --anthropic-package <archive> \\
+  --openai-compatible-package <archive> \\
   --upstream-base-url <loopback-url> [--ready-file <json>]
 
-The six required values may instead be supplied as AI_GATEWAY_FIXTURE_DATABASE_URL,
+The required values may instead be supplied as AI_GATEWAY_FIXTURE_DATABASE_URL,
 AI_GATEWAY_FIXTURE_API_SERVER_BIN, AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN,
-AI_GATEWAY_FIXTURE_OPENAI_PACKAGE, AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE, and
+AI_GATEWAY_FIXTURE_OPENAI_PACKAGE, AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE,
+AI_GATEWAY_FIXTURE_OPENAI_COMPATIBLE_PACKAGE, and
 AI_GATEWAY_FIXTURE_UPSTREAM_BASE_URL. The process owns the real gateway stack until
 SIGINT or SIGTERM and then removes only its own processes and temporary files.`;
 }
@@ -37,6 +40,7 @@ function parseArgs(argv, env = process.env) {
     pluginRunnerBin: env.AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN,
     openaiPackage: env.AI_GATEWAY_FIXTURE_OPENAI_PACKAGE,
     anthropicPackage: env.AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE,
+    openaiCompatiblePackage: env.AI_GATEWAY_FIXTURE_OPENAI_COMPATIBLE_PACKAGE,
     upstreamBaseUrl: env.AI_GATEWAY_FIXTURE_UPSTREAM_BASE_URL,
     readyFile: env.AI_GATEWAY_FIXTURE_READY_FILE,
   };

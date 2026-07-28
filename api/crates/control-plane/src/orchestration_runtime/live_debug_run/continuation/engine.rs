@@ -126,6 +126,9 @@ where
         None => invoker,
     };
     let mut runtime_context = service.execution_runtime_context(&compiled_plan, &variable_pool)?;
+    runtime_context = service
+        .attach_provider_protocol_context(flow_run.id, &flow_run.input_payload, runtime_context)
+        .await;
     if let Some(capability) = provider_invocation_capability {
         runtime_context = runtime_context.with_provider_invocation_capability(capability);
     }

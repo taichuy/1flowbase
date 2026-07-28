@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Bytes,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,10 +13,13 @@ use control_plane::application_public_api::{
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
-        capture_client_protocol_envelope, merge_anthropic_messages_envelopes,
-        ClientProtocolIngressPolicy,
+        capture_client_protocol_envelope, capture_client_protocol_query,
+        merge_client_protocol_envelopes, ClientProtocolIngressPolicy, ANTHROPIC_BETA_HEADER_NAME,
     },
-    compat::anthropic::{translate_messages_request, AnthropicCompatError},
+    compat::anthropic::{
+        translate_messages_request_with_context_window, AnthropicCompatError,
+        AnthropicContextWindowRequest,
+    },
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
         NativeRunStatus,
@@ -29,7 +32,7 @@ use control_plane::application_public_api::{
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use domain::AiNativeOperation;
 use orchestration_runtime::execution_state::NativeOperationTerminal;
-use plugin_framework::provider_contract::ClientProtocolEnvelope;
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tracing::debug;
@@ -159,6 +162,7 @@ pub struct AnthropicCountTokensResponse {
 pub async fn create_message(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
@@ -207,11 +211,15 @@ pub async fn create_message(
             Err(error) => return Err(error.into()),
         }
     }
-    let translated = translate_messages_request(value)?;
+    let translated = translate_messages_request_with_context_window(
+        value,
+        anthropic_context_window_request(&headers),
+    )?;
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = merge_anthropic_messages_envelopes(
-        anthropic_client_protocol_envelope_from_headers(&headers),
+    request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
+        uri.query(),
+        &headers,
         request.client_protocol_envelope,
     );
     let model = request.model.clone().unwrap_or(model);
@@ -249,14 +257,19 @@ pub async fn create_message(
 pub async fn count_message_tokens(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     merge_claude_code_session_header(&mut value, &headers);
-    let mut translation = translate_messages_request(value)?;
-    translation.request.client_protocol_envelope = merge_anthropic_messages_envelopes(
-        anthropic_client_protocol_envelope_from_headers(&headers),
+    let mut translation = translate_messages_request_with_context_window(
+        value,
+        anthropic_context_window_request(&headers),
+    )?;
+    translation.request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
+        uri.query(),
+        &headers,
         translation.request.client_protocol_envelope,
     );
     translation
@@ -336,14 +349,34 @@ fn merge_claude_code_session_header(value: &mut Value, headers: &HeaderMap) {
         .or_insert_with(|| Value::String(session_id.to_string()));
 }
 
-fn anthropic_client_protocol_envelope_from_headers(
+fn anthropic_protocol_context_from_ingress(
+    raw_query: Option<&str>,
     headers: &HeaderMap,
-) -> Option<ClientProtocolEnvelope> {
-    capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::AnthropicMessages,
+    translated: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
+    let policy = ClientProtocolIngressPolicy::AnthropicMessages;
+    let captured = merge_client_protocol_envelopes(
+        policy,
+        capture_client_protocol_envelope(
+            policy,
+            headers.iter().filter_map(|(name, value)| {
+                value.to_str().ok().map(|value| (name.as_str(), value))
+            }),
+        ),
+        capture_client_protocol_query(
+            policy,
+            form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
+        ),
+    );
+    merge_client_protocol_envelopes(policy, captured, translated)
+}
+
+fn anthropic_context_window_request(headers: &HeaderMap) -> Option<AnthropicContextWindowRequest> {
+    AnthropicContextWindowRequest::from_beta_values(
         headers
+            .get_all(ANTHROPIC_BETA_HEADER_NAME)
             .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+            .filter_map(|value| value.to_str().ok()),
     )
 }
 
@@ -352,14 +385,22 @@ async fn create_native_run(
     bearer_token: String,
     request: NativeRunRequest,
 ) -> Result<NativeRunResult, native::NativeApiError> {
-    ApplicationNativeRunService::new(state.store.clone())
+    let protocol_context = request.client_protocol_envelope.clone();
+    let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
         })
         .await
-        .map_err(native::native_error)
+        .map_err(native::native_error)?;
+    native::stage_client_protocol_context(
+        state.infrastructure.provider_transport_store().as_ref(),
+        &run,
+        protocol_context,
+    )
+    .await?;
+    Ok(run)
 }
 
 async fn execute_anthropic_tool_resume(
@@ -379,6 +420,7 @@ async fn execute_anthropic_tool_resume(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)

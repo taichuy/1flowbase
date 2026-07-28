@@ -1,13 +1,18 @@
 use super::*;
+use std::collections::BTreeMap;
+
 use axum::body::Bytes;
 use control_plane::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
+use control_plane::application_public_api::compat::openai::OpenAiResponsesRequestContext;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
 use control_plane::ports::{
-    ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+    ProviderProtocolContextSlotId, ProviderTransportPayload, ProviderTransportSlotId,
+    ProviderTransportStore,
 };
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use storage_ephemeral::MemoryProviderTransportStore;
 use time::Duration;
 use time::OffsetDateTime;
@@ -39,6 +44,35 @@ fn provider_transport_payload(canary: &str) -> ProviderTransportPayload {
         "input": canary,
     }))
     .expect("fixture provider payload should be valid")
+}
+
+#[tokio::test]
+async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_payload() {
+    const CANARY: &str = "WP-D1C-INGRESS-RAW-CANARY";
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let mut run = blocking_run(NativeRunStatus::Queued);
+    run.id = Uuid::now_v7();
+    let protocol_context = ProtocolContextEnvelope {
+        source_protocol: "openai_chat".to_string(),
+        query: BTreeMap::new(),
+        headers: BTreeMap::from([("openai-organization".to_string(), vec![CANARY.to_string()])]),
+        body: BTreeMap::new(),
+    };
+
+    native::stage_client_protocol_context(&store, &run, Some(protocol_context.clone()))
+        .await
+        .expect("compatible ingress context should stage");
+
+    let stored = store
+        .get_protocol_context(ProviderProtocolContextSlotId::for_original_flow_run(run.id))
+        .await
+        .unwrap()
+        .expect("original flow context should stay available inside its TTL");
+    assert_eq!(
+        stored.into_value(),
+        serde_json::to_value(protocol_context).unwrap()
+    );
+    assert!(!run.node_input_payload.to_string().contains(CANARY));
 }
 
 #[tokio::test]
@@ -111,6 +145,99 @@ fn d2_ac_001_openai_malformed_json_uses_the_endpoint_protocol_and_safe_receipt()
                 .contains(sentinel),
             "malformed JSON must not be retained in the receipt"
         );
+    }
+}
+
+#[test]
+fn openai_chat_ingress_builds_one_safe_query_header_and_body_protocol_context() {
+    let mut headers = HeaderMap::new();
+    headers.append("openai-organization", "org-one".parse().unwrap());
+    headers.append("openai-organization", "org-two".parse().unwrap());
+    headers.insert("authorization", "Bearer platform-key".parse().unwrap());
+    headers.insert("cookie", "session=secret".parse().unwrap());
+    headers.insert("host", "api.example.test".parse().unwrap());
+    headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
+    headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
+    let translated = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "future_chat_option": {"shape": "opaque"},
+        "authorization": "body-secret",
+        "__native_transport": {"must_not_cross": true}
+    }))
+    .expect("safe Chat residual fixture should translate");
+
+    let envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiChat,
+        Some("preview=one&preview=two&x_api_key=query-secret&__native_transport=internal"),
+        &headers,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Chat ingress context should produce one envelope");
+
+    assert_eq!(envelope.source_protocol, "openai_chat");
+    assert_eq!(
+        envelope.headers["openai-organization"],
+        vec!["org-one", "org-two"]
+    );
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
+    assert_eq!(envelope.body["future_chat_option"]["shape"], "opaque");
+    for stripped in [
+        "authorization",
+        "cookie",
+        "host",
+        "connection",
+        "x-hop-secret",
+    ] {
+        assert!(!envelope.headers.contains_key(stripped), "{stripped}");
+    }
+    for stripped in ["x_api_key", "__native_transport"] {
+        assert!(!envelope.query.contains_key(stripped), "{stripped}");
+    }
+    for stripped in ["model", "messages", "authorization", "__native_transport"] {
+        assert!(!envelope.body.contains_key(stripped), "{stripped}");
+    }
+}
+
+#[test]
+fn openai_responses_ingress_subtracts_typed_codex_header_and_body_semantics() {
+    let mut headers = HeaderMap::new();
+    headers.insert("openai-project", "project-one".parse().unwrap());
+    headers.insert(
+        "x-codex-turn-metadata",
+        r#"{"compaction":{"implementation":"responses_compact"}}"#
+            .parse()
+            .unwrap(),
+    );
+    headers.insert("x-api-key", "platform-key".parse().unwrap());
+    let translated = translate_response_request_with_context_and_previous(
+        json!({
+            "model": "gpt-compatible",
+            "input": "hello",
+            "stream": true,
+            "future_responses_option": {"shape": "opaque"}
+        }),
+        OpenAiResponsesRequestContext::responses(),
+        None,
+    )
+    .expect("safe Responses residual fixture should translate");
+
+    let envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        Some("preview=one&preview=two"),
+        &headers,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Responses ingress context should produce one envelope");
+
+    assert_eq!(envelope.source_protocol, "openai_responses");
+    assert_eq!(envelope.headers["openai-project"], vec!["project-one"]);
+    assert!(!envelope.headers.contains_key("x-codex-turn-metadata"));
+    assert!(!envelope.headers.contains_key("x-api-key"));
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
+    assert_eq!(envelope.body["future_responses_option"]["shape"], "opaque");
+    for typed in ["model", "input", "stream"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
     }
 }
 

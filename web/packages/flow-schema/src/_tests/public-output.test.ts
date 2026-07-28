@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE,
   DEFAULT_LLM_NODE_OUTPUTS,
   DEFAULT_WORKFLOW_START_NODE_CONFIG,
   FLOW_SCHEMA_VERSION,
@@ -58,6 +59,20 @@ describe('LLM authoring outputs', () => {
       { key: 'text', title: '模型输出', valueType: 'string' },
       { key: 'usage', title: '用量', valueType: 'json' }
     ]);
+  });
+
+  it('WP-D1D seeds new public Gateway LLM protocol context as one system reference', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const llmNode = document.graph.nodes.find((node) => node.id === 'node-llm');
+
+    expect(DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE).toEqual({
+      kind: 'selector',
+      value: ['sys', 'protocol_context']
+    });
+    expect(llmNode?.config.protocol_context).toEqual(
+      DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE
+    );
+    expect(llmNode?.config).not.toHaveProperty('protocol_context_enabled');
   });
 
   it('supports per-tool mounted LLM mode in the authoring contract', () => {

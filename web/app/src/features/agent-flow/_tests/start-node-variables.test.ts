@@ -10,6 +10,7 @@ import { createNodeDocument } from '../lib/document/node-factory';
 import {
   isSelectorVisible,
   listLlmContextSelectorOptions,
+  listLlmProtocolContextSelectorOptions,
   listVisibleSelectorOptions,
   toCascaderSelectorOptions
 } from '../lib/selector-options';
@@ -228,6 +229,61 @@ describe('start node variables', () => {
         (option) => option.value
       )
     ).not.toContainEqual(['node-code', 'result', 'raw_payload']);
+  });
+
+  test('WP-D1D lists only whole protocol context sources without enumerating JSON fields', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const codeNode = createNodeDocument('code', 'node-code');
+
+    codeNode.outputs = [
+      {
+        key: 'protocol_context',
+        title: 'Protocol Context',
+        valueType: 'json',
+        jsonSchema: {
+          type: 'object',
+          properties: {
+            source_protocol: { type: 'string' },
+            headers: { type: 'object' }
+          }
+        }
+      },
+      {
+        key: 'summary',
+        title: 'Summary',
+        valueType: 'string'
+      }
+    ];
+    document.graph.nodes.push(codeNode);
+    document.graph.edges.push({
+      id: 'edge-code-llm',
+      source: 'node-code',
+      target: 'node-llm',
+      sourceHandle: null,
+      targetHandle: null,
+      containerId: null,
+      points: []
+    });
+
+    expect(listLlmProtocolContextSelectorOptions(document, 'node-llm')).toEqual([
+      expect.objectContaining({
+        nodeId: 'sys',
+        nodeLabel: 'Start',
+        outputLabel: 'sys.protocol_context',
+        value: ['sys', 'protocol_context']
+      }),
+      expect.objectContaining({
+        nodeId: 'node-code',
+        nodeLabel: 'Code',
+        outputLabel: 'protocol_context',
+        value: ['node-code', 'result', 'protocol_context']
+      })
+    ]);
+    expect(
+      listLlmProtocolContextSelectorOptions(document, 'node-llm').flatMap(
+        (option) => option.value
+      )
+    ).not.toContain('headers');
   });
 
   test('builds nested cascader paths for code result output selectors', () => {

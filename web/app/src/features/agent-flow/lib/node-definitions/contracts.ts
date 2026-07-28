@@ -8,6 +8,7 @@ import type {
   NodeRuntimeUiContract
 } from '@1flowbase/flow-schema';
 import {
+  DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE,
   NODE_CONTRIBUTION_SCHEMA_VERSION,
   getLlmNodeOutputs
 } from '@1flowbase/flow-schema';
@@ -337,6 +338,9 @@ function createLlmContract(): NodeRuntimeUiContract {
       external_model_parameter_policy: {
         follow_external_max_output_tokens: true
       },
+      protocol_context: cloneJsonValue(
+        DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE
+      ),
       visible_internal_llm_tools_enabled: false,
       visible_internal_llm_tools: [],
       response_format: {
@@ -377,6 +381,12 @@ function createLlmContract(): NodeRuntimeUiContract {
           key: 'config.context_policy',
           title: '上下文',
           renderer: 'llm_context_policy',
+          valueType: 'json'
+        }),
+        panelField({
+          key: 'config.protocol_context',
+          title: '协议上下文',
+          renderer: 'selector',
           valueType: 'json'
         }),
         panelField({

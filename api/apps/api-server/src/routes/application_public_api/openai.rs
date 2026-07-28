@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Bytes,
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,7 +13,10 @@ use control_plane::application_public_api::{
         ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
-    client_protocol_envelope::{capture_client_protocol_envelope, ClientProtocolIngressPolicy},
+    client_protocol_envelope::{
+        capture_client_protocol_envelope, capture_client_protocol_query,
+        merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
+    },
     compat::openai::{
         extract_model_list_from_start_node, response_id_from_run_id, run_id_from_response_id,
         translate_chat_completion_request, translate_response_request_with_context_and_previous,
@@ -40,7 +43,7 @@ use control_plane::ports::{
 use domain::{AiNativeCompactProfile, AiNativeOperation};
 use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
+    ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
 use serde_json::{json, Value};
 use tracing::{info, warn};
@@ -120,6 +123,7 @@ enum OpenAiResponseDispatch {
 pub async fn create_chat_completion(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
     let credential = match openai_credential(&headers) {
@@ -212,7 +216,12 @@ pub async fn create_chat_completion(
     };
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
+    request.client_protocol_envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiChat,
+        uri.query(),
+        &headers,
+        request.client_protocol_envelope,
+    );
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
     let run = match create_native_run(state.clone(), credential.token.clone(), request).await {
@@ -269,9 +278,17 @@ pub async fn create_chat_completion(
 pub async fn create_response(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
-    create_response_for_endpoint(state, headers, body, OpenAiResponsesEndpoint::Responses).await
+    create_response_for_endpoint(
+        state,
+        headers,
+        uri.query().map(ToOwned::to_owned),
+        body,
+        OpenAiResponsesEndpoint::Responses,
+    )
+    .await
 }
 
 #[utoipa::path(
@@ -292,11 +309,13 @@ pub async fn create_response(
 pub async fn create_response_compact(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
     create_response_for_endpoint(
         state,
         headers,
+        uri.query().map(ToOwned::to_owned),
         body,
         OpenAiResponsesEndpoint::ResponsesCompact,
     )
@@ -306,12 +325,14 @@ pub async fn create_response_compact(
 async fn create_response_for_endpoint(
     state: Arc<ApiState>,
     headers: HeaderMap,
+    raw_query: Option<String>,
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
 ) -> Result<Response, OpenAiRouteError> {
     match dispatch_response_for_endpoint(
         state,
         headers,
+        raw_query,
         body,
         endpoint,
         OpenAiResponseDelivery::Http,
@@ -337,6 +358,7 @@ pub(crate) async fn prepare_typed_response_turn(
     match dispatch_response_for_endpoint(
         state,
         headers,
+        None,
         body,
         OpenAiResponsesEndpoint::Responses,
         OpenAiResponseDelivery::TypedEvents,
@@ -357,6 +379,7 @@ pub(crate) async fn prepare_typed_response_turn(
 async fn dispatch_response_for_endpoint(
     state: Arc<ApiState>,
     headers: HeaderMap,
+    raw_query: Option<String>,
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
     delivery: OpenAiResponseDelivery,
@@ -524,7 +547,12 @@ async fn dispatch_response_for_endpoint(
     };
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
+    request.client_protocol_envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        raw_query.as_deref(),
+        &headers,
+        request.client_protocol_envelope,
+    );
     let operation = *request.execution.execution_operation();
     if matches!(operation, AiNativeOperation::Compact(_)) {
         let payload = ProviderTransportPayload::openai_responses(provider_transport_wire_body)
@@ -903,15 +931,26 @@ pub(super) async fn authenticate_openai_response_credential(
         .map_err(|_| native::native_error(NativeRunValidationError::NotAuthenticated))
 }
 
-fn openai_client_protocol_envelope_from_headers(
+fn openai_protocol_context_from_ingress(
+    policy: ClientProtocolIngressPolicy,
+    raw_query: Option<&str>,
     headers: &HeaderMap,
-) -> Option<ClientProtocolEnvelope> {
-    capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::DefaultDeny,
-        headers
-            .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
-    )
+    translated: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
+    let captured = merge_client_protocol_envelopes(
+        policy,
+        capture_client_protocol_envelope(
+            policy,
+            headers.iter().filter_map(|(name, value)| {
+                value.to_str().ok().map(|value| (name.as_str(), value))
+            }),
+        ),
+        capture_client_protocol_query(
+            policy,
+            form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
+        ),
+    );
+    merge_client_protocol_envelopes(policy, captured, translated)
 }
 
 fn parse_openai_json_body(
@@ -965,14 +1004,22 @@ async fn create_native_run(
     bearer_token: String,
     request: NativeRunRequest,
 ) -> Result<NativeRunResult, native::NativeApiError> {
-    ApplicationNativeRunService::new(state.store.clone())
+    let protocol_context = request.client_protocol_envelope.clone();
+    let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
         })
         .await
-        .map_err(native::native_error)
+        .map_err(native::native_error)?;
+    native::stage_client_protocol_context(
+        state.infrastructure.provider_transport_store().as_ref(),
+        &run,
+        protocol_context,
+    )
+    .await?;
+    Ok(run)
 }
 
 async fn execute_openai_tool_resume(
@@ -992,6 +1039,7 @@ async fn execute_openai_tool_resume(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)

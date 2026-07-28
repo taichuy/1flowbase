@@ -1,5 +1,6 @@
 use std::{
     net::SocketAddr,
+    path::Path,
     sync::{Arc, OnceLock},
 };
 
@@ -10,6 +11,9 @@ use axum::{
     Json, Router,
 };
 use plugin_framework::{
+    artifact_reconcile::{
+        reconcile_provider_artifact, ArtifactReconcileInput, ArtifactReconcileOutcome,
+    },
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceGetRecordInput,
@@ -96,6 +100,29 @@ impl AppState {
 #[derive(Debug, Deserialize)]
 struct LoadProviderRequest {
     package_root: String,
+    #[serde(default)]
+    artifact_receipt: Option<ProviderArtifactReceiptRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderArtifactReceiptRequest {
+    package_path: String,
+    expected_artifact_sha256: String,
+    expected_manifest_fingerprint: String,
+}
+
+#[derive(Debug, Serialize)]
+struct VerifiedProviderArtifactReceipt {
+    package_sha256: String,
+    manifest_fingerprint: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LoadProviderResponse {
+    #[serde(flatten)]
+    provider: LoadedProviderSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verified_artifact_receipt: Option<VerifiedProviderArtifactReceipt>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,11 +269,47 @@ async fn system_runtime_profile(
 async fn load_provider(
     State(state): State<AppState>,
     Json(request): Json<LoadProviderRequest>,
-) -> Result<Json<LoadedProviderSummary>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<LoadProviderResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let verified_artifact_receipt = if let Some(receipt) = request.artifact_receipt {
+        let reconciled = reconcile_provider_artifact(ArtifactReconcileInput {
+            package_path: Some(Path::new(&receipt.package_path)),
+            installed_path: Path::new(&request.package_root),
+            expected_artifact_sha256: Some(&receipt.expected_artifact_sha256),
+            expected_manifest_fingerprint: Some(&receipt.expected_manifest_fingerprint),
+        })
+        .await
+        .map_err(map_framework_error)?;
+        if reconciled.outcome != ArtifactReconcileOutcome::Ready {
+            let detail = reconciled
+                .last_error
+                .as_deref()
+                .unwrap_or("artifact_reconcile_failed");
+            return Err(map_framework_error(
+                PluginFrameworkError::invalid_provider_package(format!(
+                    "provider artifact receipt mismatch: {detail}"
+                )),
+            ));
+        }
+        let manifest_fingerprint = reconciled.manifest_fingerprint.ok_or_else(|| {
+            map_framework_error(PluginFrameworkError::invalid_provider_package(
+                "provider artifact receipt is missing the manifest fingerprint",
+            ))
+        })?;
+        Some(VerifiedProviderArtifactReceipt {
+            package_sha256: receipt.expected_artifact_sha256,
+            manifest_fingerprint,
+        })
+    } else {
+        None
+    };
     let mut host = state.provider_host.write().await;
-    host.load(&request.package_root)
-        .map(Json)
-        .map_err(map_framework_error)
+    let provider = host
+        .load(&request.package_root)
+        .map_err(map_framework_error)?;
+    Ok(Json(LoadProviderResponse {
+        provider,
+        verified_artifact_receipt,
+    }))
 }
 
 async fn reload_provider(

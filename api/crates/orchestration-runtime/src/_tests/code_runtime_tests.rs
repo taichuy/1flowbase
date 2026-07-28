@@ -588,8 +588,9 @@ async fn code_isolation_profile_is_included_in_code_metrics() {
     runtime.isolation_profile.memory_mb = 16;
     runtime.isolation_profile.stack_kb = 512;
     let node = code_node_with_runtime(runtime);
+    let plan = code_runtime_plan();
 
-    let execution = execute_code_node(&node, &Map::new(), &QuickJsCodeInvoker::default())
+    let execution = execute_code_node(&plan, &node, &Map::new(), &QuickJsCodeInvoker::default())
         .await
         .expect("code node should execute");
 
@@ -614,14 +615,20 @@ function main(inputs) {
 "#,
     );
     let node = code_node_with_runtime(runtime);
+    let plan = code_runtime_plan();
     let resolved_inputs = json!({ "query": "hello", "count": 1 })
         .as_object()
         .cloned()
         .unwrap();
 
-    let execution = execute_code_node(&node, &resolved_inputs, &QuickJsCodeInvoker::default())
-        .await
-        .expect("code node should execute");
+    let execution = execute_code_node(
+        &plan,
+        &node,
+        &resolved_inputs,
+        &QuickJsCodeInvoker::default(),
+    )
+    .await
+    .expect("code node should execute");
 
     assert_eq!(
         execution.output_payload,
@@ -666,8 +673,9 @@ function main() {
 "#,
     );
     let node = code_node_with_runtime(runtime);
+    let plan = code_runtime_plan();
 
-    let execution = execute_code_node(&node, &Map::new(), &QuickJsCodeInvoker::default())
+    let execution = execute_code_node(&plan, &node, &Map::new(), &QuickJsCodeInvoker::default())
         .await
         .expect("code node errors should be converted to execution payloads");
 

@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { TRANSPORT } = require('../../contracts');
-const { readReadyManifest, runWorkflowContract } = require('../runner');
+const { protocolOracleInventory, readReadyManifest, runWorkflowContract } = require('../runner');
 
 function fixtureInputs() {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-runner-'));
@@ -15,10 +15,16 @@ function fixtureInputs() {
   fs.chmodSync(executable, 0o755);
   const openaiPackageDir = path.join(repoRoot, 'openai');
   const anthropicPackageDir = path.join(repoRoot, 'anthropic');
+  const openaiCompatiblePackageDir = path.join(repoRoot, 'openai_compatible');
   fs.mkdirSync(openaiPackageDir);
   fs.mkdirSync(anthropicPackageDir);
+  fs.mkdirSync(openaiCompatiblePackageDir);
   fs.writeFileSync(path.join(openaiPackageDir, 'openai.1flowbasepkg'), 'openai');
   fs.writeFileSync(path.join(anthropicPackageDir, 'anthropic.1flowbasepkg'), 'anthropic');
+  fs.writeFileSync(
+    path.join(openaiCompatiblePackageDir, 'openai_compatible.1flowbasepkg'),
+    'openai-compatible'
+  );
   return {
     repoRoot,
     mainSourceSha: 'a'.repeat(40),
@@ -29,6 +35,7 @@ function fixtureInputs() {
     pluginRunnerBin: executable,
     openaiPackageDir,
     anthropicPackageDir,
+    openaiCompatiblePackageDir,
     hostTarget: 'x86_64-unknown-linux-gnu',
   };
 }
@@ -64,6 +71,12 @@ function fixtureManifest() {
     plugin_runner_active_streams: streams,
   });
   const openai = target('openai', 1, 'published-openai-model', { responses_url: 'http://127.0.0.1:4100/v1/responses' });
+  const openaiCompatible = target(
+    'openai_compatible',
+    1,
+    'published-compatible-model',
+    { chat_completions_url: 'http://127.0.0.1:4100/v1/chat/completions' }
+  );
   const anthropicPool = [1, 2].map((ordinal) => target(
     'anthropic', ordinal, 'published-anthropic-model', { anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages' }
   ));
@@ -71,11 +84,26 @@ function fixtureManifest() {
     schema_version: '1flowbase.ai-gateway-fixture/v1',
     targets: {
       openai,
+      openai_compatible: openaiCompatible,
       anthropic: anthropicPool[0],
     },
     pools: { anthropic: anthropicPool },
   };
 }
+
+test('Root #1477 AC-001/004/005/006/008/009: workflow invokes the complete deterministic oracle inventory', () => {
+  const inventory = protocolOracleInventory();
+  assert.equal(inventory.rows, 16);
+  assert.equal(inventory.request_fidelity.positive_rows.length, 3);
+  assert.equal(inventory.request_fidelity.negative_rows.length, 4);
+  assert.equal(inventory.error_fidelity.rows, 20);
+  assert.deepEqual(inventory.canonical_stream_regression.partitions, ['whole', 'bytewise', 'uneven']);
+  assert.equal(inventory.canonical_stream_regression.successTerminalCount, 1);
+  assert.equal(inventory.canonical_stream_regression.durableParity.preservesRepeatedContent, true);
+  assert.deepEqual(inventory.provenance.providers, [
+    'openai', 'anthropic', 'openai_compatible',
+  ]);
+});
 
 test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready-manifest keys once', async () => {
   const inputs = fixtureInputs();
@@ -105,6 +133,14 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
           calls.push('fixture:close');
         },
       };
+    },
+    async verifyRuntimeProvenance() {
+      calls.push('runtime-provenance');
+      return { verdict: 'PASS', providers: {} };
+    },
+    async verifyGatewayRequestFidelity() {
+      calls.push('request-fidelity');
+      return { verdict: 'PASS', rows: [] };
     },
     async runWireAudit(options) {
       calls.push(['wire-audit', options.manifest.gatewayBaseUrl]);
@@ -142,17 +178,17 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   assert.equal(result.characterize.performance_requests, 196);
   assert.equal(result.characterize.performance_and_observability_advisories, 2);
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
-    'mock:create', 'mock:start', 'fixture:create', 'wire-audit', 'responses-websocket', 'characterize', 'fixture:close', 'mock:stop',
+    'mock:create', 'mock:start', 'fixture:create', 'runtime-provenance', 'request-fidelity', 'wire-audit', 'responses-websocket', 'characterize', 'fixture:close', 'mock:stop',
   ]);
   const characterize = calls.find((call) => Array.isArray(call) && call[0] === 'characterize')[1];
   assert.deepEqual(characterize.authorizationTokenByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'openai-application-key-1',
-    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'openai-application-key-1',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'openai_compatible-application-key-1',
     [TRANSPORT.ANTHROPIC_SSE]: 'anthropic-application-key-1',
   });
   assert.deepEqual(characterize.modelByTransport, {
     [TRANSPORT.RESPONSES_SSE]: 'published-openai-model',
-    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'published-openai-model',
+    [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'published-compatible-model',
     [TRANSPORT.ANTHROPIC_SSE]: 'published-anthropic-model',
   });
   assert.equal(characterize.endpointSet[TRANSPORT.RESPONSES_WEBSOCKET], 'ws://127.0.0.1:4000/v1/responses');
@@ -163,7 +199,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   );
   assert.deepEqual(
     characterize.durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE],
-    fixtureManifest().targets.openai,
+    fixtureManifest().targets.openai_compatible,
   );
   assert.deepEqual(characterize.anthropicTargetPool, fixtureManifest().pools.anthropic);
   const fixtureCreate = calls.find((call) => Array.isArray(call) && call[0] === 'fixture:create');
@@ -187,6 +223,8 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
     async createGatewayFixture() {
       return { result: fixtureManifest(), async close() { calls.push('fixture:close'); } };
     },
+    async verifyRuntimeProvenance() { return { verdict: 'PASS', providers: {} }; },
+    async verifyGatewayRequestFidelity() { return { verdict: 'PASS', rows: [] }; },
     async runWireAudit() { throw new Error('wire audit failed with anthropic-application-key-2'); },
     async runGatewayWebSocketAcceptance() { return { wire_audit: { verdict: 'PASS' } }; },
     async runGatewayCharacterize() { throw new Error('characterize also failed'); },
@@ -215,6 +253,8 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
         async close() { calls.push('fixture:close'); throw new Error('service log persistence failed'); },
       };
     },
+    async verifyRuntimeProvenance() { return { verdict: 'PASS', providers: {} }; },
+    async verifyGatewayRequestFidelity() { return { verdict: 'PASS', rows: [] }; },
     async runWireAudit() { return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } }; },
     async runGatewayWebSocketAcceptance() { return { wire_audit: { verdict: 'PASS' } }; },
     async runGatewayCharacterize() {

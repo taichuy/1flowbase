@@ -99,6 +99,10 @@ function normalizeOptions(options) {
     pluginRunnerBin: requireFile(options.pluginRunnerBin, 'plugin-runner binary', { executable: true }),
     openaiPackage: requireFile(options.openaiPackage, 'official OpenAI package archive'),
     anthropicPackage: requireFile(options.anthropicPackage, 'official Anthropic package archive'),
+    openaiCompatiblePackage: requireFile(
+      options.openaiCompatiblePackage,
+      'official OpenAI-compatible package archive'
+    ),
     upstreamBaseUrl: requireLoopbackUrl(options.upstreamBaseUrl),
     apiPort: options.apiPort === undefined || options.apiPort === null
       ? null

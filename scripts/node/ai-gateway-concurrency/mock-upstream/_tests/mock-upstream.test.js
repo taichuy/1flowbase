@@ -10,7 +10,8 @@ const {
   mockScenarioSentinel,
 } = require('../../contracts');
 const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = require('..');
-const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
+const { DEFAULT_BARRIER_MARKERS, chatTextEvents } = require('../protocol-events');
+const { errorFixtureMarker, upstreamErrorFixture } = require('../../protocol-oracle/error-fidelity');
 
 async function withMockUpstream(run, options = {}) {
   const upstream = createMockUpstream({
@@ -34,6 +35,23 @@ function parseSse(text) {
     return { event, data: JSON.parse(data) };
   });
 }
+
+test('Root #1477 AC-001/005: Chat text fixture emits two nonce-bearing upstream deltas', () => {
+  const nonce = 'mock-chat-fidelity';
+  const stream = chatTextEvents(nonce);
+
+  assert.deepEqual(
+    stream.chunks.map((chunk) => chunk.choices[0].delta.content),
+    [`${nonce}:chunk-1`, `${nonce}:chunk-2`],
+  );
+  assert.equal(stream.terminal.choices[0].finish_reason, 'stop');
+
+  assert.deepEqual(
+    chatTextEvents(nonce, '1flowbase gateway sentinel ', 'ok')
+      .chunks.map((chunk) => chunk.choices[0].delta.content),
+    ['1flowbase gateway sentinel ', 'ok'],
+  );
+});
 
 test('wire audit vector is inferred from the public Responses body', () => {
   assert.equal(wireAuditVectorFromBody({
@@ -260,6 +278,70 @@ test('AC-004: HTTP 500 is explicit and produces no success terminal', async () =
   });
 });
 
+test('Root #1477 AC-008: mock emits byte-exact JSON/text/HTML/empty upstream errors', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    for (const id of ['json', 'text', 'html', 'empty']) {
+      const fixture = upstreamErrorFixture(id);
+      const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'mock-model', input: errorFixtureMarker(id) }),
+      });
+      assert.equal(response.status, fixture.status);
+      assert.equal(response.headers.get('content-type'), fixture.contentType);
+      assert.equal(await response.text(), fixture.body);
+    }
+    const failures = upstream.snapshot().entries.filter((entry) => entry.errorFixture);
+    assert.deepEqual(failures.map((entry) => entry.errorFixture), ['json', 'text', 'html', 'empty']);
+    assert.equal(failures.every((entry) => entry.successTerminalCount === 0), true);
+  });
+});
+
+test('Root #1477 AC-008: retry fixture fails once and then succeeds for one correlation key', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const request = () => fetch(`${httpBaseUrl}${MOCK_ROUTE.CHAT_COMPLETIONS}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', fixture_retry_key: 'retry-correlation-1',
+        messages: [{ role: 'user', content: errorFixtureMarker('retry') }],
+      }),
+    });
+    const first = await request();
+    assert.equal(first.status, upstreamErrorFixture('retry').status);
+    assert.equal(await first.text(), upstreamErrorFixture('retry').body);
+    const second = await request();
+    assert.equal(second.status, 200);
+    assert.match(await second.text(), /chat\.completion\.chunk/u);
+  });
+});
+
+test('Root #1477 AC-005/006: arrival evidence stores a semantic digest without raw body or credentials', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}?fixture_query=value`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer raw-auth-canary', 'x-api-key': 'raw-key-canary',
+        'content-type': 'application/json', 'x-fixture-extension': 'safe-extension',
+      },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'high' },
+        context_management: { edits: [{ type: 'clear_tool_uses_20250919' }] },
+        messages: [{ role: 'user', content: 'raw-body-canary' }],
+      }),
+    });
+    await response.text();
+    const evidence = arrivalEntries(upstream)[0].request;
+    assert.match(evidence.semantic_sha256, /^[a-f0-9]{64}$/u);
+    assert.equal(evidence.body.thinkingAdaptive, true);
+    assert.equal(evidence.body.outputConfigEffortHigh, true);
+    assert.equal(evidence.body.contextManagementPresent, true);
+    for (const canary of ['raw-auth-canary', 'raw-key-canary', 'raw-body-canary']) {
+      assert.doesNotMatch(JSON.stringify(evidence), new RegExp(canary, 'u'));
+    }
+  });
+});
+
 test('AC-004 controlled negative: ambiguous scenario sentinels fail closed', async () => {
   await withMockUpstream(async ({ httpBaseUrl }) => {
     const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
@@ -434,6 +516,174 @@ test('Responses tool fixture calls a client-declared read function', async () =>
     )?.data.item;
     assert.equal(toolItem?.name, 'read');
     assert.deepEqual(JSON.parse(toolItem?.arguments), { filePath: '/tmp/tool-vector.txt' });
+  });
+});
+
+test('Root #1477 local client fixture emits parallel calls and two sequential callback rounds', async () => {
+  await withMockUpstream(async ({ httpBaseUrl, upstream }) => {
+    const request = async (input, previousResponseId = null) => {
+      const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'mock-model', stream: true, input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+        }),
+      });
+      return parseSse(await response.text());
+    };
+    const toolItems = (events) => events
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item)
+      .filter((item) => item.type === 'function_call');
+    const responseId = (events) => events.find(
+      (event) => event.event === 'response.completed',
+    )?.data.response.id;
+
+    const parallel = await request(
+      '1flowbase-client-tool-vector tools-parallel-one-callback-task '
+        + 'TOOL_VECTOR_PATH=/tmp/parallel-a PARALLEL_TOOL_A_PATH=/tmp/parallel-a '
+        + 'PARALLEL_TOOL_B_PATH=/tmp/parallel-b',
+    );
+    assert.deepEqual(
+      toolItems(parallel).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/parallel-a', '/tmp/parallel-b'],
+    );
+
+    const sequentialPrompt = '1flowbase-client-tool-vector '
+      + 'tools-sequential-callback-tasks-one-turn TOOL_VECTOR_PATH=/tmp/sequential-a '
+      + 'SEQUENTIAL_TOOL_A_PATH=/tmp/sequential-a SEQUENTIAL_TOOL_B_PATH=/tmp/sequential-b';
+    const first = await request(sequentialPrompt);
+    assert.deepEqual(
+      toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/sequential-a'],
+    );
+    const second = await request([{
+      type: 'function_call_output', call_id: 'call-a',
+      output: '1flowbase-client-tool-result sequential-a',
+    }], responseId(first));
+    assert.deepEqual(
+      toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/sequential-b'],
+    );
+    const third = await request([{
+      type: 'function_call_output', call_id: 'call-b',
+      output: '1flowbase-client-tool-result sequential-b',
+    }], responseId(second));
+    assert.equal(toolItems(third).length, 0);
+    assert.equal(
+      third
+        .filter((event) => event.event === 'response.output_text.delta'
+          && event.data.type === 'response.output_text.delta')
+        .map((event) => event.data.delta)
+        .join(''),
+      '1flowbase sequential callback sentinel ok',
+    );
+
+    const snapshot = upstream.snapshot();
+    const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
+    assert.equal(toolCallRounds.length, 3);
+    assert.deepEqual(
+      toolCallRounds.map((event) => event.nonce),
+      [parallel, first, second].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    const callbackRequests = snapshot.entries.filter(
+      (event) => event.event === 'second_upstream_request',
+    );
+    assert.equal(callbackRequests.length, 2);
+    assert.deepEqual(
+      callbackRequests.map((event) => event.nonce),
+      [second, third].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    assert.ok(toolCallRounds[1].sequence < callbackRequests[0].sequence);
+    assert.ok(callbackRequests[0].sequence < toolCallRounds[2].sequence);
+    assert.ok(toolCallRounds[2].sequence < callbackRequests[1].sequence);
+  });
+});
+
+test('Root #1477 Responses WebSocket records parallel and sequential Provider tool-call rounds', async () => {
+  await withMockUpstream(async ({ websocketBaseUrl, upstream }) => {
+    const request = (input, previousResponseId = null) => new Promise((resolve, reject) => {
+      const received = [];
+      const socket = new WebSocket(`${websocketBaseUrl}${MOCK_ROUTE.RESPONSES}`);
+      socket.addEventListener('open', () => socket.send(JSON.stringify({
+        type: 'response.create',
+        response: {
+          model: 'mock-model', input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+        },
+      })));
+      socket.addEventListener('message', (message) => received.push(JSON.parse(message.data)));
+      socket.addEventListener('close', () => resolve(received));
+      socket.addEventListener('error', reject);
+    });
+    const toolItems = (events) => events
+      .filter((event) => event.type === 'response.output_item.done')
+      .map((event) => event.item)
+      .filter((item) => item.type === 'function_call');
+    const responseId = (events) => events.find(
+      (event) => event.type === 'response.completed',
+    )?.response.id;
+
+    const parallel = await request(
+      '1flowbase-client-tool-vector tools-parallel-one-callback-task '
+        + 'TOOL_VECTOR_PATH=/tmp/ws-parallel-a PARALLEL_TOOL_A_PATH=/tmp/ws-parallel-a '
+        + 'PARALLEL_TOOL_B_PATH=/tmp/ws-parallel-b',
+    );
+    assert.deepEqual(
+      toolItems(parallel).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-parallel-a', '/tmp/ws-parallel-b'],
+    );
+
+    const sequentialPrompt = '1flowbase-client-tool-vector '
+      + 'tools-sequential-callback-tasks-one-turn TOOL_VECTOR_PATH=/tmp/ws-sequential-a '
+      + 'SEQUENTIAL_TOOL_A_PATH=/tmp/ws-sequential-a SEQUENTIAL_TOOL_B_PATH=/tmp/ws-sequential-b';
+    const first = await request(sequentialPrompt);
+    assert.deepEqual(
+      toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-sequential-a'],
+    );
+    const second = await request([{
+      type: 'function_call_output', call_id: 'call-ws-a',
+      output: '1flowbase-client-tool-result sequential-a',
+    }], responseId(first));
+    assert.deepEqual(
+      toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-sequential-b'],
+    );
+    const third = await request([{
+      type: 'function_call_output', call_id: 'call-ws-b',
+      output: '1flowbase-client-tool-result sequential-b',
+    }], responseId(second));
+    assert.equal(toolItems(third).length, 0);
+    assert.equal(
+      third
+        .filter((event) => event.type === 'response.output_text.delta')
+        .map((event) => event.delta)
+        .join(''),
+      '1flowbase sequential callback sentinel ok',
+    );
+    assert.equal(third.filter((event) => event.type === 'response.completed').length, 1);
+
+    const snapshot = upstream.snapshot();
+    const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
+    assert.equal(toolCallRounds.length, 3);
+    assert.deepEqual(
+      toolCallRounds.map((event) => event.nonce),
+      [parallel, first, second].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    const callbackRequests = snapshot.entries.filter(
+      (event) => event.event === 'second_upstream_request',
+    );
+    assert.equal(callbackRequests.length, 2);
+    assert.deepEqual(
+      callbackRequests.map((event) => event.nonce),
+      [second, third].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    assert.ok(toolCallRounds[1].sequence < callbackRequests[0].sequence);
+    assert.ok(callbackRequests[0].sequence < toolCallRounds[2].sequence);
+    assert.ok(toolCallRounds[2].sequence < callbackRequests[1].sequence);
   });
 });
 

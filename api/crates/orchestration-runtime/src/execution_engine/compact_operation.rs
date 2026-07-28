@@ -21,7 +21,10 @@ where
         rendered_templates,
         variable_pool,
         runtime_context,
-    ) {
+        invoker,
+    )
+    .await
+    {
         Ok(invocation) => invocation.input,
         Err(error_payload) => return Ok(failed_compact_execution(error_payload)),
     };

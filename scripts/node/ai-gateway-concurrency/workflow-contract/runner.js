@@ -7,10 +7,20 @@ const { runGatewayCharacterize } = require('../characterize/engine');
 const { createGatewayFixture } = require('../gateway-fixture');
 const { createMockUpstream } = require('../mock-upstream');
 const { loadPinnedInventory } = require('../wire-audit/inventory');
-const { runWireAudit } = require('../wire-audit/runner');
-const { PROTOCOL_TRANSPORT_ORACLES } = require('../protocol-oracle/oracle-matrix');
+const {
+  errorFidelityInventory,
+  requestFidelityInventory,
+  runWireAudit,
+} = require('../wire-audit/runner');
+const {
+  CANONICAL_STREAM_REGRESSION_ORACLE,
+  PROTOCOL_TRANSPORT_ORACLES,
+} = require('../protocol-oracle/oracle-matrix');
 const { runGatewayWebSocketAcceptance } = require('./gateway-websocket');
 const { normalizeRunInputs } = require('./inputs');
+const { PROVENANCE_FIDELITY_ORACLE } = require('./provenance');
+const { verifyRuntimeProvenance } = require('./runtime-provenance');
+const { verifyGatewayRequestFidelity } = require('./request-fidelity-gateway');
 const {
   prepareEvidence,
   publicError,
@@ -33,7 +43,22 @@ function protocolOracleInventory() {
     if (!observed.has(transport)) throw new Error(`protocol oracle omitted blocking transport ${transport}`);
   }
   if (PROTOCOL_TRANSPORT_ORACLES.length !== 16) throw new Error('protocol oracle must contain the approved 4 x 4 matrix');
-  return { rows: PROTOCOL_TRANSPORT_ORACLES.length, blocking_transports: BLOCKING_TRANSPORTS };
+  const requestFidelity = requestFidelityInventory();
+  const errorFidelity = errorFidelityInventory();
+  if (CANONICAL_STREAM_REGRESSION_ORACLE.partitions.length !== 3) {
+    throw new Error('canonical stream regression oracle omitted a UTF-8 partition');
+  }
+  if (CANONICAL_STREAM_REGRESSION_ORACLE.successTerminalCount !== 1) {
+    throw new Error('canonical stream regression oracle relaxed the success terminal invariant');
+  }
+  return {
+    rows: PROTOCOL_TRANSPORT_ORACLES.length,
+    blocking_transports: BLOCKING_TRANSPORTS,
+    request_fidelity: requestFidelity,
+    error_fidelity: errorFidelity,
+    canonical_stream_regression: CANONICAL_STREAM_REGRESSION_ORACLE,
+    provenance: PROVENANCE_FIDELITY_ORACLE,
+  };
 }
 
 function requireReadyEndpoint(value, provider, pathname) {
@@ -62,7 +87,7 @@ function readReadyManifest(filePath) {
   if (manifest.schema_version !== '1flowbase.ai-gateway-fixture/v1') {
     throw new Error('WP3 ready manifest schema mismatch');
   }
-  for (const provider of ['openai', 'anthropic']) {
+  for (const provider of ['openai', 'anthropic', 'openai_compatible']) {
     const target = manifest.targets?.[provider];
     if (typeof target?.api_key !== 'string' || !target.api_key.trim()) {
       throw new Error(`WP3 ready manifest omitted ${provider} Application API key`);
@@ -119,9 +144,18 @@ function readReadyManifest(filePath) {
   if (manifest.targets.anthropic.gateway.anthropic_messages_url !== anthropicPool[0].gateway.anthropic_messages_url) {
     throw new Error('WP3 ready manifest Anthropic primary target mismatched pool endpoint');
   }
-  if (manifest.targets.openai.api_key === manifest.targets.anthropic.api_key) {
+  if (new Set([
+    manifest.targets.openai.api_key,
+    manifest.targets.anthropic.api_key,
+    manifest.targets.openai_compatible.api_key,
+  ]).size !== 3) {
     throw new Error('WP3 ready manifest reused an Application API key');
   }
+  requireReadyEndpoint(
+    manifest.targets.openai_compatible.gateway?.chat_completions_url,
+    'OpenAI-compatible Chat Completions',
+    '/v1/chat/completions'
+  );
   requireReadyEndpoint(
     manifest.targets.openai.gateway?.responses_url,
     'OpenAI Responses',
@@ -151,29 +185,28 @@ function wireAuditManifest(ready) {
 }
 
 function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot }) {
-  const openaiGatewayOrigin = new URL(ready.targets.openai.gateway.responses_url).origin;
   return {
     repoRoot,
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
       [TRANSPORT.RESPONSES_WEBSOCKET]: `${websocketBaseUrl}/v1/responses`,
-      [TRANSPORT.CHAT_COMPLETIONS_SSE]: `${openaiGatewayOrigin}/v1/chat/completions`,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai_compatible.gateway.chat_completions_url,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.gateway.anthropic_messages_url,
     },
     authorizationTokenByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.api_key,
-      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai.api_key,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai_compatible.api_key,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.api_key,
     },
     modelByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.model,
-      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai.model,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai_compatible.model,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic.model,
     },
     mockSnapshot,
     durableTargetsByTransport: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai,
-      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: ready.targets.openai_compatible,
       [TRANSPORT.ANTHROPIC_SSE]: ready.targets.anthropic,
     },
     anthropicTargetPool: ready.pools.anthropic,
@@ -193,6 +226,8 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   let wireAudit = null;
   let gatewayWebSocket = null;
   let characterizeResult = null;
+  let runtimeProvenance = null;
+  let requestFidelity = null;
   let executionError = null;
   const blockingFailures = [];
   const cleanupErrors = [];
@@ -206,6 +241,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       pluginRunnerBin: inputs.pluginRunnerBin,
       openaiPackage: inputs.openaiPackage,
       anthropicPackage: inputs.anthropicPackage,
+      openaiCompatiblePackage: inputs.openaiCompatiblePackage,
       upstreamBaseUrl: mockEndpoints.httpBaseUrl,
       artifactRoot: paths.root,
     });
@@ -214,6 +250,31 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     const compatibilityManifest = wireAuditManifest(ready);
     writeJson(path.join(paths.root, 'wire-inventory.json'), loadPinnedInventory());
     const checks = [
+      ['runtime-provenance', async () => {
+        runtimeProvenance = await (
+          dependencies.verifyRuntimeProvenance || verifyRuntimeProvenance
+        )({
+          officialSourceSha: inputs.officialSourceSha,
+          pairedLockRevision: inputs.pairedLockRevision,
+          pluginRunnerBin: inputs.pluginRunnerBin,
+          packages: {
+            openai: inputs.openaiPackage,
+            anthropic: inputs.anthropicPackage,
+            openai_compatible: inputs.openaiCompatiblePackage,
+          },
+        });
+        writeJson(path.join(paths.root, 'provider-provenance.json'), runtimeProvenance);
+      }],
+      ['request-fidelity', async () => {
+        requestFidelity = await (
+          dependencies.verifyGatewayRequestFidelity || verifyGatewayRequestFidelity
+        )({
+          ready,
+          upstreamBaseUrl: mockEndpoints.httpBaseUrl,
+          mockSnapshot: mock.snapshot,
+        });
+        writeJson(path.join(paths.root, 'request-fidelity.json'), requestFidelity);
+      }],
       ['wire-audit', async () => {
         wireAudit = await wireAuditRunner({ manifest: compatibilityManifest }, { secretCanary: SECRET_CANARY });
         writeJson(path.join(paths.root, 'wire-audit.json'), wireAudit);
@@ -265,6 +326,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
 
   const secrets = [
     ready?.targets?.openai?.api_key,
+    ready?.targets?.openai_compatible?.api_key,
     ...(ready?.pools?.anthropic ?? []).map((target) => target.api_key),
     SECRET_CANARY,
   ].filter(Boolean);
@@ -277,6 +339,8 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       oracle: protocolOracleInventory(),
       wire_audit: wireAudit,
       responses_websocket: gatewayWebSocket,
+      runtime_provenance: runtimeProvenance,
+      request_fidelity: requestFidelity,
       failures: blockingFailures.map((failure) => ({
         name: failure.name,
         ...publicError(failure.error, secrets),
@@ -290,6 +354,10 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       anthropic: {
         model: ready.targets.anthropic.model,
         package_sha256: ready.packages?.anthropic?.sha256 ?? null,
+      },
+      openai_compatible: {
+        model: ready.targets.openai_compatible.model,
+        package_sha256: ready.packages?.openai_compatible?.sha256 ?? null,
       },
       anthropic_pool: ready.pools.anthropic.map((target) => ({
         application_id: target.application_id,

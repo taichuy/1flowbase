@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     code_executor_capability::select_code_executor,
-    compiled_plan::{CompiledCodeDependency, CompiledCodeRuntime, CompiledNode},
+    compiled_plan::{CompiledCodeDependency, CompiledCodeRuntime, CompiledNode, CompiledPlan},
     output_schema::validate_output_value,
     payload_builder::{
         is_reserved_payload_key, BuiltNodePayloads, PublicOutputContract, RawNodeExecutionResult,
@@ -47,6 +47,30 @@ pub trait CodeInvoker: Send + Sync {
         config_payload: Value,
         input_payload: Value,
     ) -> Result<CodeInvocationOutput>;
+
+    /// Replaces protocol-context values selected from Code output with durable-safe locators
+    /// after in-memory contract validation and before node tracing or checkpoint creation.
+    async fn protect_protocol_context_output(
+        &self,
+        output: &mut CodeInvocationOutput,
+        selected_output_paths: &[Vec<String>],
+    ) -> Result<()> {
+        if selected_output_paths.iter().any(|path| {
+            read_value_path(&output.output_payload, path).is_some_and(|value| !value.is_null())
+        }) {
+            return Err(anyhow!("ephemeral_protocol_context_store_unavailable"));
+        }
+        Ok(())
+    }
+
+    /// Scrubs protocol-context values from Code console logs produced on an error path where no
+    /// output exists to protect.
+    async fn protect_protocol_context_logs(
+        &self,
+        _console_logs: &mut Vec<ConsoleLogEntry>,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -686,6 +710,7 @@ pub struct CodeNodeExecution {
 }
 
 pub async fn execute_code_node<I>(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     invoker: &I,
@@ -714,17 +739,32 @@ where
         .invoke_code_node(runtime, config_payload, input_payload)
         .await
     {
-        Ok(output) => {
+        Ok(mut output) => {
+            let raw_executor_output = object_from_value(output.output_payload.clone())?;
+            let output_contract_error =
+                validate_code_output_contract(node, &raw_executor_output).err();
+            let protocol_context_output_paths = protocol_context_output_paths(plan, &node.node_id)?;
+            if let Err(error) = invoker
+                .protect_protocol_context_output(&mut output, &protocol_context_output_paths)
+                .await
+            {
+                return failed_code_runtime_execution(node, runtime, &error, invoker).await;
+            }
             let debug_facts = code_runtime_debug_facts(&output.console_logs)?;
             let executor_output = object_from_value(output.output_payload)?;
-            if let Err(error) = validate_code_output_contract(node, &executor_output) {
+            if let Some(error) = output_contract_error {
+                let runtime_message = if protocol_context_output_paths.is_empty() {
+                    error.to_string()
+                } else {
+                    "selected Code output does not satisfy its declared JSON contract".to_string()
+                };
                 let raw = RawNodeExecutionResult {
                     executor_output: Map::new(),
                     metrics_facts: code_runtime_metrics(runtime, true)?,
                     error_facts: object_from_value(json!({
                         "error_code": "code_output_contract_error",
                         "message": "code output contract validation failed",
-                        "runtime_message": error.to_string(),
+                        "runtime_message": runtime_message,
                     }))?,
                     debug_facts,
                     provider_events: Vec::new(),
@@ -754,32 +794,95 @@ where
                 debug_payload: built.debug_payload,
             })
         }
-        Err(error) => {
-            let console_logs = error
-                .downcast_ref::<CodeRunnerError>()
-                .map(|error| error.console_logs.clone())
-                .unwrap_or_default();
-            let raw = RawNodeExecutionResult {
-                executor_output: Map::new(),
-                metrics_facts: code_runtime_metrics(runtime, true)?,
-                error_facts: object_from_value(json!({
-                    "error_code": "code_runtime_error",
-                    "message": "code execution failed",
-                    "runtime_message": error.to_string(),
-                }))?,
-                debug_facts: code_runtime_debug_facts(&console_logs)?,
-                provider_events: Vec::new(),
-            };
-            let built = build_code_node_payloads(node, raw)?;
-
-            Ok(CodeNodeExecution {
-                output_payload: built.output_payload,
-                error_payload: Some(built.error_payload),
-                metrics_payload: built.metrics_payload,
-                debug_payload: built.debug_payload,
-            })
-        }
+        Err(error) => failed_code_runtime_execution(node, runtime, &error, invoker).await,
     }
+}
+
+async fn failed_code_runtime_execution<I>(
+    node: &CompiledNode,
+    runtime: &CompiledCodeRuntime,
+    error: &anyhow::Error,
+    invoker: &I,
+) -> Result<CodeNodeExecution>
+where
+    I: CodeInvoker + ?Sized,
+{
+    let mut console_logs = error
+        .downcast_ref::<CodeRunnerError>()
+        .map(|error| error.console_logs.clone())
+        .unwrap_or_default();
+    let runtime_message = match invoker
+        .protect_protocol_context_logs(&mut console_logs)
+        .await
+    {
+        Ok(()) => error.to_string(),
+        Err(protection_error) => {
+            console_logs.clear();
+            protection_error.to_string()
+        }
+    };
+    let raw = RawNodeExecutionResult {
+        executor_output: Map::new(),
+        metrics_facts: code_runtime_metrics(runtime, true)?,
+        error_facts: object_from_value(json!({
+            "error_code": "code_runtime_error",
+            "message": "code execution failed",
+            "runtime_message": runtime_message,
+        }))?,
+        debug_facts: code_runtime_debug_facts(&console_logs)?,
+        provider_events: Vec::new(),
+    };
+    let built = build_code_node_payloads(node, raw)?;
+
+    Ok(CodeNodeExecution {
+        output_payload: built.output_payload,
+        error_payload: Some(built.error_payload),
+        metrics_payload: built.metrics_payload,
+        debug_payload: built.debug_payload,
+    })
+}
+
+fn protocol_context_output_paths(
+    plan: &CompiledPlan,
+    code_node_id: &str,
+) -> Result<Vec<Vec<String>>> {
+    let mut paths = Vec::new();
+    for node in plan.nodes.values().filter(|node| node.node_type == "llm") {
+        let Some(reference) = node.protocol_context_reference()? else {
+            continue;
+        };
+        if reference.is_system_protocol_context() {
+            continue;
+        }
+        let selector = reference.selector_path();
+        let Some((source_node_id, output_path)) = selector.split_first() else {
+            continue;
+        };
+        if source_node_id != code_node_id {
+            continue;
+        }
+        let output_path = if output_path
+            .first()
+            .is_some_and(|segment| segment == "result")
+        {
+            &output_path[1..]
+        } else {
+            output_path
+        };
+        let output_path = output_path.to_vec();
+        paths.push(output_path);
+    }
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+fn read_value_path<'a>(value: &'a Value, path: &[String]) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path {
+        current = current.as_object()?.get(segment)?;
+    }
+    Some(current)
 }
 
 fn validate_code_output_contract(

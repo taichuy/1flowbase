@@ -17,6 +17,7 @@ pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.respons
 pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
     "compact.responses_compaction_v2";
 pub const PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY: &str = "responses.native_passthrough";
+pub const PROVIDER_PROTOCOL_CONTEXT_CAPABILITY: &str = "protocol_context";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -403,6 +404,7 @@ pub enum ProviderInvocationCapability {
     SystemPromptBlocks,
     SystemPromptCacheControl,
     EndUserReference,
+    ProtocolContext,
 }
 
 impl ProviderInvocationCapability {
@@ -418,6 +420,7 @@ impl ProviderInvocationCapability {
             Self::SystemPromptBlocks => "system_prompt_blocks",
             Self::SystemPromptCacheControl => "system_prompt_cache_control",
             Self::EndUserReference => "end_user_reference",
+            Self::ProtocolContext => PROVIDER_PROTOCOL_CONTEXT_CAPABILITY,
         }
     }
 }
@@ -463,12 +466,16 @@ pub struct ProviderMessage {
     pub content_blocks: Option<Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct ClientProtocolEnvelope {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ProtocolContextEnvelope {
     pub source_protocol: String,
-    pub policy: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub headers: BTreeMap<String, String>,
+    pub query: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub body: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -522,7 +529,7 @@ pub struct ProviderInvocationInput {
     #[serde(default)]
     pub model_parameters: BTreeMap<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_transport: Option<ProviderNativeTransport>,
     #[serde(default)]
@@ -564,7 +571,7 @@ pub struct ProviderCountTokensInput {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub required_capabilities: BTreeSet<ProviderInvocationCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
 }
 
 impl Default for ProviderCountTokensInput {

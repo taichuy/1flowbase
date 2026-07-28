@@ -23,6 +23,7 @@ import {
   modelProviderOptionsProviders
 } from '../../../../test/model-provider-contract-fixtures';
 
+import { createEdgeDocument } from '../../lib/document/edge-factory';
 import { createNodeDocument } from '../../lib/document/node-factory';
 import * as dataModelOptionsApi from '../../api/data-model-options';
 import * as modelProviderOptionsApi from '../../api/model-provider-options';
@@ -113,6 +114,51 @@ export function createInitialStateWithCodeNode() {
     user_protection_limit: 10,
     versions: []
   };
+}
+
+export function createInitialStateWithProtocolContextCodeNode() {
+  const state = createInitialStateWithCodeNode();
+  const document = state.draft.document;
+  const codeNode = document.graph.nodes.find((node) => node.id === 'node-code');
+
+  if (!codeNode) {
+    throw new Error('expected code node');
+  }
+
+  codeNode.alias = 'Protocol Builder';
+  codeNode.outputs = [
+    {
+      key: 'protocol_context',
+      title: 'Protocol Context',
+      valueType: 'json',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          source_protocol: { type: 'string' },
+          headers: { type: 'object' }
+        }
+      }
+    },
+    {
+      key: 'summary',
+      title: 'Summary',
+      valueType: 'string'
+    }
+  ];
+  document.graph.edges = document.graph.edges.map((edge) =>
+    edge.id === 'edge-start-llm'
+      ? { ...edge, id: 'edge-start-code', target: 'node-code' }
+      : edge
+  );
+  document.graph.edges.push(
+    createEdgeDocument({
+      id: 'edge-code-llm',
+      source: 'node-code',
+      target: 'node-llm'
+    })
+  );
+
+  return state;
 }
 
 export function createInitialStateWithCustomCodeNode() {

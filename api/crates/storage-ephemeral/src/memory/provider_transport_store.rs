@@ -2,17 +2,21 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use control_plane::ports::{
-    ProviderContinuation, ProviderContinuationSlotId, ProviderTransportPayload,
-    ProviderTransportSlotId, ProviderTransportStore,
+    ProviderContinuation, ProviderContinuationSlotId, ProviderProtocolContextSlotId,
+    ProviderProtocolContextValue, ProviderTransportPayload, ProviderTransportSlotId,
+    ProviderTransportStore,
 };
 use time::{Duration, OffsetDateTime};
 use tokio::sync::RwLock;
+
+const MAX_PROTOCOL_CONTEXT_SLOTS_PER_FLOW_RUN: usize = 16;
 
 #[derive(Clone)]
 pub struct MemoryProviderTransportStore {
     retention: Duration,
     max_payload_bytes: usize,
     entries: Arc<RwLock<HashMap<ProviderTransportSlotId, TransportEntry>>>,
+    protocol_contexts: Arc<RwLock<HashMap<ProviderProtocolContextSlotId, ProtocolContextEntry>>>,
     continuations: Arc<RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>>,
 }
 
@@ -28,12 +32,19 @@ struct ContinuationEntry {
     expires_at: OffsetDateTime,
 }
 
+#[derive(Clone)]
+struct ProtocolContextEntry {
+    value: ProviderProtocolContextValue,
+    expires_at: OffsetDateTime,
+}
+
 impl MemoryProviderTransportStore {
     pub fn new(retention: Duration, max_payload_bytes: usize) -> Self {
         Self {
             retention,
             max_payload_bytes,
             entries: Arc::new(RwLock::new(HashMap::new())),
+            protocol_contexts: Arc::new(RwLock::new(HashMap::new())),
             continuations: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -110,6 +121,62 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         Ok(self.entries.write().await.remove(&slot_id).is_some())
     }
 
+    async fn put_protocol_context(
+        &self,
+        slot_id: ProviderProtocolContextSlotId,
+        value: ProviderProtocolContextValue,
+    ) -> anyhow::Result<()> {
+        self.validate_policy()?;
+        anyhow::ensure!(
+            value.size_bytes() <= self.max_payload_bytes,
+            "ephemeral_protocol_context_too_large"
+        );
+        let mut contexts = self.protocol_contexts.write().await;
+        let flow_run_id = slot_id.flow_run_id();
+        let owned_slot_count = contexts
+            .keys()
+            .filter(|stored_slot| stored_slot.belongs_to(flow_run_id))
+            .count();
+        anyhow::ensure!(
+            contexts.contains_key(&slot_id)
+                || owned_slot_count < MAX_PROTOCOL_CONTEXT_SLOTS_PER_FLOW_RUN,
+            "ephemeral_protocol_context_slot_limit_exceeded"
+        );
+        contexts.insert(
+            slot_id,
+            ProtocolContextEntry {
+                value,
+                expires_at: OffsetDateTime::now_utc() + self.retention,
+            },
+        );
+        Ok(())
+    }
+
+    async fn get_protocol_context(
+        &self,
+        slot_id: ProviderProtocolContextSlotId,
+    ) -> anyhow::Result<Option<ProviderProtocolContextValue>> {
+        let mut contexts = self.protocol_contexts.write().await;
+        let Some(entry) = contexts.get(&slot_id).cloned() else {
+            return Ok(None);
+        };
+        if entry.expires_at <= OffsetDateTime::now_utc() {
+            contexts.remove(&slot_id);
+            return Ok(None);
+        }
+        Ok(Some(entry.value))
+    }
+
+    async fn delete_flow_run_protocol_contexts(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> anyhow::Result<usize> {
+        let mut contexts = self.protocol_contexts.write().await;
+        let count = contexts.len();
+        contexts.retain(|slot_id, _| !slot_id.belongs_to(flow_run_id));
+        Ok(count - contexts.len())
+    }
+
     async fn put_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,
@@ -166,9 +233,15 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         let removed_requests = request_count - entries.len();
         drop(entries);
 
+        let mut contexts = self.protocol_contexts.write().await;
+        let context_count = contexts.len();
+        contexts.retain(|_, entry| entry.expires_at > now);
+        let removed_contexts = context_count - contexts.len();
+        drop(contexts);
+
         let mut continuations = self.continuations.write().await;
         let continuation_count = continuations.len();
         continuations.retain(|_, entry| entry.expires_at > now);
-        Ok(removed_requests + continuation_count - continuations.len())
+        Ok(removed_requests + removed_contexts + continuation_count - continuations.len())
     }
 }

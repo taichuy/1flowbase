@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub const SYSTEM_PROTOCOL_CONTEXT_SELECTOR: [&str; 2] = ["sys", "protocol_context"];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledPlan {
     pub flow_id: Uuid,
@@ -44,6 +46,44 @@ pub struct CompiledNode {
     pub llm_runtime: Option<CompiledLlmRuntime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_runtime: Option<CompiledCodeRuntime>,
+}
+
+impl CompiledNode {
+    pub fn protocol_context_reference(
+        &self,
+    ) -> Result<Option<VariableReference>, serde_json::Error> {
+        match self.config.get("protocol_context") {
+            Some(value) if !value.is_null() => serde_json::from_value(value.clone()).map(Some),
+            Some(_) | None => Ok(None),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum VariableReference {
+    Selector { value: Vec<String> },
+}
+
+impl VariableReference {
+    pub fn selector(value: Vec<String>) -> Self {
+        Self::Selector { value }
+    }
+
+    pub fn selector_path(&self) -> &[String] {
+        match self {
+            Self::Selector { value } => value,
+        }
+    }
+
+    pub fn is_system_protocol_context(&self) -> bool {
+        let selector = self.selector_path();
+        selector.len() == SYSTEM_PROTOCOL_CONTEXT_SELECTOR.len()
+            && selector
+                .iter()
+                .zip(SYSTEM_PROTOCOL_CONTEXT_SELECTOR)
+                .all(|(actual, expected)| actual.as_str() == expected)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

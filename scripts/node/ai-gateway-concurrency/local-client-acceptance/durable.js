@@ -17,7 +17,12 @@ async function readJson(endpoint, fetchImpl = globalThis.fetch) {
 }
 
 function sanitizeRun(run) {
-  return { id: run?.id ?? null, status: run?.status ?? null };
+  const errorMessage = typeof run?.error?.message === 'string' ? run.error.message : null;
+  return {
+    id: run?.id ?? null,
+    status: run?.status ?? null,
+    ...(errorMessage === null ? {} : { error_message: errorMessage }),
+  };
 }
 
 async function snapshotRuns(target, fetchImpl = globalThis.fetch) {
@@ -37,6 +42,8 @@ async function reconcileAttempt({
   target,
   before,
   expectedRuns,
+  expectedStatuses = null,
+  expectedErrorBody = null,
   fetchImpl = globalThis.fetch,
   graceMs = 10_000,
   pollIntervalMs = 100,
@@ -67,29 +74,197 @@ async function reconcileAttempt({
       throw new Error(`durable query mismatch for run ${observed[index].id}`);
     }
   }
+  if (expectedStatuses) {
+    const actual = queried.map((run) => run.status).sort();
+    const expected = expectedStatuses.length === expectedRuns
+      ? [...expectedStatuses].sort()
+      : Array.from({ length: expectedRuns }, () => expectedStatuses[0]).sort();
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(`durable statuses ${actual.join(',')} did not match ${expected.join(',')}`);
+    }
+  }
+  if (expectedErrorBody !== null) {
+    for (const run of queried) {
+      if (run.error_message !== expectedErrorBody) {
+        throw new Error(`durable error for run ${run.id} did not preserve the exact upstream body`);
+      }
+    }
+  }
   return { expected_runs: expectedRuns, runs: queried };
 }
 
-function evaluateMockAttempt(before, after, expectedRuns) {
+function gatewayExecutorEvidence(snapshot, expected = 0) {
+  const observed = snapshot?.counters?.gatewayExecutorInvocations;
+  if (!Number.isInteger(observed)) throw new Error('mock snapshot omitted gateway executor counter');
+  if (observed !== expected) {
+    throw new Error(`expected gateway executor=${expected}, observed ${observed}`);
+  }
+  return { gateway_executor_invocations: observed };
+}
+
+function networkObserverEvidence(snapshot, expected = 0) {
+  const observed = snapshot?.counters?.networkObserverOutbound;
+  if (!Number.isInteger(observed)) throw new Error('mock snapshot omitted network observer counter');
+  if (observed !== expected) {
+    throw new Error(`expected network observer outbound=${expected}, observed ${observed}`);
+  }
+  return { network_observer_outbound: observed };
+}
+
+function callbackResumeEvidence(events, minimumResumes, callbackResumes, toolMode) {
+  const hasMinimum = Number.isInteger(minimumResumes);
+  const hasExact = Number.isInteger(callbackResumes);
+  if (!hasMinimum && !hasExact) return null;
+  if (hasMinimum && hasExact) {
+    throw new Error('mock callback resume expectation requires exactly one cardinality rule');
+  }
+  const calls = events.filter((event) => event.event === 'tool_call');
+  const resumes = events.filter((event) => event.event === 'second_upstream_request');
+  if (hasExact && resumes.length !== callbackResumes) {
+    throw new Error(`expected exactly ${callbackResumes} Gateway callback resume, observed ${resumes.length}`);
+  }
+  if (hasMinimum && resumes.length < minimumResumes) {
+    throw new Error(`expected at least ${minimumResumes} Gateway callback resume, observed ${resumes.length}`);
+  }
+  const rounds = resumes.map((resume, index) => {
+    const call = calls.findLast((candidate) => candidate.sequence < resume.sequence);
+    const arrival = events.find((event) => (
+      event.event === 'arrival' && event.nonce === resume.nonce && event.sequence < resume.sequence
+    ));
+    const waiting = events.find((event) => (
+      event.event === 'barrier_waiting' && event.nonce === resume.nonce && event.sequence > resume.sequence
+    ));
+    const released = events.find((event) => (
+      event.event === 'barrier_released' && event.nonce === resume.nonce
+        && event.sequence > (waiting?.sequence ?? Number.MAX_SAFE_INTEGER)
+    ));
+    const finalRound = index === resumes.length - 1;
+    const barrierRequired = toolMode !== 'sequential_callback_tasks_one_turn' || finalRound;
+    const settledAfter = barrierRequired ? released?.sequence : resume.sequence;
+    const settled = events.find((event) => (
+      event.event === 'settled' && event.nonce === resume.nonce
+        && event.sequence > (settledAfter ?? Number.MAX_SAFE_INTEGER)
+    ));
+    if (!call || !arrival || call.sequence >= arrival.sequence || !settled
+      || (barrierRequired && (!waiting || !released))) {
+      throw new Error(`Gateway callback resume chronology was incomplete for ${resume.nonce}`);
+    }
+    if (!barrierRequired && (waiting || released)) {
+      throw new Error(`intermediate sequential callback fabricated a text barrier for ${resume.nonce}`);
+    }
+    return {
+      tool_call_sequence: call.sequence,
+      callback_request_sequence: resume.sequence,
+      barrier_waiting_sequence: waiting?.sequence ?? null,
+      barrier_released_sequence: released?.sequence ?? null,
+      settled_sequence: settled.sequence,
+    };
+  });
+  const requiredResumes = callbackResumes ?? minimumResumes;
+  if (new Set(rounds.map((round) => round.tool_call_sequence)).size < requiredResumes) {
+    throw new Error('Gateway callback resumes did not follow distinct Provider tool-call rounds');
+  }
+  return {
+    ...(hasExact ? { exact_resumes: callbackResumes } : { minimum_resumes: minimumResumes }),
+    observed_resumes: resumes.length,
+    rounds,
+  };
+}
+
+function evaluateMockAttempt(before, after, rawExpectation) {
+  const legacy = typeof rawExpectation === 'number';
+  const expectation = legacy
+    ? { provider_requests: rawExpectation, provider_outcomes: ['completed'] }
+    : rawExpectation;
   const cursor = before?.entries?.at(-1)?.sequence ?? 0;
   const events = (after?.entries ?? []).filter((event) => event.sequence > cursor);
   const arrivals = events.filter((event) => event.event === 'arrival');
   const settled = events.filter((event) => event.event === 'settled');
-  if (arrivals.length !== expectedRuns) {
-    throw new Error(`expected ${expectedRuns} mock arrival, observed ${arrivals.length}`);
+  const exactRequests = Number.isInteger(expectation.provider_requests);
+  const minimumRequests = Number.isInteger(expectation.minimum_provider_requests);
+  if (exactRequests === minimumRequests) {
+    throw new Error('mock expectation requires exactly one provider request cardinality rule');
   }
-  if (settled.length !== expectedRuns || settled.some((event) => event.outcome !== 'completed')) {
-    throw new Error(`expected ${expectedRuns} completed mock request, observed ${settled.length}`);
+  if (exactRequests && arrivals.length !== expectation.provider_requests) {
+    throw new Error(`expected ${expectation.provider_requests} mock arrival, observed ${arrivals.length}`);
   }
-  if (expectedRuns === 2) {
+  if (minimumRequests && arrivals.length < expectation.minimum_provider_requests) {
+    throw new Error(
+      `expected at least ${expectation.minimum_provider_requests} mock arrival, observed ${arrivals.length}`,
+    );
+  }
+  if (settled.length !== arrivals.length) {
+    throw new Error(`expected ${arrivals.length} settled mock request, observed ${settled.length}`);
+  }
+  const arrivalNonces = new Set(arrivals.map((event) => event.nonce));
+  const settledByNonce = new Map(settled.map((event) => [event.nonce, event]));
+  if (arrivalNonces.size !== arrivals.length || settledByNonce.size !== settled.length
+    || [...settledByNonce.keys()].some((nonce) => !arrivalNonces.has(nonce))) {
+    throw new Error('mock arrivals and settled requests were not uniquely paired by nonce');
+  }
+  for (const [index, arrival] of arrivals.entries()) {
+    const event = settledByNonce.get(arrival.nonce);
+    if (!event || event.sequence <= arrival.sequence) {
+      throw new Error(`mock request ${index + 1} did not settle after its arrival`);
+    }
+    const expectedOutcome = expectation.provider_outcomes?.[index]
+      ?? expectation.provider_outcomes?.[0]
+      ?? 'completed';
+    if (event.outcome !== expectedOutcome) {
+      throw new Error(`mock request ${index + 1} outcome ${event.outcome} did not match ${expectedOutcome}`);
+    }
+    const expectedTerminalCount = expectation.success_terminal_counts?.[index]
+      ?? expectation.success_terminal_counts?.[0];
+    if (expectedTerminalCount !== undefined && event.successTerminalCount !== expectedTerminalCount) {
+      throw new Error(
+        `mock request ${index + 1} success terminals ${event.successTerminalCount}`
+          + ` did not match ${expectedTerminalCount}`,
+      );
+    }
+  }
+  if (legacy && expectation.provider_requests === 2) {
     const tool = events.findIndex((event) => event.event === 'tool_call');
     const second = events.findIndex((event) => event.event === 'second_upstream_request');
     if (tool === -1 || second <= tool) throw new Error('mock tool two-turn chronology was not observed');
   }
+  for (const arrival of arrivals) {
+    const requestKeys = arrival.request?.body?.keys ?? [];
+    for (const key of expectation.request_body_keys ?? []) {
+      if (!requestKeys.includes(key)) throw new Error(`Provider request omitted ${key}`);
+    }
+    if (expectation.request_body_model !== undefined
+      && arrival.request?.body?.model !== expectation.request_body_model) {
+      throw new Error(`Provider request model did not match ${expectation.request_body_model}`);
+    }
+    for (const [name, value] of Object.entries(expectation.request_body_facts ?? {})) {
+      if (arrival.request?.body?.[name] !== value) {
+        throw new Error(`Provider request ${name} did not match ${String(value)}`);
+      }
+    }
+  }
+  const executor = expectation.gateway_executor_invocations === undefined
+    ? null
+    : gatewayExecutorEvidence(after, expectation.gateway_executor_invocations);
+  const network = expectation.network_observer_outbound === undefined
+    ? null
+    : networkObserverEvidence(after, expectation.network_observer_outbound);
+  const callback = callbackResumeEvidence(
+    events,
+    expectation.minimum_callback_resumes,
+    expectation.callback_resumes,
+    expectation.tool_mode,
+  );
   return {
     arrivals: arrivals.length,
     settled: settled.length,
     nonces: arrivals.map((event) => event.nonce),
+    outcomes: arrivals.map((event) => settledByNonce.get(event.nonce).outcome),
+    success_terminal_counts: arrivals.map(
+      (event) => settledByNonce.get(event.nonce).successTerminalCount ?? null,
+    ),
+    ...(executor || {}),
+    ...(network || {}),
+    ...(callback ? { callback_resume: callback } : {}),
   };
 }
 
@@ -149,6 +324,8 @@ async function verifyIdle(
 module.exports = {
   TERMINAL_STATUSES,
   evaluateMockAttempt,
+  gatewayExecutorEvidence,
+  networkObserverEvidence,
   queryRun,
   readJson,
   reconcileAttempt,

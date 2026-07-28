@@ -42,15 +42,12 @@ pub use repository_contracts::{
     ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
     PublishedRunStreamState,
 };
-use run_input::{
-    compiled_plan_start_node_id, enrich_anthropic_context_beta_from_start_model,
-    freeze_run_input_environment, generate_external_conversation_id,
-};
 pub(crate) use run_input::{
     compiled_plan_start_node_id as public_compiled_plan_start_node_id,
     freeze_workflow_run_input_environment as public_freeze_workflow_run_input_environment,
     WorkflowRunTriggerContext,
 };
+use run_input::{freeze_run_input_environment, generate_external_conversation_id};
 
 const APPLICATION_PUBLIC_CONVERSATION_HISTORY_LIMIT: i64 = 50;
 const PUBLIC_RUN_IDEMPOTENCY_FINGERPRINT: &str = "public_run_idempotency_fingerprint";
@@ -110,11 +107,7 @@ where
         self.ensure_application_exists(&actor).await?;
 
         let publication = self.load_enabled_publication(&actor).await?;
-        let mut client_request = command.request;
-        enrich_anthropic_context_beta_from_start_model(
-            &mut client_request,
-            &publication.document_snapshot,
-        );
+        let client_request = command.request;
         // The request model is workflow input. Only the LLM node selected by the
         // graph owns provider/model capability validation.
         let external_model_parameters = client_request.execution.model_parameters().cloned();
@@ -170,7 +163,6 @@ where
             mapped.node_input_payload,
             &environment_variables,
             external_model_parameters.as_ref(),
-            compiled_plan_start_node_id(&compiled_plan.plan).as_deref(),
         );
         let input_payload = with_public_run_idempotency_fingerprint(
             input_payload,

@@ -73,9 +73,14 @@ function requireText(value, label) {
 }
 
 function normalizeRunInputs(options) {
+  const paired = require('./paired-source.lock.json');
   return {
     mainSourceSha: requireFullSha(options.mainSourceSha, 'main source SHA'),
     officialSourceSha: requireFullSha(options.officialSourceSha, 'official source SHA'),
+    pairedLockRevision: requireFullSha(
+      paired.official_plugins?.revision,
+      'paired official source SHA'
+    ),
     profile: requireCharacterizeProfile(options.profile),
     repoRoot: requireDirectory(options.repoRoot, 'repository root'),
     databaseUrl: requirePostgresUrl(options.databaseUrl),
@@ -83,6 +88,10 @@ function normalizeRunInputs(options) {
     pluginRunnerBin: requireFile(options.pluginRunnerBin, 'plugin-runner binary', true),
     openaiPackage: singlePackage(options.openaiPackageDir, 'OpenAI'),
     anthropicPackage: singlePackage(options.anthropicPackageDir, 'Anthropic'),
+    openaiCompatiblePackage: singlePackage(
+      options.openaiCompatiblePackageDir,
+      'OpenAI-compatible'
+    ),
     hostTarget: requireText(options.hostTarget, 'host target'),
   };
 }

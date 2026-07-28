@@ -10,14 +10,18 @@ use axum::{
     http::{Method, Request, StatusCode},
     Router,
 };
+use plugin_framework::compute_manifest_fingerprint;
 use plugin_runner::app;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+const FIXTURE_PACKAGE_SHA256: &str =
+    "sha256:62c3bfd19c287e570ef0c3062a195961eb2ba198d61dbb2abaaf0629cbcb22ba";
 
 struct TempProviderPackage {
     root: PathBuf,
+    archive_path: PathBuf,
 }
 
 impl TempProviderPackage {
@@ -31,12 +35,18 @@ impl TempProviderPackage {
             "plugin-runner-tests-{}-{nonce}-{sequence}",
             std::process::id()
         ));
+        let archive_path = root.with_extension("1flowbasepkg");
         fs::create_dir_all(&root).unwrap();
-        Self { root }
+        fs::write(&archive_path, b"fixture package bytes").unwrap();
+        Self { root, archive_path }
     }
 
     fn path(&self) -> &Path {
         &self.root
+    }
+
+    fn archive_path(&self) -> &Path {
+        &self.archive_path
     }
 
     fn write(&self, relative_path: &str, content: &str) {
@@ -51,6 +61,7 @@ impl TempProviderPackage {
 impl Drop for TempProviderPackage {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
+        let _ = fs::remove_file(&self.archive_path);
     }
 }
 
@@ -778,6 +789,62 @@ async fn stateful_provider_runtime_route_reuses_worker_process_between_invokes()
     assert_eq!(
         second_payload["result"]["provider_metadata"]["worker_turn"],
         2
+    );
+}
+
+#[tokio::test]
+async fn provider_load_rejects_stale_receipt_before_returning_verified_runtime_identity() {
+    let package = make_fixture_package();
+    let manifest_fingerprint = compute_manifest_fingerprint(&package.path().join("manifest.yaml"))
+        .await
+        .unwrap();
+    let app = app();
+
+    let (status, stale_payload) = request_json(
+        &app,
+        Method::POST,
+        "/providers/load",
+        json!({
+            "package_root": package.path(),
+            "artifact_receipt": {
+                "package_path": package.archive_path(),
+                "expected_artifact_sha256": FIXTURE_PACKAGE_SHA256,
+                "expected_manifest_fingerprint": format!("sha256:{}", "0".repeat(64)),
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(stale_payload["message"]
+        .as_str()
+        .unwrap()
+        .contains("manifest_fingerprint_mismatch"));
+
+    let (status, verified_payload) = request_json(
+        &app,
+        Method::POST,
+        "/providers/load",
+        json!({
+            "package_root": package.path(),
+            "artifact_receipt": {
+                "package_path": package.archive_path(),
+                "expected_artifact_sha256": FIXTURE_PACKAGE_SHA256,
+                "expected_manifest_fingerprint": manifest_fingerprint.clone(),
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(verified_payload["plugin_id"], "fixture_provider@0.1.0");
+    assert_eq!(verified_payload["provider_code"], "fixture_provider");
+    assert_eq!(verified_payload["plugin_version"], "0.1.0");
+    assert_eq!(
+        verified_payload["verified_artifact_receipt"]["package_sha256"],
+        FIXTURE_PACKAGE_SHA256
+    );
+    assert_eq!(
+        verified_payload["verified_artifact_receipt"]["manifest_fingerprint"],
+        manifest_fingerprint
     );
 }
 
