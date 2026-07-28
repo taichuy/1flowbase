@@ -1,5 +1,21 @@
 use super::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogResolutionCandidate {
+    pub root_override: Option<String>,
+    pub active_official: Option<String>,
+}
+
+#[async_trait]
+pub trait CatalogResolutionRepository: Send + Sync {
+    async fn find_catalog_resolution_candidate(
+        &self,
+        workspace_id: Uuid,
+        identity: &domain::CatalogMessageIdentity,
+        locale: &domain::CatalogLocale,
+    ) -> anyhow::Result<CatalogResolutionCandidate>;
+}
+
 #[derive(Debug, Clone)]
 pub struct UpsertCatalogTranslationInput {
     pub workspace_id: Uuid,

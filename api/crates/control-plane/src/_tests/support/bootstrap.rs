@@ -120,6 +120,15 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         Ok(workspace)
     }
 
+    async fn upsert_root_workspace_with_official_catalog(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+        _seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
+    ) -> Result<WorkspaceRecord> {
+        BootstrapRepository::upsert_workspace(self, tenant_id, workspace_name).await
+    }
+
     async fn upsert_builtin_roles(&self, _workspace_id: Uuid) -> Result<()> {
         Ok(())
     }

@@ -147,6 +147,12 @@ pub trait BootstrapRepository: Send + Sync {
         tenant_id: Uuid,
         workspace_name: &str,
     ) -> anyhow::Result<WorkspaceRecord>;
+    async fn upsert_root_workspace_with_official_catalog(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+        seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
+    ) -> anyhow::Result<WorkspaceRecord>;
     async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> anyhow::Result<()>;
     async fn upsert_root_user(
         &self,

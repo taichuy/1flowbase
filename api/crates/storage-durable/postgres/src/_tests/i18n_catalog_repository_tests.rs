@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use control_plane::ports::{
-    DeleteCatalogTranslationInput, DeleteCustomCatalogMessageInput, I18nCatalogRepository,
-    UpsertCatalogTranslationInput,
+    BootstrapRepository, CatalogResolutionRepository, DeleteCatalogTranslationInput,
+    DeleteCustomCatalogMessageInput, I18nCatalogRepository, UpsertCatalogTranslationInput,
 };
 use domain::{
     CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogSeedFile,
@@ -31,6 +31,15 @@ async fn seed_store() -> (PgControlPlaneStore, Uuid) {
         .await
         .unwrap();
     (store, workspace.id)
+}
+
+async fn empty_store() -> PgControlPlaneStore {
+    let database = postgres_test_support::PostgresTestSchema::create(&base_database_url())
+        .await
+        .unwrap();
+    let pool = database.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    PgControlPlaneStore::new(pool)
 }
 
 fn digest(character: char) -> CatalogDigest {
@@ -90,6 +99,21 @@ fn release(
         OffsetDateTime::UNIX_EPOCH,
         digest('a'),
         official_messages,
+    )
+    .unwrap()
+}
+
+fn official_seed(release_id: Uuid) -> control_plane::i18n_catalog::VerifiedOfficialCatalogSeed {
+    let release = release(Uuid::nil(), release_id, "1.0.0", &[("Settings", "设置")]);
+    control_plane::i18n_catalog::VerifiedOfficialCatalogSeed::new(
+        release.id(),
+        release.catalog_version().clone(),
+        release.locales().to_vec(),
+        release.modules().to_vec(),
+        release.files().to_vec(),
+        release.generated_at(),
+        release.semantic_sha256().clone(),
+        release.messages().to_vec(),
     )
     .unwrap()
 }
@@ -488,4 +512,223 @@ async fn migration_constraints_reject_invalid_revision_digest_and_cross_workspac
     .execute(store.pool())
     .await
     .is_err());
+}
+
+#[tokio::test]
+async fn ac_003_combined_root_bootstrap_is_atomic_and_restart_idempotent() {
+    let store = empty_store().await;
+    let tenant = BootstrapRepository::upsert_root_tenant(&store)
+        .await
+        .unwrap();
+    let seed = official_seed(Uuid::now_v7());
+
+    let workspace = BootstrapRepository::upsert_root_workspace_with_official_catalog(
+        &store,
+        tenant.id,
+        "Root catalog workspace",
+        &seed,
+    )
+    .await
+    .unwrap();
+    let initial_state = I18nCatalogRepository::get_workspace_catalog_state(&store, workspace.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let active_release_id = initial_state.active_release_id().unwrap();
+
+    let override_state = I18nCatalogRepository::upsert_catalog_override(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: translation("Settings", "根覆盖"),
+            expected_revision: initial_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+    let custom_state = I18nCatalogRepository::upsert_custom_catalog_translation(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: translation("custom.key", "自定义"),
+            expected_revision: override_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let restarted = BootstrapRepository::upsert_root_workspace_with_official_catalog(
+        &store,
+        tenant.id,
+        "Root catalog workspace",
+        &seed,
+    )
+    .await
+    .unwrap();
+    let restarted_state = I18nCatalogRepository::get_workspace_catalog_state(&store, workspace.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(restarted.id, workspace.id);
+    assert_eq!(restarted_state.active_release_id(), Some(active_release_id));
+    assert_eq!(restarted_state.revision(), custom_state.revision());
+    let release_count: i64 =
+        sqlx::query_scalar("select count(*) from i18n_catalog_releases where workspace_id = $1")
+            .bind(workspace.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let override_count: i64 = sqlx::query_scalar(
+        "select count(*) from workspace_i18n_catalog_overrides where workspace_id = $1",
+    )
+    .bind(workspace.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let custom_count: i64 = sqlx::query_scalar(
+        "select count(*) from workspace_i18n_catalog_custom_translations where workspace_id = $1",
+    )
+    .bind(workspace.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!((release_count, override_count, custom_count), (1, 1, 1));
+}
+
+#[tokio::test]
+async fn ac_003_combined_failure_leaves_neither_workspace_nor_catalog_state() {
+    let store = empty_store().await;
+    let tenant = BootstrapRepository::upsert_root_tenant(&store)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"
+        create function reject_bootstrap_catalog_release() returns trigger language plpgsql as $$
+        begin raise exception 'controlled combined bootstrap failure'; end;
+        $$
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        create trigger reject_bootstrap_catalog_release
+        before insert on i18n_catalog_releases
+        for each row execute function reject_bootstrap_catalog_release()
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    assert!(
+        BootstrapRepository::upsert_root_workspace_with_official_catalog(
+            &store,
+            tenant.id,
+            "Rollback catalog workspace",
+            &official_seed(Uuid::now_v7()),
+        )
+        .await
+        .is_err()
+    );
+
+    let workspace_count: i64 =
+        sqlx::query_scalar("select count(*) from workspaces where name = $1")
+            .bind("Rollback catalog workspace")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let state_count: i64 = sqlx::query_scalar("select count(*) from workspace_i18n_catalog_states")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let release_count: i64 = sqlx::query_scalar("select count(*) from i18n_catalog_releases")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!((workspace_count, state_count, release_count), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identity() {
+    let store = empty_store().await;
+    let tenant = BootstrapRepository::upsert_root_tenant(&store)
+        .await
+        .unwrap();
+    let workspace = BootstrapRepository::upsert_root_workspace_with_official_catalog(
+        &store,
+        tenant.id,
+        "Resolver catalog workspace",
+        &official_seed(Uuid::now_v7()),
+    )
+    .await
+    .unwrap();
+    let state = I18nCatalogRepository::get_workspace_catalog_state(&store, workspace.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let official = CatalogResolutionRepository::find_catalog_resolution_candidate(
+        &store,
+        workspace.id,
+        &identity("Settings"),
+        &CatalogLocale::new("zh_Hans").unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(official.active_official.as_deref(), Some("设置"));
+
+    let overridden_state = I18nCatalogRepository::upsert_catalog_override(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: translation("Settings", "根覆盖"),
+            expected_revision: state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+    I18nCatalogRepository::upsert_custom_catalog_translation(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: translation("custom.key", "自定义"),
+            expected_revision: overridden_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let custom = CatalogResolutionRepository::find_catalog_resolution_candidate(
+        &store,
+        workspace.id,
+        &identity("custom.key"),
+        &CatalogLocale::new("zh_Hans").unwrap(),
+    )
+    .await
+    .unwrap();
+    let overridden = CatalogResolutionRepository::find_catalog_resolution_candidate(
+        &store,
+        workspace.id,
+        &identity("Settings"),
+        &CatalogLocale::new("zh_Hans").unwrap(),
+    )
+    .await
+    .unwrap();
+    let alternate = CatalogResolutionRepository::find_catalog_resolution_candidate(
+        &store,
+        workspace.id,
+        &identity("custom.key"),
+        &CatalogLocale::new("fr_FR").unwrap(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(custom.root_override.as_deref(), Some("自定义"));
+    assert_eq!(custom.active_official, None);
+    assert_eq!(overridden.root_override.as_deref(), Some("根覆盖"));
+    assert_eq!(overridden.active_official.as_deref(), Some("设置"));
+    assert_eq!(alternate.root_override, None);
+    assert_eq!(alternate.active_official, None);
 }

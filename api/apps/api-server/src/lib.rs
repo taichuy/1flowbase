@@ -16,6 +16,7 @@ pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
 pub mod official_agent_flow_templates;
+pub mod official_i18n_catalog_seed;
 pub mod official_mcp_bundles;
 pub mod official_plugin_registry;
 pub mod openapi;
@@ -239,15 +240,19 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .to_string();
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
 
+    let official_i18n_catalog_seed = official_i18n_catalog_seed::load_official_i18n_catalog_seed()?;
     let bootstrap_result = BootstrapService::new(store.clone())
-        .run(&BootstrapConfig {
-            workspace_name: config.bootstrap_workspace_name.clone(),
-            root_account: config.bootstrap_root_account.clone(),
-            root_email: config.bootstrap_root_email.clone(),
-            root_password_hash,
-            root_name: config.bootstrap_root_name.clone(),
-            root_nickname: config.bootstrap_root_nickname.clone(),
-        })
+        .run_with_official_catalog(
+            &BootstrapConfig {
+                workspace_name: config.bootstrap_workspace_name.clone(),
+                root_account: config.bootstrap_root_account.clone(),
+                root_email: config.bootstrap_root_email.clone(),
+                root_password_hash,
+                root_name: config.bootstrap_root_name.clone(),
+                root_nickname: config.bootstrap_root_nickname.clone(),
+            },
+            &official_i18n_catalog_seed,
+        )
         .await?;
     let default_storage = if let Some(existing) =
         <storage_durable::MainDurableStore as control_plane::ports::FileManagementRepository>::get_default_file_storage(&store)

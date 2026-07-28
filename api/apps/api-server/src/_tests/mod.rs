@@ -23,6 +23,7 @@ mod me_routes;
 mod member_routes;
 mod model_provider_icon_routes;
 mod model_provider_routes;
+mod i18n_catalog;
 mod plugin_routes;
 mod provider_request_log_worker;
 mod provider_runtime;

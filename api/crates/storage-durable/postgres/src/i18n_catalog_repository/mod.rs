@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        DeleteCatalogTranslationInput, DeleteCustomCatalogMessageInput, I18nCatalogRepository,
-        UpsertCatalogTranslationInput,
+        CatalogResolutionCandidate, CatalogResolutionRepository, DeleteCatalogTranslationInput,
+        DeleteCustomCatalogMessageInput, I18nCatalogRepository, UpsertCatalogTranslationInput,
     },
 };
 use domain::{
@@ -162,6 +162,87 @@ async fn list_obsolete(pool: &PgPool, workspace_id: Uuid) -> Result<Vec<Obsolete
     .collect()
 }
 
+pub(crate) async fn insert_verified_release(
+    transaction: &mut Transaction<'_, Postgres>,
+    release: &domain::VerifiedCatalogRelease,
+) -> Result<()> {
+    let locales = release
+        .locales()
+        .iter()
+        .map(|locale| locale.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let modules = release
+        .modules()
+        .iter()
+        .map(|module| module.as_str().to_owned())
+        .collect::<Vec<_>>();
+    sqlx::query(
+        r#"
+        insert into i18n_catalog_releases (
+          id, workspace_id, schema_version, catalog_version, source_locale,
+          locales, modules, generated_at, semantic_sha256
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        "#,
+    )
+    .bind(release.id())
+    .bind(release.workspace_id())
+    .bind(I18N_CATALOG_SEED_SCHEMA_VERSION)
+    .bind(release.catalog_version().as_str())
+    .bind(I18N_CATALOG_SOURCE_LOCALE)
+    .bind(locales)
+    .bind(modules)
+    .bind(release.generated_at())
+    .bind(release.semantic_sha256().as_str())
+    .execute(&mut **transaction)
+    .await?;
+
+    for file in release.files() {
+        sqlx::query(
+            r#"
+            insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
+            values ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(release.id())
+        .bind(file.module().as_str())
+        .bind(file.locale().as_str())
+        .bind(file.path())
+        .bind(file.sha256().as_str())
+        .execute(&mut **transaction)
+        .await?;
+    }
+    for message in release.messages() {
+        sqlx::query(
+            r#"
+            insert into i18n_catalog_release_messages (release_id, module, msgid)
+            values ($1, $2, $3)
+            "#,
+        )
+        .bind(release.id())
+        .bind(message.identity().module().as_str())
+        .bind(message.identity().msgid())
+        .execute(&mut **transaction)
+        .await?;
+        for (locale, translation) in message.translations() {
+            sqlx::query(
+                r#"
+                insert into i18n_catalog_release_translations (
+                  release_id, module, msgid, locale, translation
+                ) values ($1, $2, $3, $4, $5)
+                "#,
+            )
+            .bind(release.id())
+            .bind(message.identity().module().as_str())
+            .bind(message.identity().msgid())
+            .bind(locale.as_str())
+            .bind(translation)
+            .execute(&mut **transaction)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl I18nCatalogRepository for PgControlPlaneStore {
     async fn import_verified_release(
@@ -169,80 +250,7 @@ impl I18nCatalogRepository for PgControlPlaneStore {
         release: &domain::VerifiedCatalogRelease,
     ) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
-        let locales = release
-            .locales()
-            .iter()
-            .map(|locale| locale.as_str().to_owned())
-            .collect::<Vec<_>>();
-        let modules = release
-            .modules()
-            .iter()
-            .map(|module| module.as_str().to_owned())
-            .collect::<Vec<_>>();
-        sqlx::query(
-            r#"
-            insert into i18n_catalog_releases (
-              id, workspace_id, schema_version, catalog_version, source_locale,
-              locales, modules, generated_at, semantic_sha256
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            "#,
-        )
-        .bind(release.id())
-        .bind(release.workspace_id())
-        .bind(I18N_CATALOG_SEED_SCHEMA_VERSION)
-        .bind(release.catalog_version().as_str())
-        .bind(I18N_CATALOG_SOURCE_LOCALE)
-        .bind(locales)
-        .bind(modules)
-        .bind(release.generated_at())
-        .bind(release.semantic_sha256().as_str())
-        .execute(&mut *transaction)
-        .await?;
-
-        for file in release.files() {
-            sqlx::query(
-                r#"
-                insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
-                values ($1, $2, $3, $4, $5)
-                "#,
-            )
-            .bind(release.id())
-            .bind(file.module().as_str())
-            .bind(file.locale().as_str())
-            .bind(file.path())
-            .bind(file.sha256().as_str())
-            .execute(&mut *transaction)
-            .await?;
-        }
-        for message in release.messages() {
-            sqlx::query(
-                r#"
-                insert into i18n_catalog_release_messages (release_id, module, msgid)
-                values ($1, $2, $3)
-                "#,
-            )
-            .bind(release.id())
-            .bind(message.identity().module().as_str())
-            .bind(message.identity().msgid())
-            .execute(&mut *transaction)
-            .await?;
-            for (locale, translation) in message.translations() {
-                sqlx::query(
-                    r#"
-                    insert into i18n_catalog_release_translations (
-                      release_id, module, msgid, locale, translation
-                    ) values ($1, $2, $3, $4, $5)
-                    "#,
-                )
-                .bind(release.id())
-                .bind(message.identity().module().as_str())
-                .bind(message.identity().msgid())
-                .bind(locale.as_str())
-                .bind(translation)
-                .execute(&mut *transaction)
-                .await?;
-            }
-        }
+        insert_verified_release(&mut transaction, release).await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -488,6 +496,52 @@ impl I18nCatalogRepository for PgControlPlaneStore {
         workspace_id: Uuid,
     ) -> Result<Vec<ObsoleteCatalogMessage>> {
         list_obsolete(self.pool(), workspace_id).await
+    }
+}
+
+#[async_trait]
+impl CatalogResolutionRepository for PgControlPlaneStore {
+    async fn find_catalog_resolution_candidate(
+        &self,
+        workspace_id: Uuid,
+        identity: &CatalogMessageIdentity,
+        locale: &CatalogLocale,
+    ) -> Result<CatalogResolutionCandidate> {
+        let row = sqlx::query(
+            r#"
+            select
+              coalesce(
+                (select translation
+                 from workspace_i18n_catalog_overrides
+                 where workspace_id = $1 and module = $2 and msgid = $3 and locale = $4),
+                (select translation
+                 from workspace_i18n_catalog_custom_translations
+                 where workspace_id = $1 and module = $2 and msgid = $3 and locale = $4)
+              ) as root_override,
+              (select translation.translation
+               from workspace_i18n_catalog_states state
+               join i18n_catalog_release_messages message
+                 on message.release_id = state.active_release_id
+                and message.module = $2
+                and message.msgid = $3
+               join i18n_catalog_release_translations translation
+                 on translation.release_id = message.release_id
+                and translation.module = message.module
+                and translation.msgid = message.msgid
+                and translation.locale = $4
+               where state.workspace_id = $1) as active_official
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(identity.module().as_str())
+        .bind(identity.msgid())
+        .bind(locale.as_str())
+        .fetch_one(self.pool())
+        .await?;
+        Ok(CatalogResolutionCandidate {
+            root_override: row.get("root_override"),
+            active_official: row.get("active_official"),
+        })
     }
 }
 

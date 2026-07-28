@@ -1,0 +1,49 @@
+{
+  "manifest": {
+    "catalog_version": "1.0.0",
+    "files": [
+      {
+        "locale": "en_US",
+        "module": "@taichuy/platform/common",
+        "path": "i18n/@taichuy/platform/common/en_US.json",
+        "sha256": "sha256:08a5ef65c75a8e636eb8123fea6a46d0f737b8df4808567b7513ce44020ee0df"
+      },
+      {
+        "locale": "zh_Hans",
+        "module": "@taichuy/platform/common",
+        "path": "i18n/@taichuy/platform/common/zh_Hans.json",
+        "sha256": "sha256:985a144b1612a38734c5f69d13faea93dc8da2bc6acb72b0e80fa049f5ebb43a"
+      }
+    ],
+    "generated_at": "2026-07-28T00:00:00.000Z",
+    "locales": [
+      "en_US",
+      "zh_Hans"
+    ],
+    "modules": [
+      "@taichuy/platform/common"
+    ],
+    "schema_version": "1flowbase.i18n-catalog-seed/v1",
+    "semantic_sha256": "sha256:f70d918fe026101f675ff0aa3973dc1941a5641cde2ff0800b5eb0ef6e8d7e5f",
+    "source_locale": "en_US"
+  },
+  "modules": [
+    {
+      "id": "@taichuy/platform/common",
+      "messages": [
+        {
+          "msgid": "Cancel",
+          "translations": {
+            "zh_Hans": "取消"
+          }
+        },
+        {
+          "msgid": "Save {name}",
+          "translations": {
+            "zh_Hans": "保存{name}"
+          }
+        }
+      ]
+    }
+  ]
+}
