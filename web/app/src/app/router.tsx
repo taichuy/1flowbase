@@ -50,6 +50,7 @@ import {
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
+import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 
 const ApplicationDetailPage = lazy(() =>
   import('../features/applications/pages/ApplicationDetailPage').then(
@@ -243,7 +244,8 @@ const templatesRoute = createRoute({
 
 function renderSettingsRoute(
   requestedSectionKey?: string,
-  modelProviderTab?: 'providers' | 'request-logs'
+  modelProviderTab?: 'providers' | 'request-logs',
+  rolePermissionTab?: RolePermissionTab
 ) {
   return (
     <RouteGuard routeId="settings">
@@ -251,6 +253,7 @@ function renderSettingsRoute(
         <SettingsPage
           requestedSectionKey={requestedSectionKey}
           modelProviderTab={modelProviderTab}
+          rolePermissionTab={rolePermissionTab}
         />
       </LazyRouteBoundary>
     </RouteGuard>
@@ -637,7 +640,44 @@ const settingsRolesRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/roles',
   notFoundComponent: NotFoundPage,
-  component: () => renderSettingsRoute('roles')
+  component: () => <Navigate to="/settings/roles/console-policy" replace />
+});
+
+const settingsRolesDynamicRoutesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/dynamic-routes',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('roles', undefined, 'dynamic-routes')
+});
+
+const settingsRolesTableGeneralPolicyRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/table-general-policy',
+  notFoundComponent: NotFoundPage,
+  component: () =>
+    renderSettingsRoute('roles', undefined, 'table-general-policy')
+});
+
+const settingsRolesTableSinglePolicyRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/table-single-policy',
+  notFoundComponent: NotFoundPage,
+  component: () =>
+    renderSettingsRoute('roles', undefined, 'table-single-policy')
+});
+
+const settingsRolesConsolePolicyRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/console-policy',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('roles', undefined, 'console-policy')
+});
+
+const settingsRolesOtherPolicyRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/other-policy',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('roles', undefined, 'other-policy')
 });
 
 const settingsDynamicRoute = createRoute({
@@ -738,6 +778,11 @@ const routeTree = rootRoute.addChildren([
     settingsMcpManagementRoute,
     settingsMembersRoute,
     settingsRolesRoute,
+    settingsRolesDynamicRoutesRoute,
+    settingsRolesTableGeneralPolicyRoute,
+    settingsRolesTableSinglePolicyRoute,
+    settingsRolesConsolePolicyRoute,
+    settingsRolesOtherPolicyRoute,
     settingsDynamicRoute,
     meIndexRoute,
     meProfileRoute,

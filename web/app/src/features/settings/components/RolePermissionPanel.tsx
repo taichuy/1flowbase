@@ -65,6 +65,13 @@ const DYNAMIC_ROUTE_TAB = 'dynamic-routes';
 const ROLE_TABLE_GENERAL_TAB = 'table-general-policy';
 const ROLE_TABLE_SINGLE_TAB = 'table-single-policy';
 
+export type RolePermissionTab =
+  | typeof CONSOLE_POLICY_TAB
+  | typeof OTHER_POLICY_TAB
+  | typeof DYNAMIC_ROUTE_TAB
+  | typeof ROLE_TABLE_GENERAL_TAB
+  | typeof ROLE_TABLE_SINGLE_TAB;
+
 type ConsolePolicyCatalogGroup = SettingsConsolePolicyCatalog['groups'][number];
 type ConsolePolicyCatalogOperation = ConsolePolicyCatalogGroup['operations'][number];
 type ConsolePolicyGroup = SettingsRoleConsolePolicy['groups'][number];
@@ -183,9 +190,16 @@ function replaceConsolePolicyGroup(
 }
 
 export function RolePermissionPanel({
-  canManageRoles
+  canManageRoles,
+  activePermissionTab,
+  onPermissionTabChange
 }: {
   canManageRoles: boolean;
+  activePermissionTab: RolePermissionTab;
+  onPermissionTabChange: (
+    tab: RolePermissionTab,
+    navigationMode: 'push' | 'replace'
+  ) => void;
 }) {
   const { i18n } = useTranslation();
   const consolePolicyCatalogLocale: SettingsConsolePolicyCatalogLocale =
@@ -199,8 +213,6 @@ export function RolePermissionPanel({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleCode, setSelectedRoleCode] = useState<string | null>(null);
-  const [activePermissionTab, setActivePermissionTab] =
-    useState(CONSOLE_POLICY_TAB);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<SettingsRole | null>(null);
@@ -284,28 +296,6 @@ export function RolePermissionPanel({
   useEffect(() => {
     setConsolePolicyGroups(roleConsolePolicyQuery.data?.groups ?? []);
   }, [roleConsolePolicyQuery.data?.groups]);
-
-  useEffect(() => {
-    const catalogGroups = consolePolicyCatalogQuery.data?.groups ?? [];
-    const hasSettingsFeature = catalogGroups.some(
-      (group) => group.kind === 'settings_feature'
-    );
-    const hasOther = catalogGroups.some((group) => group.kind === 'other');
-
-    if (
-      activePermissionTab === CONSOLE_POLICY_TAB &&
-      !hasSettingsFeature &&
-      hasOther
-    ) {
-      setActivePermissionTab(OTHER_POLICY_TAB);
-    } else if (
-      activePermissionTab === OTHER_POLICY_TAB &&
-      !hasOther &&
-      hasSettingsFeature
-    ) {
-      setActivePermissionTab(CONSOLE_POLICY_TAB);
-    }
-  }, [activePermissionTab, consolePolicyCatalogQuery.data?.groups]);
 
   useEffect(() => {
     if (!selectedRoleCode && rolesQuery.data?.length) {
@@ -771,6 +761,46 @@ export function RolePermissionPanel({
     selectedRole
   ]);
 
+  useEffect(() => {
+    if (
+      consolePolicyCatalogQuery.isLoading ||
+      rolesQuery.isLoading ||
+      (rolesQuery.data?.length && !selectedRole) ||
+      permissionTabItems.length === 0
+    ) {
+      return;
+    }
+
+    const activeTabIsAvailable = permissionTabItems.some(
+      (item) => item.key === activePermissionTab
+    );
+    if (!activeTabIsAvailable) {
+      const availableTabKeys = new Set(
+        permissionTabItems.map((item) => item.key)
+      );
+      const policyPeerFallback =
+        activePermissionTab === CONSOLE_POLICY_TAB &&
+        availableTabKeys.has(OTHER_POLICY_TAB)
+          ? OTHER_POLICY_TAB
+          : activePermissionTab === OTHER_POLICY_TAB &&
+              availableTabKeys.has(CONSOLE_POLICY_TAB)
+            ? CONSOLE_POLICY_TAB
+            : null;
+      onPermissionTabChange(
+        policyPeerFallback ?? (permissionTabItems[0].key as RolePermissionTab),
+        'replace'
+      );
+    }
+  }, [
+    activePermissionTab,
+    consolePolicyCatalogQuery.isLoading,
+    onPermissionTabChange,
+    permissionTabItems,
+    rolesQuery.data?.length,
+    rolesQuery.isLoading,
+    selectedRole
+  ]);
+
   return (
     <SettingsSectionSurface heightMode="fill">
       <div
@@ -971,7 +1001,9 @@ export function RolePermissionPanel({
                     <Tabs
                       activeKey={activePermissionTab}
                       items={permissionTabItems}
-                      onChange={setActivePermissionTab}
+                      onChange={(tab) =>
+                        onPermissionTabChange(tab as RolePermissionTab, 'push')
+                      }
                     />
                   )}
                 </div>

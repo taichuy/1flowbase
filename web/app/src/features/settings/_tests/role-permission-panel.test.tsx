@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
+import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rolesApi = vi.hoisted(() => ({
@@ -64,7 +65,10 @@ vi.mock('../api/data-models', () => dataModelsApi);
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { appI18n } from '../../../shared/i18n/app-i18n';
-import { RolePermissionPanel } from '../components/RolePermissionPanel';
+import {
+  RolePermissionPanel,
+  type RolePermissionTab
+} from '../components/RolePermissionPanel';
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
@@ -97,9 +101,22 @@ function setPreferredLocale(locale: 'zh_Hans' | 'en_US') {
 }
 
 function renderPanel(canManageRoles = true) {
+  function RolePermissionPanelHarness() {
+    const [activePermissionTab, setActivePermissionTab] =
+      useState<RolePermissionTab>('console-policy');
+
+    return (
+      <RolePermissionPanel
+        canManageRoles={canManageRoles}
+        activePermissionTab={activePermissionTab}
+        onPermissionTabChange={(tab) => setActivePermissionTab(tab)}
+      />
+    );
+  }
+
   return render(
     <AppProviders>
-      <RolePermissionPanel canManageRoles={canManageRoles} />
+      <RolePermissionPanelHarness />
     </AppProviders>
   );
 }
