@@ -52,6 +52,56 @@ function NamedBindingsFocusHarness() {
 }
 
 describe('NodeInspector core', () => {
+  test('AC-012/013 renders backend-projected i18n_text as inert text and falls back to the typed English key', () => {
+    const translatedState = createInitialState();
+    const answerNode = createNodeDocument('answer', 'node-answer', 720, 240);
+    answerNode.bindings.answer_template = {
+      kind: 'i18n_text',
+      value: {
+        module: '@org/agent-flow/messages',
+        key: 'Welcome'
+      }
+    };
+    translatedState.draft.document.graph.nodes.push(answerNode);
+    translatedState.messages = [
+      {
+        module: '@org/agent-flow/messages',
+        key: 'Welcome',
+        text: '<strong>欢迎</strong>'
+      }
+    ];
+
+    const { unmount } = renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={translatedState}>
+        <SelectionSeed nodeId="node-answer" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    const translated = screen.getByTestId('i18n-text-binding');
+    expect(translated).toHaveAttribute('data-ready', 'true');
+    expect(translated).toHaveTextContent('<strong>欢迎</strong>');
+    expect(translated.querySelector('strong')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '回答内容' })).toBeNull();
+    unmount();
+
+    const fallbackState = createInitialState();
+    const fallbackNode = createNodeDocument('answer', 'node-answer', 720, 240);
+    fallbackNode.bindings.answer_template = answerNode.bindings.answer_template;
+    fallbackState.draft.document.graph.nodes.push(fallbackNode);
+
+    renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={fallbackState}>
+        <SelectionSeed nodeId="node-answer" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    expect(screen.getByTestId('i18n-text-binding')).toHaveTextContent(
+      'Welcome'
+    );
+  });
+
   test('reads config sections through the node schema registry and adapter bridge', async () => {
     renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>

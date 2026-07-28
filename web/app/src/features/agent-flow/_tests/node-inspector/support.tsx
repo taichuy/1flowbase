@@ -84,6 +84,7 @@ export const createAgentFlowNodeSchemaAdapterSpy = vi.spyOn(
 export function createInitialState() {
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',
@@ -103,6 +104,7 @@ export function createInitialStateWithCodeNode() {
 
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',
@@ -185,6 +187,7 @@ export function createInitialStateWithLoopNode() {
 
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',
@@ -206,6 +209,7 @@ export function createInitialStateWithIfElseNode() {
 
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',

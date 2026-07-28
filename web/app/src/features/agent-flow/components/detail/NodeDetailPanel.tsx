@@ -57,6 +57,7 @@ export function NodeDetailPanel({
   const setWorkingDocument = useAgentFlowEditorStore(
     (state) => state.setWorkingDocument
   );
+  const messages = useAgentFlowEditorStore((state) => state.messages);
   const { openNodePicker } = useNodeInteractions();
   const runtime = useMemo(() => {
     if (!selectedNodeId) {
@@ -77,6 +78,7 @@ export function NodeDetailPanel({
       nodeId: selectedNodeId,
       environmentVariables,
       issues,
+      messages,
       workflowTriggerContext,
       setWorkingDocument,
       dispatch(actionKey, payload) {
@@ -98,6 +100,7 @@ export function NodeDetailPanel({
     document,
     environmentVariables,
     issues,
+    messages,
     openNodePicker,
     selectedNodeId,
     setWorkingDocument,

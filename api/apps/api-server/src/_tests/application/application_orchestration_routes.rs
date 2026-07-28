@@ -1,10 +1,155 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{
+    login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use control_plane::ports::I18nCatalogRepository;
 use serde_json::{json, Value};
 use tower::ServiceExt;
+
+async fn activate_i18n_seed(state: &crate::app_state::ApiState) {
+    let seed = crate::official_i18n_catalog_seed::load_official_i18n_catalog_seed().unwrap();
+    let release = seed
+        .bind_to_workspace(state.bootstrap_workspace_id)
+        .unwrap();
+    I18nCatalogRepository::import_verified_release(&state.store, &release)
+        .await
+        .unwrap();
+    let catalog_state = I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &state.store,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
+    I18nCatalogRepository::activate_verified_release(
+        &state.store,
+        state.bootstrap_workspace_id,
+        release.id(),
+        catalog_state.revision(),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ac_006_ac_010_flow_read_projects_only_referenced_i18n_messages() {
+    let (state, _) = test_api_state_with_database_url().await;
+    activate_i18n_seed(&state).await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "agent_flow",
+                        "name": "Localized flow",
+                        "description": "projection fixture"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let created: Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let application_id = created["data"]["id"].as_str().unwrap();
+
+    let initial = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let initial: Value =
+        serde_json::from_slice(&to_bytes(initial.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let mut document = initial["data"]["draft"]["document"].clone();
+    let nodes = document["graph"]["nodes"].as_array_mut().unwrap();
+    nodes[0]["bindings"]["localized_title"] = json!({
+        "kind": "i18n_text",
+        "value": { "module": "@taichuy/platform/common", "key": "Cancel" }
+    });
+    nodes[1]["bindings"]["localized_title"] = json!({
+        "kind": "i18n_text",
+        "value": { "module": "@taichuy/platform/common", "key": "Cancel" }
+    });
+    nodes[1]["bindings"]["localized_missing"] = json!({
+        "kind": "i18n_text",
+        "value": { "module": "@taichuy/platform/common", "key": "Missing English" }
+    });
+
+    let save = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/draft"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("x-1flowbase-locale", "zh_Hans")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "document": document,
+                        "change_kind": "logical",
+                        "summary": "add localized bindings"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(save.status(), StatusCode::OK);
+    let saved: Value =
+        serde_json::from_slice(&to_bytes(save.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        saved["data"]["messages"],
+        json!([
+            { "module": "@taichuy/platform/common", "key": "Cancel", "text": "取消" },
+            { "module": "@taichuy/platform/common", "key": "Missing English", "text": "Missing English" }
+        ])
+    );
+
+    let read = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration"
+                ))
+                .header("cookie", &cookie)
+                .header("x-1flowbase-locale", "zh_Hans")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(read.status(), StatusCode::OK);
+    let read: Value =
+        serde_json::from_slice(&to_bytes(read.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(read["data"]["messages"], saved["data"]["messages"]);
+}
 
 #[tokio::test]
 async fn application_orchestration_routes_bootstrap_save_and_restore() {

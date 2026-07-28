@@ -21,9 +21,16 @@ export interface ConsoleFlowDraftPayload {
   updated_at: string;
 }
 
+export interface ConsoleReferencedI18nMessage {
+  module: string;
+  key: string;
+  text: string;
+}
+
 export interface ConsoleApplicationOrchestrationState {
   flow_id: string;
   draft: ConsoleFlowDraftPayload;
+  messages: ConsoleReferencedI18nMessage[];
   versions: ConsoleFlowVersionSummary[];
   autosave_interval_seconds: number;
   user_protection_limit: number;

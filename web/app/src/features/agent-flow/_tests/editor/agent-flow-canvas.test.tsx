@@ -8,6 +8,7 @@ import { renderReactFlowScene } from '../../../../test/renderers/render-react-fl
 function createInitialState() {
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',
@@ -63,6 +64,7 @@ describe('AgentFlowCanvas', () => {
     const baseDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const iterationState = {
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',

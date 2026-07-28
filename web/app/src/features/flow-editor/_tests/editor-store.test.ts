@@ -8,6 +8,7 @@ describe('flow editor store', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const store = createFlowEditorStore({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',

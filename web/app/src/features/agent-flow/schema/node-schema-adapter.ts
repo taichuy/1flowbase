@@ -5,6 +5,7 @@ import {
   type FlowNodeDocument,
   type FlowNodeOutputDocument
 } from '@1flowbase/flow-schema';
+import type { ConsoleReferencedI18nMessage } from '@1flowbase/api-client';
 
 import {
   replaceNodeOutputs,
@@ -209,7 +210,8 @@ export function createAgentFlowNodeSchemaAdapter({
   environmentVariables = [],
   conversationVariables,
   issues = [],
-  workflowTriggerContext = null
+  workflowTriggerContext = null,
+  messages = []
 }: {
   document: FlowAuthoringDocument;
   nodeId: string;
@@ -217,6 +219,7 @@ export function createAgentFlowNodeSchemaAdapter({
   conversationVariables?: AgentFlowConversationVariable[];
   issues?: AgentFlowIssue[];
   workflowTriggerContext?: unknown;
+  messages?: ConsoleReferencedI18nMessage[];
   setWorkingDocument: (
     update:
       | FlowAuthoringDocument
@@ -391,6 +394,10 @@ export function createAgentFlowNodeSchemaAdapter({
 
       if (key === 'outputContract') {
         return node.outputs;
+      }
+
+      if (key === 'messages') {
+        return messages;
       }
 
       return null;

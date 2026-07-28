@@ -40,6 +40,7 @@ export interface FlowEditorState
     SyncSlice {
   autosaveIntervalMs: number;
   userProtectionLimit: number;
+  messages: ConsoleApplicationOrchestrationState['messages'];
   setWorkingDocument: (
     update:
       | FlowAuthoringDocument
@@ -122,6 +123,7 @@ export function createFlowEditorStore(
     lastChangeSummary: null,
     autosaveIntervalMs: state.autosave_interval_seconds * 1000,
     userProtectionLimit: state.user_protection_limit,
+    messages: state.messages,
     setWorkingDocument: (update) =>
       set((current) => {
         const workingDocument =
@@ -279,7 +281,8 @@ export function createFlowEditorStore(
             nextState.draft.document
           ),
           autosaveIntervalMs: nextState.autosave_interval_seconds * 1000,
-          userProtectionLimit: nextState.user_protection_limit
+          userProtectionLimit: nextState.user_protection_limit,
+          messages: nextState.messages
         };
       });
     },
@@ -328,7 +331,8 @@ export function createFlowEditorStore(
         lastChangeKind: null,
         lastChangeSummary: null,
         autosaveIntervalMs: nextState.autosave_interval_seconds * 1000,
-        userProtectionLimit: nextState.user_protection_limit
+        userProtectionLimit: nextState.user_protection_limit,
+        messages: nextState.messages
       }));
     },
     resetTransientInteractionState: () =>

@@ -1,10 +1,11 @@
+import type { ConsoleReferencedI18nMessage } from '@1flowbase/api-client';
 import type {
   FlowConditionGroupDocument,
   FlowNodeDocument,
   IfElseBranchDocument
 } from '@1flowbase/flow-schema';
 import type { ReactNode } from 'react';
-import { Input, InputNumber, Select, Switch } from 'antd';
+import { Input, InputNumber, Select, Switch, Typography } from 'antd';
 
 import type {
   SchemaFieldRenderer,
@@ -244,6 +245,30 @@ function renderTemplatedTextField({
   const value = adapter.getValue(block.path);
   const selectorOptions = getSelectorOptions(adapter);
   const isBindingPath = block.path.startsWith('bindings.');
+  if (isBindingPath && hasBindingKind(value, 'i18n_text')) {
+    const reference = value.value as { module?: unknown; key?: unknown };
+    const module = typeof reference.module === 'string' ? reference.module : '';
+    const key = typeof reference.key === 'string' ? reference.key : '';
+    const messages =
+      (adapter.getDerived('messages') as
+        | ConsoleReferencedI18nMessage[]
+        | null
+        | undefined) ?? [];
+    const text =
+      messages.find(
+        (message) => message.module === module && message.key === key
+      )?.text ?? key;
+
+    return (
+      <div data-testid="i18n-text-binding" data-ready="true">
+        <Typography.Text>{text}</Typography.Text>
+        <br />
+        <Typography.Text type="secondary">
+          {module} · {key}
+        </Typography.Text>
+      </div>
+    );
+  }
   const stringValue = isBindingPath
     ? hasBindingKind(value, 'templated_text')
       ? getBindingValue<string>(value, 'templated_text', '')
