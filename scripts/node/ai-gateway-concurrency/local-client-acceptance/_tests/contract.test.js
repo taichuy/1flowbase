@@ -160,6 +160,7 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
     'claude', '/machine/claude', target, paths, MEANINGFUL_GIT_VECTOR, 'anthropic_sse',
   );
   assert.ok(claude.invocation.args.includes('Read,Edit,Bash'));
+  assert.ok(claude.invocation.args.includes('--dangerously-skip-permissions'));
   assert.equal(claude.invocation.cwd, paths.gitRepo);
   const codex = buildClientPlan(
     'codex', '/machine/codex', target, paths, MEANINGFUL_GIT_VECTOR, 'responses_sse',

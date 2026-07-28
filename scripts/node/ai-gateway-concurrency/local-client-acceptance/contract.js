@@ -184,6 +184,7 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
     '--verbose', '--model', profile?.model || target.model,
     ...(profile ? ['--effort', profile.effort] : []),
     '--tools', vector.id === MEANINGFUL_GIT_VECTOR.id ? 'Read,Edit,Bash' : vector.kind === 'tools' ? 'Read' : '',
+    ...(vector.id === MEANINGFUL_GIT_VECTOR.id ? ['--dangerously-skip-permissions'] : []),
     '--disable-slash-commands', '--no-chrome',
   );
   return {
