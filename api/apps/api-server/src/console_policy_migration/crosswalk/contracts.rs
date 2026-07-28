@@ -129,6 +129,22 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         ],
     ),
     core_simple_settings(
+        "system.i18n-catalog",
+        &[
+            "i18n_catalog.bundle.get",
+            "i18n_catalog.custom_keys.delete",
+            "i18n_catalog.custom_translations.upsert",
+            "i18n_catalog.entries.detail",
+            "i18n_catalog.entries.list",
+            "i18n_catalog.overrides.restore",
+            "i18n_catalog.overrides.restore_all",
+            "i18n_catalog.overrides.upsert",
+            "i18n_catalog.state.get",
+            "i18n_catalog.update.activate",
+            "i18n_catalog.update.check",
+        ],
+    ),
+    core_simple_settings(
         "system.mcp-management",
         &[
             "mcp.bundles.export",
@@ -252,6 +268,17 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    "i18n_catalog.bundle.get",
+    "i18n_catalog.custom_keys.delete",
+    "i18n_catalog.custom_translations.upsert",
+    "i18n_catalog.entries.detail",
+    "i18n_catalog.entries.list",
+    "i18n_catalog.overrides.restore",
+    "i18n_catalog.overrides.restore_all",
+    "i18n_catalog.overrides.upsert",
+    "i18n_catalog.state.get",
+    "i18n_catalog.update.activate",
+    "i18n_catalog.update.check",
     "roles.console_policy.replace",
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
@@ -259,4 +286,4 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
 
 pub(super) const AUTHENTICATED_OPERATION_EVIDENCE: &str =
     "Authenticated console routes remain session-gated and never entered the role policy contract.";
-pub(super) const DEFAULT_DISABLED_EVIDENCE: &str = "The role console-policy endpoints did not exist in baseline 107f90f78; granting them from the old roles feature would expand authority.";
+pub(super) const DEFAULT_DISABLED_EVIDENCE: &str = "These operations did not exist in baseline 107f90f78; inheriting any historic feature grant would expand authority.";
