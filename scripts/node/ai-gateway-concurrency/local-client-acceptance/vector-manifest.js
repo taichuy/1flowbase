@@ -236,7 +236,7 @@ const CLAUDE_PROTOCOL_VECTOR = Object.freeze({
   expected: successfulExpected({
     assistantTexts: [TEXT_SENTINEL],
     requestBodyKeys: ['context_management'],
-    requestBodyModel: 'claude-opus-4-6',
+    requestBodyModel: 'gateway-fixture-model',
   }),
 });
 

@@ -83,6 +83,9 @@ function configureDraft(document, provider) {
     kind: 'selector',
     value: ['sys', 'protocol_context'],
   };
+  llm.config.external_reasoning_policy = {
+    follow_external_reasoning: true,
+  };
   return document;
 }
 

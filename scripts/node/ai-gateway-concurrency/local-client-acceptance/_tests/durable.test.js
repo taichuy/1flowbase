@@ -92,7 +92,7 @@ test('WP-D4B mock evidence fixes terminal counts, observed Claude fields, and ex
         request: {
           body: {
             keys: ['context_management', 'messages', 'thinking'],
-            model: 'claude-opus-4-6',
+            model: 'gateway-fixture-model',
           },
         },
       },
@@ -115,7 +115,7 @@ test('WP-D4B mock evidence fixes terminal counts, observed Claude fields, and ex
       ? { ...entry, request: { body: { ...entry.request.body, model: 'claude-opus-4-6[1m]' } } }
       : entry),
     counters: after.counters,
-  }, CLAUDE_PROTOCOL_VECTOR.expected), /Provider request model did not match claude-opus-4-6/u);
+  }, CLAUDE_PROTOCOL_VECTOR.expected), /Provider request model did not match gateway-fixture-model/u);
   assert.throws(() => evaluateMockAttempt(before, {
     ...after,
     counters: { gatewayExecutorInvocations: 1 },

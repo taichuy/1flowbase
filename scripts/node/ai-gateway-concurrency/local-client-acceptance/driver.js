@@ -350,6 +350,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
           attempts.push({
             protocol,
             vector_id: vector.id,
+            status: passed ? 'pass' : 'fail',
             expected: publicExpectation(vector.expected),
             commands: result.turns.map((turn) => turn.command),
             result,

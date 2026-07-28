@@ -279,6 +279,9 @@ test('publication source binds Generate and protocol context for all gateway pro
       kind: 'selector',
       value: ['sys', 'protocol_context'],
     });
+    assert.deepEqual(llmConfig.external_reasoning_policy, {
+      follow_external_reasoning: true,
+    });
   }
 
   const publications = FakeOwnerClient.calls.filter(

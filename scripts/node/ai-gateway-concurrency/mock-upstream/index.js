@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const http = require('node:http');
 const {
   MOCK_ROUTE,
@@ -19,7 +20,10 @@ const {
   responsesWireEvents,
 } = require('./protocol-events');
 const { acceptWebSocket, createFrameReader, sendClose, sendJson } = require('./websocket');
-const { normalizedRequestFingerprint } = require('../protocol-oracle/request-fidelity');
+const {
+  normalizedRequest,
+  normalizedRequestFingerprint,
+} = require('../protocol-oracle/request-fidelity');
 const { errorFixtureFromBody } = require('../protocol-oracle/error-fidelity');
 const {
   CONTINUITY_SEED_SENTINEL,
@@ -49,11 +53,36 @@ function requestBodySummary(body) {
   return summary;
 }
 
+function sha256(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function fidelityFixtureDigest(request, body) {
+  const normalized = normalizedRequest({
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    body,
+  });
+  return {
+    method: normalized.method,
+    url_sha256: sha256(normalized.url),
+    header_sha256: Object.fromEntries(
+      Object.entries(normalized.headers).map(([name, value]) => [name, sha256(value)]),
+    ),
+    body_sha256: sha256(normalized.body),
+    body_field_sha256: Object.fromEntries(
+      Object.entries(normalized.body).map(([name, value]) => [name, sha256(value)]),
+    ),
+  };
+}
+
 function safeRequestSummary(request, body) {
   const headers = {};
   for (const name of SAFE_HEADER_NAMES) {
     if (typeof request.headers[name] === 'string') headers[name] = request.headers[name];
   }
+  const requestUrl = new URL(request.url, 'http://mock.invalid');
   return {
     method: request.method,
     path: new URL(request.url, 'http://mock.invalid').pathname,
@@ -65,6 +94,9 @@ function safeRequestSummary(request, body) {
       headers: request.headers,
       body,
     }),
+    ...(requestUrl.searchParams.has('fixture_query') ? {
+      fidelity_fixture: fidelityFixtureDigest(request, body),
+    } : {}),
   };
 }
 

@@ -161,7 +161,7 @@ test('WP-D4B records only observed Claude profile evidence without injecting it 
     context_management: true,
   });
   assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.expected.request_body_keys, ['context_management']);
-  assert.equal(CLAUDE_PROTOCOL_VECTOR.expected.request_body_model, 'claude-opus-4-6');
+  assert.equal(CLAUDE_PROTOCOL_VECTOR.expected.request_body_model, 'gateway-fixture-model');
   assert.doesNotMatch(promptFor(CLAUDE_PROTOCOL_VECTOR, paths), /output_config|effort/u);
 
   const codex = buildClientPlan('codex', '/machine/codex', target, paths, TEXT_VECTOR, 'responses_sse');

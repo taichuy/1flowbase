@@ -107,6 +107,27 @@ function arrivalsAfter(snapshot, sequence) {
   );
 }
 
+function firstDifference(left, right, path = '$') {
+  if (Object.is(left, right)) return null;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    const length = Math.max(left.length, right.length);
+    for (let index = 0; index < length; index += 1) {
+      const difference = firstDifference(left[index], right[index], `${path}[${index}]`);
+      if (difference) return difference;
+    }
+    return null;
+  }
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+    for (const key of keys) {
+      const difference = firstDifference(left[key], right[key], `${path}.${key}`);
+      if (difference) return difference;
+    }
+    return null;
+  }
+  return { path, direct: left, gateway: right };
+}
+
 async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapshot }) {
   const rows = [];
   for (const vector of REQUEST_FIDELITY_VECTORS) {
@@ -130,7 +151,13 @@ async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapsh
     }
     const [direct, gateway] = arrivals;
     if (direct.request.semantic_sha256 !== gateway.request.semantic_sha256) {
-      throw new Error(`${vector.id} normalized direct/Gateway request mismatch`);
+      const difference = firstDifference(
+        direct.request.fidelity_fixture,
+        gateway.request.fidelity_fixture,
+      );
+      throw new Error(
+        `${vector.id} normalized direct/Gateway request mismatch: ${JSON.stringify(difference)}`,
+      );
     }
     rows.push({
       id: vector.id,

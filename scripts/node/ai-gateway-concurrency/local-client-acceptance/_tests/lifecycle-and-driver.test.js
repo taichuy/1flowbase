@@ -557,6 +557,9 @@ test('WP-14A driver emits mock-backed reconciliation evidence and cleans resourc
     assert.deepEqual(result.clients.find((client) => client.name === 'codex').protocols, [
       'responses_sse', 'responses_websocket',
     ]);
+    assert.ok(result.clients.every((client) => client.attempts.every(
+      (attempt) => attempt.status === 'pass',
+    )));
     assert.deepEqual(reconciled, [1, 1, 1, 1, 1, 1, 1, 1]);
     assert.deepEqual(providerRequests, [1, 2, 1, 2, 1, 2, 1, 2]);
     assert.equal(toolBarrierReleases, 4);
