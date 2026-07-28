@@ -88,9 +88,11 @@ async function verifyFixture(browserInstance, fixture) {
 
     const previewBox = await page
       .locator('[data-testid=js-block-preview-pane]')
+      .first()
       .boundingBox();
     const consoleBox = await page
       .locator('[data-testid=js-block-console-pane]')
+      .first()
       .boundingBox();
     if (!previewBox || !consoleBox || consoleBox.y <= previewBox.y) {
       throw new Error(`${fixture.name} Preview/Console order is invalid.`);
