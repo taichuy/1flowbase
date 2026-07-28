@@ -64,13 +64,13 @@ fn ac_005_sha_sidecar_is_bound_to_exact_versioned_asset() {
         .as_str()
         .strip_prefix("sha256:")
         .unwrap();
-    let sidecar = format!("{hex}  i18n-catalog-seed-v1.0.0.json\n");
-    validate_sidecar(sidecar.as_bytes(), inspected.seed_sha256.as_str(), "1.0.0").unwrap();
-    assert!(validate_sidecar(sidecar.as_bytes(), inspected.seed_sha256.as_str(), "1.0.1").is_err());
+    let sidecar = format!("{hex}  i18n-catalog-seed-v1.1.0.json\n");
+    validate_sidecar(sidecar.as_bytes(), inspected.seed_sha256.as_str(), "1.1.0").unwrap();
+    assert!(validate_sidecar(sidecar.as_bytes(), inspected.seed_sha256.as_str(), "1.1.1").is_err());
     assert!(validate_sidecar(
-        b"bad  i18n-catalog-seed-v1.0.0.json\n",
+        b"bad  i18n-catalog-seed-v1.1.0.json\n",
         inspected.seed_sha256.as_str(),
-        "1.0.0"
+        "1.1.0"
     )
     .is_err());
 }

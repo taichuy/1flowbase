@@ -54,7 +54,18 @@ fn ac_002_rejects_seed_digest_that_disagrees_with_source_metadata() {
     let error = decode_catalog_seed(OFFICIAL_SEED_BYTES, &serde_json::to_vec(&source).unwrap())
         .unwrap_err();
 
-    assert!(error.to_string().contains("source metadata"));
+    assert!(error.to_string().contains("fixed release descriptor"));
+}
+
+#[test]
+fn ac_002_rejects_unpinned_official_provenance() {
+    let mut source: Value = serde_json::from_slice(OFFICIAL_SEED_SOURCE_BYTES).unwrap();
+    source["official_commit"] = Value::String("0".repeat(40));
+
+    let error = decode_catalog_seed(OFFICIAL_SEED_BYTES, &serde_json::to_vec(&source).unwrap())
+        .unwrap_err();
+
+    assert!(error.to_string().contains("source commit is not pinned"));
 }
 
 #[test]

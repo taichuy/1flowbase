@@ -89,7 +89,7 @@ pub(crate) fn decode_catalog_seed(
         serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
     let source: CatalogSeedSource =
         serde_json::from_slice(source_bytes).context("invalid official Seed source metadata")?;
-    if source.official_commit != "d7d0a21a0317289eab5340b212995444ffac9d51" {
+    if source.official_commit != "f0ac7987cbf0b731c106282a62cf9f82070bcb55" {
         bail!("official Seed source commit is not pinned");
     }
     decode_validated_catalog_seed(
@@ -339,7 +339,7 @@ fn validate_seed_digests(seed: &CatalogSeed) -> Result<()> {
                     .collect(),
             )
         } else {
-            serde_json::to_value(
+            Value::Object(
                 module
                     .messages
                     .iter()
@@ -348,13 +348,15 @@ fn validate_seed_digests(seed: &CatalogSeed) -> Result<()> {
                             .translations
                             .get(&file.locale)
                             .cloned()
-                            .map(|value| (message.msgid.clone(), value))
+                            .map(|value| (message.msgid.clone(), Value::String(value)))
                             .ok_or_else(|| anyhow!("official Seed file is missing a translation"))
                     })
-                    .collect::<Result<BTreeMap<_, _>>>()?,
-            )?
+                    .collect::<Result<serde_json::Map<_, _>>>()?,
+            )
         };
-        if digest_stable_json(&document)? != file.sha256 {
+        // The publisher already freezes messages in its locale-aware canonical order. Preserve
+        // that order here because Rust's lexical BTree ordering differs for punctuation/case.
+        if digest_canonical_json(&document)? != file.sha256 {
             bail!("official Seed file digest mismatch");
         }
     }
@@ -374,7 +376,11 @@ fn validate_seed_digests(seed: &CatalogSeed) -> Result<()> {
 
 fn digest_stable_json(value: &Value) -> Result<String> {
     let sorted = sort_json(value)?;
-    let mut bytes = serde_json::to_vec_pretty(&sorted)?;
+    digest_canonical_json(&sorted)
+}
+
+fn digest_canonical_json(value: &Value) -> Result<String> {
+    let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
