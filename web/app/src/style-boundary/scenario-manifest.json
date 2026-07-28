@@ -797,9 +797,13 @@
     ]
   },
   {
-    "id": "page.settings-i18n",
+    "id": "page.settings-i18n.desktop",
     "kind": "page",
-    "title": "Settings Translation Catalog Page",
+    "title": "Settings Translation Catalog Desktop Page",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
     "impactFiles": [
       "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
@@ -822,7 +826,7 @@
         ]
       },
       {
-        "id": "catalog-filters",
+        "id": "catalog-desktop-filters",
         "selector": ".i18n-catalog-page__filters",
         "propertyAssertions": [
           {
@@ -840,6 +844,47 @@
             "expected": "block"
           }
         ]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-i18n.mobile",
+    "kind": "page",
+    "title": "Settings Translation Catalog Mobile Page",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "catalog-ready",
+        "selector": "[data-testid=\"i18n-catalog-page\"][data-ready=\"true\"]",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "catalog-mobile-filters",
+        "selector": ".i18n-catalog-page__filters",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
       },
       {
         "id": "catalog-mobile-browse",
@@ -847,7 +892,7 @@
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "none"
+            "expected": "block"
           }
         ]
       }

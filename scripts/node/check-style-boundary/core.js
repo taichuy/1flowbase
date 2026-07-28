@@ -889,8 +889,42 @@ async function openNodeDetailDock(page) {
   return isNodeDetailDockVisible(page);
 }
 
+function resolveSceneViewport(scene) {
+  if (scene.viewport === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(scene.viewport)) {
+    throw new Error(
+      `Invalid style boundary viewport for ${scene.id}: expected object`
+    );
+  }
+
+  const { width, height } = scene.viewport;
+
+  if (!Number.isInteger(width) || width <= 0) {
+    throw new Error(
+      `Invalid style boundary viewport for ${scene.id}: width must be a positive integer`
+    );
+  }
+
+  if (!Number.isInteger(height) || height <= 0) {
+    throw new Error(
+      `Invalid style boundary viewport for ${scene.id}: height must be a positive integer`
+    );
+  }
+
+  return { width, height };
+}
+
+async function createScenePage(browser, scene) {
+  const viewport = resolveSceneViewport(scene);
+
+  return viewport ? browser.newPage({ viewport }) : browser.newPage();
+}
+
 async function runScene(browser, baseUrl, scene) {
-  const page = await browser.newPage();
+  const page = await createScenePage(browser, scene);
   await installStyleBoundaryNetworkMocks(page);
   const cdp = await page.context().newCDPSession(page);
   const styleSheets = new Map();
@@ -1007,6 +1041,7 @@ async function main(argv) {
 module.exports = {
   buildTemporaryFrontendCommand,
   collectRelationshipViolations,
+  createScenePage,
   createProbeUrl,
   formatBoundaryFailure,
   formatRelationshipFailure,
@@ -1017,5 +1052,6 @@ module.exports = {
   resolveStyleBoundaryBaseUrl,
   resolveStyleBoundaryFrontendHost,
   resolveTemporaryFrontendPort,
-  resolveSceneIds
+  resolveSceneIds,
+  resolveSceneViewport
 };

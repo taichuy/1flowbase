@@ -46,6 +46,10 @@ export interface StyleBoundaryManifestScene {
   title: string;
   impactFiles: string[];
   boundaryNodes: StyleBoundaryTargetNode[];
+  viewport?: {
+    width: number;
+    height: number;
+  };
   relationshipAssertions?: StyleBoundaryRelationshipAssertion[];
 }
 

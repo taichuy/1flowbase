@@ -106,13 +106,19 @@ describe('style boundary registry', () => {
       getSceneIdsForFiles([
         'web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css'
       ])
-    ).toEqual(['page.settings-i18n']);
+    ).toEqual([
+      'page.settings-i18n.desktop',
+      'page.settings-i18n.mobile'
+    ]);
     expect(
       getSceneIdsForFiles([
         'web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx',
         'web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx'
       ])
-    ).toEqual(['page.settings-i18n']);
+    ).toEqual([
+      'page.settings-i18n.desktop',
+      'page.settings-i18n.mobile'
+    ]);
     expect(
       getSceneIdsForFiles([
         'web/app/src/features/settings/components/application-management/ApplicationManagementPanel.tsx'
@@ -124,18 +130,40 @@ describe('style boundary registry', () => {
   });
 
   test('registers the translation catalog page readiness and responsive browse boundaries', () => {
-    const scene = getRuntimeScene('page.settings-i18n');
+    const desktopScene = getRuntimeScene('page.settings-i18n.desktop');
+    const mobileScene = getRuntimeScene('page.settings-i18n.mobile');
 
-    expect(scene.boundaryNodes).toEqual(
+    expect(desktopScene.viewport).toEqual({ width: 1280, height: 800 });
+    expect(desktopScene.boundaryNodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'catalog-ready',
           selector: '[data-testid="i18n-catalog-page"][data-ready="true"]'
         }),
-        expect.objectContaining({ id: 'catalog-desktop-browse' }),
+        expect.objectContaining({ id: 'catalog-desktop-browse' })
+      ])
+    );
+    expect(
+      desktopScene.boundaryNodes.some(
+        (node) => node.id === 'catalog-mobile-browse'
+      )
+    ).toBe(false);
+
+    expect(mobileScene.viewport).toEqual({ width: 390, height: 844 });
+    expect(mobileScene.boundaryNodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'catalog-ready',
+          selector: '[data-testid="i18n-catalog-page"][data-ready="true"]'
+        }),
         expect.objectContaining({ id: 'catalog-mobile-browse' })
       ])
     );
+    expect(
+      mobileScene.boundaryNodes.some(
+        (node) => node.id === 'catalog-desktop-browse'
+      )
+    ).toBe(false);
   });
 
   test('renders the home page scene inside the shared shell frame', async () => {
