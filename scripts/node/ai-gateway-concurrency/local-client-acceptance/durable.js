@@ -111,11 +111,19 @@ function networkObserverEvidence(snapshot, expected = 0) {
   return { network_observer_outbound: observed };
 }
 
-function callbackResumeEvidence(events, minimumResumes, toolMode) {
-  if (minimumResumes === undefined) return null;
+function callbackResumeEvidence(events, minimumResumes, callbackResumes, toolMode) {
+  const hasMinimum = Number.isInteger(minimumResumes);
+  const hasExact = Number.isInteger(callbackResumes);
+  if (!hasMinimum && !hasExact) return null;
+  if (hasMinimum && hasExact) {
+    throw new Error('mock callback resume expectation requires exactly one cardinality rule');
+  }
   const calls = events.filter((event) => event.event === 'tool_call');
   const resumes = events.filter((event) => event.event === 'second_upstream_request');
-  if (resumes.length < minimumResumes) {
+  if (hasExact && resumes.length !== callbackResumes) {
+    throw new Error(`expected exactly ${callbackResumes} Gateway callback resume, observed ${resumes.length}`);
+  }
+  if (hasMinimum && resumes.length < minimumResumes) {
     throw new Error(`expected at least ${minimumResumes} Gateway callback resume, observed ${resumes.length}`);
   }
   const rounds = resumes.map((resume, index) => {
@@ -152,10 +160,15 @@ function callbackResumeEvidence(events, minimumResumes, toolMode) {
       settled_sequence: settled.sequence,
     };
   });
-  if (new Set(rounds.map((round) => round.tool_call_sequence)).size < minimumResumes) {
+  const requiredResumes = callbackResumes ?? minimumResumes;
+  if (new Set(rounds.map((round) => round.tool_call_sequence)).size < requiredResumes) {
     throw new Error('Gateway callback resumes did not follow distinct Provider tool-call rounds');
   }
-  return { minimum_resumes: minimumResumes, observed_resumes: resumes.length, rounds };
+  return {
+    ...(hasExact ? { exact_resumes: callbackResumes } : { minimum_resumes: minimumResumes }),
+    observed_resumes: resumes.length,
+    rounds,
+  };
 }
 
 function evaluateMockAttempt(before, after, rawExpectation) {
@@ -219,6 +232,10 @@ function evaluateMockAttempt(before, after, rawExpectation) {
     for (const key of expectation.request_body_keys ?? []) {
       if (!requestKeys.includes(key)) throw new Error(`Provider request omitted ${key}`);
     }
+    if (expectation.request_body_model !== undefined
+      && arrival.request?.body?.model !== expectation.request_body_model) {
+      throw new Error(`Provider request model did not match ${expectation.request_body_model}`);
+    }
   }
   const executor = expectation.gateway_executor_invocations === undefined
     ? null
@@ -227,7 +244,10 @@ function evaluateMockAttempt(before, after, rawExpectation) {
     ? null
     : networkObserverEvidence(after, expectation.network_observer_outbound);
   const callback = callbackResumeEvidence(
-    events, expectation.minimum_callback_resumes, expectation.tool_mode,
+    events,
+    expectation.minimum_callback_resumes,
+    expectation.callback_resumes,
+    expectation.tool_mode,
   );
   return {
     arrivals: arrivals.length,

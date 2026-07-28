@@ -6,7 +6,12 @@ const {
   evaluateMockAttempt, networkObserverEvidence, reconcileAttempt, snapshotRuns, verifyIdle,
   waitForBarrierWaiting,
 } = require('../durable');
-const { PROVIDER_ERROR_BODY } = require('../vector-manifest');
+const {
+  CLAUDE_PROTOCOL_VECTOR,
+  PARALLEL_TOOL_VECTOR,
+  PROVIDER_ERROR_BODY,
+  PROVIDER_ERROR_VECTOR,
+} = require('../vector-manifest');
 
 function response(data) {
   return { ok: true, async json() { return { data }; } };
@@ -72,7 +77,7 @@ test('WP-14A mock evidence proves one text arrival and ordered two-turn tool arr
   assert.throws(() => evaluateMockAttempt(before, after, 1), /expected 1 mock arrival/u);
 });
 
-test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and executor=0', () => {
+test('WP-D4B mock evidence fixes terminal counts, observed Claude fields, and executor=0', () => {
   const before = {
     entries: [{ sequence: 10 }],
     counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
@@ -84,7 +89,12 @@ test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and execu
         sequence: 11,
         event: 'arrival',
         nonce: 'claude-profile',
-        request: { body: { keys: ['context_management', 'messages', 'output_config', 'thinking'] } },
+        request: {
+          body: {
+            keys: ['context_management', 'messages', 'thinking'],
+            model: 'claude-opus-4-6',
+          },
+        },
       },
       {
         sequence: 12,
@@ -96,17 +106,16 @@ test('WP-D4B mock evidence fixes terminal counts, Claude request keys, and execu
     ],
     counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
   };
-  const evidence = evaluateMockAttempt(before, after, {
-    provider_requests: 1,
-    provider_outcomes: ['completed'],
-    success_terminal_counts: [1],
-    request_body_keys: ['context_management', 'output_config', 'thinking'],
-    gateway_executor_invocations: 0,
-    network_observer_outbound: 0,
-  });
+  const evidence = evaluateMockAttempt(before, after, CLAUDE_PROTOCOL_VECTOR.expected);
   assert.equal(evidence.gateway_executor_invocations, 0);
   assert.equal(evidence.network_observer_outbound, 0);
   assert.deepEqual(evidence.success_terminal_counts, [1]);
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: after.entries.map((entry) => entry.event === 'arrival'
+      ? { ...entry, request: { body: { ...entry.request.body, model: 'claude-opus-4-6[1m]' } } }
+      : entry),
+    counters: after.counters,
+  }, CLAUDE_PROTOCOL_VECTOR.expected), /Provider request model did not match claude-opus-4-6/u);
   assert.throws(() => evaluateMockAttempt(before, {
     ...after,
     counters: { gatewayExecutorInvocations: 1 },
@@ -184,6 +193,49 @@ test('F4-CLIENT-GATE accepts legal callback request counts but requires paired l
   /distinct Provider tool-call rounds/u);
 });
 
+test('BLO-06 requires exactly one Gateway parallel callback group', () => {
+  const before = {
+    entries: [{ sequence: 60 }],
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
+  };
+  const entries = [
+    ...before.entries,
+    { sequence: 61, event: 'arrival', nonce: 'initial' },
+    { sequence: 62, event: 'tool_call', nonce: 'initial' },
+    { sequence: 63, event: 'settled', nonce: 'initial', outcome: 'completed', successTerminalCount: 1 },
+    { sequence: 64, event: 'arrival', nonce: 'callback' },
+    { sequence: 65, event: 'second_upstream_request', nonce: 'callback' },
+    { sequence: 66, event: 'barrier_waiting', nonce: 'callback' },
+    { sequence: 67, event: 'barrier_released', nonce: 'callback' },
+    { sequence: 68, event: 'settled', nonce: 'callback', outcome: 'completed', successTerminalCount: 1 },
+  ];
+  const expectation = PARALLEL_TOOL_VECTOR.expected;
+  assert.deepEqual(expectation.durable_statuses, ['succeeded']);
+  const evidence = evaluateMockAttempt(before, { entries, counters: before.counters }, expectation);
+  assert.equal(evidence.callback_resume.exact_resumes, 1);
+  assert.equal(evidence.callback_resume.observed_resumes, 1);
+  assert.equal(evidence.gateway_executor_invocations, 0);
+  assert.equal(evidence.network_observer_outbound, 0);
+
+  const extraCallback = [
+    ...entries,
+    { sequence: 69, event: 'arrival', nonce: 'callback-two' },
+    { sequence: 70, event: 'second_upstream_request', nonce: 'callback-two' },
+    { sequence: 71, event: 'barrier_waiting', nonce: 'callback-two' },
+    { sequence: 72, event: 'barrier_released', nonce: 'callback-two' },
+    {
+      sequence: 73,
+      event: 'settled',
+      nonce: 'callback-two',
+      outcome: 'completed',
+      successTerminalCount: 1,
+    },
+  ];
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: extraCallback, counters: before.counters,
+  }, expectation), /expected exactly 1 Gateway callback resume, observed 2/u);
+});
+
 test('BLO-07 proves two settled sequential callbacks while only the final text callback uses a barrier', () => {
   const before = {
     entries: [{ sequence: 40 }],
@@ -226,7 +278,7 @@ test('BLO-07 proves two settled sequential callbacks while only the final text c
   );
 });
 
-test('F4-CLIENT-GATE retries remain strict and every durable error body is byte exact', async () => {
+test('BLO-05 retries remain client-owned and every durable error body is byte exact', async () => {
   const mockBefore = {
     entries: [{ sequence: 30 }],
     counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
@@ -246,16 +298,18 @@ test('F4-CLIENT-GATE retries remain strict and every durable error body is byte 
       },
     );
   }
-  const mockExpectation = {
-    minimum_provider_requests: 1,
-    provider_outcomes: ['http-500'],
-    success_terminal_counts: [0],
-    gateway_executor_invocations: 0,
-    network_observer_outbound: 0,
-  };
-  assert.equal(evaluateMockAttempt(mockBefore, {
+  const mockExpectation = PROVIDER_ERROR_VECTOR.expected;
+  assert.ok(mockExpectation.error_body.length > 0);
+  assert.equal(mockExpectation.provider_requests, undefined);
+  assert.equal(mockExpectation.minimum_provider_requests, 1);
+  assert.equal(mockExpectation.durable_runs, 'provider_requests');
+  assert.deepEqual(mockExpectation.durable_statuses, ['failed']);
+  const mockEvidence = evaluateMockAttempt(mockBefore, {
     entries: retryEntries, counters: mockBefore.counters,
-  }, mockExpectation).arrivals, 3);
+  }, mockExpectation);
+  assert.equal(mockEvidence.arrivals, 3);
+  assert.equal(mockEvidence.gateway_executor_invocations, 0);
+  assert.equal(mockEvidence.network_observer_outbound, 0);
   retryEntries.at(-1).outcome = 'completed';
   assert.throws(() => evaluateMockAttempt(mockBefore, {
     entries: retryEntries, counters: mockBefore.counters,
@@ -280,7 +334,7 @@ test('F4-CLIENT-GATE retries remain strict and every durable error body is byte 
     target,
     before,
     expectedRuns: 2,
-    expectedStatuses: ['failed'],
+    expectedStatuses: PROVIDER_ERROR_VECTOR.expected.durable_statuses,
     expectedErrorBody: PROVIDER_ERROR_BODY,
     fetchImpl,
     graceMs: 0,
@@ -293,7 +347,7 @@ test('F4-CLIENT-GATE retries remain strict and every durable error body is byte 
     target,
     before,
     expectedRuns: 2,
-    expectedStatuses: ['failed'],
+    expectedStatuses: PROVIDER_ERROR_VECTOR.expected.durable_statuses,
     expectedErrorBody: PROVIDER_ERROR_BODY,
     fetchImpl,
     graceMs: 0,

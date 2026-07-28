@@ -300,7 +300,7 @@ test('F4-CLIENT-GATE controlled negatives reject prompt echo, partial text, and 
   }).reason, 'complete_conversation_missing');
 });
 
-test('WP-D4B distinguishes parallel results from sequential callback tasks in one turn', () => {
+test('WP-D4B keeps Claude/OpenCode chronology strict while Codex reports completion evidence', () => {
   const parallel = [
     { type: 'assistant', message: { content: [
       { type: 'tool_use', id: 'tool-a' },
@@ -314,6 +314,84 @@ test('WP-D4B distinguishes parallel results from sequential callback tasks in on
     { type: 'result', is_error: false, terminal_reason: 'completed', result: PARALLEL_FINAL_SENTINEL },
   ];
   assert.equal(evaluateAttempt('claude', PARALLEL_TOOL_VECTOR, output(parallel)).pass, true);
+  const claudeInterleaved = [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-a' }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool-a', content: PARALLEL_RESULT_A }] } },
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-b' }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool-b', content: PARALLEL_RESULT_B }] } },
+    parallel[2], parallel[3],
+  ];
+  assert.equal(
+    evaluateAttempt('claude', PARALLEL_TOOL_VECTOR, output(claudeInterleaved)).reason,
+    'tool_callback_evidence_missing',
+  );
+
+  const codexParallel = [
+    { type: 'turn.started' },
+    { type: 'item.started', item: { id: 'tool-a', type: 'command_execution' } },
+    {
+      type: 'item.completed',
+      item: { id: 'tool-a', type: 'command_execution', aggregated_output: PARALLEL_RESULT_A },
+    },
+    { type: 'item.started', item: { id: 'tool-b', type: 'command_execution' } },
+    {
+      type: 'item.completed',
+      item: { id: 'tool-b', type: 'command_execution', aggregated_output: PARALLEL_RESULT_B },
+    },
+    { type: 'item.completed', item: { id: 'final', type: 'agent_message', text: PARALLEL_FINAL_SENTINEL } },
+    { type: 'turn.completed' },
+  ];
+  const codexEvidence = evaluateAttempt('codex', PARALLEL_TOOL_VECTOR, output(codexParallel));
+  assert.equal(codexEvidence.pass, true);
+  assert.ok(codexEvidence.observed_events.includes('codex_tool_completion_evidence_observed'));
+  assert.equal(evaluateAttempt(
+    'codex', PARALLEL_TOOL_VECTOR, output(codexParallel.toSpliced(4, 1)),
+  ).reason, 'tool_callback_evidence_missing');
+  assert.equal(evaluateAttempt(
+    'codex', PARALLEL_TOOL_VECTOR, output(codexParallel.toSpliced(5, 1)),
+  ).reason, 'tool_callback_evidence_missing');
+  assert.equal(evaluateAttempt(
+    'codex', PARALLEL_TOOL_VECTOR, output(codexParallel.toSpliced(6, 1)),
+  ).reason, 'client_terminal_missing');
+
+  const opencodeInterleaved = [
+    {
+      type: 'message.part.updated',
+      properties: { part: { id: 'tool-a', type: 'tool', callID: 'tool-a', state: { status: 'pending' } } },
+    },
+    {
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: 'tool-a', type: 'tool', callID: 'tool-a',
+          state: { status: 'completed', output: PARALLEL_RESULT_A },
+        },
+      },
+    },
+    {
+      type: 'message.part.updated',
+      properties: { part: { id: 'tool-b', type: 'tool', callID: 'tool-b', state: { status: 'pending' } } },
+    },
+    {
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: 'tool-b', type: 'tool', callID: 'tool-b',
+          state: { status: 'completed', output: PARALLEL_RESULT_B },
+        },
+      },
+    },
+    { type: 'message.updated', properties: { info: { id: 'final', role: 'assistant' } } },
+    {
+      type: 'message.part.updated',
+      properties: { part: { id: 'final-text', messageID: 'final', type: 'text', text: PARALLEL_FINAL_SENTINEL } },
+    },
+    { type: 'session.status', properties: { status: { type: 'idle' } } },
+  ];
+  assert.equal(
+    evaluateAttempt('opencode', PARALLEL_TOOL_VECTOR, output(opencodeInterleaved)).reason,
+    'tool_callback_evidence_missing',
+  );
 
   const sequential = [
     { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-a' }] } },

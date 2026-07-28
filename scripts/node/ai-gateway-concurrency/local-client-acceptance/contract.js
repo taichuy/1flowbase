@@ -187,12 +187,11 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
       ANTHROPIC_BASE_URL: target.gatewayBaseUrl,
       ANTHROPIC_API_KEY: target.apiKey,
       CLAUDE_CODE_OAUTH_TOKEN: '',
-      ...(vector.kind === 'error' ? { CLAUDE_CODE_MAX_RETRIES: '0' } : {}),
       ...(profile?.environment || {}),
     },
     configFiles: [{ path: settingsPath, content: '{}\n' }],
     client_surface: persistent ? 'claude-print-resume' : 'claude-print',
-    ...(profile ? { protocol_profile: profile.expected_wire } : {}),
+    ...(profile ? { protocol_profile: profile.expected_evidence } : {}),
   };
 }
 

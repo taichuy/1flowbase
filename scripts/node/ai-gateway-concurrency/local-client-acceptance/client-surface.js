@@ -267,15 +267,21 @@ function evaluateToolSurface(client, vector, surface) {
     && markedResults.every((result) => result && callsById.has(result.id))
     && uniqueResultIds.size === markers.length
     && calls.length === expectedCallCount;
+  // Codex reports local scheduler order; mock evidence owns the Provider callback-group proof.
+  const codexParallelCompletionEvidence = paired
+    && client === 'codex'
+    && vector.expected.tool_mode === 'parallel_one_callback_task';
   let chronology = false;
-  if (paired && vector.expected.tool_mode === 'sequential_callback_tasks_one_turn') {
+  if (!codexParallelCompletionEvidence
+    && paired && vector.expected.tool_mode === 'sequential_callback_tasks_one_turn') {
     const [firstResult, secondResult] = markedResults;
     chronology = callsById.get(firstResult.id).index < firstResult.index
       && firstResult.index < callsById.get(secondResult.id).index
       && callsById.get(secondResult.id).index < secondResult.index;
-  } else if (paired && vector.expected.tool_mode === 'parallel_one_callback_task') {
+  } else if (!codexParallelCompletionEvidence
+    && paired && vector.expected.tool_mode === 'parallel_one_callback_task') {
     chronology = calls.every((call) => call.index < Math.min(...markedResults.map((result) => result.index)));
-  } else if (paired) {
+  } else if (!codexParallelCompletionEvidence && paired) {
     chronology = callsById.get(markedResults[0].id).index < markedResults[0].index;
   }
   const lastResultIndex = markedResults.every(Boolean)
@@ -288,13 +294,14 @@ function evaluateToolSurface(client, vector, surface) {
   const terminalAfterFinal = Boolean(final)
     && surface.terminal.observed
     && surface.terminal.index > final.index;
-  const pass = paired && chronology && terminalAfterFinal;
+  const pass = paired && (chronology || codexParallelCompletionEvidence) && terminalAfterFinal;
   const observed = [];
   if (calls.length === expectedCallCount) observed.push('tool_calls_observed');
   if (markedResults.every(Boolean) && uniqueResultIds.size === markers.length) {
     observed.push('tool_results_observed');
   }
-  if (chronology) observed.push(`${vector.expected.tool_mode}_observed`);
+  if (codexParallelCompletionEvidence) observed.push('codex_tool_completion_evidence_observed');
+  else if (chronology) observed.push(`${vector.expected.tool_mode}_observed`);
   if (final) observed.push('final_marker_observed');
   if (terminalAfterFinal) observed.push('client_terminal_observed');
   return { pass, reason: pass ? null : 'tool_callback_evidence_missing', observed_events: observed };

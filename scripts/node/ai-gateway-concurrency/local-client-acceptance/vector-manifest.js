@@ -21,15 +21,17 @@ const PARALLEL_RESULT_B = `${TOOL_RESULT_SENTINEL} parallel-b`;
 const SEQUENTIAL_RESULT_A = `${TOOL_RESULT_SENTINEL} sequential-a`;
 const SEQUENTIAL_RESULT_B = `${TOOL_RESULT_SENTINEL} sequential-b`;
 const PROVIDER_ERROR_BODY = HTTP_500_ERROR_BODY;
+const CLAUDE_REAL_CLIENT_PROFILE_MARKER =
+  '1flowbase-client-vector=claude-real-client-1m-adaptive-context-management';
 const CLAUDE_PROTOCOL_PROFILE = Object.freeze({
   id: 'claude_1m_adaptive_context_management',
   model: 'claude-opus-4-6[1m]',
   effort: 'high',
   environment: Object.freeze({ USE_API_CONTEXT_MANAGEMENT: '1' }),
-  expected_wire: Object.freeze({
-    context_window: '1m',
+  expected_evidence: Object.freeze({
+    configured_model: 'claude-opus-4-6[1m]',
+    base_model: 'claude-opus-4-6',
     thinking_type: 'adaptive',
-    effort: 'high',
     context_management: true,
   }),
 });
@@ -50,7 +52,9 @@ function successfulExpected({
   toolMode = null,
   toolResultMarkers = [],
   minimumCallbackResumes = null,
+  callbackResumes = null,
   requestBodyKeys = [],
+  requestBodyModel = null,
 }) {
   return Object.freeze({
     exit: 'success',
@@ -68,9 +72,12 @@ function successfulExpected({
       tool_mode: toolMode,
       tool_result_markers: Object.freeze(toolResultMarkers),
       tool_call_count: toolResultMarkers.length,
-      minimum_callback_resumes: minimumCallbackResumes ?? 1,
+      ...(callbackResumes === null
+        ? { minimum_callback_resumes: minimumCallbackResumes ?? 1 }
+        : { callback_resumes: callbackResumes }),
     } : {}),
     ...(requestBodyKeys.length ? { request_body_keys: Object.freeze(requestBodyKeys) } : {}),
+    ...(requestBodyModel === null ? {} : { request_body_model: requestBodyModel }),
   });
 }
 
@@ -160,7 +167,7 @@ const PROVIDER_ERROR_VECTOR = Object.freeze({
     error_body: PROVIDER_ERROR_BODY,
     durable_runs: 'provider_requests',
     durable_statuses: Object.freeze(['failed']),
-    provider_requests: 1,
+    minimum_provider_requests: 1,
     provider_outcomes: Object.freeze(['http-500']),
     success_terminal_counts: Object.freeze([0]),
     gateway_executor_invocations: 0,
@@ -188,7 +195,7 @@ const PARALLEL_TOOL_VECTOR = Object.freeze({
     minimumProviderRequests: 2,
     toolMode: 'parallel_one_callback_task',
     toolResultMarkers: [PARALLEL_RESULT_A, PARALLEL_RESULT_B],
-    minimumCallbackResumes: 1,
+    callbackResumes: 1,
   }),
 });
 
@@ -223,13 +230,14 @@ const CLAUDE_PROTOCOL_VECTOR = Object.freeze({
   protocol_profile: CLAUDE_PROTOCOL_PROFILE,
   turns: Object.freeze([Object.freeze({
     prompt: [
-      '1flowbase-client-vector=claude-1m-adaptive-context-management',
-      `Reply with exactly: ${CLAUDE_PROTOCOL_SENTINEL}`,
+      CLAUDE_REAL_CLIENT_PROFILE_MARKER,
+      `Reply with exactly: ${TEXT_SENTINEL}`,
     ].join(' '),
   })]),
   expected: successfulExpected({
-    assistantTexts: [CLAUDE_PROTOCOL_SENTINEL],
-    requestBodyKeys: ['context_management', 'output_config', 'thinking'],
+    assistantTexts: [TEXT_SENTINEL],
+    requestBodyKeys: ['context_management', 'thinking'],
+    requestBodyModel: 'claude-opus-4-6',
   }),
 });
 

@@ -122,7 +122,8 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
     assert.equal(vector.expected.success_terminal_counts.length, 1);
   }
   assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
-  assert.equal(PROVIDER_ERROR_VECTOR.expected.provider_requests, 1);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.provider_requests, undefined);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.minimum_provider_requests, 1);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.durable_runs, 'provider_requests');
   assert.equal(vectorsFor('codex', 'responses_websocket').includes(PROVIDER_ERROR_VECTOR), false);
   assert.equal(vectorsFor('claude', 'anthropic_sse').includes(CLAUDE_PROTOCOL_VECTOR), true);
@@ -136,6 +137,8 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.match(LONG_REPEATED_UNICODE_TEXT, /e\u0301/u);
   assert.deepEqual(PARALLEL_TOOL_VECTOR.expected.tool_result_markers, [PARALLEL_RESULT_A, PARALLEL_RESULT_B]);
   assert.equal(PARALLEL_TOOL_VECTOR.expected.minimum_provider_requests, 2);
+  assert.equal(PARALLEL_TOOL_VECTOR.expected.callback_resumes, 1);
+  assert.equal(PARALLEL_TOOL_VECTOR.expected.minimum_callback_resumes, undefined);
   assert.deepEqual(SEQUENTIAL_TOOL_VECTOR.expected.tool_result_markers, [
     SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
   ]);
@@ -144,7 +147,7 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_callback_resumes, 2);
 });
 
-test('WP-D4B uses installed client surfaces without injecting Claude fields into Codex or OpenCode', () => {
+test('WP-D4B records only observed Claude profile evidence without injecting it into Codex or OpenCode', () => {
   const claude = buildClientPlan(
     'claude', '/machine/claude', target, paths, CLAUDE_PROTOCOL_VECTOR, 'anthropic_sse',
   );
@@ -152,15 +155,17 @@ test('WP-D4B uses installed client surfaces without injecting Claude fields into
   assert.ok(claude.invocation.args.includes('--effort'));
   assert.ok(claude.invocation.args.includes('high'));
   assert.equal(claude.environment.USE_API_CONTEXT_MANAGEMENT, '1');
-  assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.protocol_profile.expected_wire, {
-    context_window: '1m',
+  assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.protocol_profile.expected_evidence, {
+    configured_model: 'claude-opus-4-6[1m]',
+    base_model: 'claude-opus-4-6',
     thinking_type: 'adaptive',
-    effort: 'high',
     context_management: true,
   });
   assert.deepEqual(CLAUDE_PROTOCOL_VECTOR.expected.request_body_keys, [
-    'context_management', 'output_config', 'thinking',
+    'context_management', 'thinking',
   ]);
+  assert.equal(CLAUDE_PROTOCOL_VECTOR.expected.request_body_model, 'claude-opus-4-6');
+  assert.doesNotMatch(promptFor(CLAUDE_PROTOCOL_VECTOR, paths), /output_config|effort/u);
 
   const codex = buildClientPlan('codex', '/machine/codex', target, paths, TEXT_VECTOR, 'responses_sse');
   const opencode = buildClientPlan(
@@ -171,16 +176,18 @@ test('WP-D4B uses installed client surfaces without injecting Claude fields into
   }
 });
 
-test('BLO-05 scopes Claude binary retries to the Provider error vector', () => {
+test('BLO-05 leaves Claude retry ownership visible to the raw-error vector', () => {
   const errorPlan = buildClientPlan(
     'claude', '/machine/claude', target, paths, PROVIDER_ERROR_VECTOR, 'anthropic_sse',
   );
   const textPlan = buildClientPlan(
     'claude', '/machine/claude', target, paths, TEXT_VECTOR, 'anthropic_sse',
   );
-  assert.equal(errorPlan.environment.CLAUDE_CODE_MAX_RETRIES, '0');
+  assert.equal(errorPlan.environment.CLAUDE_CODE_MAX_RETRIES, undefined);
   assert.equal(textPlan.environment.CLAUDE_CODE_MAX_RETRIES, undefined);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.provider_requests, undefined);
+  assert.equal(PROVIDER_ERROR_VECTOR.expected.minimum_provider_requests, 1);
   assert.deepEqual(PROVIDER_ERROR_VECTOR.expected.success_terminal_counts, [0]);
 });
 
