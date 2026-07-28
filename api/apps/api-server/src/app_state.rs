@@ -72,8 +72,8 @@ pub(crate) fn request_catalog_locale(
 pub(crate) async fn resolve_request_text(
     state: &ApiState,
     locale: &CatalogLocale,
-    module: &'static str,
-    msgid: &'static str,
+    module: &str,
+    msgid: &str,
 ) -> Result<String, ApiError> {
     let identity = CatalogMessageIdentity::new(
         CatalogModuleId::new(module).expect("backend display catalog module must be valid"),

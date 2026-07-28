@@ -1295,7 +1295,7 @@ describe('RolePermissionPanel', () => {
     expect(screen.getByRole('button', { name: '保存数据权限' })).toBeDisabled();
   }, 20000);
 
-  test('AC-009 requests the active locale and renders backend labels without exposing policy codes', async () => {
+  test('AC-009/013 requests the active locale and renders backend values without local interface mapping', async () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockImplementation(
       async (locale) => {
         const isEnglish = locale === 'en_US';
@@ -1312,8 +1312,12 @@ describe('RolePermissionPanel', () => {
               operations: [
                 {
                   operation_id: 'audit.export',
-                  summary: 'Export audit records',
-                  description: null,
+                  summary: isEnglish
+                    ? 'Export audit records'
+                    : '导出审计记录（后端）',
+                  description: isEnglish
+                    ? 'Export audit records in the system backend.'
+                    : '从系统后端导出审计记录。',
                   order: 1,
                   route: { method: 'GET', path: '/api/console/test' },
                   full_profile: { kind: 'simple', enabled: true },
@@ -1359,6 +1363,11 @@ describe('RolePermissionPanel', () => {
     expect(
       within(englishDrawer).getByText('Export audit records')
     ).toBeInTheDocument();
+    expect(
+      within(englishDrawer).getByText(
+        'Export audit records in the system backend.'
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
     expect(
@@ -1379,8 +1388,14 @@ describe('RolePermissionPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '详细配置 其他设置' }));
     const chineseDrawer = await screen.findByRole('dialog');
     expect(
-      within(chineseDrawer).getByText('Export audit records')
+      within(chineseDrawer).getByText('导出审计记录（后端）')
     ).toBeInTheDocument();
+    expect(
+      within(chineseDrawer).getByText('从系统后端导出审计记录。')
+    ).toBeInTheDocument();
+    expect(
+      within(chineseDrawer).queryByText('Export audit records')
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
     expect(

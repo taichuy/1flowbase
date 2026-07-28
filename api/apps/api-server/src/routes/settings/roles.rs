@@ -25,6 +25,8 @@ use crate::{
     routes::console_route_assembly::{console_get, console_patch, ConsoleRouteAssembly},
 };
 
+const CONSOLE_INTERFACE_CATALOG_MODULE: &str = "@taichuy/platform/console/interfaces";
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRoleBody {
     pub code: String,
@@ -483,6 +485,20 @@ async fn resolve_console_policy_catalog_display(
         )
         .await?;
         for operation in &mut group.operations {
+            operation.summary = crate::app_state::resolve_request_text(
+                state,
+                locale,
+                CONSOLE_INTERFACE_CATALOG_MODULE,
+                &operation.summary,
+            )
+            .await?;
+            operation.description = crate::app_state::resolve_request_text(
+                state,
+                locale,
+                CONSOLE_INTERFACE_CATALOG_MODULE,
+                &operation.description,
+            )
+            .await?;
             for option in &mut operation.allowed_row_scopes {
                 option.label = super::super::core_console_i18n::resolve_core_console_display(
                     state,
