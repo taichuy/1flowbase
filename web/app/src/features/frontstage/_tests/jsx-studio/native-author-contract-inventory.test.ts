@@ -114,8 +114,31 @@ describe('Native React author contract inventory', () => {
       /JsxStudioPreviewConsole|prepareNativeReactSource|\bModal\b|\bretry\b/u
     );
     expect(productionHosts.join('\n')).not.toMatch(
-      /JsxStudioRunPanel|JsxStudioPreviewConsole|js-block-console/u
+      /JsxStudioRunPanel|JsxStudioPreviewConsole|StudioRunConsole|studio-run-console|js-block-console/u
     );
     expect(editorRun).toContain('JsxStudioPreviewConsole');
+    expect(editorRun).toContain('createStudioRunConsole');
+  });
+
+  test('R8-AC-001/006 retires the production Add Block selection surface', () => {
+    const frontstagePage = readFileSync(
+      resolve(
+        repoRoot,
+        'web/app/src/features/frontstage/pages/FrontStagePage.tsx'
+      ),
+      'utf8'
+    );
+
+    expect(frontstagePage).not.toMatch(
+      /AddBlockCatalogPickerDrawer|isBlockCatalogPickerOpen|handleSelectBlockCatalogEntry/u
+    );
+    expect(
+      existsSync(
+        resolve(
+          repoRoot,
+          'web/app/src/features/frontstage/components/AddBlockCatalogPickerDrawer.tsx'
+        )
+      )
+    ).toBe(false);
   });
 });

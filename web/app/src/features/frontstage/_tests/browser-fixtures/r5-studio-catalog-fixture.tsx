@@ -14,13 +14,15 @@ import { createRoot } from 'react-dom/client';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { compileNativeReactComponentInBrowser } from '../../../../shared/code-block/native-react-compiler-browser';
-import { AddBlockCatalogPickerDrawer } from '../../components/AddBlockCatalogPickerDrawer';
 import { JsxStudioPreviewConsole } from '../../components/jsx-studio/JsxStudioPreviewConsole';
+import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
+import { createStudioRunConsoleStore } from '../../components/jsx-studio/studio-run-console';
 import type {
   NormalizedFrontstageBlockCatalogEntry,
   NormalizedFrontstageBlockCodeModule
 } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
+import type { FrontstageBlockInstance } from '../../lib/page-document';
 
 const CATALOG_MODULE_SOURCES = [
   'react',
@@ -87,18 +89,6 @@ const builtinEntry = createCatalogEntry({
   contributionCode: 'frontstage.js-ui-block',
   templateSource: 'export default function BuiltIn() { return <div />; }'
 });
-const selectedEntry = createCatalogEntry({
-  id: 'third-party:report-block',
-  title: 'Third-party report',
-  installationId: 'third-party-installation',
-  providerCode: 'third-party',
-  pluginId: 'third-party-reports',
-  pluginVersion: '3.1.0',
-  contributionCode: 'report-block',
-  templateSource:
-    'export default function ReportBlock() { return <div>Selected report template</div>; }'
-});
-
 const runtimeDiagnostic: NativeReactRuntimeDiagnostic = {
   phase: 'runtime',
   code: 'runtime_error',
@@ -127,6 +117,35 @@ const apiCalls: NativeBlockContextApiCallObservation[] = [
     durationMs: 12
   }
 ];
+const consoleBlock = {
+  id: 'r7-console-block',
+  rendererVersion: 'v1',
+  sourceId: 'r7-console-block',
+  codeRef: 'r7-console-code',
+  sourceCodeRef: 'r7-console-code',
+  catalog: { providerCode: '1flowbase', installationId: 'builtin-installation' },
+  contribution: {
+    pluginId: 'builtin-frontstage',
+    pluginVersion: '5.0.0',
+    code: 'frontstage.js-ui-block'
+  },
+  props: {},
+  ports: { inputs: [], outputs: [] },
+  presentation: { heightMode: 'auto', height: null },
+  layout: { order: 0 },
+  order: 0,
+  runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
+} satisfies FrontstageBlockInstance;
+const consoleSource = `
+import { useState } from 'react';
+export default function ConsoleFixture() {
+  const [count, setCount] = useState(0);
+  console.log('browser render', count);
+  return <button onClick={() => {
+    console.warn('browser clicked', { count });
+    setCount((value) => value + 1);
+  }}>Emit runtime log</button>;
+}`;
 
 function R5StudioCatalogFixture() {
   const [source, setSource] = useState(APPROVED_SOURCE);
@@ -134,9 +153,7 @@ function R5StudioCatalogFixture() {
   const [compilerDiagnostics, setCompilerDiagnostics] = useState<
     NativeReactCompileDiagnostic[]
   >([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [selectedCatalogEntry, setSelectedCatalogEntry] = useState('none');
-  const [selectedTemplate, setSelectedTemplate] = useState('none');
+  const diagnosticConsoleStore = useMemo(createStudioRunConsoleStore, []);
   const projection = useMemo(
     () =>
       createFrontstageJsxEditorProjection({
@@ -203,7 +220,6 @@ function R5StudioCatalogFixture() {
           <Button type="primary" onClick={() => void compile()}>
             Compile current source
           </Button>
-          <Button onClick={() => setPickerOpen(true)}>Add Block</Button>
         </Space>
 
         <pre aria-label="Fixture source" className="r5-fixture-source">
@@ -215,8 +231,6 @@ function R5StudioCatalogFixture() {
           data-policy-errors={policyDiagnostics.length}
           data-marker-line={firstLocation?.line ?? 0}
           data-marker-column={firstLocation?.column ?? 0}
-          data-selected-entry={selectedCatalogEntry}
-          data-selected-template={selectedTemplate}
         />
 
         <section className="r5-fixture-run-panel">
@@ -224,29 +238,20 @@ function R5StudioCatalogFixture() {
             preview={<div data-testid="r5-preview-content">Preview ready</div>}
             snapshot={{
               diagnostics: displayedDiagnostics,
-              apiCalls
+              apiCalls,
+              consoleStore: diagnosticConsoleStore
             }}
           />
         </section>
 
-        <AddBlockCatalogPickerDrawer
-          open={pickerOpen}
-          items={[builtinEntry, selectedEntry]}
-          onClose={() => setPickerOpen(false)}
-          onSelect={(entry) => {
-            setSelectedCatalogEntry(
-              `${entry.installationId}:${entry.contributionCode}`
-            );
-            setSelectedTemplate(
-              entry.codeCapabilities?.template?.source.includes(
-                'Selected report template'
-              )
-                ? 'selected'
-                : 'other'
-            );
-            setPickerOpen(false);
-          }}
-        />
+        <section className="r5-fixture-run-panel">
+          <JsxStudioRunPanel
+            block={consoleBlock}
+            code={consoleSource}
+            revision="r7:browser-console"
+          />
+        </section>
+
       </main>
       <style>{`
         html, body, #root { min-height: 100%; margin: 0; }

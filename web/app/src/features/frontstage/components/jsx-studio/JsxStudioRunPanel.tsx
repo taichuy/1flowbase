@@ -30,6 +30,10 @@ import {
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
+import {
+  createStudioRunConsole,
+  createStudioRunConsoleStore
+} from './studio-run-console';
 
 type StudioRunDiagnostic =
   | NativeReactSourcePreparationDiagnostic
@@ -103,6 +107,7 @@ export function JsxStudioRunPanel({
   onRevokeDraftRun
 }: JsxStudioRunPanelProps) {
   const [previewRoot, setPreviewRoot] = useState<HTMLDivElement | null>(null);
+  const [consoleStore] = useState(createStudioRunConsoleStore);
   const generationRef = useRef(0);
   const activeRunRef = useRef<ActiveStudioRun | null>(null);
   const latestDraftRef = useRef({ block, code, revision });
@@ -158,6 +163,7 @@ export function JsxStudioRunPanel({
         requestId
       };
       activeRunRef.current = activeRun;
+      consoleStore.clear();
       setApiCalls([]);
       setSnapshot({
         status: 'compiling',
@@ -224,7 +230,13 @@ export function JsxStudioRunPanel({
         ...(nativeCompilerWorkerFactory
           ? { workerFactory: nativeCompilerWorkerFactory }
           : {}),
-        registryFactory: nativeModuleRegistryFactory
+        registryFactory: nativeModuleRegistryFactory,
+        evaluationBindings: {
+          console: createStudioRunConsole({
+            store: consoleStore,
+            isCurrentRun: () => activeRunRef.current === activeRun
+          })
+        }
       });
       if (generationRef.current !== generation) return;
       if (!prepared.ok) {
@@ -262,6 +274,7 @@ export function JsxStudioRunPanel({
       disposeActiveRun,
       nativeCompiler,
       nativeCompilerWorkerFactory,
+      consoleStore,
       nativeDependencyLock,
       nativeDependencyLockError,
       nativeModuleRegistryFactory,
@@ -344,7 +357,8 @@ export function JsxStudioRunPanel({
       preview={preview}
       snapshot={{
         diagnostics: snapshot?.diagnostics ?? [],
-        apiCalls
+        apiCalls,
+        consoleStore
       }}
     />
   );

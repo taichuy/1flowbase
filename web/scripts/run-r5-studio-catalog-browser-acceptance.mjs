@@ -81,12 +81,18 @@ async function verifyFixture(browserInstance, fixture) {
     await page
       .getByText('[api/succeeded] GET /api/console/example 12ms')
       .waitFor();
+    await page.getByText('browser render 0').waitFor();
+    await page.getByRole('button', { name: 'Emit runtime log' }).click();
+    await page.getByText('browser clicked {"count": 0}').waitFor();
+    await page.getByText('browser render 1').waitFor();
 
     const previewBox = await page
       .locator('[data-testid=js-block-preview-pane]')
+      .first()
       .boundingBox();
     const consoleBox = await page
       .locator('[data-testid=js-block-console-pane]')
+      .first()
       .boundingBox();
     if (!previewBox || !consoleBox || consoleBox.y <= previewBox.y) {
       throw new Error(`${fixture.name} Preview/Console order is invalid.`);
@@ -126,34 +132,10 @@ async function verifyFixture(browserInstance, fixture) {
     await waitForAttribute(page, 'data-compiler-status', 'failed');
     await page.getByText(/Import source 'dayjs' is not allowed\./u).waitFor();
 
-    await page.getByRole('button', { name: 'Add Block' }).click();
-    const drawer = page.getByRole('dialog', { name: '新增区块' });
-    await drawer.waitFor();
-    const drawerBox = await drawer.boundingBox();
-    if (!drawerBox || drawerBox.width > fixture.viewport.width + 1) {
-      throw new Error(
-        `${fixture.name} Catalog Drawer exceeds viewport: ${JSON.stringify(drawerBox)}`
-      );
-    }
     await page.screenshot({
       path: resolve(output, `r5-${fixture.name}.png`),
       fullPage: true
     });
-    const reportRow = drawer
-      .locator('.ant-list-item')
-      .filter({ hasText: 'Third-party report' });
-    await reportRow.getByRole('button', { name: '选择' }).click();
-    await waitForAttribute(
-      page,
-      'data-selected-entry',
-      'third-party-installation:report-block'
-    );
-    assertAttribute(
-      fixture.name,
-      'selected Catalog template',
-      await stats.getAttribute('data-selected-template'),
-      'selected'
-    );
 
     assertNetworkAndConsole(
       fixture.name,
@@ -167,9 +149,7 @@ async function verifyFixture(browserInstance, fixture) {
       compilerApproved: 'passed',
       compilerDenied: 'failed',
       deniedLocation: { line: 1, column: 1 },
-      selectedEntry: await stats.getAttribute('data-selected-entry'),
-      selectedTemplate: await stats.getAttribute('data-selected-template'),
-      drawerWidth: drawerBox.width,
+      runtimeConsoleCaptured: true,
       externalRequests: externalRequests.length,
       httpErrors,
       failedRequests,

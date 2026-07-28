@@ -44,6 +44,39 @@ function registry(
 }
 
 describe('Native React source preparation', () => {
+  test('R7-AC-001 passes Host evaluation bindings without changing the artifact', async () => {
+    const runtimeLog = vi.fn();
+    const source =
+      "export default function Block() { console.log('prepared'); return null; }";
+    const compiled = compileNativeReactComponent(source);
+    if (!compiled.ok) throw new Error('Native React test artifact failed.');
+    const result = await prepareNativeReactSource({
+      frozenSource: source,
+      requestId: 'runtime-console',
+      dependencyLock: [],
+      compiler: compilerReturning({
+        ok: true,
+        artifact: compiled.artifact,
+        diagnostics: []
+      }),
+      registryFactory: () => registry(),
+      evaluationBindings: {
+        console: {
+          debug: vi.fn(),
+          error: vi.fn(),
+          info: vi.fn(),
+          log: runtimeLog,
+          warn: vi.fn()
+        }
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    result.component();
+    expect(runtimeLog).toHaveBeenCalledWith('prepared');
+  });
+
   test('R6-P1 preserves compile diagnostics without creating a registry', async () => {
     const diagnostic: NativeReactCompileDiagnostic = {
       phase: 'compile',

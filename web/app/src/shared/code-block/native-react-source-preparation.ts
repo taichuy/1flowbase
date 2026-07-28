@@ -2,6 +2,7 @@ import {
   evaluateNativeReactComponentArtifactWithRegistry,
   NativeReactModuleRegistryError,
   type NativeReactCatalogDependencyLock,
+  type NativeReactArtifactEvaluationBindings,
   type NativeReactCompileDiagnostic,
   type NativeReactModuleRegistry,
   type NativeReactResolvedModuleAsset,
@@ -39,7 +40,8 @@ export async function prepareNativeReactSource({
   dependencyLock,
   compiler = compileNativeReactComponentInBrowser,
   workerFactory,
-  registryFactory
+  registryFactory,
+  evaluationBindings
 }: {
   frozenSource: string;
   requestId: string;
@@ -47,6 +49,7 @@ export async function prepareNativeReactSource({
   compiler?: typeof compileNativeReactComponentInBrowser;
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
   registryFactory: NativeReactModuleRegistryFactory;
+  evaluationBindings?: NativeReactArtifactEvaluationBindings;
 }): Promise<NativeReactSourcePreparationResult> {
   const compiled = await compiler({
     source: frozenSource,
@@ -65,7 +68,8 @@ export async function prepareNativeReactSource({
 
   const evaluated = await evaluateNativeReactComponentArtifactWithRegistry(
     compiled.artifact,
-    registry
+    registry,
+    evaluationBindings
   );
   if (!evaluated.ok) return evaluated;
 

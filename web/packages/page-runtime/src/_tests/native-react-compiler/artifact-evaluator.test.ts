@@ -21,6 +21,61 @@ const modules = {
 };
 
 describe('Native React artifact evaluator', () => {
+  test('R7-AC-001 binds a Host-owned console into the evaluated component closure', () => {
+    const artifact = compile(`
+export default function Block() {
+  console.log('rendered', 1);
+  return null;
+}
+`);
+    const runtimeConsole = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      log: vi.fn(),
+      warn: vi.fn()
+    };
+    const evaluated = evaluateNativeReactComponentArtifact(
+      artifact,
+      modules,
+      { console: runtimeConsole }
+    );
+
+    expect(evaluated.ok).toBe(true);
+    if (!evaluated.ok) return;
+    evaluated.component();
+    expect(runtimeConsole.log).toHaveBeenCalledWith('rendered', 1);
+  });
+
+  test('R7-AC-001 preserves a source-owned console binding', () => {
+    const artifact = compile(`
+const console = { log() { return undefined; } };
+export default function Block() {
+  console.log('source-owned');
+  return null;
+}
+`);
+    const runtimeLog = vi.fn();
+    const evaluated = evaluateNativeReactComponentArtifact(
+      artifact,
+      modules,
+      {
+        console: {
+          debug: vi.fn(),
+          error: vi.fn(),
+          info: vi.fn(),
+          log: runtimeLog,
+          warn: vi.fn()
+        }
+      }
+    );
+
+    expect(evaluated.ok).toBe(true);
+    if (!evaluated.ok) return;
+    evaluated.component();
+    expect(runtimeLog).not.toHaveBeenCalled();
+  });
+
   test('D1-AC-002 canonicalizes the Worker artifact before main-thread evaluation', () => {
     const artifact = compile(`
 import { useState } from 'react';
