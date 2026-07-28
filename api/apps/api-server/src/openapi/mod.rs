@@ -107,6 +107,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::application_runtime::debug_variable_cache::upsert_debug_variable_cache_entry,
         crate::routes::application_runtime::debug_variable_cache::delete_debug_variable_cache_entries,
         crate::routes::application_runtime::get_runtime_debug_artifact,
+        crate::routes::application_runtime::resolve_runtime_debug_artifacts,
         crate::routes::application_runtime::get_node_last_run,
         crate::routes::user_api_keys::list_user_api_keys,
         crate::routes::user_api_keys::list_user_api_key_role_options,

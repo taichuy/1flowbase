@@ -44,6 +44,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         operations: vec![
             ConsoleOperationInventoryEntry {
                 operation_id: "applications.create".to_string(),
+                authorization_profile_id: "applications.create".to_string(),
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: applications.clone(),
@@ -57,6 +58,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             },
             ConsoleOperationInventoryEntry {
                 operation_id: "applications.view".to_string(),
+                authorization_profile_id: "applications.view".to_string(),
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: applications,
@@ -73,6 +75,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             },
             ConsoleOperationInventoryEntry {
                 operation_id: "files.upload".to_string(),
+                authorization_profile_id: "files.upload".to_string(),
                 owner: owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: files.clone(),
@@ -84,6 +87,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             },
             ConsoleOperationInventoryEntry {
                 operation_id: "files.content.download".to_string(),
+                authorization_profile_id: "files.content.download".to_string(),
                 owner,
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: other_files,
@@ -97,6 +101,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             },
             ConsoleOperationInventoryEntry {
                 operation_id: "test-host.inspect".to_string(),
+                authorization_profile_id: "test-host.inspect".to_string(),
                 owner: host_owner,
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: files,
@@ -201,6 +206,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         .zip(operation_routes)
         .map(|(entry, (method, path))| ConsoleOperationRegistration {
             operation_id: entry.operation_id,
+            authorization_profile_id: None,
             owner: entry.owner,
             lifecycle: entry.lifecycle,
             policy_group: entry.policy_group,
@@ -323,7 +329,8 @@ fn policy_group(
     ConsolePolicyGroupInput {
         kind: kind.to_string(),
         group_id: group_id.to_string(),
-        mode: mode.to_string(),
+        enabled: mode != "disabled",
+        strategy: if mode == "custom" { "custom" } else { "full" }.to_string(),
         operations,
     }
 }
@@ -573,14 +580,14 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
     assert_eq!(catalog.locale, "zh_Hans");
     assert_eq!(
         catalog
-            .group_mode_options
+            .group_strategy_options
             .iter()
             .map(|option| option.value.as_str())
             .collect::<Vec<_>>(),
-        vec!["disabled", "full", "custom"]
+        vec!["full", "custom"]
     );
-    assert_eq!(catalog.group_mode_options[2].label, "自定义");
-    assert!(!catalog.group_mode_options[2].description.is_empty());
+    assert_eq!(catalog.group_strategy_options[1].label, "自定义");
+    assert!(!catalog.group_strategy_options[1].description.is_empty());
     assert_eq!(catalog.groups.len(), 3);
     assert_eq!(catalog.groups[0].group_id, "system.applications");
     assert_eq!(catalog.groups[0].operations[0].label, "创建应用");

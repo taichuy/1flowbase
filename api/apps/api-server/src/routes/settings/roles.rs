@@ -169,16 +169,14 @@ impl ConsolePolicyGroupKindBody {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ConsolePolicyModeBody {
-    Disabled,
+pub enum ConsolePolicyStrategyBody {
     Full,
     Custom,
 }
 
-impl ConsolePolicyModeBody {
+impl ConsolePolicyStrategyBody {
     fn as_str(self) -> &'static str {
         match self {
-            Self::Disabled => "disabled",
             Self::Full => "full",
             Self::Custom => "custom",
         }
@@ -212,7 +210,8 @@ pub struct ReplaceRoleConsolePolicyBody {
 pub struct ConsoleRoleConsolePolicyGroupBody {
     pub kind: ConsolePolicyGroupKindBody,
     pub group_id: String,
-    pub mode: ConsolePolicyModeBody,
+    pub enabled: bool,
+    pub strategy: ConsolePolicyStrategyBody,
     pub operations: Vec<ConsoleRoleConsolePolicyOperationBody>,
 }
 
@@ -233,7 +232,7 @@ pub enum ConsoleRoleConsolePolicyOperationBody {
 pub struct ConsolePolicyCatalogResponse {
     pub schema_version: String,
     pub locale: String,
-    pub group_mode_options: Vec<ConsolePolicyCatalogOptionResponse>,
+    pub group_strategy_options: Vec<ConsolePolicyCatalogOptionResponse>,
     pub groups: Vec<ConsolePolicyCatalogGroupResponse>,
     pub resources: Vec<ConsolePolicyCatalogResourceResponse>,
 }
@@ -260,7 +259,7 @@ pub struct ConsolePolicyCatalogOperationResponse {
     pub label: String,
     pub description: String,
     pub order: i32,
-    pub routes: Vec<ConsolePolicyCatalogRouteResponse>,
+    pub route: ConsolePolicyCatalogRouteResponse,
     pub full_profile: ConsolePolicyCatalogOperationFullProfileResponse,
     pub allowed_row_scopes: Vec<ConsolePolicyCatalogOptionResponse>,
     pub authorization: ConsolePolicyOperationAuthorizationResponse,
@@ -314,7 +313,8 @@ pub struct RoleConsolePolicyResponse {
 pub struct RoleConsolePolicyGroupResponse {
     pub kind: ConsolePolicyGroupKindBody,
     pub group_id: String,
-    pub mode: ConsolePolicyModeBody,
+    pub enabled: bool,
+    pub strategy: ConsolePolicyStrategyBody,
     pub operations: Vec<RoleConsolePolicyOperationResponse>,
 }
 
@@ -359,11 +359,12 @@ fn to_console_policy_group_kind_body(
     }
 }
 
-fn to_console_policy_mode_body(mode: domain::ConsolePolicyMode) -> ConsolePolicyModeBody {
-    match mode {
-        domain::ConsolePolicyMode::Disabled => ConsolePolicyModeBody::Disabled,
-        domain::ConsolePolicyMode::Full => ConsolePolicyModeBody::Full,
-        domain::ConsolePolicyMode::Custom => ConsolePolicyModeBody::Custom,
+fn to_console_policy_strategy_body(
+    strategy: domain::ConsolePolicyStrategy,
+) -> ConsolePolicyStrategyBody {
+    match strategy {
+        domain::ConsolePolicyStrategy::Full => ConsolePolicyStrategyBody::Full,
+        domain::ConsolePolicyStrategy::Custom => ConsolePolicyStrategyBody::Custom,
     }
 }
 
@@ -383,8 +384,8 @@ fn to_console_policy_catalog_response(
     ConsolePolicyCatalogResponse {
         schema_version: catalog.schema_version,
         locale: catalog.locale,
-        group_mode_options: catalog
-            .group_mode_options
+        group_strategy_options: catalog
+            .group_strategy_options
             .into_iter()
             .map(|option| ConsolePolicyCatalogOptionResponse {
                 value: option.value,
@@ -408,14 +409,17 @@ fn to_console_policy_catalog_response(
                         label: operation.label,
                         description: operation.description,
                         order: operation.order,
-                        routes: operation
-                            .routes
-                            .into_iter()
-                            .map(|route| ConsolePolicyCatalogRouteResponse {
+                        route: {
+                            let route = operation
+                                .routes
+                                .into_iter()
+                                .next()
+                                .expect("validated configurable operation route");
+                            ConsolePolicyCatalogRouteResponse {
                                 method: route.method,
                                 path: route.path,
-                            })
-                            .collect(),
+                            }
+                        },
                         full_profile: match operation.full_profile {
                             control_plane::role::ConsolePolicyCatalogFullProfile::Simple {
                                 enabled,
@@ -486,7 +490,8 @@ fn to_role_console_policy_response(
             .map(|group| RoleConsolePolicyGroupResponse {
                 kind: to_console_policy_group_kind_body(group.group().kind()),
                 group_id: group.group().group_id().as_str().to_string(),
-                mode: to_console_policy_mode_body(group.mode()),
+                enabled: group.enabled(),
+                strategy: to_console_policy_strategy_body(group.strategy()),
                 operations: group
                     .operations()
                     .iter()
@@ -518,7 +523,8 @@ fn to_console_policy_group_input(
     ConsolePolicyGroupInput {
         kind: group.kind.as_str().to_string(),
         group_id: group.group_id,
-        mode: group.mode.as_str().to_string(),
+        enabled: group.enabled,
+        strategy: group.strategy.as_str().to_string(),
         operations: group
             .operations
             .into_iter()

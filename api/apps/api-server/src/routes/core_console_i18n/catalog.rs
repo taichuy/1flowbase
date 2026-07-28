@@ -182,32 +182,22 @@ pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
         "当前工作区的已注册操作",
     ),
     text!(
-        "console.policy.group_modes.disabled.label",
-        "Disabled",
-        "关闭"
-    ),
-    text!(
-        "console.policy.group_modes.disabled.description",
-        "Do not grant operations in this group",
-        "不授予此组中的操作",
-    ),
-    text!(
-        "console.policy.group_modes.full.label",
+        "console.policy.group_strategies.full.label",
         "Full access",
         "完全开放"
     ),
     text!(
-        "console.policy.group_modes.full.description",
+        "console.policy.group_strategies.full.description",
         "Grant every operation in this group",
         "授予此组中的全部操作",
     ),
     text!(
-        "console.policy.group_modes.custom.label",
+        "console.policy.group_strategies.custom.label",
         "Custom access",
         "自定义"
     ),
     text!(
-        "console.policy.group_modes.custom.description",
+        "console.policy.group_strategies.custom.description",
         "Choose operations and row scopes individually",
         "逐项选择操作和行范围",
     ),

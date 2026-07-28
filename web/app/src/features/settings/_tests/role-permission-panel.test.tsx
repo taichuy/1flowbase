@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
 import { useState } from 'react';
@@ -138,7 +144,9 @@ async function selectPolicyCombobox(
   comboboxName: string,
   optionLabel: string
 ) {
-  fireEvent.mouseDown(within(scope).getByRole('combobox', { name: comboboxName }));
+  fireEvent.mouseDown(
+    within(scope).getByRole('combobox', { name: comboboxName })
+  );
   const optionMatches = await screen.findAllByTitle(optionLabel);
   fireEvent.click(optionMatches[optionMatches.length - 1]);
 }
@@ -173,7 +181,6 @@ const defaultDataPolicy = {
 };
 
 const policyModeOptions = [
-  { value: 'disabled', label: '不授予', description: '不授予任何操作' },
   { value: 'full', label: '全部操作', description: '授予全部操作' },
   { value: 'custom', label: '按操作配置', description: '仅授予显式操作' }
 ];
@@ -188,16 +195,16 @@ function consolePolicyCatalog(
   groups: unknown[],
   {
     locale = 'zh_Hans',
-    groupModeOptions = policyModeOptions
+    groupStrategyOptions = policyModeOptions
   }: {
     locale?: 'zh_Hans' | 'en_US';
-    groupModeOptions?: typeof policyModeOptions;
+    groupStrategyOptions?: typeof policyModeOptions;
   } = {}
 ) {
   return {
     schema_version: '2026-07-15',
     locale,
-    group_mode_options: groupModeOptions,
+    group_strategy_options: groupStrategyOptions,
     groups,
     resources: []
   };
@@ -387,7 +394,7 @@ describe('RolePermissionPanel', () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
       schema_version: '2026-07-14',
       locale: 'zh_Hans',
-      group_mode_options: policyModeOptions,
+      group_strategy_options: policyModeOptions,
       groups: [
         {
           kind: 'settings_feature',
@@ -400,12 +407,10 @@ describe('RolePermissionPanel', () => {
               label: '查询应用',
               description: '查看应用记录',
               order: 1,
-              routes: [
-                {
-                  method: 'GET',
-                  path: '/api/console/applications'
-                }
-              ],
+              route: {
+                method: 'GET',
+                path: '/api/console/applications'
+              },
               full_profile: { kind: 'row', scope: 'scope_all' },
               allowed_row_scopes: allRowScopeOptions,
               authorization: {
@@ -419,12 +424,10 @@ describe('RolePermissionPanel', () => {
               label: '发布应用',
               description: null,
               order: 2,
-              routes: [
-                {
-                  method: 'POST',
-                  path: '/api/console/applications/:id/publish'
-                }
-              ],
+              route: {
+                method: 'POST',
+                path: '/api/console/applications/:id/publish'
+              },
               full_profile: { kind: 'simple', enabled: true },
               allowed_row_scopes: [],
               authorization: { kind: 'simple' }
@@ -442,7 +445,7 @@ describe('RolePermissionPanel', () => {
               label: '导出审计记录',
               description: null,
               order: 1,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'simple', enabled: true },
               allowed_row_scopes: [],
               authorization: { kind: 'simple' }
@@ -455,9 +458,7 @@ describe('RolePermissionPanel', () => {
           resource_code: 'application',
           label: '应用',
           description: null,
-          actions: [
-            { action_code: 'read', label: '查询', description: null }
-          ]
+          actions: [{ action_code: 'read', label: '查询', description: null }]
         }
       ]
     });
@@ -467,7 +468,8 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.applications',
-          mode: 'full',
+          enabled: true,
+          strategy: 'full',
           operations: [
             {
               operation_id: 'applications.read',
@@ -484,7 +486,8 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'other',
           group_id: 'other.general',
-          mode: 'disabled',
+          enabled: false,
+          strategy: 'full',
           operations: [
             {
               operation_id: 'audit.export',
@@ -553,17 +556,22 @@ describe('RolePermissionPanel', () => {
       screen
         .getByRole('combobox', { name: '其他 授权策略' })
         .closest('.ant-select')
-    ).toHaveTextContent('不授予');
+    ).toHaveTextContent('全部操作');
+    expect(screen.getByRole('switch', { name: '其他 启用' })).not.toBeChecked();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: '详细配置 其他' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '详细配置 其他' }));
     const otherDrawer = await screen.findByRole('dialog');
     expect(within(otherDrawer).getByText('导出审计记录')).toBeInTheDocument();
 
-    expect(screen.queryByRole('tab', { name: '基础通用' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: '系统管理' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Agent 应用' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: '基础通用' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: '系统管理' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'Agent 应用' })
+    ).not.toBeInTheDocument();
   });
 
   test('AC-003 selects Other when the catalog has no SettingsFeature group', async () => {
@@ -592,7 +600,7 @@ describe('RolePermissionPanel', () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
       schema_version: '2026-07-14',
       locale: 'zh_Hans',
-      group_mode_options: policyModeOptions,
+      group_strategy_options: policyModeOptions,
       groups: [
         {
           kind: 'settings_feature',
@@ -605,7 +613,7 @@ describe('RolePermissionPanel', () => {
               label: '查询应用',
               description: null,
               order: 1,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'row', scope: 'scope_all' },
               allowed_row_scopes: allRowScopeOptions,
               authorization: {
@@ -619,7 +627,7 @@ describe('RolePermissionPanel', () => {
               label: '发布应用',
               description: null,
               order: 2,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'simple', enabled: true },
               allowed_row_scopes: [],
               authorization: { kind: 'simple' }
@@ -642,7 +650,8 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.applications',
-          mode: 'custom',
+          enabled: true,
+          strategy: 'custom',
           operations: [
             {
               operation_id: 'applications.read',
@@ -669,14 +678,18 @@ describe('RolePermissionPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '详细配置 应用管理' }));
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('查询应用')).toBeInTheDocument();
-    expect(within(drawer).getByRole('checkbox', { name: '发布应用' })).not.toBeChecked();
+    expect(
+      within(drawer).getByRole('switch', { name: '发布应用' })
+    ).not.toBeChecked();
 
     fireEvent.mouseDown(
       within(drawer).getByRole('combobox', { name: '查询应用 作用域' })
     );
     fireEvent.click((await screen.findAllByTitle('当前空间')).at(-1)!);
-    fireEvent.click(within(drawer).getByRole('checkbox', { name: '发布应用' }));
-    fireEvent.click(within(drawer).getByRole('button', { name: '保存权限配置' }));
+    fireEvent.click(within(drawer).getByRole('switch', { name: '发布应用' }));
+    fireEvent.click(
+      within(drawer).getByRole('button', { name: '保存权限配置' })
+    );
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
@@ -686,7 +699,8 @@ describe('RolePermissionPanel', () => {
             {
               kind: 'settings_feature',
               group_id: 'settings.applications',
-              mode: 'custom',
+              enabled: true,
+              strategy: 'custom',
               operations: [
                 {
                   operation_id: 'applications.read',
@@ -706,7 +720,7 @@ describe('RolePermissionPanel', () => {
       );
     });
 
-    await selectPolicyCombobox(document.body, '应用管理 授权策略', '不授予');
+    fireEvent.click(screen.getByRole('switch', { name: '应用管理 启用' }));
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
         'member',
@@ -714,7 +728,7 @@ describe('RolePermissionPanel', () => {
           groups: [
             expect.objectContaining({
               group_id: 'settings.applications',
-              mode: 'disabled'
+              enabled: false
             })
           ]
         },
@@ -737,7 +751,7 @@ describe('RolePermissionPanel', () => {
               label: '查看缺失资源',
               description: '读取当前空间资源',
               order: 1,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'row', scope: 'scope_all' },
               allowed_row_scopes: allRowScopeOptions,
               authorization: {
@@ -760,13 +774,12 @@ describe('RolePermissionPanel', () => {
     const policySelect = await screen.findByRole('combobox', {
       name: '缺失策略组 授权策略'
     });
-    expect(policySelect.closest('.ant-select')).toHaveTextContent('不授予');
-
-    await selectPolicyCombobox(
-      document.body,
-      '缺失策略组 授权策略',
-      '全部操作'
-    );
+    expect(policySelect.closest('.ant-select')).toHaveTextContent('全部操作');
+    const missingSwitch = screen.getByRole('switch', {
+      name: '缺失策略组 启用'
+    });
+    expect(missingSwitch).not.toBeChecked();
+    fireEvent.click(missingSwitch);
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
@@ -776,7 +789,8 @@ describe('RolePermissionPanel', () => {
             {
               kind: 'settings_feature',
               group_id: 'settings.missing',
-              mode: 'full',
+              enabled: true,
+              strategy: 'full',
               operations: []
             }
           ]
@@ -800,7 +814,7 @@ describe('RolePermissionPanel', () => {
               label: '查询记录',
               description: '',
               order: 1,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'row', scope: 'scope_all' },
               allowed_row_scopes: allRowScopeOptions,
               authorization: {
@@ -814,7 +828,7 @@ describe('RolePermissionPanel', () => {
               label: '发布记录',
               description: '',
               order: 2,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'simple', enabled: true },
               allowed_row_scopes: [],
               authorization: { kind: 'simple' }
@@ -829,7 +843,8 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.full-profile',
-          mode: 'full',
+          enabled: true,
+          strategy: 'full',
           operations: []
         }
       ]
@@ -847,14 +862,16 @@ describe('RolePermissionPanel', () => {
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('当前空间')).toBeInTheDocument();
     expect(
-      within(drawer).getByRole('checkbox', { name: '发布记录' })
+      within(drawer).getByRole('switch', { name: '发布记录' })
     ).toBeChecked();
 
     fireEvent.mouseDown(
       within(drawer).getByRole('combobox', { name: '查询记录 作用域' })
     );
     fireEvent.click((await screen.findAllByTitle('仅自己')).at(-1)!);
-    fireEvent.click(within(drawer).getByRole('button', { name: '保存权限配置' }));
+    fireEvent.click(
+      within(drawer).getByRole('button', { name: '保存权限配置' })
+    );
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
@@ -864,7 +881,8 @@ describe('RolePermissionPanel', () => {
             {
               kind: 'settings_feature',
               group_id: 'settings.full-profile',
-              mode: 'custom',
+              enabled: true,
+              strategy: 'custom',
               operations: [
                 {
                   operation_id: 'full-profile.read',
@@ -885,7 +903,7 @@ describe('RolePermissionPanel', () => {
     });
   });
 
-  test('AC-004 restores a custom group to full without retaining explicit operations', async () => {
+  test('AC-002 restores a custom group to full while retaining explicit operations', async () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
       consolePolicyCatalog([
         {
@@ -899,7 +917,7 @@ describe('RolePermissionPanel', () => {
               label: '发布',
               description: '',
               order: 1,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'simple', enabled: true },
               allowed_row_scopes: [],
               authorization: { kind: 'simple' }
@@ -914,7 +932,8 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.restore-full',
-          mode: 'custom',
+          enabled: true,
+          strategy: 'custom',
           operations: [
             {
               operation_id: 'restore-full.publish',
@@ -945,8 +964,15 @@ describe('RolePermissionPanel', () => {
             {
               kind: 'settings_feature',
               group_id: 'settings.restore-full',
-              mode: 'full',
-              operations: []
+              enabled: true,
+              strategy: 'full',
+              operations: [
+                {
+                  operation_id: 'restore-full.publish',
+                  kind: 'simple',
+                  enabled: false
+                }
+              ]
             }
           ]
         },
@@ -955,7 +981,7 @@ describe('RolePermissionPanel', () => {
     });
   });
 
-  test('AC-004/009 renders only a row operation\'s backend-supplied allowed scopes', async () => {
+  test("AC-004/009 renders only a row operation's backend-supplied allowed scopes", async () => {
     const limitedRowScopeOptions = [
       { value: 'disabled', label: '目录关闭', description: '不授予访问' },
       { value: 'own', label: '目录中的本人记录', description: '仅自己的记录' }
@@ -973,7 +999,7 @@ describe('RolePermissionPanel', () => {
               label: '读取受限记录',
               description: '',
               order: 1,
-              routes: [],
+              route: { method: 'GET', path: '/api/console/test' },
               full_profile: { kind: 'row', scope: 'own' },
               allowed_row_scopes: limitedRowScopeOptions,
               authorization: {
@@ -992,7 +1018,8 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'other',
           group_id: 'other.limited-scopes',
-          mode: 'custom',
+          enabled: true,
+          strategy: 'custom',
           operations: [
             {
               operation_id: 'limited-scope.read',
@@ -1006,9 +1033,7 @@ describe('RolePermissionPanel', () => {
 
     const { container } = renderPanel();
     fireEvent.click(await screen.findByRole('tab', { name: '其他' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: '详细配置 受限范围' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '详细配置 受限范围' }));
     const drawer = await screen.findByRole('dialog');
 
     fireEvent.mouseDown(
@@ -1047,98 +1072,94 @@ describe('RolePermissionPanel', () => {
     });
   });
 
-  test(
-    'submits auto_grant_new_permissions and is_default_member_role from the create and edit dialogs',
-    async () => {
-      renderPanel();
+  test('submits auto_grant_new_permissions and is_default_member_role from the create and edit dialogs', async () => {
+    renderPanel();
 
-      await screen.findByRole('button', { name: /新建角色/ });
+    await screen.findByRole('button', { name: /新建角色/ });
 
-      fireEvent.click(screen.getByRole('button', { name: /新建角色/ }));
+    fireEvent.click(screen.getByRole('button', { name: /新建角色/ }));
 
-      const createDialog = await screen.findByRole('dialog');
-      fireEvent.change(within(createDialog).getByLabelText('角色名称'), {
-        target: { value: 'QA' }
-      });
-      fireEvent.change(within(createDialog).getByLabelText('角色编码'), {
-        target: { value: 'qa' }
-      });
-      fireEvent.click(
-        within(createDialog).getByRole('checkbox', { name: '自动接收后续新增权限' })
+    const createDialog = await screen.findByRole('dialog');
+    fireEvent.change(within(createDialog).getByLabelText('角色名称'), {
+      target: { value: 'QA' }
+    });
+    fireEvent.change(within(createDialog).getByLabelText('角色编码'), {
+      target: { value: 'qa' }
+    });
+    fireEvent.click(
+      within(createDialog).getByRole('checkbox', {
+        name: '自动接收后续新增权限'
+      })
+    );
+    fireEvent.click(
+      within(createDialog).getByRole('button', { name: /确\s*定/u })
+    );
+
+    await waitFor(() => {
+      expect(rolesApi.createSettingsRole).toHaveBeenCalledWith(
+        {
+          code: 'qa',
+          name: 'QA',
+          introduction: '',
+          auto_grant_new_permissions: true,
+          is_default_member_role: false
+        },
+        'csrf-123'
       );
-      fireEvent.click(within(createDialog).getByRole('button', { name: /确\s*定/u }));
+    });
 
-      await waitFor(() => {
-        expect(rolesApi.createSettingsRole).toHaveBeenCalledWith(
-          {
-            code: 'qa',
-            name: 'QA',
-            introduction: '',
-            auto_grant_new_permissions: true,
-            is_default_member_role: false
-          },
-          'csrf-123'
-        );
-      });
+    fireEvent.click(screen.getByRole('button', { name: /编辑基本信息/ }));
 
-      fireEvent.click(screen.getByRole('button', { name: /编辑基本信息/ }));
+    const editDialog = await screen.findByRole('dialog');
+    expect(
+      within(editDialog).getByRole('checkbox', { name: '默认新用户角色' })
+    ).toBeChecked();
+    expect(
+      within(editDialog).getByRole('checkbox', { name: '自动接收后续新增权限' })
+    ).not.toBeChecked();
 
-      const editDialog = await screen.findByRole('dialog');
-      expect(
-        within(editDialog).getByRole('checkbox', { name: '默认新用户角色' })
-      ).toBeChecked();
-      expect(
-        within(editDialog).getByRole('checkbox', { name: '自动接收后续新增权限' })
-      ).not.toBeChecked();
+    fireEvent.change(within(editDialog).getByLabelText('角色名称'), {
+      target: { value: 'Manager Updated' }
+    });
+    fireEvent.click(
+      within(editDialog).getByRole('checkbox', { name: '自动接收后续新增权限' })
+    );
+    fireEvent.click(
+      within(editDialog).getByRole('checkbox', { name: '默认新用户角色' })
+    );
+    fireEvent.click(
+      within(editDialog).getByRole('button', { name: /确\s*定/u })
+    );
 
-      fireEvent.change(within(editDialog).getByLabelText('角色名称'), {
-        target: { value: 'Manager Updated' }
-      });
-      fireEvent.click(
-        within(editDialog).getByRole('checkbox', { name: '自动接收后续新增权限' })
+    await waitFor(() => {
+      expect(rolesApi.updateSettingsRole).toHaveBeenCalledWith(
+        'member',
+        {
+          name: 'Manager Updated',
+          introduction: '默认管理角色',
+          auto_grant_new_permissions: true,
+          is_default_member_role: false
+        },
+        'csrf-123'
       );
-      fireEvent.click(
-        within(editDialog).getByRole('checkbox', { name: '默认新用户角色' })
-      );
-      fireEvent.click(within(editDialog).getByRole('button', { name: /确\s*定/u }));
-
-      await waitFor(() => {
-        expect(rolesApi.updateSettingsRole).toHaveBeenCalledWith(
-          'member',
-          {
-            name: 'Manager Updated',
-            introduction: '默认管理角色',
-            auto_grant_new_permissions: true,
-            is_default_member_role: false
-          },
-          'csrf-123'
-        );
-      });
-    },
-    20000
-  );
+    });
+  }, 20000);
 
   test('submits default data policy without a create scope', async () => {
     renderPanel();
 
     await screen.findByRole('tab', { name: '动态路由' });
-    expect(
-      screen.getAllByRole('tab').map((tab) => tab.textContent)
-    ).toEqual([
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       '动态路由',
       '表-通用配置',
       '表-单独配置'
     ]);
     expect(screen.getAllByRole('tablist')).toHaveLength(1);
-    expect(
-      screen.queryByText('Data Model 数据权限')
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Data Model 数据权限')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: '表-通用配置' }));
 
-    expect(
-      screen.queryByText('Data Model 数据权限')
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Data Model 数据权限')).not.toBeInTheDocument();
 
     const defaultSection = await screen.findByRole('region', {
       name: '默认策略'
@@ -1167,9 +1188,7 @@ describe('RolePermissionPanel', () => {
     });
     await selectDefaultPolicyScope(defaultSection, '查看', '本空间');
     await selectDefaultPolicyScope(defaultSection, '更新', '仅自己');
-    fireEvent.click(
-      screen.getByRole('button', { name: '保存数据权限' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '保存数据权限' }));
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleDataPolicy).toHaveBeenCalledWith(
@@ -1224,7 +1243,9 @@ describe('RolePermissionPanel', () => {
       within(ordersRow).getByRole('checkbox', { name: '新增 Orders' })
     ).toBeChecked();
 
-    fireEvent.click(within(ordersRow).getByRole('checkbox', { name: '新增 Orders' }));
+    fireEvent.click(
+      within(ordersRow).getByRole('checkbox', { name: '新增 Orders' })
+    );
     await selectPolicyCombobox(ordersRow, '查看 Orders', '本空间');
     await selectPolicyCombobox(ordersRow, '更新 Orders', '继承');
     await selectPolicyCombobox(ordersRow, '删除 Orders', '仅自己');
@@ -1269,42 +1290,45 @@ describe('RolePermissionPanel', () => {
   }, 20000);
 
   test('AC-009 requests the active locale and renders backend labels without exposing policy codes', async () => {
-    permissionsApi.fetchSettingsConsolePolicyCatalog.mockImplementation(async (locale) => {
-      const isEnglish = locale === 'en_US';
-      return {
-        schema_version: '2026-07-14',
-        locale,
-        group_mode_options: policyModeOptions,
-        groups: [
-          {
-            kind: 'other' as const,
-            group_id: 'other.general',
-            label: isEnglish ? 'Other settings' : '其他设置',
-            description: null,
-            operations: [
-              {
-                operation_id: 'audit.export',
-                label: isEnglish ? 'Export audit records' : '导出审计记录',
-                description: null,
-                order: 1,
-                routes: [],
-                full_profile: { kind: 'simple', enabled: true },
-                allowed_row_scopes: [],
-                authorization: { kind: 'simple' as const }
-              }
-            ]
-          }
-        ],
-        resources: []
-      };
-    });
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockImplementation(
+      async (locale) => {
+        const isEnglish = locale === 'en_US';
+        return {
+          schema_version: '2026-07-14',
+          locale,
+          group_strategy_options: policyModeOptions,
+          groups: [
+            {
+              kind: 'other' as const,
+              group_id: 'other.general',
+              label: isEnglish ? 'Other settings' : '其他设置',
+              description: null,
+              operations: [
+                {
+                  operation_id: 'audit.export',
+                  label: isEnglish ? 'Export audit records' : '导出审计记录',
+                  description: null,
+                  order: 1,
+                  route: { method: 'GET', path: '/api/console/test' },
+                  full_profile: { kind: 'simple', enabled: true },
+                  allowed_row_scopes: [],
+                  authorization: { kind: 'simple' as const }
+                }
+              ]
+            }
+          ],
+          resources: []
+        };
+      }
+    );
     rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
       role_code: 'member',
       groups: [
         {
           kind: 'other',
           group_id: 'other.general',
-          mode: 'disabled',
+          enabled: false,
+          strategy: 'full',
           operations: [
             { operation_id: 'audit.export', kind: 'simple', enabled: false }
           ]
@@ -1316,9 +1340,9 @@ describe('RolePermissionPanel', () => {
     await appI18n.changeLanguage('en_US');
     const view = renderPanel();
     await waitFor(() => {
-      expect(permissionsApi.fetchSettingsConsolePolicyCatalog).toHaveBeenCalledWith(
-        'en_US'
-      );
+      expect(
+        permissionsApi.fetchSettingsConsolePolicyCatalog
+      ).toHaveBeenCalledWith('en_US');
     });
     fireEvent.click(await screen.findByRole('tab', { name: 'Others' }));
     expect(await screen.findByText('Other settings')).toBeInTheDocument();
@@ -1331,31 +1355,28 @@ describe('RolePermissionPanel', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
-    expect(permissionsApi.settingsConsolePolicyCatalogQueryKey).toHaveBeenCalledWith(
-      'en_US'
-    );
+    expect(
+      permissionsApi.settingsConsolePolicyCatalogQueryKey
+    ).toHaveBeenCalledWith('en_US');
     view.unmount();
 
     setPreferredLocale('zh_Hans');
     await appI18n.changeLanguage('zh_Hans');
     renderPanel();
     await waitFor(() => {
-      expect(permissionsApi.fetchSettingsConsolePolicyCatalog).toHaveBeenCalledWith(
-        'zh_Hans'
-      );
+      expect(
+        permissionsApi.fetchSettingsConsolePolicyCatalog
+      ).toHaveBeenCalledWith('zh_Hans');
     });
     fireEvent.click(await screen.findByRole('tab', { name: '其他' }));
     expect(await screen.findByText('其他设置')).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: '详细配置 其他设置' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '详细配置 其他设置' }));
     const chineseDrawer = await screen.findByRole('dialog');
     expect(within(chineseDrawer).getByText('导出审计记录')).toBeInTheDocument();
     expect(screen.queryByText('other.general')).not.toBeInTheDocument();
     expect(screen.queryByText('audit.export')).not.toBeInTheDocument();
-    expect(permissionsApi.settingsConsolePolicyCatalogQueryKey).toHaveBeenCalledWith(
-      'zh_Hans'
-    );
+    expect(
+      permissionsApi.settingsConsolePolicyCatalogQueryKey
+    ).toHaveBeenCalledWith('zh_Hans');
   }, 20000);
-
 });

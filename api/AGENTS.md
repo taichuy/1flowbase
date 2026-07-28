@@ -1,6 +1,7 @@
 # Scope
 - 作用域：`api/` 及其子目录。
 - 下述路径默认相对 `api/`。
+- 角色可配置 console operation 必须保持 `1 operation ↔ 1 method + route template`；group 的 `enabled` 与 `full/custom` 独立持久化，关闭不得清空自定义 operation。只有 `Authenticated` 可聚合 routes。
 
 ## Skills
 - 做后端实现、接口、状态流转、分层边界时：使用 `backend-development`。

@@ -65,6 +65,7 @@ fn operation(
 ) -> ConsoleOperationRegistration {
     ConsoleOperationRegistration {
         operation_id: operation_id.to_string(),
+        authorization_profile_id: None,
         owner: owner(SettingsFeatureOwnerKind::Core, "boot-core"),
         lifecycle: SettingsFeatureLifecycle::Active,
         policy_group,
@@ -297,6 +298,30 @@ fn explicit_operation_claim_only_removes_its_route_from_legacy_feature_projectio
             .operation_id,
         "settings_feature.access.system.files"
     );
+}
+
+// Issue #1485 AC-006: one role-facing permission switch must never control multiple routes.
+#[test]
+fn ac_006_configurable_operation_requires_exactly_one_route() {
+    let settings_registry = applications_settings_registry();
+    let error = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [operation(
+            "applications.view",
+            ConsolePolicyGroup::SettingsFeature("system.applications".to_string()),
+            ConsoleAuthorization::Simple,
+            vec![
+                route("GET", "/api/console/applications"),
+                route("GET", "/api/console/applications/{application_id}"),
+            ],
+        )],
+        [],
+    )
+    .expect_err("configurable operation with multiple routes must fail compilation");
+
+    assert!(error
+        .to_string()
+        .contains("must bind exactly one console route"));
 }
 
 #[test]

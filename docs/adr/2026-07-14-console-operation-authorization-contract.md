@@ -30,7 +30,7 @@
 | `method + path` → access rule | API owner | route assembly 与 operation registration 共同编译的唯一 route index | 只作 code-owned inventory；不得成为数据库角色策略 |
 | Resource/action 与访问字段 | 领域 owner | `ResourceAccessRegistration` 与对应 control-plane/repository contract | 字段名不可由管理员或请求提交；不得生成不受控动态 SQL |
 | Policy group membership | operation owner | operation registration 中显式的 `SettingsFeature(feature_id)` 或 `Other(group_id)` | 只组织管理界面和策略编辑；`Other` 不是 fallback |
-| Role group mode 与 operation policy | 角色管理员 | PostgreSQL role console policy store | 只保存稳定 group/operation id 与窄 scope；前端不是真值 |
+| Role group activation、strategy 与 operation policy | 角色管理员 | PostgreSQL role console policy store | 独立保存 `enabled`、`full/custom`、稳定 operation id 与窄 scope；前端不是真值 |
 | Effective authorization | authorization evaluator | active compiled inventory + role policy + actor/真实资源状态的确定性计算 | 不单独持久化；多角色 allow union、默认拒绝 |
 | label/description/scope i18n | Core 或 HostExtension owner | owner locale resources 中由 registration 引用的稳定 key | 至少 `zh_Hans / en_US`；不得把 raw code 当展示 fallback |
 
@@ -49,7 +49,7 @@ ConsoleOperationRegistration
 ├── operation_id / owner / lifecycle
 ├── policy_group: settings_feature(feature_id) | other(group_id)
 ├── label_ref / description_ref / order
-├── routes[] { method, path }
+├── route { method, path }（可配置 operation 恰好一个）
 └── authorization
     ├── simple
     └── resource_action { resource_code, action_code }
@@ -63,22 +63,20 @@ ResourceAccessRegistration
 └── label_ref / description_ref / action i18n refs
 ```
 
-`operation_id` 表达稳定的安全语义；URL 重命名、route 拆分或 operation 从 `Other` 移入 SettingsFeature 都不得改变它。一个可配置 operation 必须恰好归属一个 policy group，一个 route 必须恰好绑定一个 operation。operation regrouping 只改变 compiled UI grouping；角色 operation policy 继续按 `operation_id` 生效，inventory diff 必须把它报告为 regrouping 而不是新增授权，且 effective authorization delta 必须为空。
+`operation_id` 表达单一接口的稳定安全语义。一个可配置 operation 必须恰好归属一个 policy group，并恰好绑定一个 `method + route template`；只有非角色配置的 `Authenticated` registration 可以聚合 routes。编译期 authorization profile 可供迁移审计复用，但不得作为运行时或持久化的聚合授权 ID。
 
 不进入角色配置但要求登录的 route 使用独立真实变体 `Authenticated`。`Public` 不属于 `/api/console/*` control plane。不得使用空 action、bool、`AnyFeature` 或隐式 path prefix 模糊这些差异。
 
 ### Role policy state and scope
 
-每个角色对每个可配置 policy group 使用以下三态：
+每个角色对每个可配置 policy group 独立保存开放开关与授权策略：
 
 ```text
-disabled --开放--> full
-full --保存详细配置--> custom
-custom --恢复通用--> full
-任意状态 --取消开放--> disabled
+enabled: false | true
+strategy: full | custom
 ```
 
-- `disabled`：不授予该 group 的任何可配置 operation。
+- `enabled=false`：不授予该 group 的任何可配置 operation，但保留 strategy 与 operation 配置以供再次开放。
 - `full`：授予当前 active group 的全部注册 operation；simple/create 为 enabled，view/update/delete 使用 `scope_all`。后续新增 operation 自动纳入，但必须生成包含受影响角色的权限扩张 diff。
 - `custom`：只授予显式 operation policy；未出现的 operation 默认 disabled。simple/create 保存 bool，view/update/delete 保存 `disabled | own | scope_all`。
 

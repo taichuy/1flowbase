@@ -50,7 +50,7 @@ pub use builtin_data_model::{
 pub use console_policy::{
     effective_console_row_scope, effective_console_simple_operation, ConsoleOperationId,
     ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup, ConsolePolicyGroupId,
-    ConsolePolicyGroupKind, ConsolePolicyIdentifierError, ConsolePolicyMode,
+    ConsolePolicyGroupKind, ConsolePolicyIdentifierError, ConsolePolicyMode, ConsolePolicyStrategy,
     RoleConsoleGroupPolicy, RoleConsolePolicy,
 };
 pub use data_source::{

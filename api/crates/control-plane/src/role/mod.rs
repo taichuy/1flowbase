@@ -101,7 +101,8 @@ pub struct ReplaceRoleConsolePolicyCommand {
 pub struct ConsolePolicyGroupInput {
     pub kind: String,
     pub group_id: String,
-    pub mode: String,
+    pub enabled: bool,
+    pub strategy: String,
     pub operations: Vec<ConsolePolicyOperationInput>,
 }
 
@@ -267,8 +268,8 @@ fn build_console_policy_catalog_for_locale(
     locale: &str,
 ) -> Result<ConsolePolicyCatalog, ControlPlaneError> {
     let operation_index = compiled_console_policy_operations(inventory)?;
-    let group_mode_options = locale_catalog
-        .group_mode_options(locale)
+    let group_strategy_options = locale_catalog
+        .group_strategy_options(locale)
         .map_err(|_| ControlPlaneError::InvalidInput("console_policy_translation"))?
         .into_iter()
         .map(|option| ConsolePolicyCatalogOption {
@@ -408,7 +409,7 @@ fn build_console_policy_catalog_for_locale(
     Ok(ConsolePolicyCatalog {
         schema_version: inventory.schema_version.to_string(),
         locale: locale.to_string(),
-        group_mode_options,
+        group_strategy_options,
         groups,
         resources,
     })

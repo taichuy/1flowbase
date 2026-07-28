@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use access_control::ConsoleRouteBinding;
 use domain::{
     ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
-    ConsolePolicyGroupKind, ConsolePolicyMode, RoleConsoleGroupPolicy, RoleConsolePolicy,
+    ConsolePolicyGroupKind, ConsolePolicyStrategy, RoleConsoleGroupPolicy, RoleConsolePolicy,
 };
 
 use crate::errors::ControlPlaneError;
@@ -14,7 +14,7 @@ use super::{ConsolePolicyGroupInput, ConsolePolicyOperationInput};
 pub struct ConsolePolicyCatalog {
     pub schema_version: String,
     pub locale: String,
-    pub group_mode_options: Vec<ConsolePolicyCatalogOption>,
+    pub group_strategy_options: Vec<ConsolePolicyCatalogOption>,
     pub groups: Vec<ConsolePolicyCatalogGroup>,
     pub resources: Vec<ConsolePolicyCatalogResource>,
 }
@@ -113,23 +113,10 @@ pub(super) fn role_console_policy_groups_from_input(
             ));
         }
 
-        let mode = ConsolePolicyMode::parse(&input.mode)
-            .ok_or(ControlPlaneError::InvalidInput("console_policy_mode"))?;
-        let policy = match mode {
-            ConsolePolicyMode::Disabled | ConsolePolicyMode::Full
-                if !input.operations.is_empty() =>
-            {
-                return Err(ControlPlaneError::InvalidInput(
-                    "console_policy_group_shape",
-                ));
-            }
-            ConsolePolicyMode::Disabled => RoleConsoleGroupPolicy::disabled(group),
-            ConsolePolicyMode::Full => RoleConsoleGroupPolicy::full(group),
-            ConsolePolicyMode::Custom => RoleConsoleGroupPolicy::custom(
-                group,
-                custom_operations_from_input(&input.operations, expected_operations)?,
-            ),
-        };
+        let strategy = ConsolePolicyStrategy::parse(&input.strategy)
+            .ok_or(ControlPlaneError::InvalidInput("console_policy_strategy"))?;
+        let operations = custom_operations_from_input(&input.operations, expected_operations)?;
+        let policy = RoleConsoleGroupPolicy::new(group, input.enabled, strategy, operations);
         groups.push(policy);
     }
 
@@ -159,19 +146,7 @@ pub(super) fn validate_stored_console_policy(
             ));
         }
 
-        match group_policy.mode() {
-            ConsolePolicyMode::Disabled | ConsolePolicyMode::Full
-                if !group_policy.operations().is_empty() =>
-            {
-                return Err(ControlPlaneError::InvalidInput(
-                    "console_policy_group_shape",
-                ));
-            }
-            ConsolePolicyMode::Disabled | ConsolePolicyMode::Full => {}
-            ConsolePolicyMode::Custom => {
-                validate_custom_operations(group_policy.operations(), expected_operations)?;
-            }
-        }
+        validate_custom_operations(group_policy.operations(), expected_operations)?;
     }
 
     Ok(())

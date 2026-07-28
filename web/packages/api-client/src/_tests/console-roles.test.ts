@@ -90,8 +90,7 @@ describe('console roles client', () => {
     const catalog: ConsolePolicyCatalog = {
       schema_version: '2026-07-15',
       locale: 'en_US',
-      group_mode_options: [
-        { value: 'disabled', label: 'Disabled', description: 'No operations' },
+      group_strategy_options: [
         { value: 'full', label: 'Full', description: 'All operations' },
         { value: 'custom', label: 'Custom', description: 'Explicit operations' }
       ],
@@ -109,13 +108,14 @@ describe('console roles client', () => {
     });
   });
 
-  test('uses the console policy and role policy contract (Issue #1259 AC-003/004)', async () => {
+  test('keeps group activation independent from its retained custom interface policy (Issue #1485 AC-002)', async () => {
     const input = {
       groups: [
         {
           kind: 'settings_feature' as const,
           group_id: 'settings.applications',
-          mode: 'custom' as const,
+          enabled: false,
+          strategy: 'custom' as const,
           operations: [
             {
               operation_id: 'applications.read',
@@ -132,7 +132,9 @@ describe('console roles client', () => {
       ]
     };
 
-    await expect(fetchConsoleRoleConsolePolicy('member')).resolves.toMatchObject({
+    await expect(
+      fetchConsoleRoleConsolePolicy('member')
+    ).resolves.toMatchObject({
       path: '/api/console/settings/roles/member/console-policy'
     });
     await expect(

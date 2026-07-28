@@ -91,7 +91,8 @@ pub(crate) async fn role_console_policy_by_id(
           group_policy.id as group_policy_id,
           group_policy.group_kind,
           group_policy.group_id,
-          group_policy.mode,
+          group_policy.enabled,
+          group_policy.strategy,
           operation_policy.operation_id,
           operation_policy.policy_kind,
           operation_policy.simple_enabled,
@@ -111,7 +112,8 @@ pub(crate) async fn role_console_policy_by_id(
         Uuid,
         (
             domain::ConsolePolicyGroup,
-            domain::ConsolePolicyMode,
+            bool,
+            domain::ConsolePolicyStrategy,
             Vec<domain::ConsoleOperationPolicy>,
         ),
     >::new();
@@ -122,12 +124,13 @@ pub(crate) async fn role_console_policy_by_id(
             .ok_or_else(|| anyhow!("stored console policy group kind is invalid"))?;
         let group_id: String = row.get("group_id");
         let group = domain::ConsolePolicyGroup::new(group_kind, &group_id)?;
-        let mode_value: String = row.get("mode");
-        let mode = domain::ConsolePolicyMode::parse(&mode_value)
-            .ok_or_else(|| anyhow!("stored console policy mode is invalid"))?;
+        let enabled: bool = row.get("enabled");
+        let strategy_value: String = row.get("strategy");
+        let strategy = domain::ConsolePolicyStrategy::parse(&strategy_value)
+            .ok_or_else(|| anyhow!("stored console policy strategy is invalid"))?;
         let stored_group = stored_groups
             .entry(group_policy_id)
-            .or_insert_with(|| (group, mode, Vec::new()));
+            .or_insert_with(|| (group, enabled, strategy, Vec::new()));
         let Some(operation_id) = row.get::<Option<String>, _>("operation_id") else {
             continue;
         };
@@ -149,16 +152,12 @@ pub(crate) async fn role_console_policy_by_id(
             }
             _ => return Err(anyhow!("stored console operation policy kind is invalid")),
         };
-        stored_group.2.push(operation);
+        stored_group.3.push(operation);
     }
     let groups = stored_groups
         .into_values()
-        .map(|(group, mode, operations)| match mode {
-            domain::ConsolePolicyMode::Disabled => domain::RoleConsoleGroupPolicy::disabled(group),
-            domain::ConsolePolicyMode::Full => domain::RoleConsoleGroupPolicy::full(group),
-            domain::ConsolePolicyMode::Custom => {
-                domain::RoleConsoleGroupPolicy::custom(group, operations)
-            }
+        .map(|(group, enabled, strategy, operations)| {
+            domain::RoleConsoleGroupPolicy::new(group, enabled, strategy, operations)
         })
         .collect();
     Ok(domain::RoleConsolePolicy::new(role_id, groups))
@@ -179,16 +178,17 @@ async fn replace_role_console_policy_rows(
         sqlx::query(
             r#"
             insert into role_console_group_policies (
-              id, role_id, group_kind, group_id, mode, created_by, updated_by
+              id, role_id, group_kind, group_id, enabled, strategy, created_by, updated_by
             )
-            values ($1, $2, $3, $4, $5, $6, $6)
+            values ($1, $2, $3, $4, $5, $6, $7, $7)
             "#,
         )
         .bind(group_policy_id)
         .bind(role_id)
         .bind(group_policy.group().kind().as_str())
         .bind(group_policy.group().group_id().as_str())
-        .bind(group_policy.mode().as_str())
+        .bind(group_policy.enabled())
+        .bind(group_policy.strategy().as_str())
         .bind(actor_user_id)
         .execute(&mut **tx)
         .await?;
@@ -197,10 +197,10 @@ async fn replace_role_console_policy_rows(
             sqlx::query(
                 r#"
                 insert into role_console_operation_policies (
-                  id, role_id, group_policy_id, group_mode, operation_id, policy_kind,
+                  id, role_id, group_policy_id, operation_id, policy_kind,
                   simple_enabled, row_scope, created_by, updated_by
                 )
-                values ($1, $2, $3, 'custom', $4, $5, $6, $7, $8, $8)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
                 "#,
             )
             .bind(Uuid::now_v7())
@@ -1277,10 +1277,11 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             r#"
             insert into role_console_group_policy_snapshots (
               run_id, group_policy_id, role_id, group_kind, group_id, mode,
-              created_by, created_at, updated_by, updated_at
+              created_by, created_at, updated_by, updated_at, enabled, strategy
             )
-            select $1, id, role_id, group_kind, group_id, mode,
-                   created_by, created_at, updated_by, updated_at
+            select $1, id, role_id, group_kind, group_id,
+                   case when not enabled then 'disabled' else strategy end,
+                   created_by, created_at, updated_by, updated_at, enabled, strategy
             from role_console_group_policies
             where role_id = any($2::uuid[])
             "#,
@@ -1296,7 +1297,7 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
               operation_id, policy_kind, simple_enabled, row_scope,
               created_by, created_at, updated_by, updated_at
             )
-            select $1, id, role_id, group_policy_id, group_mode,
+            select $1, id, role_id, group_policy_id, 'custom',
                    operation_id, policy_kind, simple_enabled, row_scope,
                    created_by, created_at, updated_by, updated_at
             from role_console_operation_policies
@@ -1585,10 +1586,10 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         sqlx::query(
             r#"
             insert into role_console_group_policies (
-              id, role_id, group_kind, group_id, mode,
+              id, role_id, group_kind, group_id, enabled, strategy,
               created_by, created_at, updated_by, updated_at
             )
-            select group_policy_id, role_id, group_kind, group_id, mode,
+            select group_policy_id, role_id, group_kind, group_id, enabled, strategy,
                    created_by, created_at, updated_by, updated_at
             from role_console_group_policy_snapshots
             where run_id = $1
@@ -1601,10 +1602,10 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
         sqlx::query(
             r#"
             insert into role_console_operation_policies (
-              id, role_id, group_policy_id, group_mode, operation_id, policy_kind,
+              id, role_id, group_policy_id, operation_id, policy_kind,
               simple_enabled, row_scope, created_by, created_at, updated_by, updated_at
             )
-            select operation_policy_id, role_id, group_policy_id, group_mode,
+            select operation_policy_id, role_id, group_policy_id,
                    operation_id, policy_kind, simple_enabled, row_scope,
                    created_by, created_at, updated_by, updated_at
             from role_console_operation_policy_snapshots
@@ -1620,32 +1621,32 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             r#"
             select
               not exists (
-                (select id, role_id, group_kind, group_id, mode, created_by, created_at, updated_by, updated_at
+                (select id, role_id, group_kind, group_id, enabled, strategy, created_by, created_at, updated_by, updated_at
                  from role_console_group_policies where role_id = any($2::uuid[])
                  except
-                 select group_policy_id, role_id, group_kind, group_id, mode, created_by, created_at, updated_by, updated_at
+                 select group_policy_id, role_id, group_kind, group_id, enabled, strategy, created_by, created_at, updated_by, updated_at
                  from role_console_group_policy_snapshots where run_id = $1)
                 union all
-                (select group_policy_id, role_id, group_kind, group_id, mode, created_by, created_at, updated_by, updated_at
+                (select group_policy_id, role_id, group_kind, group_id, enabled, strategy, created_by, created_at, updated_by, updated_at
                  from role_console_group_policy_snapshots where run_id = $1
                  except
-                 select id, role_id, group_kind, group_id, mode, created_by, created_at, updated_by, updated_at
+                 select id, role_id, group_kind, group_id, enabled, strategy, created_by, created_at, updated_by, updated_at
                  from role_console_group_policies where role_id = any($2::uuid[]))
               )
               and not exists (
-                (select id, role_id, group_policy_id, group_mode, operation_id, policy_kind,
+                (select id, role_id, group_policy_id, operation_id, policy_kind,
                         simple_enabled, row_scope, created_by, created_at, updated_by, updated_at
                  from role_console_operation_policies where role_id = any($2::uuid[])
                  except
-                 select operation_policy_id, role_id, group_policy_id, group_mode, operation_id,
+                 select operation_policy_id, role_id, group_policy_id, operation_id,
                         policy_kind, simple_enabled, row_scope, created_by, created_at, updated_by, updated_at
                  from role_console_operation_policy_snapshots where run_id = $1)
                 union all
-                (select operation_policy_id, role_id, group_policy_id, group_mode, operation_id,
+                (select operation_policy_id, role_id, group_policy_id, operation_id,
                         policy_kind, simple_enabled, row_scope, created_by, created_at, updated_by, updated_at
                  from role_console_operation_policy_snapshots where run_id = $1
                  except
-                 select id, role_id, group_policy_id, group_mode, operation_id, policy_kind,
+                 select id, role_id, group_policy_id, operation_id, policy_kind,
                         simple_enabled, row_scope, created_by, created_at, updated_by, updated_at
                  from role_console_operation_policies where role_id = any($2::uuid[]))
               )

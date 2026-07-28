@@ -107,7 +107,7 @@ fn ac_003_every_compiled_core_operation_has_declared_non_empty_i18n_metadata() {
         .inventory()
         .operations
         .iter()
-        .map(|operation| operation.operation_id.as_str())
+        .map(|operation| operation.authorization_profile_id.as_str())
         .collect::<BTreeSet<_>>();
     assert_eq!(compiled_operation_ids, expected_operation_ids);
     assert!(registry.inventory().operations.iter().all(|operation| {
@@ -129,11 +129,8 @@ fn ac_003_every_compiled_core_operation_has_declared_non_empty_i18n_metadata() {
         .iter()
         .filter_map(|operation| operation.description_ref.as_deref())
         .collect::<BTreeSet<_>>();
-    assert_eq!(label_refs.len(), registry.inventory().operations.len());
-    assert_eq!(
-        description_refs.len(),
-        registry.inventory().operations.len()
-    );
+    assert_eq!(label_refs.len(), expected_operation_ids.len());
+    assert_eq!(description_refs.len(), expected_operation_ids.len());
 }
 
 #[test]
@@ -194,12 +191,12 @@ fn ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_
         }
         assert_eq!(
             catalog
-                .group_mode_options(locale)
+                .group_strategy_options(locale)
                 .unwrap()
                 .into_iter()
                 .map(|option| option.value)
                 .collect::<Vec<_>>(),
-            vec!["disabled", "full", "custom"]
+            vec!["full", "custom"]
         );
         assert_eq!(
             catalog
@@ -244,10 +241,13 @@ fn ac_002_009_operation_semantics_are_explicit_before_legacy_mapping() {
         ("POST", "/api/console/user-api-keys/:api_key_id/revoke"),
     ] {
         let access = registry.access_for_console_route(method, path).unwrap();
-        assert_eq!(
-            access.operation_id, "user_api_keys.manage",
-            "{method} {path}"
-        );
+        let operation = registry
+            .inventory()
+            .operations
+            .iter()
+            .find(|operation| operation.operation_id == access.operation_id)
+            .unwrap();
+        assert_eq!(operation.authorization_profile_id, "user_api_keys.manage");
         assert_eq!(access.authorization, &ConsoleAuthorization::Simple);
         assert_eq!(
             access.policy_group,

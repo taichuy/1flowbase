@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, convert::Infallible, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::Infallible,
+    sync::Arc,
+};
 
 use access_control::{
     ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
@@ -15,6 +19,7 @@ use axum::{
     Router,
 };
 use plugin_framework::HostExtensionContributionManifest;
+use utoipa::OpenApi;
 
 use super::core_console_i18n::core_console_locale_catalog_contribution;
 use super::core_console_operation_specs::{
@@ -264,6 +269,19 @@ fn route_templates_match(left: &str, right: &str) -> bool {
         })
 }
 
+fn route_identity_shape(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            if segment.starts_with(':') || (segment.starts_with('{') && segment.ends_with('}')) {
+                "{}"
+            } else {
+                segment
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn validate_settings_feature_route_assembly(
     settings_features: &SettingsFeatureRegistry,
     bindings: &[ConsoleRouteAssemblyBinding],
@@ -328,6 +346,234 @@ fn routes_for_core_operation_spec(
     }
 }
 
+fn core_openapi_operation_ids() -> anyhow::Result<BTreeMap<(String, String), String>> {
+    let document = serde_json::to_value(crate::openapi::ApiDoc::openapi())?;
+    let paths = document["paths"]
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("OpenAPI paths are missing"))?;
+    let mut operation_ids = BTreeMap::new();
+    for (path, item) in paths {
+        let Some(methods) = item.as_object() else {
+            continue;
+        };
+        for (method, operation) in methods {
+            if !matches!(method.as_str(), "get" | "post" | "put" | "patch" | "delete") {
+                continue;
+            }
+            let operation_id = operation["operationId"].as_str().ok_or_else(|| {
+                anyhow::anyhow!("OpenAPI operationId is missing for {method} {path}")
+            })?;
+            let key = (method.to_ascii_uppercase(), route_identity_shape(path));
+            if operation_ids
+                .insert(key, operation_id.to_string())
+                .is_some()
+            {
+                anyhow::bail!("duplicate OpenAPI interface identity for {method} {path}");
+            }
+        }
+    }
+    // These internal console interfaces are mounted by the same typed route assembly but are not
+    // published in the public OpenAPI document. Their IDs are explicit and stable; adding an
+    // OpenAPI entry later must preserve the ID before this fallback is removed.
+    for (method, path, operation_id) in [
+        (
+            "DELETE",
+            "/api/console/mcp/instances/{}/client-credential",
+            "delete_mcp_instance_client_credential",
+        ),
+        (
+            "DELETE",
+            "/api/console/settings/files/storages/{}",
+            "delete_file_storage",
+        ),
+        (
+            "DELETE",
+            "/api/console/settings/files/tables/{}",
+            "delete_file_table",
+        ),
+        (
+            "GET",
+            "/api/console/applications/{}/logs/conversations/{}/messages",
+            "list_application_conversation_messages",
+        ),
+        (
+            "GET",
+            "/api/console/applications/{}/logs/runs/{}/conversation/messages",
+            "list_application_run_conversation_messages",
+        ),
+        (
+            "GET",
+            "/api/console/docs/catalog",
+            "get_console_docs_catalog",
+        ),
+        (
+            "GET",
+            "/api/console/docs/categories/{}/openapi.json",
+            "get_console_docs_category_openapi",
+        ),
+        (
+            "GET",
+            "/api/console/docs/categories/{}/operations",
+            "list_console_docs_category_operations",
+        ),
+        (
+            "GET",
+            "/api/console/docs/operations/{}/openapi.json",
+            "get_console_docs_operation_openapi",
+        ),
+        (
+            "GET",
+            "/api/console/mcp/bundles/export-defaults",
+            "get_mcp_bundle_export_defaults",
+        ),
+        (
+            "GET",
+            "/api/console/mcp/bundles/official",
+            "list_official_mcp_bundles",
+        ),
+        (
+            "GET",
+            "/api/console/mcp/instances/{}/client-credential",
+            "get_mcp_instance_client_credential",
+        ),
+        (
+            "GET",
+            "/api/console/model-providers/providers/{}/icon",
+            "get_model_provider_icon",
+        ),
+        (
+            "GET",
+            "/api/console/settings/members/role-options",
+            "list_member_role_options",
+        ),
+        (
+            "GET",
+            "/api/console/settings/roles/{}/console-policy",
+            "get_role_console_policy",
+        ),
+        (
+            "GET",
+            "/api/console/settings/roles/{}/frontstage-routes",
+            "get_role_frontstage_routes",
+        ),
+        (
+            "GET",
+            "/api/console/settings/roles/console-policy-catalog",
+            "get_console_policy_catalog",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/export",
+            "export_mcp_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/import-official",
+            "import_official_mcp_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/import-upload",
+            "import_uploaded_mcp_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/preview-official",
+            "preview_official_mcp_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/preview-upload",
+            "preview_uploaded_mcp_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/instances/{}/bundles/export",
+            "export_mcp_instance_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/instances/{}/groups/move",
+            "move_mcp_group",
+        ),
+        (
+            "POST",
+            "/api/console/plugins/{}/artifact/install-current-node",
+            "install_plugin_artifact_on_current_node",
+        ),
+        (
+            "POST",
+            "/api/console/plugins/{}/artifact/refresh",
+            "refresh_plugin_artifact",
+        ),
+        (
+            "PUT",
+            "/api/console/mcp/instances/{}/client-credential",
+            "replace_mcp_instance_client_credential",
+        ),
+        (
+            "PUT",
+            "/api/console/settings/files/storages/{}",
+            "update_file_storage",
+        ),
+        (
+            "PUT",
+            "/api/console/settings/roles/{}/console-policy",
+            "replace_role_console_policy",
+        ),
+        (
+            "PUT",
+            "/api/console/settings/roles/{}/frontstage-routes",
+            "replace_role_frontstage_routes",
+        ),
+    ] {
+        operation_ids
+            .entry((method.to_string(), path.to_string()))
+            .or_insert_with(|| operation_id.to_string());
+    }
+    Ok(operation_ids)
+}
+
+fn expand_core_interface_registrations(
+    registrations: Vec<ConsoleOperationRegistration>,
+) -> anyhow::Result<Vec<ConsoleOperationRegistration>> {
+    let openapi_ids = core_openapi_operation_ids()?;
+    let mut expanded = Vec::new();
+    let mut missing = Vec::new();
+    for registration in registrations {
+        if registration.authorization == ConsoleAuthorization::Authenticated
+            || registration.routes.len() == 1
+        {
+            expanded.push(registration);
+            continue;
+        }
+        for (route_order, route) in registration.routes.iter().enumerate() {
+            let key = (
+                route.method.to_ascii_uppercase(),
+                route_identity_shape(&route.path),
+            );
+            let Some(operation_id) = openapi_ids.get(&key) else {
+                missing.push(format!("{} {}", route.method, route.path));
+                continue;
+            };
+            let mut interface = registration.clone();
+            interface.authorization_profile_id = Some(registration.operation_id.clone());
+            interface.operation_id = operation_id.clone();
+            interface.order = registration.order * 1000 + route_order as i32;
+            interface.routes = vec![route.clone()];
+            expanded.push(interface);
+        }
+    }
+    if !missing.is_empty() {
+        missing.sort();
+        anyhow::bail!(
+            "configurable console routes have no stable OpenAPI operationId: {}",
+            missing.join(", ")
+        );
+    }
+    Ok(expanded)
+}
+
 fn validate_explicit_operation_specs(
     bindings: &[ConsoleRouteAssemblyBinding],
     host_operation_ids: &BTreeSet<String>,
@@ -386,11 +632,12 @@ pub(crate) fn compile_migrated_console_operation_registry(
         owner_id: "boot-core".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
-    let mut registrations = CORE_CONSOLE_OPERATION_SPECS
+    let registrations = CORE_CONSOLE_OPERATION_SPECS
         .iter()
         .enumerate()
         .map(|(order, spec)| ConsoleOperationRegistration {
             operation_id: spec.operation_id.to_string(),
+            authorization_profile_id: None,
             owner: core_owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: policy_group_for_spec(spec),
@@ -401,6 +648,7 @@ pub(crate) fn compile_migrated_console_operation_registry(
             authorization: authorization_for_spec(spec),
         })
         .collect::<Vec<_>>();
+    let mut registrations = expand_core_interface_registrations(registrations)?;
     let applications_resource = ResourceAccessRegistration {
         resource_code: APPLICATIONS_RESOURCE_CODE.to_string(),
         owner: core_owner.clone(),
@@ -471,7 +719,21 @@ pub(crate) fn compile_migrated_console_operation_registry(
         resources,
         locale_contributions,
     )?;
-    registry.validate_console_route_coverage(bindings.iter().cloned())?;
+    let interface_bindings = bindings.iter().cloned().map(|mut binding| {
+        if !matches!(binding.ownership, ConsoleRouteOwnership::Authenticated) {
+            if let Some(operation) = registry.inventory().operations.iter().find(|operation| {
+                operation.routes.first().is_some_and(|route| {
+                    route.method.eq_ignore_ascii_case(&binding.route.method)
+                        && route_templates_match(&route.path, &binding.route.path)
+                })
+            }) {
+                binding.ownership =
+                    ConsoleRouteOwnership::ConsoleOperation(operation.operation_id.clone());
+            }
+        }
+        binding
+    });
+    registry.validate_console_route_coverage(interface_bindings)?;
     Ok(registry)
 }
 

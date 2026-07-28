@@ -79,6 +79,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
     let mut operations = vec![
         ConsoleOperationInventoryEntry {
             operation_id: "console.simple".into(),
+            authorization_profile_id: "console.simple".into(),
             owner: owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
@@ -90,6 +91,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
         },
         ConsoleOperationInventoryEntry {
             operation_id: "console.create".into(),
+            authorization_profile_id: "console.create".into(),
             owner: owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),
@@ -101,6 +103,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
         },
         ConsoleOperationInventoryEntry {
             operation_id: "console.records.view".into(),
+            authorization_profile_id: "console.records.view".into(),
             owner: owner.clone(),
             lifecycle: SettingsFeatureLifecycle::Active,
             policy_group: RegisteredConsolePolicyGroup::Other("migration".into()),

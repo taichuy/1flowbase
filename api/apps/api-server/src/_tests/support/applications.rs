@@ -252,7 +252,8 @@ pub(crate) async fn project_legacy_permissions_to_console_policy(
             json!({
                 "kind": policy.group().kind().as_str(),
                 "group_id": policy.group().group_id().as_str(),
-                "mode": policy.mode().as_str(),
+                "enabled": policy.enabled(),
+                "strategy": policy.strategy().as_str(),
                 "operations": policy.operations(),
             })
         })
