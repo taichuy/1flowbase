@@ -1,19 +1,72 @@
-import { apiFetch } from '../../transport';
+import { apiFetch, getDefaultApiBaseUrl } from '../../transport';
+import { ApiClientError } from '../../errors';
 
 import type {
   DeleteCustomI18nCatalogKeyRequest,
   GetI18nCatalogEntryRequest,
+  GetRuntimeI18nBundleRequest,
+  GetRuntimeI18nManifestRequest,
   I18nCatalogEntryMutationResponse,
   I18nCatalogManagementEntry,
   I18nCatalogManagementPage,
   I18nCatalogRevisionResponse,
+  ConditionalI18nCatalogResponse,
   ListI18nCatalogEntriesRequest,
   RestoreAllI18nCatalogOverridesRequest,
   RestoreI18nCatalogOverrideRequest,
+  RuntimeI18nBundle,
+  RuntimeI18nManifest,
   UpsertI18nCatalogTranslationRequest
 } from './types';
 
 const MANAGEMENT_BASE_PATH = '/api/console/settings/i18n';
+const RUNTIME_BASE_PATH = '/api/console/i18n';
+
+async function fetchConditionalCatalog<T>(
+  path: string,
+  ifNoneMatch: string | undefined,
+  baseUrl = getDefaultApiBaseUrl()
+): Promise<ConditionalI18nCatalogResponse<T>> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    credentials: 'include',
+    headers: ifNoneMatch ? { 'if-none-match': ifNoneMatch } : undefined
+  });
+  const etag = response.headers.get('etag');
+  if (response.status === 304) {
+    return { kind: 'not_modified', etag };
+  }
+  if (!response.ok) {
+    throw await ApiClientError.fromResponse(response);
+  }
+  return { kind: 'ok', value: (await response.json()) as T, etag };
+}
+
+export function getRuntimeI18nManifest(
+  request: GetRuntimeI18nManifestRequest,
+  baseUrl?: string
+): Promise<ConditionalI18nCatalogResponse<RuntimeI18nManifest>> {
+  const query = new URLSearchParams({ locale: request.locale });
+  return fetchConditionalCatalog(
+    `${RUNTIME_BASE_PATH}/manifest?${query.toString()}`,
+    request.ifNoneMatch,
+    baseUrl
+  );
+}
+
+export function getRuntimeI18nBundle(
+  request: GetRuntimeI18nBundleRequest,
+  baseUrl?: string
+): Promise<ConditionalI18nCatalogResponse<RuntimeI18nBundle>> {
+  const query = new URLSearchParams({
+    module: request.module,
+    locale: request.locale
+  });
+  return fetchConditionalCatalog(
+    `${RUNTIME_BASE_PATH}/bundles/${encodeURIComponent(request.digest)}?${query.toString()}`,
+    request.ifNoneMatch,
+    baseUrl
+  );
+}
 
 export function listI18nCatalogEntries(
   request: ListI18nCatalogEntriesRequest = {},

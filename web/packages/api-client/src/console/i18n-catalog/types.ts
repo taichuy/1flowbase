@@ -72,3 +72,37 @@ export interface I18nCatalogEntryMutationResponse {
 export interface I18nCatalogRevisionResponse {
   revision: number;
 }
+
+export interface RuntimeI18nManifestModule {
+  module: string;
+  digest: string;
+  href: string;
+}
+
+export interface RuntimeI18nManifest {
+  catalog_revision: number;
+  locale: string;
+  modules: RuntimeI18nManifestModule[];
+}
+
+export interface RuntimeI18nBundle {
+  module: string;
+  locale: string;
+  messages: Record<string, string>;
+}
+
+export interface GetRuntimeI18nManifestRequest {
+  locale: string;
+  ifNoneMatch?: string;
+}
+
+export interface GetRuntimeI18nBundleRequest {
+  module: string;
+  locale: string;
+  digest: string;
+  ifNoneMatch?: string;
+}
+
+export type ConditionalI18nCatalogResponse<T> =
+  | { kind: 'ok'; value: T; etag: string | null }
+  | { kind: 'not_modified'; etag: string | null };

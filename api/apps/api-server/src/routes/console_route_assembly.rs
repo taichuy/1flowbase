@@ -224,6 +224,7 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
         .merge(super::file_storages::route_assembly())
         .merge(super::file_tables::route_assembly())
         .merge(super::host_infrastructure::route_assembly())
+        .merge(super::runtime_i18n_catalog::route_assembly())
         .merge(super::i18n_catalog::route_assembly())
         .merge(super::mcp_management::route_assembly())
         .merge(super::user_api_keys::route_assembly())

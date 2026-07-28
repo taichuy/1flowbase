@@ -42,6 +42,28 @@ pub trait CatalogResolutionRepository: Send + Sync {
     ) -> anyhow::Result<CatalogResolutionCandidate>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeCatalogMessage {
+    pub module: domain::CatalogModuleId,
+    pub msgid: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeCatalogProjection {
+    pub revision: domain::WorkspaceCatalogRevision,
+    pub messages: Vec<RuntimeCatalogMessage>,
+}
+
+#[async_trait]
+pub trait RuntimeI18nCatalogRepository: Send + Sync {
+    async fn project_runtime_catalog(
+        &self,
+        workspace_id: Uuid,
+        locale: &domain::CatalogLocale,
+    ) -> anyhow::Result<RuntimeCatalogProjection>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogManagementOrigin {
     Official,

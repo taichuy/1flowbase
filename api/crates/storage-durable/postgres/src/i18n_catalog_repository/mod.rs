@@ -4,7 +4,8 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         CatalogResolutionCandidate, CatalogResolutionRepository, DeleteCatalogTranslationInput,
-        DeleteCustomCatalogMessageInput, I18nCatalogRepository, StoredI18nCatalogReleaseDescriptor,
+        DeleteCustomCatalogMessageInput, I18nCatalogRepository, RuntimeCatalogMessage,
+        RuntimeCatalogProjection, RuntimeI18nCatalogRepository, StoredI18nCatalogReleaseDescriptor,
         UpsertCatalogTranslationInput,
     },
 };
@@ -612,6 +613,79 @@ impl CatalogResolutionRepository for PgControlPlaneStore {
             root_override: row.get("root_override"),
             active_official: row.get("active_official"),
         })
+    }
+}
+
+#[async_trait]
+impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
+    async fn project_runtime_catalog(
+        &self,
+        workspace_id: Uuid,
+        locale: &CatalogLocale,
+    ) -> Result<RuntimeCatalogProjection> {
+        let rows = sqlx::query(
+            r#"
+            with catalog_state as (
+              select active_release_id, revision
+              from workspace_i18n_catalog_states
+              where workspace_id = $1
+            ), identities as (
+              select message.module, message.msgid
+              from catalog_state state
+              join i18n_catalog_release_messages message
+                on message.release_id = state.active_release_id
+              union
+              select custom.module, custom.msgid
+              from workspace_i18n_catalog_custom_translations custom
+              where custom.workspace_id = $1
+            )
+            select state.revision, identity.module, identity.msgid,
+                   case when $2 = 'en_US' then identity.msgid
+                        else coalesce(override_value.translation,
+                                      custom_value.translation,
+                                      official_value.translation,
+                                      identity.msgid)
+                   end as value
+            from catalog_state state
+            left join identities identity on true
+            left join workspace_i18n_catalog_overrides override_value
+              on override_value.workspace_id = $1
+             and override_value.module = identity.module
+             and override_value.msgid = identity.msgid
+             and override_value.locale = $2
+            left join workspace_i18n_catalog_custom_translations custom_value
+              on custom_value.workspace_id = $1
+             and custom_value.module = identity.module
+             and custom_value.msgid = identity.msgid
+             and custom_value.locale = $2
+            left join i18n_catalog_release_translations official_value
+              on official_value.release_id = state.active_release_id
+             and official_value.module = identity.module
+             and official_value.msgid = identity.msgid
+             and official_value.locale = $2
+            order by identity.module, identity.msgid
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(locale.as_str())
+        .fetch_all(self.pool())
+        .await?;
+        let first = rows
+            .first()
+            .ok_or(ControlPlaneError::NotFound("workspace_i18n_catalog_state"))?;
+        let revision = WorkspaceCatalogRevision::new(first.get("revision"))?;
+        let messages = rows
+            .into_iter()
+            .filter_map(|row| {
+                let module = row.get::<Option<String>, _>("module")?;
+                Some(Ok(RuntimeCatalogMessage {
+                    module: CatalogModuleId::new(module)?,
+                    msgid: row.get("msgid"),
+                    value: row.get("value"),
+                }))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(RuntimeCatalogProjection { revision, messages })
     }
 }
 
