@@ -583,6 +583,25 @@ export function RolePermissionPanel({
         dataSource={policyTableRows(kind)}
         columns={[
           {
+            title: i18nText('settings', 'auto.backend_setting'),
+            key: 'backend-setting',
+            render: (
+              _: unknown,
+              row: ReturnType<typeof policyTableRows>[number]
+            ) => (
+              <Space direction="vertical" size={0}>
+                <Typography.Text strong>
+                  {row.catalogGroup.label}
+                </Typography.Text>
+                {row.catalogGroup.description ? (
+                  <Typography.Text type="secondary">
+                    {row.catalogGroup.description}
+                  </Typography.Text>
+                ) : null}
+              </Space>
+            )
+          },
+          {
             title: i18nText('settings', 'auto.enabled'),
             key: 'authorization-enabled',
             width: 100,
@@ -607,25 +626,6 @@ export function RolePermissionPanel({
                   )
                 }
               />
-            )
-          },
-          {
-            title: i18nText('settings', 'auto.backend_setting'),
-            key: 'backend-setting',
-            render: (
-              _: unknown,
-              row: ReturnType<typeof policyTableRows>[number]
-            ) => (
-              <Space direction="vertical" size={0}>
-                <Typography.Text strong>
-                  {row.catalogGroup.label}
-                </Typography.Text>
-                {row.catalogGroup.description ? (
-                  <Typography.Text type="secondary">
-                    {row.catalogGroup.description}
-                  </Typography.Text>
-                ) : null}
-              </Space>
             )
           },
           {
