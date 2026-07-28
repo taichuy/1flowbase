@@ -114,8 +114,9 @@ describe('Native React author contract inventory', () => {
       /JsxStudioPreviewConsole|prepareNativeReactSource|\bModal\b|\bretry\b/u
     );
     expect(productionHosts.join('\n')).not.toMatch(
-      /JsxStudioRunPanel|JsxStudioPreviewConsole|js-block-console/u
+      /JsxStudioRunPanel|JsxStudioPreviewConsole|StudioRunConsole|studio-run-console|js-block-console/u
     );
     expect(editorRun).toContain('JsxStudioPreviewConsole');
+    expect(editorRun).toContain('createStudioRunConsole');
   });
 });

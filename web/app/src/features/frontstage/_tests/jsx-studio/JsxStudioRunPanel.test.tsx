@@ -6,7 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
@@ -95,6 +95,10 @@ function trialQueries(container: HTMLElement) {
 describe('JsxStudioRunPanel Native React run revision', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   test('D1-AC-001/005 freezes code per revision and remounts only for a new run revision', async () => {
@@ -428,6 +432,76 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(
       screen.getByText('[api/succeeded] GET /api/console/example 12ms')
     ).toBeInTheDocument();
+  });
+
+  test('R7-AC-001/003 captures render and event logs inside the owning Studio Console', async () => {
+    const browserLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const browserWarn = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const loggingSource = `
+      import { useState } from 'react';
+      export default function Block() {
+        const [count, setCount] = useState(0);
+        console.log('render count', count);
+        return <button onClick={() => {
+          console.warn('button clicked', { count });
+          setCount((value) => value + 1);
+        }}>Emit runtime log</button>;
+      }
+    `;
+    const view = renderPanel({
+      code: loggingSource,
+      revision: 'run:console-log'
+    });
+    const consolePane = screen.getByTestId('js-block-console-pane');
+
+    expect(await within(consolePane).findByText('render count 0')).toBeVisible();
+    fireEvent.click(
+      await trialQueries(view.container).findByRole('button', {
+        name: 'Emit runtime log'
+      })
+    );
+
+    expect(
+      await within(consolePane).findByText(
+        'button clicked {"count": 0}'
+      )
+    ).toBeVisible();
+    expect(await within(consolePane).findByText('render count 1')).toBeVisible();
+    expect(browserLog).toHaveBeenCalledWith('render count', 1);
+    expect(browserWarn).toHaveBeenCalledWith('button clicked', { count: 0 });
+  });
+
+  test('R7-AC-003 keeps simultaneous Studio logs isolated by run', async () => {
+    const browserInfo = vi
+      .spyOn(console, 'info')
+      .mockImplementation(() => undefined);
+    const firstBlock = { ...block, id: 'console-first' };
+    const secondBlock = { ...block, id: 'console-second' };
+    render(
+      <>
+        <JsxStudioRunPanel
+          block={firstBlock}
+          code="export default function Block() { console.info('first only'); return null; }"
+          revision="run:console-first"
+          nativeCompiler={createCompiler()}
+        />
+        <JsxStudioRunPanel
+          block={secondBlock}
+          code="export default function Block() { console.info('second only'); return null; }"
+          revision="run:console-second"
+          nativeCompiler={createCompiler()}
+        />
+      </>
+    );
+
+    const panes = await screen.findAllByTestId('js-block-console-pane');
+    expect(await within(panes[0]!).findByText('first only')).toBeVisible();
+    expect(within(panes[0]!).queryByText('second only')).toBeNull();
+    expect(await within(panes[1]!).findByText('second only')).toBeVisible();
+    expect(within(panes[1]!).queryByText('first only')).toBeNull();
+    expect(browserInfo).toHaveBeenCalledTimes(2);
   });
 
   test('R6-AC-002 keeps the resizable Console inside the editor run surface', async () => {

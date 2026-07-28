@@ -16,11 +16,14 @@ import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { compileNativeReactComponentInBrowser } from '../../../../shared/code-block/native-react-compiler-browser';
 import { AddBlockCatalogPickerDrawer } from '../../components/AddBlockCatalogPickerDrawer';
 import { JsxStudioPreviewConsole } from '../../components/jsx-studio/JsxStudioPreviewConsole';
+import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
+import { createStudioRunConsoleStore } from '../../components/jsx-studio/studio-run-console';
 import type {
   NormalizedFrontstageBlockCatalogEntry,
   NormalizedFrontstageBlockCodeModule
 } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
+import type { FrontstageBlockInstance } from '../../lib/page-document';
 
 const CATALOG_MODULE_SOURCES = [
   'react',
@@ -127,6 +130,35 @@ const apiCalls: NativeBlockContextApiCallObservation[] = [
     durationMs: 12
   }
 ];
+const consoleBlock = {
+  id: 'r7-console-block',
+  rendererVersion: 'v1',
+  sourceId: 'r7-console-block',
+  codeRef: 'r7-console-code',
+  sourceCodeRef: 'r7-console-code',
+  catalog: { providerCode: '1flowbase', installationId: 'builtin-installation' },
+  contribution: {
+    pluginId: 'builtin-frontstage',
+    pluginVersion: '5.0.0',
+    code: 'frontstage.js-ui-block'
+  },
+  props: {},
+  ports: { inputs: [], outputs: [] },
+  presentation: { heightMode: 'auto', height: null },
+  layout: { order: 0 },
+  order: 0,
+  runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
+} satisfies FrontstageBlockInstance;
+const consoleSource = `
+import { useState } from 'react';
+export default function ConsoleFixture() {
+  const [count, setCount] = useState(0);
+  console.log('browser render', count);
+  return <button onClick={() => {
+    console.warn('browser clicked', { count });
+    setCount((value) => value + 1);
+  }}>Emit runtime log</button>;
+}`;
 
 function R5StudioCatalogFixture() {
   const [source, setSource] = useState(APPROVED_SOURCE);
@@ -137,6 +169,7 @@ function R5StudioCatalogFixture() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedCatalogEntry, setSelectedCatalogEntry] = useState('none');
   const [selectedTemplate, setSelectedTemplate] = useState('none');
+  const diagnosticConsoleStore = useMemo(createStudioRunConsoleStore, []);
   const projection = useMemo(
     () =>
       createFrontstageJsxEditorProjection({
@@ -224,8 +257,17 @@ function R5StudioCatalogFixture() {
             preview={<div data-testid="r5-preview-content">Preview ready</div>}
             snapshot={{
               diagnostics: displayedDiagnostics,
-              apiCalls
+              apiCalls,
+              consoleStore: diagnosticConsoleStore
             }}
+          />
+        </section>
+
+        <section className="r5-fixture-run-panel">
+          <JsxStudioRunPanel
+            block={consoleBlock}
+            code={consoleSource}
+            revision="r7:browser-console"
           />
         </section>
 

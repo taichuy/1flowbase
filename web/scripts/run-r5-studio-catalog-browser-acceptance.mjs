@@ -81,6 +81,10 @@ async function verifyFixture(browserInstance, fixture) {
     await page
       .getByText('[api/succeeded] GET /api/console/example 12ms')
       .waitFor();
+    await page.getByText('browser render 0').waitFor();
+    await page.getByRole('button', { name: 'Emit runtime log' }).click();
+    await page.getByText('browser clicked {"count": 0}').waitFor();
+    await page.getByText('browser render 1').waitFor();
 
     const previewBox = await page
       .locator('[data-testid=js-block-preview-pane]')
@@ -169,6 +173,7 @@ async function verifyFixture(browserInstance, fixture) {
       deniedLocation: { line: 1, column: 1 },
       selectedEntry: await stats.getAttribute('data-selected-entry'),
       selectedTemplate: await stats.getAttribute('data-selected-template'),
+      runtimeConsoleCaptured: true,
       drawerWidth: drawerBox.width,
       externalRequests: externalRequests.length,
       httpErrors,

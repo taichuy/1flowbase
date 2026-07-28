@@ -5,15 +5,20 @@ import type {
 } from '@1flowbase/page-runtime';
 import { Typography } from 'antd';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import type {
+  StudioRunConsoleLevel,
+  StudioRunConsoleStore
+} from './studio-run-console';
 
 export interface JsxStudioPreviewConsoleSnapshot {
   diagnostics: ReadonlyArray<
     NativeReactCompileDiagnostic | NativeReactRuntimeDiagnostic
   >;
   apiCalls: readonly NativeBlockContextApiCallObservation[];
+  consoleStore: StudioRunConsoleStore;
 }
 
 const DEFAULT_PREVIEW_PERCENT = 65;
@@ -153,6 +158,7 @@ export function JsxStudioPreviewConsole({
                 message={formatApiObservation(observation)}
               />
             ))}
+            <StudioConsoleLogEntries store={snapshot.consoleStore} />
             <div
               className="frontstage-js-block-preview-console__prompt"
               data-testid="js-block-console-prompt"
@@ -171,7 +177,7 @@ function ConsoleEntry({
   level,
   message
 }: {
-  level: 'debug' | 'info' | 'error';
+  level: StudioRunConsoleLevel;
   message: string;
 }) {
   return (
@@ -186,13 +192,34 @@ function ConsoleEntry({
         data-testid={`js-block-console-gutter-${level}`}
         title={level}
       >
-        {level === 'error' ? '×' : level === 'debug' ? '·' : '>'}
+        {level === 'error'
+          ? '×'
+          : level === 'warn'
+            ? '!'
+            : level === 'debug'
+              ? '·'
+              : '>'}
       </span>
       <div className="frontstage-js-block-preview-console__log-body">
         <Typography.Text code>{message}</Typography.Text>
       </div>
     </div>
   );
+}
+
+function StudioConsoleLogEntries({ store }: { store: StudioRunConsoleStore }) {
+  const entries = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot
+  );
+  return entries.map((entry) => (
+    <ConsoleEntry
+      key={entry.sequence}
+      level={entry.level}
+      message={entry.message}
+    />
+  ));
 }
 
 function clampPreviewPercent(value: number) {

@@ -23,6 +23,18 @@ export interface NativeReactRuntimeDiagnostic extends BlockProtocolError {
   phase: 'runtime';
 }
 
+export interface NativeReactRuntimeConsole {
+  debug(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  log(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+}
+
+export interface NativeReactArtifactEvaluationBindings {
+  console: NativeReactRuntimeConsole;
+}
+
 export type NativeReactArtifactEvaluationResult =
   | {
       ok: true;
@@ -34,7 +46,8 @@ export type NativeReactArtifactEvaluationResult =
 
 export function evaluateNativeReactComponentArtifact(
   value: unknown,
-  modules: NativeTrustedBlockInjectedModuleMap
+  modules: NativeTrustedBlockInjectedModuleMap,
+  bindings?: NativeReactArtifactEvaluationBindings
 ): NativeReactArtifactEvaluationResult {
   const artifact = canonicalizeNativeReactComponentArtifact(value);
   if (!artifact || !hasCanonicalGuardBindings(artifact)) {
@@ -50,14 +63,7 @@ export function evaluateNativeReactComponentArtifact(
   try {
     const guardBindings =
       createNativeTrustedBlockRuntimeCapabilityGuardBindings();
-    const evaluator = new Function(
-      artifact.program.moduleMapIdentifier,
-      ...artifact.program.runtimeCapabilityGuardBindingIdentifiers,
-      `"use strict";\n${artifact.program.executableBody}`
-    ) as (
-      modules: NativeTrustedBlockInjectedModuleMap,
-      ...guards: unknown[]
-    ) => unknown;
+    const evaluator = createArtifactEvaluator(artifact, bindings);
     const component = evaluator(
       modules,
       ...getNativeTrustedBlockRuntimeCapabilityGuardValues(guardBindings)
@@ -89,7 +95,8 @@ export function evaluateNativeReactComponentArtifact(
 
 export async function evaluateNativeReactComponentArtifactWithRegistry(
   value: unknown,
-  registry: NativeReactModuleRegistry
+  registry: NativeReactModuleRegistry,
+  bindings?: NativeReactArtifactEvaluationBindings
 ): Promise<NativeReactArtifactEvaluationResult> {
   const artifact = canonicalizeNativeReactComponentArtifact(value);
   if (!artifact) {
@@ -102,7 +109,7 @@ export async function evaluateNativeReactComponentArtifactWithRegistry(
     const modules = await registry.resolveModuleMap(
       artifact.program.injectedModules.map(({ source }) => source)
     );
-    return evaluateNativeReactComponentArtifact(artifact, modules);
+    return evaluateNativeReactComponentArtifact(artifact, modules, bindings);
   } catch (error) {
     return error instanceof NativeReactModuleRegistryError
       ? runtimeFailure(error.path, error.message)
@@ -111,6 +118,43 @@ export async function evaluateNativeReactComponentArtifactWithRegistry(
           'Native React module registry failed.'
         );
   }
+}
+
+function createArtifactEvaluator(
+  artifact: NativeReactComponentArtifact,
+  bindings?: NativeReactArtifactEvaluationBindings
+): (
+  modules: NativeTrustedBlockInjectedModuleMap,
+  ...guards: unknown[]
+) => unknown {
+  const parameterNames = [
+    artifact.program.moduleMapIdentifier,
+    ...artifact.program.runtimeCapabilityGuardBindingIdentifiers
+  ];
+  if (!bindings) {
+    return new Function(
+      ...parameterNames,
+      `"use strict";\n${artifact.program.executableBody}`
+    ) as (
+      modules: NativeTrustedBlockInjectedModuleMap,
+      ...guards: unknown[]
+    ) => unknown;
+  }
+
+  const evaluatorFactory = new Function(
+    '__1flowbaseRuntimeConsole',
+    `"use strict";
+const console = __1flowbaseRuntimeConsole;
+return function (${parameterNames.join(', ')}) {
+${artifact.program.executableBody}
+};`
+  ) as (
+    runtimeConsole: NativeReactRuntimeConsole
+  ) => (
+    modules: NativeTrustedBlockInjectedModuleMap,
+    ...guards: unknown[]
+  ) => unknown;
+  return evaluatorFactory(bindings.console);
 }
 
 function hasCanonicalGuardBindings(
