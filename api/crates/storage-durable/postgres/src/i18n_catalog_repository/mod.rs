@@ -4,7 +4,8 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         CatalogResolutionCandidate, CatalogResolutionRepository, DeleteCatalogTranslationInput,
-        DeleteCustomCatalogMessageInput, I18nCatalogRepository, UpsertCatalogTranslationInput,
+        DeleteCustomCatalogMessageInput, I18nCatalogRepository, StoredI18nCatalogReleaseDescriptor,
+        UpsertCatalogTranslationInput,
     },
 };
 use domain::{
@@ -331,6 +332,35 @@ impl I18nCatalogRepository for PgControlPlaneStore {
         .await?
         .as_ref()
         .map(state_from_row)
+        .transpose()
+    }
+
+    async fn get_i18n_catalog_release_descriptor(
+        &self,
+        workspace_id: Uuid,
+        release_id: Uuid,
+    ) -> Result<Option<StoredI18nCatalogReleaseDescriptor>> {
+        let row = sqlx::query(
+            r#"
+            select catalog_version, semantic_sha256
+            from i18n_catalog_releases
+            where workspace_id = $1 and id = $2
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(release_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(|row| {
+            Ok(StoredI18nCatalogReleaseDescriptor {
+                catalog_version: domain::CatalogVersion::new(
+                    row.get::<String, _>("catalog_version"),
+                )?,
+                semantic_sha256: domain::CatalogDigest::new(
+                    row.get::<String, _>("semantic_sha256"),
+                )?,
+            })
+        })
         .transpose()
     }
 

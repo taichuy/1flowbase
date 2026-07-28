@@ -1,6 +1,29 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfficialI18nCatalogReleaseDescriptor {
+    pub catalog_version: domain::CatalogVersion,
+    pub semantic_sha256: domain::CatalogDigest,
+    pub seed_sha256: domain::CatalogDigest,
+}
+
+#[async_trait]
+pub trait OfficialI18nCatalogSourcePort: Send + Sync {
+    async fn check_latest_release(&self) -> anyhow::Result<OfficialI18nCatalogReleaseDescriptor>;
+
+    async fn fetch_verified_release(
+        &self,
+        release: &OfficialI18nCatalogReleaseDescriptor,
+    ) -> anyhow::Result<crate::i18n_catalog::VerifiedOfficialCatalogSeed>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredI18nCatalogReleaseDescriptor {
+    pub catalog_version: domain::CatalogVersion,
+    pub semantic_sha256: domain::CatalogDigest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogResolutionCandidate {
     pub root_override: Option<String>,
     pub active_official: Option<String>,
@@ -61,6 +84,12 @@ pub trait I18nCatalogRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Option<domain::WorkspaceCatalogState>>;
+
+    async fn get_i18n_catalog_release_descriptor(
+        &self,
+        workspace_id: Uuid,
+        release_id: Uuid,
+    ) -> anyhow::Result<Option<StoredI18nCatalogReleaseDescriptor>>;
 
     async fn list_active_official_messages(
         &self,

@@ -70,6 +70,13 @@ struct CatalogSeedSource {
     release_id: Uuid,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CatalogSeedInspection {
+    pub(crate) catalog_version: CatalogVersion,
+    pub(crate) semantic_sha256: CatalogDigest,
+    pub(crate) seed_sha256: CatalogDigest,
+}
+
 pub fn load_official_i18n_catalog_seed() -> Result<VerifiedOfficialCatalogSeed> {
     decode_catalog_seed(OFFICIAL_SEED_BYTES, OFFICIAL_SEED_SOURCE_BYTES)
 }
@@ -82,7 +89,60 @@ pub(crate) fn decode_catalog_seed(
         serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
     let source: CatalogSeedSource =
         serde_json::from_slice(source_bytes).context("invalid official Seed source metadata")?;
-    validate_seed_header(&seed, &source)?;
+    if source.official_commit != "d7d0a21a0317289eab5340b212995444ffac9d51" {
+        bail!("official Seed source commit is not pinned");
+    }
+    decode_validated_catalog_seed(
+        seed,
+        source.release_id,
+        Some((&source.catalog_version, &source.semantic_sha256)),
+    )
+}
+
+pub(crate) fn inspect_catalog_seed(seed_bytes: &[u8]) -> Result<CatalogSeedInspection> {
+    let seed: CatalogSeed =
+        serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
+    validate_seed_header(&seed)?;
+    validate_seed_digests(&seed)?;
+    Ok(CatalogSeedInspection {
+        catalog_version: CatalogVersion::new(seed.manifest.catalog_version)?,
+        semantic_sha256: CatalogDigest::new(seed.manifest.semantic_sha256)?,
+        seed_sha256: CatalogDigest::new(format!("sha256:{:x}", Sha256::digest(seed_bytes)))?,
+    })
+}
+
+pub(crate) fn decode_downloaded_catalog_seed(
+    seed_bytes: &[u8],
+    expected: &CatalogSeedInspection,
+) -> Result<VerifiedOfficialCatalogSeed> {
+    let seed: CatalogSeed =
+        serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
+    let actual_seed_sha256 = format!("sha256:{:x}", Sha256::digest(seed_bytes));
+    if actual_seed_sha256 != expected.seed_sha256.as_str() {
+        bail!("official Seed asset checksum mismatch");
+    }
+    let release_id = release_id_from_digest(&expected.seed_sha256)?;
+    decode_validated_catalog_seed(
+        seed,
+        release_id,
+        Some((
+            expected.catalog_version.as_str(),
+            expected.semantic_sha256.as_str(),
+        )),
+    )
+}
+
+fn decode_validated_catalog_seed(
+    seed: CatalogSeed,
+    release_id: Uuid,
+    expected: Option<(&str, &str)>,
+) -> Result<VerifiedOfficialCatalogSeed> {
+    validate_seed_header(&seed)?;
+    if expected.is_some_and(|(version, semantic_sha256)| {
+        seed.manifest.catalog_version != version || seed.manifest.semantic_sha256 != semantic_sha256
+    }) {
+        bail!("official Seed does not match its fixed release descriptor");
+    }
     validate_seed_digests(&seed)?;
 
     let locales = seed
@@ -138,7 +198,7 @@ pub(crate) fn decode_catalog_seed(
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
     VerifiedOfficialCatalogSeed::new(
-        source.release_id,
+        release_id,
         CatalogVersion::new(seed.manifest.catalog_version)?,
         locales,
         modules,
@@ -151,22 +211,30 @@ pub(crate) fn decode_catalog_seed(
     .map_err(Into::into)
 }
 
-fn validate_seed_header(seed: &CatalogSeed, source: &CatalogSeedSource) -> Result<()> {
+fn validate_seed_header(seed: &CatalogSeed) -> Result<()> {
     if seed.manifest.schema_version != I18N_CATALOG_SEED_SCHEMA_VERSION {
         bail!("unsupported official Seed schema");
     }
     if seed.manifest.source_locale != I18N_CATALOG_SOURCE_LOCALE {
         bail!("official Seed source locale must be en_US");
     }
-    if seed.manifest.catalog_version != source.catalog_version
-        || seed.manifest.semantic_sha256 != source.semantic_sha256
-    {
-        bail!("official Seed does not match its build-time source metadata");
-    }
-    if source.official_commit != "d7d0a21a0317289eab5340b212995444ffac9d51" {
-        bail!("official Seed source commit is not pinned");
-    }
     validate_seed_shape(seed)
+}
+
+fn release_id_from_digest(digest: &CatalogDigest) -> Result<Uuid> {
+    let hexadecimal = digest
+        .as_str()
+        .strip_prefix("sha256:")
+        .ok_or_else(|| anyhow!("official Seed digest has no sha256 prefix"))?;
+    let mut bytes = [0_u8; 16];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hexadecimal[index * 2..index * 2 + 2], 16)
+            .context("official Seed digest is not hexadecimal")?;
+    }
+    // Stable RFC 9562-compatible identity derived from immutable artifact bytes.
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Ok(Uuid::from_bytes(bytes))
 }
 
 fn validate_seed_shape(seed: &CatalogSeed) -> Result<()> {

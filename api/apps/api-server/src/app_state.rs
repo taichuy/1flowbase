@@ -13,6 +13,7 @@ use time::OffsetDateTime;
 use crate::host_infrastructure::HostInfrastructureRegistry;
 use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
+    config::ApiConfig,
     console_surface_registry::ConsoleSurfaceRegistry,
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     routes::console_route_assembly::{
@@ -22,11 +23,22 @@ use crate::{
 };
 use crate::{
     official_agent_flow_templates::OfficialAgentFlowTemplateSourcePort,
+    official_i18n_catalog_source::ApiOfficialI18nCatalogSource,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::ApiRuntimeServices,
     runtime_activity::ApplicationRuntimeActivityTracker,
     runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
 };
+
+pub fn build_official_i18n_catalog_update_service(
+    store: MainDurableStore,
+    config: &ApiConfig,
+) -> Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>> {
+    let source = Arc::new(ApiOfficialI18nCatalogSource::new(
+        config.resolve_official_i18n_catalog_source(),
+    ));
+    Arc::new(control_plane::i18n_catalog::OfficialI18nCatalogUpdateService::new(store, source))
+}
 
 pub fn compile_core_settings_feature_registry() -> Result<
     Arc<access_control::SettingsFeatureRegistry>,
@@ -220,6 +232,8 @@ pub struct ApiState {
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_agent_flow_template_source: Arc<dyn OfficialAgentFlowTemplateSourcePort>,
     pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
+    pub official_i18n_catalog_update_service:
+        Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>>,
     pub api_node_id: String,
     pub provider_install_root: String,
     pub provider_secret_master_key: String,

@@ -114,6 +114,9 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         official_plugin_source: base_state.official_plugin_source.clone(),
         official_agent_flow_template_source: base_state.official_agent_flow_template_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
+        official_i18n_catalog_update_service: base_state
+            .official_i18n_catalog_update_service
+            .clone(),
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),

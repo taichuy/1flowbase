@@ -17,6 +17,7 @@ pub mod host_worker_registry;
 pub mod middleware;
 pub mod official_agent_flow_templates;
 pub mod official_i18n_catalog_seed;
+pub mod official_i18n_catalog_source;
 pub mod official_mcp_bundles;
 pub mod official_plugin_registry;
 pub mod openapi;
@@ -53,7 +54,7 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{compile_console_boot_plan, ApiState},
+    app_state::{build_official_i18n_catalog_update_service, compile_console_boot_plan, ApiState},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -347,6 +348,8 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
         ));
+    let official_i18n_catalog_update_service =
+        build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
         store.clone(),
         ApiProviderRuntime::new(provider_runtime.clone()),
@@ -419,6 +422,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         official_plugin_source,
         official_agent_flow_template_source,
         official_mcp_bundle_source,
+        official_i18n_catalog_update_service,
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),

@@ -222,7 +222,7 @@ async fn fixture() -> Fixture {
             .unwrap();
     let process_started_at = OffsetDateTime::now_utc();
     let state = Arc::new(ApiState {
-        store,
+        store: store.clone(),
         authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
         settings_feature_registry,
         console_operation_registry,
@@ -244,6 +244,11 @@ async fn fixture() -> Fixture {
         official_plugin_source: Arc::new(NoopPluginSource),
         official_agent_flow_template_source: Arc::new(NoopAgentFlowSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
+        official_i18n_catalog_update_service:
+            api_server::app_state::build_official_i18n_catalog_update_service(
+                store.clone(),
+                &config,
+            ),
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),
