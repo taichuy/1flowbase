@@ -21,12 +21,14 @@ pub struct SystemMetadataTitleReference {
     pub field_code: Option<&'static str>,
     pub module: &'static str,
     pub msgid: &'static str,
+    pub historical_default: &'static str,
 }
 
 #[derive(Debug, Clone)]
 pub struct SystemMetadataFieldTemplate {
     pub code: &'static str,
     pub title: &'static str,
+    pub historical_title: &'static str,
     pub description: Option<&'static str>,
     pub physical_column_name: Option<&'static str>,
     pub field_kind: ModelFieldKind,
@@ -41,12 +43,14 @@ pub struct SystemMetadataFieldTemplate {
 pub struct SystemMetadataModelTemplate {
     pub code: &'static str,
     pub title: &'static str,
+    pub historical_title: &'static str,
     pub fields: Vec<SystemMetadataFieldTemplate>,
 }
 
 fn readonly_system_table_field(
     code: &'static str,
     title: &'static str,
+    historical_title: &'static str,
     physical_column_name: &'static str,
     field_kind: ModelFieldKind,
     is_required: bool,
@@ -55,6 +59,7 @@ fn readonly_system_table_field(
     SystemMetadataFieldTemplate {
         code,
         title,
+        historical_title,
         description: None,
         physical_column_name: Some(physical_column_name),
         field_kind,
@@ -70,11 +75,21 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
     SystemMetadataModelTemplate {
         code: "users",
         title: "Users",
+        historical_title: "用户",
         fields: vec![
-            readonly_system_table_field("id", "User ID", "id", ModelFieldKind::String, true, true),
+            readonly_system_table_field(
+                "id",
+                "User ID",
+                "用户 ID",
+                "id",
+                ModelFieldKind::String,
+                true,
+                true,
+            ),
             readonly_system_table_field(
                 "created_by",
                 "Created By",
+                "创建人",
                 "created_by",
                 ModelFieldKind::String,
                 false,
@@ -83,6 +98,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "updated_by",
                 "Updated By",
+                "更新人",
                 "updated_by",
                 ModelFieldKind::String,
                 false,
@@ -91,6 +107,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "account",
                 "Account",
+                "账号",
                 "account",
                 ModelFieldKind::String,
                 true,
@@ -99,6 +116,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "email",
                 "Email",
+                "邮箱",
                 "email",
                 ModelFieldKind::String,
                 true,
@@ -107,6 +125,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "phone",
                 "Phone",
+                "手机号",
                 "phone",
                 ModelFieldKind::String,
                 false,
@@ -115,6 +134,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "name",
                 "Name",
+                "姓名",
                 "name",
                 ModelFieldKind::String,
                 true,
@@ -123,6 +143,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "nickname",
                 "Nickname",
+                "昵称",
                 "nickname",
                 ModelFieldKind::String,
                 true,
@@ -131,6 +152,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "avatar_url",
                 "Avatar",
+                "头像",
                 "avatar_url",
                 ModelFieldKind::String,
                 false,
@@ -139,6 +161,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "introduction",
                 "Introduction",
+                "简介",
                 "introduction",
                 ModelFieldKind::Text,
                 true,
@@ -147,6 +170,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "preferred_locale",
                 "Preferred Language",
+                "偏好语言",
                 "preferred_locale",
                 ModelFieldKind::String,
                 false,
@@ -155,6 +179,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "meta",
                 "Metadata",
+                "元数据",
                 "meta",
                 ModelFieldKind::Json,
                 true,
@@ -163,6 +188,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "default_display_role",
                 "Default Display Role",
+                "默认展示角色",
                 "default_display_role",
                 ModelFieldKind::String,
                 false,
@@ -171,6 +197,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "email_login_enabled",
                 "Email Login",
+                "邮箱登录",
                 "email_login_enabled",
                 ModelFieldKind::Boolean,
                 true,
@@ -179,6 +206,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "phone_login_enabled",
                 "Phone Login",
+                "手机登录",
                 "phone_login_enabled",
                 ModelFieldKind::Boolean,
                 true,
@@ -187,6 +215,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "status",
                 "Status",
+                "状态",
                 "status",
                 ModelFieldKind::String,
                 true,
@@ -195,6 +224,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "created_at",
                 "Created At",
+                "创建时间",
                 "created_at",
                 ModelFieldKind::Datetime,
                 true,
@@ -203,6 +233,7 @@ pub fn user_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "updated_at",
                 "Updated At",
+                "更新时间",
                 "updated_at",
                 ModelFieldKind::Datetime,
                 true,
@@ -216,11 +247,21 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
     SystemMetadataModelTemplate {
         code: "roles",
         title: "Roles",
+        historical_title: "角色",
         fields: vec![
-            readonly_system_table_field("id", "Role ID", "id", ModelFieldKind::String, true, true),
+            readonly_system_table_field(
+                "id",
+                "Role ID",
+                "角色 ID",
+                "id",
+                ModelFieldKind::String,
+                true,
+                true,
+            ),
             readonly_system_table_field(
                 "created_by",
                 "Created By",
+                "创建人",
                 "created_by",
                 ModelFieldKind::String,
                 true,
@@ -229,6 +270,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "updated_by",
                 "Updated By",
+                "更新人",
                 "updated_by",
                 ModelFieldKind::String,
                 true,
@@ -237,6 +279,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "scope_id",
                 "Scope ID",
+                "作用域 ID",
                 "scope_id",
                 ModelFieldKind::ManyToOne,
                 true,
@@ -245,6 +288,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "scope_kind",
                 "Scope",
+                "作用域",
                 "scope_kind",
                 ModelFieldKind::String,
                 true,
@@ -253,6 +297,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "workspace_id",
                 "Workspace ID",
+                "工作区 ID",
                 "workspace_id",
                 ModelFieldKind::ManyToOne,
                 false,
@@ -261,6 +306,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "code",
                 "Role Code",
+                "角色标识",
                 "code",
                 ModelFieldKind::String,
                 true,
@@ -269,6 +315,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "name",
                 "Role Name",
+                "角色名称",
                 "name",
                 ModelFieldKind::String,
                 true,
@@ -277,6 +324,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "introduction",
                 "Introduction",
+                "简介",
                 "introduction",
                 ModelFieldKind::Text,
                 true,
@@ -285,6 +333,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "is_builtin",
                 "Builtin Role",
+                "内置角色",
                 "is_builtin",
                 ModelFieldKind::Boolean,
                 true,
@@ -293,6 +342,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "is_editable",
                 "Editable",
+                "可编辑",
                 "is_editable",
                 ModelFieldKind::Boolean,
                 true,
@@ -301,6 +351,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "auto_grant_new_permissions",
                 "Automatically Grant New Permissions",
+                "自动授予新权限",
                 "auto_grant_new_permissions",
                 ModelFieldKind::Boolean,
                 true,
@@ -309,6 +360,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "is_default_member_role",
                 "Default Member Role",
+                "默认成员角色",
                 "is_default_member_role",
                 ModelFieldKind::Boolean,
                 true,
@@ -317,6 +369,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "system_kind",
                 "System Role Type",
+                "系统角色类型",
                 "system_kind",
                 ModelFieldKind::String,
                 false,
@@ -325,6 +378,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "created_at",
                 "Created At",
+                "创建时间",
                 "created_at",
                 ModelFieldKind::Datetime,
                 true,
@@ -333,6 +387,7 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
             readonly_system_table_field(
                 "updated_at",
                 "Updated At",
+                "更新时间",
                 "updated_at",
                 ModelFieldKind::Datetime,
                 true,
@@ -355,6 +410,7 @@ pub fn system_metadata_title_references() -> Vec<SystemMetadataTitleReference> {
                 field_code: None,
                 module: SYSTEM_METADATA_CATALOG_MODULE,
                 msgid: model.title,
+                historical_default: model.historical_title,
             })
             .chain(model.fields.into_iter().map(move |field| {
                 SystemMetadataTitleReference {
@@ -362,6 +418,7 @@ pub fn system_metadata_title_references() -> Vec<SystemMetadataTitleReference> {
                     field_code: Some(field.code),
                     module: SYSTEM_METADATA_CATALOG_MODULE,
                     msgid: field.title,
+                    historical_default: field.historical_title,
                 }
             }))
         })
@@ -387,7 +444,7 @@ where
         return Ok(());
     };
 
-    if title_uses_builtin_default(&model.title, template.title) {
+    if title_uses_builtin_default(&model.title, template.title, template.historical_title) {
         model.title = resolve_builtin_title(resolver, workspace_id, locale, template.title).await?;
     }
     for field in &mut model.fields {
@@ -398,7 +455,11 @@ where
         else {
             continue;
         };
-        if title_uses_builtin_default(&field.title, field_template.title) {
+        if title_uses_builtin_default(
+            &field.title,
+            field_template.title,
+            field_template.historical_title,
+        ) {
             field.title =
                 resolve_builtin_title(resolver, workspace_id, locale, field_template.title).await?;
         }
@@ -406,8 +467,14 @@ where
     Ok(())
 }
 
-fn title_uses_builtin_default(persisted: &str, canonical_english: &str) -> bool {
-    persisted.trim().is_empty() || persisted == canonical_english
+fn title_uses_builtin_default(
+    persisted: &str,
+    canonical_english: &str,
+    historical_default: &str,
+) -> bool {
+    // Without provenance, exact equality with a known shipped default is the only safe
+    // upgrade signal. Any other non-empty value remains user-owned metadata verbatim.
+    persisted.trim().is_empty() || persisted == canonical_english || persisted == historical_default
 }
 
 async fn resolve_builtin_title<R>(

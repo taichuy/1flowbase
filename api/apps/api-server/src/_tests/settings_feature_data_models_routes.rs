@@ -45,7 +45,25 @@ async fn ac_012_013_model_definition_dto_localizes_existing_title_fields_server_
 
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     sqlx::query(
+        "update model_definitions set title = '用户' where code = 'users' and scope_kind = 'system'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
         "update model_fields set title = 'Administrator Account Label' where data_model_id = (select id from model_definitions where code = 'users' and scope_kind = 'system') and code = 'account'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "update model_fields set title = '邮箱' where data_model_id = (select id from model_definitions where code = 'users' and scope_kind = 'system') and code = 'email'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "update model_fields set title = '文件名' where data_model_id = (select id from model_definitions where code = 'attachments' and scope_kind = 'system') and code = 'filename'",
     )
     .execute(&pool)
     .await
@@ -54,10 +72,11 @@ async fn ac_012_013_model_definition_dto_localizes_existing_title_fields_server_
     let app = crate::app_with_state_and_config(state, &test_config());
     let (root_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/console/settings/data-models/model-definitions")
-                .header("cookie", root_cookie)
+                .header("cookie", &root_cookie)
                 .header("x-1flowbase-locale", "zh-Hans")
                 .body(Body::empty())
                 .unwrap(),
@@ -82,6 +101,60 @@ async fn ac_012_013_model_definition_dto_localizes_existing_title_fields_server_
         .unwrap();
     assert_eq!(account["title"], "Administrator Account Label");
     assert!(account.get("localized_title").is_none());
+
+    let english_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/data-models/model-definitions")
+                .header("cookie", &root_cookie)
+                .header("x-1flowbase-locale", "en_US")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(english_response.status(), StatusCode::OK);
+    let english_body = response_json(english_response).await;
+    let english_users = english_body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["code"] == "users")
+        .unwrap();
+    assert_eq!(english_users["title"], "Users");
+    assert_eq!(
+        english_users["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["code"] == "email")
+            .unwrap()["title"],
+        "Email"
+    );
+    assert_eq!(
+        english_users["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["code"] == "account")
+            .unwrap()["title"],
+        "Administrator Account Label"
+    );
+    let attachments = english_body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["code"] == "attachments")
+        .unwrap();
+    assert_eq!(
+        attachments["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["code"] == "filename")
+            .unwrap()["title"],
+        "Filename"
+    );
 }
 
 async fn response_json(response: axum::response::Response) -> Value {

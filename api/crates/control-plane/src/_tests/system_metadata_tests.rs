@@ -122,6 +122,50 @@ fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
     assert_eq!(
         references
             .iter()
+            .map(|reference| reference.historical_default)
+            .collect::<Vec<_>>(),
+        vec![
+            "用户",
+            "用户 ID",
+            "创建人",
+            "更新人",
+            "账号",
+            "邮箱",
+            "手机号",
+            "姓名",
+            "昵称",
+            "头像",
+            "简介",
+            "偏好语言",
+            "元数据",
+            "默认展示角色",
+            "邮箱登录",
+            "手机登录",
+            "状态",
+            "创建时间",
+            "更新时间",
+            "角色",
+            "角色 ID",
+            "创建人",
+            "更新人",
+            "作用域 ID",
+            "作用域",
+            "工作区 ID",
+            "角色标识",
+            "角色名称",
+            "简介",
+            "内置角色",
+            "可编辑",
+            "自动授予新权限",
+            "默认成员角色",
+            "系统角色类型",
+            "创建时间",
+            "更新时间",
+        ]
+    );
+    assert_eq!(
+        references
+            .iter()
             .map(|reference| (reference.model_code, reference.field_code, reference.msgid))
             .collect::<Vec<_>>(),
         vec![
@@ -439,7 +483,13 @@ async fn ac_012_013_system_metadata_projection_localizes_defaults_and_preserves_
         .into_iter()
         .find(|model| model.code == "users")
         .expect("users metadata model should exist");
-    users.title.clear();
+    users.title = "用户".into();
+    users
+        .fields
+        .iter_mut()
+        .find(|field| field.code == "email")
+        .expect("email field")
+        .title = "邮箱".into();
     users
         .fields
         .iter_mut()
@@ -492,7 +542,13 @@ async fn ac_012_013_system_metadata_projection_localizes_defaults_and_preserves_
             .into_iter()
             .find(|model| model.code == roles.code)
             .unwrap();
-    role_record.title = roles.title.into();
+    role_record.title = "角色".into();
+    role_record
+        .fields
+        .iter_mut()
+        .find(|field| field.code == "id")
+        .expect("role id field")
+        .title = "角色 ID".into();
     let en_us = domain::CatalogLocale::new("en_US").unwrap();
     project_system_metadata_titles(
         &CatalogResolver::new(
@@ -508,4 +564,13 @@ async fn ac_012_013_system_metadata_projection_localizes_defaults_and_preserves_
     .await
     .unwrap();
     assert_eq!(role_record.title, "Roles");
+    assert_eq!(
+        role_record
+            .fields
+            .iter()
+            .find(|field| field.code == "id")
+            .unwrap()
+            .title,
+        "Role ID"
+    );
 }

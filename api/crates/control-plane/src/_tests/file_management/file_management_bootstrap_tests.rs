@@ -65,6 +65,24 @@ fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
     assert_eq!(
         references
             .iter()
+            .map(|reference| reference.historical_default)
+            .collect::<Vec<_>>(),
+        vec![
+            "Attachments",
+            "标题",
+            "文件名",
+            "扩展名",
+            "大小",
+            "MIME 类型",
+            "存储路径",
+            "元数据",
+            "缓存地址",
+            "存储器 ID",
+        ]
+    );
+    assert_eq!(
+        references
+            .iter()
             .map(|reference| (
                 reference.resource_code,
                 reference.field_code,
@@ -165,6 +183,12 @@ async fn ac_012_013_file_metadata_projection_localizes_defaults_and_preserves_cu
         .find(|field| field.code == "title")
         .unwrap()
         .title = "Administrator File Label".into();
+    model
+        .fields
+        .iter_mut()
+        .find(|field| field.code == "filename")
+        .unwrap()
+        .title = "文件名".into();
 
     let workspace_id = Uuid::now_v7();
     let locale = domain::CatalogLocale::new("zh_Hans").unwrap();
@@ -190,6 +214,27 @@ async fn ac_012_013_file_metadata_projection_localizes_defaults_and_preserves_cu
             .unwrap()
             .title,
         "Administrator File Label"
+    );
+
+    let mut english_model = model.clone();
+    english_model
+        .fields
+        .iter_mut()
+        .find(|field| field.code == "size")
+        .unwrap()
+        .title = "大小".into();
+    let en_us = domain::CatalogLocale::new("en_US").unwrap();
+    project_attachments_model_titles(&resolver, workspace_id, &en_us, &mut english_model)
+        .await
+        .unwrap();
+    assert_eq!(
+        english_model
+            .fields
+            .iter()
+            .find(|field| field.code == "size")
+            .unwrap()
+            .title,
+        "Size"
     );
 
     let mut localized_table = table.clone();

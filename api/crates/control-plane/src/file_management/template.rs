@@ -13,37 +13,78 @@ pub struct FileMetadataTitleReference {
     pub field_code: Option<&'static str>,
     pub module: &'static str,
     pub msgid: &'static str,
+    pub historical_default: &'static str,
 }
 
 #[derive(Debug, Clone)]
 pub struct FileFieldTemplate {
     pub code: String,
     pub title: String,
+    pub historical_title: String,
     pub field_kind: ModelFieldKind,
     pub is_required: bool,
 }
 
-const ATTACHMENTS_FIELDS: [(&str, &str, ModelFieldKind, bool); 9] = [
-    ("title", "Title", ModelFieldKind::String, false),
-    ("filename", "Filename", ModelFieldKind::String, true),
-    ("extname", "Extension", ModelFieldKind::String, false),
-    ("size", "Size", ModelFieldKind::Number, true),
-    ("mimetype", "MIME Type", ModelFieldKind::String, true),
-    ("path", "Storage Path", ModelFieldKind::String, true),
-    ("meta", "Metadata", ModelFieldKind::Json, true),
-    ("url", "Cached URL", ModelFieldKind::String, false),
-    ("storage_id", "Storage ID", ModelFieldKind::String, true),
+const ATTACHMENTS_FIELDS: [(&str, &str, &str, ModelFieldKind, bool); 9] = [
+    ("title", "Title", "标题", ModelFieldKind::String, false),
+    (
+        "filename",
+        "Filename",
+        "文件名",
+        ModelFieldKind::String,
+        true,
+    ),
+    (
+        "extname",
+        "Extension",
+        "扩展名",
+        ModelFieldKind::String,
+        false,
+    ),
+    ("size", "Size", "大小", ModelFieldKind::Number, true),
+    (
+        "mimetype",
+        "MIME Type",
+        "MIME 类型",
+        ModelFieldKind::String,
+        true,
+    ),
+    (
+        "path",
+        "Storage Path",
+        "存储路径",
+        ModelFieldKind::String,
+        true,
+    ),
+    ("meta", "Metadata", "元数据", ModelFieldKind::Json, true),
+    (
+        "url",
+        "Cached URL",
+        "缓存地址",
+        ModelFieldKind::String,
+        false,
+    ),
+    (
+        "storage_id",
+        "Storage ID",
+        "存储器 ID",
+        ModelFieldKind::String,
+        true,
+    ),
 ];
 
 pub fn attachments_template_fields() -> Vec<FileFieldTemplate> {
     ATTACHMENTS_FIELDS
         .iter()
-        .map(|(code, title, field_kind, is_required)| FileFieldTemplate {
-            code: (*code).into(),
-            title: (*title).into(),
-            field_kind: *field_kind,
-            is_required: *is_required,
-        })
+        .map(
+            |(code, title, historical_title, field_kind, is_required)| FileFieldTemplate {
+                code: (*code).into(),
+                title: (*title).into(),
+                historical_title: (*historical_title).into(),
+                field_kind: *field_kind,
+                is_required: *is_required,
+            },
+        )
         .collect()
 }
 
@@ -53,16 +94,20 @@ pub fn file_metadata_title_references() -> Vec<FileMetadataTitleReference> {
         field_code: None,
         module: FILE_MANAGEMENT_CATALOG_MODULE,
         msgid: ATTACHMENTS_DEFAULT_TITLE,
+        historical_default: ATTACHMENTS_DEFAULT_TITLE,
     })
     .chain(
         ATTACHMENTS_FIELDS
             .iter()
-            .map(|(code, title, _, _)| FileMetadataTitleReference {
-                resource_code: "attachments",
-                field_code: Some(*code),
-                module: FILE_MANAGEMENT_CATALOG_MODULE,
-                msgid: *title,
-            }),
+            .map(
+                |(code, title, historical_title, _, _)| FileMetadataTitleReference {
+                    resource_code: "attachments",
+                    field_code: Some(*code),
+                    module: FILE_MANAGEMENT_CATALOG_MODULE,
+                    msgid: *title,
+                    historical_default: *historical_title,
+                },
+            ),
     )
     .collect()
 }
@@ -82,7 +127,11 @@ where
         return Ok(());
     }
 
-    if title_uses_builtin_default(&model.title, ATTACHMENTS_DEFAULT_TITLE) {
+    if title_uses_builtin_default(
+        &model.title,
+        ATTACHMENTS_DEFAULT_TITLE,
+        ATTACHMENTS_DEFAULT_TITLE,
+    ) {
         model.title =
             resolve_builtin_title(resolver, workspace_id, locale, ATTACHMENTS_DEFAULT_TITLE)
                 .await?;
@@ -95,7 +144,7 @@ where
         else {
             continue;
         };
-        if title_uses_builtin_default(&field.title, &template.title) {
+        if title_uses_builtin_default(&field.title, &template.title, &template.historical_title) {
             field.title =
                 resolve_builtin_title(resolver, workspace_id, locale, &template.title).await?;
         }
@@ -114,7 +163,11 @@ where
 {
     if table.is_builtin
         && table.is_default
-        && title_uses_builtin_default(&table.title, ATTACHMENTS_DEFAULT_TITLE)
+        && title_uses_builtin_default(
+            &table.title,
+            ATTACHMENTS_DEFAULT_TITLE,
+            ATTACHMENTS_DEFAULT_TITLE,
+        )
     {
         table.title =
             resolve_builtin_title(resolver, workspace_id, locale, ATTACHMENTS_DEFAULT_TITLE)
@@ -123,8 +176,14 @@ where
     Ok(())
 }
 
-fn title_uses_builtin_default(persisted: &str, canonical_english: &str) -> bool {
-    persisted.trim().is_empty() || persisted == canonical_english
+fn title_uses_builtin_default(
+    persisted: &str,
+    canonical_english: &str,
+    historical_default: &str,
+) -> bool {
+    // Without provenance, exact equality with a known shipped default is the only safe
+    // upgrade signal. Any other non-empty value remains user-owned metadata verbatim.
+    persisted.trim().is_empty() || persisted == canonical_english || persisted == historical_default
 }
 
 async fn resolve_builtin_title<R>(
