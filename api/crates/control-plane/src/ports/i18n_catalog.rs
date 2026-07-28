@@ -1,0 +1,94 @@
+use super::*;
+
+#[derive(Debug, Clone)]
+pub struct UpsertCatalogTranslationInput {
+    pub workspace_id: Uuid,
+    pub value: domain::CatalogTranslation,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteCatalogTranslationInput {
+    pub workspace_id: Uuid,
+    pub identity: domain::CatalogMessageIdentity,
+    pub locale: domain::CatalogLocale,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteCustomCatalogMessageInput {
+    pub workspace_id: Uuid,
+    pub identity: domain::CatalogMessageIdentity,
+    pub expected_revision: domain::WorkspaceCatalogRevision,
+}
+
+#[async_trait]
+pub trait I18nCatalogRepository: Send + Sync {
+    async fn import_verified_release(
+        &self,
+        release: &domain::VerifiedCatalogRelease,
+    ) -> anyhow::Result<()>;
+
+    async fn bootstrap_workspace_catalog_state(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn activate_verified_release(
+        &self,
+        workspace_id: Uuid,
+        release_id: Uuid,
+        expected_revision: domain::WorkspaceCatalogRevision,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn get_workspace_catalog_state(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Option<domain::WorkspaceCatalogState>>;
+
+    async fn list_active_official_messages(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::ActiveOfficialCatalogMessage>>;
+
+    async fn list_catalog_overrides(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::CatalogTranslation>>;
+
+    async fn list_custom_catalog_translations(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::CatalogTranslation>>;
+
+    async fn upsert_catalog_override(
+        &self,
+        input: &UpsertCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn delete_catalog_override(
+        &self,
+        input: &DeleteCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn upsert_custom_catalog_translation(
+        &self,
+        input: &UpsertCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn delete_custom_catalog_message(
+        &self,
+        input: &DeleteCustomCatalogMessageInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState>;
+
+    async fn mark_superseded_release_obsolete_against_active(
+        &self,
+        workspace_id: Uuid,
+        superseded_release_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::ObsoleteCatalogMessage>>;
+
+    async fn list_obsolete_catalog_messages(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::ObsoleteCatalogMessage>>;
+}

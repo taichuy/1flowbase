@@ -12,6 +12,7 @@ pub mod flow;
 pub mod frontend_block_catalog;
 pub mod frontstage;
 pub mod host_extension;
+pub mod i18n_catalog;
 pub mod js_dependency;
 pub mod mcp_bundle;
 pub mod mcp_management;
@@ -77,6 +78,13 @@ pub use frontstage::{FrontstagePageKind, FrontstagePageRecord, FrontstagePageTre
 pub use host_extension::{
     HostExtensionActivationStatus, HostExtensionInventoryRecord, HostExtensionTrustLevel,
     HostInfrastructureConfigStatus, HostInfrastructureProviderConfigRecord,
+};
+pub use i18n_catalog::{
+    ActiveOfficialCatalogMessage, CatalogDigest, CatalogLocale, CatalogMessageIdentity,
+    CatalogModuleId, CatalogSeedFile, CatalogTranslation, CatalogVersion,
+    I18nCatalogInvariantError, ObsoleteCatalogMessage, OfficialCatalogMessage,
+    VerifiedCatalogRelease, WorkspaceCatalogRevision, WorkspaceCatalogState,
+    I18N_CATALOG_SEED_SCHEMA_VERSION, I18N_CATALOG_SOURCE_LOCALE,
 };
 pub use js_dependency::{
     ApplicationJsDependencySelection, JsDependencyPermissions, JsDependencyRegistryEntry,

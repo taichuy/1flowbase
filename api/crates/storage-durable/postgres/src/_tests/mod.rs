@@ -6,6 +6,7 @@ mod flow_repository_tests;
 mod frontend_block_catalog_repository_tests;
 mod frontstage;
 mod host_infrastructure_config_repository_tests;
+mod i18n_catalog_repository_tests;
 mod identity;
 mod max_output_tokens_migration_tests;
 mod mcp_management_repository_tests;
