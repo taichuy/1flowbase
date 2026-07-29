@@ -653,6 +653,12 @@ fn responses_transport_requirement(
 ) -> crate::application_public_api::native::ResponsesTransportRequirement {
     use crate::application_public_api::native::ResponsesTransportRequirement;
 
+    let has_known_native_only_top_level_field = object.keys().any(|field| {
+        matches!(
+            field.as_str(),
+            "response_format" | "text" | "background" | "max_tool_calls" | "truncation"
+        )
+    });
     let has_native_only_tools = object
         .get("tools")
         .and_then(Value::as_array)
@@ -667,7 +673,8 @@ fn responses_transport_requirement(
         || object.get("parallel_tool_calls").and_then(Value::as_bool) == Some(true)
         || object.get("include").is_some();
 
-    if has_native_only_tools
+    if has_known_native_only_top_level_field
+        || has_native_only_tools
         || has_native_only_tool_choice
         || has_native_only_input
         || has_native_only_execution_hint
@@ -3111,6 +3118,16 @@ mod tests {
                 "model": "1flowbase",
                 "input": "hi",
                 "include": ["reasoning.encrypted_content"]
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "truncation": "auto"
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "text": {"format": {"type": "json_schema"}}
             }),
         ] {
             assert_eq!(
