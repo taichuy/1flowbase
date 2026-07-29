@@ -20,8 +20,8 @@ const PARALLEL_RESULT_A = `${TOOL_RESULT_SENTINEL} parallel-a`;
 const PARALLEL_RESULT_B = `${TOOL_RESULT_SENTINEL} parallel-b`;
 const SEQUENTIAL_RESULT_A = `${TOOL_RESULT_SENTINEL} sequential-a`;
 const SEQUENTIAL_RESULT_B = `${TOOL_RESULT_SENTINEL} sequential-b`;
-const GIT_INSPECT_RESULT = `${TOOL_RESULT_SENTINEL} git-inspect`;
-const GIT_EDIT_RESULT = `${TOOL_RESULT_SENTINEL} git-edit`;
+const GIT_LOG_RESULT = `${TOOL_RESULT_SENTINEL} git-log`;
+const GIT_SHOW_RESULT = `${TOOL_RESULT_SENTINEL} git-show`;
 const GIT_WORKFLOW_FINAL = '1flowbase meaningful git workflow verified';
 const PROVIDER_ERROR_BODY = HTTP_500_ERROR_BODY;
 const CLAUDE_REAL_CLIENT_PROFILE_MARKER =
@@ -236,9 +236,9 @@ const MEANINGFUL_GIT_VECTOR = Object.freeze({
       '1flowbase-client-tool-vector',
       '1flowbase-client-vector=meaningful-git-workflow',
       'GIT_REPO_PATH={{GIT_REPO_PATH}}',
-      'Use client-owned local tools to inspect git status, the two recent commits, and task.txt diff.',
-      'Then change task.txt from state=BEFORE to state=AFTER and inspect the resulting diff.',
-      'Do not commit, push, fetch, pull, or access the network.',
+      'Use client-owned local tools in the real repository.',
+      'First run git log -2 --oneline. Then run git show --stat --oneline --summary HEAD.',
+      'Do not modify files, commit, push, fetch, pull, or access the network.',
       `After both callback tasks complete, print exactly: ${GIT_WORKFLOW_FINAL}`,
     ].join(' '),
   })]),
@@ -246,7 +246,7 @@ const MEANINGFUL_GIT_VECTOR = Object.freeze({
     assistantTexts: [GIT_WORKFLOW_FINAL],
     minimumProviderRequests: 3,
     toolMode: 'meaningful_git_workflow',
-    toolResultMarkers: [GIT_INSPECT_RESULT, GIT_EDIT_RESULT],
+    toolResultMarkers: [GIT_LOG_RESULT, GIT_SHOW_RESULT],
     minimumCallbackResumes: 2,
   }),
 });
@@ -306,8 +306,8 @@ module.exports = {
   LONG_REPEATED_UNICODE_TEXT,
   LONG_TEXT_VECTOR,
   MEANINGFUL_GIT_VECTOR,
-  GIT_EDIT_RESULT,
-  GIT_INSPECT_RESULT,
+  GIT_LOG_RESULT,
+  GIT_SHOW_RESULT,
   GIT_WORKFLOW_FINAL,
   PARALLEL_FINAL_SENTINEL,
   PARALLEL_RESULT_A,

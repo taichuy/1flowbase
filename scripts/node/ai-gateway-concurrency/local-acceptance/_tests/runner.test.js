@@ -84,7 +84,13 @@ function dependencies({ failAt } = {}) {
   const cleanup = [];
   const deps = {
     loadManifest() { calls.push('manifest'); return fixtureManifest(); },
-    async preflight() { calls.push('preflight'); if (failAt === 'preflight') throw new Error('preflight failed'); },
+    async preflight() {
+      calls.push('preflight');
+      if (failAt === 'preflight') throw new Error('preflight failed');
+      return {
+        repositories: [{ name: 'protectedMain', path: '/main', revision: 'c'.repeat(40) }],
+      };
+    },
     createEvidenceRoot() { calls.push('evidence'); return '/evidence'; },
     createDatabase() {
       calls.push('database:create');
@@ -161,6 +167,8 @@ test('WP-14A runs the machine client matrix while the mock-backed fixture is ali
   assert.equal(clients.discovery.binaries.opencode, '/bin/opencode');
   assert.equal(clients.discovery.binaries.codex, '/bin/codex');
   assert.equal(clients.targets.codex.gatewayBaseUrl, 'http://127.0.0.1:4100');
+  assert.equal(clients.gitRepoPath, '/main');
+  assert.equal(clients.gitRepoRevision, 'c'.repeat(40));
   assert.equal(typeof clients.mockSnapshot, 'function');
   const fixture = calls.find((call) => Array.isArray(call) && call[0] === 'fixture:create');
   assert.equal(fixture[1].apiPort, 7800);

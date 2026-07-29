@@ -214,21 +214,21 @@ function clientToolPlan(body, previousState = null) {
   if (containsValue(body, '1flowbase-client-vector=meaningful-git-workflow')
       || previousState?.mode === 'meaningful-git') {
     const repoPath = meaningfulGitRepoPath(body) ?? previousState?.paths?.[0];
-    const hasInspect = containsValue(body, '1flowbase-client-tool-result git-inspect');
-    const hasEdit = containsValue(body, '1flowbase-client-tool-result git-edit');
-    const final = hasEdit;
+    const hasLog = containsValue(body, '1flowbase-client-tool-result git-log');
+    const hasShow = containsValue(body, '1flowbase-client-tool-result git-show');
+    const final = hasShow;
     const finalText = previousState?.finalText ?? toolVectorFinalOutput(body);
-    const inspectCommand = "git status --short && git log -2 --oneline && git diff -- task.txt && echo '1flowbase-client-tool-result git-inspect'";
-    const editCommand = "sed -i 's/^state=BEFORE$/state=AFTER/' task.txt && git status --short && git diff -- task.txt && echo '1flowbase-client-tool-result git-edit'";
+    const logCommand = "git log -2 --oneline && echo '1flowbase-client-tool-result git-log'";
+    const showCommand = "git show --stat --oneline --summary HEAD && echo '1flowbase-client-tool-result git-show'";
     return {
       hasToolResult,
       final,
       paths: [repoPath],
-      commands: final ? [] : [hasInspect ? editCommand : inspectCommand],
+      commands: final ? [] : [hasLog ? showCommand : logCommand],
       finalText,
       nextState: final ? null : {
         mode: 'meaningful-git',
-        stage: hasInspect ? 'awaiting-edit' : 'awaiting-inspect',
+        stage: hasLog ? 'awaiting-show' : 'awaiting-log',
         paths: [repoPath],
         finalText,
       },

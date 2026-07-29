@@ -11,7 +11,7 @@
     },
     "protectedMain": {
       "path": "/home/taichuy/git/1flowbase",
-      "revision": "49303ad876a508320b49498a6f78d55c67a66469",
+      "revision": "HEAD",
       "require_clean": false
     }
   },

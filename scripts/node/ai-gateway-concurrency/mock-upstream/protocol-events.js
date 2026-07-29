@@ -297,7 +297,7 @@ function anthropicToolEvents(
           type: 'tool_use', id: `toolu_${nonce}_${index}`,
           name: commands ? 'Bash' : 'Read',
           input: commands
-            ? { command: commands[index], description: 'Inspect the isolated Git fixture' }
+            ? { command: commands[index], description: 'Inspect the protected Git repository' }
             : { file_path: currentPath },
         } } },
         { event: 'content_block_stop', data: { type: 'content_block_stop', index } },
@@ -337,7 +337,7 @@ function chatToolEvents(
         index, id: `call_${nonce}_${index}`, type: 'function', function: {
           name: commands ? 'bash' : 'read',
           arguments: JSON.stringify(commands
-            ? { command: commands[index], description: 'Inspect the isolated Git fixture' }
+            ? { command: commands[index], description: 'Inspect the protected Git repository' }
             : { filePath: currentPath }),
         },
       })),

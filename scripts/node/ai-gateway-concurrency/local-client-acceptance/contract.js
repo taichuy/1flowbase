@@ -143,7 +143,7 @@ function codexPlan(binary, target, paths, vector, protocol, execution) {
     'exec',
     ...(!persistent ? ['--ephemeral'] : []),
     '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check',
-    '--json', '--sandbox', vector.id === MEANINGFUL_GIT_VECTOR.id ? 'workspace-write' : 'read-only', '--model', target.model,
+    '--json', '--sandbox', 'read-only', '--model', target.model,
     ...codexProviderArguments(target, provider, websocket),
   ];
   if (execution.turnIndex > 0) {
@@ -183,7 +183,7 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
     '--settings', settingsPath, '--output-format', 'stream-json', '--include-partial-messages',
     '--verbose', '--model', profile?.model || target.model,
     ...(profile ? ['--effort', profile.effort] : []),
-    '--tools', vector.id === MEANINGFUL_GIT_VECTOR.id ? 'Read,Edit,Bash' : vector.kind === 'tools' ? 'Read' : '',
+    '--tools', vector.id === MEANINGFUL_GIT_VECTOR.id ? 'Read,Bash' : vector.kind === 'tools' ? 'Read' : '',
     ...(vector.id === MEANINGFUL_GIT_VECTOR.id ? ['--dangerously-skip-permissions'] : []),
     '--disable-slash-commands', '--no-chrome',
   );

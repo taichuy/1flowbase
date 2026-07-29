@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -15,7 +16,10 @@ const {
   PARALLEL_FINAL_SENTINEL, PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY,
   SEQUENTIAL_FINAL_SENTINEL, SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
 } = require('../vector-manifest');
-const { evaluateAttempt, publicPlan, runLocalClientAcceptance } = require('../driver');
+const {
+  evaluateAttempt, gitWorkspaceFingerprint, publicPlan, runLocalClientAcceptance,
+  verifyMeaningfulGitWorkspace,
+} = require('../driver');
 const { OwnedResources, executionEnvironment } = require('../lifecycle');
 
 function output(events, exitCode = 0) {
@@ -140,6 +144,40 @@ test('AC-009 child environment carries gateway config without inheriting host cr
   assert.equal(environment.ANTHROPIC_API_KEY, 'ephemeral-key');
   assert.equal(environment.OPENAI_API_KEY, undefined);
   assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+});
+
+test('Root #1477 real-client Git evidence is read-only and binds the exact protected revision', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'protected-git-evidence-'));
+  const git = (...args) => childProcess.execFileSync('git', args, {
+    cwd: repo,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: '1flowbase Fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@localhost',
+      GIT_COMMITTER_NAME: '1flowbase Fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@localhost',
+    },
+  }).trim();
+  try {
+    git('init', '--quiet');
+    fs.writeFileSync(path.join(repo, 'tracked.txt'), 'unchanged\n');
+    git('add', 'tracked.txt');
+    git('commit', '--quiet', '-m', 'protected baseline');
+    const before = gitWorkspaceFingerprint(repo);
+    assert.deepEqual(verifyMeaningfulGitWorkspace(repo, before, before.head), {
+      repository: repo,
+      ...before,
+      unchanged: true,
+    });
+    fs.writeFileSync(path.join(repo, 'tracked.txt'), 'changed\n');
+    assert.throws(
+      () => verifyMeaningfulGitWorkspace(repo, before, before.head),
+      /modified the protected repository/u,
+    );
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });
 
 test('WP-D4B public command artifacts redact key and embedded authorization configuration', () => {

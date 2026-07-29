@@ -63,6 +63,12 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
   try {
     manifest = deps.resolveArtifactInventory(deps.loadManifest(rawOptions.manifest));
     preflightEvidence = await deps.preflight(manifest);
+    const protectedMainRevision = preflightEvidence.repositories.find(
+      (repository) => repository.name === 'protectedMain'
+    )?.revision;
+    if (typeof protectedMainRevision !== 'string' || !protectedMainRevision) {
+      throw new Error('protectedMain preflight revision is required');
+    }
     evidenceRoot = deps.createEvidenceRoot(manifest.repo.host.path);
     database = deps.createDatabase(manifest.database);
     await deps.probeDatabase(database.url, manifest);
@@ -110,6 +116,8 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
       artifactRoot: path.join(evidenceRoot, 'clients'),
       surface: 'tmux',
       targets: targetsFromReady(fixture.result),
+      gitRepoPath: manifest.repo.protectedMain.path,
+      gitRepoRevision: protectedMainRevision,
       mockSnapshot: async () => mock.snapshot(),
       releaseBarrier: async () => mock.releaseBarrier(),
       discovery: {

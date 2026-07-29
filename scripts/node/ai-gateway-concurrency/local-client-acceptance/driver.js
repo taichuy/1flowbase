@@ -21,14 +21,14 @@ const durableEvidence = require('./durable');
 const { OwnedResources, executeTmux } = require('./lifecycle');
 const { evaluateAttempt, structuredEvents } = require('./client-surface');
 
-function clientPaths(root, client) {
+function clientPaths(root, client, gitRepo) {
   const clientRoot = path.join(root, client);
   const result = {
     root: clientRoot,
     config: path.join(clientRoot, 'config'),
     output: path.join(clientRoot, 'output'),
     toolAssets: {},
-    gitRepo: path.join(clientRoot, 'git-workflow'),
+    gitRepo,
   };
   fs.mkdirSync(result.config, { recursive: true, mode: 0o700 });
   fs.mkdirSync(result.output, { recursive: true, mode: 0o700 });
@@ -38,72 +38,42 @@ function clientPaths(root, client) {
     result.toolAssets[placeholder] = filePath;
   }
   result.toolFile = result.toolAssets.TOOL_PATH;
-  fs.mkdirSync(result.gitRepo, { recursive: true, mode: 0o700 });
-  const git = (...args) => {
-    const completed = childProcess.spawnSync('git', args, {
-      cwd: result.gitRepo,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: '1flowbase Fixture',
-        GIT_AUTHOR_EMAIL: 'fixture@localhost',
-        GIT_COMMITTER_NAME: '1flowbase Fixture',
-        GIT_COMMITTER_EMAIL: 'fixture@localhost',
-      },
-    });
-    if (completed.status !== 0) {
-      throw new Error(`scratch git setup failed: ${completed.stderr || completed.stdout}`);
-    }
-  };
-  git('init', '--quiet');
-  fs.writeFileSync(path.join(result.gitRepo, 'task.txt'), 'state=SEED\n', { mode: 0o600 });
-  git('add', 'task.txt');
-  git('commit', '--quiet', '-m', 'gateway fixture first');
-  fs.writeFileSync(path.join(result.gitRepo, 'task.txt'), 'state=BEFORE\n', { mode: 0o600 });
-  git('add', 'task.txt');
-  git('commit', '--quiet', '-m', 'gateway fixture second');
   return result;
 }
 
-function verifyMeaningfulGitWorkspace(repoPath) {
+function gitWorkspaceFingerprint(repoPath) {
+  if (typeof repoPath !== 'string' || !path.isAbsolute(repoPath)) {
+    throw new Error('meaningful Git vector requires an absolute protected repository path');
+  }
   const run = (...args) => {
     const completed = childProcess.spawnSync('git', args, {
       cwd: repoPath,
       encoding: 'utf8',
     });
     if (completed.status !== 0) {
-      throw new Error(`scratch git verification failed: ${completed.stderr || completed.stdout}`);
+      throw new Error(`protected git verification failed: ${completed.stderr || completed.stdout}`);
     }
     return completed.stdout;
   };
-  const task = fs.readFileSync(path.join(repoPath, 'task.txt'), 'utf8');
-  const status = run('status', '--short');
-  const log = run('log', '-2', '--pretty=%s');
-  const diff = run('diff', '--', 'task.txt');
-  if (task !== 'state=AFTER\n') throw new Error('meaningful Git vector did not edit task.txt');
-  if (!status.includes(' M task.txt')) throw new Error('meaningful Git vector did not leave a controlled worktree diff');
-  if (!log.includes('gateway fixture second') || !log.includes('gateway fixture first')) {
-    throw new Error('meaningful Git vector did not preserve the two fixture commits');
-  }
-  if (!diff.includes('-state=BEFORE') || !diff.includes('+state=AFTER')) {
-    throw new Error('meaningful Git vector did not produce the expected diff');
-  }
+  const head = run('rev-parse', 'HEAD').trim();
+  const status = run('status', '--porcelain=v1', '--untracked-files=all');
+  const diff = run('diff', '--binary', 'HEAD', '--', '.');
   return {
-    status: status.trim(),
-    commit_subjects: log.trim().split('\n'),
+    head,
+    status_sha256: crypto.createHash('sha256').update(status).digest('hex'),
     diff_sha256: crypto.createHash('sha256').update(diff).digest('hex'),
-    task_sha256: crypto.createHash('sha256').update(task).digest('hex'),
   };
 }
 
-function resetMeaningfulGitWorkspace(repoPath) {
-  const completed = childProcess.spawnSync('git', ['checkout', '--', 'task.txt'], {
-    cwd: repoPath,
-    encoding: 'utf8',
-  });
-  if (completed.status !== 0) {
-    throw new Error(`scratch git reset failed: ${completed.stderr || completed.stdout}`);
+function verifyMeaningfulGitWorkspace(repoPath, before, expectedRevision) {
+  const after = gitWorkspaceFingerprint(repoPath);
+  if (expectedRevision && before.head !== expectedRevision) {
+    throw new Error(`protected Git revision mismatch: expected ${expectedRevision}, observed ${before.head}`);
   }
+  if (JSON.stringify(after) !== JSON.stringify(before)) {
+    throw new Error('meaningful Git vector modified the protected repository');
+  }
+  return { repository: repoPath, ...after, unchanged: true };
 }
 
 function writeConfigs(plan) {
@@ -323,16 +293,16 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         });
         continue;
       }
-      const paths = clientPaths(root, client);
+      const paths = clientPaths(root, client, options.gitRepoPath ?? null);
       const attempts = [];
       timeline.append('client_started', { client, surface: surface.surface });
       let failed = false;
       for (const protocol of CLIENT_PROTOCOLS[client]) {
         for (const vector of selectVectors(client, protocol)) {
           timeline.append('attempt_started', { protocol, vector_id: vector.id });
-          if (vector.id === MEANINGFUL_GIT_VECTOR.id) {
-            resetMeaningfulGitWorkspace(paths.gitRepo);
-          }
+          const gitWorkspaceBefore = vector.id === MEANINGFUL_GIT_VECTOR.id
+            ? gitWorkspaceFingerprint(paths.gitRepo)
+            : null;
           const durableBefore = await snapshotRuns(target, dependencies.fetchImpl);
           const mockBefore = await options.mockSnapshot();
           const executor = dependencies.executePlan
@@ -405,7 +375,13 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
                 fetchImpl: dependencies.fetchImpl,
               }),
               ...(vector.id === MEANINGFUL_GIT_VECTOR.id
-                ? { git_workspace: verifyMeaningfulGitWorkspace(paths.gitRepo) }
+                ? {
+                  git_workspace: verifyMeaningfulGitWorkspace(
+                    paths.gitRepo,
+                    gitWorkspaceBefore,
+                    options.gitRepoRevision ?? null,
+                  ),
+                }
                 : {}),
             };
           } catch (error) {
@@ -489,9 +465,11 @@ module.exports = {
   clientPaths,
   continuationId,
   evaluateAttempt,
+  gitWorkspaceFingerprint,
   overallStatus,
   publicPlan,
   runLocalClientAcceptance,
   structuredEvents,
+  verifyMeaningfulGitWorkspace,
   writeConfigs,
 };

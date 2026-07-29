@@ -17,7 +17,7 @@ const {
 const paths = {
   config: '/tmp/local-client/config',
   output: '/tmp/local-client/output',
-  gitRepo: '/tmp/local-client/git-workflow',
+  gitRepo: '/home/taichuy/git/1flowbase',
   toolFile: '/tmp/local-client/output/tool-vector.txt',
   toolAssets: {
     TOOL_PATH: '/tmp/local-client/output/tool-vector.txt',
@@ -27,7 +27,7 @@ const paths = {
     SEQUENTIAL_B_PATH: '/tmp/local-client/output/sequential-b.txt',
   },
 };
-const target = { model: 'fixture-model', apiKey: 'sk-test-secret-value', gatewayBaseUrl: 'http://127.0.0.1:4567' };
+const target = { model: '1flowbase', apiKey: 'sk-test-secret-value', gatewayBaseUrl: 'http://127.0.0.1:4567' };
 
 test('AC-009 fixes Claude Anthropic SSE and OpenCode Chat SSE commands/config', () => {
   const claude = buildClientPlan('claude', '/machine/claude', target, paths, TOOL_VECTOR, 'anthropic_sse');
@@ -149,29 +149,33 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.tool_call_count, 2);
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_callback_resumes, 2);
   assert.deepEqual(MEANINGFUL_GIT_VECTOR.expected.tool_result_markers, [
-    '1flowbase-client-tool-result git-inspect',
-    '1flowbase-client-tool-result git-edit',
+    '1flowbase-client-tool-result git-log',
+    '1flowbase-client-tool-result git-show',
   ]);
   assert.equal(MEANINGFUL_GIT_VECTOR.expected.minimum_callback_resumes, 2);
   const prompt = promptFor(MEANINGFUL_GIT_VECTOR, paths);
-  assert.match(prompt, /git status/u);
-  assert.match(prompt, /GIT_REPO_PATH=\/tmp\/local-client\/git-workflow/u);
+  assert.match(prompt, /git log -2 --oneline/u);
+  assert.match(prompt, /git show --stat --oneline --summary HEAD/u);
+  assert.match(prompt, /GIT_REPO_PATH=\/home\/taichuy\/git\/1flowbase/u);
   const claude = buildClientPlan(
     'claude', '/machine/claude', target, paths, MEANINGFUL_GIT_VECTOR, 'anthropic_sse',
   );
-  assert.ok(claude.invocation.args.includes('Read,Edit,Bash'));
+  assert.ok(claude.invocation.args.includes('Read,Bash'));
   assert.ok(claude.invocation.args.includes('--dangerously-skip-permissions'));
   assert.equal(claude.invocation.cwd, paths.gitRepo);
+  assert.ok(claude.invocation.args.includes('1flowbase'));
   const codex = buildClientPlan(
     'codex', '/machine/codex', target, paths, MEANINGFUL_GIT_VECTOR, 'responses_sse',
   );
-  assert.ok(codex.invocation.args.includes('workspace-write'));
+  assert.ok(codex.invocation.args.includes('read-only'));
   assert.equal(codex.invocation.cwd, paths.gitRepo);
+  assert.ok(codex.invocation.args.includes('1flowbase'));
   const opencode = buildClientPlan(
     'opencode', '/machine/opencode', target, paths, MEANINGFUL_GIT_VECTOR, 'openai_chat_sse',
   );
   assert.equal(opencode.invocation.cwd, paths.gitRepo);
   assert.ok(opencode.invocation.args.includes(paths.gitRepo));
+  assert.ok(opencode.invocation.args.includes('oneflowbase_local_acceptance/1flowbase'));
 });
 
 test('WP-D4B records only observed Claude profile evidence without injecting it into Codex or OpenCode', () => {

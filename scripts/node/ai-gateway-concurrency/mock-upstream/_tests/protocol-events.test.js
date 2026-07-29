@@ -24,8 +24,8 @@ test('AC-001: lossless sentinels retain repeated whitespace, Markdown, CJK, emoj
 });
 
 test('Root #1477 R7 emits client-owned Git commands for all three protocol surfaces', () => {
-  const repo = '/tmp/isolated-git-fixture';
-  const command = "git status --short && echo '1flowbase-client-tool-result git-inspect'";
+  const repo = '/home/taichuy/git/1flowbase';
+  const command = "git log -2 --oneline && echo '1flowbase-client-tool-result git-log'";
   const responses = responsesToolEvents('git', [repo], false, null, 'shell_command', 'done', [command]);
   const responseItem = responses.chunks.find((chunk) => chunk.type === 'response.output_item.added').item;
   assert.equal(responseItem.name, 'shell_command');
@@ -42,7 +42,7 @@ test('Root #1477 R7 emits client-owned Git commands for all three protocol surfa
   assert.equal(chatTool.name, 'bash');
   assert.deepEqual(JSON.parse(chatTool.arguments), {
     command,
-    description: 'Inspect the isolated Git fixture',
+    description: 'Inspect the protected Git repository',
   });
 });
 
