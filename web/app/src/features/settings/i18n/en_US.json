@@ -1,7 +1,6 @@
 {
   "auto": {
     "translation_catalog_title": "Languages",
-    "translation_catalog_description": "Browse effective translations and manage workspace overrides and custom keys.",
     "translation_catalog_module": "Translation module",
     "translation_catalog_msgid": "Message ID",
     "translation_catalog_locale": "Translation locale",
@@ -17,7 +16,6 @@
     "translation_catalog_origin_english": "English source",
     "translation_catalog_search": "Search message ID or translation",
     "translation_catalog_apply_filters": "Apply translation filters",
-    "translation_catalog_summary": "{{total}} translations · revision {{revision}}",
     "translation_catalog_revision": "Catalog revision",
     "translation_catalog_entry_details": "Translation details",
     "translation_catalog_official_layer": "Official source layer",

@@ -11,7 +11,6 @@ import {
   Select,
   Space,
   Tag,
-  Typography,
   message
 } from 'antd';
 import { useMemo, useState } from 'react';
@@ -344,30 +343,6 @@ export function I18nCatalogPage() {
             </Space>
           </Flex>
         </Form>
-      }
-      status={
-        <Flex
-          className="i18n-catalog-page__status"
-          justify="space-between"
-          align="flex-start"
-          gap={12}
-          wrap
-        >
-          <Space direction="vertical" size={0}>
-            <Typography.Text strong>
-              {t('auto.translation_catalog_title')}
-            </Typography.Text>
-            <Typography.Text type="secondary">
-              {t('auto.translation_catalog_description')}
-            </Typography.Text>
-          </Space>
-          <Typography.Text type="secondary">
-            {t('auto.translation_catalog_summary', {
-              total: listQuery.data?.total ?? 0,
-              revision
-            })}
-          </Typography.Text>
-        </Flex>
       }
     >
       {messageContextHolder}

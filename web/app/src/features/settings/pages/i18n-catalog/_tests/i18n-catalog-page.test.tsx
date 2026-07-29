@@ -123,7 +123,7 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(screen.getAllByText('过期翻译').length).toBeGreaterThan(0);
   });
 
-  test('AC-001/002/003 uses the shared fill surface and scrollable management table', async () => {
+  test('AC-002/003 keeps the management table and removes the redundant text status', async () => {
     const view = renderPage();
 
     await findLoadedDesktopEntry('系统设置');
@@ -138,10 +138,11 @@ describe('I18nCatalogPage batch fixtures', () => {
     ).toBeInTheDocument();
 
     const status = surface.querySelector('.settings-section-surface__status');
-    expect(status).not.toBeNull();
+    expect(status).toBeNull();
     expect(
-      within(status as HTMLElement).getByText('多语言')
-    ).toBeInTheDocument();
+      screen.queryByText('浏览生效翻译，并管理当前工作区的覆盖翻译和自定义键。')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('5 条翻译 · 修订 8')).not.toBeInTheDocument();
 
     expect(
       view.container.querySelector('.data-table__scroll-area')
@@ -216,7 +217,9 @@ describe('I18nCatalogPage batch fixtures', () => {
         catalogApi.restoreAllSettingsI18nCatalogOverrides
       ).toHaveBeenCalledWith({ expected_revision: 8 }, 'csrf-123')
     );
-    expect(await screen.findByText('5 条翻译 · 修订 9')).toBeInTheDocument();
+    expect(
+      await within(screen.getByTestId('i18n-catalog-table')).findByText('设置')
+    ).toBeInTheDocument();
 
     fireEvent.click(await findLoadedDesktopEntry('欢迎'));
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');

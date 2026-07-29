@@ -1,7 +1,6 @@
 {
   "auto": {
     "translation_catalog_title": "多语言",
-    "translation_catalog_description": "浏览生效翻译，并管理当前工作区的覆盖翻译和自定义键。",
     "translation_catalog_module": "翻译模块",
     "translation_catalog_msgid": "消息标识",
     "translation_catalog_locale": "翻译语言",
@@ -17,7 +16,6 @@
     "translation_catalog_origin_english": "英文源文",
     "translation_catalog_search": "搜索消息标识或翻译",
     "translation_catalog_apply_filters": "应用翻译筛选",
-    "translation_catalog_summary": "{{total}} 条翻译 · 修订 {{revision}}",
     "translation_catalog_revision": "目录修订号",
     "translation_catalog_entry_details": "翻译详情",
     "translation_catalog_official_layer": "官方来源层",
