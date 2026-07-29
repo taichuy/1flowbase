@@ -156,10 +156,26 @@ const IMAGE_LLM_VISION_GATE_TARGETS = [
   },
 ];
 
+// Protects the official i18n bootstrap artifact and its frozen consumer provenance.
+// These tests are database-free so they can block pull requests without the full API test shard.
+const OFFICIAL_I18N_SEED_GATE_TARGETS = [
+  {
+    label: 'cargo-test-official-i18n-seed-integrity',
+    packageName: 'api-server',
+    filter: 'ac_002_decodes_digest_verified_build_time_official_seed',
+  },
+  {
+    label: 'cargo-test-official-i18n-seed-consumer-provenance',
+    packageName: 'api-server',
+    filter: 'ac_001_ac_002_ac_006_ac_010_ac_012_official_seed_covers_frozen_consumers',
+  },
+];
+
 module.exports = {
   BACKEND_CONSISTENCY_TARGETS,
   BACKEND_CI_TEST_SHARDS,
   BACKEND_SHARDS,
   BACKEND_TEST_SHARDS,
   IMAGE_LLM_VISION_GATE_TARGETS,
+  OFFICIAL_I18N_SEED_GATE_TARGETS,
 };

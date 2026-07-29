@@ -280,6 +280,50 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
       },
     ]
   );
+
+  assert.deepEqual(parseBackendCliArgs(['official-i18n-seed']), {
+    help: false,
+    target: 'official-i18n-seed',
+    shard: null,
+  });
+
+  assert.deepEqual(
+    buildCommands({
+      cargoJobs: 4,
+      cargoTestThreads: 2,
+      repoRoot: '/repo-root',
+      env: {},
+      target: 'official-i18n-seed',
+    }).map((command) => ({ label: command.label, args: command.args })),
+    [
+      {
+        label: 'cargo-test-official-i18n-seed-integrity',
+        args: [
+          'test',
+          '-p',
+          'api-server',
+          '--jobs',
+          '4',
+          'ac_002_decodes_digest_verified_build_time_official_seed',
+          '--',
+          '--test-threads=2',
+        ],
+      },
+      {
+        label: 'cargo-test-official-i18n-seed-consumer-provenance',
+        args: [
+          'test',
+          '-p',
+          'api-server',
+          '--jobs',
+          '4',
+          'ac_001_ac_002_ac_006_ac_010_ac_012_official_seed_covers_frozen_consumers',
+          '--',
+          '--test-threads=2',
+        ],
+      },
+    ]
+  );
 });
 
 test('main routes backend verification through the heavy managed gate', async () => {

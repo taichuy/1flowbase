@@ -195,7 +195,7 @@ fn ac_010_dynamic_backend_consumer_inventory_is_exact_and_english_owned() {
         "fixtures/dynamic_backend_consumers.d3-p6.json"
     ))
     .unwrap();
-    assert_eq!(inventory.count, 18);
+    assert_eq!(inventory.count, 19);
     assert_eq!(inventory.consumers.len(), inventory.count);
     assert!(inventory.consumers.iter().all(|consumer| {
         consumer.module.starts_with("@taichuy/platform/")
@@ -204,6 +204,10 @@ fn ac_010_dynamic_backend_consumer_inventory_is_exact_and_english_owned() {
                 .msgid
                 .chars()
                 .any(|character| matches!(character, '\u{4e00}'..='\u{9fff}'))
+    }));
+    assert!(inventory.consumers.iter().any(|consumer| {
+        consumer.module == "@taichuy/platform/authentication"
+            && consumer.msgid == "Authenticator selection available"
     }));
 }
 

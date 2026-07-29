@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "1.1.0",
+    "catalog_version": "1.2.0",
     "files": [
       {
         "locale": "en_US",
@@ -18,13 +18,13 @@
         "locale": "en_US",
         "module": "@taichuy/platform/authentication",
         "path": "i18n/@taichuy/platform/authentication/en_US.json",
-        "sha256": "sha256:6221cbc8976cb886107a1fdc479b89beaef318c658ae36fe4e22c13ecf156afa"
+        "sha256": "sha256:c67b19c10a2dd3a9413d2340745e345ec87883ff32d1bebeb46114393fb03fa8"
       },
       {
         "locale": "zh_Hans",
         "module": "@taichuy/platform/authentication",
         "path": "i18n/@taichuy/platform/authentication/zh_Hans.json",
-        "sha256": "sha256:12e94bc36a0d6fc877c10f24f3f5344952643e4730a372d734256d38cedeaa19"
+        "sha256": "sha256:bd38c784463f5e95e062c0620600aad42d37b1da66909221139a532d2e03426f"
       },
       {
         "locale": "en_US",
@@ -135,7 +135,7 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-07-28T00:00:00.000Z",
+    "generated_at": "2026-07-29T08:01:31.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
@@ -154,7 +154,7 @@
       "@taichuy/platform/system-metadata"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v1",
-    "semantic_sha256": "sha256:d89b23226d7d2bfb2b1f4e095a47b826d50884845012e735861f7be9012a1958",
+    "semantic_sha256": "sha256:651798b6bc7343202aadae04e93603554d066aeefbaf75c98c29ad6aa0a94039",
     "source_locale": "en_US"
   },
   "modules": [

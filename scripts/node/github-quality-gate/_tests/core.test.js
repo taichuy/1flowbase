@@ -97,6 +97,12 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     cwd: repoRoot,
   });
 
+  assert.deepEqual(buildGateCommand({ repoRoot, scope: 'repo-backend-official-i18n-seed' }), {
+    command: process.execPath,
+    args: [path.join(repoRoot, 'scripts', 'node', 'verify-backend.js'), 'official-i18n-seed'],
+    cwd: repoRoot,
+  });
+
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'repo-backend-test-api-server' }), {
     command: process.execPath,
     args: [path.join(repoRoot, 'scripts', 'node', 'verify-backend.js'), 'test', 'api-server'],
