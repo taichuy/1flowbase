@@ -5,8 +5,15 @@ import {
   settingsSectionDefinitions,
   settingsSectionItemsFromConsoleNavigation
 } from '../settings-sections';
+import settingsEnUS from '../../i18n/en_US.json';
+import settingsZhHans from '../../i18n/zh_Hans.json';
 
-describe('dynamic translation settings section', () => {
+describe('multilingual settings section', () => {
+  test('AC-001 uses mature user-facing names while preserving the catalog key', () => {
+    expect(settingsZhHans.auto.translation_catalog_title).toBe('多语言');
+    expect(settingsEnUS.auto.translation_catalog_title).toBe('Languages');
+  });
+
   test('AC-007 keeps the explicit route and selected section identity aligned', () => {
     expect(isSettingsSectionKey('i18n')).toBe(true);
     expect(settingsSectionDefinitions).toContainEqual({

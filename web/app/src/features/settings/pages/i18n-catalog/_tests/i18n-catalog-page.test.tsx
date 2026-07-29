@@ -74,13 +74,11 @@ function renderPage() {
 }
 
 async function findLoadedDesktopEntry(value: string) {
-  const desktopTable = screen.getByTestId('i18n-catalog-desktop-table');
-  const entry = await within(desktopTable).findByText(value);
+  const table = screen.getByTestId('i18n-catalog-table');
+  const entry = await within(table).findByText(value);
 
   await waitFor(() =>
-    expect(
-      desktopTable.querySelector('.ant-spin-spinning')
-    ).not.toBeInTheDocument()
+    expect(table.querySelector('.ant-spin-spinning')).not.toBeInTheDocument()
   );
   return entry;
 }
@@ -115,17 +113,42 @@ describe('I18nCatalogPage batch fixtures', () => {
     );
   });
 
-  test('AC-007 renders compact desktop and honest mobile browse contracts from real entries', async () => {
+  test('AC-007 renders the shared table browse contract from real entries', async () => {
     renderPage();
 
     expect(settingsI18nCatalogTestLocales).toEqual(['en_US', 'zh_Hans']);
     await findLoadedDesktopEntry('系统设置');
-    expect(
-      screen.getByTestId('i18n-catalog-desktop-table')
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('i18n-catalog-mobile-list')).toBeInTheDocument();
+    expect(screen.getByTestId('i18n-catalog-table')).toBeInTheDocument();
     expect(screen.getAllByText('官方覆盖值').length).toBeGreaterThan(0);
     expect(screen.getAllByText('过期翻译').length).toBeGreaterThan(0);
+  });
+
+  test('AC-001/002/003 uses the shared fill surface and scrollable management table', async () => {
+    const view = renderPage();
+
+    await findLoadedDesktopEntry('系统设置');
+
+    const surface = screen.getByTestId('settings-section-surface');
+    expect(surface).toHaveClass('settings-section-surface--fill');
+
+    const toolbar = surface.querySelector('.settings-section-surface__toolbar');
+    expect(toolbar).not.toBeNull();
+    expect(
+      within(toolbar as HTMLElement).getByTestId('i18n-catalog-search')
+    ).toBeInTheDocument();
+
+    const status = surface.querySelector('.settings-section-surface__status');
+    expect(status).not.toBeNull();
+    expect(
+      within(status as HTMLElement).getByText('多语言')
+    ).toBeInTheDocument();
+
+    expect(
+      view.container.querySelector('.data-table__scroll-area')
+    ).not.toBeNull();
+    expect(
+      screen.queryByTestId('i18n-catalog-mobile-list')
+    ).not.toBeInTheDocument();
   });
 
   test('AC-008 opens all source layers and saves with the selected entry revision', async () => {

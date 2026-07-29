@@ -1,59 +1,82 @@
 .i18n-catalog-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
 }
 
-.i18n-catalog-page__heading h3 {
-  margin: 0 0 4px;
+.i18n-catalog-page__toolbar-form {
+  width: 100%;
 }
 
 .i18n-catalog-page__filters {
-  display: grid;
-  grid-template-columns: minmax(200px, 1.5fr) minmax(
-      160px,
-      1fr
-    ) 140px 180px auto;
-  gap: 8px;
-  align-items: start;
-}
-
-.i18n-catalog-page__filters > * {
-  margin: 0;
-}
-
-.i18n-catalog-page__status-line {
-  min-height: 32px;
-}
-
-.i18n-catalog-page__desktop {
+  flex: 1 1 720px;
   min-width: 0;
 }
 
-.i18n-catalog-page__mobile {
-  display: none;
+.i18n-catalog-page__filter-item {
+  flex: 0 1 180px;
+  min-width: 150px;
+  margin: 0;
 }
 
-.i18n-catalog-page__mobile-row {
-  min-height: 44px;
+.i18n-catalog-page__filter-item--search {
+  flex: 1 1 240px;
+  max-width: 320px;
+}
+
+.i18n-catalog-page__filter-item--compact {
+  flex-basis: 140px;
+  min-width: 130px;
+}
+
+.i18n-catalog-page__filter-item .ant-select {
+  width: 100%;
+}
+
+.i18n-catalog-page__actions,
+.i18n-catalog-page__status,
+.i18n-catalog-page__table-region {
+  min-width: 0;
+}
+
+.i18n-catalog-page__table-region {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+
+.i18n-catalog-page__table-region .data-table {
+  height: 100%;
+}
+
+.i18n-catalog-page__table-region .ant-table-row {
   cursor: pointer;
 }
 
 @media (max-width: 767px) {
   .i18n-catalog-page__filters {
-    grid-template-columns: 1fr;
-  }
-
-  .i18n-catalog-page__filters > * {
+    flex-basis: 100%;
     width: 100%;
   }
 
-  .i18n-catalog-page__desktop {
-    display: none;
+  .i18n-catalog-page__filter-item,
+  .i18n-catalog-page__filter-item--search,
+  .i18n-catalog-page__filter-item--compact {
+    flex: 1 1 100%;
+    max-width: none;
+    width: 100%;
   }
 
-  .i18n-catalog-page__mobile {
-    display: block;
+  .i18n-catalog-page__filter-submit,
+  .i18n-catalog-page__actions {
+    width: 100%;
+  }
+
+  .i18n-catalog-page__filter-submit,
+  .i18n-catalog-page__action {
+    flex: 1 1 auto;
+    min-height: 44px;
   }
 }

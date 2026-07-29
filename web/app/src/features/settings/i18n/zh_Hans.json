@@ -1,6 +1,6 @@
 {
   "auto": {
-    "translation_catalog_title": "动态翻译管理",
+    "translation_catalog_title": "多语言",
     "translation_catalog_description": "浏览生效翻译，并管理当前工作区的覆盖翻译和自定义键。",
     "translation_catalog_module": "翻译模块",
     "translation_catalog_msgid": "消息标识",

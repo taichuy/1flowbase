@@ -799,7 +799,7 @@
   {
     "id": "page.settings-i18n.desktop",
     "kind": "page",
-    "title": "Settings Translation Catalog Desktop Page",
+    "title": "Settings Languages Desktop Page",
     "viewport": {
       "width": 1280,
       "height": 800
@@ -808,7 +808,13 @@
       "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
-      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx"
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/features/settings/i18n/zh_Hans.json",
+      "web/app/src/features/settings/i18n/en_US.json"
     ],
     "boundaryNodes": [
       {
@@ -831,26 +837,37 @@
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "grid"
+            "expected": "flex"
           }
         ]
       },
       {
         "id": "catalog-desktop-browse",
-        "selector": ".i18n-catalog-page__desktop",
+        "selector": ".i18n-catalog-page .data-table__scroll-area",
         "propertyAssertions": [
           {
-            "property": "display",
-            "expected": "block"
+            "property": "overflow-x",
+            "expected": "auto"
+          },
+          {
+            "property": "overflow-y",
+            "expected": "auto"
           }
         ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "catalog-desktop-pagination-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".i18n-catalog-page .data-table__pagination"
       }
     ]
   },
   {
     "id": "page.settings-i18n.mobile",
     "kind": "page",
-    "title": "Settings Translation Catalog Mobile Page",
+    "title": "Settings Languages Mobile Page",
     "viewport": {
       "width": 390,
       "height": 844
@@ -859,7 +876,13 @@
       "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
-      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx"
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/features/settings/i18n/zh_Hans.json",
+      "web/app/src/features/settings/i18n/en_US.json"
     ],
     "boundaryNodes": [
       {
@@ -882,19 +905,30 @@
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "grid"
+            "expected": "flex"
           }
         ]
       },
       {
         "id": "catalog-mobile-browse",
-        "selector": ".i18n-catalog-page__mobile",
+        "selector": ".i18n-catalog-page .data-table__scroll-area",
         "propertyAssertions": [
           {
-            "property": "display",
-            "expected": "block"
+            "property": "overflow-x",
+            "expected": "auto"
+          },
+          {
+            "property": "overflow-y",
+            "expected": "auto"
           }
         ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "catalog-mobile-pagination-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".i18n-catalog-page .data-table__pagination"
       }
     ]
   },

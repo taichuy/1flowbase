@@ -1,6 +1,6 @@
 {
   "auto": {
-    "translation_catalog_title": "Dynamic translations",
+    "translation_catalog_title": "Languages",
     "translation_catalog_description": "Browse effective translations and manage workspace overrides and custom keys.",
     "translation_catalog_module": "Translation module",
     "translation_catalog_msgid": "Message ID",
