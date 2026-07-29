@@ -52,6 +52,10 @@ vi.mock('../components/PublicAuthBlock', () => ({
   }
 }));
 
+vi.mock('../components/BuiltinPasswordSignIn', () => ({
+  BuiltinPasswordSignIn: () => <form aria-label="Escape password sign in" />
+}));
+
 import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
 import { SignInPage } from '../pages/SignInPage';
@@ -212,7 +216,9 @@ describe('SignInPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Run auth-qr' })
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Password' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Password' })
+    ).not.toBeInTheDocument();
   });
 
   test('AC-001 clears an invalid URL authenticator and shows the chooser', async () => {
@@ -236,7 +242,9 @@ describe('SignInPage', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByRole('button', { name: 'Password' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Password' })
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(navigateSpy).toHaveBeenCalledWith({
         to: '/sign-in',
@@ -247,7 +255,7 @@ describe('SignInPage', () => {
     expect(renderedBlocks).not.toHaveBeenCalled();
   });
 
-  test('shows a formal unavailable state and no fallback form when none are enabled', async () => {
+  test('AC-002 shows the escape form when no login instances are enabled', async () => {
     fetchLoginInstances.mockResolvedValue({
       default_authenticator_id: '',
       login_instances: []
@@ -259,14 +267,14 @@ describe('SignInPage', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No sign-in option is available.'
-    );
-    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('form', { name: 'Escape password sign in' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(renderedBlocks).not.toHaveBeenCalled();
   });
 
-  test('shows a stable error and no fallback form when discovery fails', async () => {
+  test('AC-001 shows the escape form when login instance discovery fails', async () => {
     fetchLoginInstances.mockRejectedValue(new Error('network failed'));
     render(
       <AppProviders>
@@ -274,9 +282,9 @@ describe('SignInPage', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Failed to load sign-in options. Please refresh the page and try again.'
-    );
-    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('form', { name: 'Escape password sign in' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
