@@ -14,6 +14,33 @@ describe('multilingual settings section', () => {
     expect(settingsEnUS.auto.translation_catalog_title).toBe('Languages');
   });
 
+  test('keeps concise catalog toolbar keys aligned across locales', () => {
+    expect(settingsZhHans.auto).toMatchObject({
+      translation_catalog_filter: '筛选',
+      translation_catalog_restore_defaults: '恢复默认值',
+      new: '新增'
+    });
+    expect(settingsEnUS.auto).toMatchObject({
+      translation_catalog_filter: 'Filter',
+      translation_catalog_restore_defaults: 'Restore defaults',
+      new: 'New'
+    });
+    expect(settingsZhHans.auto).not.toHaveProperty(
+      'translation_catalog_apply_filters'
+    );
+    expect(settingsZhHans.auto).not.toHaveProperty(
+      'translation_catalog_create_action'
+    );
+    expect(settingsEnUS.auto).not.toHaveProperty(
+      'translation_catalog_apply_filters'
+    );
+    expect(settingsEnUS.auto).not.toHaveProperty(
+      'translation_catalog_create_action'
+    );
+    expect(settingsZhHans.auto).not.toHaveProperty('translation_catalog_new');
+    expect(settingsEnUS.auto).not.toHaveProperty('translation_catalog_new');
+  });
+
   test('AC-007 keeps the explicit route and selected section identity aligned', () => {
     expect(isSettingsSectionKey('i18n')).toBe(true);
     expect(settingsSectionDefinitions).toContainEqual({

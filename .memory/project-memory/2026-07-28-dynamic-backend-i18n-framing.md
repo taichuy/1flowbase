@@ -15,8 +15,8 @@ match_when:
   - 设计多语言初始化、更新、还原或浏览器缓存
   - 判断是否迁移前端静态 i18n
 created_at: 2026-07-28 16
-updated_at: 2026-07-29 23
-last_verified_at: 2026-07-29 23
+updated_at: 2026-07-30 07
+last_verified_at: 2026-07-30 07
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1488
@@ -62,4 +62,4 @@ scope:
 - 修复后运行证据：Seed 摘要/覆盖门禁通过；惰性 loader 测试 2/2、Bootstrap 回归 12/12、PostgreSQL 全新/升级/热重启场景通过；Vite 代理 `login-instances` 返回 200 和 3 个既有登录实例，热重启前后身份、默认项与顺序一致。未清库、未还原翻译覆盖。
 - QA-5：official publisher 15/15；api-server i18n 22/22；storage 13/13；domain 4/4；control-plane 13/13；access-control 18/18；orchestration 6/6；app 39/39；API client 177/177；flow-schema 41/41；Chromium 动态筛选与 Settings desktop/mobile style-boundary 通过；i18n hygiene 0 errors。console route hygiene 仅保留与 beta 相同的 2 个既有 middleware errors，#1488 新增差异为 0。
 - 边界校正：Settings 导航与 Settings feature permission DTO 继续返回静态 `label_key`；角色策略、接口 summary/description 和其他已冻结 backend consumer 使用独立 English msgid 动态投影，前端静态 locale 不迁移。
-- 2026-07-29 23 页面体验增量：用户确认 Settings 入口改为“多语言 / Languages”，`/settings/i18n` 复用既有 `SettingsSectionSurface + DataTable`，不新增 wrapper 或修改全局 SectionPageLayout；后续按用户截图反馈移除重复标题、说明和修订统计状态区，将工具栏动作收紧为“筛选 / 恢复默认值 / 新建”，并冻结为筛选条件第一行左对齐、操作按钮第二行右对齐。最新定向测试 5/5、桌面/移动 style-boundary 与隔离运行时快照通过；真实 3200 路由复验因本地 API 7900 未运行、登录返回 502 未完成，等待用户最终验收。
+- 2026-07-30 页面体验增量：用户确认 Settings 入口改为“多语言 / Languages”，`/settings/i18n` 复用既有 `SettingsSectionSurface + DataTable`，不新增 wrapper 或修改全局 SectionPageLayout；移除重复标题、说明和修订统计状态区，工具栏冻结为筛选条件第一行左对齐、操作按钮第二行右对齐。动作 key/value 最终为专用 `translation_catalog_filter`（筛选 / Filter）、`translation_catalog_restore_defaults`（恢复默认值 / Restore defaults）和通用 `auto.new`（新增 / New），旧 `translation_catalog_apply_filters`、`translation_catalog_create_action` 已删除。桌面/移动 style-boundary 与隔离运行时快照通过；真实 3200 路由复验因本地 API 7900 未运行、登录返回 502 未完成，等待用户最终验收。

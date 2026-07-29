@@ -333,7 +333,7 @@ export function I18nCatalogPage() {
                 htmlType="submit"
                 data-testid="i18n-catalog-apply-filters"
               >
-                {t('auto.translation_catalog_apply_filters')}
+                {t('auto.translation_catalog_filter')}
               </Button>
               <Button
                 className="i18n-catalog-page__action"
@@ -348,7 +348,7 @@ export function I18nCatalogPage() {
                 icon={<PlusOutlined />}
                 onClick={() => setCreateOpen(true)}
               >
-                {t('auto.translation_catalog_create_action')}
+                {t('auto.new')}
               </Button>
             </Space>
           </Flex>

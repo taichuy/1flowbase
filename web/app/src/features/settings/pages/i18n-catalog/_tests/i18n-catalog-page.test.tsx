@@ -145,7 +145,7 @@ describe('I18nCatalogPage batch fixtures', () => {
       })
     ).toBeInTheDocument();
     expect(
-      within(toolbar as HTMLElement).getByRole('button', { name: /新建/ })
+      within(toolbar as HTMLElement).getByRole('button', { name: /新增/ })
     ).toBeInTheDocument();
 
     const status = surface.querySelector('.settings-section-surface__status');
