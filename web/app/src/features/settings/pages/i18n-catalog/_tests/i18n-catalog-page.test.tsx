@@ -136,6 +136,17 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(
       within(toolbar as HTMLElement).getByTestId('i18n-catalog-search')
     ).toBeInTheDocument();
+    expect(
+      within(toolbar as HTMLElement).getByTestId('i18n-catalog-apply-filters')
+    ).toHaveTextContent(/筛\s*选/);
+    expect(
+      within(toolbar as HTMLElement).getByRole('button', {
+        name: /恢复默认值/
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar as HTMLElement).getByRole('button', { name: /新建/ })
+    ).toBeInTheDocument();
 
     const status = surface.querySelector('.settings-section-surface__status');
     expect(status).toBeNull();
@@ -202,7 +213,7 @@ describe('I18nCatalogPage batch fixtures', () => {
     renderPage();
     await findLoadedDesktopEntry('系统设置');
 
-    fireEvent.click(screen.getByRole('button', { name: /恢复全部官方翻译/ }));
+    fireEvent.click(screen.getByRole('button', { name: /恢复默认值/ }));
     const restoreDialog = await screen.findByTestId(
       'i18n-catalog-restore-all-confirmation'
     );

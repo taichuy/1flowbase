@@ -11,24 +11,24 @@
 }
 
 .i18n-catalog-page__filters {
-  flex: 1 1 720px;
+  flex: 1 1 680px;
   min-width: 0;
 }
 
 .i18n-catalog-page__filter-item {
-  flex: 0 1 180px;
-  min-width: 150px;
+  flex: 0 1 150px;
+  min-width: 130px;
   margin: 0;
 }
 
 .i18n-catalog-page__filter-item--search {
-  flex: 1 1 240px;
-  max-width: 320px;
+  flex: 1 1 220px;
+  max-width: 270px;
 }
 
 .i18n-catalog-page__filter-item--compact {
-  flex-basis: 140px;
-  min-width: 130px;
+  flex-basis: 120px;
+  min-width: 120px;
 }
 
 .i18n-catalog-page__filter-item .ant-select {

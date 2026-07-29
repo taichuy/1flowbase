@@ -316,6 +316,8 @@ export function I18nCatalogPage() {
                   data-testid="i18n-catalog-origin-filter"
                 />
               </Form.Item>
+            </Flex>
+            <Space className="i18n-catalog-page__actions" wrap>
               <Button
                 className="i18n-catalog-page__filter-submit"
                 htmlType="submit"
@@ -323,14 +325,12 @@ export function I18nCatalogPage() {
               >
                 {t('auto.translation_catalog_apply_filters')}
               </Button>
-            </Flex>
-            <Space className="i18n-catalog-page__actions" wrap>
               <Button
                 className="i18n-catalog-page__action"
                 icon={<UndoOutlined />}
                 onClick={() => setRestoreAllOpen(true)}
               >
-                {t('auto.translation_catalog_restore_all')}
+                {t('auto.translation_catalog_restore_defaults')}
               </Button>
               <Button
                 className="i18n-catalog-page__action"
@@ -338,7 +338,7 @@ export function I18nCatalogPage() {
                 icon={<PlusOutlined />}
                 onClick={() => setCreateOpen(true)}
               >
-                {t('auto.translation_catalog_create_custom_key')}
+                {t('auto.translation_catalog_create_action')}
               </Button>
             </Space>
           </Flex>
