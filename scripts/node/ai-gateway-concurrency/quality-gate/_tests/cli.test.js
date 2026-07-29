@@ -119,6 +119,14 @@ test("quality gate limits conversation Cargo probes to one owned database and de
       ["control-plane-answer-node-truth-tests", "ac_004_answer_node_truth"],
       ["api-server-answer-node-truth-tests", "ac_004_answer_node_truth"],
       [
+        "api-server-translation-protocol-persistence-tests",
+        "compatibility_mode",
+      ],
+      [
+        "storage-postgres-protocol-context-migration-tests",
+        "protocol_context_migration_tests",
+      ],
+      [
         "api-server-protocol-projection-tests",
         "routes::application_public_api::compat_sse::tests::protocol_projection",
       ],
@@ -151,6 +159,7 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   }
   for (const { options } of invocations) {
     assert.equal(options.env.API_DATABASE_URL, databaseUrl);
+    assert.equal(options.env.DATABASE_URL, databaseUrl);
     assert.equal(options.env.BOOTSTRAP_ROOT_ACCOUNT, "root");
     assert.equal(options.env.BOOTSTRAP_ROOT_PASSWORD, "change-me");
   }

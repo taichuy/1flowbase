@@ -133,7 +133,7 @@ async fn d2_ac_001_anthropic_nested_unknown_fields_reject_before_run_or_provider
 }
 
 #[tokio::test]
-async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
+async fn root_1477_anthropic_messages_persist_trusted_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Session History Route App").await;
     let session_id = "claude-code-session-1".to_string();
@@ -178,7 +178,13 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
     .fetch_all(state.store.pool())
     .await
     .unwrap();
-    assert_eq!(compatibility_modes, vec![None, None]);
+    assert_eq!(
+        compatibility_modes,
+        vec![
+            Some("anthropic-messages-v1".to_string()),
+            Some("anthropic-messages-v1".to_string()),
+        ]
+    );
 
     let third = post_json_with_headers(
         &app,
@@ -203,5 +209,12 @@ async fn anthropic_messages_create_runs_without_legacy_protocol_mode() {
     .fetch_all(state.store.pool())
     .await
     .unwrap();
-    assert_eq!(compatibility_modes, vec![None, None, None]);
+    assert_eq!(
+        compatibility_modes,
+        vec![
+            Some("anthropic-messages-v1".to_string()),
+            Some("anthropic-messages-v1".to_string()),
+            Some("anthropic-messages-v1".to_string()),
+        ]
+    );
 }

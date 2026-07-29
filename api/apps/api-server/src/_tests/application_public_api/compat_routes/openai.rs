@@ -187,7 +187,7 @@ async fn codex_parallel_tool_calls_false_crosses_the_request_boundary() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_openai_public_runs_persist_no_compatibility_mode() {
+async fn root_1477_openai_public_runs_persist_trusted_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Canonical Contract App").await;
 
@@ -214,7 +214,13 @@ async fn d2_ac_007_openai_public_runs_persist_no_compatibility_mode() {
     .fetch_all(state.store.pool())
     .await
     .unwrap();
-    assert_eq!(modes, vec![None, None]);
+    assert_eq!(
+        modes,
+        vec![
+            Some("openai-chat-completions-v1".to_string()),
+            Some("openai-responses-v1".to_string()),
+        ]
+    );
 }
 
 #[tokio::test]

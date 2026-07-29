@@ -197,6 +197,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     options: {
       env: {
         API_DATABASE_URL: databaseUrl,
+        DATABASE_URL: databaseUrl,
         BOOTSTRAP_ROOT_ACCOUNT: "root",
         BOOTSTRAP_ROOT_PASSWORD: "change-me",
       },
@@ -236,6 +237,16 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "api-server-answer-node-truth-tests",
       "api-server",
       "ac_004_answer_node_truth",
+    ),
+    invocation(
+      "api-server-translation-protocol-persistence-tests",
+      "api-server",
+      "compatibility_mode",
+    ),
+    invocation(
+      "storage-postgres-protocol-context-migration-tests",
+      "storage-postgres",
+      "protocol_context_migration_tests",
     ),
     invocation(
       "api-server-protocol-projection-tests",
