@@ -13,7 +13,6 @@ function requestPair(vector, ready, upstreamBaseUrl) {
   const residual = vector.request;
   if (vector.ingress === 'openai_chat') {
     const base = {
-      model: ready.targets.openai_compatible.model,
       messages: [{ role: 'user', content: PROMPT }],
       stream: true,
       max_tokens: 4096,
@@ -27,13 +26,16 @@ function requestPair(vector, ready, upstreamBaseUrl) {
       gatewayToken: ready.targets.openai_compatible.api_key,
       directHeaders: { accept: 'application/json', ...residual.headers },
       gatewayHeaders: residual.headers,
-      directBody: { ...base, stream_options: { include_usage: true } },
-      gatewayBody: base,
+      directBody: {
+        ...base,
+        model: ready.targets.openai_compatible.upstream_model,
+        stream_options: { include_usage: true },
+      },
+      gatewayBody: { ...base, model: ready.targets.openai_compatible.model },
     };
   }
   if (vector.ingress === 'anthropic_messages') {
     const common = {
-      model: ready.targets.anthropic.model,
       stream: true,
       max_tokens: 32,
       thinking: residual.body.thinking,
@@ -53,16 +55,17 @@ function requestPair(vector, ready, upstreamBaseUrl) {
       gatewayHeaders: residual.headers,
       directBody: {
         ...common,
+        model: ready.targets.anthropic.upstream_model,
         messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }] }],
       },
       gatewayBody: {
         ...common,
+        model: ready.targets.anthropic.model,
         messages: [{ role: 'user', content: PROMPT }],
       },
     };
   }
   const common = {
-    model: ready.targets.openai.model,
     stream: true,
     max_output_tokens: 4096,
     reasoning: residual.body.reasoning,
@@ -77,9 +80,10 @@ function requestPair(vector, ready, upstreamBaseUrl) {
     gatewayHeaders: residual.headers,
     directBody: {
       ...common,
+      model: ready.targets.openai.upstream_model,
       input: PROMPT,
     },
-    gatewayBody: { ...common, input: PROMPT },
+    gatewayBody: { ...common, model: ready.targets.openai.model, input: PROMPT },
   };
 }
 

@@ -170,7 +170,10 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     fixture = await createGatewayFixture(files.options, fake.dependencies);
     assert.equal(fixture.result.gateway_base_url, 'http://127.0.0.1:41002');
     assert.equal(fixture.result.targets.openai.application_id, 'openai-application-1');
-    assert.equal(fixture.result.targets.anthropic.model, 'gateway-fixture-model');
+    assert.equal(fixture.result.targets.anthropic.model, '1flowbase');
+    assert.equal(fixture.result.targets.anthropic.upstream_model, 'gateway-fixture-model');
+    assert.equal(fixture.result.model, '1flowbase');
+    assert.equal(fixture.result.upstream_model, 'gateway-fixture-model');
     assert.equal(
       fixture.result.targets.openai_compatible.application_id,
       'openai_compatible-application-1'
@@ -256,9 +259,9 @@ test('publication source binds Generate and protocol context for all gateway pro
     model: 'gateway-fixture-model',
   });
 
-  await createPublishedApplication(client, provider('openai'));
-  await createPublishedApplication(client, provider('anthropic'));
-  await createPublishedApplication(client, provider('openai_compatible'));
+  await createPublishedApplication(client, provider('openai'), '1flowbase');
+  await createPublishedApplication(client, provider('anthropic'), '1flowbase');
+  await createPublishedApplication(client, provider('openai_compatible'), '1flowbase');
 
   const drafts = FakeOwnerClient.calls.filter(
     (call) => call.kind === 'write' && call.pathname.endsWith('/orchestration/draft')
@@ -270,6 +273,8 @@ test('publication source binds Generate and protocol context for all gateway pro
     );
     assert.ok(draft, `${providerCode} orchestration draft write must exist`);
     const llmConfig = draft.body.document.graph.nodes.find((node) => node.type === 'llm').config;
+    const startConfig = draft.body.document.graph.nodes.find((node) => node.type === 'start').config;
+    assert.equal(startConfig.model_list[0].id, '1flowbase');
     assert.deepEqual(llmConfig.model_provider, {
       provider_code: providerCode,
       source_instance_id: `${providerCode}-instance-1`,

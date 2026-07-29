@@ -29,6 +29,7 @@ function providerTarget(baseUrl, pluginRunnerBaseUrl, client, provider) {
     provider_instance_id: provider.provider_instance_id,
     installation_id: provider.installation_id,
     model: provider.model,
+    upstream_model: provider.upstream_model,
     api_key_id: provider.api_key_id,
     api_key: provider.api_key,
     publication_id: provider.publication_id,
@@ -181,12 +182,14 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
 
     const client = new Client(gatewayBaseUrl, dependencies.fetchImpl || globalThis.fetch);
     ownerClient = client;
-    const model = 'gateway-fixture-model';
+    const model = '1flowbase';
+    const upstreamModel = 'gateway-fixture-model';
     providers = await bootstrapGateway(client, {
       ...options,
       rootAccount,
       rootPassword,
-      model,
+      publicModel: model,
+      upstreamModel,
     });
     const currentDigests = {
       openai: sha256File(options.openaiPackage),
@@ -218,6 +221,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       gateway_base_url: gatewayBaseUrl,
       plugin_runner_base_url: pluginRunnerBaseUrl,
       model,
+      upstream_model: upstreamModel,
       packages: {
         openai: { path: options.openaiPackage, sha256: currentDigests.openai },
         anthropic: { path: options.anthropicPackage, sha256: currentDigests.anthropic },

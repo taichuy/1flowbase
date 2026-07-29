@@ -65,6 +65,7 @@ function fixtureManifest() {
     publication_id: `${provider}-publication-${ordinal}`,
     api_key: `${provider}-application-key-${ordinal}`,
     model,
+    upstream_model: 'gateway-fixture-model',
     gateway,
     durable: durable(`${provider}-${ordinal}`),
     runtime_activity: activity(`${provider}-${ordinal}`),
@@ -287,6 +288,10 @@ test('AC-003 controlled negative: ready target tuple requires endpoint, key, and
   delete manifest.targets.anthropic.model;
   fs.writeFileSync(readyFile, JSON.stringify(manifest));
   assert.throws(() => readReadyManifest(readyFile), /omitted anthropic published model/u);
+  const missingUpstreamModel = fixtureManifest();
+  delete missingUpstreamModel.targets.anthropic.upstream_model;
+  fs.writeFileSync(readyFile, JSON.stringify(missingUpstreamModel));
+  assert.throws(() => readReadyManifest(readyFile), /omitted anthropic upstream model/u);
   const invalidEndpoint = fixtureManifest();
   invalidEndpoint.targets.openai.gateway.responses_url = 'https://provider.example/v1/responses';
   fs.writeFileSync(readyFile, JSON.stringify(invalidEndpoint));

@@ -95,6 +95,9 @@ function readReadyManifest(filePath) {
     if (typeof target.model !== 'string' || !target.model.trim()) {
       throw new Error(`WP3 ready manifest omitted ${provider} published model`);
     }
+    if (typeof target.upstream_model !== 'string' || !target.upstream_model.trim()) {
+      throw new Error(`WP3 ready manifest omitted ${provider} upstream model`);
+    }
     for (const key of ['query_run', 'list_runs']) {
       if (typeof target.durable?.[key]?.url !== 'string' && typeof target.durable?.[key]?.url_template !== 'string') {
         throw new Error(`WP3 ready manifest omitted ${provider} durable ${key} endpoint`);
@@ -112,7 +115,10 @@ function readReadyManifest(filePath) {
     throw new Error('WP3 ready manifest requires exactly two Anthropic pool targets');
   }
   for (const [index, target] of anthropicPool.entries()) {
-    for (const field of ['application_id', 'provider_instance_id', 'api_key', 'model', 'publication_id']) {
+    for (const field of [
+      'application_id', 'provider_instance_id', 'api_key', 'model', 'upstream_model',
+      'publication_id',
+    ]) {
       if (typeof target?.[field] !== 'string' || !target[field].trim()) {
         throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted ${field}`);
       }
@@ -349,20 +355,24 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     targets: ready ? {
       openai: {
         model: ready.targets.openai.model,
+        upstream_model: ready.targets.openai.upstream_model,
         package_sha256: ready.packages?.openai?.sha256 ?? null,
       },
       anthropic: {
         model: ready.targets.anthropic.model,
+        upstream_model: ready.targets.anthropic.upstream_model,
         package_sha256: ready.packages?.anthropic?.sha256 ?? null,
       },
       openai_compatible: {
         model: ready.targets.openai_compatible.model,
+        upstream_model: ready.targets.openai_compatible.upstream_model,
         package_sha256: ready.packages?.openai_compatible?.sha256 ?? null,
       },
       anthropic_pool: ready.pools.anthropic.map((target) => ({
         application_id: target.application_id,
         provider_instance_id: target.provider_instance_id,
         model: target.model,
+        upstream_model: target.upstream_model,
       })),
     } : null,
     characterize: characterizeResult ? {
