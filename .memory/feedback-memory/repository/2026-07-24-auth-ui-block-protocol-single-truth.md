@@ -12,8 +12,8 @@ match_when:
   - 设计认证、支付或其他后端插件安装后需要新增前端交互的扩展协议
   - 在 Schema UI、TSX 复用、代码区块和 Core 硬编码之间选择职责边界
 created_at: 2026-07-24 14
-updated_at: 2026-07-28 19
-last_verified_at: 2026-07-28 19
+updated_at: 2026-07-29 10
+last_verified_at: 2026-07-29 10
 decision_policy: direct_reference
 scope:
   - api/crates/plugin-framework
@@ -57,3 +57,5 @@ scope:
 `2026-07-28 00` 用户进一步澄清全局不变量：不是由各渲染调用方选择是否显示 Console，而是代码 Renderer 本身必须保持纯粹，只把准备好的组件渲染到隔离 DOM。Run、草稿冻结、诊断、API observation、Console、写操作确认和调试重试全部属于 TSX 编辑器；正式 Frontstage、Public Auth 及其他生产渲染入口不得消费编辑器调试组件。生产 Host 可以在 Renderer 外拥有 loading、用户可见 failure fallback 和业务重试，但不得显示原始调试 Console。
 
 `2026-07-28 19` 用户增加认证锁死保护例外：只有已启用的内置账号密码认证，其账号密码 Block 渲染失败时，生产 Auth Host 才切换到 Core 代码内置的账号密码登录表单；认证关闭、其他认证器或正常渲染时不得显示该表单。该例外不改变 `public_ui_block` 作为正常 UI 真值，也不允许内置表单进入认证中心作者配置。
+
+`2026-07-29 09` 用户在真实页面验收时纠正：正常 `ready` 状态不得常驻显示“使用内置账号密码登录”等手动紧急切换入口；只有 Block 渲染失败或准备超时进入 `failed` 状态后，才显示 Core 内置登录表单。故障兜底不是正常页面的第二入口。
