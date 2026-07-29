@@ -73,17 +73,6 @@ function renderPage() {
   );
 }
 
-async function selectCatalogFilterOption(testId: string, label: string) {
-  const combobox = within(screen.getByTestId(testId)).getByRole('combobox');
-
-  fireEvent.mouseDown(combobox.closest('.ant-select-selector') ?? combobox);
-  const option = await screen.findByText(label, {
-    selector: '.ant-select-item-option-content'
-  });
-  expect(option).toBeVisible();
-  fireEvent.click(option);
-}
-
 async function findLoadedDesktopEntry(value: string) {
   const desktopTable = screen.getByTestId('i18n-catalog-desktop-table');
   const entry = await within(desktopTable).findByText(value);
@@ -137,38 +126,6 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(screen.getByTestId('i18n-catalog-mobile-list')).toBeInTheDocument();
     expect(screen.getAllByText('官方覆盖值').length).toBeGreaterThan(0);
     expect(screen.getAllByText('过期翻译').length).toBeGreaterThan(0);
-  });
-
-  test('AC-008 sends search, module, locale and origin filters to the list query', async () => {
-    renderPage();
-    await findLoadedDesktopEntry('系统设置');
-
-    fireEvent.change(screen.getByPlaceholderText('搜索消息标识或翻译'), {
-      target: { value: 'Settings' }
-    });
-    fireEvent.change(screen.getByPlaceholderText('翻译模块'), {
-      target: { value: '@1flowbase/common' }
-    });
-    await selectCatalogFilterOption('i18n-catalog-locale-filter', 'zh_Hans');
-    await selectCatalogFilterOption('i18n-catalog-origin-filter', '官方覆盖值');
-    fireEvent.click(screen.getByRole('button', { name: '应用翻译筛选' }));
-
-    await waitFor(() =>
-      expect(
-        catalogApi.fetchSettingsI18nCatalogEntries
-      ).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          search: 'Settings',
-          module: '@1flowbase/common',
-          locale: 'zh_Hans',
-          origin: 'official_override',
-          offset: 0,
-          limit: 20
-        })
-      )
-    );
-    expect(await screen.findByText('1 条翻译 · 修订 8')).toBeInTheDocument();
-    await findLoadedDesktopEntry('系统设置');
   });
 
   test('AC-008 opens all source layers and saves with the selected entry revision', async () => {

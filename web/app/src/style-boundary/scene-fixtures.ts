@@ -770,6 +770,7 @@ export function seedStyleBoundarySettingsFetch() {
   styleBoundaryOriginalFetch ??= globalThis.fetch.bind(globalThis);
   const originalFetch = styleBoundaryOriginalFetch;
   const i18nCatalogServer = createSettingsI18nCatalogTestServer();
+  window.__STYLE_BOUNDARY_I18N_CATALOG_REQUESTS__ = [];
 
   globalThis.fetch = async (input, init) => {
     const url = getStyleBoundaryRequestUrl(input);
@@ -861,6 +862,9 @@ export function seedStyleBoundarySettingsFetch() {
       method.toUpperCase() === 'GET' &&
       requestUrl.pathname === '/api/console/settings/i18n/entries'
     ) {
+      window.__STYLE_BOUNDARY_I18N_CATALOG_REQUESTS__?.push(
+        Object.fromEntries(requestUrl.searchParams)
+      );
       return createStyleBoundaryJsonResponse({
         data: await i18nCatalogServer.listEntriesFromSearchParams(
           requestUrl.searchParams

@@ -6,6 +6,7 @@ declare global {
       ready: boolean;
       scene: StyleBoundaryManifestScene;
     };
+    __STYLE_BOUNDARY_I18N_CATALOG_REQUESTS__?: Array<Record<string, string>>;
   }
 }
 
