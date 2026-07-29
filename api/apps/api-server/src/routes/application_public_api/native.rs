@@ -664,6 +664,7 @@ pub async fn create_native_run(
         .create_native_run(CreateNativeRunCommand {
             bearer_token: bearer_token.clone(),
             request,
+            protocol: TranslationProtocol::Native,
         })
         .await
         .map_err(native_error)?;

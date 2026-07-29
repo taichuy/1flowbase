@@ -770,6 +770,7 @@ async fn native_run_with_null_model_target_keeps_model_metadata_out_of_node_inpu
 
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(native_request(json!("pass-through-model"))).unwrap(),
         })
@@ -806,6 +807,7 @@ async fn native_run_returns_application_not_published_when_key_application_has_n
 
     let error = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -840,6 +842,7 @@ async fn native_run_read_rejects_run_created_by_different_application_api_key() 
     let service = ApplicationNativeRunService::new(harness.repository());
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: first_token,
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -872,6 +875,7 @@ async fn native_run_read_loads_durable_published_flow_run_without_test_only_resu
     let service = ApplicationNativeRunService::new(repository.clone());
     let created = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -915,6 +919,7 @@ async fn native_run_read_resolves_provider_response_id_within_api_key_scope() {
     let service = ApplicationNativeRunService::new(repository.clone());
     let created = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -967,6 +972,7 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
     let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: first_token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -1025,6 +1031,7 @@ async fn native_run_cancel_cas_miss_reloads_durable_winner_without_second_public
     .await;
     let created = ApplicationNativeRunService::new(repository.clone())
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })

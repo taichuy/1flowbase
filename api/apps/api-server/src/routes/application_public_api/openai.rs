@@ -224,7 +224,14 @@ pub async fn create_chat_completion(
     );
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    let run = match create_native_run(state.clone(), credential.token.clone(), request).await {
+    let run = match create_native_run(
+        state.clone(),
+        credential.token.clone(),
+        request,
+        TranslationProtocol::OpenAiChat,
+    )
+    .await
+    {
         Ok(run) => run,
         Err(error) => {
             warn!(
@@ -606,20 +613,26 @@ async fn dispatch_response_for_endpoint(
     let response_mode = request.response_mode.clone();
     match operation {
         AiNativeOperation::Generate(_) => {
-            let run =
-                match create_native_run(state.clone(), credential.token.clone(), request).await {
-                    Ok(run) => run,
-                    Err(error) => {
-                        warn!(
-                            route,
-                            auth_source = credential.source,
-                            status = error.status.as_u16(),
-                            code = error.code,
-                            "openai responses compatible native run validation failed"
-                        );
-                        return Err(error.into());
-                    }
-                };
+            let run = match create_native_run(
+                state.clone(),
+                credential.token.clone(),
+                request,
+                TranslationProtocol::OpenAiResponses,
+            )
+            .await
+            {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        route,
+                        auth_source = credential.source,
+                        status = error.status.as_u16(),
+                        code = error.code,
+                        "openai responses compatible native run validation failed"
+                    );
+                    return Err(error.into());
+                }
+            };
 
             let provider_transport_slot = stage_openai_provider_transport(
                 state.infrastructure.provider_transport_store().as_ref(),
@@ -700,7 +713,13 @@ async fn dispatch_response_for_endpoint(
                     ProviderCompactProfile::ResponsesCompactionV2
                 }
             };
-            let run = create_native_run(state.clone(), credential.token.clone(), request).await?;
+            let run = create_native_run(
+                state.clone(),
+                credential.token.clone(),
+                request,
+                TranslationProtocol::OpenAiResponses,
+            )
+            .await?;
             let provider_transport_slot = stage_openai_provider_transport(
                 state.infrastructure.provider_transport_store().as_ref(),
                 run.id,
@@ -1003,6 +1022,7 @@ async fn create_native_run(
     state: Arc<ApiState>,
     bearer_token: String,
     request: NativeRunRequest,
+    protocol: TranslationProtocol,
 ) -> Result<NativeRunResult, native::NativeApiError> {
     let protocol_context = request.client_protocol_envelope.clone();
     let run = ApplicationNativeRunService::new(state.store.clone())
@@ -1010,6 +1030,7 @@ async fn create_native_run(
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
+            protocol,
         })
         .await
         .map_err(native::native_error)?;

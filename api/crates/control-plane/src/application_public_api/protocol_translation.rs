@@ -21,6 +21,17 @@ pub enum TranslationProtocol {
     AnthropicMessages,
 }
 
+impl TranslationProtocol {
+    pub const fn compatibility_mode(self) -> &'static str {
+        match self {
+            Self::Native => "native-v1",
+            Self::AnthropicMessages => "anthropic-messages-v1",
+            Self::OpenAiChat => "openai-chat-completions-v1",
+            Self::OpenAiResponses => "openai-responses-v1",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranslationDecision {
     pub source_path: String,
@@ -178,6 +189,26 @@ pub(crate) fn anonymous_unknown_source_paths<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translation_protocol_has_one_canonical_versioned_compatibility_mode() {
+        assert_eq!(
+            TranslationProtocol::Native.compatibility_mode(),
+            "native-v1"
+        );
+        assert_eq!(
+            TranslationProtocol::AnthropicMessages.compatibility_mode(),
+            "anthropic-messages-v1"
+        );
+        assert_eq!(
+            TranslationProtocol::OpenAiChat.compatibility_mode(),
+            "openai-chat-completions-v1"
+        );
+        assert_eq!(
+            TranslationProtocol::OpenAiResponses.compatibility_mode(),
+            "openai-responses-v1"
+        );
+    }
 
     #[test]
     fn accepts_an_idempotent_repeat_for_the_same_source_path() {

@@ -16,6 +16,7 @@ use super::{
         CreateNativeRunCommand, NativeInputMapper, NativeRunRequest, NativeRunResult,
         NativeRunValidationError,
     },
+    protocol_translation::TranslationProtocol,
     publications::ApplicationPublicationVersionRecord,
 };
 mod conversation_history;
@@ -108,6 +109,7 @@ where
 
         let publication = self.load_enabled_publication(&actor).await?;
         let client_request = command.request;
+        let protocol = command.protocol;
         // The request model is workflow input. Only the LLM node selected by the
         // graph owns provider/model capability validation.
         let external_model_parameters = client_request.execution.model_parameters().cloned();
@@ -117,7 +119,7 @@ where
             .map(ToOwned::to_owned);
         let idempotency_fingerprint = idempotency_key
             .as_ref()
-            .map(|_| public_run_idempotency_fingerprint(&client_request))
+            .map(|_| public_run_idempotency_fingerprint(&client_request, protocol))
             .transpose()?;
         let provider_transport_summary = client_request.metadata.provider_transport_summary_value();
         let request = self
@@ -201,7 +203,7 @@ where
                     .get("external_trace_id")
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned),
-                compatibility_mode: None,
+                compatibility_mode: Some(protocol.compatibility_mode().to_string()),
                 idempotency_key,
             })
             .await
@@ -473,10 +475,15 @@ where
 
 fn public_run_idempotency_fingerprint(
     request: &NativeRunRequest,
+    protocol: TranslationProtocol,
 ) -> std::result::Result<String, NativeRunValidationError> {
     let mut value =
         serde_json::to_value(request).map_err(|_| NativeRunValidationError::InvalidMapping)?;
     if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "compatibility_mode".to_string(),
+            Value::String(protocol.compatibility_mode().to_string()),
+        );
         object.insert(
             "execution".to_string(),
             request.execution.fingerprint_value(),

@@ -391,6 +391,7 @@ async fn create_native_run(
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
+            protocol: TranslationProtocol::AnthropicMessages,
         })
         .await
         .map_err(native::native_error)?;

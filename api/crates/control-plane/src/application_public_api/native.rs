@@ -22,7 +22,8 @@ use super::{
     conversations::ApplicationPublicConversationRepository,
     mapping::ApplicationApiMappingConfig,
     protocol_translation::{
-        TranslationDecisionKind, TranslationReport, TranslationSafeRepresentation,
+        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationSafeRepresentation,
     },
     run_service::{
         ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
@@ -908,6 +909,7 @@ fn system_target(input: &super::mapping::ApplicationApiMappingInput) -> Option<S
 pub struct CreateNativeRunCommand {
     pub bearer_token: String,
     pub request: NativeRunRequest,
+    pub protocol: TranslationProtocol,
 }
 
 #[derive(Debug, Clone)]

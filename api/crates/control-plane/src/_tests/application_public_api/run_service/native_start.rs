@@ -14,6 +14,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("streaming", None),
         })
@@ -46,7 +47,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
         Some("conversation-1")
     );
     assert_eq!(flow_run.external_trace_id.as_deref(), Some("trace-1"));
-    assert!(flow_run.compatibility_mode.is_none());
+    assert_eq!(flow_run.compatibility_mode.as_deref(), Some("native-v1"));
     assert_eq!(
         flow_run.input_payload,
         json!({
@@ -61,6 +62,51 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
     );
     assert_eq!(result.metadata["model"], json!("public-model/pass-through"));
     assert_eq!(repository.published_generate_capability_checks(), 0);
+}
+
+#[tokio::test]
+async fn trusted_translation_protocol_is_persisted_as_the_canonical_compatibility_mode() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Protocol Persistence App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    for (protocol, expected) in [
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
+            "native-v1",
+        ),
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
+            "anthropic-messages-v1",
+        ),
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiChat,
+            "openai-chat-completions-v1",
+        ),
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            "openai-responses-v1",
+        ),
+    ] {
+        let result = service
+            .start_native_run(CreateNativeRunCommand {
+                protocol,
+                bearer_token: token.clone(),
+                request: native_request("blocking", None),
+            })
+            .await
+            .expect("trusted protocol should create a durable run");
+        let flow_run = repository
+            .get_flow_run(application.id, result.id)
+            .await
+            .unwrap()
+            .expect("protocol-tagged run should be durable");
+
+        assert_eq!(flow_run.compatibility_mode.as_deref(), Some(expected));
+    }
 }
 
 #[tokio::test]
@@ -87,6 +133,7 @@ async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_ru
 
     let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: translated.request,
         })
@@ -125,6 +172,7 @@ async fn wp_d2a_anthropic_one_m_is_explicit_typed_intent_not_catalog_inference()
 
     let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: translated.request,
         })
@@ -152,6 +200,7 @@ async fn wp_d2a_anthropic_one_m_is_explicit_typed_intent_not_catalog_inference()
     .expect("the catalog model without an explicit 1M request should translate");
     let catalog_only_result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: catalog_only.request,
         })
@@ -184,6 +233,7 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(json!({
                 "query": "Summarize the incident",
@@ -242,6 +292,7 @@ async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime(
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request_with_model_parameters(
                 "gpt-5.4",
@@ -298,6 +349,7 @@ async fn start_native_run_defers_requested_model_validation_to_the_selected_llm_
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request_with_model_parameters(
                 "missing-model",
@@ -339,6 +391,7 @@ async fn ac_004_start_native_run_accepts_request_cap_over_catalog_default_output
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -375,6 +428,7 @@ async fn ac_004_start_native_run_defers_output_limit_validation_to_the_selected_
     .expect("conversation fixture must be valid Native data");
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -419,6 +473,7 @@ async fn start_native_run_freezes_application_environment_variables() {
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("streaming", None),
         })
@@ -465,6 +520,7 @@ async fn start_native_run_uses_expand_id_and_truncates_title() {
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(json!({
                 "query": long_query,
@@ -510,6 +566,7 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
 
     let first = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: native_request("blocking", Some("idem-1")),
         })
@@ -517,6 +574,7 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
         .unwrap();
     let second = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("blocking", Some("idem-1")),
         })
@@ -524,6 +582,37 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
         .unwrap();
 
     assert_eq!(first.id, second.id);
+    assert_eq!(repository.flow_run_count(), 1);
+}
+
+#[tokio::test]
+async fn same_idempotency_key_cannot_replay_a_run_created_through_another_protocol() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Cross Protocol Idempotency App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+    let request = native_request("blocking", Some("cross-protocol-idem"));
+
+    service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiChat,
+            bearer_token: token.clone(),
+            request: request.clone(),
+        })
+        .await
+        .expect("first protocol should create the run");
+    let error = service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token,
+            request,
+        })
+        .await
+        .expect_err("a different trusted protocol must change the fingerprint");
+
+    assert_eq!(error, NativeRunValidationError::IdempotencyConflict);
     assert_eq!(repository.flow_run_count(), 1);
 }
 
@@ -550,6 +639,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
 
     let normal = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: request_with_effort("normal-effort", "high"),
         })
@@ -557,6 +647,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
         .unwrap();
     let spaced = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: request_with_effort("spaced-effort", " high "),
         })
@@ -564,6 +655,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
         .unwrap();
     let conflict = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: request_with_effort("normal-effort", " high "),
         })
@@ -598,6 +690,7 @@ async fn start_native_run_rejects_same_idempotency_key_with_different_request() 
     let service = ApplicationPublishedRunService::new(repository.clone());
     service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: native_request("blocking", Some("idem-conflict")),
         })
@@ -608,6 +701,7 @@ async fn start_native_run_rejects_same_idempotency_key_with_different_request() 
 
     let error = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: changed_request,
         })

@@ -23,6 +23,7 @@ async fn generate_unbound_creates_agentflow_run_without_provider_capability_look
 
     let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("blocking", None),
         })
@@ -69,6 +70,7 @@ async fn generate_end_user_reference_capability_is_not_preflighted_during_run_cr
 
     ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -111,6 +113,7 @@ async fn native_responses_passthrough_requirement_is_not_preflighted_during_run_
 
     ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -142,6 +145,7 @@ async fn d4_ac_002_native_responses_passthrough_all_targets_capable_is_admitted(
 
     ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -199,6 +203,7 @@ async fn native_responses_defers_cross_provider_failover_validation_to_the_llm_c
 
     ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -248,6 +253,7 @@ async fn native_responses_durable_summary_does_not_record_provider_affinity() {
 
     let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -671,6 +677,7 @@ async fn native_execution_compatibility_mode_is_rejected_without_mutating_waitin
 
     let first = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: anthropic_request("hi"),
         })
@@ -728,6 +735,7 @@ async fn start_native_run_does_not_read_editor_state_after_publication() {
 
     service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("streaming", None),
         })
@@ -760,6 +768,7 @@ async fn start_native_run_returns_application_not_published_for_unpublished_or_d
     for token in [unpublished_token, disabled_token] {
         let error = service
             .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
                 bearer_token: token,
                 request: native_request("blocking", None),
             })

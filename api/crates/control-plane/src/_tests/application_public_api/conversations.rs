@@ -78,6 +78,7 @@ async fn native_run_generates_external_conversation_id_when_missing() {
 
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(json!({
                 "query": "Continue",
@@ -118,6 +119,7 @@ async fn native_run_conversation_binding_is_scoped_to_application_and_api_key() 
 
     let first = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: first_token,
             request: serde_json::from_value(json!({
                 "query": "Continue",
@@ -132,6 +134,7 @@ async fn native_run_conversation_binding_is_scoped_to_application_and_api_key() 
         .unwrap();
     let second = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: second_token,
             request: serde_json::from_value(json!({
                 "query": "Continue",
