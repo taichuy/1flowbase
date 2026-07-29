@@ -86,7 +86,11 @@ function hasClosedHistoricalToolPairs(body, minimumPairs = 2) {
     for (const nested of Object.values(value)) visit(nested);
   };
   visit(body);
-  return [...calls].filter((id) => results.has(id)).length >= minimumPairs;
+  const paired = [...calls].filter((id) => results.has(id));
+  const containsGatewayCallbackWrapper = paired.some((id) => (
+    id.startsWith('toolu_task_') || id.startsWith('calltask_')
+  ));
+  return paired.length >= minimumPairs && !containsGatewayCallbackWrapper;
 }
 
 module.exports = {

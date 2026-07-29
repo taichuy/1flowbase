@@ -2,12 +2,14 @@ use control_plane::application_public_api::compat::anthropic::{
     map_messages_request, translate_messages_request, AnthropicCompatError,
 };
 use control_plane::application_public_api::{
+    callback_tool_ids::encode_anthropic_callback_tool_use_id,
     mapping::ApplicationApiMappingConfig,
     native::NativeInputMapper,
     protocol_translation::{TranslationDecisionKind, TranslationSafeRepresentation},
 };
 use plugin_framework::provider_contract::NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 fn base_request() -> Value {
     json!({
@@ -889,6 +891,8 @@ fn d2_ac_001_anthropic_marker_rejection_replaces_preliminary_decision_for_the_sa
 
 #[test]
 fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
+    let external_tool_id =
+        encode_anthropic_callback_tool_use_id(Uuid::from_u128(0x123), "call_read");
     let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
@@ -898,7 +902,7 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
                 "content": [
                     {
                         "type": "tool_use",
-                        "id": "toolu_read",
+                        "id": external_tool_id,
                         "name": "Read",
                         "input": {"file_path": "uploads/agent-flow-preview-debug.png"}
                     }
@@ -909,7 +913,7 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
                 "content": [
                     {
                         "type": "tool_result",
-                        "tool_use_id": "toolu_read",
+                        "tool_use_id": external_tool_id,
                         "content": "<tool_use_error>old tool payload</tool_use_error>\nold image output"
                     },
                     {"type": "text", "text": "帮我找找这个代码位置"}
@@ -924,10 +928,10 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
     assert_eq!(translated.request.history[1]["role"], "assistant");
     assert_eq!(
         translated.request.history[1]["tool_calls"][0]["id"],
-        "toolu_read"
+        "call_read"
     );
     assert_eq!(translated.request.history[2]["role"], "tool");
-    assert_eq!(translated.request.history[2]["tool_call_id"], "toolu_read");
+    assert_eq!(translated.request.history[2]["tool_call_id"], "call_read");
     assert_eq!(
         translated.request.history[2]["content"],
         "<tool_use_error>old tool payload</tool_use_error>\nold image output"

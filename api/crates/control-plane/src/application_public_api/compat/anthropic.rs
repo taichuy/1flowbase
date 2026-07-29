@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
+use crate::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
 use crate::application_public_api::client_protocol_envelope::{
     anthropic_context_1m_requested, protocol_context_field_is_safe,
 };
@@ -2090,8 +2091,9 @@ fn anthropic_history_tool_calls(content: &Value) -> Vec<Value> {
         .flatten()
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"))
         .filter_map(|block| {
+            let id = native_anthropic_tool_call_id(block.get("id")?.as_str()?);
             Some(json!({
-                "id": block.get("id")?.as_str()?,
+                "id": id,
                 "name": block.get("name")?.as_str()?,
                 "arguments": block.get("input").cloned().unwrap_or_else(|| json!({})),
             }))
@@ -2106,7 +2108,7 @@ fn anthropic_history_tool_results(content: &Value) -> Vec<Value> {
         .flatten()
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
         .filter_map(|block| {
-            let tool_call_id = block.get("tool_use_id")?.as_str()?;
+            let tool_call_id = native_anthropic_tool_call_id(block.get("tool_use_id")?.as_str()?);
             let mut message = json!({
                 "role": "tool",
                 "content": anthropic_tool_result_text(block),
@@ -2122,6 +2124,12 @@ fn anthropic_history_tool_results(content: &Value) -> Vec<Value> {
             Some(message)
         })
         .collect()
+}
+
+fn native_anthropic_tool_call_id(external_id: &str) -> String {
+    decode_anthropic_callback_tool_use_id(external_id)
+        .map(|(_, original_id)| original_id)
+        .unwrap_or_else(|| external_id.to_string())
 }
 
 fn anthropic_text_content(content: &Value) -> Result<String, AnthropicCompatError> {

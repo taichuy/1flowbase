@@ -46,6 +46,14 @@ test('Delivery #1493 followup requires two closed historical tool pairs in every
     ],
   }), true);
   assert.equal(hasClosedHistoricalToolPairs({
+    input: [
+      { type: 'function_call', call_id: 'toolu_task_deadbeef_call-a' },
+      { type: 'function_call_output', call_id: 'toolu_task_deadbeef_call-a' },
+      { type: 'function_call', call_id: 'call-b' },
+      { type: 'function_call_output', call_id: 'call-b' },
+    ],
+  }), false);
+  assert.equal(hasClosedHistoricalToolPairs({
     messages: [
       { content: [{ type: 'tool_use', id: 'call-a' }, { type: 'tool_use', id: 'call-b' }] },
       { content: [{ type: 'tool_result', tool_use_id: 'call-a' }] },
