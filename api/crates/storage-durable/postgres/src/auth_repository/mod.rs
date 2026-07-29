@@ -328,6 +328,32 @@ impl BootstrapRepository for PgControlPlaneStore {
         })
     }
 
+    async fn root_workspace_requires_official_catalog_seed(
+        &self,
+        workspace_name: &str,
+    ) -> Result<bool> {
+        let root_tenant_id =
+            Uuid::parse_str(ROOT_TENANT_ID).expect("root tenant id should be valid");
+        let initialized = sqlx::query_scalar::<_, bool>(
+            r#"
+            select exists(
+              select 1
+              from workspaces w
+              join workspace_i18n_catalog_states state on state.workspace_id = w.id
+              where w.tenant_id = $1
+                and lower(w.name) = lower($2)
+                and state.active_release_id is not null
+            )
+            "#,
+        )
+        .bind(root_tenant_id)
+        .bind(workspace_name)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(!initialized)
+    }
+
     async fn upsert_workspace(
         &self,
         tenant_id: Uuid,

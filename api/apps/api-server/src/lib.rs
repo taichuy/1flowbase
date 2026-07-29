@@ -241,9 +241,8 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .to_string();
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
 
-    let official_i18n_catalog_seed = official_i18n_catalog_seed::load_official_i18n_catalog_seed()?;
     let bootstrap_result = BootstrapService::new(store.clone())
-        .run_with_official_catalog(
+        .run_with_official_catalog_loader(
             &BootstrapConfig {
                 workspace_name: config.bootstrap_workspace_name.clone(),
                 root_account: config.bootstrap_root_account.clone(),
@@ -252,7 +251,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
                 root_name: config.bootstrap_root_name.clone(),
                 root_nickname: config.bootstrap_root_nickname.clone(),
             },
-            &official_i18n_catalog_seed,
+            official_i18n_catalog_seed::load_official_i18n_catalog_seed,
         )
         .await?;
     let default_storage = if let Some(existing) =

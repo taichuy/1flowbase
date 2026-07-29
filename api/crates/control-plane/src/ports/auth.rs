@@ -148,6 +148,10 @@ pub trait BootstrapRepository: Send + Sync {
         permissions: &[PermissionDefinition],
     ) -> anyhow::Result<()>;
     async fn upsert_root_tenant(&self) -> anyhow::Result<TenantRecord>;
+    async fn root_workspace_requires_official_catalog_seed(
+        &self,
+        workspace_name: &str,
+    ) -> anyhow::Result<bool>;
     async fn upsert_workspace(
         &self,
         tenant_id: Uuid,

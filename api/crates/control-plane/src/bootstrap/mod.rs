@@ -45,6 +45,26 @@ where
         self.run_auth_bootstrap(config, Some(seed)).await
     }
 
+    pub async fn run_with_official_catalog_loader<F>(
+        &self,
+        config: &BootstrapConfig,
+        load_seed: F,
+    ) -> Result<BootstrapResult>
+    where
+        F: FnOnce() -> Result<VerifiedOfficialCatalogSeed>,
+    {
+        if self
+            .repository
+            .root_workspace_requires_official_catalog_seed(&config.workspace_name)
+            .await?
+        {
+            let seed = load_seed()?;
+            self.run_with_official_catalog(config, &seed).await
+        } else {
+            self.run_without_official_catalog(config).await
+        }
+    }
+
     async fn run_without_official_catalog(
         &self,
         config: &BootstrapConfig,

@@ -180,3 +180,32 @@ async fn bootstrap_service_returns_ids_needed_for_follow_up_startup_bootstrap() 
     assert_eq!(first.workspace_id, second.workspace_id);
     assert_eq!(first.root_user_id, second.root_user_id);
 }
+
+#[tokio::test]
+async fn ac_001_initialized_catalog_does_not_load_the_official_seed() {
+    let repository = MemoryBootstrapRepository::default();
+    repository.mark_official_catalog_initialized();
+
+    let result = BootstrapService::new(repository.clone())
+        .run_with_official_catalog_loader(&bootstrap_config(), || {
+            anyhow::bail!("initialized catalog must not load the embedded Seed")
+        })
+        .await;
+
+    assert!(result.is_ok());
+    assert_eq!(repository.official_catalog_bootstraps(), 0);
+}
+
+#[tokio::test]
+async fn ac_002_uninitialized_catalog_loads_the_official_seed() {
+    let repository = MemoryBootstrapRepository::default();
+
+    let error = BootstrapService::new(repository)
+        .run_with_official_catalog_loader(&bootstrap_config(), || {
+            anyhow::bail!("controlled Seed load")
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("controlled Seed load"));
+}

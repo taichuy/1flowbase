@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 
@@ -24,6 +24,8 @@ struct MemoryBootstrapRepositoryInner {
     authenticator_upserts: AtomicUsize,
     root_tenant_upserts: AtomicUsize,
     workspace_upserts: AtomicUsize,
+    official_catalog_initialized: AtomicBool,
+    official_catalog_bootstraps: AtomicUsize,
     root_user_creates: AtomicUsize,
     authenticators: RwLock<Vec<AuthenticatorRecord>>,
     root_tenant: RwLock<Option<TenantRecord>>,
@@ -46,6 +48,18 @@ impl MemoryBootstrapRepository {
 
     pub fn workspace_upserts(&self) -> usize {
         self.inner.workspace_upserts.load(Ordering::SeqCst)
+    }
+
+    pub fn mark_official_catalog_initialized(&self) {
+        self.inner
+            .official_catalog_initialized
+            .store(true, Ordering::SeqCst);
+    }
+
+    pub fn official_catalog_bootstraps(&self) -> usize {
+        self.inner
+            .official_catalog_bootstraps
+            .load(Ordering::SeqCst)
     }
 
     pub async fn authenticator(&self, id: Uuid) -> Option<AuthenticatorRecord> {
@@ -129,6 +143,16 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         Ok(tenant)
     }
 
+    async fn root_workspace_requires_official_catalog_seed(
+        &self,
+        _workspace_name: &str,
+    ) -> Result<bool> {
+        Ok(!self
+            .inner
+            .official_catalog_initialized
+            .load(Ordering::SeqCst))
+    }
+
     async fn upsert_workspace(
         &self,
         tenant_id: Uuid,
@@ -156,6 +180,12 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         workspace_name: &str,
         _seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
     ) -> Result<WorkspaceRecord> {
+        self.inner
+            .official_catalog_bootstraps
+            .fetch_add(1, Ordering::SeqCst);
+        self.inner
+            .official_catalog_initialized
+            .store(true, Ordering::SeqCst);
         BootstrapRepository::upsert_workspace(self, tenant_id, workspace_name).await
     }
 

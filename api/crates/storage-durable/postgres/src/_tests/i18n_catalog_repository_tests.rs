@@ -528,6 +528,14 @@ async fn ac_003_combined_root_bootstrap_is_atomic_and_restart_idempotent() {
         .await
         .unwrap();
     let seed = official_seed(Uuid::now_v7());
+    assert!(
+        BootstrapRepository::root_workspace_requires_official_catalog_seed(
+            &store,
+            "Root catalog workspace",
+        )
+        .await
+        .unwrap()
+    );
 
     let workspace = BootstrapRepository::upsert_root_workspace_with_official_catalog(
         &store,
@@ -542,6 +550,14 @@ async fn ac_003_combined_root_bootstrap_is_atomic_and_restart_idempotent() {
         .unwrap()
         .unwrap();
     let active_release_id = initial_state.active_release_id().unwrap();
+    assert!(
+        !BootstrapRepository::root_workspace_requires_official_catalog_seed(
+            &store,
+            "Root catalog workspace",
+        )
+        .await
+        .unwrap()
+    );
 
     let override_state = I18nCatalogRepository::upsert_catalog_override(
         &store,
@@ -601,6 +617,46 @@ async fn ac_003_combined_root_bootstrap_is_atomic_and_restart_idempotent() {
     .await
     .unwrap();
     assert_eq!((release_count, override_count, custom_count), (1, 1, 1));
+}
+
+#[tokio::test]
+async fn ac_002_existing_root_workspace_without_catalog_requires_seed() {
+    let store = empty_store().await;
+    let tenant = BootstrapRepository::upsert_root_tenant(&store)
+        .await
+        .unwrap();
+    let workspace =
+        BootstrapRepository::upsert_workspace(&store, tenant.id, "Existing root workspace")
+            .await
+            .unwrap();
+
+    assert!(
+        BootstrapRepository::root_workspace_requires_official_catalog_seed(
+            &store,
+            "Existing root workspace",
+        )
+        .await
+        .unwrap()
+    );
+
+    let initialized = BootstrapRepository::upsert_root_workspace_with_official_catalog(
+        &store,
+        tenant.id,
+        "Existing root workspace",
+        &official_seed(Uuid::now_v7()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(initialized.id, workspace.id);
+    assert!(
+        !BootstrapRepository::root_workspace_requires_official_catalog_seed(
+            &store,
+            "Existing root workspace",
+        )
+        .await
+        .unwrap()
+    );
 }
 
 #[tokio::test]
