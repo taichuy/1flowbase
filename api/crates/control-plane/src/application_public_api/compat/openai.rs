@@ -2963,46 +2963,18 @@ mod tests {
     }
 
     #[test]
-    fn d4_ac_016_untyped_include_remains_exact_in_native_transport() {
-        let mut translated = translate_response_request(json!({
+    fn responses_include_requires_an_array_wire_type() {
+        let error = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": "reasoning.encrypted_content"
         }))
-        .expect("untyped include should remain opaque in native Responses transport");
+        .expect_err("include must retain its array wire type");
 
-        assert!(translated
+        assert_eq!(error.param.as_deref(), Some("include"));
+        assert!(error
             .report
-            .has_decision("$.include", TranslationDecisionKind::Exact));
-        let payload = translated
-            .request
-            .metadata
-            .take_provider_transport_payload()
-            .expect("untyped include should remain in ephemeral provider transport");
-        assert_eq!(
-            payload.wire_body()["include"],
-            "reasoning.encrypted_content"
-        );
-    }
-
-    #[test]
-    fn d4_ac_016_parallel_tool_calls_true_remains_exact_in_native_transport() {
-        let mut translated = translate_response_request(json!({
-            "model": "1flowbase",
-            "input": "hello",
-            "parallel_tool_calls": true
-        }))
-        .expect("parallel tool calls should remain in native Responses transport");
-
-        assert!(translated
-            .report
-            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Exact));
-        let payload = translated
-            .request
-            .metadata
-            .take_provider_transport_payload()
-            .expect("parallel tool calls should remain in ephemeral provider transport");
-        assert_eq!(payload.wire_body()["parallel_tool_calls"], true);
+            .has_decision("$.include", TranslationDecisionKind::Rejected));
     }
 
     #[test]
