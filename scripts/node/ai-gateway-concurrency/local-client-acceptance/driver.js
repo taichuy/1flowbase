@@ -148,6 +148,14 @@ function executionTargets(client, primary, matrix) {
   });
 }
 
+function vectorsForTarget(client, protocol, provider, fullVectors, selectVectors = vectorsFor) {
+  if (fullVectors) return selectVectors(client, protocol);
+  return [
+    MEANINGFUL_GIT_VECTOR,
+    ...(client === 'claude' && provider === 'openai' ? [TOOL_HISTORY_FOLLOWUP_VECTOR] : []),
+  ];
+}
+
 function crossTargetCanary(clients, required) {
   if (!required) return { status: 'not_requested', rows: [] };
   const rows = clients.flatMap((client) => {
@@ -348,12 +356,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         }
         const paths = clientPaths(root, `${client}-${provider}`, options.gitRepoPath ?? null);
         for (const protocol of CLIENT_PROTOCOLS[client]) {
-          const vectors = fullVectors
-            ? selectVectors(client, protocol)
-            : [
-              MEANINGFUL_GIT_VECTOR,
-              ...(client === 'claude' ? [TOOL_HISTORY_FOLLOWUP_VECTOR] : []),
-            ];
+          const vectors = vectorsForTarget(client, protocol, provider, fullVectors, selectVectors);
           for (const vector of vectors) {
             timeline.append('attempt_started', { provider, protocol, vector_id: vector.id });
             const gitWorkspaceBefore = vector.id === MEANINGFUL_GIT_VECTOR.id
@@ -548,6 +551,7 @@ module.exports = {
   publicPlan,
   crossTargetCanary,
   executionTargets,
+  vectorsForTarget,
   runLocalClientAcceptance,
   structuredEvents,
   verifyMeaningfulGitWorkspace,

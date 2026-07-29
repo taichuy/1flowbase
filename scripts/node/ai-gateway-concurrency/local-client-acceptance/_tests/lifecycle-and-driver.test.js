@@ -19,7 +19,7 @@ const {
 } = require('../vector-manifest');
 const {
   crossTargetCanary, evaluateAttempt, executionTargets, gitWorkspaceFingerprint,
-  publicPlan, runLocalClientAcceptance,
+  publicPlan, runLocalClientAcceptance, vectorsForTarget,
   verifyMeaningfulGitWorkspace,
 } = require('../driver');
 const { OwnedResources, executionEnvironment } = require('../lifecycle');
@@ -229,6 +229,20 @@ test('AC-017 executes the primary full target once and aggregates nine Git canar
   assert.deepEqual(
     evidence.rows.find((row) => row.client === 'codex' && row.provider === 'openai').protocols,
     ['responses_sse', 'responses_websocket'],
+  );
+});
+
+test('Delivery #1493 runs the cross-turn Claude regression only on its OpenAI target', () => {
+  const ids = (provider) => vectorsForTarget(
+    'claude', 'anthropic_sse', provider, false,
+  ).map((vector) => vector.id);
+  assert.deepEqual(ids('openai'), [MEANINGFUL_GIT_VECTOR.id, TOOL_HISTORY_FOLLOWUP_VECTOR.id]);
+  assert.deepEqual(ids('openai_compatible'), [MEANINGFUL_GIT_VECTOR.id]);
+  assert.deepEqual(
+    vectorsForTarget(
+      'claude', 'anthropic_sse', 'anthropic', true, () => [TOOL_HISTORY_FOLLOWUP_VECTOR],
+    ).map((vector) => vector.id),
+    [TOOL_HISTORY_FOLLOWUP_VECTOR.id],
   );
 });
 
