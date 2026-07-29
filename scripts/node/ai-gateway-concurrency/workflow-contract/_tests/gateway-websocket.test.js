@@ -19,6 +19,7 @@ function readyManifest() {
         application_id: 'application-1',
         provider_instance_id: 'provider-1',
         model: 'published-model',
+        upstream_model: 'upstream-model',
         api_key: 'application-secret',
         gateway: { responses_url: 'http://127.0.0.1:4100/v1/responses' },
         durable: {
@@ -71,7 +72,7 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
     { counters: {}, entries: [] },
     {
       counters: {},
-      entries: [{ sequence: 1, event: 'arrival', transport: 'responses-sse', nonce: 'mock-000001', request: { body: { model: 'published-model' } } }],
+      entries: [{ sequence: 1, event: 'arrival', transport: 'responses-sse', nonce: 'mock-000001', request: { body: { model: 'upstream-model' } } }],
     },
   ];
   const result = await runGatewayWebSocketAcceptance({

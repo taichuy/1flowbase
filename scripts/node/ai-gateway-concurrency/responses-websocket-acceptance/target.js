@@ -29,6 +29,7 @@ function createGatewayTarget(ready) {
     application_id: requiredString(provider.application_id, 'OpenAI application id'),
     provider_instance_id: requiredString(provider.provider_instance_id, 'OpenAI provider instance id'),
     model: requiredString(provider.model, 'OpenAI published model'),
+    upstream_model: requiredString(provider.upstream_model, 'OpenAI upstream model'),
     api_key: requiredString(provider.api_key, 'OpenAI Application API key'),
     connect_headers: {
       authorization: `Bearer ${requiredString(provider.api_key, 'OpenAI Application API key')}`,
@@ -65,6 +66,7 @@ function publicTarget(target) {
     application_id: target.application_id,
     provider_instance_id: target.provider_instance_id,
     model: target.model,
+    upstream_model: target.upstream_model,
     credential: '[REDACTED]',
     beta: target.connect_headers?.['openai-beta'],
   };

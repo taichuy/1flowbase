@@ -17,6 +17,7 @@ function readyManifest() {
         application_id: 'application-1',
         provider_instance_id: 'provider-1',
         model: 'published-model',
+        upstream_model: 'upstream-model',
         api_key: 'application-secret',
         gateway: { responses_url: 'http://127.0.0.1:4100/v1/responses' },
         durable: {
@@ -38,6 +39,8 @@ test('Root #1461 AC WebSocket target uses Gateway URL, key, model, and durable e
   assert.equal(target.evidence_role, 'gateway-support-target');
   assert.equal(target.url, 'ws://127.0.0.1:4100/v1/responses');
   assert.equal(target.model, 'published-model');
+  assert.equal(target.upstream_model, 'upstream-model');
+  assert.equal(publicTarget(target).upstream_model, 'upstream-model');
   assert.equal(target.connect_headers.authorization, 'Bearer application-secret');
   assert.equal(target.connect_headers['openai-beta'], RESPONSES_WEBSOCKET_BETA);
   assert.match(target.durable.query_run.url_template, /\{run_id\}/u);

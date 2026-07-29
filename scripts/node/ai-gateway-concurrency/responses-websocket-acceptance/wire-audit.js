@@ -27,7 +27,7 @@ function createWireAudit({ target, trace, durable, upstreamBefore, upstreamAfter
   const gatewayArrivals = entries.filter((entry) =>
     entry.event === 'arrival'
     && entry.transport === TRANSPORT.RESPONSES_SSE
-    && entry.request?.body?.model === target.model
+    && entry.request?.body?.model === target.upstream_model
   );
   if (gatewayArrivals.length !== 1) {
     throw new Error(`expected one Gateway-to-upstream Responses SSE arrival, received ${gatewayArrivals.length}`);

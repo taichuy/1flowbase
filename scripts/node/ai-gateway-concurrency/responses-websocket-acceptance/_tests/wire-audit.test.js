@@ -15,6 +15,7 @@ function target() {
     application_id: 'application-1',
     provider_instance_id: 'provider-1',
     model: 'published-model',
+    upstream_model: 'upstream-model',
     api_key: 'application-secret',
     connect_headers: {
       authorization: 'Bearer application-secret',
@@ -38,7 +39,7 @@ function evidence(transport = 'responses-sse') {
           event: 'arrival',
           nonce: 'mock-000041',
           transport,
-          request: { body: { model: 'published-model' } },
+          request: { body: { model: 'upstream-model' } },
         },
       ],
     },
