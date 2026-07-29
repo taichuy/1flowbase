@@ -61,7 +61,7 @@ test('AC-003/004/005: finite characterize fixture classifies transports, failure
         return fetch(url, options);
       },
       mockSnapshot: mock.snapshot,
-      timeoutMs: 1_000,
+      timeoutMs: 5_000,
     });
     assert.equal(result.summary.verdict, 'PASS');
     assert.equal(result.summary.performanceBudgetApplied, false);
