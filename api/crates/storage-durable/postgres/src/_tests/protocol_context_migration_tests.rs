@@ -595,8 +595,7 @@ async fn seed_compatibility_backfill_run(
 
 #[tokio::test]
 async fn compatibility_backfill_uses_only_server_owned_responses_evidence() {
-    let database = isolated_database().await;
-    let pool = database.pool().clone();
+    let pool = isolated_database().await.connect().await.unwrap();
     before_compatibility_backfill_migrator()
         .run(&pool)
         .await

@@ -257,7 +257,7 @@ test('WP-D4B continuity uses each installed client session surface', () => {
     opencodeSecond.invocation.args.slice(0, 7),
     [
       'run', '--format', 'json', '--model',
-      'oneflowbase_local_acceptance/fixture-model', '--session', 'opencode-session',
+      'oneflowbase_local_acceptance/1flowbase', '--session', 'opencode-session',
     ],
   );
 });
