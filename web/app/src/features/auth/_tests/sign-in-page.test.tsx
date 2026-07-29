@@ -21,25 +21,33 @@ vi.mock('../api/session', () => ({ fetchCurrentMe, fetchLoginInstances }));
 vi.mock('../components/PublicAuthBlock', () => ({
   PublicAuthBlock: (props: {
     instance: { id: string; public_ui_block: string };
+    authenticatorSelector: { request: () => void } | null;
     onAuthenticated: (session: {
       csrf_token: string;
       effective_display_role: string;
       current_workspace_id: string;
     }) => Promise<void>;
   }) => {
-    renderedBlocks(props.instance);
+    renderedBlocks(props.instance, Boolean(props.authenticatorSelector));
     return (
-      <button
-        onClick={() =>
-          void props.onAuthenticated({
-            csrf_token: 'csrf-123',
-            effective_display_role: 'member',
-            current_workspace_id: 'workspace-1'
-          })
-        }
-      >
-        Run {props.instance.id}
-      </button>
+      <>
+        <button
+          onClick={() =>
+            void props.onAuthenticated({
+              csrf_token: 'csrf-123',
+              effective_display_role: 'member',
+              current_workspace_id: 'workspace-1'
+            })
+          }
+        >
+          Run {props.instance.id}
+        </button>
+        {props.authenticatorSelector ? (
+          <button onClick={props.authenticatorSelector.request}>
+            Request authenticator selector
+          </button>
+        ) : null}
+      </>
     );
   }
 }));
@@ -97,13 +105,13 @@ describe('SignInPage', () => {
       await screen.findByRole('button', { name: 'Run auth-password-local' })
     );
 
-    expect(renderedBlocks).toHaveBeenCalledWith(passwordInstance);
+    expect(renderedBlocks).toHaveBeenCalledWith(passwordInstance, false);
     await waitFor(() => expect(fetchCurrentMe).toHaveBeenCalled());
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/' }));
     expect(useAuthStore.getState().csrfToken).toBe('csrf-123');
   });
 
-  test('AC-001 uses a chooser-first flow when multiple authenticators are available', async () => {
+  test('AC-001/002 stores a multi-authenticator selection in the URL and lets the Block return', async () => {
     const qrInstance = {
       ...passwordInstance,
       id: 'auth-qr',
@@ -118,7 +126,7 @@ describe('SignInPage', () => {
       login_instances: [passwordInstance, qrInstance]
     });
 
-    render(
+    const view = render(
       <AppProviders>
         <SignInPage />
       </AppProviders>
@@ -136,6 +144,16 @@ describe('SignInPage', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'QR code' }));
+    expect(navigateSpy).toHaveBeenCalledWith({
+      to: '/sign-in',
+      search: { authenticator_id: 'auth-qr' }
+    });
+
+    view.rerender(
+      <AppProviders>
+        <SignInPage authenticatorId="auth-qr" />
+      </AppProviders>
+    );
     expect(
       await screen.findByRole('button', { name: 'Run auth-qr' })
     ).toBeInTheDocument();
@@ -146,11 +164,21 @@ describe('SignInPage', () => {
       screen.queryByRole('button', { name: 'QR code' })
     ).not.toBeInTheDocument();
 
-    const backButton = screen.getByRole('button', {
-      name: 'Back to other sign-in options'
+    expect(renderedBlocks).toHaveBeenLastCalledWith(qrInstance, true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request authenticator selector' })
+    );
+    expect(navigateSpy).toHaveBeenLastCalledWith({
+      to: '/sign-in',
+      search: { authenticator_id: undefined },
+      replace: true
     });
-    expect(backButton).toHaveTextContent('');
-    fireEvent.click(backButton);
+
+    view.rerender(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
     expect(
       await screen.findByRole('button', { name: 'Password' })
     ).toBeInTheDocument();
@@ -158,6 +186,65 @@ describe('SignInPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Run auth-qr' })
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-001 restores a valid authenticator from the URL on first render', async () => {
+    const qrInstance = {
+      ...passwordInstance,
+      id: 'auth-qr',
+      auth_type: 'qr-code',
+      is_builtin: false,
+      title: 'QR code',
+      sort_order: 10,
+      public_ui_block: 'qr block'
+    };
+    fetchLoginInstances.mockResolvedValue({
+      default_authenticator_id: passwordInstance.id,
+      login_instances: [passwordInstance, qrInstance]
+    });
+
+    render(
+      <AppProviders>
+        <SignInPage authenticatorId="auth-qr" />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Run auth-qr' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Password' })).not.toBeInTheDocument();
+  });
+
+  test('AC-001 clears an invalid URL authenticator and shows the chooser', async () => {
+    const qrInstance = {
+      ...passwordInstance,
+      id: 'auth-qr',
+      auth_type: 'qr-code',
+      is_builtin: false,
+      title: 'QR code',
+      sort_order: 10,
+      public_ui_block: 'qr block'
+    };
+    fetchLoginInstances.mockResolvedValue({
+      default_authenticator_id: passwordInstance.id,
+      login_instances: [passwordInstance, qrInstance]
+    });
+
+    render(
+      <AppProviders>
+        <SignInPage authenticatorId="missing-authenticator" />
+      </AppProviders>
+    );
+
+    expect(await screen.findByRole('button', { name: 'Password' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(navigateSpy).toHaveBeenCalledWith({
+        to: '/sign-in',
+        search: { authenticator_id: undefined },
+        replace: true
+      })
+    );
+    expect(renderedBlocks).not.toHaveBeenCalled();
   });
 
   test('shows a formal unavailable state and no fallback form when none are enabled', async () => {

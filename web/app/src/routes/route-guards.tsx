@@ -30,7 +30,13 @@ export function RouteGuard({
   }
 
   if (sessionStatus === 'anonymous') {
-    return <Navigate to="/sign-in" replace />;
+    return (
+      <Navigate
+        to="/sign-in"
+        search={{ authenticator_id: undefined }}
+        replace
+      />
+    );
   }
 
   if (!route.permissionKey) {

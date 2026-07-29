@@ -223,7 +223,10 @@ export function MemberManagementPanel({
       passwordForm.resetFields();
       setPasswordEditMember(null);
       setAnonymous();
-      await navigate({ to: '/sign-in' });
+      await navigate({
+        to: '/sign-in',
+        search: { authenticator_id: undefined }
+      });
     }
   });
 

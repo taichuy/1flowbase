@@ -52,6 +52,7 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
     for (msgid, value) in [
         ("Password", "密码"),
         ("Authenticator ID", "认证器 ID"),
+        ("Authenticator selection available", "可选择其他认证器"),
         ("Authentication event", "认证事件"),
     ] {
         seed_authentication_translation(&state, msgid, value).await;
@@ -262,11 +263,20 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
                 && variable["schema"]["type"] == schema_type
         }));
     }
-    for member_path in ["inputs.authenticator_id", "inputs.auth_event", "api"] {
+    for member_path in [
+        "inputs.authenticator_id",
+        "inputs.authenticator_selection_available",
+        "inputs.auth_event",
+        "api",
+    ] {
         assert!(context_variables.iter().any(|variable| {
             variable["group"] == "runtime" && variable["member_path"] == member_path
         }));
     }
+    assert!(context_variables.iter().any(|variable| {
+        variable["member_path"] == "inputs.authenticator_selection_available"
+            && variable["label"] == "可选择其他认证器"
+    }));
     assert!(!context_variables.iter().any(|variable| {
         matches!(
             variable["member_path"].as_str(),

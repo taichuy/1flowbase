@@ -32,9 +32,10 @@ describe('public Auth Block host adapter', () => {
 
   test('exposes stable Native Auth inputs without legacy action rerun state', () => {
     expect(
-      createPublicAuthInputs(instance.id, instance.public_variables)
+      createPublicAuthInputs(instance.id, instance.public_variables, true)
     ).toEqual({
       authenticator_id: instance.id,
+      authenticator_selection_available: true,
       public_variables: instance.public_variables
     });
   });

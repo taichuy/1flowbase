@@ -135,6 +135,12 @@ where
 
 #[async_trait]
 pub trait BootstrapRepository: Send + Sync {
+    async fn replace_authenticator_public_ui_block_if_matches(
+        &self,
+        authenticator_id: Uuid,
+        expected: &str,
+        replacement: &str,
+    ) -> anyhow::Result<bool>;
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord)
         -> anyhow::Result<()>;
     async fn upsert_permission_catalog(

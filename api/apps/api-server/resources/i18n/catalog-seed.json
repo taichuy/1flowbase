@@ -197,6 +197,12 @@
           }
         },
         {
+          "msgid": "Authenticator selection available",
+          "translations": {
+            "zh_Hans": "可选择其他认证器"
+          }
+        },
+        {
           "msgid": "Local",
           "translations": {
             "zh_Hans": "本地"

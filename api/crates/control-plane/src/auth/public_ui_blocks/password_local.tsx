@@ -1,15 +1,10 @@
-use serde_json::{json, Map, Value};
-
-pub const PASSWORD_LOCAL_PUBLIC_UI_BLOCK: &str =
-    include_str!("public_ui_blocks/password_local.tsx");
-
-// Kept as the exact comparison source for the startup upgrade. User-edited
-// Blocks never match this value and therefore remain untouched.
-pub const PREVIOUS_PASSWORD_LOCAL_PUBLIC_UI_BLOCK: &str = r#"import { useState } from 'react';
+import { ArrowLeftOutlined } from '@ant-design/icons';
+import { useState } from 'react';
 import { Alert, Button, Input, Space } from 'antd';
 
 type AuthInputs = {
   authenticator_id?: string;
+  authenticator_selection_available?: boolean;
   public_variables?: {
     self_registration_enabled?: boolean;
   };
@@ -23,6 +18,9 @@ type AuthContext = {
       request?: { body?: unknown }
     ): Promise<TResponse>;
   };
+  events: {
+    emit(event: string): void;
+  };
 };
 
 export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
@@ -35,6 +33,8 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
   const [email, setEmail] = useState('');
   const registrationEnabled =
     ctx.inputs.public_variables?.self_registration_enabled === true;
+  const authenticatorSelectionAvailable =
+    ctx.inputs.authenticator_selection_available === true;
 
   const submitSignIn = async (event) => {
     event.preventDefault();
@@ -77,6 +77,16 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {authenticatorSelectionAvailable ? (
+        <Button
+          aria-label="Back to other sign-in options"
+          disabled={pending}
+          icon={<ArrowLeftOutlined aria-hidden="true" />}
+          onClick={() => ctx.events.emit('authenticator_selector_requested')}
+          style={{ alignSelf: 'flex-start' }}
+          type="text"
+        />
+      ) : null}
       <h2>
         {mode === 'sign_in' ? 'Sign in' : 'Create an account'}
       </h2>
@@ -154,102 +164,4 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
       ) : null}
     </Space>
   );
-}
-"#;
-
-pub fn auth_common_config_form_schema() -> Value {
-    json!([
-        {
-            "key": "title",
-            "label": "Authenticator title",
-            "type": "string",
-            "required": true
-        },
-        {
-            "key": "description",
-            "label": "Description",
-            "type": "string",
-            "control": "textarea",
-            "read_only": false,
-            "required": false
-        },
-        {
-            "key": "enabled",
-            "label": "Enabled",
-            "type": "boolean",
-            "control": "switch"
-        }
-    ])
-}
-
-pub fn password_local_config_form_schema() -> Value {
-    let mut fields = auth_common_config_form_schema()
-        .as_array()
-        .cloned()
-        .expect("common auth config schema must be an array");
-    fields.insert(
-        3,
-        json!({
-            "key": "self_registration_enabled",
-            "label": "Allow self registration",
-            "type": "boolean",
-            "control": "switch"
-        }),
-    );
-    Value::Array(fields)
-}
-
-pub fn password_local_options(description: Option<String>) -> Value {
-    let mut options = Map::new();
-    if let Some(description) = description {
-        options.insert("description".to_string(), Value::String(description));
-    }
-    options.insert(
-        "config_form_schema".to_string(),
-        password_local_config_form_schema(),
-    );
-    options.insert(
-        "extension_config".to_string(),
-        json!({ "self_registration_enabled": false }),
-    );
-    Value::Object(options)
-}
-
-pub fn password_local_public_variables(options: &Value) -> Map<String, Value> {
-    let self_registration_enabled = password_local_self_registration_enabled(options);
-    Map::from_iter([(
-        "self_registration_enabled".to_string(),
-        Value::Bool(self_registration_enabled),
-    )])
-}
-
-pub fn authenticator_host_public_variables(
-    authenticator: &domain::AuthenticatorRecord,
-) -> Map<String, Value> {
-    let mut variables = Map::from_iter([
-        (
-            "title".to_string(),
-            Value::String(authenticator.title.clone()),
-        ),
-        ("enabled".to_string(), Value::Bool(authenticator.enabled)),
-    ]);
-    if let Some(description) = authenticator
-        .options
-        .get("description")
-        .and_then(Value::as_str)
-    {
-        variables.insert(
-            "description".to_string(),
-            Value::String(description.to_string()),
-        );
-    }
-    variables
-}
-
-pub fn password_local_self_registration_enabled(options: &Value) -> bool {
-    options
-        .get("extension_config")
-        .and_then(|config| config.get("self_registration_enabled"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
 }

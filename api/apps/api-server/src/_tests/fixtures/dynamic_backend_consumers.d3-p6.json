@@ -1,10 +1,11 @@
 {
   "packet": "D3-P6",
-  "count": 18,
+  "count": 19,
   "consumers": [
     {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Password","path":"api/crates/control-plane/src/bootstrap/mod.rs","projection":"public auth and auth-center title"},
     {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Local","path":"api/apps/api-server/src/lib.rs","projection":"default file-storage title"},
     {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Authenticator ID","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
+    {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Authenticator selection available","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
     {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"Authentication event","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
     {"category":"authentication","module":"@taichuy/platform/authentication","msgid":"API","path":"api/crates/control-plane/src/auth/mod.rs","projection":"auth-center context variable label"},
     {"category":"application_type","module":"@taichuy/platform/applications","msgid":"Agent Flow","path":"api/apps/api-server/src/routes/applications/applications.rs","projection":"application catalog type label"},

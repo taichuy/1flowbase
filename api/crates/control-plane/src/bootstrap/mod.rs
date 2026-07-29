@@ -58,6 +58,13 @@ where
         official_catalog: Option<&VerifiedOfficialCatalogSeed>,
     ) -> Result<BootstrapResult> {
         self.repository
+            .replace_authenticator_public_ui_block_if_matches(
+                domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                crate::auth::public_ui::PREVIOUS_PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
+                crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
+            )
+            .await?;
+        self.repository
             .upsert_authenticator(&AuthenticatorRecord {
                 id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
                 auth_type: "password-local".into(),

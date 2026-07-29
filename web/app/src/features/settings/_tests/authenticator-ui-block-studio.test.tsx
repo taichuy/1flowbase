@@ -346,6 +346,7 @@ describe('AuthenticatorUiBlockStudio', () => {
     });
     expect(previewContext.inputs).toEqual({
       authenticator_id: 'password-local',
+      authenticator_selection_available: false,
       public_variables: {
         title: 'Password',
         enabled: true,
