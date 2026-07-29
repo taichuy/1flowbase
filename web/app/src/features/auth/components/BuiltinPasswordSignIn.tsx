@@ -1,3 +1,4 @@
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, Space, Typography } from 'antd';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -9,11 +10,13 @@ import {
 
 interface BuiltinPasswordSignInProps {
   authenticatorId: string;
+  authenticatorSelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
 }
 
 export function BuiltinPasswordSignIn({
   authenticatorId,
+  authenticatorSelector = null,
   onAuthenticated
 }: BuiltinPasswordSignInProps) {
   const { t } = useTranslation('auth');
@@ -41,7 +44,21 @@ export function BuiltinPasswordSignIn({
   };
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Space
+      data-testid="builtin-password-sign-in"
+      direction="vertical"
+      size="middle"
+      style={{ width: '100%' }}
+    >
+      {authenticatorSelector ? (
+        <Button
+          aria-label={t('sign_in.back_to_login_options')}
+          icon={<ArrowLeftOutlined aria-hidden="true" />}
+          onClick={authenticatorSelector.request}
+          style={{ alignSelf: 'flex-start' }}
+          type="text"
+        />
+      ) : null}
       <Typography.Title level={2} style={{ margin: 0, textAlign: 'center' }}>
         {t('sign_in.fallback_title')}
       </Typography.Title>

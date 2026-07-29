@@ -43,6 +43,58 @@ describe('PublicAuthBlock Native Host composition', () => {
     vi.useRealTimers();
   });
 
+  test('AC-002 exposes the selector capability to the Block and handles its event', async () => {
+    const requestSelector = vi.fn();
+    const source = `
+      export default function AuthFixture({ ctx }) {
+        return <button
+          type="button"
+          onClick={() => ctx.events.emit('authenticator_selector_requested')}
+        >
+          Selector available: {String(ctx.inputs.authenticator_selection_available)}
+        </button>;
+      }
+    `;
+    render(
+      <PublicAuthBlock
+        instance={instance(source)}
+        authenticatorSelector={{ request: requestSelector }}
+        onAuthenticated={vi.fn()}
+        nativeCompiler={compiler(source)}
+      />
+    );
+
+    const shadow = await publicAuthShadow('Selector available: true');
+    fireEvent.click(
+      within(shadow).getByRole('button', { name: 'Selector available: true' })
+    );
+    expect(requestSelector).toHaveBeenCalledOnce();
+  });
+
+  test('AC-003 keeps the selector action inside the bundled fallback form', async () => {
+    const requestSelector = vi.fn();
+    const nativeCompiler = vi.fn().mockResolvedValue({
+      ok: false,
+      diagnostics: []
+    });
+    render(
+      <PublicAuthBlock
+        instance={instance('broken source')}
+        authenticatorSelector={{ request: requestSelector }}
+        onAuthenticated={vi.fn()}
+        nativeCompiler={nativeCompiler}
+      />
+    );
+
+    const fallback = await screen.findByTestId('builtin-password-sign-in');
+    const backButton = within(fallback).getByRole('button', {
+      name: 'Back to other sign-in options'
+    });
+    fireEvent.click(backButton);
+    expect(requestSelector).toHaveBeenCalledOnce();
+    expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+  });
+
   test('AC-002 retries once before switching a builtin password authenticator to the bundled form', async () => {
     const onAuthenticated = vi.fn();
     const nativeCompiler = vi.fn().mockResolvedValue({

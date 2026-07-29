@@ -57,10 +57,34 @@ impl MemoryBootstrapRepository {
             .find(|authenticator| authenticator.id == id)
             .cloned()
     }
+
+    pub async fn seed_authenticator(&self, authenticator: AuthenticatorRecord) {
+        self.inner.authenticators.write().await.push(authenticator);
+    }
 }
 
 #[async_trait]
 impl BootstrapRepository for MemoryBootstrapRepository {
+    async fn replace_authenticator_public_ui_block_if_matches(
+        &self,
+        authenticator_id: Uuid,
+        expected: &str,
+        replacement: &str,
+    ) -> Result<bool> {
+        let mut authenticators = self.inner.authenticators.write().await;
+        let Some(authenticator) = authenticators
+            .iter_mut()
+            .find(|authenticator| authenticator.id == authenticator_id)
+        else {
+            return Ok(false);
+        };
+        if authenticator.public_ui_block != expected {
+            return Ok(false);
+        }
+        authenticator.public_ui_block = replacement.to_string();
+        Ok(true)
+    }
+
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         self.inner
             .authenticator_upserts
@@ -70,7 +94,13 @@ impl BootstrapRepository for MemoryBootstrapRepository {
             .iter_mut()
             .find(|stored| stored.id == authenticator.id)
         {
-            Some(stored) => *stored = authenticator.clone(),
+            Some(stored) => {
+                let saved_public_ui_block = stored.public_ui_block.clone();
+                *stored = authenticator.clone();
+                if !saved_public_ui_block.is_empty() {
+                    stored.public_ui_block = saved_public_ui_block;
+                }
+            }
             None => authenticators.push(authenticator.clone()),
         }
         Ok(())

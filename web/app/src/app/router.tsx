@@ -752,11 +752,21 @@ const frontstageSlugPageTabRoute = createRoute({
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
-  component: () => (
-    <RouteGuard routeId="sign-in">
-      <SignInPage />
-    </RouteGuard>
-  )
+  validateSearch: (search: Record<string, unknown>) => ({
+    authenticator_id:
+      typeof search.authenticator_id === 'string' &&
+      search.authenticator_id.trim().length > 0
+        ? search.authenticator_id
+        : undefined
+  }),
+  component: () => {
+    const { authenticator_id } = signInRoute.useSearch();
+    return (
+      <RouteGuard routeId="sign-in">
+        <SignInPage authenticatorId={authenticator_id} />
+      </RouteGuard>
+    );
+  }
 });
 
 const routeTree = rootRoute.addChildren([

@@ -1,6 +1,69 @@
 use crate::_tests::support::MemoryBootstrapRepository;
 use crate::bootstrap::{BootstrapConfig, BootstrapService};
 
+fn bootstrap_config() -> BootstrapConfig {
+    BootstrapConfig {
+        workspace_name: "1flowbase".into(),
+        root_account: "root".into(),
+        root_email: "root@example.com".into(),
+        root_password_hash: "hash".into(),
+        root_name: "Root".into(),
+        root_nickname: "Root".into(),
+    }
+}
+
+fn saved_password_authenticator(public_ui_block: &str) -> domain::AuthenticatorRecord {
+    domain::AuthenticatorRecord {
+        id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        auth_type: "password-local".into(),
+        title: "Password".into(),
+        enabled: true,
+        is_builtin: true,
+        sort_order: 0,
+        public_ui_block: public_ui_block.to_string(),
+        options: serde_json::json!({}),
+    }
+}
+
+#[tokio::test]
+async fn ac_005_bootstrap_upgrades_only_the_previous_official_password_block() {
+    let previous_repository = MemoryBootstrapRepository::default();
+    previous_repository
+        .seed_authenticator(saved_password_authenticator(
+            crate::auth::public_ui::PREVIOUS_PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
+        ))
+        .await;
+    BootstrapService::new(previous_repository.clone())
+        .run(&bootstrap_config())
+        .await
+        .unwrap();
+    assert_eq!(
+        previous_repository
+            .authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+            .await
+            .unwrap()
+            .public_ui_block,
+        crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK
+    );
+
+    let custom_repository = MemoryBootstrapRepository::default();
+    custom_repository
+        .seed_authenticator(saved_password_authenticator("custom saved block"))
+        .await;
+    BootstrapService::new(custom_repository.clone())
+        .run(&bootstrap_config())
+        .await
+        .unwrap();
+    assert_eq!(
+        custom_repository
+            .authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+            .await
+            .unwrap()
+            .public_ui_block,
+        "custom saved block"
+    );
+}
+
 #[tokio::test]
 async fn bootstrap_service_is_idempotent() {
     let repository = MemoryBootstrapRepository::default();
@@ -70,7 +133,7 @@ async fn bootstrap_service_seeds_password_local_authenticator_options() {
             && field["control"] == "switch"));
     assert_eq!(
         password_local.options["extension_config"],
-        serde_json::json!({})
+        serde_json::json!({ "self_registration_enabled": false })
     );
     assert!(password_local.options.get("name").is_none());
     assert!(password_local.options.get("title").is_none());

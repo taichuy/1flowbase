@@ -1,5 +1,4 @@
 import { Alert, Button, Space, Typography, theme } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -16,7 +15,11 @@ import { PublicAuthBlock } from '../components/PublicAuthBlock';
 
 import './sign-in-page.css';
 
-export function SignInPage() {
+interface SignInPageProps {
+  authenticatorId?: string;
+}
+
+export function SignInPage({ authenticatorId }: SignInPageProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
   const { token } = theme.useToken();
@@ -24,12 +27,11 @@ export function SignInPage() {
   const [loginInstances, setLoginInstances] = useState<PublicLoginInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<string | null>(null);
   const selectedLoginInstance = useMemo(
     () => loginInstances.length === 1
       ? loginInstances[0]
-      : loginInstances.find((item) => item.id === selectedAuthenticatorId) ?? null,
-    [loginInstances, selectedAuthenticatorId]
+      : loginInstances.find((item) => item.id === authenticatorId) ?? null,
+    [authenticatorId, loginInstances]
   );
 
   useEffect(() => {
@@ -38,7 +40,6 @@ export function SignInPage() {
       .then((payload) => {
         if (!active) return;
         setLoginInstances(payload.login_instances);
-        setSelectedAuthenticatorId(null);
         setLoadError(
           payload.login_instances.length === 0 ? t('sign_in.no_login_instances') : null
         );
@@ -46,7 +47,6 @@ export function SignInPage() {
       .catch(() => {
         if (!active) return;
         setLoginInstances([]);
-        setSelectedAuthenticatorId(null);
         setLoadError(t('sign_in.login_instances_load_failed'));
       })
       .finally(() => {
@@ -54,6 +54,35 @@ export function SignInPage() {
       });
     return () => { active = false; };
   }, [t]);
+
+  const requestAuthenticatorSelector = useCallback(() => {
+    void navigate({
+      to: '/sign-in',
+      search: { authenticator_id: undefined },
+      replace: true
+    });
+  }, [navigate]);
+
+  const authenticatorSelector = useMemo(
+    () => loginInstances.length > 1
+      ? { request: requestAuthenticatorSelector }
+      : null,
+    [loginInstances.length, requestAuthenticatorSelector]
+  );
+
+  useEffect(() => {
+    if (loading || loadError || !authenticatorId) return;
+    const pointsToEnabledAuthenticator =
+      loginInstances.length > 1 &&
+      loginInstances.some((instance) => instance.id === authenticatorId);
+    if (!pointsToEnabledAuthenticator) requestAuthenticatorSelector();
+  }, [
+    authenticatorId,
+    loadError,
+    loading,
+    loginInstances,
+    requestAuthenticatorSelector
+  ]);
 
   const handleAuthenticated = useCallback(async (session: {
     csrf_token: string;
@@ -95,7 +124,10 @@ export function SignInPage() {
                 <Button
                   key={instance.id}
                   block
-                  onClick={() => setSelectedAuthenticatorId(instance.id)}
+                  onClick={() => void navigate({
+                    to: '/sign-in',
+                    search: { authenticator_id: instance.id }
+                  })}
                 >
                   {instance.title}
                 </Button>
@@ -103,22 +135,12 @@ export function SignInPage() {
             </Space>
           ) : null}
           {!loading && selectedLoginInstance ? (
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              {loginInstances.length > 1 ? (
-                <Button
-                  aria-label={t('sign_in.back_to_login_options')}
-                  icon={<ArrowLeftOutlined aria-hidden="true" />}
-                  onClick={() => setSelectedAuthenticatorId(null)}
-                  style={{ alignSelf: 'flex-start' }}
-                  type="text"
-                />
-              ) : null}
-              <PublicAuthBlock
-                key={selectedLoginInstance.id}
-                instance={selectedLoginInstance}
-                onAuthenticated={handleAuthenticated}
-              />
-            </Space>
+            <PublicAuthBlock
+              key={selectedLoginInstance.id}
+              instance={selectedLoginInstance}
+              authenticatorSelector={authenticatorSelector}
+              onAuthenticated={handleAuthenticated}
+            />
           ) : null}
         </Space>
 

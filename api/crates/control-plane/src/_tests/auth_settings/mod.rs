@@ -63,6 +63,14 @@ fn simple_operation(operation_id: &str) -> domain::ConsoleOperationPolicy {
     )
 }
 
+#[test]
+fn ac_004_password_local_default_block_owns_the_authenticator_selector_action() {
+    let source = crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK;
+    assert!(source.contains("authenticator_selection_available"));
+    assert!(source.contains("authenticator_selector_requested"));
+    assert!(source.contains("ArrowLeftOutlined"));
+}
+
 #[tokio::test]
 async fn backend_only_provider_seeds_new_authenticator_with_its_schema_and_default_block() {
     let repository = MemoryAuthRepository::root_user(None);

@@ -41,6 +41,7 @@ type PublicAuthAttempt = 0 | 1;
 
 export interface PublicAuthBlockProps {
   instance: PublicLoginInstance;
+  authenticatorSelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
@@ -66,6 +67,7 @@ type PublicAuthRenderSnapshot =
 
 export function PublicAuthBlock({
   instance,
+  authenticatorSelector = null,
   onAuthenticated,
   nativeCompiler = compileNativeReactComponentInBrowser,
   nativeCompilerWorkerFactory,
@@ -156,6 +158,14 @@ export function PublicAuthBlock({
             isCurrentInstance: () =>
               activeInstanceRef.current === activeInstance,
             outputs: unavailable.outputs,
+            emitEvent: ({ name }) => {
+              if (
+                name === 'authenticator_selector_requested' &&
+                authenticatorSelector
+              ) {
+                authenticatorSelector.request();
+              }
+            },
             interfaceHandler: async (effect) => {
               const response = await dispatchPublicAuthApi(
                 effect.method,
@@ -181,7 +191,8 @@ export function PublicAuthBlock({
               application: null,
               inputs: createPublicAuthInputs(
                 instance.id,
-                instance.public_variables
+                instance.public_variables,
+                Boolean(authenticatorSelector)
               ),
               ...capabilities
             },
@@ -201,6 +212,7 @@ export function PublicAuthBlock({
     },
     [
       block,
+      authenticatorSelector,
       builtinPasswordFallbackEligible,
       instance,
       nativeCompiler,
@@ -252,6 +264,7 @@ export function PublicAuthBlock({
       {builtinPasswordFallbackVisible ? (
         <BuiltinPasswordSignIn
           authenticatorId={instance.id}
+          authenticatorSelector={authenticatorSelector}
           onAuthenticated={onAuthenticated}
         />
       ) : null}

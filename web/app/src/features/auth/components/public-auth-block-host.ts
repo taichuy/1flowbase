@@ -13,10 +13,12 @@ import { getAuthApiBaseUrl } from '../api/session';
 
 export function createPublicAuthInputs(
   authenticatorId: string,
-  publicVariables: Record<string, unknown>
+  publicVariables: Record<string, unknown>,
+  authenticatorSelectionAvailable = false
 ): Record<string, unknown> {
   return {
     authenticator_id: authenticatorId,
+    authenticator_selection_available: authenticatorSelectionAvailable,
     public_variables: publicVariables
   };
 }

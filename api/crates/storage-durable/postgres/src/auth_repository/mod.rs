@@ -145,6 +145,29 @@ async fn find_user_by_account(pool: &PgPool, account: &str) -> Result<Option<Use
 
 #[async_trait]
 impl BootstrapRepository for PgControlPlaneStore {
+    async fn replace_authenticator_public_ui_block_if_matches(
+        &self,
+        authenticator_id: Uuid,
+        expected: &str,
+        replacement: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            update authenticators
+            set public_ui_block = $3,
+                updated_at = now()
+            where id = $1
+              and public_ui_block = $2
+            "#,
+        )
+        .bind(authenticator_id)
+        .bind(expected)
+        .bind(replacement)
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         sqlx::query(
             r#"

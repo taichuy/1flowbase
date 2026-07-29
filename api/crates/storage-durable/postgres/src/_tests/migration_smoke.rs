@@ -996,6 +996,69 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
 }
 
 #[tokio::test]
+async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_block() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let mut authenticator = domain::AuthenticatorRecord {
+        id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        auth_type: "password-local".into(),
+        title: "Password".into(),
+        enabled: true,
+        is_builtin: true,
+        sort_order: 0,
+        public_ui_block: "previous official block".into(),
+        options: serde_json::json!({}),
+    };
+    store.upsert_authenticator(&authenticator).await.unwrap();
+
+    let replaced = control_plane::ports::BootstrapRepository::
+        replace_authenticator_public_ui_block_if_matches(
+            &store,
+            authenticator.id,
+            "previous official block",
+            "current official block",
+        )
+        .await
+        .unwrap();
+    assert!(replaced);
+    assert_eq!(
+        store
+            .find_authenticator(authenticator.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .public_ui_block,
+        "current official block"
+    );
+
+    authenticator.public_ui_block = "custom saved block".into();
+    store
+        .update_authenticator_config(&authenticator)
+        .await
+        .unwrap();
+    let replaced = control_plane::ports::BootstrapRepository::
+        replace_authenticator_public_ui_block_if_matches(
+            &store,
+            authenticator.id,
+            "previous official block",
+            "another official block",
+        )
+        .await
+        .unwrap();
+    assert!(!replaced);
+    assert_eq!(
+        store
+            .find_authenticator(authenticator.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .public_ui_block,
+        "custom saved block"
+    );
+}
+
+#[tokio::test]
 async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();

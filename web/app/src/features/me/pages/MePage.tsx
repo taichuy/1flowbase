@@ -73,7 +73,10 @@ export function MePage({
     },
     onSuccess: async () => {
       setAnonymous();
-      await navigate({ to: '/sign-in' });
+      await navigate({
+        to: '/sign-in',
+        search: { authenticator_id: undefined }
+      });
     }
   });
 
