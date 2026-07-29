@@ -7,7 +7,7 @@
     },
     "officialPlugins": {
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-official-providers",
-      "revision": "463a7332fbf3778c462b2943acaa700e6d432055"
+      "revision": "ba1a692b483c15fa67616ea882a95e6acd736a08"
     },
     "protectedMain": {
       "path": "/home/taichuy/git/1flowbase",
@@ -44,7 +44,7 @@
     },
     "openaiPackage": {
       "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
-      "filename_pattern": "^1flowbase@openai@0\\.2\\.21@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
+      "filename_pattern": "^1flowbase@openai@0\\.2\\.22@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "anthropicPackage": {
       "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
