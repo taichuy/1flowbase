@@ -7,6 +7,9 @@ use uuid::Uuid;
 const MIGRATION_VERSION: i64 = 20260728120000;
 const MIGRATION_SQL: &str =
     include_str!("../../migrations/20260728120000_restore_legacy_protocol_context_defaults.sql");
+const COMPATIBILITY_BACKFILL_VERSION: i64 = 20260729090000;
+const COMPATIBILITY_BACKFILL_SQL: &str =
+    include_str!("../../migrations/20260729090000_backfill_responses_compatibility_mode.sql");
 
 struct SeededFlow {
     application_id: Uuid,
@@ -31,6 +34,18 @@ fn before_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
         .iter()
         .filter(|migration| migration.version < MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+fn before_compatibility_backfill_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < COMPATIBILITY_BACKFILL_VERSION)
         .cloned()
         .collect::<Vec<_>>();
     Migrator {
@@ -506,4 +521,183 @@ async fn protocol_context_migration_restores_only_unambiguous_legacy_missing_def
             .await
             .unwrap();
     assert_eq!(unpublished_after_second_run, migrated_unpublished);
+}
+
+async fn seed_compatibility_backfill_run(
+    store: &PgControlPlaneStore,
+    seeded: &SeededFlow,
+    user_id: Uuid,
+    input_payload: serde_json::Value,
+    compatibility_mode: Option<&str>,
+) -> Uuid {
+    let flow_run_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into flow_runs (
+            id, application_id, flow_id, flow_draft_id, compiled_plan_id,
+            run_mode, status, input_payload, created_by, compatibility_mode,
+            started_at, created_at, updated_at, title, scope_id
+        ) values (
+            $1, $2, $3, $4, $5, 'published_api_run', 'failed', $6, $7, $8,
+            now(), now(), now(), 'Compatibility backfill fixture',
+            (select scope_id from applications where id = $2)
+        )
+        "#,
+    )
+    .bind(flow_run_id)
+    .bind(seeded.application_id)
+    .bind(seeded.flow_id)
+    .bind(seeded.draft_id)
+    .bind(seeded.compiled_plan_id)
+    .bind(input_payload)
+    .bind(user_id)
+    .bind(compatibility_mode)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        insert into application_run_log_summaries (
+            flow_run_id, application_id, run_mode, status, title, input_payload,
+            compatibility_mode, started_at, created_at, updated_at, scope_id
+        ) select
+            id, application_id, run_mode, status, title, input_payload,
+            compatibility_mode, started_at, created_at, updated_at, scope_id
+        from flow_runs where id = $1
+        "#,
+    )
+    .bind(flow_run_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        insert into application_run_trace_projection_statuses (
+            flow_run_id, projection_version, status, source_watermark,
+            id, scope_id, created_by, updated_by
+        ) values (
+            $1, 1, 'succeeded', 'before-backfill', $2,
+            (select scope_id from flow_runs where id = $1), $3, $3
+        )
+        "#,
+    )
+    .bind(flow_run_id)
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    flow_run_id
+}
+
+#[tokio::test]
+async fn compatibility_backfill_uses_only_server_owned_responses_evidence() {
+    let database = isolated_database().await;
+    let pool = database.pool().clone();
+    before_compatibility_backfill_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let (workspace_id, user_id) = seed_owner(&store).await;
+    let document = snapshot(serde_json::json!([]), "compatibility-backfill");
+    let plan = serde_json::json!({"nodes": {}});
+    let seeded = seed_flow(&store, workspace_id, user_id, &document, &plan).await;
+
+    let eligible = seed_compatibility_backfill_run(
+        &store,
+        &seeded,
+        user_id,
+        serde_json::json!({
+            "sys": {"public_provider_transport": {"protocol": "openai_responses"}}
+        }),
+        None,
+    )
+    .await;
+    let client_claim_only = seed_compatibility_backfill_run(
+        &store,
+        &seeded,
+        user_id,
+        serde_json::json!({
+            "__client_protocol_envelope": {"source_protocol": "openai_responses"}
+        }),
+        None,
+    )
+    .await;
+    let existing_mode = seed_compatibility_backfill_run(
+        &store,
+        &seeded,
+        user_id,
+        serde_json::json!({
+            "sys": {"public_provider_transport": {"protocol": "openai_responses"}}
+        }),
+        Some("anthropic-messages-v1"),
+    )
+    .await;
+
+    assert!(COMPATIBILITY_BACKFILL_SQL.contains("import_job_id is null"));
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let modes = sqlx::query_as::<_, (Uuid, Option<String>, Option<String>, String)>(
+        r#"
+        select runs.id, runs.compatibility_mode, summaries.compatibility_mode, statuses.status
+        from flow_runs runs
+        join application_run_log_summaries summaries on summaries.flow_run_id = runs.id
+        join application_run_trace_projection_statuses statuses
+          on statuses.flow_run_id = runs.id and statuses.projection_version = 1
+        where runs.id = any($1)
+        order by runs.id
+        "#,
+    )
+    .bind(vec![eligible, client_claim_only, existing_mode])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    let row = |id| modes.iter().find(|row| row.0 == id).unwrap();
+    assert_eq!(row(eligible).1.as_deref(), Some("openai-responses-v1"));
+    assert_eq!(row(eligible).2.as_deref(), Some("openai-responses-v1"));
+    assert_eq!(row(eligible).3, "stale");
+    assert_eq!(row(client_claim_only).1, None);
+    assert_eq!(row(client_claim_only).2, None);
+    assert_eq!(row(client_claim_only).3, "succeeded");
+    assert_eq!(
+        row(existing_mode).1.as_deref(),
+        Some("anthropic-messages-v1")
+    );
+    assert_eq!(
+        row(existing_mode).2.as_deref(),
+        Some("anthropic-messages-v1")
+    );
+    assert_eq!(row(existing_mode).3, "succeeded");
+
+    sqlx::raw_sql(COMPATIBILITY_BACKFILL_SQL)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after_second_run: (Option<String>, Option<String>, String) = sqlx::query_as(
+        r#"
+        select runs.compatibility_mode, summaries.compatibility_mode, statuses.status
+        from flow_runs runs
+        join application_run_log_summaries summaries on summaries.flow_run_id = runs.id
+        join application_run_trace_projection_statuses statuses
+          on statuses.flow_run_id = runs.id and statuses.projection_version = 1
+        where runs.id = $1
+        "#,
+    )
+    .bind(eligible)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        after_second_run,
+        (
+            Some("openai-responses-v1".to_string()),
+            Some("openai-responses-v1".to_string()),
+            "stale".to_string()
+        )
+    );
 }
