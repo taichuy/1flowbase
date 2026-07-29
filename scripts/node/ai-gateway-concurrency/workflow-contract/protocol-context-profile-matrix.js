@@ -191,7 +191,9 @@ async function sendMatrixRequest(row, target, rawCanary, fetchImpl) {
   parser.finish();
   const terminal = SUCCESS_TERMINAL[row.transport];
   if (eventTypes.filter((type) => type === terminal).length !== 1) {
-    throw new Error(`${row.id} did not emit exactly one ${terminal}`);
+    throw new Error(
+      `${row.id} did not emit exactly one ${terminal}; observed ${JSON.stringify(eventTypes.slice(-20))}`,
+    );
   }
   const uniqueIds = [...new Set(protocolIds)];
   if (uniqueIds.length !== 1) throw new Error(`${row.id} did not expose one stable protocol id`);
