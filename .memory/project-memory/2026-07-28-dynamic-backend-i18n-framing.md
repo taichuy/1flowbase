@@ -15,8 +15,8 @@ match_when:
   - 设计多语言初始化、更新、还原或浏览器缓存
   - 判断是否迁移前端静态 i18n
 created_at: 2026-07-28 16
-updated_at: 2026-07-29 16
-last_verified_at: 2026-07-29 16
+updated_at: 2026-07-29 18
+last_verified_at: 2026-07-29 18
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1488
@@ -56,8 +56,9 @@ scope:
 - 已确认：英文文案变化按“新 key + 旧 key obsolete”处理，不增加隐式 alias。
 - 已确认：全局“还原默认配置”保留管理员新增的 custom key；custom key 删除是独立破坏性动作。
 - 在线计划真值：Issue Tree Root #1488，D1 #1489、D2 #1490、D3 #1491；实现与 QA 已完成，等待用户验收，不自动关闭 Root。
-- 执行状态：official `main` 已推送 `69754721577e1d0af0e540a4bd2ee073ea110661` 并发布 tag `i18n-catalog-v1.2.0`；主仓 `beta` 已推送 Seed 修复与 PR 门禁 commit `b76f93b4d89a80d3c1245431f4266a792a462e42`。
+- 执行状态：official `main` 已推送 `69754721577e1d0af0e540a4bd2ee073ea110661` 并发布 tag `i18n-catalog-v1.2.0`；主仓 `beta` 已推送 Seed 修复/PR 门禁 `b76f93b4d89a80d3c1245431f4266a792a462e42` 与惰性启动加载 `c69ba94170c923916dc7f271055ba2e3a345f69c`。
 - 2026-07-29 Seed 事故结论：主仓手改生成 Seed 但未同步文件/语义摘要和官方 provenance，api-server 启动 fail-fast，导致 Vite 代理 `login-instances` 返回 502，`/sign-in` 回退为空发现状态。修复方式是从 official publisher 生成 1.2.0、同步固定 commit/release metadata，并用数据库无关 Rust Seed 门禁阻止再次手改。
-- 修复后运行证据：Seed 摘要/覆盖门禁通过；Vite 代理 `login-instances` 返回 200 和 3 个既有登录实例；热重启前后身份、默认项与顺序一致；SignInPage 定向测试 6/6。未清库、未还原翻译覆盖、未改变 runtime fail-fast。
+- 运行时边界校正：启动先检查 root workspace 是否已有 active catalog release；已有时完全跳过内嵌 Seed loader，缺失时才校验并通过既有事务原子导入。PR/构建 Seed 门禁保留；管理员在线更新和还原语义不变。
+- 修复后运行证据：Seed 摘要/覆盖门禁通过；惰性 loader 测试 2/2、Bootstrap 回归 12/12、PostgreSQL 全新/升级/热重启场景通过；Vite 代理 `login-instances` 返回 200 和 3 个既有登录实例，热重启前后身份、默认项与顺序一致。未清库、未还原翻译覆盖。
 - QA-5：official publisher 15/15；api-server i18n 22/22；storage 13/13；domain 4/4；control-plane 13/13；access-control 18/18；orchestration 6/6；app 39/39；API client 177/177；flow-schema 41/41；Chromium 动态筛选与 Settings desktop/mobile style-boundary 通过；i18n hygiene 0 errors。console route hygiene 仅保留与 beta 相同的 2 个既有 middleware errors，#1488 新增差异为 0。
 - 边界校正：Settings 导航与 Settings feature permission DTO 继续返回静态 `label_key`；角色策略、接口 summary/description 和其他已冻结 backend consumer 使用独立 English msgid 动态投影，前端静态 locale 不迁移。
