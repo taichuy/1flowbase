@@ -642,7 +642,7 @@ fn validate_response_transport_fields(
         "$",
         unknown_fields,
         TranslationDecisionKind::Exact,
-        "preserved only in native Responses provider transport",
+        "preserved in the protocol context envelope for a declared Provider profile",
         TranslationSafeRepresentation::Redacted,
     );
     Ok(())
@@ -653,27 +653,6 @@ fn responses_transport_requirement(
 ) -> crate::application_public_api::native::ResponsesTransportRequirement {
     use crate::application_public_api::native::ResponsesTransportRequirement;
 
-    let has_native_only_top_level_extension = object.keys().any(|field| {
-        !matches!(
-            field.as_str(),
-            "model"
-                | "input"
-                | "instructions"
-                | "stream"
-                | "user"
-                | "metadata"
-                | "max_output_tokens"
-                | "store"
-                | "previous_response_id"
-                | "tools"
-                | "tool_choice"
-                | "parallel_tool_calls"
-                | "reasoning"
-                | "include"
-                | "prompt_cache_key"
-                | "client_metadata"
-        )
-    });
     let has_native_only_tools = object
         .get("tools")
         .and_then(Value::as_array)
@@ -688,8 +667,7 @@ fn responses_transport_requirement(
         || object.get("parallel_tool_calls").and_then(Value::as_bool) == Some(true)
         || object.get("include").is_some();
 
-    if has_native_only_top_level_extension
-        || has_native_only_tools
+    if has_native_only_tools
         || has_native_only_tool_choice
         || has_native_only_input
         || has_native_only_execution_hint
@@ -3103,7 +3081,7 @@ mod tests {
     }
 
     #[test]
-    fn d4_ac_001_responses_classifier_marks_opaque_tools_choices_items_and_extensions_native() {
+    fn d4_ac_001_responses_classifier_marks_opaque_tools_choices_items_and_hints_native() {
         for request in [
             json!({
                 "model": "1flowbase",
@@ -3118,11 +3096,6 @@ mod tests {
             json!({
                 "model": "1flowbase",
                 "input": [{"type": "item_reference", "id": "item_1"}]
-            }),
-            json!({
-                "model": "1flowbase",
-                "input": "hi",
-                "future_responses_extension": {"opaque": true}
             }),
             json!({
                 "model": "1flowbase",
@@ -3147,6 +3120,31 @@ mod tests {
                 crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
             );
         }
+    }
+
+    #[test]
+    fn ac_016_safe_unknown_responses_extension_stays_optional_protocol_context() {
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hi",
+            "future_responses_extension": {"opaque": true}
+        }))
+        .expect("safe unknown Responses fields should remain optional protocol context");
+
+        assert_eq!(
+            translated.request.metadata.responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        );
+        assert!(translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .is_none());
+        assert_eq!(
+            translated.request.client_protocol_envelope.unwrap().body["future_responses_extension"]
+                ["opaque"],
+            true
+        );
     }
 
     #[test]
