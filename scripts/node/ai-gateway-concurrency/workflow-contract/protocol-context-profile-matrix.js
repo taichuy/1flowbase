@@ -101,11 +101,8 @@ function jsonSha256(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function expectedUrlDigest(pathname, rawCanary, restored) {
-  const normalized = restored
-    ? `${pathname}?fixture_query=${encodeURIComponent(rawCanary)}`
-    : pathname;
-  return jsonSha256(normalized);
+function restoredUrlDigest(pathname, rawCanary) {
+  return jsonSha256(`${pathname}?fixture_query=${encodeURIComponent(rawCanary)}`);
 }
 
 function assertTypedSystem(row, arrival) {
@@ -142,11 +139,13 @@ function assertProfileProjection(row, arrival, rawCanary, upstreamModel) {
     'x-fixture-profile',
   );
   const actualUrlDigest = arrival.request?.fidelity_fixture?.url_sha256;
-  const expectedDigest = expectedUrlDigest(expectedPath, rawCanary, row.residual_restored);
   if (bodyHasResidual !== row.residual_restored || headerHasResidual !== row.residual_restored) {
     throw new Error(`${row.id} residual body/header projection did not match the declared Profile`);
   }
-  if (actualUrlDigest !== expectedDigest) {
+  const queryProjectionMatches = row.residual_restored
+    ? actualUrlDigest === restoredUrlDigest(expectedPath, rawCanary)
+    : actualUrlDigest === undefined;
+  if (!queryProjectionMatches) {
     throw new Error(`${row.id} residual query projection did not match the declared Profile`);
   }
 }

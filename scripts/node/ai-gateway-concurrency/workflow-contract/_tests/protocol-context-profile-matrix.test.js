@@ -19,10 +19,14 @@ function arrival({ path, model, keys, messageCount, url, header = false }) {
     request: {
       path,
       body: { model, keys, ...(messageCount === undefined ? {} : { messageCount }) },
-      fidelity_fixture: {
-        url_sha256: sha256(url),
-        header_sha256: header ? { 'x-fixture-profile': 'digest-only' } : {},
-      },
+      ...(url === undefined
+        ? {}
+        : {
+          fidelity_fixture: {
+            url_sha256: sha256(url),
+            header_sha256: header ? { 'x-fixture-profile': 'digest-only' } : {},
+          },
+        }),
     },
   };
 }
@@ -81,7 +85,6 @@ test('AC-014/016: mismatched Anthropic Profile is omitted while system becomes R
       path,
       model: 'gateway-fixture-model',
       keys: ['input', 'instructions', 'model', 'stream'],
-      url: path,
     }),
     rawCanary,
     'gateway-fixture-model',
@@ -117,4 +120,15 @@ test('AC-014 controlled negatives: wrong residual projection or lost Typed syste
     'omitted-residual',
     'gateway-fixture-model',
   ), /dropped Typed Native system/u);
+  assert.throws(() => assertProfileProjection(
+    omitted,
+    arrival({
+      path: '/v1/messages',
+      model: 'gateway-fixture-model',
+      keys: ['messages', 'model', 'stream', 'system'],
+      url: '/v1/messages?fixture_query=leaked-residual',
+    }),
+    'leaked-residual',
+    'gateway-fixture-model',
+  ), /residual query projection/u);
 });
