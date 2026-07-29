@@ -1,4 +1,5 @@
 import { Alert, Button, Space, Typography, theme } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -105,12 +106,12 @@ export function SignInPage() {
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               {loginInstances.length > 1 ? (
                 <Button
-                  type="link"
-                  style={{ alignSelf: 'flex-start', paddingInline: 0 }}
+                  aria-label={t('sign_in.back_to_login_options')}
+                  icon={<ArrowLeftOutlined aria-hidden="true" />}
                   onClick={() => setSelectedAuthenticatorId(null)}
-                >
-                  {t('sign_in.back_to_login_options')}
-                </Button>
+                  style={{ alignSelf: 'flex-start' }}
+                  type="text"
+                />
               ) : null}
               <PublicAuthBlock
                 key={selectedLoginInstance.id}
