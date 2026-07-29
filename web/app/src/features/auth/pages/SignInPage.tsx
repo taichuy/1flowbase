@@ -25,7 +25,9 @@ export function SignInPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<string | null>(null);
   const selectedLoginInstance = useMemo(
-    () => loginInstances.find((item) => item.id === selectedAuthenticatorId) ?? loginInstances[0] ?? null,
+    () => loginInstances.length === 1
+      ? loginInstances[0]
+      : loginInstances.find((item) => item.id === selectedAuthenticatorId) ?? null,
     [loginInstances, selectedAuthenticatorId]
   );
 
@@ -35,9 +37,7 @@ export function SignInPage() {
       .then((payload) => {
         if (!active) return;
         setLoginInstances(payload.login_instances);
-        setSelectedAuthenticatorId(
-          payload.default_authenticator_id ?? payload.login_instances[0]?.id ?? null
-        );
+        setSelectedAuthenticatorId(null);
         setLoadError(
           payload.login_instances.length === 0 ? t('sign_in.no_login_instances') : null
         );
@@ -88,12 +88,11 @@ export function SignInPage() {
       >
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {loadError ? <Alert type="error" message={loadError} showIcon /> : null}
-          {loginInstances.length > 1 ? (
+          {loginInstances.length > 1 && !selectedLoginInstance ? (
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               {loginInstances.map((instance) => (
                 <Button
                   key={instance.id}
-                  type={selectedLoginInstance?.id === instance.id ? 'primary' : 'default'}
                   block
                   onClick={() => setSelectedAuthenticatorId(instance.id)}
                 >
@@ -103,11 +102,22 @@ export function SignInPage() {
             </Space>
           ) : null}
           {!loading && selectedLoginInstance ? (
-            <PublicAuthBlock
-              key={selectedLoginInstance.id}
-              instance={selectedLoginInstance}
-              onAuthenticated={handleAuthenticated}
-            />
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              {loginInstances.length > 1 ? (
+                <Button
+                  type="link"
+                  style={{ alignSelf: 'flex-start', paddingInline: 0 }}
+                  onClick={() => setSelectedAuthenticatorId(null)}
+                >
+                  {t('sign_in.back_to_login_options')}
+                </Button>
+              ) : null}
+              <PublicAuthBlock
+                key={selectedLoginInstance.id}
+                instance={selectedLoginInstance}
+                onAuthenticated={handleAuthenticated}
+              />
+            </Space>
           ) : null}
         </Space>
 

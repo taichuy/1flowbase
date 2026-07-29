@@ -3,6 +3,7 @@
     "product_tagline": "AI app base begins from chat history."
   },
   "sign_in": {
+    "back_to_login_options": "Back to other sign-in options",
     "fallback_authentication_failed": "Authentication failed. Check your account and password and try again.",
     "fallback_identifier_label": "Account or email",
     "fallback_password_label": "Password",
