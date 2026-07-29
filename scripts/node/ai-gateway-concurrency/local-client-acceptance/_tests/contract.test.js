@@ -112,6 +112,28 @@ test('AC-017 fixes the finite three-client by three-provider target matrix', () 
   }
 });
 
+test('AC-017 disables Claude thinking only for the OpenAI-compatible Git canary', () => {
+  const compatible = buildClientPlan(
+    'claude',
+    '/machine/claude',
+    { ...target, provider: 'openai_compatible' },
+    paths,
+    MEANINGFUL_GIT_VECTOR,
+    'anthropic_sse',
+  );
+  const anthropic = buildClientPlan(
+    'claude',
+    '/machine/claude',
+    { ...target, provider: 'anthropic' },
+    paths,
+    MEANINGFUL_GIT_VECTOR,
+    'anthropic_sse',
+  );
+
+  assert.equal(compatible.environment.CLAUDE_CODE_DISABLE_THINKING, '1');
+  assert.equal(anthropic.environment.CLAUDE_CODE_DISABLE_THINKING, undefined);
+});
+
 test('AC-009 selects only an available tmux or ACP-headless surface', () => {
   assert.deepEqual(selectExecutionSurface('auto', { tmux: true, acpHeadless: false }), {
     status: 'selected', surface: 'tmux', reason: 'available',

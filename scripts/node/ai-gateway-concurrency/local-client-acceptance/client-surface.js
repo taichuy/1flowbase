@@ -271,13 +271,6 @@ function evaluateToolSurface(client, vector, surface) {
   const codexParallelCompletionEvidence = paired
     && client === 'codex'
     && vector.expected.tool_mode === 'parallel_one_callback_task';
-  const claudeGitCallEvidence = client === 'claude'
-    && vector.expected.tool_mode === 'meaningful_git_workflow'
-    && calls.length === expectedCallCount
-    && results.length === 0
-    && markers.every((marker, index) => (
-      nestedStrings(calls[index]?.value).some((value) => value.includes(marker))
-    ));
   let chronology = false;
   if (!codexParallelCompletionEvidence
     && paired && [
@@ -294,11 +287,9 @@ function evaluateToolSurface(client, vector, surface) {
   } else if (!codexParallelCompletionEvidence && paired) {
     chronology = callsById.get(markedResults[0].id).index < markedResults[0].index;
   }
-  const lastResultIndex = claudeGitCallEvidence
-    ? Math.max(...calls.map((call) => call.index))
-    : markedResults.every(Boolean)
-      ? Math.max(...markedResults.map((result) => result.index))
-      : -1;
+  const lastResultIndex = markedResults.every(Boolean)
+    ? Math.max(...markedResults.map((result) => result.index))
+    : -1;
   const finalMarker = vector.expected.assistant_texts.at(-1);
   const final = surface.assistantTexts.find(({ index, text }) => (
     index > lastResultIndex && text.includes(finalMarker)
@@ -306,8 +297,7 @@ function evaluateToolSurface(client, vector, surface) {
   const terminalAfterFinal = Boolean(final)
     && surface.terminal.observed
     && surface.terminal.index > final.index;
-  const pass = (claudeGitCallEvidence
-    || (paired && (chronology || codexParallelCompletionEvidence)))
+  const pass = paired && (chronology || codexParallelCompletionEvidence)
     && terminalAfterFinal;
   const observed = [];
   if (calls.length === expectedCallCount) observed.push('tool_calls_observed');
@@ -315,7 +305,6 @@ function evaluateToolSurface(client, vector, surface) {
     observed.push('tool_results_observed');
   }
   if (codexParallelCompletionEvidence) observed.push('codex_tool_completion_evidence_observed');
-  else if (claudeGitCallEvidence) observed.push('claude_git_callbacks_owned_by_mock_evidence');
   else if (chronology) observed.push(`${vector.expected.tool_mode}_observed`);
   if (final) observed.push('final_marker_observed');
   if (terminalAfterFinal) observed.push('client_terminal_observed');

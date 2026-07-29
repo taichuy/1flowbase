@@ -307,10 +307,9 @@ function gatewayExecutorProbeUrl(body) {
 function requestedResponsesTool(body) {
   const names = (Array.isArray(body.tools) ? body.tools : [])
     .filter((tool) => tool?.type === 'function')
-    .map((tool) => tool.name ?? tool.function?.name);
-  if (names.includes('shell_command')) return 'shell_command';
-  if (names.includes('read')) return 'read';
-  return 'shell_command';
+    .map((tool) => tool.name ?? tool.function?.name)
+    .filter((name) => typeof name === 'string' && name.length > 0);
+  return names[0] ?? 'shell_command';
 }
 
 function wireAuditVectorFromBody(body) {

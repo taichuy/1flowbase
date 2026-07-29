@@ -60,6 +60,7 @@ const OPENAI_RESPONSES_TYPED_ROOT_FIELDS: &[&str] = &[
     "max_tool_calls",
     "truncation",
 ];
+const OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD: &str = "responses_optional_tools";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiCompatError {
@@ -659,10 +660,18 @@ fn responses_transport_requirement(
             "response_format" | "text" | "background" | "max_tool_calls" | "truncation"
         )
     });
-    let has_native_only_tools = object
-        .get("tools")
-        .and_then(Value::as_array)
-        .is_some_and(|tools| tools.iter().any(responses_tool_requires_native_passthrough));
+    let may_omit_unsupported_optional_tools = responses_may_omit_unsupported_optional_tools(object);
+    let has_native_only_tools =
+        object
+            .get("tools")
+            .and_then(Value::as_array)
+            .is_some_and(|tools| {
+                tools.iter().any(|tool| {
+                    !(may_omit_unsupported_optional_tools
+                        && responses_tool_is_unsupported_optional(tool))
+                        && responses_tool_requires_native_passthrough(tool)
+                })
+            });
     let has_native_only_tool_choice = object
         .get("tool_choice")
         .is_some_and(responses_tool_choice_requires_native_passthrough);
@@ -690,6 +699,41 @@ fn responses_transport_requirement(
     } else {
         ResponsesTransportRequirement::SemanticCompatible
     }
+}
+
+fn responses_may_omit_unsupported_optional_tools(object: &Map<String, Value>) -> bool {
+    object
+        .get("tool_choice")
+        .is_none_or(responses_tool_choice_allows_optional_omission)
+}
+
+fn responses_omitted_optional_tools(object: &Map<String, Value>) -> Vec<Value> {
+    if !responses_may_omit_unsupported_optional_tools(object) {
+        return Vec::new();
+    }
+    object
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|tool| responses_tool_is_unsupported_optional(tool))
+        .cloned()
+        .collect()
+}
+
+fn responses_tool_choice_allows_optional_omission(choice: &Value) -> bool {
+    match choice {
+        Value::String(choice) => matches!(choice.as_str(), "auto" | "none"),
+        Value::Object(choice) => choice.get("type").and_then(Value::as_str) == Some("function"),
+        _ => false,
+    }
+}
+
+fn responses_tool_is_unsupported_optional(tool: &Value) -> bool {
+    tool.as_object()
+        .and_then(|tool| tool.get("type"))
+        .and_then(Value::as_str)
+        .is_some_and(|kind| matches!(kind, "namespace" | "web_search"))
 }
 
 fn responses_tool_requires_native_passthrough(tool: &Value) -> bool {
@@ -1128,6 +1172,18 @@ fn openai_inputs(
                 );
                 continue;
             }
+            if tool_mapping == OpenAiToolMapping::ResponsesSemantic
+                && tool.get("type").and_then(Value::as_str) != Some("function")
+            {
+                report.record(
+                    &format!("$.tools[{index}]"),
+                    Some("$.client_protocol_envelope.body.responses_optional_tools[]"),
+                    TranslationDecisionKind::Exact,
+                    Some("unsupported optional Responses tool retained in protocol context"),
+                    TranslationSafeRepresentation::Redacted,
+                );
+                continue;
+            }
             let function = if tool_mapping == OpenAiToolMapping::ChatCompletions {
                 if tool.get("type").and_then(Value::as_str) != Some("function") {
                     return Err(OpenAiCompatError::invalid(
@@ -1225,6 +1281,22 @@ fn openai_inputs(
                     OpenAiCompatError::invalid("tool_choice", "tool_choice name is required")
                         .with_report(report.clone())
                 })?;
+                if tool_mapping == OpenAiToolMapping::ResponsesSemantic
+                    && !inputs
+                        .get("tools")
+                        .and_then(Value::as_array)
+                        .is_some_and(|tools| {
+                            tools
+                                .iter()
+                                .any(|tool| tool.get("name").and_then(Value::as_str) == Some(name))
+                        })
+                {
+                    return Err(OpenAiCompatError::invalid(
+                        "tool_choice",
+                        "tool_choice must select a declared function tool",
+                    )
+                    .with_report(report.clone()));
+                }
                 json!({ "type": "tool", "name": name })
             }
             _ => {
@@ -3070,7 +3142,8 @@ mod tests {
             json!({
                 "model": "1flowbase",
                 "input": "hi",
-                "tools": [{"type": "web_search_preview"}]
+                "tools": [{"type": "web_search_preview"}],
+                "tool_choice": "required"
             }),
             json!({
                 "model": "1flowbase",
@@ -3104,6 +3177,111 @@ mod tests {
                 crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
             );
         }
+    }
+
+    #[test]
+    fn ac_017_codex_optional_hosted_tools_stay_in_context_without_binding_transport() {
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": [{"type": "message", "role": "user", "content": "inspect git"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "exec_command",
+                    "description": "Run a command",
+                    "parameters": {"type": "object"},
+                    "strict": false
+                },
+                {"type": "namespace", "name": "multi_agent_v1"},
+                {"type": "web_search"}
+            ],
+            "tool_choice": "auto",
+            "parallel_tool_calls": false,
+            "store": false,
+            "include": []
+        }))
+        .expect("optional Codex hosted tools should not bind a cross-provider request");
+
+        assert_eq!(
+            translated.request.metadata.responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        );
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"][0]["name"],
+            "exec_command"
+        );
+        assert!(translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .is_none());
+        let envelope = translated
+            .request
+            .client_protocol_envelope
+            .expect("omitted tools remain available to a matching Provider profile");
+        assert_eq!(
+            envelope.body[OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            envelope.body[OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD][0]["type"],
+            "namespace"
+        );
+        assert_eq!(
+            envelope.body[OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD][1]["type"],
+            "web_search"
+        );
+        assert!(translated
+            .report
+            .has_decision("$.tools[1]", TranslationDecisionKind::Exact));
+        assert!(translated
+            .report
+            .has_decision("$.tools[2]", TranslationDecisionKind::Exact));
+    }
+
+    #[test]
+    fn ac_017_explicit_hosted_tool_choice_remains_native_passthrough() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "search",
+            "tools": [{"type": "web_search"}],
+            "tool_choice": {"type": "web_search"}
+        }))
+        .expect("an explicitly selected hosted tool remains a native operation");
+
+        assert_eq!(
+            translated
+                .request
+                .metadata
+                .responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+        );
+    }
+
+    #[test]
+    fn ac_017_explicit_function_choice_must_select_a_projected_function() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "delegate",
+            "tools": [
+                {"type": "function", "name": "exec_command", "parameters": {"type": "object"}},
+                {"type": "namespace", "name": "multi_agent_v1"}
+            ],
+            "tool_choice": {"type": "function", "name": "multi_agent_v1"}
+        }))
+        .expect_err("an omitted namespace cannot be selected as a Native function");
+
+        assert_eq!(error.param.as_deref(), Some("tool_choice"));
     }
 
     #[test]

@@ -86,6 +86,7 @@ function commonTarget(target) {
   if (!target?.apiKey) throw new Error('client target API key is required');
   if (!target?.gatewayBaseUrl) throw new Error('gateway base URL is required');
   return {
+    ...(target.provider ? { provider: target.provider } : {}),
     model: target.model,
     apiKey: target.apiKey,
     gatewayBaseUrl: target.gatewayBaseUrl.replace(/\/$/u, ''),
@@ -217,6 +218,9 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
       ANTHROPIC_API_KEY: target.apiKey,
       CLAUDE_CODE_OAUTH_TOKEN: '',
       ...(vector.kind === 'error' ? { CLAUDE_CODE_MAX_RETRIES: '0' } : {}),
+      ...(target.provider === 'openai_compatible' && vector.id === MEANINGFUL_GIT_VECTOR.id
+        ? { CLAUDE_CODE_DISABLE_THINKING: '1' }
+        : {}),
       ...(profile?.environment || {}),
     },
     configFiles: [{ path: settingsPath, content: '{}\n' }],

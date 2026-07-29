@@ -453,6 +453,7 @@ test('controlled tool loop records live call and second request before barrier r
       body: JSON.stringify({
         model: 'mock-model', stream: true,
         input: '1flowbase-client-tool-vector TOOL_VECTOR_PATH=/tmp/tool-vector.txt',
+        tools: [{ type: 'function', name: 'Bash', parameters: { type: 'object' } }],
       }),
     });
     const firstEvents = parseSse(await first.text());
@@ -460,7 +461,7 @@ test('controlled tool loop records live call and second request before barrier r
       (event) => event.event === 'response.output_item.done',
     )?.data.item;
     assert.equal(toolItem?.type, 'function_call');
-    assert.equal(toolItem?.name, 'shell_command');
+    assert.equal(toolItem?.name, 'Bash');
     assert.deepEqual(JSON.parse(toolItem?.arguments), {
       command: "cat -- '/tmp/tool-vector.txt'",
       workdir: '/tmp',

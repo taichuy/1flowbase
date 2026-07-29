@@ -493,20 +493,36 @@ test('WP-D4B keeps Claude/OpenCode chronology strict while Codex reports complet
   ])).reason, 'tool_callback_evidence_missing');
 });
 
-test('AC-017 Claude Git calls defer hidden tool results to Provider and durable evidence', () => {
+test('AC-017 Claude Git calls require two successful local tool results in order', () => {
   const result = output([
     { type: 'assistant', message: { content: [{
-      type: 'tool_use', id: 'git-log', name: 'shell_command',
+      type: 'tool_use', id: 'git-log', name: 'Bash',
       input: { command: `git log -2 --oneline && echo '${GIT_LOG_RESULT}'` },
     }] } },
+    { type: 'user', message: { content: [{
+      type: 'tool_result', tool_use_id: 'git-log', content: GIT_LOG_RESULT,
+    }] } },
     { type: 'assistant', message: { content: [{
-      type: 'tool_use', id: 'git-show', name: 'shell_command',
+      type: 'tool_use', id: 'git-show', name: 'Bash',
       input: { command: `git show --stat --oneline --summary HEAD && echo '${GIT_SHOW_RESULT}'` },
+    }] } },
+    { type: 'user', message: { content: [{
+      type: 'tool_result', tool_use_id: 'git-show', content: GIT_SHOW_RESULT,
     }] } },
     { type: 'assistant', message: { content: [{ type: 'text', text: GIT_WORKFLOW_FINAL }] } },
     { type: 'result', is_error: false, terminal_reason: 'completed', result: GIT_WORKFLOW_FINAL },
   ]);
   assert.equal(evaluateAttempt('claude', MEANINGFUL_GIT_VECTOR, result).pass, true);
+
+  const failedToolResult = structuredClone(result);
+  failedToolResult.stdout = failedToolResult.stdout.replaceAll(
+    GIT_SHOW_RESULT,
+    '<tool_use_error>Error: No such tool available: shell_command</tool_use_error>',
+  );
+  assert.equal(
+    evaluateAttempt('claude', MEANINGFUL_GIT_VECTOR, failedToolResult).reason,
+    'tool_callback_evidence_missing',
+  );
 });
 
 test('WP-14A driver emits mock-backed reconciliation evidence and cleans resources in finally', async () => {

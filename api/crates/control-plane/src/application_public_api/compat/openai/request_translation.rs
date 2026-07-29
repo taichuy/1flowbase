@@ -8,15 +8,15 @@ use super::{
     chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
     openai_reasoning, response_max_output_tokens, response_stream_mode,
     responses_input_to_native_run_input, responses_native_input_to_run_input,
-    responses_previous_history, responses_transport_requirement, system_from_parts,
-    validate_chat_message_fields, validate_chat_root_fields,
+    responses_omitted_optional_tools, responses_previous_history, responses_transport_requirement,
+    system_from_parts, validate_chat_message_fields, validate_chat_root_fields,
     validate_native_mcp_approval_continuation, validate_native_responses_input,
     validate_response_transport_fields, validate_responses_input, OpenAiCompatError,
     OpenAiPreviousResponseContext, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
-    OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
+    OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD, OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
-    capture_client_protocol_body, ClientProtocolIngressPolicy,
+    capture_client_protocol_body, merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
 };
 use crate::application_public_api::native::{
     compaction_intent, CompactionProfile, NativeExecution, NativeObject, NativeRequestMetadata,
@@ -234,12 +234,31 @@ pub fn translate_response_request_with_context_and_previous(
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let object = openai_request_object(&request, &mut report)?;
-    let protocol_context = capture_client_protocol_body(
+    let mut protocol_context = capture_client_protocol_body(
         ClientProtocolIngressPolicy::OpenAiResponses,
         object,
         OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
     );
     let transport_requirement = responses_transport_requirement(object);
+    let omitted_optional_tools = responses_omitted_optional_tools(object);
+    if transport_requirement
+        == crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        && !omitted_optional_tools.is_empty()
+    {
+        let optional_tool_context = Map::from_iter([(
+            OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD.to_string(),
+            Value::Array(omitted_optional_tools),
+        )]);
+        protocol_context = merge_client_protocol_envelopes(
+            ClientProtocolIngressPolicy::OpenAiResponses,
+            protocol_context,
+            capture_client_protocol_body(
+                ClientProtocolIngressPolicy::OpenAiResponses,
+                &optional_tool_context,
+                &[],
+            ),
+        );
+    }
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;

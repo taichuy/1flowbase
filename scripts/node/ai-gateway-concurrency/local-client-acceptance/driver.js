@@ -405,7 +405,6 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
             if (barrierOutcome.status === 'rejected') {
               const barrierMessage = barrierOutcome.reason?.message || String(barrierOutcome.reason);
               result.stderr = `${result.stderr}\n${barrierMessage}`.trim();
-              result.exit_code = null;
             }
             const evaluation = evaluateAttempt(client, vector, result, protocol);
             let evidence = null;
