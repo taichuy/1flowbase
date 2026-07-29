@@ -16,6 +16,7 @@ test('AC-029: protocol conformance blocks relevant PRs and protected pushes', ()
   assert.match(trigger, /pull_request:/u);
   assert.match(trigger, /push:[\s\S]*branches: \[dev\]/u);
   assert.doesNotMatch(trigger, /schedule:/u);
+  assert.doesNotMatch(trigger, /paths:/u, 'a required check must run for every proposed dev update');
   assert.match(source, /name: AI Gateway Protocol Conformance Gate/u);
 });
 

@@ -3,18 +3,8 @@ name: AI Gateway Protocol Conformance Gate
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - '.github/workflows/ai-gateway-concurrency.yml'
-      - 'api/**'
-      - 'scripts/node/ai-gateway-concurrency/**'
-      - 'scripts/node/plugin/**'
   push:
     branches: [dev]
-    paths:
-      - '.github/workflows/ai-gateway-concurrency.yml'
-      - 'api/**'
-      - 'scripts/node/ai-gateway-concurrency/**'
-      - 'scripts/node/plugin/**'
 
 permissions:
   contents: read
