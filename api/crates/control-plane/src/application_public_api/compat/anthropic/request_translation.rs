@@ -4,13 +4,13 @@ use plugin_framework::provider_contract::NativeModelRequestContext;
 use serde_json::{Map, Value};
 
 use super::{
-    anthropic_current_user_text_content, anthropic_history_entries, anthropic_inputs,
-    anthropic_max_output_tokens, anthropic_metadata, anthropic_reasoning, anthropic_response_mode,
-    anthropic_system_content_parts, metadata_conversation, normalize_anthropic_model_for_native,
-    query_media_content_blocks, record_anthropic_context_management_decision,
-    record_anthropic_system_decision, reject_legacy_anthropic_control, validate_anthropic_message,
-    validate_anthropic_root_fields, AnthropicCompatError, AnthropicContextWindowRequest,
-    ANTHROPIC_TYPED_ROOT_FIELDS,
+    anthropic_current_user_text_content, anthropic_history_entries, anthropic_history_tool_results,
+    anthropic_inputs, anthropic_max_output_tokens, anthropic_metadata, anthropic_reasoning,
+    anthropic_response_mode, anthropic_system_content_parts, metadata_conversation,
+    normalize_anthropic_model_for_native, query_media_content_blocks,
+    record_anthropic_context_management_decision, record_anthropic_system_decision,
+    reject_legacy_anthropic_control, validate_anthropic_message, validate_anthropic_root_fields,
+    AnthropicCompatError, AnthropicContextWindowRequest, ANTHROPIC_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
     capture_client_protocol_body, ClientProtocolIngressPolicy,
@@ -119,6 +119,7 @@ pub fn translate_messages_request_with_context_window(
                 .map_err(|error| error.with_report(report.clone()))?,
         );
     }
+    history.extend(anthropic_history_tool_results(latest_user_content));
     if let Some(content_blocks) = latest_user_media_blocks {
         history.push(serde_json::json!({
             "role": "user",

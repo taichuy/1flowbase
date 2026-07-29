@@ -275,6 +275,7 @@ function evaluateToolSurface(client, vector, surface) {
   if (!codexParallelCompletionEvidence
     && paired && [
       'sequential_callback_tasks_one_turn',
+      'sequential_callbacks_then_followup',
       'meaningful_git_workflow',
     ].includes(vector.expected.tool_mode)) {
     const [firstResult, secondResult] = markedResults;
@@ -361,6 +362,32 @@ function evaluateTextSurface(client, vector, result) {
   };
 }
 
+function evaluateToolConversationSurface(client, vector, turns) {
+  const ids = turns.map((turn) => conversationId(client, turn));
+  if (ids.some((id) => id === null) || new Set(ids).size !== 1) {
+    return { pass: false, reason: 'complete_conversation_missing', observed_events: [] };
+  }
+  const firstSurface = clientSurface(client, turns[0], 'success');
+  const toolEvaluation = evaluateToolSurface(client, {
+    ...vector,
+    expected: { ...vector.expected, assistant_texts: [vector.expected.assistant_texts[0]] },
+  }, firstSurface);
+  if (!toolEvaluation.pass) return toolEvaluation;
+  const followupSurface = clientSurface(client, turns[1], 'success');
+  const followupText = vector.expected.assistant_texts[1];
+  const followupExact = followupSurface.terminal.observed
+    && followupSurface.assistantTexts.length === 1
+    && followupSurface.assistantTexts[0].text === followupText
+    && followupSurface.terminal.index > followupSurface.assistantTexts[0].index;
+  return {
+    pass: followupExact,
+    reason: followupExact ? null : 'tool_history_followup_missing',
+    observed_events: followupExact
+      ? [...toolEvaluation.observed_events, 'same_session_followup_observed']
+      : toolEvaluation.observed_events,
+  };
+}
+
 function evaluateAttempt(client, vector, result, protocol = null) {
   if (result.timed_out) return { pass: false, reason: 'client_process_timed_out', observed_events: [] };
   const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
@@ -374,6 +401,9 @@ function evaluateAttempt(client, vector, result, protocol = null) {
   }
   const turns = expectedTurnResults(vector, result);
   if (!turns) return { pass: false, reason: 'complete_conversation_missing', observed_events: [] };
+  if (vector.kind === 'tool_conversation') {
+    return evaluateToolConversationSurface(client, vector, turns);
+  }
   if (vector.kind === 'tools') {
     const surface = clientSurface(client, turns[0], 'success');
     if (!surface.terminal.observed) {

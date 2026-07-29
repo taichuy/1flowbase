@@ -11,6 +11,8 @@ const {
   PARALLEL_FINAL_SENTINEL,
   SEQUENTIAL_FINAL_SENTINEL,
   TEXT_SENTINEL,
+  TOOL_FOLLOWUP_FINAL_SENTINEL,
+  hasClosedHistoricalToolPairs,
   textVectorOutput,
   toolVectorFinalOutput,
 } = require('../client-vector-contract');
@@ -32,6 +34,34 @@ test('BLO-03/04 selects exact long text and continuity output from request histo
   assert.equal(textVectorOutput(
     { previous_response_id: 'resp_seed', input: check }, new Set(['resp_seed']),
   ), CONTINUITY_FINAL_SENTINEL);
+});
+
+test('Delivery #1493 followup requires two closed historical tool pairs in every Provider dialect', () => {
+  assert.equal(hasClosedHistoricalToolPairs({
+    input: [
+      { type: 'function_call', call_id: 'call-a' },
+      { type: 'function_call_output', call_id: 'call-a' },
+      { type: 'function_call', call_id: 'call-b' },
+      { type: 'function_call_output', call_id: 'call-b' },
+    ],
+  }), true);
+  assert.equal(hasClosedHistoricalToolPairs({
+    messages: [
+      { content: [{ type: 'tool_use', id: 'call-a' }, { type: 'tool_use', id: 'call-b' }] },
+      { content: [{ type: 'tool_result', tool_use_id: 'call-a' }] },
+    ],
+  }), false);
+  assert.equal(hasClosedHistoricalToolPairs({
+    messages: [
+      { role: 'assistant', tool_calls: [{ id: 'call-a' }, { id: 'call-b' }] },
+      { role: 'tool', tool_call_id: 'call-a' },
+      { role: 'tool', tool_call_id: 'call-b' },
+    ],
+  }), true);
+  assert.equal(
+    toolVectorFinalOutput({ input: '1flowbase-client-vector=tools-history-followup-query' }),
+    TOOL_FOLLOWUP_FINAL_SENTINEL,
+  );
 });
 
 test('BLO-05/06/07 requires real Claude profile fields and selects vector-specific tool finals', () => {

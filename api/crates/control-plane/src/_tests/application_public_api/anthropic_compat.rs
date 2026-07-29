@@ -926,6 +926,12 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
         translated.request.history[1]["tool_calls"][0]["id"],
         "toolu_read"
     );
+    assert_eq!(translated.request.history[2]["role"], "tool");
+    assert_eq!(translated.request.history[2]["tool_call_id"], "toolu_read");
+    assert_eq!(
+        translated.request.history[2]["content"],
+        "<tool_use_error>old tool payload</tool_use_error>\nold image output"
+    );
 }
 
 #[test]

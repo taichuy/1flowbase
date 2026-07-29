@@ -7,6 +7,7 @@ const {
   CLAUDE_PROTOCOL_VECTOR, CLIENT_PROTOCOLS, CONTINUITY_VECTOR, LONG_TEXT_VECTOR,
   MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR,
   TEXT_SENTINEL, TEXT_VECTOR, TOOL_RESULT_SENTINEL, TOOL_VECTOR, VECTOR_MANIFEST,
+  TOOL_HISTORY_FOLLOWUP_VECTOR,
   buildClientPlan, promptFor, selectExecutionSurface, targetMatrixFromReady,
   targetsFromReady, vectorsFor,
 } = require('../contract');
@@ -157,6 +158,7 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
     PROVIDER_ERROR_VECTOR.id,
     PARALLEL_TOOL_VECTOR.id,
     SEQUENTIAL_TOOL_VECTOR.id,
+    TOOL_HISTORY_FOLLOWUP_VECTOR.id,
     MEANINGFUL_GIT_VECTOR.id,
     CLAUDE_PROTOCOL_VECTOR.id,
   ]);
@@ -195,6 +197,18 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_provider_requests, 3);
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.tool_call_count, 2);
   assert.equal(SEQUENTIAL_TOOL_VECTOR.expected.minimum_callback_resumes, 2);
+  assert.deepEqual(TOOL_HISTORY_FOLLOWUP_VECTOR.clients, ['claude']);
+  assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.turns.length, 2);
+  assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.durable_runs, 2);
+  assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.minimum_provider_requests, 4);
+  assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.minimum_callback_resumes, 2);
+  const followupPlan = buildClientPlan(
+    'claude', '/machine/claude', target, paths, TOOL_HISTORY_FOLLOWUP_VECTOR, 'anthropic_sse',
+    { turnIndex: 1, sessionId: 'same-claude-session' },
+  );
+  assert.ok(followupPlan.invocation.args.includes('--resume'));
+  assert.ok(followupPlan.invocation.args.includes('same-claude-session'));
+  assert.ok(followupPlan.invocation.args.includes('Read'));
   assert.deepEqual(MEANINGFUL_GIT_VECTOR.expected.tool_result_markers, [
     '1flowbase-client-tool-result git-log',
     '1flowbase-client-tool-result git-show',

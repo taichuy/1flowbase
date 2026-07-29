@@ -30,6 +30,7 @@ const {
   HTTP_500_ERROR_BODY,
   TEXT_SENTINEL,
   containsValue,
+  hasClosedHistoricalToolPairs,
   textVectorOutput,
   toolVectorFinalOutput,
 } = require('./client-vector-contract');
@@ -211,6 +212,15 @@ function meaningfulGitRepoPath(body) {
 
 function clientToolPlan(body, previousState = null) {
   const hasToolResult = containsValue(body, '1flowbase-client-tool-result');
+  if (containsValue(body, '1flowbase-client-vector=tools-history-followup-query')) {
+    return {
+      hasToolResult: false,
+      final: true,
+      paths: [],
+      finalText: hasClosedHistoricalToolPairs(body) ? toolVectorFinalOutput(body) : '',
+      nextState: null,
+    };
+  }
   if (containsValue(body, '1flowbase-client-vector=meaningful-git-workflow')
       || previousState?.mode === 'meaningful-git') {
     const repoPath = meaningfulGitRepoPath(body) ?? previousState?.paths?.[0];
@@ -552,7 +562,7 @@ function createMockUpstream(options = {}) {
       const wireAuditVector = wireAuditVectorFromBody(body);
       if (isToolResult) requestTimeline.record('second_upstream_request');
       if (emitsToolCallRound) requestTimeline.record('tool_call');
-      const stream = path === MOCK_ROUTE.RESPONSES
+      const selectedStream = path === MOCK_ROUTE.RESPONSES
         ? (wireAuditVector && wireAuditVector !== 'gateway-executor-probe'
           ? responsesWireEvents(requestTimeline.nonce, wireAuditVector)
           : isToolTurn || isToolResult
@@ -581,6 +591,9 @@ function createMockUpstream(options = {}) {
             : clientText !== null
               ? anthropicEvents(requestTimeline.nonce, ...textChunks)
               : anthropicEvents(requestTimeline.nonce));
+      const stream = containsValue(body, '1flowbase-client-vector=tools-history-followup-second-turn')
+        ? { ...selectedStream, barrierMarker: '1flowbase-no-barrier-for-history-followup' }
+        : selectedStream;
       observeProviderWireOutput(stream, requestTimeline, counters);
       await emitHttpStream({
         response,

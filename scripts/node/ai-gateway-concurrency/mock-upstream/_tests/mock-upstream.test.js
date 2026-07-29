@@ -586,6 +586,23 @@ test('Root #1477 local client fixture emits parallel calls and two sequential ca
       '1flowbase sequential callback sentinel ok',
     );
 
+    const followup = await request([
+      { type: 'function_call', call_id: 'call-a', name: 'read', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call-a', output: 'sequential-a' },
+      { type: 'function_call', call_id: 'call-b', name: 'read', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call-b', output: 'sequential-b' },
+      { role: 'user', content: '1flowbase-client-vector=tools-history-followup-query' },
+      { role: 'user', content: '1flowbase-client-tool-vector' },
+    ]);
+    assert.equal(
+      followup
+        .filter((event) => event.event === 'response.output_text.delta'
+          && event.data.type === 'response.output_text.delta')
+        .map((event) => event.data.delta)
+        .join(''),
+      '1flowbase tool history followup sentinel ok',
+    );
+
     const snapshot = upstream.snapshot();
     const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
     assert.equal(toolCallRounds.length, 3);

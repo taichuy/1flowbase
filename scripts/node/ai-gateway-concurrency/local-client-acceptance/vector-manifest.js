@@ -9,6 +9,7 @@ const {
   PARALLEL_FINAL_SENTINEL,
   SEQUENTIAL_FINAL_SENTINEL,
   TEXT_SENTINEL,
+  TOOL_FOLLOWUP_FINAL_SENTINEL,
   TOOL_FINAL_SENTINEL,
 } = require('../mock-upstream/client-vector-contract');
 
@@ -227,6 +228,42 @@ const SEQUENTIAL_TOOL_VECTOR = Object.freeze({
   }),
 });
 
+const TOOL_HISTORY_FOLLOWUP_VECTOR = Object.freeze({
+  id: 'tools-history-followup-second-turn',
+  kind: 'tool_conversation',
+  clients: Object.freeze(['claude']),
+  turns: Object.freeze([
+    Object.freeze({
+      prompt: [
+        '1flowbase-client-tool-vector',
+        '1flowbase-client-vector=tools-history-followup-second-turn',
+        'tools-sequential-callback-tasks-one-turn',
+        'TOOL_VECTOR_PATH={{SEQUENTIAL_A_PATH}}',
+        'SEQUENTIAL_TOOL_A_PATH={{SEQUENTIAL_A_PATH}}',
+        'SEQUENTIAL_TOOL_B_PATH={{SEQUENTIAL_B_PATH}}',
+        'First complete the A read callback. Only after the Provider sees A, complete the B read callback.',
+        `Keep both callback tasks in this assistant turn, then print exactly: ${SEQUENTIAL_FINAL_SENTINEL}`,
+      ].join(' '),
+    }),
+    Object.freeze({
+      prompt: [
+        '1flowbase-client-vector=tools-history-followup-second-turn',
+        '1flowbase-client-vector=tools-history-followup-query',
+        'Continue this same conversation only after preserving both prior tool results.',
+        `Reply with exactly: ${TOOL_FOLLOWUP_FINAL_SENTINEL}`,
+      ].join(' '),
+    }),
+  ]),
+  expected: successfulExpected({
+    assistantTexts: [SEQUENTIAL_FINAL_SENTINEL, TOOL_FOLLOWUP_FINAL_SENTINEL],
+    durableRuns: 2,
+    minimumProviderRequests: 4,
+    toolMode: 'sequential_callbacks_then_followup',
+    toolResultMarkers: [SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B],
+    minimumCallbackResumes: 2,
+  }),
+});
+
 const MEANINGFUL_GIT_VECTOR = Object.freeze({
   id: 'tools-meaningful-git-workflow',
   kind: 'tools',
@@ -284,6 +321,7 @@ const VECTOR_MANIFEST = Object.freeze({
     PROVIDER_ERROR_VECTOR,
     PARALLEL_TOOL_VECTOR,
     SEQUENTIAL_TOOL_VECTOR,
+    TOOL_HISTORY_FOLLOWUP_VECTOR,
     MEANINGFUL_GIT_VECTOR,
     CLAUDE_PROTOCOL_VECTOR,
   ]),
@@ -323,6 +361,8 @@ module.exports = {
   TEXT_VECTOR,
   TOOL_ASSETS,
   TOOL_FINAL_SENTINEL,
+  TOOL_FOLLOWUP_FINAL_SENTINEL,
+  TOOL_HISTORY_FOLLOWUP_VECTOR,
   TOOL_RESULT_SENTINEL,
   TOOL_VECTOR,
   VECTOR_MANIFEST,

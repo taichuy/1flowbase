@@ -14,6 +14,7 @@ const {
   TEXT_VECTOR,
   TOOL_ASSETS,
   TOOL_FINAL_SENTINEL,
+  TOOL_HISTORY_FOLLOWUP_VECTOR,
   TOOL_RESULT_SENTINEL,
   TOOL_VECTOR,
   VECTOR_MANIFEST,
@@ -202,7 +203,9 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
     '--settings', settingsPath, '--output-format', 'stream-json', '--include-partial-messages',
     '--verbose', '--model', profile?.model || target.model,
     ...(profile ? ['--effort', profile.effort] : []),
-    '--tools', vector.id === MEANINGFUL_GIT_VECTOR.id ? 'Read,Bash' : vector.kind === 'tools' ? 'Read' : '',
+    '--tools', vector.id === MEANINGFUL_GIT_VECTOR.id
+      ? 'Read,Bash'
+      : ['tools', 'tool_conversation'].includes(vector.kind) ? 'Read' : '',
     ...(vector.id === MEANINGFUL_GIT_VECTOR.id ? ['--dangerously-skip-permissions'] : []),
     '--disable-slash-commands', '--no-chrome',
   );
@@ -329,6 +332,7 @@ module.exports = {
   TEXT_VECTOR,
   TOOL_ASSETS,
   TOOL_FINAL_SENTINEL,
+  TOOL_HISTORY_FOLLOWUP_VECTOR,
   TOOL_RESULT_SENTINEL,
   TOOL_VECTOR,
   VECTOR_MANIFEST,

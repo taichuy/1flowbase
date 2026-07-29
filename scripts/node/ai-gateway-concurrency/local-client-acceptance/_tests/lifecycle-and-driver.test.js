@@ -9,13 +9,13 @@ const test = require('node:test');
 const {
   CONTINUITY_VECTOR, LONG_TEXT_VECTOR, MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR,
   PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR, TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL,
-  TOOL_RESULT_SENTINEL, TOOL_VECTOR,
+  TOOL_HISTORY_FOLLOWUP_VECTOR, TOOL_RESULT_SENTINEL, TOOL_VECTOR,
 } = require('../contract');
 const {
   CONTINUITY_FINAL_SENTINEL, CONTINUITY_SEED_SENTINEL, GIT_LOG_RESULT, GIT_SHOW_RESULT,
   GIT_WORKFLOW_FINAL, LONG_REPEATED_UNICODE_TEXT, PARALLEL_FINAL_SENTINEL,
   PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY, SEQUENTIAL_FINAL_SENTINEL,
-  SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
+  SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B, TOOL_FOLLOWUP_FINAL_SENTINEL,
 } = require('../vector-manifest');
 const {
   crossTargetCanary, evaluateAttempt, executionTargets, gitWorkspaceFingerprint,
@@ -491,6 +491,40 @@ test('WP-D4B keeps Claude/OpenCode chronology strict while Codex reports complet
     },
     parallel[2], parallel[3],
   ])).reason, 'tool_callback_evidence_missing');
+});
+
+test('Delivery #1493 keeps one Claude session across sequential callbacks and a later user turn', () => {
+  const sessionId = 'claude-history-followup-session';
+  const first = output([
+    { type: 'assistant', session_id: sessionId, message: { content: [{ type: 'tool_use', id: 'tool-a' }] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tool-a', content: SEQUENTIAL_RESULT_A },
+    ] } },
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-b' }] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'tool-a', content: SEQUENTIAL_RESULT_A },
+      { type: 'tool_result', tool_use_id: 'tool-b', content: SEQUENTIAL_RESULT_B },
+    ] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: SEQUENTIAL_FINAL_SENTINEL }] } },
+    {
+      type: 'result', session_id: sessionId, is_error: false,
+      terminal_reason: 'completed', result: SEQUENTIAL_FINAL_SENTINEL,
+    },
+  ]);
+  const second = claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, sessionId);
+  const result = {
+    exit_code: 0, signal: null, timed_out: false, stdout: '', stderr: '',
+    turns: [{ result: first }, { result: second }],
+  };
+  assert.equal(evaluateAttempt('claude', TOOL_HISTORY_FOLLOWUP_VECTOR, result).pass, true);
+  const wrongSession = {
+    ...result,
+    turns: [{ result: first }, { result: claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, 'other-session') }],
+  };
+  assert.equal(
+    evaluateAttempt('claude', TOOL_HISTORY_FOLLOWUP_VECTOR, wrongSession).reason,
+    'complete_conversation_missing',
+  );
 });
 
 test('AC-017 Claude Git calls require two successful local tool results in order', () => {

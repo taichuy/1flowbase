@@ -12,6 +12,7 @@ const {
   MEANINGFUL_GIT_VECTOR,
   TOOL_ASSETS,
   VECTOR_MANIFEST,
+  TOOL_HISTORY_FOLLOWUP_VECTOR,
   buildClientPlan,
   selectExecutionSurface,
   vectorsFor,
@@ -349,7 +350,10 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         for (const protocol of CLIENT_PROTOCOLS[client]) {
           const vectors = fullVectors
             ? selectVectors(client, protocol)
-            : [MEANINGFUL_GIT_VECTOR];
+            : [
+              MEANINGFUL_GIT_VECTOR,
+              ...(client === 'claude' ? [TOOL_HISTORY_FOLLOWUP_VECTOR] : []),
+            ];
           for (const vector of vectors) {
             timeline.append('attempt_started', { provider, protocol, vector_id: vector.id });
             const gitWorkspaceBefore = vector.id === MEANINGFUL_GIT_VECTOR.id

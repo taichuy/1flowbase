@@ -139,10 +139,12 @@ function callbackResumeEvidence(events, minimumResumes, callbackResumes, toolMod
         && event.sequence > (waiting?.sequence ?? Number.MAX_SAFE_INTEGER)
     ));
     const finalRound = index === resumes.length - 1;
-    const barrierRequired = ![
-      'sequential_callback_tasks_one_turn',
-      'meaningful_git_workflow',
-    ].includes(toolMode) || finalRound;
+    const barrierRequired = toolMode === 'sequential_callbacks_then_followup'
+      ? false
+      : ![
+        'sequential_callback_tasks_one_turn',
+        'meaningful_git_workflow',
+      ].includes(toolMode) || finalRound;
     const settledAfter = barrierRequired ? released?.sequence : resume.sequence;
     const settled = events.find((event) => (
       event.event === 'settled' && event.nonce === resume.nonce

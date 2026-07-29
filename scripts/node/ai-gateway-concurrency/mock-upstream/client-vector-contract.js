@@ -6,6 +6,7 @@ const TEXT_SENTINEL = '1flowbase gateway sentinel ok';
 const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
 const PARALLEL_FINAL_SENTINEL = '1flowbase parallel callback sentinel ok';
 const SEQUENTIAL_FINAL_SENTINEL = '1flowbase sequential callback sentinel ok';
+const TOOL_FOLLOWUP_FINAL_SENTINEL = '1flowbase tool history followup sentinel ok';
 const GIT_WORKFLOW_FINAL = '1flowbase meaningful git workflow verified';
 const CONTINUITY_SEED_SENTINEL = '1flowbase continuity seed 中🙂';
 const CONTINUITY_FINAL_SENTINEL = '1flowbase complete conversation continuity ok';
@@ -49,10 +50,43 @@ function textVectorOutput(body, knownContinuityResponses = new Set()) {
 }
 
 function toolVectorFinalOutput(body) {
+  if (containsValue(body, 'tools-history-followup-query')) return TOOL_FOLLOWUP_FINAL_SENTINEL;
   if (containsValue(body, '1flowbase-client-vector=meaningful-git-workflow')) return GIT_WORKFLOW_FINAL;
   if (containsValue(body, 'tools-parallel-one-callback-task')) return PARALLEL_FINAL_SENTINEL;
   if (containsValue(body, 'tools-sequential-callback-tasks-one-turn')) return SEQUENTIAL_FINAL_SENTINEL;
   return TOOL_FINAL_SENTINEL;
+}
+
+function hasClosedHistoricalToolPairs(body, minimumPairs = 2) {
+  const calls = new Set();
+  const results = new Set();
+  const visit = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    if (value.type === 'function_call') {
+      const id = value.call_id ?? value.id;
+      if (typeof id === 'string') calls.add(id);
+    }
+    if (value.type === 'function_call_output' && typeof value.call_id === 'string') {
+      results.add(value.call_id);
+    }
+    if (value.type === 'tool_use' && typeof value.id === 'string') calls.add(value.id);
+    if (value.type === 'tool_result' && typeof value.tool_use_id === 'string') {
+      results.add(value.tool_use_id);
+    }
+    for (const toolCall of Array.isArray(value.tool_calls) ? value.tool_calls : []) {
+      if (typeof toolCall?.id === 'string') calls.add(toolCall.id);
+    }
+    if (value.role === 'tool' && typeof value.tool_call_id === 'string') {
+      results.add(value.tool_call_id);
+    }
+    for (const nested of Object.values(value)) visit(nested);
+  };
+  visit(body);
+  return [...calls].filter((id) => results.has(id)).length >= minimumPairs;
 }
 
 module.exports = {
@@ -64,10 +98,12 @@ module.exports = {
   GIT_WORKFLOW_FINAL,
   PARALLEL_FINAL_SENTINEL,
   SEQUENTIAL_FINAL_SENTINEL,
+  TOOL_FOLLOWUP_FINAL_SENTINEL,
   TEXT_SENTINEL,
   TOOL_FINAL_SENTINEL,
   containsValue,
   hasClaudeProtocolProfile,
+  hasClosedHistoricalToolPairs,
   textVectorOutput,
   toolVectorFinalOutput,
 };
