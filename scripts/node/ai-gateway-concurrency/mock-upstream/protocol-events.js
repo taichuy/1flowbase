@@ -221,7 +221,7 @@ function responsesToolEvents(
   toolPath,
   final = false,
   executorProbeUrl = null,
-  toolName = 'shell_command',
+  tool = null,
   finalText = '1flowbase gateway tool sentinel ok',
   commands = null,
 ) {
@@ -238,17 +238,22 @@ function responsesToolEvents(
     `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
   );
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
+  const descriptor = normalizedToolDescriptor(tool, {
+    name: 'shell_command', properties: ['command', 'workdir'],
+  });
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const items = toolPaths.map((currentPath, index) => ({
     id: `item_${nonce}_${index}`, type: 'function_call', call_id: `call_${nonce}_${index}`,
-    name: toolName, status: 'completed', arguments: JSON.stringify(toolName === 'read'
-      ? { filePath: currentPath }
-      : {
-        command: commands?.[index] ?? (executorProbeUrl
-          ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
-          : `cat -- ${posixShellArgument(currentPath)}`),
-        workdir: commands ? currentPath : path.dirname(currentPath),
-      }),
+    name: descriptor.name,
+    status: 'completed',
+    arguments: JSON.stringify(toolArguments(
+      descriptor,
+      currentPath,
+      commands?.[index] ?? (executorProbeUrl
+        ? `curl -fsS -X POST ${posixShellArgument(executorProbeUrl)}`
+        : `cat -- ${posixShellArgument(currentPath)}`),
+      commands ? currentPath : path.dirname(currentPath),
+    )),
   }));
   const chunks = [{ type: 'response.created', sequence_number: 0, response }];
   for (const [outputIndex, item] of items.entries()) {
@@ -270,6 +275,7 @@ function responsesToolEvents(
 
 function anthropicToolEvents(
   nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok', commands = null,
+  tool = null,
 ) {
   if (final && finalText !== '1flowbase gateway tool sentinel ok') {
     const split = Math.ceil(finalText.length / 2);
@@ -284,6 +290,10 @@ function anthropicToolEvents(
     `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
   );
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
+  const descriptor = normalizedToolDescriptor(tool, {
+    name: commands ? 'Bash' : 'Read',
+    properties: commands ? ['command', 'description'] : ['file_path'],
+  });
   return {
     chunks: [
       {
@@ -295,10 +305,13 @@ function anthropicToolEvents(
       ...toolPaths.flatMap((currentPath, index) => [
         { event: 'content_block_start', data: { type: 'content_block_start', index, content_block: {
           type: 'tool_use', id: `toolu_${nonce}_${index}`,
-          name: commands ? 'Bash' : 'Read',
-          input: commands
-            ? { command: commands[index], description: 'Inspect the protected Git repository' }
-            : { file_path: currentPath },
+          name: descriptor.name,
+          input: toolArguments(
+            descriptor,
+            currentPath,
+            commands?.[index] ?? `cat -- ${posixShellArgument(currentPath)}`,
+            commands ? currentPath : path.dirname(currentPath),
+          ),
         } } },
         { event: 'content_block_stop', data: { type: 'content_block_stop', index } },
       ]),
@@ -312,6 +325,7 @@ function anthropicToolEvents(
 
 function chatToolEvents(
   nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok', commands = null,
+  tool = null,
 ) {
   if (final && finalText !== '1flowbase gateway tool sentinel ok') {
     const split = Math.ceil(finalText.length / 2);
@@ -330,15 +344,22 @@ function chatToolEvents(
     }, finish_reason: 'stop' }] },
   };
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
+  const descriptor = normalizedToolDescriptor(tool, {
+    name: commands ? 'bash' : 'read',
+    properties: commands ? ['command', 'description'] : ['filePath'],
+  });
   return {
     doneSentinel: true,
     chunks: [{ id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       role: 'assistant', tool_calls: toolPaths.map((currentPath, index) => ({
         index, id: `call_${nonce}_${index}`, type: 'function', function: {
-          name: commands ? 'bash' : 'read',
-          arguments: JSON.stringify(commands
-            ? { command: commands[index], description: 'Inspect the protected Git repository' }
-            : { filePath: currentPath }),
+          name: descriptor.name,
+          arguments: JSON.stringify(toolArguments(
+            descriptor,
+            currentPath,
+            commands?.[index] ?? `cat -- ${posixShellArgument(currentPath)}`,
+            commands ? currentPath : path.dirname(currentPath),
+          )),
         },
       })),
     }, finish_reason: null }] }],
@@ -346,6 +367,32 @@ function chatToolEvents(
       index: 0, delta: {}, finish_reason: 'tool_calls',
     }] },
   };
+}
+
+function normalizedToolDescriptor(tool, fallback) {
+  const properties = tool?.parameters?.properties;
+  if (tool && typeof tool.name === 'string' && properties && typeof properties === 'object') {
+    return { name: tool.name, properties };
+  }
+  return {
+    name: fallback.name,
+    properties: Object.fromEntries(fallback.properties.map((name) => [name, {}])),
+  };
+}
+
+function toolArguments(tool, currentPath, command, workdir) {
+  const argumentsValue = {};
+  if (Object.hasOwn(tool.properties, 'cmd')) argumentsValue.cmd = command;
+  else if (Object.hasOwn(tool.properties, 'command')) argumentsValue.command = command;
+  else if (Object.hasOwn(tool.properties, 'file_path')) argumentsValue.file_path = currentPath;
+  else if (Object.hasOwn(tool.properties, 'filePath')) argumentsValue.filePath = currentPath;
+  else if (Object.hasOwn(tool.properties, 'path')) argumentsValue.path = currentPath;
+  else argumentsValue.command = command;
+  if (Object.hasOwn(tool.properties, 'workdir')) argumentsValue.workdir = workdir;
+  if (Object.hasOwn(tool.properties, 'description')) {
+    argumentsValue.description = 'Inspect the protected Git repository';
+  }
+  return argumentsValue;
 }
 
 function chatTextEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {

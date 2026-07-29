@@ -453,7 +453,10 @@ test('controlled tool loop records live call and second request before barrier r
       body: JSON.stringify({
         model: 'mock-model', stream: true,
         input: '1flowbase-client-tool-vector TOOL_VECTOR_PATH=/tmp/tool-vector.txt',
-        tools: [{ type: 'function', name: 'Bash', parameters: { type: 'object' } }],
+        tools: [{
+          type: 'function', name: 'Bash',
+          parameters: { type: 'object', properties: { command: { type: 'string' } } },
+        }],
       }),
     });
     const firstEvents = parseSse(await first.text());
@@ -464,7 +467,6 @@ test('controlled tool loop records live call and second request before barrier r
     assert.equal(toolItem?.name, 'Bash');
     assert.deepEqual(JSON.parse(toolItem?.arguments), {
       command: "cat -- '/tmp/tool-vector.txt'",
-      workdir: '/tmp',
     });
 
     const second = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
@@ -528,7 +530,10 @@ test('Root #1477 local client fixture emits parallel calls and two sequential ca
         body: JSON.stringify({
           model: 'mock-model', stream: true, input,
           ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-          tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+          tools: [{
+            type: 'function', name: 'read',
+            parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+          }],
         }),
       });
       return parseSse(await response.text());
@@ -612,7 +617,10 @@ test('Root #1477 Responses WebSocket records parallel and sequential Provider to
         response: {
           model: 'mock-model', input,
           ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-          tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+          tools: [{
+            type: 'function', name: 'read',
+            parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+          }],
         },
       })));
       socket.addEventListener('message', (message) => received.push(JSON.parse(message.data)));
