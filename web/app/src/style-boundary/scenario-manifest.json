@@ -832,12 +832,36 @@
         ]
       },
       {
+        "id": "catalog-desktop-toolbar",
+        "selector": ".i18n-catalog-page__toolbar",
+        "propertyAssertions": [
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
         "id": "catalog-desktop-filters",
         "selector": ".i18n-catalog-page__filters",
         "propertyAssertions": [
           {
             "property": "display",
             "expected": "flex"
+          },
+          {
+            "property": "justify-content",
+            "expected": "flex-start"
+          }
+        ]
+      },
+      {
+        "id": "catalog-desktop-actions",
+        "selector": ".i18n-catalog-page__actions",
+        "propertyAssertions": [
+          {
+            "property": "justify-content",
+            "expected": "flex-end"
           }
         ]
       },
@@ -900,12 +924,36 @@
         ]
       },
       {
+        "id": "catalog-mobile-toolbar",
+        "selector": ".i18n-catalog-page__toolbar",
+        "propertyAssertions": [
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
         "id": "catalog-mobile-filters",
         "selector": ".i18n-catalog-page__filters",
         "propertyAssertions": [
           {
             "property": "display",
             "expected": "flex"
+          },
+          {
+            "property": "justify-content",
+            "expected": "flex-start"
+          }
+        ]
+      },
+      {
+        "id": "catalog-mobile-actions",
+        "selector": ".i18n-catalog-page__actions",
+        "propertyAssertions": [
+          {
+            "property": "justify-content",
+            "expected": "flex-end"
           }
         ]
       },

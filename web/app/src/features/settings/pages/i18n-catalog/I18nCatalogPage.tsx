@@ -268,8 +268,18 @@ export function I18nCatalogPage() {
             setPage(1);
           }}
         >
-          <Flex justify="space-between" align="flex-start" gap={12} wrap>
-            <Flex className="i18n-catalog-page__filters" gap={8} wrap>
+          <Flex
+            className="i18n-catalog-page__toolbar"
+            vertical
+            align="stretch"
+            gap={12}
+          >
+            <Flex
+              className="i18n-catalog-page__filters"
+              justify="flex-start"
+              gap={8}
+              wrap
+            >
               <Form.Item
                 className="i18n-catalog-page__filter-item i18n-catalog-page__filter-item--search"
                 name="search"
