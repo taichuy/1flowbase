@@ -670,8 +670,15 @@ fn responses_transport_requirement(
         .get("input")
         .is_some_and(responses_input_requires_native_passthrough);
     let has_native_only_execution_hint = object.get("store").and_then(Value::as_bool) == Some(true)
-        || object.get("parallel_tool_calls").and_then(Value::as_bool) == Some(true)
-        || object.get("include").is_some();
+        || object
+            .get("include")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|item| item != "reasoning.encrypted_content")
+            });
 
     if has_known_native_only_top_level_field
         || has_native_only_tools
@@ -931,11 +938,11 @@ fn accept_responses_parallel_tool_calls_hint(
             report.record(
                 "$.parallel_tool_calls",
                 None,
-                TranslationDecisionKind::Unsupported,
-                Some("Native execution cannot promise parallel tool calls"),
+                TranslationDecisionKind::Dropped,
+                Some("Provider scheduling remains authoritative for Native tool calls"),
                 TranslationSafeRepresentation::Present,
             );
-            Err(OpenAiCompatError::unsupported("parallel_tool_calls").with_report(report.clone()))
+            Ok(())
         }
         None => {
             report.record(
@@ -2843,40 +2850,38 @@ mod tests {
     }
 
     #[test]
-    fn codex_parallel_tool_calls_false_matches_published_capability() {
-        let translated = translate_response_request(json!({
-            "model": "1flowbase",
-            "input": "hello",
-            "parallel_tool_calls": false
-        }))
-        .expect("parallel_tool_calls=false matches the published model capability");
+    fn codex_parallel_tool_calls_is_an_optional_provider_scheduling_hint() {
+        for value in [false, true] {
+            let translated = translate_response_request(json!({
+                "model": "1flowbase",
+                "input": "hello",
+                "parallel_tool_calls": value
+            }))
+            .expect("parallel tool scheduling must not bind a request to an OpenAI Provider");
 
-        assert!(translated
-            .report
-            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Dropped));
+            assert!(translated
+                .report
+                .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Dropped));
+        }
     }
 
     #[test]
-    fn d4_ac_016_reasoning_encrypted_content_include_is_exact_native_transport() {
+    fn ac_016_reasoning_encrypted_content_include_is_an_optional_native_hint() {
         let mut translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": ["reasoning.encrypted_content"]
         }))
-        .expect("encrypted reasoning include should remain in native Responses transport");
+        .expect("encrypted reasoning include should not bind a request to an OpenAI Provider");
 
         assert!(translated
             .report
-            .has_decision("$.include", TranslationDecisionKind::Exact));
-        let payload = translated
+            .has_decision("$.include", TranslationDecisionKind::Dropped));
+        assert!(translated
             .request
             .metadata
             .take_provider_transport_payload()
-            .expect("include should remain in ephemeral provider transport");
-        assert_eq!(
-            payload.wire_body()["include"][0],
-            "reasoning.encrypted_content"
-        );
+            .is_none());
     }
 
     #[test]
@@ -3107,17 +3112,7 @@ mod tests {
             json!({
                 "model": "1flowbase",
                 "input": "hi",
-                "parallel_tool_calls": true
-            }),
-            json!({
-                "model": "1flowbase",
-                "input": "hi",
                 "store": true
-            }),
-            json!({
-                "model": "1flowbase",
-                "input": "hi",
-                "include": ["reasoning.encrypted_content"]
             }),
             json!({
                 "model": "1flowbase",

@@ -7,14 +7,15 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  CONTINUITY_VECTOR, LONG_TEXT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR,
-  SEQUENTIAL_TOOL_VECTOR, TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL,
+  CONTINUITY_VECTOR, LONG_TEXT_VECTOR, MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR,
+  PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR, TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL,
   TOOL_RESULT_SENTINEL, TOOL_VECTOR,
 } = require('../contract');
 const {
-  CONTINUITY_FINAL_SENTINEL, CONTINUITY_SEED_SENTINEL, LONG_REPEATED_UNICODE_TEXT,
-  PARALLEL_FINAL_SENTINEL, PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY,
-  SEQUENTIAL_FINAL_SENTINEL, SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
+  CONTINUITY_FINAL_SENTINEL, CONTINUITY_SEED_SENTINEL, GIT_LOG_RESULT, GIT_SHOW_RESULT,
+  GIT_WORKFLOW_FINAL, LONG_REPEATED_UNICODE_TEXT, PARALLEL_FINAL_SENTINEL,
+  PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY, SEQUENTIAL_FINAL_SENTINEL,
+  SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
 } = require('../vector-manifest');
 const {
   crossTargetCanary, evaluateAttempt, executionTargets, gitWorkspaceFingerprint,
@@ -490,6 +491,22 @@ test('WP-D4B keeps Claude/OpenCode chronology strict while Codex reports complet
     },
     parallel[2], parallel[3],
   ])).reason, 'tool_callback_evidence_missing');
+});
+
+test('AC-017 Claude Git calls defer hidden tool results to Provider and durable evidence', () => {
+  const result = output([
+    { type: 'assistant', message: { content: [{
+      type: 'tool_use', id: 'git-log', name: 'shell_command',
+      input: { command: `git log -2 --oneline && echo '${GIT_LOG_RESULT}'` },
+    }] } },
+    { type: 'assistant', message: { content: [{
+      type: 'tool_use', id: 'git-show', name: 'shell_command',
+      input: { command: `git show --stat --oneline --summary HEAD && echo '${GIT_SHOW_RESULT}'` },
+    }] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: GIT_WORKFLOW_FINAL }] } },
+    { type: 'result', is_error: false, terminal_reason: 'completed', result: GIT_WORKFLOW_FINAL },
+  ]);
+  assert.equal(evaluateAttempt('claude', MEANINGFUL_GIT_VECTOR, result).pass, true);
 });
 
 test('WP-14A driver emits mock-backed reconciliation evidence and cleans resources in finally', async () => {
