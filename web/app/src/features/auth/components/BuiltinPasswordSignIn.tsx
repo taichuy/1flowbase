@@ -9,13 +9,11 @@ import {
 } from '../api/session';
 
 interface BuiltinPasswordSignInProps {
-  authenticatorId: string;
   authenticatorSelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
 }
 
 export function BuiltinPasswordSignIn({
-  authenticatorId,
   authenticatorSelector = null,
   onAuthenticated
 }: BuiltinPasswordSignInProps) {
@@ -31,7 +29,6 @@ export function BuiltinPasswordSignIn({
     setFailed(false);
     try {
       const session = await signInWithPassword({
-        authenticator_id: authenticatorId,
         identifier,
         password
       });

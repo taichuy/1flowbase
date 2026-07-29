@@ -161,7 +161,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     ['non-builtin password', { is_builtin: false }],
     ['non-password', { is_builtin: true, auth_type: 'qr-code' }]
   ])(
-    'AC-005 keeps the existing retry error for %s authenticators',
+    'AC-003 automatically retries a %s authenticator before using the configured UI',
     async (_case, overrides) => {
       const source = `
       export default function AuthFixture() {
@@ -190,18 +190,41 @@ describe('PublicAuthBlock Native Host composition', () => {
         />
       );
 
-      const alert = await documentAlert();
-      fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
-
       const shadow = await publicAuthShadow();
       expect(
         within(shadow).getByRole('button', { name: 'Sign in' })
       ).toBeVisible();
       expect(nativeCompiler).toHaveBeenCalledTimes(2);
       expect(
-        screen.queryByRole('button', { name: 'Use built-in sign-in' })
+        screen.queryByTestId('builtin-password-sign-in')
       ).not.toBeInTheDocument();
       expectNoEditorDebugSurface();
+    }
+  );
+
+  test.each([
+    ['non-builtin password', { is_builtin: false }],
+    ['non-password', { is_builtin: true, auth_type: 'qr-code' }]
+  ])(
+    'AC-003 shows the escape form after a %s authenticator fails twice',
+    async (_case, overrides) => {
+      const nativeCompiler = vi.fn().mockResolvedValue({
+        ok: false,
+        diagnostics: []
+      });
+      render(
+        <PublicAuthBlock
+          instance={instance('broken source', overrides)}
+          onAuthenticated={vi.fn()}
+          nativeCompiler={nativeCompiler}
+        />
+      );
+
+      expect(
+        await screen.findByTestId('builtin-password-sign-in')
+      ).toBeVisible();
+      expect(nativeCompiler).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     }
   );
 
@@ -321,7 +344,6 @@ describe('PublicAuthBlock Native Host composition', () => {
 
     await waitFor(() =>
       expect(passwordSignIn).toHaveBeenCalledWith({
-        authenticator_id: 'auth-password-local',
         identifier: 'root',
         password: 'change-me'
       })
@@ -462,15 +484,6 @@ function expectNoEditorDebugSurface() {
     document.querySelector('[data-testid="js-block-console-prompt"]')
   ).toBeNull();
   expect(document.querySelector('[role="separator"]')).toBeNull();
-}
-
-async function documentAlert(): Promise<HTMLElement> {
-  let alert: HTMLElement | null = null;
-  await waitFor(() => {
-    alert = document.querySelector('[role="alert"]');
-    expect(alert).not.toBeNull();
-  });
-  return alert!;
 }
 
 function deferred<T>() {

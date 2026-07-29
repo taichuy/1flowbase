@@ -6,7 +6,7 @@ import {
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { BlockContext } from '@1flowbase/page-protocol';
-import { Alert, Button, Space } from 'antd';
+import { Space } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -17,7 +17,6 @@ import {
   prepareNativeReactSource,
   type NativeReactModuleRegistryFactory
 } from '../../../shared/code-block/native-react-source-preparation';
-import { i18nText } from '../../../shared/i18n/text';
 import {
   createFrontstageUnavailableBlockContext,
   FrontstageNativeTrustedBlockPortalHost,
@@ -83,10 +82,7 @@ export function PublicAuthBlock({
     () => createPublicAuthNativeBlock(instance),
     [instance]
   );
-  const builtinPasswordFallbackEligible =
-    instance.is_builtin && instance.auth_type === 'password-local';
-  const builtinPasswordFallbackVisible =
-    builtinPasswordFallbackEligible && snapshot.status === 'failed';
+  const escapeFallbackVisible = snapshot.status === 'failed';
 
   const prepare = useCallback(
     async (initialAttempt: PublicAuthAttempt = 0) => {
@@ -106,7 +102,7 @@ export function PublicAuthBlock({
           return;
         }
         activeInstanceRef.current = null;
-        if (builtinPasswordFallbackEligible && attempt === 0) {
+        if (attempt === 0) {
           void runAttempt(1);
         } else {
           setSnapshot({ status: 'failed' });
@@ -213,7 +209,6 @@ export function PublicAuthBlock({
     [
       block,
       authenticatorSelector,
-      builtinPasswordFallbackEligible,
       instance,
       nativeCompiler,
       nativeCompilerWorkerFactory,
@@ -238,9 +233,7 @@ export function PublicAuthBlock({
         data-testid="native-react-public-auth-root"
         style={{ width: '100%' }}
       />
-      {snapshot.status === 'ready' &&
-      renderRoot &&
-      !builtinPasswordFallbackVisible ? (
+      {snapshot.status === 'ready' && renderRoot && !escapeFallbackVisible ? (
         <FrontstageNativeTrustedBlockPortalHost
           root={renderRoot}
           renderEpoch={snapshot.renderEpoch}
@@ -250,7 +243,7 @@ export function PublicAuthBlock({
           moduleAssets={snapshot.moduleAssets}
           onRuntimeError={() => {
             activeInstanceRef.current = null;
-            if (builtinPasswordFallbackEligible && snapshot.attempt === 0) {
+            if (snapshot.attempt === 0) {
               void prepare(1);
             } else {
               setSnapshot({ status: 'failed' });
@@ -258,26 +251,13 @@ export function PublicAuthBlock({
           }}
         />
       ) : null}
-      {snapshot.status === 'preparing' && !builtinPasswordFallbackVisible ? (
+      {snapshot.status === 'preparing' && !escapeFallbackVisible ? (
         <BlockUiLoadingShell />
       ) : null}
-      {builtinPasswordFallbackVisible ? (
+      {escapeFallbackVisible ? (
         <BuiltinPasswordSignIn
-          authenticatorId={instance.id}
           authenticatorSelector={authenticatorSelector}
           onAuthenticated={onAuthenticated}
-        />
-      ) : null}
-      {snapshot.status === 'failed' && !builtinPasswordFallbackEligible ? (
-        <Alert
-          type="error"
-          showIcon
-          message={i18nText('auth', 'sign_in.login_instances_load_failed')}
-          action={
-            <Button size="small" onClick={() => void prepare()}>
-              {i18nText('frontstage', 'auto.retry')}
-            </Button>
-          }
         />
       ) : null}
     </Space>
