@@ -25,6 +25,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_INCREMENTAL: '0'
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
   ANTHROPIC_API_KEY: ''
@@ -71,6 +72,18 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      # Cache only compiler dependency state. Gate evidence and runtime provenance
+      # are still rebuilt and emitted by the repository-owned command below.
+      - name: Restore Rust dependency cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ai-gateway-protocol-conformance
+          workspaces: |
+            api -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/anthropic -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai_compatible -> target
 
       - name: Run the single blocking AI Gateway quality command
         shell: bash

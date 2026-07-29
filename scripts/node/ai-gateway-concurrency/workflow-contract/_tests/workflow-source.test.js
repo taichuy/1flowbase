@@ -36,3 +36,27 @@ test('AC-027/028: gate uses paired provider source, empty credentials, and alway
   assert.match(source, /tmp\/test-governance\/ai-gateway-concurrency\/\*\*/u);
   assert.match(source, /if-no-files-found: error/u);
 });
+
+test('AC-012: cold Rust compilation is accelerated without treating cache as gate evidence', () => {
+  assert.match(source, /CARGO_INCREMENTAL: '0'/u);
+  assert.match(source, /uses: Swatinem\/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32/u);
+  assert.match(source, /shared-key: ai-gateway-protocol-conformance/u);
+
+  const cacheWorkspaces = source.slice(
+    source.indexOf('      - name: Restore Rust dependency cache'),
+    source.indexOf('      - name: Run the single blocking AI Gateway quality command'),
+  );
+  const expectedWorkspaces = [
+    'api -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/anthropic -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai_compatible -> target',
+  ];
+  for (const workspace of expectedWorkspaces) {
+    assert.ok(cacheWorkspaces.includes(workspace), `missing Rust cache workspace: ${workspace}`);
+  }
+  assert.equal(cacheWorkspaces.match(/ -> target/gu)?.length, expectedWorkspaces.length);
+
+  assert.doesNotMatch(cacheWorkspaces, /actions\/upload-artifact|actions\/download-artifact/u);
+  assert.match(source, /Run the single blocking AI Gateway quality command/u);
+});
