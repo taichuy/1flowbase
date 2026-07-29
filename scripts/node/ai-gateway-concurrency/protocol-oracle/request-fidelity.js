@@ -128,11 +128,6 @@ const REQUEST_NEGATIVE_VECTORS = Object.freeze([
     expected: 'fail-before-upstream',
     protocol_context: Object.freeze({ source_protocol: 'openai_chat', headers: Object.freeze({ authorization: Object.freeze(['<forbidden-fixture-value>']) }) }),
   }),
-  Object.freeze({
-    id: 'unconsumed-safe-residual', kind: 'unconsumed-residual',
-    expected: 'fail-before-upstream', provider: 'openai_chat',
-    protocol_context: Object.freeze({ source_protocol: 'openai_chat', body: Object.freeze({ cannot_be_consumed: true }) }),
-  }),
 ]);
 
 const REQUEST_TRANSLATION_VECTORS = Object.freeze([
@@ -143,7 +138,7 @@ const REQUEST_TRANSLATION_VECTORS = Object.freeze([
       source_protocol: 'openai_responses',
       body: Object.freeze({ fixture_extension: 'foreign-raw-canary' }),
     }),
-    expected_decision: 'omitted_foreign_protocol_envelope',
+    expected_decision: 'omitted_protocol_context_profile_mismatch',
   }),
 ]);
 

@@ -19,7 +19,8 @@
             "compact.responses_compact",
             "compact.responses_compaction_v2",
             "responses.native_passthrough",
-            "protocol_context"
+            "protocol_context.restore.openai_chat.v1",
+            "protocol_context.restore.openai_responses.v1"
           ]
         }
       },
@@ -45,8 +46,7 @@
         "response_format": null,
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
-          "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
+          "source_protocol": "openai_responses",
           "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
         },
         "trace_context": {},
@@ -94,7 +94,7 @@
             "system_prompt_blocks",
             "system_prompt_cache_control",
             "count_tokens",
-            "protocol_context"
+            "protocol_context.restore.anthropic_messages.v1"
           ]
         }
       },
@@ -130,7 +130,6 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
           "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
         },
         "trace_context": {},
@@ -389,7 +388,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/openai_compatible-provider",
-          "capabilities": ["protocol_context"]
+          "capabilities": ["protocol_context.restore.openai_chat.v1"]
         }
       },
       "input": {
@@ -412,8 +411,7 @@
         "response_format": null,
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
-          "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
+          "source_protocol": "openai_chat",
           "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
         },
         "trace_context": {},

@@ -134,7 +134,7 @@ test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail 
       succeeded: true,
       upstream_arrivals: 1,
       foreign_raw_in_upstream: false,
-      decisions: ['omitted_foreign_protocol_envelope'],
+      decisions: ['omitted_protocol_context_profile_mismatch'],
     })),
     ephemeral: {
       preserved_phases: ['initial-invocation', 'tool-callback', 'retry'],

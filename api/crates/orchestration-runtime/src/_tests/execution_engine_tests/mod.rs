@@ -457,7 +457,7 @@ impl ProviderInvoker for ToolMcpMetadataInvoker {
                 provider_metadata: json!({
                     "raw_id": "provider-response-1",
                     (PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY): {
-                        "decisions": ["omitted_foreign_protocol_envelope"]
+                        "decisions": ["omitted_protocol_context_profile_mismatch"]
                     }
                 }),
                 ..ProviderInvocationResult::default()

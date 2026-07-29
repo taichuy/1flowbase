@@ -24,12 +24,15 @@ test('Root #1477 AC-001/004/005: three ingress request fidelity rows are finite 
   }
 
   assert.deepEqual(REQUEST_NEGATIVE_VECTORS.map((row) => row.kind), [
-    'typed-opaque-conflict', 'reserved-field', 'unconsumed-residual',
+    'typed-opaque-conflict', 'reserved-field',
   ]);
   assert.equal(REQUEST_NEGATIVE_VECTORS.every((row) => row.expected === 'fail-before-upstream'), true);
   assert.deepEqual(REQUEST_TRANSLATION_VECTORS.map((row) => row.kind), ['foreign-protocol']);
   assert.equal(REQUEST_TRANSLATION_VECTORS[0].expected, 'generate-without-foreign-wire');
-  assert.equal(REQUEST_TRANSLATION_VECTORS[0].expected_decision, 'omitted_foreign_protocol_envelope');
+  assert.equal(
+    REQUEST_TRANSLATION_VECTORS[0].expected_decision,
+    'omitted_protocol_context_profile_mismatch',
+  );
 });
 
 test('Root #1477 AC-005: normalized request comparison ignores only approved wire differences', () => {
