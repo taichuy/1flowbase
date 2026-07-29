@@ -146,9 +146,11 @@ describe('SignInPage', () => {
       screen.queryByRole('button', { name: 'QR code' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Back to other sign-in options' })
-    );
+    const backButton = screen.getByRole('button', {
+      name: 'Back to other sign-in options'
+    });
+    expect(backButton).toHaveTextContent('');
+    fireEvent.click(backButton);
     expect(
       await screen.findByRole('button', { name: 'Password' })
     ).toBeInTheDocument();
