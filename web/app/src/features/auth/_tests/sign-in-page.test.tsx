@@ -103,7 +103,7 @@ describe('SignInPage', () => {
     expect(useAuthStore.getState().csrfToken).toBe('csrf-123');
   });
 
-  test('renders vertical selectors for multiple authenticators and mounts the selection', async () => {
+  test('AC-001 uses a chooser-first flow when multiple authenticators are available', async () => {
     const qrInstance = {
       ...passwordInstance,
       id: 'auth-qr',
@@ -127,12 +127,34 @@ describe('SignInPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Password' })
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'QR code' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Run auth-password-local' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Run auth-qr' })
+    ).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'QR code' }));
     expect(
       await screen.findByRole('button', { name: 'Run auth-qr' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Run auth-password-local' })
+      screen.queryByRole('button', { name: 'Password' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'QR code' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Back to other sign-in options' })
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Password' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'QR code' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Run auth-qr' })
     ).not.toBeInTheDocument();
   });
 
