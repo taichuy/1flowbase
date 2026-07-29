@@ -51,7 +51,7 @@ scope:
 ## 已确认决策
 
 - 每个认证器实例只有一个完整 `public_ui_block`，登录和注册可以同时存在于同一 Block；Core 不保留第二份账号密码表单。
-- 一个实例直接渲染；多个实例显示一列按钮并渲染所选 Block；零实例显示不可用状态。
+- 一个实例直接渲染；多个实例先只显示一列认证方式按钮，点击后以所选 Block 替换选择器，并允许返回重新选择；零实例显示不可用状态。
 - `self_registration_enabled` 等配置由后端持久化并投影为 `public_variables`，仅供 Block 决定显示；注册 API 必须重新读取后端配置并 fail closed。
 - Auth 页面复用 canonical `BlockModule + main`、typed inputs、renderer/runtime 和 `ctx.api.<method>(path, request)`，只增加 Auth host adapter，不创建 Auth 专用 AST/TSX/runtime 或接口目录。
 - 插件默认 Block 只用于新实例与历史空值回填；插件升级不覆盖已保存的用户 Block。
@@ -74,3 +74,4 @@ scope:
 - `2026-07-26 00` 用户批准普通区块与认证中心 Studio 统一：顶部仅运行，运行区固定为“实际区块预览 + 单一输出控制台”，不包含停止、多标签或调试浮窗；设置共享同一 `Descriptions` 骨架并保留领域字段与编辑性。实现已进入任务级 QA，未修改后端或 runtime contract。
 - `2026-07-28 19` 用户批准内置账号密码认证锁死保护：正常路径继续以 `public_ui_block` 为唯一 UI 真值；只有后端投影为已启用、`is_builtin` 且 `auth_type=password-local` 的实例，才在编译、准备、运行时失败或 10 秒超时后自动切换 Core 最小登录表单。实现提交 `7ca5fd92e` 已合入 `beta`。
 - `2026-07-29 10` 用户人工验收发现并批准修正正常态常驻的手动紧急切换：`ready` 只显示配置 Block；已启用的内置 `password-local` 在编译、准备或运行时首次失败后自动重试一次，重试仍失败或第二次 10 秒超时才进入 Core 内置表单；其他认证器保持原错误与人工重试。修复提交 `3aba07707` 已合入 `beta`，等待用户重启后再次验收。
+- `2026-07-29 10` 用户人工验收进一步纠正多认证器入口：选择器与表单不能同时出现；多实例必须先选认证方式，再进入该实例 Block，并能返回重新选择。当前代码仍会默认选择实例并同时渲染两者，待方向确认后修复。
