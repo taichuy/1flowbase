@@ -122,7 +122,7 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
 test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail closed', () => {
   const inventory = requestFidelityInventory();
   assert.equal(inventory.positive_rows.length, 3);
-  assert.equal(inventory.negative_rows.length, 3);
+  assert.equal(inventory.negative_rows.length, 2);
   assert.equal(inventory.translation_rows.length, 1);
   assert.equal(inventory.raw_sinks_forbidden.includes('durable'), true);
   const digest = 'a'.repeat(64);

@@ -1000,7 +1000,7 @@ impl ProviderInvocationInput {
         if project_protocol_context_envelope(
             &mut invocation.client_protocol_envelope,
             &mut invocation.required_capabilities,
-            declared_capabilities,
+            &declared_capabilities,
         ) {
             receipt
                 .decisions
