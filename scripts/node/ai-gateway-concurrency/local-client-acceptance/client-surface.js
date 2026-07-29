@@ -297,7 +297,8 @@ function evaluateToolSurface(client, vector, surface) {
   const terminalAfterFinal = Boolean(final)
     && surface.terminal.observed
     && surface.terminal.index > final.index;
-  const pass = paired && (chronology || codexParallelCompletionEvidence) && terminalAfterFinal;
+  const pass = paired && (chronology || codexParallelCompletionEvidence)
+    && terminalAfterFinal;
   const observed = [];
   if (calls.length === expectedCallCount) observed.push('tool_calls_observed');
   if (markedResults.every(Boolean) && uniqueResultIds.size === markers.length) {

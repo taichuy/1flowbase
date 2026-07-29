@@ -283,7 +283,7 @@ async fn llm_node_output_payload_keeps_provider_result_fields_out_of_debug_paylo
     assert_eq!(
         trace.output_payload["provider_metadata"]
             [PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY]["decisions"],
-        json!(["omitted_foreign_protocol_envelope"])
+        json!(["omitted_protocol_context_profile_mismatch"])
     );
     assert_eq!(
         trace.output_payload["provider_route"]["provider_code"],

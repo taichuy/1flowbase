@@ -22,6 +22,10 @@ const { PROVENANCE_FIDELITY_ORACLE } = require('./provenance');
 const { verifyRuntimeProvenance } = require('./runtime-provenance');
 const { verifyGatewayRequestFidelity } = require('./request-fidelity-gateway');
 const {
+  PROTOCOL_CONTEXT_PROFILE_MATRIX,
+  verifyProtocolContextProfileMatrix,
+} = require('./protocol-context-profile-matrix');
+const {
   prepareEvidence,
   publicError,
   workflowResultBase,
@@ -58,6 +62,11 @@ function protocolOracleInventory() {
     error_fidelity: errorFidelity,
     canonical_stream_regression: CANONICAL_STREAM_REGRESSION_ORACLE,
     provenance: PROVENANCE_FIDELITY_ORACLE,
+    protocol_context_profiles: {
+      rows: PROTOCOL_CONTEXT_PROFILE_MATRIX.length,
+      sources: [...new Set(PROTOCOL_CONTEXT_PROFILE_MATRIX.map((row) => row.source_protocol))],
+      providers: [...new Set(PROTOCOL_CONTEXT_PROFILE_MATRIX.map((row) => row.provider))],
+    },
   };
 }
 
@@ -234,6 +243,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   let characterizeResult = null;
   let runtimeProvenance = null;
   let requestFidelity = null;
+  let protocolContextProfiles = null;
   let executionError = null;
   const blockingFailures = [];
   const cleanupErrors = [];
@@ -280,6 +290,18 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
           mockSnapshot: mock.snapshot,
         });
         writeJson(path.join(paths.root, 'request-fidelity.json'), requestFidelity);
+      }],
+      ['protocol-context-profiles', async () => {
+        protocolContextProfiles = await (
+          dependencies.verifyProtocolContextProfileMatrix || verifyProtocolContextProfileMatrix
+        )({
+          ready,
+          mockSnapshot: mock.snapshot,
+        });
+        writeJson(
+          path.join(paths.root, 'protocol-context-profile-matrix.json'),
+          protocolContextProfiles,
+        );
       }],
       ['wire-audit', async () => {
         wireAudit = await wireAuditRunner({ manifest: compatibilityManifest }, { secretCanary: SECRET_CANARY });
@@ -347,6 +369,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       responses_websocket: gatewayWebSocket,
       runtime_provenance: runtimeProvenance,
       request_fidelity: requestFidelity,
+      protocol_context_profiles: protocolContextProfiles,
       failures: blockingFailures.map((failure) => ({
         name: failure.name,
         ...publicError(failure.error, secrets),

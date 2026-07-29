@@ -7,17 +7,19 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  CONTINUITY_VECTOR, LONG_TEXT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR,
-  SEQUENTIAL_TOOL_VECTOR, TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL,
+  CONTINUITY_VECTOR, LONG_TEXT_VECTOR, MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR,
+  PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR, TEXT_SENTINEL, TEXT_VECTOR, TOOL_FINAL_SENTINEL,
   TOOL_RESULT_SENTINEL, TOOL_VECTOR,
 } = require('../contract');
 const {
-  CONTINUITY_FINAL_SENTINEL, CONTINUITY_SEED_SENTINEL, LONG_REPEATED_UNICODE_TEXT,
-  PARALLEL_FINAL_SENTINEL, PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY,
-  SEQUENTIAL_FINAL_SENTINEL, SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
+  CONTINUITY_FINAL_SENTINEL, CONTINUITY_SEED_SENTINEL, GIT_LOG_RESULT, GIT_SHOW_RESULT,
+  GIT_WORKFLOW_FINAL, LONG_REPEATED_UNICODE_TEXT, PARALLEL_FINAL_SENTINEL,
+  PARALLEL_RESULT_A, PARALLEL_RESULT_B, PROVIDER_ERROR_BODY, SEQUENTIAL_FINAL_SENTINEL,
+  SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
 } = require('../vector-manifest');
 const {
-  evaluateAttempt, gitWorkspaceFingerprint, publicPlan, runLocalClientAcceptance,
+  crossTargetCanary, evaluateAttempt, executionTargets, gitWorkspaceFingerprint,
+  publicPlan, runLocalClientAcceptance,
   verifyMeaningfulGitWorkspace,
 } = require('../driver');
 const { OwnedResources, executionEnvironment } = require('../lifecycle');
@@ -195,6 +197,39 @@ test('WP-D4B public command artifacts redact key and embedded authorization conf
   assert.equal(command.environment.OPENCODE_CONFIG_CONTENT, '<isolated-config>');
   assert.equal(command.environment.USE_API_CONTEXT_MANAGEMENT, '1');
   assert.doesNotMatch(JSON.stringify(command), /fixture-key/u);
+});
+
+test('AC-017 executes the primary full target once and aggregates nine Git canary rows', () => {
+  const targets = ['anthropic', 'openai', 'openai_compatible'].map((provider) => ({
+    provider,
+    applicationId: `${provider}-app`,
+    gatewayBaseUrl: 'http://127.0.0.1:7800',
+  }));
+  const rows = executionTargets('claude', targets[0], { claude: targets });
+  assert.deepEqual(rows.map((row) => [row.provider, row.fullVectors]), [
+    ['anthropic', true], ['openai', false], ['openai_compatible', false],
+  ]);
+
+  const clients = Object.entries({
+    claude: ['anthropic_sse'],
+    opencode: ['openai_chat_sse'],
+    codex: ['responses_sse', 'responses_websocket'],
+  }).map(([name, protocols]) => ({
+    name,
+    attempts: targets.flatMap(({ provider }) => protocols.map((protocol) => ({
+      provider_target: provider,
+      protocol,
+      vector_id: 'tools-meaningful-git-workflow',
+      status: 'pass',
+    }))),
+  }));
+  const evidence = crossTargetCanary(clients, true);
+  assert.equal(evidence.status, 'pass');
+  assert.equal(evidence.rows.length, 9);
+  assert.deepEqual(
+    evidence.rows.find((row) => row.client === 'codex' && row.provider === 'openai').protocols,
+    ['responses_sse', 'responses_websocket'],
+  );
 });
 
 test('WP-14A canonical text and tool two-turn evaluations require observable evidence', () => {
@@ -456,6 +491,38 @@ test('WP-D4B keeps Claude/OpenCode chronology strict while Codex reports complet
     },
     parallel[2], parallel[3],
   ])).reason, 'tool_callback_evidence_missing');
+});
+
+test('AC-017 Claude Git calls require two successful local tool results in order', () => {
+  const result = output([
+    { type: 'assistant', message: { content: [{
+      type: 'tool_use', id: 'git-log', name: 'Bash',
+      input: { command: `git log -2 --oneline && echo '${GIT_LOG_RESULT}'` },
+    }] } },
+    { type: 'user', message: { content: [{
+      type: 'tool_result', tool_use_id: 'git-log', content: GIT_LOG_RESULT,
+    }] } },
+    { type: 'assistant', message: { content: [{
+      type: 'tool_use', id: 'git-show', name: 'Bash',
+      input: { command: `git show --stat --oneline --summary HEAD && echo '${GIT_SHOW_RESULT}'` },
+    }] } },
+    { type: 'user', message: { content: [{
+      type: 'tool_result', tool_use_id: 'git-show', content: GIT_SHOW_RESULT,
+    }] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: GIT_WORKFLOW_FINAL }] } },
+    { type: 'result', is_error: false, terminal_reason: 'completed', result: GIT_WORKFLOW_FINAL },
+  ]);
+  assert.equal(evaluateAttempt('claude', MEANINGFUL_GIT_VECTOR, result).pass, true);
+
+  const failedToolResult = structuredClone(result);
+  failedToolResult.stdout = failedToolResult.stdout.replaceAll(
+    GIT_SHOW_RESULT,
+    '<tool_use_error>Error: No such tool available: shell_command</tool_use_error>',
+  );
+  assert.equal(
+    evaluateAttempt('claude', MEANINGFUL_GIT_VECTOR, failedToolResult).reason,
+    'tool_callback_evidence_missing',
+  );
 });
 
 test('WP-14A driver emits mock-backed reconciliation evidence and cleans resources in finally', async () => {

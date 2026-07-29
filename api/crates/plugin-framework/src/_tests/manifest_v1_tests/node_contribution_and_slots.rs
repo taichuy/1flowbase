@@ -430,7 +430,7 @@ runtime:
 }
 
 #[test]
-fn provider_v2_manifest_declares_native_invocation_capabilities() {
+fn wp_r14a_provider_manifest_accepts_exact_protocol_context_profiles() {
     let raw = r#"
 manifest_version: 1
 plugin_id: anthropic@0.2.0
@@ -464,7 +464,9 @@ runtime:
     - system_prompt_cache_control
     - end_user_reference
     - count_tokens
-    - protocol_context
+    - protocol_context.consume.anthropic_messages.v1
+    - protocol_context.restore.openai_chat.v1
+    - protocol_context.restore.openai_responses.v1
 "#;
 
     let manifest = parse_plugin_manifest(raw).expect("provider v2 manifest should parse");
@@ -477,9 +479,41 @@ runtime:
             "system_prompt_cache_control",
             "end_user_reference",
             "count_tokens",
-            "protocol_context"
+            "protocol_context.consume.anthropic_messages.v1",
+            "protocol_context.restore.openai_chat.v1",
+            "protocol_context.restore.openai_responses.v1"
         ]
     );
+
+    for invalid in [
+        "protocol_context",
+        "protocol_context.forward.anthropic_messages.v1",
+        "protocol_context.consume.unknown.v1",
+        "protocol_context.consume.anthropic_messages.v2",
+    ] {
+        let invalid_raw = raw.replace("protocol_context.consume.anthropic_messages.v1", invalid);
+        let error = parse_plugin_manifest(&invalid_raw)
+            .expect_err("coarse or malformed protocol context profiles must be rejected");
+        assert!(error.to_string().contains("runtime.capabilities"));
+    }
+
+    let conflicting_raw = raw.replace(
+        "    - protocol_context.consume.anthropic_messages.v1\n",
+        "    - protocol_context.consume.anthropic_messages.v1\n    - protocol_context.restore.anthropic_messages.v1\n",
+    );
+    let error = parse_plugin_manifest(&conflicting_raw)
+        .expect_err("consume and restore must not conflict for one source profile");
+    assert!(error
+        .to_string()
+        .contains("conflicting protocol context profiles"));
+
+    let duplicate_raw = raw.replace(
+        "    - protocol_context.consume.anthropic_messages.v1\n",
+        "    - protocol_context.consume.anthropic_messages.v1\n    - protocol_context.consume.anthropic_messages.v1\n",
+    );
+    let error = parse_plugin_manifest(&duplicate_raw)
+        .expect_err("duplicate exact protocol context profiles must be rejected");
+    assert!(error.to_string().contains("duplicate value"));
 }
 
 #[test]
@@ -516,6 +550,9 @@ runtime:
     - compact.responses_compact
     - compact.responses_compaction_v2
     - responses.native_passthrough
+    - protocol_context.restore.anthropic_messages.v1
+    - protocol_context.consume.openai_chat.v1
+    - protocol_context.consume.openai_responses.v1
 "#;
 
     let manifest = parse_plugin_manifest(raw)
@@ -526,7 +563,10 @@ runtime:
         vec![
             "compact.responses_compact",
             "compact.responses_compaction_v2",
-            "responses.native_passthrough"
+            "responses.native_passthrough",
+            "protocol_context.restore.anthropic_messages.v1",
+            "protocol_context.consume.openai_chat.v1",
+            "protocol_context.consume.openai_responses.v1"
         ]
     );
 }

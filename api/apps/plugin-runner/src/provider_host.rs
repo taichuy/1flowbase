@@ -1462,7 +1462,7 @@ done
             json!([
                 "omitted_system_prompt_cache_control",
                 "omitted_end_user_reference",
-                "omitted_foreign_protocol_envelope"
+                "omitted_protocol_context_profile_mismatch"
             ])
         );
     }

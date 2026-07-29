@@ -86,17 +86,19 @@ function commonTarget(target) {
   if (!target?.apiKey) throw new Error('client target API key is required');
   if (!target?.gatewayBaseUrl) throw new Error('gateway base URL is required');
   return {
+    ...(target.provider ? { provider: target.provider } : {}),
     model: target.model,
     apiKey: target.apiKey,
     gatewayBaseUrl: target.gatewayBaseUrl.replace(/\/$/u, ''),
   };
 }
 
-function targetFromProvider(provider, gatewayBaseUrl) {
+function targetFromProvider(provider, gatewayBaseUrl, providerId) {
   if (!provider?.application_id || !provider?.model || !provider?.api_key) {
     throw new Error('fixture provider target is incomplete');
   }
   return {
+    provider: providerId,
     applicationId: provider.application_id,
     model: provider.model,
     apiKey: provider.api_key,
@@ -111,13 +113,30 @@ function targetsFromReady(ready) {
   if (ready?.schema_version !== '1flowbase.ai-gateway-fixture/v1') {
     throw new Error('Gateway fixture ready manifest schema mismatch');
   }
-  const openai = targetFromProvider(ready.targets?.openai, ready.gateway_base_url);
-  const anthropic = targetFromProvider(ready.targets?.anthropic, ready.gateway_base_url);
+  const openai = targetFromProvider(ready.targets?.openai, ready.gateway_base_url, 'openai');
+  const anthropic = targetFromProvider(
+    ready.targets?.anthropic,
+    ready.gateway_base_url,
+    'anthropic',
+  );
   const openaiCompatible = targetFromProvider(
     ready.targets?.openai_compatible,
-    ready.gateway_base_url
+    ready.gateway_base_url,
+    'openai_compatible',
   );
   return { claude: anthropic, opencode: openaiCompatible, codex: openai };
+}
+
+function targetMatrixFromReady(ready) {
+  const diagonal = targetsFromReady(ready);
+  const providers = Object.freeze([
+    diagonal.claude,
+    diagonal.codex,
+    diagonal.opencode,
+  ]);
+  return Object.freeze(Object.fromEntries(
+    Object.keys(CLIENT_PROTOCOLS).map((client) => [client, providers]),
+  ));
 }
 
 function codexProviderArguments(target, provider, websocket) {
@@ -199,6 +218,9 @@ function claudePlan(binary, target, paths, vector, protocol, execution) {
       ANTHROPIC_API_KEY: target.apiKey,
       CLAUDE_CODE_OAUTH_TOKEN: '',
       ...(vector.kind === 'error' ? { CLAUDE_CODE_MAX_RETRIES: '0' } : {}),
+      ...(target.provider === 'openai_compatible' && vector.id === MEANINGFUL_GIT_VECTOR.id
+        ? { CLAUDE_CODE_DISABLE_THINKING: '1' }
+        : {}),
       ...(profile?.environment || {}),
     },
     configFiles: [{ path: settingsPath, content: '{}\n' }],
@@ -313,6 +335,7 @@ module.exports = {
   buildClientPlan,
   promptFor,
   selectExecutionSurface,
+  targetMatrixFromReady,
   targetsFromReady,
   vectorsFor,
 };

@@ -17,9 +17,7 @@ function requestFidelityInventory() {
   const ingresses = REQUEST_FIDELITY_VECTORS.map((row) => row.ingress);
   if (new Set(ingresses).size !== 3) throw new Error('request fidelity oracle must cover three distinct ingresses');
   const negativeKinds = REQUEST_NEGATIVE_VECTORS.map((row) => row.kind);
-  for (const expected of [
-    'typed-opaque-conflict', 'reserved-field', 'unconsumed-residual',
-  ]) {
+  for (const expected of ['typed-opaque-conflict', 'reserved-field']) {
     if (!negativeKinds.includes(expected)) throw new Error(`request negative oracle omitted ${expected}`);
   }
   if (!REQUEST_TRANSLATION_VECTORS.some((row) => row.kind === 'foreign-protocol')) {
@@ -74,7 +72,7 @@ function assertRequestFidelityAudit(evidence, { rawCanaries = [] } = {}) {
     if (!row?.succeeded || row.upstream_arrivals !== 1 || row.foreign_raw_in_upstream !== false) {
       throw new Error(`request translation did not omit foreign wire context for ${id}`);
     }
-    if (!row.decisions?.includes('omitted_foreign_protocol_envelope')) {
+    if (!row.decisions?.includes('omitted_protocol_context_profile_mismatch')) {
       throw new Error(`request translation receipt omitted foreign-context decision for ${id}`);
     }
   }

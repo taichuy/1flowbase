@@ -274,17 +274,6 @@ fn protocol_context_envelope_rejects_unknown_top_level_fields() {
 }
 
 #[test]
-fn protocol_context_has_one_manifest_capability_name() {
-    let capability = ProviderInvocationCapability::ProtocolContext;
-
-    assert_eq!(capability.manifest_capability_name(), "protocol_context");
-    assert_eq!(
-        serde_json::to_value(capability).unwrap(),
-        json!("protocol_context")
-    );
-}
-
-#[test]
 fn d4_ac_002_native_responses_passthrough_has_one_manifest_capability_name() {
     let capability = ProviderInvocationCapability::ResponsesNativePassthrough;
 
@@ -335,7 +324,7 @@ fn wp_r1_generate_omits_undeclared_optional_context_with_a_bounded_receipt() {
         BTreeSet::from([
             ProviderGenerateTranslationDecision::OmittedSystemPromptCacheControl,
             ProviderGenerateTranslationDecision::OmittedEndUserReference,
-            ProviderGenerateTranslationDecision::OmittedForeignProtocolEnvelope,
+            ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch,
         ])
     );
     let encoded = serde_json::to_string(&receipt).unwrap();
@@ -353,7 +342,7 @@ fn wp_r1_generate_omits_undeclared_optional_context_with_a_bounded_receipt() {
         json!([
             "omitted_system_prompt_cache_control",
             "omitted_end_user_reference",
-            "omitted_foreign_protocol_envelope"
+            "omitted_protocol_context_profile_mismatch"
         ])
     );
     let mut conflicting_metadata = json!({
@@ -365,22 +354,46 @@ fn wp_r1_generate_omits_undeclared_optional_context_with_a_bounded_receipt() {
 }
 
 #[test]
-fn wp_r1_generate_keeps_same_protocol_and_native_passthrough_capabilities_fail_closed() {
-    let same_protocol = ProviderInvocationInput {
-        protocol: "openai_responses".to_string(),
+fn wp_r14a_generate_retains_a_foreign_envelope_only_for_its_exact_profile() {
+    let foreign_source = ProviderInvocationInput {
+        protocol: "openai_chat".to_string(),
         client_protocol_envelope: Some(ProtocolContextEnvelope {
-            source_protocol: "openai_responses".to_string(),
+            source_protocol: "anthropic_messages".to_string(),
             body: BTreeMap::from([("future_option".to_string(), json!({"enabled": true}))]),
             ..ProtocolContextEnvelope::default()
         }),
         required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
         ..ProviderInvocationInput::default()
     };
-    let error = same_protocol
-        .to_current_provider_generate_wire_value(&[])
-        .unwrap_err();
-    assert!(error.to_string().contains("protocol_context"));
+    let (wire, receipt) = foreign_source
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.consume.anthropic_messages.v1".to_string(),
+        ])
+        .expect("an exact foreign consume profile should retain the host envelope");
+    assert_eq!(
+        wire["client_protocol_envelope"]["source_protocol"],
+        "anthropic_messages"
+    );
+    assert!(wire.get("required_capabilities").is_none());
+    assert!(receipt.decisions.is_empty());
 
+    let (wire, receipt) = foreign_source
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.consume.openai_chat.v1".to_string()
+        ])
+        .expect("a profile mismatch must omit ordinary residual context");
+    assert!(wire.get("client_protocol_envelope").is_none());
+    assert!(wire.get("required_capabilities").is_none());
+    assert_eq!(
+        receipt.decisions,
+        BTreeSet::from([
+            ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch,
+        ])
+    );
+}
+
+#[test]
+fn wp_r14a_native_passthrough_capability_remains_fail_closed() {
     let native_passthrough = ProviderInvocationInput {
         required_capabilities: BTreeSet::from([
             ProviderInvocationCapability::ResponsesNativePassthrough,
@@ -391,6 +404,72 @@ fn wp_r1_generate_keeps_same_protocol_and_native_passthrough_capabilities_fail_c
         .to_current_provider_generate_wire_value(&[])
         .unwrap_err();
     assert!(error.to_string().contains("responses.native_passthrough"));
+}
+
+#[test]
+fn wp_r14a_count_tokens_and_compact_share_exact_profile_projection() {
+    let envelope = ProtocolContextEnvelope {
+        source_protocol: "anthropic_messages".to_string(),
+        query: BTreeMap::from([("preview".to_string(), vec!["one".to_string()])]),
+        ..ProtocolContextEnvelope::default()
+    };
+    let count_tokens = ProviderCountTokensInput {
+        client_protocol_envelope: Some(envelope.clone()),
+        required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
+        ..ProviderCountTokensInput::default()
+    };
+    let count_wire = count_tokens
+        .to_current_provider_wire_value(&[
+            "count_tokens".to_string(),
+            "protocol_context.restore.openai_responses.v1".to_string(),
+        ])
+        .expect("CountTokens profile mismatch should omit and continue");
+    assert!(count_wire.get("client_protocol_envelope").is_none());
+    assert!(count_wire.get("required_capabilities").is_none());
+    let count_wire = count_tokens
+        .to_current_provider_wire_value(&[
+            "count_tokens".to_string(),
+            "protocol_context.consume.anthropic_messages.v1".to_string(),
+        ])
+        .expect("CountTokens exact consume profile should retain the envelope");
+    assert_eq!(
+        count_wire["client_protocol_envelope"]["source_protocol"],
+        "anthropic_messages"
+    );
+    assert!(count_wire.get("required_capabilities").is_none());
+
+    let compact = ProviderInvocationInput {
+        operation: ProviderWireOperation::Compact,
+        profile: Some(ProviderCompactProfile::ResponsesCompact),
+        client_protocol_envelope: Some(envelope),
+        required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
+        ..ProviderInvocationInput::default()
+    };
+    let compact_wire = compact
+        .to_current_provider_compact_wire_value(&[
+            "compact.responses_compact".to_string(),
+            "protocol_context.restore.anthropic_messages.v1".to_string(),
+        ])
+        .expect("Compact exact restore profile should retain the envelope");
+    assert_eq!(
+        compact_wire["client_protocol_envelope"]["source_protocol"],
+        "anthropic_messages"
+    );
+    assert_eq!(
+        compact_wire["required_capabilities"],
+        json!(["compact.responses_compact"])
+    );
+    let compact_wire = compact
+        .to_current_provider_compact_wire_value(&[
+            "compact.responses_compact".to_string(),
+            "protocol_context.restore.openai_chat.v1".to_string(),
+        ])
+        .expect("Compact profile mismatch should omit and continue");
+    assert!(compact_wire.get("client_protocol_envelope").is_none());
+    assert_eq!(
+        compact_wire["required_capabilities"],
+        json!(["compact.responses_compact"])
+    );
 }
 
 #[test]

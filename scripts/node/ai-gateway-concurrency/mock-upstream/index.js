@@ -304,13 +304,22 @@ function gatewayExecutorProbeUrl(body) {
   return /GATEWAY_EXECUTOR_PROBE_URL=([^\\"\s]+)/u.exec(encoded)?.[1] ?? null;
 }
 
-function requestedResponsesTool(body) {
-  const names = (Array.isArray(body.tools) ? body.tools : [])
-    .filter((tool) => tool?.type === 'function')
-    .map((tool) => tool.name ?? tool.function?.name);
-  if (names.includes('shell_command')) return 'shell_command';
-  if (names.includes('read')) return 'read';
-  return 'shell_command';
+function requestedClientCommandTool(body) {
+  const tools = (Array.isArray(body.tools) ? body.tools : []).flatMap((tool) => {
+    const functionTool = tool?.type === 'function' && tool.function && typeof tool.function === 'object'
+      ? tool.function
+      : tool;
+    const name = functionTool?.name;
+    const parameters = functionTool?.parameters ?? functionTool?.input_schema;
+    return typeof name === 'string' && name.length > 0
+      ? [{ name, parameters: parameters && typeof parameters === 'object' ? parameters : {} }]
+      : [];
+  });
+  return tools.find((tool) => {
+    const properties = tool.parameters?.properties;
+    return properties && typeof properties === 'object'
+      && (Object.hasOwn(properties, 'cmd') || Object.hasOwn(properties, 'command'));
+  }) ?? tools[0] ?? null;
 }
 
 function wireAuditVectorFromBody(body) {
@@ -549,7 +558,7 @@ function createMockUpstream(options = {}) {
           : isToolTurn || isToolResult
           ? responsesToolEvents(
             requestTimeline.nonce, toolPlan.paths, toolPlan.final,
-            gatewayExecutorProbeUrl(body), requestedResponsesTool(body), toolPlan.finalText ?? toolFinalText,
+            gatewayExecutorProbeUrl(body), requestedClientCommandTool(body), toolPlan.finalText ?? toolFinalText,
             toolPlan.commands,
           )
           : clientText !== null
@@ -559,7 +568,7 @@ function createMockUpstream(options = {}) {
           ? (isToolTurn || isToolResult
             ? chatToolEvents(
               requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
-              toolPlan.commands,
+              toolPlan.commands, requestedClientCommandTool(body),
             )
             : clientText !== null
               ? chatTextEvents(requestTimeline.nonce, ...textChunks)
@@ -567,7 +576,7 @@ function createMockUpstream(options = {}) {
           : (isToolTurn || isToolResult
             ? anthropicToolEvents(
               requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
-              toolPlan.commands,
+              toolPlan.commands, requestedClientCommandTool(body),
             )
             : clientText !== null
               ? anthropicEvents(requestTimeline.nonce, ...textChunks)
@@ -678,7 +687,7 @@ function createMockUpstream(options = {}) {
       const stream = isToolTurn || toolPlan.hasToolResult
         ? responsesToolEvents(
           requestTimeline.nonce, toolPlan.paths, toolPlan.final,
-          gatewayExecutorProbeUrl(payload), requestedResponsesTool(payload), toolPlan.finalText,
+          gatewayExecutorProbeUrl(payload), requestedClientCommandTool(payload), toolPlan.finalText,
           toolPlan.commands,
         )
         : clientText !== null

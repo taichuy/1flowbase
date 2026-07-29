@@ -7,7 +7,8 @@ const {
   CLAUDE_PROTOCOL_VECTOR, CLIENT_PROTOCOLS, CONTINUITY_VECTOR, LONG_TEXT_VECTOR,
   MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR,
   TEXT_SENTINEL, TEXT_VECTOR, TOOL_RESULT_SENTINEL, TOOL_VECTOR, VECTOR_MANIFEST,
-  buildClientPlan, promptFor, selectExecutionSurface, targetsFromReady, vectorsFor,
+  buildClientPlan, promptFor, selectExecutionSurface, targetMatrixFromReady,
+  targetsFromReady, vectorsFor,
 } = require('../contract');
 const {
   LONG_REPEATED_UNICODE_TEXT, PARALLEL_RESULT_A, PARALLEL_RESULT_B,
@@ -85,6 +86,52 @@ test('WP-D4C maps protocol-matched published fixture applications to three clien
   assert.equal(targets.opencode.apiKey, 'openai_compatible-secret');
   assert.equal(targets.claude.applicationId, 'anthropic-app');
   assert.equal(targets.codex.gatewayBaseUrl, 'http://127.0.0.1:7800');
+  assert.equal(targets.claude.provider, 'anthropic');
+  assert.equal(targets.codex.provider, 'openai');
+  assert.equal(targets.opencode.provider, 'openai_compatible');
+});
+
+test('AC-017 fixes the finite three-client by three-provider target matrix', () => {
+  const provider = (code) => ({
+    application_id: `${code}-app`, model: '1flowbase', api_key: `${code}-secret`,
+    gateway: { base_url: 'http://127.0.0.1:7800' },
+    durable: { list_runs: {}, query_run: {} }, runtime_activity: {}, plugin_runner_active_streams: {},
+  });
+  const matrix = targetMatrixFromReady({
+    schema_version: '1flowbase.ai-gateway-fixture/v1',
+    gateway_base_url: 'http://127.0.0.1:7800',
+    targets: {
+      openai: provider('openai'), anthropic: provider('anthropic'),
+      openai_compatible: provider('openai_compatible'),
+    },
+  });
+  for (const client of ['claude', 'opencode', 'codex']) {
+    assert.deepEqual(matrix[client].map((target) => target.provider), [
+      'anthropic', 'openai', 'openai_compatible',
+    ]);
+  }
+});
+
+test('AC-017 disables Claude thinking only for the OpenAI-compatible Git canary', () => {
+  const compatible = buildClientPlan(
+    'claude',
+    '/machine/claude',
+    { ...target, provider: 'openai_compatible' },
+    paths,
+    MEANINGFUL_GIT_VECTOR,
+    'anthropic_sse',
+  );
+  const anthropic = buildClientPlan(
+    'claude',
+    '/machine/claude',
+    { ...target, provider: 'anthropic' },
+    paths,
+    MEANINGFUL_GIT_VECTOR,
+    'anthropic_sse',
+  );
+
+  assert.equal(compatible.environment.CLAUDE_CODE_DISABLE_THINKING, '1');
+  assert.equal(anthropic.environment.CLAUDE_CODE_DISABLE_THINKING, undefined);
 });
 
 test('AC-009 selects only an available tmux or ACP-headless surface', () => {

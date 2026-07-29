@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { runGatewayCharacterize } = require('../characterize/engine');
 const { createGatewayFixture } = require('../gateway-fixture');
-const { targetsFromReady } = require('../local-client-acceptance/contract');
+const {
+  targetMatrixFromReady,
+  targetsFromReady,
+} = require('../local-client-acceptance/contract');
 const { runLocalClientAcceptance } = require('../local-client-acceptance/driver');
 const { createMockUpstream } = require('../mock-upstream');
 const { runWireAudit } = require('../wire-audit/runner');
@@ -116,6 +119,8 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
       artifactRoot: path.join(evidenceRoot, 'clients'),
       surface: 'tmux',
       targets: targetsFromReady(fixture.result),
+      targetMatrix: targetMatrixFromReady(fixture.result),
+      requireCrossTargetMatrix: true,
       gitRepoPath: manifest.repo.protectedMain.path,
       gitRepoRevision: protectedMainRevision,
       mockSnapshot: async () => mock.snapshot(),

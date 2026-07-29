@@ -17,7 +17,18 @@ pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.respons
 pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
     "compact.responses_compaction_v2";
 pub const PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY: &str = "responses.native_passthrough";
-pub const PROVIDER_PROTOCOL_CONTEXT_CAPABILITY: &str = "protocol_context";
+pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY: &str =
+    "protocol_context.consume.anthropic_messages.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY: &str =
+    "protocol_context.consume.openai_chat.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY: &str =
+    "protocol_context.consume.openai_responses.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY: &str =
+    "protocol_context.restore.anthropic_messages.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY: &str =
+    "protocol_context.restore.openai_chat.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY: &str =
+    "protocol_context.restore.openai_responses.v1";
 pub const PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY: &str =
     "1flowbase_generate_translation";
 
@@ -422,7 +433,9 @@ impl ProviderInvocationCapability {
             Self::SystemPromptBlocks => "system_prompt_blocks",
             Self::SystemPromptCacheControl => "system_prompt_cache_control",
             Self::EndUserReference => "end_user_reference",
-            Self::ProtocolContext => PROVIDER_PROTOCOL_CONTEXT_CAPABILITY,
+            // Kept as an input compatibility marker for host call sites. It is stripped before
+            // provider projection and is not a package manifest capability.
+            Self::ProtocolContext => "protocol_context",
         }
     }
 }
@@ -432,7 +445,7 @@ impl ProviderInvocationCapability {
 pub enum ProviderGenerateTranslationDecision {
     OmittedSystemPromptCacheControl,
     OmittedEndUserReference,
-    OmittedForeignProtocolEnvelope,
+    OmittedProtocolContextProfileMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -663,8 +676,24 @@ impl ProviderCountTokensInput {
                 message: "CountTokens input must declare operation=count_tokens".to_string(),
             });
         }
-        let unsupported =
-            undeclared_provider_capabilities(&self.required_capabilities(), declared_capabilities);
+        if let Some(envelope) = &self.client_protocol_envelope {
+            validate_protocol_context_envelope(envelope)
+                .map_err(|message| ProviderCountTokensError::InvalidContract { message })?;
+        }
+        let declared_protocol_profiles = declared_capabilities
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let mut invocation = self.clone();
+        project_protocol_context_envelope(
+            &mut invocation.client_protocol_envelope,
+            &mut invocation.required_capabilities,
+            &declared_protocol_profiles,
+        );
+        let unsupported = undeclared_provider_capabilities(
+            &invocation.required_capabilities(),
+            declared_capabilities,
+        );
         if !unsupported.is_empty() {
             return Err(ProviderCountTokensError::Unsupported {
                 capabilities: unsupported
@@ -674,8 +703,10 @@ impl ProviderCountTokensInput {
             });
         }
 
-        serde_json::to_value(self).map_err(|error| ProviderCountTokensError::InvalidContract {
-            message: error.to_string(),
+        serde_json::to_value(invocation).map_err(|error| {
+            ProviderCountTokensError::InvalidContract {
+                message: error.to_string(),
+            }
         })
     }
 }
@@ -842,9 +873,18 @@ impl ProviderInvocationInput {
         let profile = self
             .compact_profile()
             .map_err(|message| ProviderCompactError::InvalidContract { message })?;
-        let invocation = self
+        let mut invocation = self
             .prepared_current_provider_invocation()
             .map_err(|message| ProviderCompactError::InvalidContract { message })?;
+        let declared_protocol_profiles = declared_capabilities
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        project_protocol_context_envelope(
+            &mut invocation.client_protocol_envelope,
+            &mut invocation.required_capabilities,
+            &declared_protocol_profiles,
+        );
         let unsupported = undeclared_provider_capabilities(
             &invocation.required_capabilities,
             declared_capabilities,
@@ -957,23 +997,14 @@ impl ProviderInvocationInput {
                 .insert(ProviderGenerateTranslationDecision::OmittedEndUserReference);
         }
 
-        if let Some(envelope) = invocation.client_protocol_envelope.as_ref() {
-            if !declared_capabilities
-                .contains(ProviderInvocationCapability::ProtocolContext.manifest_capability_name())
-                && envelope.source_protocol.trim() != invocation.protocol.trim()
-            {
-                invocation.client_protocol_envelope = None;
-                invocation
-                    .required_capabilities
-                    .remove(&ProviderInvocationCapability::ProtocolContext);
-                receipt
-                    .decisions
-                    .insert(ProviderGenerateTranslationDecision::OmittedForeignProtocolEnvelope);
-            } else {
-                invocation
-                    .required_capabilities
-                    .insert(ProviderInvocationCapability::ProtocolContext);
-            }
+        if project_protocol_context_envelope(
+            &mut invocation.client_protocol_envelope,
+            &mut invocation.required_capabilities,
+            &declared_capabilities,
+        ) {
+            receipt
+                .decisions
+                .insert(ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch);
         }
 
         if invocation.native_transport.is_some() {
@@ -1051,6 +1082,49 @@ impl ProviderInvocationInput {
 
 fn bounded_wire_count(length: usize) -> u32 {
     u32::try_from(length).unwrap_or(u32::MAX)
+}
+
+fn project_protocol_context_envelope(
+    envelope: &mut Option<ProtocolContextEnvelope>,
+    required_capabilities: &mut BTreeSet<ProviderInvocationCapability>,
+    declared_capabilities: &BTreeSet<&str>,
+) -> bool {
+    required_capabilities.remove(&ProviderInvocationCapability::ProtocolContext);
+    let Some(source_protocol) = envelope
+        .as_ref()
+        .map(|envelope| envelope.source_protocol.trim())
+    else {
+        return false;
+    };
+    if protocol_context_profile_is_declared(source_protocol, declared_capabilities) {
+        return false;
+    }
+    *envelope = None;
+    true
+}
+
+fn protocol_context_profile_is_declared(
+    source_protocol: &str,
+    declared_capabilities: &BTreeSet<&str>,
+) -> bool {
+    let profiles = match source_protocol {
+        "anthropic_messages" => [
+            PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+        ],
+        "openai_chat" => [
+            PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
+        ],
+        "openai_responses" => [
+            PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
+        ],
+        _ => return false,
+    };
+    profiles
+        .iter()
+        .any(|profile| declared_capabilities.contains(profile))
 }
 
 fn validate_protocol_context_envelope(envelope: &ProtocolContextEnvelope) -> Result<(), String> {

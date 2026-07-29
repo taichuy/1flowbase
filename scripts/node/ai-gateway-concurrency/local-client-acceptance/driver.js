@@ -132,6 +132,48 @@ function overallStatus(clients, cleanupErrors) {
   return 'pass';
 }
 
+function executionTargets(client, primary, matrix) {
+  const candidates = [primary, ...(matrix?.[client] ?? [])].filter(Boolean);
+  const seen = new Set();
+  return candidates.flatMap((target) => {
+    const identity = target.applicationId ?? `${target.provider}:${target.gatewayBaseUrl}`;
+    if (seen.has(identity)) return [];
+    seen.add(identity);
+    return [{
+      target,
+      provider: target.provider ?? (target === primary ? client : 'unidentified'),
+      fullVectors: target === primary || identity === primary?.applicationId,
+    }];
+  });
+}
+
+function crossTargetCanary(clients, required) {
+  if (!required) return { status: 'not_requested', rows: [] };
+  const rows = clients.flatMap((client) => {
+    if (!CLIENT_PROTOCOLS[client.name]) return [];
+    const attempts = (client.attempts ?? []).filter(
+      (attempt) => attempt.vector_id === MEANINGFUL_GIT_VECTOR.id,
+    );
+    const providers = [...new Set(attempts.map((attempt) => attempt.provider_target))];
+    return providers.map((provider) => {
+      const providerAttempts = attempts.filter((attempt) => attempt.provider_target === provider);
+      return {
+        client: client.name,
+        provider,
+        protocols: providerAttempts.map((attempt) => attempt.protocol),
+        status: providerAttempts.length === CLIENT_PROTOCOLS[client.name].length
+          && providerAttempts.every((attempt) => attempt.status === 'pass')
+          ? 'pass'
+          : 'fail',
+      };
+    });
+  });
+  return {
+    status: rows.length === 9 && rows.every((row) => row.status === 'pass') ? 'pass' : 'fail',
+    rows,
+  };
+}
+
 function continuationId(client, result, existing = null) {
   if (client === 'claude') return existing;
   const events = structuredEvents(result.stdout || '');
@@ -270,8 +312,8 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         clients.push({ name: client, status: 'fail', reason: version.reason, discovery: found, version, timeline: [] });
         continue;
       }
-      const target = options.targets?.[client];
-      if (!target) {
+      const primaryTarget = options.targets?.[client];
+      if (!primaryTarget) {
         clients.push({
           name: client,
           status: 'skipped',
@@ -282,7 +324,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         });
         continue;
       }
-      if (!target.model || !target.apiKey || !target.gatewayBaseUrl) {
+      if (!primaryTarget.model || !primaryTarget.apiKey || !primaryTarget.gatewayBaseUrl) {
         clients.push({
           name: client,
           status: 'fail',
@@ -293,121 +335,136 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         });
         continue;
       }
-      const paths = clientPaths(root, client, options.gitRepoPath ?? null);
       const attempts = [];
       timeline.append('client_started', { client, surface: surface.surface });
       let failed = false;
-      for (const protocol of CLIENT_PROTOCOLS[client]) {
-        for (const vector of selectVectors(client, protocol)) {
-          timeline.append('attempt_started', { protocol, vector_id: vector.id });
-          const gitWorkspaceBefore = vector.id === MEANINGFUL_GIT_VECTOR.id
-            ? gitWorkspaceFingerprint(paths.gitRepo)
-            : null;
-          const durableBefore = await snapshotRuns(target, dependencies.fetchImpl);
-          const mockBefore = await options.mockSnapshot();
-          const executor = dependencies.executePlan
-            || (surface.surface === 'acp-headless' ? dependencies.acpHeadlessExecutor : executeTmux);
-          const barrierAbort = new AbortController();
-          const execution = executeVector({
-            client,
-            found,
-            target,
-            paths,
-            vector,
-            protocol,
-            executor,
-            executionOptions: {
-              registry,
-              timeoutMs: options.timeoutMs,
-              surface: surface.surface,
-              tmuxExecutable: tmux,
-            },
-            surface: surface.surface,
-            secrets,
-            timeline,
-          }).finally(() => barrierAbort.abort());
-          const barrierRelease = vector.kind === 'tools'
-            ? waitForBarrierWaiting({
-              before: mockBefore,
-              mockSnapshot: options.mockSnapshot,
-              signal: barrierAbort.signal,
-              graceMs: options.timeoutMs ?? 180_000,
-            }).then(() => options.releaseBarrier())
-            : Promise.resolve();
-          let result;
-          const [executionOutcome, barrierOutcome] = await Promise.allSettled([execution, barrierRelease]);
-          if (executionOutcome.status === 'fulfilled') result = executionOutcome.value;
-          else {
-            result = mergedTurnResult([{
-              turn_index: 0,
-              command: null,
-              result: {
-                exit_code: null,
-                signal: null,
-                timed_out: false,
-                stdout: '',
-                stderr: executionOutcome.reason?.message || String(executionOutcome.reason),
+      for (const targetRow of executionTargets(client, primaryTarget, options.targetMatrix)) {
+        const { target, provider, fullVectors } = targetRow;
+        if (!target.model || !target.apiKey || !target.gatewayBaseUrl) {
+          failed = true;
+          attempts.push({ provider_target: provider, status: 'fail', reason: 'target_invalid' });
+          continue;
+        }
+        const paths = clientPaths(root, `${client}-${provider}`, options.gitRepoPath ?? null);
+        for (const protocol of CLIENT_PROTOCOLS[client]) {
+          const vectors = fullVectors
+            ? selectVectors(client, protocol)
+            : [MEANINGFUL_GIT_VECTOR];
+          for (const vector of vectors) {
+            timeline.append('attempt_started', { provider, protocol, vector_id: vector.id });
+            const gitWorkspaceBefore = vector.id === MEANINGFUL_GIT_VECTOR.id
+              ? gitWorkspaceFingerprint(paths.gitRepo)
+              : null;
+            const durableBefore = await snapshotRuns(target, dependencies.fetchImpl);
+            const mockBefore = await options.mockSnapshot();
+            const executor = dependencies.executePlan
+              || (surface.surface === 'acp-headless' ? dependencies.acpHeadlessExecutor : executeTmux);
+            const barrierAbort = new AbortController();
+            const execution = executeVector({
+              client,
+              found,
+              target,
+              paths,
+              vector,
+              protocol,
+              executor,
+              executionOptions: {
+                registry,
+                timeoutMs: options.timeoutMs,
+                surface: surface.surface,
+                tmuxExecutable: tmux,
               },
-            }]);
+              surface: surface.surface,
+              secrets,
+              timeline,
+            }).finally(() => barrierAbort.abort());
+            const barrierRelease = vector.kind === 'tools'
+              ? waitForBarrierWaiting({
+                before: mockBefore,
+                mockSnapshot: options.mockSnapshot,
+                signal: barrierAbort.signal,
+                graceMs: options.timeoutMs ?? 180_000,
+              }).then(() => options.releaseBarrier())
+              : Promise.resolve();
+            let result;
+            const [executionOutcome, barrierOutcome] = await Promise.allSettled([execution, barrierRelease]);
+            if (executionOutcome.status === 'fulfilled') result = executionOutcome.value;
+            else {
+              result = mergedTurnResult([{
+                turn_index: 0,
+                command: null,
+                result: {
+                  exit_code: null,
+                  signal: null,
+                  timed_out: false,
+                  stdout: '',
+                  stderr: executionOutcome.reason?.message || String(executionOutcome.reason),
+                },
+              }]);
+            }
+            if (barrierOutcome.status === 'rejected') {
+              const barrierMessage = barrierOutcome.reason?.message || String(barrierOutcome.reason);
+              result.stderr = `${result.stderr}\n${barrierMessage}`.trim();
+            }
+            const evaluation = evaluateAttempt(client, vector, result, protocol);
+            let evidence = null;
+            let evidenceError = null;
+            try {
+              const mockAfter = await options.mockSnapshot();
+              const mock = evaluateMockAttempt(mockBefore, mockAfter, vector.expected);
+              const expectedDurableRuns = vector.expected.durable_runs === 'provider_requests'
+                ? mock.arrivals
+                : vector.expected.durable_runs;
+              evidence = {
+                mock,
+                durable: await reconcileAttempt({
+                  target,
+                  before: durableBefore,
+                  expectedRuns: expectedDurableRuns,
+                  expectedStatuses: vector.expected.durable_statuses,
+                  expectedErrorBody: vector.expected.error_body ?? null,
+                  fetchImpl: dependencies.fetchImpl,
+                }),
+                ...(vector.id === MEANINGFUL_GIT_VECTOR.id
+                  ? {
+                    git_workspace: verifyMeaningfulGitWorkspace(
+                      paths.gitRepo,
+                      gitWorkspaceBefore,
+                      options.gitRepoRevision ?? null,
+                    ),
+                  }
+                  : {}),
+              };
+            } catch (error) {
+              evidenceError = { name: error.name || 'Error', message: error.message || String(error) };
+            }
+            const passed = evaluation.pass && evidenceError === null;
+            failed ||= !passed;
+            for (const event of evaluation.observed_events) {
+              timeline.append(event, { provider, protocol, vector_id: vector.id });
+            }
+            timeline.append('attempt_finished', {
+              provider,
+              protocol,
+              vector_id: vector.id,
+              exit_code: result.exit_code,
+              signal: result.signal,
+              timed_out: result.timed_out,
+            });
+            attempts.push({
+              provider_target: provider,
+              target_application_id: target.applicationId ?? null,
+              protocol,
+              vector_id: vector.id,
+              status: passed ? 'pass' : 'fail',
+              expected: publicExpectation(vector.expected),
+              commands: result.turns.map((turn) => turn.command),
+              result,
+              evaluation,
+              evidence,
+              evidence_error: evidenceError,
+            });
           }
-          if (barrierOutcome.status === 'rejected') {
-            const barrierMessage = barrierOutcome.reason?.message || String(barrierOutcome.reason);
-            result.stderr = `${result.stderr}\n${barrierMessage}`.trim();
-            result.exit_code = null;
-          }
-          const evaluation = evaluateAttempt(client, vector, result, protocol);
-          let evidence = null;
-          let evidenceError = null;
-          try {
-            const mockAfter = await options.mockSnapshot();
-            const mock = evaluateMockAttempt(mockBefore, mockAfter, vector.expected);
-            const expectedDurableRuns = vector.expected.durable_runs === 'provider_requests'
-              ? mock.arrivals
-              : vector.expected.durable_runs;
-            evidence = {
-              mock,
-              durable: await reconcileAttempt({
-                target,
-                before: durableBefore,
-                expectedRuns: expectedDurableRuns,
-                expectedStatuses: vector.expected.durable_statuses,
-                expectedErrorBody: vector.expected.error_body ?? null,
-                fetchImpl: dependencies.fetchImpl,
-              }),
-              ...(vector.id === MEANINGFUL_GIT_VECTOR.id
-                ? {
-                  git_workspace: verifyMeaningfulGitWorkspace(
-                    paths.gitRepo,
-                    gitWorkspaceBefore,
-                    options.gitRepoRevision ?? null,
-                  ),
-                }
-                : {}),
-            };
-          } catch (error) {
-            evidenceError = { name: error.name || 'Error', message: error.message || String(error) };
-          }
-          const passed = evaluation.pass && evidenceError === null;
-          failed ||= !passed;
-          for (const event of evaluation.observed_events) timeline.append(event, { protocol, vector_id: vector.id });
-          timeline.append('attempt_finished', {
-            protocol,
-            vector_id: vector.id,
-            exit_code: result.exit_code,
-            signal: result.signal,
-            timed_out: result.timed_out,
-          });
-          attempts.push({
-            protocol,
-            vector_id: vector.id,
-            status: passed ? 'pass' : 'fail',
-            expected: publicExpectation(vector.expected),
-            commands: result.turns.map((turn) => turn.command),
-            result,
-            evaluation,
-            evidence,
-            evidence_error: evidenceError,
-          });
         }
       }
       timeline.append('client_exited', { client, status: failed ? 'fail' : 'pass' });
@@ -418,6 +475,8 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
         discovery: found,
         version,
         protocols: CLIENT_PROTOCOLS[client],
+        provider_targets: executionTargets(client, primaryTarget, options.targetMatrix)
+          .map((row) => row.provider),
         attempts,
         timeline: timeline.snapshot(),
       });
@@ -425,7 +484,12 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
     const finalMockSnapshot = await options.mockSnapshot();
     finalReconciliation = {
       ...await verifyIdle(
-        ['claude', 'opencode', 'codex'].map((client) => options.targets?.[client]).filter(Boolean),
+        [...new Map(
+          ['claude', 'opencode', 'codex'].flatMap((client) => (
+            executionTargets(client, options.targets?.[client], options.targetMatrix)
+              .map((row) => [row.target.applicationId ?? row.provider, row.target])
+          )),
+        ).values()],
         dependencies.fetchImpl,
       ),
       ...verifyGatewayExecutor(finalMockSnapshot, 0),
@@ -442,6 +506,15 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
   } finally {
     cleanupErrors = await registry.close();
   }
+  const matrixEvidence = crossTargetCanary(clients, options.requireCrossTargetMatrix === true);
+  if (matrixEvidence.status === 'fail') {
+    clients.push({
+      name: 'cross-target-canary',
+      status: 'fail',
+      reason: 'three_client_three_provider_matrix_incomplete',
+      timeline: [],
+    });
+  }
   const artifact = {
     schema_version: ARTIFACT_SCHEMA,
     run_id: crypto.randomUUID(),
@@ -453,6 +526,7 @@ async function runLocalClientAcceptance(options, dependencies = {}) {
     status: overallStatus(clients, cleanupErrors),
     surface_selection: surface,
     clients,
+    cross_target_canary: matrixEvidence,
     final_reconciliation: finalReconciliation,
     cleanup: { status: cleanupErrors.length ? 'fail' : 'pass', errors: cleanupErrors },
   };
@@ -468,6 +542,8 @@ module.exports = {
   gitWorkspaceFingerprint,
   overallStatus,
   publicPlan,
+  crossTargetCanary,
+  executionTargets,
   runLocalClientAcceptance,
   structuredEvents,
   verifyMeaningfulGitWorkspace,
