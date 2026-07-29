@@ -217,7 +217,7 @@ async fn ac_005_activation_requires_csrf_and_maps_stale_revision_to_conflict() {
         )
         .await
         .unwrap();
-    assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
 
     let stale = app
         .oneshot(
@@ -278,7 +278,7 @@ async fn ac_006_feature_grant_and_effective_root_in_foreign_workspace_both_fail_
     assert_eq!(member_response.status(), StatusCode::FORBIDDEN);
     assert_eq!(
         response_json(member_response).await["code"],
-        json!("root_i18n_catalog_actor")
+        json!("console_operation_permission_denied")
     );
 
     let foreign_workspace = seed_workspace(&database_url, "Foreign i18n workspace").await;
@@ -327,7 +327,7 @@ async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filte
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/entries?module=%40taichuy%2Fplatform%2Fcommon&locale=zh_Hans&search=Settings&origin=official&offset=0&limit=20")
+                .uri("/api/console/settings/i18n/entries?module=%40taichuy%2Fplatform%2Fcommon&locale=zh_Hans&search=Cancel&origin=official&offset=0&limit=20")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -340,12 +340,12 @@ async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filte
     assert!(payload["data"]["revision"].as_i64().is_some());
     let entry = &payload["data"]["entries"][0];
     assert_eq!(entry["module"], json!("@taichuy/platform/common"));
-    assert_eq!(entry["msgid"], json!("Settings"));
+    assert_eq!(entry["msgid"], json!("Cancel"));
     assert_eq!(entry["locale"], json!("zh_Hans"));
-    assert_eq!(entry["official_translation"], json!("设置"));
+    assert_eq!(entry["official_translation"], json!("取消"));
     assert_eq!(entry["override_translation"], Value::Null);
     assert_eq!(entry["custom_translation"], Value::Null);
-    assert_eq!(entry["effective_value"], json!("设置"));
+    assert_eq!(entry["effective_value"], json!("取消"));
     assert_eq!(entry["origin"], json!("official"));
     assert_eq!(entry["missing"], json!(false));
     assert_eq!(entry["obsolete"], json!(false));
@@ -355,7 +355,7 @@ async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filte
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=Settings&locale=zh_Hans")
+                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=Cancel&locale=zh_Hans")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -427,7 +427,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         .unwrap();
     let official_override = json!({
         "module": "@taichuy/platform/common",
-        "msgid": "Settings",
+        "msgid": "Cancel",
         "locale": "zh_Hans",
         "translation": "覆盖",
         "expected_revision": initial_revision,
@@ -442,7 +442,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         official_override.clone(),
     )
     .await;
-    assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
 
     let mut stale_body = official_override.clone();
     stale_body["expected_revision"] = json!(initial_revision - 1);
@@ -486,7 +486,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         Some(&csrf),
         json!({
             "module": "@taichuy/platform/common",
-            "msgid": "Settings",
+            "msgid": "Cancel",
             "locale": "zh_Hans",
             "expected_revision": override_revision,
         }),
@@ -508,7 +508,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         Some(&csrf),
         json!({
             "module": "@taichuy/platform/common",
-            "msgid": "Settings",
+            "msgid": "Cancel",
             "locale": "zh_Hans",
             "translation": "再次覆盖",
             "expected_revision": restored_revision,

@@ -45,6 +45,15 @@ async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
         .to_vec()
 }
 
+fn manifest_module<'a>(manifest: &'a Value, module: &str) -> &'a Value {
+    manifest["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["module"] == module)
+        .unwrap()
+}
+
 #[test]
 fn ac_011_runtime_routes_are_authenticated_and_documented() {
     let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly();
@@ -157,7 +166,7 @@ async fn ac_011_manifest_bundle_etag_cache_and_server_resolution_contract() {
         .unwrap()
         .to_owned();
     let manifest: Value = serde_json::from_slice(&body_bytes(manifest_response).await).unwrap();
-    let module = &manifest["modules"][0];
+    let module = manifest_module(&manifest, "@taichuy/platform/common");
     let digest = module["digest"].as_str().unwrap().to_owned();
     let href = module["href"].as_str().unwrap().to_owned();
 
@@ -282,9 +291,10 @@ async fn ac_011_manifest_bundle_etag_cache_and_server_resolution_contract() {
         .unwrap();
     let changed_manifest: Value =
         serde_json::from_slice(&body_bytes(changed_manifest_response).await).unwrap();
-    let changed_digest = changed_manifest["modules"][0]["digest"].as_str().unwrap();
+    let changed_module = manifest_module(&changed_manifest, "@taichuy/platform/common");
+    let changed_digest = changed_module["digest"].as_str().unwrap();
     assert_ne!(changed_digest, digest);
-    let changed_href = changed_manifest["modules"][0]["href"].as_str().unwrap();
+    let changed_href = changed_module["href"].as_str().unwrap();
     let changed_bundle_response = app
         .clone()
         .oneshot(
@@ -344,7 +354,9 @@ async fn ac_011_manifest_bundle_etag_cache_and_server_resolution_contract() {
         .unwrap();
     let fallback_manifest: Value =
         serde_json::from_slice(&body_bytes(fallback_manifest_response).await).unwrap();
-    let fallback_href = fallback_manifest["modules"][0]["href"].as_str().unwrap();
+    let fallback_href = manifest_module(&fallback_manifest, "@taichuy/platform/common")["href"]
+        .as_str()
+        .unwrap();
     let fallback_response = app
         .oneshot(
             Request::builder()
