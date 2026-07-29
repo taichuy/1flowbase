@@ -17,7 +17,8 @@ const {
   SEQUENTIAL_FINAL_SENTINEL, SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B,
 } = require('../vector-manifest');
 const {
-  evaluateAttempt, gitWorkspaceFingerprint, publicPlan, runLocalClientAcceptance,
+  crossTargetCanary, evaluateAttempt, executionTargets, gitWorkspaceFingerprint,
+  publicPlan, runLocalClientAcceptance,
   verifyMeaningfulGitWorkspace,
 } = require('../driver');
 const { OwnedResources, executionEnvironment } = require('../lifecycle');
@@ -195,6 +196,39 @@ test('WP-D4B public command artifacts redact key and embedded authorization conf
   assert.equal(command.environment.OPENCODE_CONFIG_CONTENT, '<isolated-config>');
   assert.equal(command.environment.USE_API_CONTEXT_MANAGEMENT, '1');
   assert.doesNotMatch(JSON.stringify(command), /fixture-key/u);
+});
+
+test('AC-017 executes the primary full target once and aggregates nine Git canary rows', () => {
+  const targets = ['anthropic', 'openai', 'openai_compatible'].map((provider) => ({
+    provider,
+    applicationId: `${provider}-app`,
+    gatewayBaseUrl: 'http://127.0.0.1:7800',
+  }));
+  const rows = executionTargets('claude', targets[0], { claude: targets });
+  assert.deepEqual(rows.map((row) => [row.provider, row.fullVectors]), [
+    ['anthropic', true], ['openai', false], ['openai_compatible', false],
+  ]);
+
+  const clients = Object.entries({
+    claude: ['anthropic_sse'],
+    opencode: ['openai_chat_sse'],
+    codex: ['responses_sse', 'responses_websocket'],
+  }).map(([name, protocols]) => ({
+    name,
+    attempts: targets.flatMap(({ provider }) => protocols.map((protocol) => ({
+      provider_target: provider,
+      protocol,
+      vector_id: 'tools-meaningful-git-workflow',
+      status: 'pass',
+    }))),
+  }));
+  const evidence = crossTargetCanary(clients, true);
+  assert.equal(evidence.status, 'pass');
+  assert.equal(evidence.rows.length, 9);
+  assert.deepEqual(
+    evidence.rows.find((row) => row.client === 'codex' && row.provider === 'openai').protocols,
+    ['responses_sse', 'responses_websocket'],
+  );
 });
 
 test('WP-14A canonical text and tool two-turn evaluations require observable evidence', () => {

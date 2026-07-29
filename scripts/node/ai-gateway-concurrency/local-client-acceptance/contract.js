@@ -92,11 +92,12 @@ function commonTarget(target) {
   };
 }
 
-function targetFromProvider(provider, gatewayBaseUrl) {
+function targetFromProvider(provider, gatewayBaseUrl, providerId) {
   if (!provider?.application_id || !provider?.model || !provider?.api_key) {
     throw new Error('fixture provider target is incomplete');
   }
   return {
+    provider: providerId,
     applicationId: provider.application_id,
     model: provider.model,
     apiKey: provider.api_key,
@@ -111,13 +112,30 @@ function targetsFromReady(ready) {
   if (ready?.schema_version !== '1flowbase.ai-gateway-fixture/v1') {
     throw new Error('Gateway fixture ready manifest schema mismatch');
   }
-  const openai = targetFromProvider(ready.targets?.openai, ready.gateway_base_url);
-  const anthropic = targetFromProvider(ready.targets?.anthropic, ready.gateway_base_url);
+  const openai = targetFromProvider(ready.targets?.openai, ready.gateway_base_url, 'openai');
+  const anthropic = targetFromProvider(
+    ready.targets?.anthropic,
+    ready.gateway_base_url,
+    'anthropic',
+  );
   const openaiCompatible = targetFromProvider(
     ready.targets?.openai_compatible,
-    ready.gateway_base_url
+    ready.gateway_base_url,
+    'openai_compatible',
   );
   return { claude: anthropic, opencode: openaiCompatible, codex: openai };
+}
+
+function targetMatrixFromReady(ready) {
+  const diagonal = targetsFromReady(ready);
+  const providers = Object.freeze([
+    diagonal.claude,
+    diagonal.codex,
+    diagonal.opencode,
+  ]);
+  return Object.freeze(Object.fromEntries(
+    Object.keys(CLIENT_PROTOCOLS).map((client) => [client, providers]),
+  ));
 }
 
 function codexProviderArguments(target, provider, websocket) {
@@ -313,6 +331,7 @@ module.exports = {
   buildClientPlan,
   promptFor,
   selectExecutionSurface,
+  targetMatrixFromReady,
   targetsFromReady,
   vectorsFor,
 };

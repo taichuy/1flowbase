@@ -167,6 +167,10 @@ test('WP-14A runs the machine client matrix while the mock-backed fixture is ali
   assert.equal(clients.discovery.binaries.opencode, '/bin/opencode');
   assert.equal(clients.discovery.binaries.codex, '/bin/codex');
   assert.equal(clients.targets.codex.gatewayBaseUrl, 'http://127.0.0.1:4100');
+  assert.equal(clients.requireCrossTargetMatrix, true);
+  assert.deepEqual(clients.targetMatrix.claude.map((target) => target.provider), [
+    'anthropic', 'openai', 'openai_compatible',
+  ]);
   assert.equal(clients.gitRepoPath, '/main');
   assert.equal(clients.gitRepoRevision, 'c'.repeat(40));
   assert.equal(typeof clients.mockSnapshot, 'function');

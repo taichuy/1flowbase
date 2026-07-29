@@ -3,7 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { targetsFromReady } = require('./contract');
+const { targetMatrixFromReady, targetsFromReady } = require('./contract');
 const { runLocalClientAcceptance } = require('./driver');
 
 function parseArguments(argv) {
@@ -32,6 +32,8 @@ function loadOptions(values) {
     surface: values.surface || 'auto',
     timeoutMs: values['timeout-ms'] ? Number(values['timeout-ms']) : undefined,
     targets: targetsFromReady(manifest),
+    targetMatrix: targetMatrixFromReady(manifest),
+    requireCrossTargetMatrix: true,
     async mockSnapshot() {
       const response = await fetch(snapshotUrl);
       if (!response.ok) throw new Error(`controlled upstream snapshot returned HTTP ${response.status}`);
