@@ -7,6 +7,7 @@ const { TERMINAL_STATUSES, queryRun } = require('../local-client-acceptance/dura
 const { runUuidFromProtocolId } = require('../characterize/durable-evidence');
 const {
   createSseParser,
+  protocolErrorMessage,
   protocolEventType,
   protocolRunId,
 } = require('../characterize/stream-parsers');
@@ -176,11 +177,14 @@ async function sendMatrixRequest(row, target, rawCanary, fetchImpl) {
   }
   const protocolIds = [];
   const eventTypes = [];
+  const errorMessages = [];
   const parser = createSseParser((event) => {
     const type = protocolEventType(event);
     if (type) eventTypes.push(type);
     const id = protocolRunId(row.transport, event);
     if (id) protocolIds.push(id);
+    const errorMessage = protocolErrorMessage(event);
+    if (errorMessage) errorMessages.push(errorMessage);
   });
   const reader = response.body.getReader();
   while (true) {
@@ -192,7 +196,7 @@ async function sendMatrixRequest(row, target, rawCanary, fetchImpl) {
   const terminal = SUCCESS_TERMINAL[row.transport];
   if (eventTypes.filter((type) => type === terminal).length !== 1) {
     throw new Error(
-      `${row.id} did not emit exactly one ${terminal}; observed ${JSON.stringify(eventTypes.slice(-20))}`,
+      `${row.id} did not emit exactly one ${terminal}; observed ${JSON.stringify(eventTypes.slice(-20))}; errors ${JSON.stringify(errorMessages.slice(-3))}`,
     );
   }
   const uniqueIds = [...new Set(protocolIds)];
