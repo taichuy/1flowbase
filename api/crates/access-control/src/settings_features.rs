@@ -118,8 +118,8 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.i18n".to_string(),
                 surface_key: "i18n".to_string(),
                 path: "/settings/i18n".to_string(),
-                label_key: "Language catalog".to_string(),
-                description_key: "Root language catalog operations".to_string(),
+                label_key: "auto.translation_catalog_title".to_string(),
+                description_key: "auto.translation_catalog_description".to_string(),
                 order: 150,
             },
             api_routes: settings_api_routes(&[
@@ -154,8 +154,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.docs".to_string(),
                 surface_key: "docs".to_string(),
                 path: "/settings/docs".to_string(),
-                label_key: "API documentation".to_string(),
-                description_key: "API documentation operations".to_string(),
+                label_key: "auto.api_documentation".to_string(),
+                description_key: "console.policy_groups.settings.system.docs.description"
+                    .to_string(),
                 order: 100,
             },
             api_routes: settings_api_routes(&[
@@ -186,8 +187,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.api-key-authentication".to_string(),
                 surface_key: "api-key-authentication".to_string(),
                 path: "/settings/api-key-authentication".to_string(),
-                label_key: "API key authentication".to_string(),
-                description_key: "API key authentication operations".to_string(),
+                label_key: "auto.api_key_authentication".to_string(),
+                description_key:
+                    "console.policy_groups.settings.system.api-key-authentication.description"
+                        .to_string(),
                 order: 200,
             },
             api_routes: settings_api_routes(&[
@@ -212,8 +215,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.system-runtime".to_string(),
                 surface_key: "system-runtime".to_string(),
                 path: "/settings/system-runtime".to_string(),
-                label_key: "System runtime".to_string(),
-                description_key: "System runtime operations".to_string(),
+                label_key: "auto.system_runtime".to_string(),
+                description_key: "console.policy_groups.settings.system.system-runtime.description"
+                    .to_string(),
                 order: 400,
             },
             api_routes: settings_api_routes(&[
@@ -233,8 +237,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.applications".to_string(),
                 surface_key: "applications".to_string(),
                 path: "/settings/applications".to_string(),
-                label_key: "Application management".to_string(),
-                description_key: "Application management operations".to_string(),
+                label_key: "auto.application_management".to_string(),
+                description_key: "console.policy_groups.settings.system.applications.description"
+                    .to_string(),
                 order: 700,
             },
             api_routes: settings_api_routes(&[(
@@ -254,8 +259,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.auth-center".to_string(),
                 surface_key: "auth-center".to_string(),
                 path: "/settings/auth-center".to_string(),
-                label_key: "Authentication center".to_string(),
-                description_key: "Authentication center operations".to_string(),
+                label_key: "auto.auth_center".to_string(),
+                description_key: "console.policy_groups.settings.system.auth-center.description"
+                    .to_string(),
                 order: 300,
             },
             api_routes: settings_api_routes(&[
@@ -298,8 +304,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.data-models".to_string(),
                 surface_key: "data-models".to_string(),
                 path: "/settings/data-models".to_string(),
-                label_key: "Data source".to_string(),
-                description_key: "Data model and data source operations".to_string(),
+                label_key: "auto.data_source".to_string(),
+                description_key: "console.policy_groups.settings.system.data-models.description"
+                    .to_string(),
                 order: 900,
             },
             api_routes: settings_api_routes(&[
@@ -405,8 +412,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.files".to_string(),
                 surface_key: "files".to_string(),
                 path: "/settings/files".to_string(),
-                label_key: "File management".to_string(),
-                description_key: "File management operations".to_string(),
+                label_key: "auto.file_management".to_string(),
+                description_key: "console.policy_groups.settings.system.files.description"
+                    .to_string(),
                 order: 800,
             },
             api_routes: settings_api_routes(&[
@@ -435,8 +443,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.host-infrastructure".to_string(),
                 surface_key: "host-infrastructure".to_string(),
                 path: "/settings/host-infrastructure".to_string(),
-                label_key: "Infrastructure".to_string(),
-                description_key: "Host infrastructure operations".to_string(),
+                label_key: "auto.infrastructure".to_string(),
+                description_key:
+                    "console.policy_groups.settings.system.host-infrastructure.description"
+                        .to_string(),
                 order: 500,
             },
             api_routes: settings_api_routes(&[
@@ -479,8 +489,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.memory-observation".to_string(),
                 surface_key: "memory-observation".to_string(),
                 path: "/settings/memory-observation".to_string(),
-                label_key: "Memory observation".to_string(),
-                description_key: "Memory observation operations".to_string(),
+                label_key: "auto.memory_observation".to_string(),
+                description_key:
+                    "console.policy_groups.settings.system.memory-observation.description"
+                        .to_string(),
                 order: 600,
             },
             api_routes: settings_api_routes(&[
@@ -523,8 +535,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.members".to_string(),
                 surface_key: "members".to_string(),
                 path: "/settings/members".to_string(),
-                label_key: "User management".to_string(),
-                description_key: "Member management operations".to_string(),
+                label_key: "auto.user_management".to_string(),
+                description_key: "console.policy_groups.settings.system.members.description"
+                    .to_string(),
                 order: 1200,
             },
             api_routes: settings_api_routes(&[
@@ -551,8 +564,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.model-providers".to_string(),
                 surface_key: "model-providers".to_string(),
                 path: "/settings/model-providers".to_string(),
-                label_key: "Model providers".to_string(),
-                description_key: "Model provider operations".to_string(),
+                label_key: "auto.model_providers".to_string(),
+                description_key:
+                    "console.policy_groups.settings.system.model-providers.description"
+                        .to_string(),
                 order: 1000,
             },
             api_routes: settings_api_routes(&[
@@ -662,8 +677,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.mcp-management".to_string(),
                 surface_key: "mcp-management".to_string(),
                 path: "/settings/mcp-management".to_string(),
-                label_key: "MCP management".to_string(),
-                description_key: "MCP management operations".to_string(),
+                label_key: "auto.mcp_management".to_string(),
+                description_key:
+                    "console.policy_groups.settings.system.mcp-management.description".to_string(),
                 order: 1100,
             },
             api_routes: settings_api_routes(&[
@@ -788,8 +804,9 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 route_id: "settings.roles".to_string(),
                 surface_key: "roles".to_string(),
                 path: "/settings/roles".to_string(),
-                label_key: "Permission management".to_string(),
-                description_key: "Role and permission operations".to_string(),
+                label_key: "auto.permission_management".to_string(),
+                description_key: "console.policy_groups.settings.system.roles.description"
+                    .to_string(),
                 order: 1300,
             },
             api_routes: settings_api_routes(&[

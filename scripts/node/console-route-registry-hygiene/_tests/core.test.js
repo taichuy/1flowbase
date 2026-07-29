@@ -127,8 +127,8 @@ test('evaluateConsoleRouteRegistryHygiene reports registry and API binding drift
   const inventory = collectConsoleRouteRegistryInventory({ repoRoot });
   const report = evaluateConsoleRouteRegistryHygiene({ inventory });
 
-  assert.equal(report.summary.errors, 8);
-  assert.equal(report.summary.findings, 8);
+  assert.equal(report.summary.errors, 7);
+  assert.equal(report.summary.findings, 7);
 
   const rules = report.findings.map((finding) => finding.rule);
   assert.ok(rules.includes('frontend-settings-visibility-mapping-present'));
@@ -140,7 +140,7 @@ test('evaluateConsoleRouteRegistryHygiene reports registry and API binding drift
   assert.ok(rules.includes('settings-route-label-key-mismatch'));
   assert.ok(rules.includes('settings-route-path-mismatch'));
   assert.ok(rules.includes('settings-section-api-query-key-prefix'));
-  assert.ok(rules.includes('settings-section-api-console-binding'));
+  assert.ok(!rules.includes('settings-section-api-console-binding'));
 });
 
 test('main writes json and markdown reports under tmp/test-governance', async () => {
@@ -180,7 +180,7 @@ test('main writes json and markdown reports under tmp/test-governance', async ()
   assert.equal(fs.existsSync(markdownReportPath), true);
 
   const report = JSON.parse(fs.readFileSync(jsonReportPath, 'utf8'));
-  assert.equal(report.summary.errors, 8);
+  assert.equal(report.summary.errors, 7);
   assert.match(
     fs.readFileSync(markdownReportPath, 'utf8'),
     /Console Route Registry Hygiene/u

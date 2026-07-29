@@ -4,9 +4,9 @@ pub(super) const SETTINGS_MODULE: &str = "@taichuy/platform/console/settings";
 pub(super) const POLICY_MODULE: &str = "@taichuy/platform/console/settings/policy";
 pub(super) const RESOURCES_MODULE: &str = "@taichuy/platform/console/settings/resources";
 
-macro_rules! settings {
-    ($msgid:expr) => {
-        CoreConsoleDisplayText::new(SETTINGS_MODULE, $msgid)
+macro_rules! settings_feature {
+    ($reference:expr, $msgid:expr) => {
+        CoreConsoleDisplayText::referenced($reference, SETTINGS_MODULE, $msgid)
     };
 }
 
@@ -28,34 +28,76 @@ macro_rules! resource {
 /// deliberately contains no translated value: request projections resolve translations from the
 /// dynamic catalog and the resolver falls back to the English msgid.
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
-    settings!("API documentation"),
-    settings!("Language catalog"),
-    settings!("API key authentication"),
-    settings!("System runtime"),
-    settings!("Application management"),
-    settings!("Authentication center"),
-    settings!("Data source"),
-    settings!("File management"),
-    settings!("Infrastructure"),
-    settings!("Memory observation"),
-    settings!("User management"),
-    settings!("Model providers"),
-    settings!("MCP management"),
-    settings!("Permission management"),
-    settings!("API documentation operations"),
-    settings!("Root language catalog operations"),
-    settings!("API key authentication operations"),
-    settings!("System runtime operations"),
-    settings!("Application management operations"),
-    settings!("Authentication center operations"),
-    settings!("Data model and data source operations"),
-    settings!("File management operations"),
-    settings!("Host infrastructure operations"),
-    settings!("Memory observation operations"),
-    settings!("Member management operations"),
-    settings!("Model provider operations"),
-    settings!("MCP management operations"),
-    settings!("Role and permission operations"),
+    settings_feature!("auto.api_documentation", "API documentation"),
+    settings_feature!("auto.translation_catalog_title", "Language catalog"),
+    settings_feature!("auto.api_key_authentication", "API key authentication"),
+    settings_feature!("auto.system_runtime", "System runtime"),
+    settings_feature!("auto.application_management", "Application management"),
+    settings_feature!("auto.auth_center", "Authentication center"),
+    settings_feature!("auto.data_source", "Data source"),
+    settings_feature!("auto.file_management", "File management"),
+    settings_feature!("auto.infrastructure", "Infrastructure"),
+    settings_feature!("auto.memory_observation", "Memory observation"),
+    settings_feature!("auto.user_management", "User management"),
+    settings_feature!("auto.model_providers", "Model providers"),
+    settings_feature!("auto.mcp_management", "MCP management"),
+    settings_feature!("auto.permission_management", "Permission management"),
+    settings_feature!(
+        "console.policy_groups.settings.system.docs.description",
+        "API documentation operations"
+    ),
+    settings_feature!(
+        "auto.translation_catalog_description",
+        "Root language catalog operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.api-key-authentication.description",
+        "API key authentication operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.system-runtime.description",
+        "System runtime operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.applications.description",
+        "Application management operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.auth-center.description",
+        "Authentication center operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.data-models.description",
+        "Data model and data source operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.files.description",
+        "File management operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.host-infrastructure.description",
+        "Host infrastructure operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.memory-observation.description",
+        "Memory observation operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.members.description",
+        "Member management operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.model-providers.description",
+        "Model provider operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.mcp-management.description",
+        "MCP management operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.roles.description",
+        "Role and permission operations"
+    ),
     policy!("Signed-in console"),
     policy!("Console routes available to every signed-in user"),
     policy!("Agent Flow"),

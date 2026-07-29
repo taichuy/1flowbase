@@ -35,7 +35,7 @@ pub struct ConsoleNavigationItemResponse {
     pub item_id: String,
     pub route_id: String,
     pub parent_item_id: Option<String>,
-    pub label: String,
+    pub label_key: String,
     pub navigation_slot: String,
     pub order: i32,
 }
@@ -78,42 +78,30 @@ pub async fn get_console_navigation(
     let navigation = state
         .console_surface_registry
         .accessible_navigation(&context.actor);
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-
-    Ok(Json(ApiSuccess::new(
-        ConsoleNavigationResponse::from_navigation(&state, &locale, navigation).await?,
-    )))
+    Ok(Json(ApiSuccess::new(ConsoleNavigationResponse::from(
+        navigation,
+    ))))
 }
 
-impl ConsoleNavigationResponse {
-    async fn from_navigation(
-        state: &ApiState,
-        locale: &domain::CatalogLocale,
-        navigation: ConsoleNavigation,
-    ) -> Result<Self, ApiError> {
-        let mut navigation_items = Vec::with_capacity(navigation.navigation_items.len());
-        for item in navigation.navigation_items {
-            let label = super::super::core_console_i18n::resolve_core_console_display(
-                state,
-                locale,
-                &item.label_key,
-            )
-            .await?;
-            navigation_items.push(ConsoleNavigationItemResponse::from_item(item, label));
-        }
-        Ok(Self {
+impl From<ConsoleNavigation> for ConsoleNavigationResponse {
+    fn from(navigation: ConsoleNavigation) -> Self {
+        Self {
             route_definitions: navigation
                 .route_definitions
                 .into_iter()
                 .map(ConsoleRouteDefinitionResponse::from)
                 .collect(),
-            navigation_items,
+            navigation_items: navigation
+                .navigation_items
+                .into_iter()
+                .map(ConsoleNavigationItemResponse::from)
+                .collect(),
             permission_bindings: navigation
                 .permission_bindings
                 .into_iter()
                 .map(ConsolePermissionBindingResponse::from)
                 .collect(),
-        })
+        }
     }
 }
 
@@ -128,13 +116,13 @@ impl From<ConsoleRouteDefinition> for ConsoleRouteDefinitionResponse {
     }
 }
 
-impl ConsoleNavigationItemResponse {
-    fn from_item(item: ConsoleNavigationItem, label: String) -> Self {
+impl From<ConsoleNavigationItem> for ConsoleNavigationItemResponse {
+    fn from(item: ConsoleNavigationItem) -> Self {
         Self {
             item_id: item.item_id,
             route_id: item.route_id,
             parent_item_id: item.parent_item_id,
-            label,
+            label_key: item.label_key,
             navigation_slot: item.navigation_slot.as_str().to_string(),
             order: item.order,
         }

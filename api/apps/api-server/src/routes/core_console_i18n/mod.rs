@@ -8,13 +8,30 @@ use crate::{app_state::ApiState, error_response::ApiError};
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CoreConsoleDisplayText {
+    pub(super) reference: &'static str,
     pub(super) module: &'static str,
     pub(super) msgid: &'static str,
 }
 
 impl CoreConsoleDisplayText {
     pub(super) const fn new(module: &'static str, msgid: &'static str) -> Self {
-        Self { module, msgid }
+        Self {
+            reference: msgid,
+            module,
+            msgid,
+        }
+    }
+
+    pub(super) const fn referenced(
+        reference: &'static str,
+        module: &'static str,
+        msgid: &'static str,
+    ) -> Self {
+        Self {
+            reference,
+            module,
+            msgid,
+        }
     }
 }
 
@@ -25,7 +42,7 @@ pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalog
         .into_iter()
         .flat_map(|texts| texts.iter())
         .map(|text| ConsoleLocaleText {
-            reference: text.msgid.to_string(),
+            reference: text.reference.to_string(),
             en_us: text.msgid.to_string(),
             zh_hans: text.msgid.to_string(),
         })
@@ -117,10 +134,13 @@ pub(crate) fn core_console_display_inventory() -> Vec<(&'static str, &'static st
 pub(super) async fn resolve_core_console_display(
     state: &ApiState,
     locale: &CatalogLocale,
-    msgid: &str,
+    reference: &str,
 ) -> Result<String, ApiError> {
-    let Some(text) = catalog::TEXTS.iter().find(|text| text.msgid == msgid) else {
-        return Ok(msgid.to_string());
+    let Some(text) = catalog::TEXTS
+        .iter()
+        .find(|text| text.reference == reference || text.msgid == reference)
+    else {
+        return Ok(reference.to_string());
     };
     crate::app_state::resolve_request_text(state, locale, text.module, text.msgid).await
 }

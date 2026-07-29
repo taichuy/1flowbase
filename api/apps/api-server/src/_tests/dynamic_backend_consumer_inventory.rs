@@ -241,9 +241,8 @@ fn ac_010_d3_p4_console_display_inventory_is_exact_and_english_owned() {
     assert!(!core_catalog
         .chars()
         .any(|character| matches!(character, '\u{4e00}'..='\u{9fff}')));
-    assert!(!core_catalog.contains("auto."));
-    assert!(!core_catalog.contains("console.policy"));
-    assert!(!core_catalog.contains("console.resources"));
+    assert!(core_catalog.contains("settings_feature!"));
+    assert!(core_catalog.contains("auto.translation_catalog_title"));
 }
 
 #[test]

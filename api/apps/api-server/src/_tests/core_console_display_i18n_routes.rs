@@ -132,11 +132,6 @@ async fn core_console_display_routes_resolve_dynamic_zh_hans_and_fallback_to_eng
             "应用管理操作（动态）",
         ),
         (
-            "@taichuy/platform/console/settings",
-            "Permission management",
-            "权限管理（动态）",
-        ),
-        (
             "@taichuy/platform/console/settings/policy",
             "Full access",
             "完全开放（动态）",
@@ -177,15 +172,15 @@ async fn core_console_display_routes_resolve_dynamic_zh_hans_and_fallback_to_eng
         .iter()
         .find(|item| item["item_id"] == "settings.applications")
         .unwrap();
-    assert_eq!(application_item["label"], "应用管理（动态）");
+    assert_eq!(application_item["label_key"], "auto.application_management");
     let docs_item = navigation["data"]["navigation_items"]
         .as_array()
         .unwrap()
         .iter()
         .find(|item| item["item_id"] == "settings.docs")
         .unwrap();
-    assert_eq!(docs_item["label"], "API documentation");
-    assert!(application_item.get("label_key").is_none());
+    assert_eq!(docs_item["label_key"], "auto.api_documentation");
+    assert!(application_item.get("label").is_none());
 
     let permissions = get_json(
         &app,
@@ -201,10 +196,10 @@ async fn core_console_display_routes_resolve_dynamic_zh_hans_and_fallback_to_eng
         .find(|permission| permission["code"] == "settings_feature.access.system.roles")
         .unwrap();
     assert_eq!(
-        roles_feature["settings_feature"]["label"],
-        "权限管理（动态）"
+        roles_feature["settings_feature"]["label_key"],
+        "auto.permission_management"
     );
-    assert!(roles_feature["settings_feature"].get("label_key").is_none());
+    assert!(roles_feature["settings_feature"].get("label").is_none());
 
     let policy = get_json(
         &app,
