@@ -37,6 +37,7 @@ import {
 } from './public-auth-block-host';
 
 const PUBLIC_AUTH_PREPARATION_TIMEOUT_MS = 10_000;
+type PublicAuthAttempt = 0 | 1;
 
 export interface PublicAuthBlockProps {
   instance: PublicLoginInstance;
@@ -60,6 +61,7 @@ type PublicAuthRenderSnapshot =
       moduleAssets: NativeReactResolvedModuleAsset[];
       plan: NativeTrustedBlockPreparePlan;
       renderEpoch: string;
+      attempt: PublicAuthAttempt;
     };
 
 export function PublicAuthBlock({
@@ -73,7 +75,6 @@ export function PublicAuthBlock({
   const [snapshot, setSnapshot] = useState<PublicAuthRenderSnapshot>({
     status: 'preparing'
   });
-  const [manualFallback, setManualFallback] = useState(false);
   const generationRef = useRef(0);
   const activeInstanceRef = useRef<ActivePublicAuthInstance | null>(null);
   const block = useMemo(
@@ -83,120 +84,132 @@ export function PublicAuthBlock({
   const builtinPasswordFallbackEligible =
     instance.is_builtin && instance.auth_type === 'password-local';
   const builtinPasswordFallbackVisible =
-    builtinPasswordFallbackEligible &&
-    (manualFallback || snapshot.status === 'failed');
+    builtinPasswordFallbackEligible && snapshot.status === 'failed';
 
-  const prepare = useCallback(async () => {
-    if (!renderRoot) return;
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const requestId = `public-auth:${instance.id}:${generation}:${sha256Text(instance.public_ui_block)}`;
-    const activeInstance: ActivePublicAuthInstance = { requestId };
-    activeInstanceRef.current = activeInstance;
-    setSnapshot({ status: 'preparing' });
+  const prepare = useCallback(
+    async (initialAttempt: PublicAuthAttempt = 0) => {
+      if (!renderRoot) return;
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
+      setSnapshot({ status: 'preparing' });
 
-    if (diagnoseLegacyBlockModuleSource(instance.public_ui_block)) {
-      if (generationRef.current === generation) {
-        activeInstanceRef.current = null;
-        setSnapshot({ status: 'failed' });
-      }
-      return;
-    }
-
-    const preparationTimeout = window.setTimeout(() => {
-      if (
-        generationRef.current === generation &&
-        activeInstanceRef.current === activeInstance
-      ) {
-        activeInstanceRef.current = null;
-        setSnapshot({ status: 'failed' });
-      }
-    }, PUBLIC_AUTH_PREPARATION_TIMEOUT_MS);
-
-    try {
-      const prepared = await prepareNativeReactSource({
-        frozenSource: instance.public_ui_block,
-        requestId,
-        dependencyLock: [],
-        compiler: nativeCompiler,
-        ...(nativeCompilerWorkerFactory
-          ? { workerFactory: nativeCompilerWorkerFactory }
-          : {}),
-        registryFactory: nativeModuleRegistryFactory
-      });
-      if (
-        generationRef.current !== generation ||
-        activeInstanceRef.current !== activeInstance
-      ) {
-        return;
-      }
-      if (!prepared.ok) {
-        activeInstanceRef.current = null;
-        setSnapshot({ status: 'failed' });
-        return;
-      }
-
-      const plan = createPublicAuthPlan(block, instance.public_ui_block);
-      const renderEpoch = `${requestId}:epoch`;
-      const unavailable = createFrontstageUnavailableBlockContext(plan);
-      const capabilities = createPublicAuthNativeBlockContextCapabilities({
-        requestId,
-        instanceEpoch: renderEpoch,
-        isCurrentInstance: () => activeInstanceRef.current === activeInstance,
-        outputs: unavailable.outputs,
-        interfaceHandler: async (effect) => {
-          const response = await dispatchPublicAuthApi(
-            effect.method,
-            effect.path,
-            effect.request
-          );
-          if (
-            isAuthenticationCompletionPath(effect.path) &&
-            isPublicAuthSession(response)
-          ) {
-            await onAuthenticated(response);
-          }
-          return response;
+      const failAttempt = (
+        attempt: PublicAuthAttempt,
+        activeInstance: ActivePublicAuthInstance
+      ) => {
+        if (
+          generationRef.current !== generation ||
+          activeInstanceRef.current !== activeInstance
+        ) {
+          return;
         }
-      });
-      setSnapshot({
-        status: 'ready',
-        component:
-          prepared.component as FrontstageNativeTrustedBlockReactComponent,
-        context: {
-          ...unavailable,
-          workspace: { id: 'public-auth' },
-          application: null,
-          inputs: createPublicAuthInputs(
-            instance.id,
-            instance.public_variables
-          ),
-          ...capabilities
-        },
-        moduleAssets: prepared.moduleAssets,
-        plan,
-        renderEpoch
-      });
-    } catch {
-      if (
-        generationRef.current === generation &&
-        activeInstanceRef.current === activeInstance
-      ) {
         activeInstanceRef.current = null;
-        setSnapshot({ status: 'failed' });
+        if (builtinPasswordFallbackEligible && attempt === 0) {
+          void runAttempt(1);
+        } else {
+          setSnapshot({ status: 'failed' });
+        }
+      };
+
+      async function runAttempt(attempt: PublicAuthAttempt): Promise<void> {
+        const requestId = `public-auth:${instance.id}:${generation}:${attempt}:${sha256Text(instance.public_ui_block)}`;
+        const activeInstance: ActivePublicAuthInstance = { requestId };
+        activeInstanceRef.current = activeInstance;
+
+        if (diagnoseLegacyBlockModuleSource(instance.public_ui_block)) {
+          failAttempt(attempt, activeInstance);
+          return;
+        }
+
+        const preparationTimeout = window.setTimeout(() => {
+          failAttempt(attempt, activeInstance);
+        }, PUBLIC_AUTH_PREPARATION_TIMEOUT_MS);
+
+        try {
+          const prepared = await prepareNativeReactSource({
+            frozenSource: instance.public_ui_block,
+            requestId,
+            dependencyLock: [],
+            compiler: nativeCompiler,
+            ...(nativeCompilerWorkerFactory
+              ? { workerFactory: nativeCompilerWorkerFactory }
+              : {}),
+            registryFactory: nativeModuleRegistryFactory
+          });
+          if (
+            generationRef.current !== generation ||
+            activeInstanceRef.current !== activeInstance
+          ) {
+            return;
+          }
+          if (!prepared.ok) {
+            failAttempt(attempt, activeInstance);
+            return;
+          }
+
+          const plan = createPublicAuthPlan(block, instance.public_ui_block);
+          const renderEpoch = `${requestId}:epoch`;
+          const unavailable = createFrontstageUnavailableBlockContext(plan);
+          const capabilities = createPublicAuthNativeBlockContextCapabilities({
+            requestId,
+            instanceEpoch: renderEpoch,
+            isCurrentInstance: () =>
+              activeInstanceRef.current === activeInstance,
+            outputs: unavailable.outputs,
+            interfaceHandler: async (effect) => {
+              const response = await dispatchPublicAuthApi(
+                effect.method,
+                effect.path,
+                effect.request
+              );
+              if (
+                isAuthenticationCompletionPath(effect.path) &&
+                isPublicAuthSession(response)
+              ) {
+                await onAuthenticated(response);
+              }
+              return response;
+            }
+          });
+          setSnapshot({
+            status: 'ready',
+            component:
+              prepared.component as FrontstageNativeTrustedBlockReactComponent,
+            context: {
+              ...unavailable,
+              workspace: { id: 'public-auth' },
+              application: null,
+              inputs: createPublicAuthInputs(
+                instance.id,
+                instance.public_variables
+              ),
+              ...capabilities
+            },
+            moduleAssets: prepared.moduleAssets,
+            plan,
+            renderEpoch,
+            attempt
+          });
+        } catch {
+          failAttempt(attempt, activeInstance);
+        } finally {
+          window.clearTimeout(preparationTimeout);
+        }
       }
-    } finally {
-      window.clearTimeout(preparationTimeout);
-    }
-  }, [
-    block,
-    instance,
-    nativeCompiler,
-    nativeCompilerWorkerFactory,
-    nativeModuleRegistryFactory,
-    onAuthenticated,
-    renderRoot
-  ]);
+
+      await runAttempt(initialAttempt);
+    },
+    [
+      block,
+      builtinPasswordFallbackEligible,
+      instance,
+      nativeCompiler,
+      nativeCompilerWorkerFactory,
+      nativeModuleRegistryFactory,
+      onAuthenticated,
+      renderRoot
+    ]
+  );
 
   useEffect(() => {
     void prepare();
@@ -225,7 +238,11 @@ export function PublicAuthBlock({
           moduleAssets={snapshot.moduleAssets}
           onRuntimeError={() => {
             activeInstanceRef.current = null;
-            setSnapshot({ status: 'failed' });
+            if (builtinPasswordFallbackEligible && snapshot.attempt === 0) {
+              void prepare(1);
+            } else {
+              setSnapshot({ status: 'failed' });
+            }
           }}
         />
       ) : null}
@@ -249,18 +266,6 @@ export function PublicAuthBlock({
             </Button>
           }
         />
-      ) : null}
-      {builtinPasswordFallbackEligible && !builtinPasswordFallbackVisible ? (
-        <Button
-          type="link"
-          size="small"
-          onClick={() => {
-            activeInstanceRef.current = null;
-            setManualFallback(true);
-          }}
-        >
-          {i18nText('auth', 'sign_in.fallback_switch')}
-        </Button>
       ) : null}
     </Space>
   );

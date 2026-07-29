@@ -43,23 +43,24 @@ describe('PublicAuthBlock Native Host composition', () => {
     vi.useRealTimers();
   });
 
-  test('AC-002 switches an enabled builtin password authenticator to the bundled form after compilation fails', async () => {
+  test('AC-002 retries once before switching a builtin password authenticator to the bundled form', async () => {
     const onAuthenticated = vi.fn();
+    const nativeCompiler = vi.fn().mockResolvedValue({
+      ok: false,
+      diagnostics: [
+        {
+          phase: 'compile',
+          code: 'syntax_invalid',
+          path: 'source',
+          message: 'Authenticator component is invalid'
+        }
+      ]
+    });
     render(
       <PublicAuthBlock
         instance={instance('export default function Broken() {}')}
         onAuthenticated={onAuthenticated}
-        nativeCompiler={vi.fn().mockResolvedValue({
-          ok: false,
-          diagnostics: [
-            {
-              phase: 'compile',
-              code: 'syntax_invalid',
-              path: 'source',
-              message: 'Authenticator component is invalid'
-            }
-          ]
-        })}
+        nativeCompiler={nativeCompiler}
       />
     );
 
@@ -68,9 +69,40 @@ describe('PublicAuthBlock Native Host composition', () => {
     ).toBeVisible();
     expect(screen.getByLabelText('Account or email')).toBeVisible();
     expect(screen.getByLabelText('Password')).toBeVisible();
-    expect(screen.queryByText('Authenticator component is invalid')).toBeNull();
+    expect(
+      screen.queryByText('Authenticator component is invalid')
+    ).not.toBeInTheDocument();
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
     expectNoEditorDebugSurface();
     expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  test('AC-002 keeps the configured builtin password UI when its automatic retry succeeds', async () => {
+    const source = `
+      export default function AuthFixture() {
+        return <button type="button">Configured sign in</button>;
+      }
+    `;
+    const nativeCompiler = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, diagnostics: [] })
+      .mockResolvedValueOnce(compiledResult(source));
+    render(
+      <PublicAuthBlock
+        instance={instance(source)}
+        onAuthenticated={vi.fn()}
+        nativeCompiler={nativeCompiler}
+      />
+    );
+
+    const shadow = await publicAuthShadow('Configured sign in');
+    expect(
+      within(shadow).getByRole('button', { name: 'Configured sign in' })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Welcome' })
+    ).not.toBeInTheDocument();
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
   });
 
   test.each([
@@ -116,7 +148,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(nativeCompiler).toHaveBeenCalledTimes(2);
       expect(
         screen.queryByRole('button', { name: 'Use built-in sign-in' })
-      ).toBeNull();
+      ).not.toBeInTheDocument();
       expectNoEditorDebugSurface();
     }
   );
@@ -129,16 +161,25 @@ describe('PublicAuthBlock Native Host composition', () => {
       }
     `;
     const preparation = deferred<ReturnType<typeof compiledResult>>();
+    const nativeCompiler = vi.fn().mockReturnValue(preparation.promise);
     render(
       <PublicAuthBlock
         instance={instance(source)}
         onAuthenticated={vi.fn()}
-        nativeCompiler={vi.fn().mockReturnValue(preparation.promise)}
+        nativeCompiler={nativeCompiler}
       />
     );
 
     await act(async () => {
       await Promise.resolve();
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(
+      screen.queryByRole('heading', { name: 'Welcome' })
+    ).not.toBeInTheDocument();
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
       vi.advanceTimersByTime(10_000);
     });
     expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
@@ -151,7 +192,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     expect(document.body).not.toHaveTextContent('Configured sign in');
   });
 
-  test('AC-004 offers a manual emergency switch while the configured builtin password UI is healthy', async () => {
+  test('AC-004 keeps the builtin fallback completely absent while the configured UI is healthy', async () => {
     const source = `
       export default function AuthFixture() {
         return <button type="button">Configured sign in</button>;
@@ -169,12 +210,33 @@ describe('PublicAuthBlock Native Host composition', () => {
     expect(
       within(shadow).getByRole('button', { name: 'Configured sign in' })
     ).toBeVisible();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Use built-in sign-in' })
+    expect(
+      screen.queryByRole('button', { name: 'Use built-in sign-in' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Welcome' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('AC-002 retries once after a builtin password Block throws during render', async () => {
+    const source = `
+      export default function BrokenAuthFixture() {
+        throw new Error('render failed');
+      }
+    `;
+    const nativeCompiler = compiler(source);
+    render(
+      <PublicAuthBlock
+        instance={instance(source)}
+        onAuthenticated={vi.fn()}
+        nativeCompiler={nativeCompiler}
+      />
     );
 
-    expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
-    expect(document.body).not.toHaveTextContent('Configured sign in');
+    expect(
+      await screen.findByRole('heading', { name: 'Welcome' })
+    ).toBeVisible();
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
   });
 
   test('AC-006 submits the bundled form through the existing password sign-in flow', async () => {
@@ -185,14 +247,15 @@ describe('PublicAuthBlock Native Host composition', () => {
     };
     passwordSignIn.mockResolvedValue(session);
     const onAuthenticated = vi.fn();
+    const nativeCompiler = vi.fn().mockResolvedValue({
+      ok: false,
+      diagnostics: []
+    });
     render(
       <PublicAuthBlock
         instance={instance('broken source')}
         onAuthenticated={onAuthenticated}
-        nativeCompiler={vi.fn().mockResolvedValue({
-          ok: false,
-          diagnostics: []
-        })}
+        nativeCompiler={nativeCompiler}
       />
     );
 
@@ -212,6 +275,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       })
     );
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(session));
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
   });
 
   test('D4-AC-001/003/004 accepts only a canonical session response and keeps local state while the API is pending', async () => {

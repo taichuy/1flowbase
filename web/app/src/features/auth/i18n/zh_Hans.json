@@ -7,7 +7,6 @@
     "fallback_identifier_label": "账号或邮箱",
     "fallback_password_label": "密码",
     "fallback_submit": "登录",
-    "fallback_switch": "使用内置账号密码登录",
     "fallback_title": "欢迎",
     "footer": "Powered by 1flowbase",
     "login_instances_load_failed": "登录入口加载失败，请刷新页面后重试。",
