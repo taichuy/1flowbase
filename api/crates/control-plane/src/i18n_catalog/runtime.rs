@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use domain::{CatalogDigest, CatalogLocale, CatalogModuleId, WorkspaceCatalogRevision};
+use domain::{CatalogDigest, CatalogLocale, WorkspaceCatalogRevision};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -11,13 +11,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ResolvedCatalogModuleBundle {
-    pub module: String,
+pub struct ResolvedCatalogBundle {
     pub locale: String,
     pub messages: BTreeMap<String, String>,
 }
 
-impl ResolvedCatalogModuleBundle {
+impl ResolvedCatalogBundle {
     pub fn canonical_body(&self) -> anyhow::Result<Vec<u8>> {
         Ok(serde_json::to_vec(self)?)
     }
@@ -29,15 +28,10 @@ impl ResolvedCatalogModuleBundle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeCatalogManifestModule {
-    pub bundle: ResolvedCatalogModuleBundle,
-    pub digest: CatalogDigest,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeCatalogManifest {
     pub revision: WorkspaceCatalogRevision,
-    pub modules: Vec<RuntimeCatalogManifestModule>,
+    pub bundle: ResolvedCatalogBundle,
+    pub digest: CatalogDigest,
 }
 
 pub struct RuntimeI18nCatalogService<R> {
@@ -68,39 +62,19 @@ where
             .repository
             .project_runtime_catalog(workspace_id, locale)
             .await?;
-        let mut modules = BTreeMap::<CatalogModuleId, BTreeMap<String, String>>::new();
+        let mut resolved = BTreeMap::new();
         for message in messages {
-            modules
-                .entry(message.module)
-                .or_default()
-                .insert(message.msgid, message.value);
+            resolved.insert(message.key, message.value);
         }
-        let modules = modules
-            .into_iter()
-            .map(|(module, messages)| {
-                let bundle = ResolvedCatalogModuleBundle {
-                    module: module.as_str().to_owned(),
-                    locale: locale.as_str().to_owned(),
-                    messages,
-                };
-                let digest = bundle.digest()?;
-                Ok(RuntimeCatalogManifestModule { bundle, digest })
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(RuntimeCatalogManifest { revision, modules })
-    }
-
-    pub async fn current_bundle(
-        &self,
-        workspace_id: Uuid,
-        module: &CatalogModuleId,
-        locale: &CatalogLocale,
-    ) -> anyhow::Result<Option<RuntimeCatalogManifestModule>> {
-        Ok(self
-            .manifest(workspace_id, locale)
-            .await?
-            .modules
-            .into_iter()
-            .find(|candidate| candidate.bundle.module == module.as_str()))
+        let bundle = ResolvedCatalogBundle {
+            locale: locale.as_str().to_owned(),
+            messages: resolved,
+        };
+        let digest = bundle.digest()?;
+        Ok(RuntimeCatalogManifest {
+            revision,
+            bundle,
+            digest,
+        })
     }
 }

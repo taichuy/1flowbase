@@ -1,6 +1,6 @@
 use domain::{
-    CatalogDigest, CatalogLocale, CatalogModuleId, CatalogSeedFile, CatalogVersion,
-    I18nCatalogInvariantError, OfficialCatalogMessage, VerifiedCatalogRelease,
+    CatalogDigest, CatalogLocale, CatalogSeedFile, CatalogVersion, I18nCatalogInvariantError,
+    OfficialCatalogMessage, VerifiedCatalogRelease,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -12,7 +12,6 @@ pub struct VerifiedOfficialCatalogSeed {
     release_id: Uuid,
     catalog_version: CatalogVersion,
     locales: Vec<CatalogLocale>,
-    modules: Vec<CatalogModuleId>,
     files: Vec<CatalogSeedFile>,
     generated_at: OffsetDateTime,
     semantic_sha256: CatalogDigest,
@@ -25,7 +24,6 @@ impl VerifiedOfficialCatalogSeed {
         release_id: Uuid,
         catalog_version: CatalogVersion,
         locales: Vec<CatalogLocale>,
-        modules: Vec<CatalogModuleId>,
         files: Vec<CatalogSeedFile>,
         generated_at: OffsetDateTime,
         semantic_sha256: CatalogDigest,
@@ -38,7 +36,6 @@ impl VerifiedOfficialCatalogSeed {
             Uuid::nil(),
             catalog_version.clone(),
             locales.clone(),
-            modules.clone(),
             files.clone(),
             generated_at,
             semantic_sha256.clone(),
@@ -48,7 +45,6 @@ impl VerifiedOfficialCatalogSeed {
             release_id,
             catalog_version,
             locales,
-            modules,
             files,
             generated_at,
             semantic_sha256,
@@ -65,7 +61,6 @@ impl VerifiedOfficialCatalogSeed {
             workspace_id,
             self.catalog_version.clone(),
             self.locales.clone(),
-            self.modules.clone(),
             self.files.clone(),
             self.generated_at,
             self.semantic_sha256.clone(),

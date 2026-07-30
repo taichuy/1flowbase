@@ -3,9 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{anyhow, bail, Context, Result};
 use control_plane::i18n_catalog::VerifiedOfficialCatalogSeed;
 use domain::{
-    CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogSeedFile,
-    CatalogVersion, OfficialCatalogMessage, I18N_CATALOG_SEED_SCHEMA_VERSION,
-    I18N_CATALOG_SOURCE_LOCALE,
+    CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogSeedFile, CatalogVersion,
+    OfficialCatalogMessage, I18N_CATALOG_SEED_SCHEMA_VERSION, I18N_CATALOG_SOURCE_LOCALE,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -22,7 +21,7 @@ pub(crate) const OFFICIAL_SEED_SOURCE_BYTES: &[u8] =
 #[serde(deny_unknown_fields)]
 struct CatalogSeed {
     manifest: CatalogSeedManifest,
-    modules: Vec<CatalogSeedModule>,
+    messages: Vec<CatalogSeedMessage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +31,6 @@ struct CatalogSeedManifest {
     catalog_version: String,
     source_locale: String,
     locales: Vec<String>,
-    modules: Vec<String>,
     files: Vec<CatalogSeedFileDocument>,
     generated_at: String,
     semantic_sha256: String,
@@ -41,7 +39,7 @@ struct CatalogSeedManifest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CatalogSeedFileDocument {
-    module: String,
+    keys: Vec<String>,
     locale: String,
     path: String,
     sha256: String,
@@ -49,15 +47,8 @@ struct CatalogSeedFileDocument {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CatalogSeedModule {
-    id: String,
-    messages: Vec<CatalogSeedMessage>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct CatalogSeedMessage {
-    msgid: String,
+    key: String,
     translations: BTreeMap<String, String>,
 }
 
@@ -152,20 +143,12 @@ fn decode_validated_catalog_seed(
         .cloned()
         .map(CatalogLocale::new)
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let modules = seed
-        .manifest
-        .modules
-        .iter()
-        .cloned()
-        .map(CatalogModuleId::new)
-        .collect::<std::result::Result<Vec<_>, _>>()?;
     let files = seed
         .manifest
         .files
         .iter()
         .map(|file| {
             CatalogSeedFile::new(
-                CatalogModuleId::new(file.module.clone())?,
                 CatalogLocale::new(file.locale.clone())?,
                 file.path.clone(),
                 CatalogDigest::new(file.sha256.clone())?,
@@ -173,27 +156,19 @@ fn decode_validated_catalog_seed(
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let messages = seed
-        .modules
+        .messages
         .iter()
-        .flat_map(|module| {
-            module.messages.iter().map(|message| {
-                let identity = CatalogMessageIdentity::new(
-                    CatalogModuleId::new(module.id.clone())?,
-                    message.msgid.clone(),
+        .map(|message| {
+            let identity = CatalogMessageIdentity::new(message.key.clone())?;
+            let translations = message
+                .translations
+                .iter()
+                .map(|(locale, translation)| {
+                    Ok((CatalogLocale::new(locale.clone())?, translation.clone()))
+                })
+                .collect::<std::result::Result<BTreeMap<_, _>, domain::I18nCatalogInvariantError>>(
                 )?;
-                let translations =
-                        message
-                            .translations
-                            .iter()
-                            .map(|(locale, translation)| {
-                                Ok((CatalogLocale::new(locale.clone())?, translation.clone()))
-                            })
-                            .collect::<std::result::Result<
-                                BTreeMap<_, _>,
-                                domain::I18nCatalogInvariantError,
-                            >>()?;
-                OfficialCatalogMessage::new(identity, translations)
-            })
+            OfficialCatalogMessage::new(identity, translations)
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
@@ -201,7 +176,6 @@ fn decode_validated_catalog_seed(
         release_id,
         CatalogVersion::new(seed.manifest.catalog_version)?,
         locales,
-        modules,
         files,
         OffsetDateTime::parse(&seed.manifest.generated_at, &Rfc3339)
             .context("official Seed generated_at is not RFC 3339")?,
@@ -238,68 +212,89 @@ fn release_id_from_digest(digest: &CatalogDigest) -> Result<Uuid> {
 }
 
 fn validate_seed_shape(seed: &CatalogSeed) -> Result<()> {
-    let locale_set = seed.manifest.locales.iter().collect::<BTreeSet<_>>();
-    let module_set = seed.manifest.modules.iter().collect::<BTreeSet<_>>();
-    if locale_set.len() != seed.manifest.locales.len()
-        || module_set.len() != seed.manifest.modules.len()
-        || module_set.is_empty()
-    {
-        bail!("official Seed locale/module inventory is not unique and non-empty");
-    }
-    if seed.modules.len() != module_set.len()
-        || seed
-            .modules
-            .iter()
-            .map(|module| &module.id)
-            .collect::<BTreeSet<_>>()
-            != module_set
-    {
-        bail!("official Seed module documents do not match the manifest");
-    }
-    let expected_files = locale_set.len() * module_set.len();
-    if seed.manifest.files.len() != expected_files {
-        bail!("official Seed file inventory is incomplete");
-    }
-    let file_pairs = seed
+    let locale_set = seed
         .manifest
-        .files
+        .locales
         .iter()
-        .map(|file| (&file.module, &file.locale))
+        .map(String::as_str)
         .collect::<BTreeSet<_>>();
-    if file_pairs.len() != expected_files
-        || file_pairs
-            .iter()
-            .any(|(module, locale)| !module_set.contains(module) || !locale_set.contains(locale))
-    {
-        bail!("official Seed file inventory has an unknown or duplicate module/locale");
+    if locale_set.is_empty() || locale_set.len() != seed.manifest.locales.len() {
+        bail!("official Seed locale inventory must be unique and non-empty");
     }
 
     let forbidden = Regex::new(
         r"(?i)</?[A-Za-z][^>]*>|javascript\s*:|\$\{|=>|\bfunction\s*\(|on[A-Za-z]+\s*=|!?\[[^\]]*\]\([^)]+\)",
     )?;
     let named_placeholder = Regex::new(r"\{([A-Za-z_][A-Za-z0-9_.-]*)\}")?;
-    for module in &seed.modules {
-        let mut identities = BTreeSet::new();
-        for message in &module.messages {
-            if !identities.insert(&message.msgid) {
-                bail!("official Seed contains a duplicate message identity");
+    let mut identities = BTreeSet::new();
+    for message in &seed.messages {
+        if !identities.insert(message.key.as_str()) {
+            bail!("official Seed contains a duplicate global key");
+        }
+        validate_plain_text(&message.key, &forbidden, &named_placeholder)?;
+        if message
+            .translations
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != locale_set
+        {
+            bail!("official Seed message locales do not match the manifest");
+        }
+        let key_placeholders = placeholders(&message.key, &named_placeholder);
+        for translation in message.translations.values() {
+            validate_plain_text(translation, &forbidden, &named_placeholder)?;
+            if placeholders(translation, &named_placeholder) != key_placeholders {
+                bail!("official Seed translation placeholder set does not match its key");
             }
-            validate_plain_text(&message.msgid, &forbidden, &named_placeholder)?;
-            let expected_targets = locale_set
-                .iter()
-                .filter(|locale| locale.as_str() != I18N_CATALOG_SOURCE_LOCALE)
-                .copied()
-                .collect::<BTreeSet<_>>();
-            if message.translations.keys().collect::<BTreeSet<_>>() != expected_targets {
-                bail!("official Seed message target locales do not match the manifest");
-            }
-            let source_placeholders = placeholders(&message.msgid, &named_placeholder);
-            for translation in message.translations.values() {
-                validate_plain_text(translation, &forbidden, &named_placeholder)?;
-                if placeholders(translation, &named_placeholder) != source_placeholders {
-                    bail!("official Seed translation placeholder set does not match its msgid");
-                }
-            }
+        }
+    }
+    if identities.is_empty() {
+        bail!("official Seed message inventory must be non-empty");
+    }
+
+    let mut paths = BTreeSet::new();
+    let mut groups = BTreeMap::<&str, BTreeMap<&str, BTreeSet<&str>>>::new();
+    for file in &seed.manifest.files {
+        if !paths.insert(&file.path) || !locale_set.contains(file.locale.as_str()) {
+            bail!("official Seed file inventory has an unknown locale or duplicate path");
+        }
+        let (group, file_name) = file
+            .path
+            .rsplit_once('/')
+            .ok_or_else(|| anyhow!("official Seed file path has no source group"))?;
+        if file_name != format!("{}.json", file.locale) {
+            bail!("official Seed file path locale does not match its locale");
+        }
+        let keys = file
+            .keys
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        if keys.is_empty()
+            || keys.len() != file.keys.len()
+            || keys.iter().any(|key| !identities.contains(*key))
+        {
+            bail!("official Seed file has an unknown, duplicate, or empty key inventory");
+        }
+        groups
+            .entry(group)
+            .or_default()
+            .insert(file.locale.as_str(), keys);
+    }
+    if groups.is_empty() {
+        bail!("official Seed file inventory must be non-empty");
+    }
+    for files_by_locale in groups.values() {
+        if files_by_locale.keys().copied().collect::<BTreeSet<_>>() != locale_set {
+            bail!("official Seed source group does not cover every locale");
+        }
+        let mut key_sets = files_by_locale.values();
+        let expected = key_sets
+            .next()
+            .ok_or_else(|| anyhow!("official Seed source group has no files"))?;
+        if key_sets.any(|keys| keys != expected) {
+            bail!("official Seed source group locale keys do not match");
         }
     }
     Ok(())
@@ -324,38 +319,27 @@ fn placeholders(value: &str, pattern: &Regex) -> BTreeSet<String> {
 }
 
 fn validate_seed_digests(seed: &CatalogSeed) -> Result<()> {
+    let messages = seed
+        .messages
+        .iter()
+        .map(|message| (message.key.as_str(), message))
+        .collect::<BTreeMap<_, _>>();
     for file in &seed.manifest.files {
-        let module = seed
-            .modules
-            .iter()
-            .find(|module| module.id == file.module)
-            .ok_or_else(|| anyhow!("official Seed file references an unknown module"))?;
-        let document = if file.locale == seed.manifest.source_locale {
-            Value::Array(
-                module
-                    .messages
-                    .iter()
-                    .map(|message| Value::String(message.msgid.clone()))
-                    .collect(),
-            )
-        } else {
-            Value::Object(
-                module
-                    .messages
-                    .iter()
-                    .map(|message| {
-                        message
-                            .translations
-                            .get(&file.locale)
-                            .cloned()
-                            .map(|value| (message.msgid.clone(), Value::String(value)))
-                            .ok_or_else(|| anyhow!("official Seed file is missing a translation"))
-                    })
-                    .collect::<Result<serde_json::Map<_, _>>>()?,
-            )
-        };
-        // The publisher already freezes messages in its locale-aware canonical order. Preserve
-        // that order here because Rust's lexical BTree ordering differs for punctuation/case.
+        let document = Value::Object(
+            file.keys
+                .iter()
+                .map(|key| {
+                    messages
+                        .get(key.as_str())
+                        .and_then(|message| message.translations.get(&file.locale))
+                        .cloned()
+                        .map(|translation| (key.clone(), Value::String(translation)))
+                        .ok_or_else(|| anyhow!("official Seed file is missing a translation"))
+                })
+                .collect::<Result<serde_json::Map<_, _>>>()?,
+        );
+        // P1 freezes file.keys in the publisher's locale-aware canonical order. Preserve that
+        // order because Rust lexical ordering differs for punctuation and case.
         if digest_canonical_json(&document)? != file.sha256 {
             bail!("official Seed file digest mismatch");
         }
@@ -364,9 +348,8 @@ fn validate_seed_digests(seed: &CatalogSeed) -> Result<()> {
         "catalog_version": seed.manifest.catalog_version,
         "source_locale": seed.manifest.source_locale,
         "locales": seed.manifest.locales,
-        "modules": seed.manifest.modules,
         "files": seed.manifest.files,
-        "normalized_modules": seed.modules,
+        "messages": seed.messages,
     });
     if digest_stable_json(&semantic)? != seed.manifest.semantic_sha256 {
         bail!("official Seed semantic digest mismatch");

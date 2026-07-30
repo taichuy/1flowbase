@@ -6,13 +6,20 @@ use crate::official_i18n_catalog_seed::{
 
 #[test]
 fn ac_002_decodes_digest_verified_build_time_official_seed() {
-    decode_catalog_seed(OFFICIAL_SEED_BYTES, OFFICIAL_SEED_SOURCE_BYTES).unwrap();
+    let seed = decode_catalog_seed(OFFICIAL_SEED_BYTES, OFFICIAL_SEED_SOURCE_BYTES).unwrap();
+    let release = seed.bind_to_workspace(uuid::Uuid::now_v7()).unwrap();
+    assert!(release.messages().iter().all(|message| {
+        !message.identity().key().is_empty()
+            && message
+                .translations()
+                .contains_key(&domain::CatalogLocale::source())
+    }));
 }
 
 #[test]
 fn ac_002_rejects_tampered_seed_content() {
     let mut seed: Value = serde_json::from_slice(OFFICIAL_SEED_BYTES).unwrap();
-    seed["modules"][0]["messages"][0]["translations"]["zh_Hans"] = Value::String("篡改".to_owned());
+    seed["messages"][0]["translations"]["zh_Hans"] = Value::String("篡改".to_owned());
 
     let error = decode_catalog_seed(
         &serde_json::to_vec(&seed).unwrap(),
@@ -71,7 +78,7 @@ fn ac_002_rejects_unpinned_official_provenance() {
 #[test]
 fn ac_002_rejects_non_plain_text_before_database_binding() {
     let mut seed: Value = serde_json::from_slice(OFFICIAL_SEED_BYTES).unwrap();
-    seed["modules"][0]["messages"][0]["translations"]["zh_Hans"] =
+    seed["messages"][0]["translations"]["zh_Hans"] =
         Value::String("<script>bad</script>".to_owned());
 
     let error = decode_catalog_seed(

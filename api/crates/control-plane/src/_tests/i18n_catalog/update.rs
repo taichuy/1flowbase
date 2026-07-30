@@ -9,9 +9,9 @@ use std::{
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use domain::{
-    CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogSeedFile,
-    CatalogTranslation, CatalogVersion, OfficialCatalogMessage, VerifiedCatalogRelease,
-    WorkspaceCatalogRevision, WorkspaceCatalogState,
+    CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogSeedFile, CatalogTranslation,
+    CatalogVersion, OfficialCatalogMessage, VerifiedCatalogRelease, WorkspaceCatalogRevision,
+    WorkspaceCatalogState,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -33,23 +33,19 @@ fn digest(character: char) -> CatalogDigest {
 }
 
 fn seed(version: &str, semantic: CatalogDigest) -> VerifiedOfficialCatalogSeed {
-    let module = CatalogModuleId::new("@taichuy/platform/common").unwrap();
     let target = CatalogLocale::new("zh_Hans").unwrap();
     let mut translations = BTreeMap::new();
+    translations.insert(CatalogLocale::source(), "Save {name}".to_owned());
     translations.insert(target.clone(), "保存 {name}".to_owned());
     VerifiedOfficialCatalogSeed::new(
         Uuid::now_v7(),
         CatalogVersion::new(version).unwrap(),
         vec![CatalogLocale::source(), target.clone()],
-        vec![module.clone()],
-        vec![
-            CatalogSeedFile::new(module.clone(), target, "common/zh_Hans.json", digest('f'))
-                .unwrap(),
-        ],
+        vec![CatalogSeedFile::new(target, "common/zh_Hans.json", digest('f')).unwrap()],
         OffsetDateTime::UNIX_EPOCH,
         semantic,
         vec![OfficialCatalogMessage::new(
-            CatalogMessageIdentity::new(module, "Save {name}").unwrap(),
+            CatalogMessageIdentity::new("Save {name}").unwrap(),
             translations,
         )
         .unwrap()],
@@ -128,7 +124,6 @@ impl I18nCatalogRepository for FakeRepository {
                     semantic_sha256: release.semantic_sha256().clone(),
                     source_locale: CatalogLocale::source(),
                     locales: release.locales().to_vec(),
-                    modules: release.modules().to_vec(),
                 },
             );
             Ok(())
@@ -246,7 +241,6 @@ fn fixture(
                         CatalogLocale::source(),
                         CatalogLocale::new("zh_Hans").unwrap(),
                     ],
-                    modules: vec![CatalogModuleId::new("@taichuy/platform/common").unwrap()],
                 },
             )]),
             fail_stage: false,

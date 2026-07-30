@@ -91,7 +91,7 @@ fn ac_005_downloaded_seed_reuses_canonical_schema_placeholder_and_digest_validat
     assert!(inspect_catalog_seed(&serde_json::to_vec(&bad_schema).unwrap()).is_err());
 
     let mut bad_placeholder: Value = serde_json::from_slice(OFFICIAL_SEED_BYTES).unwrap();
-    bad_placeholder["modules"][0]["messages"][1]["translations"]["zh_Hans"] =
+    bad_placeholder["messages"][1]["translations"]["zh_Hans"] =
         Value::String("保存 {other}".into());
     assert!(inspect_catalog_seed(&serde_json::to_vec(&bad_placeholder).unwrap()).is_err());
 

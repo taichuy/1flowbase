@@ -7,7 +7,7 @@ use crate::{
     i18n_catalog::RuntimeI18nCatalogService,
     ports::{RuntimeCatalogMessage, RuntimeCatalogProjection, RuntimeI18nCatalogRepository},
 };
-use domain::{CatalogLocale, CatalogModuleId, WorkspaceCatalogRevision};
+use domain::{CatalogLocale, WorkspaceCatalogRevision};
 
 #[derive(Clone)]
 struct ProjectionRepository(Arc<Mutex<RuntimeCatalogProjection>>);
@@ -23,23 +23,19 @@ impl RuntimeI18nCatalogRepository for ProjectionRepository {
     }
 }
 
-fn message(module: &str, msgid: &str, value: &str) -> RuntimeCatalogMessage {
+fn message(key: &str, value: &str) -> RuntimeCatalogMessage {
     RuntimeCatalogMessage {
-        module: CatalogModuleId::new(module).unwrap(),
-        msgid: msgid.to_owned(),
+        key: key.to_owned(),
         value: value.to_owned(),
     }
 }
 
 #[tokio::test]
-async fn ac_011_digest_and_canonical_body_are_stable_and_module_local() {
+async fn digest_and_canonical_body_are_stable_for_the_global_catalog() {
     let root_workspace_id = Uuid::now_v7();
     let projection = Arc::new(Mutex::new(RuntimeCatalogProjection {
         revision: WorkspaceCatalogRevision::new(3).unwrap(),
-        messages: vec![
-            message("@taichuy/platform/a", "Save", "保存"),
-            message("@taichuy/platform/b", "Cancel", "取消"),
-        ],
+        messages: vec![message("Save", "保存"), message("Cancel", "取消")],
     }));
     let service =
         RuntimeI18nCatalogService::new(ProjectionRepository(projection.clone()), root_workspace_id);
@@ -53,45 +49,38 @@ async fn ac_011_digest_and_canonical_body_are_stable_and_module_local() {
     let stable = service.manifest(root_workspace_id, &locale).await.unwrap();
     assert_eq!(first, stable);
     assert_eq!(
-        first.modules[0].bundle.canonical_body().unwrap(),
-        stable.modules[0].bundle.canonical_body().unwrap()
+        first.bundle.canonical_body().unwrap(),
+        stable.bundle.canonical_body().unwrap()
     );
 
     projection.lock().unwrap().messages[0].value = "储存".to_owned();
     projection.lock().unwrap().revision = WorkspaceCatalogRevision::new(4).unwrap();
     let changed = service.manifest(root_workspace_id, &locale).await.unwrap();
-    assert_ne!(first.modules[0].digest, changed.modules[0].digest);
-    assert_eq!(first.modules[1].digest, changed.modules[1].digest);
-    assert_eq!(first.modules[1].bundle, changed.modules[1].bundle);
+    assert_ne!(first.digest, changed.digest);
+    assert_ne!(first.bundle, changed.bundle);
 }
 
 #[tokio::test]
-async fn ac_011_bundle_is_sorted_resolved_content_without_revision_or_timestamp() {
+async fn bundle_is_sorted_resolved_content_without_revision_or_timestamp() {
     let root_workspace_id = Uuid::now_v7();
     let service = RuntimeI18nCatalogService::new(
         ProjectionRepository(Arc::new(Mutex::new(RuntimeCatalogProjection {
             revision: WorkspaceCatalogRevision::new(99).unwrap(),
             messages: vec![
-                message("@taichuy/platform/common", "Zulu", "override"),
-                message("@taichuy/platform/common", "Alpha", "official"),
-                message("@taichuy/platform/common", "custom.key", "custom"),
-                message("@taichuy/platform/common", "Fallback", "Fallback"),
+                message("Zulu", "override"),
+                message("Alpha", "official"),
+                message("custom.key", "custom"),
+                message("Fallback", "Fallback"),
             ],
         }))),
         root_workspace_id,
     );
-    let module = CatalogModuleId::new("@taichuy/platform/common").unwrap();
-    let bundle = service
-        .current_bundle(
-            root_workspace_id,
-            &module,
-            &CatalogLocale::new("zh_Hans").unwrap(),
-        )
+    let manifest = service
+        .manifest(root_workspace_id, &CatalogLocale::new("zh_Hans").unwrap())
         .await
-        .unwrap()
         .unwrap();
-    let body = String::from_utf8(bundle.bundle.canonical_body().unwrap()).unwrap();
-    assert_eq!(body, "{\"module\":\"@taichuy/platform/common\",\"locale\":\"zh_Hans\",\"messages\":{\"Alpha\":\"official\",\"Fallback\":\"Fallback\",\"Zulu\":\"override\",\"custom.key\":\"custom\"}}");
+    let body = String::from_utf8(manifest.bundle.canonical_body().unwrap()).unwrap();
+    assert_eq!(body, "{\"locale\":\"zh_Hans\",\"messages\":{\"Alpha\":\"official\",\"Fallback\":\"Fallback\",\"Zulu\":\"override\",\"custom.key\":\"custom\"}}");
     assert!(!body.contains("revision"));
     assert!(!body.contains("generated_at"));
 }
