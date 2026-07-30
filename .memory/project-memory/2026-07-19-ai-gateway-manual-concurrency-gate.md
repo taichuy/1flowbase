@@ -16,8 +16,8 @@ match_when:
   - 讨论 AI Gateway 并发、Mock 上游或真实 CLI 门禁
   - 判断并发验证应在本机还是 GitHub Actions 运行
 created_at: 2026-07-19 18
-updated_at: 2026-07-20 09
-last_verified_at: 2026-07-20 09
+updated_at: 2026-07-30 17
+last_verified_at: 2026-07-30 17
 decision_policy: verify_before_decision
 scope:
   - .github/workflows/ai-gateway-concurrency.yml
@@ -62,3 +62,9 @@ Root agent 按 #1377 调度三项 Delivery：#1378 的 Mock/负载证据引擎�
 - Durable ledger 复用现有 `metadata.trace_id`、run list/query、runtime activity 与 plugin active-stream owner 接口；不新增 API DTO。
 - Multi-pool 只把两个现有 `endpoint + Application API key + published model` tuple 放入 workflow-private topology collection，不新增 workflow input 或第四 tuple 字段。
 - api-server/plugin-runner 日志必须在 cleanup 前以固定上限、脱敏形式写入 governance artifact；写入失败仍完成进程与 scratch cleanup，并使门禁失败。
+
+## dev 强制门禁回退
+
+- 2026-07-30 17，用户确认禁用 repository ruleset `AI Gateway Protocol Conformance for dev`，恢复 `dev` 直接推送能力。
+- `.github/workflows/ai-gateway-concurrency.yml` 移除 `push: branches: [dev]`，不再因 `dev` 更新自动运行重型协议门禁。
+- 保留 `workflow_dispatch` 手动运行入口；PR 与 `workflow_call` 入口继续保留，不作为 `dev` required status check。
