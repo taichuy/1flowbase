@@ -286,6 +286,22 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         .bind(input.value.translation())
         .execute(&mut *transaction)
         .await?;
+        sqlx::query(
+            r#"
+            insert into workspace_i18n_catalog_custom_translations
+              (workspace_id, key, locale, translation)
+            select $1, $2, 'en_US', $2
+            where not exists (
+              select 1 from workspace_i18n_catalog_overrides
+              where workspace_id = $1 and key = $2 and locale = 'en_US'
+            )
+            on conflict (workspace_id, key, locale) do nothing
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.value.identity().key())
+        .execute(&mut *transaction)
+        .await?;
         let state = finish_mutation(&mut transaction, input.workspace_id, &input.audit).await?;
         transaction.commit().await?;
         Ok(state)

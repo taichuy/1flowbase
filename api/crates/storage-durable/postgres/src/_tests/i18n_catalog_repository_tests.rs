@@ -1014,8 +1014,8 @@ async fn ac_008_expected_revision_serializes_atomic_mutation_and_audit() {
         .unwrap();
     assert_eq!(state.revision().value(), fixture.revision.value() + 1);
 
-    let audit_row: (i64, Option<Uuid>, String) = sqlx::query_as(
-        r#"select count(*) over(), actor_user_id, payload ->> 'locale'
+    let audit_row: (i64, Option<Uuid>, String, String) = sqlx::query_as(
+        r#"select count(*) over(), actor_user_id, payload ->> 'key', payload ->> 'locale'
            from audit_logs where workspace_id = $1 and event_code = $2"#,
     )
     .bind(fixture.workspace_id)
@@ -1025,7 +1025,8 @@ async fn ac_008_expected_revision_serializes_atomic_mutation_and_audit() {
     .unwrap();
     assert_eq!(audit_row.0, 1);
     assert_eq!(audit_row.1, Some(actor.actor.user_id));
-    assert_eq!(audit_row.2, "zh_Hans");
+    assert_eq!(audit_row.2, "Settings");
+    assert_eq!(audit_row.3, "zh_Hans");
 
     assert!(service
         .upsert_custom_translation(UpsertCustomTranslationCommand {
@@ -1055,6 +1056,123 @@ async fn ac_008_expected_revision_serializes_atomic_mutation_and_audit() {
             .await
             .unwrap();
     assert_eq!((custom_count, all_audits), (0, 1));
+}
+
+#[tokio::test]
+async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_transaction() {
+    let fixture = management_store().await;
+    let service = I18nCatalogManagementService::new(fixture.store.clone(), fixture.workspace_id);
+    let created = service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: fixture.root_access(),
+            value: translation("custom.greeting", "问候"),
+            expected_revision: fixture.revision,
+        })
+        .await
+        .unwrap();
+    assert_eq!(created.revision().value(), fixture.revision.value() + 1);
+
+    let first_rows: Vec<(String, String)> = sqlx::query_as(
+        r#"select locale, translation
+           from workspace_i18n_catalog_custom_translations
+           where workspace_id = $1 and key = 'custom.greeting'
+           order by locale"#,
+    )
+    .bind(fixture.workspace_id)
+    .fetch_all(fixture.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        first_rows,
+        vec![
+            ("en_US".to_owned(), "custom.greeting".to_owned()),
+            ("zh_Hans".to_owned(), "问候".to_owned()),
+        ]
+    );
+    let first_audits: i64 = sqlx::query_scalar(
+        "select count(*) from audit_logs where workspace_id = $1 and event_code = $2",
+    )
+    .bind(fixture.workspace_id)
+    .bind("i18n_catalog.custom_translation.upserted")
+    .fetch_one(fixture.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(first_audits, 1);
+
+    let english_updated = service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: fixture.root_access(),
+            value: CatalogTranslation::new(
+                identity("custom.greeting"),
+                CatalogLocale::source(),
+                "Custom greeting",
+            )
+            .unwrap(),
+            expected_revision: created.revision(),
+        })
+        .await
+        .unwrap();
+    let chinese_updated = service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: fixture.root_access(),
+            value: translation("custom.greeting", "问候语"),
+            expected_revision: english_updated.revision(),
+        })
+        .await
+        .unwrap();
+    let updated_rows: Vec<(String, String)> = sqlx::query_as(
+        r#"select locale, translation
+           from workspace_i18n_catalog_custom_translations
+           where workspace_id = $1 and key = 'custom.greeting'
+           order by locale"#,
+    )
+    .bind(fixture.workspace_id)
+    .fetch_all(fixture.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        updated_rows,
+        vec![
+            ("en_US".to_owned(), "Custom greeting".to_owned()),
+            ("zh_Hans".to_owned(), "问候语".to_owned()),
+        ]
+    );
+
+    sqlx::query(
+        r#"insert into workspace_i18n_catalog_overrides
+           (workspace_id, key, locale, translation)
+           values ($1, 'custom.protected', 'en_US', 'Protected English')"#,
+    )
+    .bind(fixture.workspace_id)
+    .execute(fixture.store.pool())
+    .await
+    .unwrap();
+    service
+        .upsert_custom_translation(UpsertCustomTranslationCommand {
+            access: fixture.root_access(),
+            value: translation("custom.protected", "受保护"),
+            expected_revision: chinese_updated.revision(),
+        })
+        .await
+        .unwrap();
+    let protected_custom_english: i64 = sqlx::query_scalar(
+        r#"select count(*) from workspace_i18n_catalog_custom_translations
+           where workspace_id = $1 and key = 'custom.protected' and locale = 'en_US'"#,
+    )
+    .bind(fixture.workspace_id)
+    .fetch_one(fixture.store.pool())
+    .await
+    .unwrap();
+    let protected_override: String = sqlx::query_scalar(
+        r#"select translation from workspace_i18n_catalog_overrides
+           where workspace_id = $1 and key = 'custom.protected' and locale = 'en_US'"#,
+    )
+    .bind(fixture.workspace_id)
+    .fetch_one(fixture.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(protected_custom_english, 0);
+    assert_eq!(protected_override, "Protected English");
 }
 
 #[tokio::test]
@@ -1135,7 +1253,7 @@ async fn ac_009_restore_and_explicit_custom_delete_preserve_distinct_lifecycles(
     .fetch_one(fixture.store.pool())
     .await
     .unwrap();
-    assert_eq!((override_count, custom_count), (0, 1));
+    assert_eq!((override_count, custom_count), (0, 2));
 
     service
         .delete_custom_message(DeleteCustomMessageCommand {

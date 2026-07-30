@@ -111,6 +111,36 @@ fn ac_004_settings_feature_route_assembly_and_openapi_are_exact() {
             .trim()
             .is_empty());
     }
+    let list_parameters = openapi["paths"]["/api/console/settings/i18n/entries"]["get"]
+        ["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|parameter| parameter["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        list_parameters,
+        vec!["key", "locale", "search", "origin", "offset", "limit"]
+    );
+    let detail_parameters = openapi["paths"]["/api/console/settings/i18n/entries/detail"]["get"]
+        ["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|parameter| parameter["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(detail_parameters, vec!["key", "locale"]);
+    for schema in [
+        "UpsertCatalogTranslationBody",
+        "RestoreCatalogOverrideBody",
+        "DeleteCustomCatalogKeyBody",
+        "CatalogManagementEntryResponse",
+    ] {
+        let properties = &openapi["components"]["schemas"][schema]["properties"];
+        assert!(properties["key"].is_object(), "{schema}");
+        assert!(properties.get("module").is_none(), "{schema}");
+        assert!(properties.get("msgid").is_none(), "{schema}");
+    }
 }
 
 #[tokio::test]
@@ -327,7 +357,7 @@ async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filte
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/entries?module=%40taichuy%2Fplatform%2Fcommon&locale=zh_Hans&search=Cancel&origin=official&offset=0&limit=20")
+                .uri("/api/console/settings/i18n/entries?key=Cancel&search=Cancel&origin=official&offset=0&limit=20")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -336,11 +366,21 @@ async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filte
         .unwrap();
     assert_eq!(list.status(), StatusCode::OK);
     let payload = response_json(list).await;
-    assert_eq!(payload["data"]["total"], json!(1));
+    assert_eq!(payload["data"]["total"], json!(2));
     assert!(payload["data"]["revision"].as_i64().is_some());
-    let entry = &payload["data"]["entries"][0];
-    assert_eq!(entry["module"], json!("@taichuy/platform/common"));
-    assert_eq!(entry["msgid"], json!("Cancel"));
+    let entries = payload["data"]["entries"].as_array().unwrap();
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry["locale"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["en_US", "zh_Hans"]
+    );
+    let entry = entries
+        .iter()
+        .find(|entry| entry["locale"] == "zh_Hans")
+        .unwrap();
+    assert_eq!(entry["key"], json!("Cancel"));
     assert_eq!(entry["locale"], json!("zh_Hans"));
     assert_eq!(entry["official_translation"], json!("取消"));
     assert_eq!(entry["override_translation"], Value::Null);
@@ -355,7 +395,7 @@ async fn ac_007_management_list_and_detail_preserve_domain_field_names_and_filte
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=Cancel&locale=zh_Hans")
+                .uri("/api/console/settings/i18n/entries/detail?key=Cancel&locale=zh_Hans")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -426,8 +466,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         .as_i64()
         .unwrap();
     let official_override = json!({
-        "module": "@taichuy/platform/common",
-        "msgid": "Cancel",
+        "key": "Cancel",
         "locale": "zh_Hans",
         "translation": "覆盖",
         "expected_revision": initial_revision,
@@ -485,8 +524,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         &cookie,
         Some(&csrf),
         json!({
-            "module": "@taichuy/platform/common",
-            "msgid": "Cancel",
+            "key": "Cancel",
             "locale": "zh_Hans",
             "expected_revision": override_revision,
         }),
@@ -500,6 +538,42 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
     );
     let restored_revision = restored["data"]["revision"].as_i64().unwrap();
 
+    let english_override = catalog_mutation(
+        &app,
+        "PUT",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        Some(&csrf),
+        json!({
+            "key": "Cancel",
+            "locale": "en_US",
+            "translation": "Cancel override",
+            "expected_revision": restored_revision,
+        }),
+    )
+    .await;
+    assert_eq!(english_override.status(), StatusCode::OK);
+    let english_revision = response_json(english_override).await["data"]["revision"]
+        .as_i64()
+        .unwrap();
+    let english_restored = catalog_mutation(
+        &app,
+        "DELETE",
+        "/api/console/settings/i18n/overrides",
+        &cookie,
+        Some(&csrf),
+        json!({
+            "key": "Cancel",
+            "locale": "en_US",
+            "expected_revision": english_revision,
+        }),
+    )
+    .await;
+    assert_eq!(english_restored.status(), StatusCode::OK);
+    let english_restored_revision = response_json(english_restored).await["data"]["revision"]
+        .as_i64()
+        .unwrap();
+
     let overridden_again = catalog_mutation(
         &app,
         "PUT",
@@ -507,11 +581,10 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         &cookie,
         Some(&csrf),
         json!({
-            "module": "@taichuy/platform/common",
-            "msgid": "Cancel",
+            "key": "Cancel",
             "locale": "zh_Hans",
             "translation": "再次覆盖",
-            "expected_revision": restored_revision,
+            "expected_revision": english_restored_revision,
         }),
     )
     .await;
@@ -525,8 +598,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         &cookie,
         Some(&csrf),
         json!({
-            "module": "@taichuy/platform/common",
-            "msgid": "custom.packet.key",
+            "key": "custom.packet.key",
             "locale": "zh_Hans",
             "translation": "自定义",
             "expected_revision": overridden_again_revision,
@@ -537,6 +609,25 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
     let custom = response_json(custom).await;
     assert_eq!(custom["data"]["entry"]["origin"], json!("custom"));
     let custom_revision = custom["data"]["revision"].as_i64().unwrap();
+
+    let custom_english = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/i18n/entries/detail?key=custom.packet.key&locale=en_US")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(custom_english.status(), StatusCode::OK);
+    let custom_english = response_json(custom_english).await;
+    assert_eq!(
+        custom_english["data"]["custom_translation"],
+        json!("custom.packet.key")
+    );
+    assert_eq!(custom_english["data"]["revision"], json!(custom_revision));
 
     let globally_restored = catalog_mutation(
         &app,
@@ -556,7 +647,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=custom.packet.key&locale=zh_Hans")
+                .uri("/api/console/settings/i18n/entries/detail?key=custom.packet.key&locale=zh_Hans")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -576,8 +667,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
         &cookie,
         Some(&csrf),
         json!({
-            "module": "@taichuy/platform/common",
-            "msgid": "custom.packet.key",
+            "key": "custom.packet.key",
             "expected_revision": global_revision,
         }),
     )
@@ -591,7 +681,7 @@ async fn ac_008_ac_009_management_mutations_are_csrf_revision_and_action_scoped(
     let deleted_detail = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=custom.packet.key&locale=zh_Hans")
+                .uri("/api/console/settings/i18n/entries/detail?key=custom.packet.key&locale=zh_Hans")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),

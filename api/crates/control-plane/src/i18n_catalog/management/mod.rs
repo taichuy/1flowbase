@@ -27,7 +27,7 @@ pub struct CatalogManagementAccess {
 #[derive(Debug, Clone)]
 pub struct ListCatalogEntriesCommand {
     pub access: CatalogManagementAccess,
-    pub module: Option<domain::CatalogModuleId>,
+    pub key: Option<String>,
     pub locale: Option<CatalogLocale>,
     pub search: Option<String>,
     pub origin: Option<crate::ports::CatalogManagementOrigin>,
@@ -101,8 +101,7 @@ where
         self.repository
             .list_catalog_management_entries(&CatalogManagementQuery {
                 workspace_id: self.bootstrap_workspace_id,
-                module: command.module,
-                msgid: None,
+                key: command.key,
                 locale: command.locale,
                 search: command.search,
                 origin: command.origin,
@@ -121,8 +120,7 @@ where
             .repository
             .list_catalog_management_entries(&CatalogManagementQuery {
                 workspace_id: self.bootstrap_workspace_id,
-                module: Some(command.identity.module().clone()),
-                msgid: Some(command.identity.msgid().to_owned()),
+                key: Some(command.identity.key().to_owned()),
                 locale: Some(command.locale),
                 search: None,
                 origin: None,
@@ -144,7 +142,7 @@ where
         let audit = self.audit(
             &command.access.actor,
             "i18n_catalog.official_override.upserted",
-            json!({"module": identity.module().as_str(), "msgid": identity.msgid(), "locale": command.value.locale().as_str()}),
+            json!({"key": identity.key(), "locale": command.value.locale().as_str()}),
         );
         self.repository
             .upsert_official_catalog_override(&AuditedCatalogTranslationInput {
@@ -165,7 +163,7 @@ where
         let audit = self.audit(
             &command.access.actor,
             "i18n_catalog.custom_translation.upserted",
-            json!({"module": identity.module().as_str(), "msgid": identity.msgid(), "locale": command.value.locale().as_str()}),
+            json!({"key": identity.key(), "locale": command.value.locale().as_str()}),
         );
         self.repository
             .upsert_custom_catalog_translation_audited(&AuditedCatalogTranslationInput {
@@ -182,15 +180,10 @@ where
         command: RestoreOfficialTranslationCommand,
     ) -> Result<WorkspaceCatalogState> {
         self.authorize(&command.access)?;
-        if command.locale.is_source() {
-            return Err(
-                ControlPlaneError::InvalidInput("i18n_catalog_source_locale_override").into(),
-            );
-        }
         let audit = self.audit(
             &command.access.actor,
             "i18n_catalog.official_override.restored",
-            json!({"module": command.identity.module().as_str(), "msgid": command.identity.msgid(), "locale": command.locale.as_str()}),
+            json!({"key": command.identity.key(), "locale": command.locale.as_str()}),
         );
         self.repository
             .restore_official_catalog_translation(&AuditedDeleteCatalogTranslationInput {
@@ -230,7 +223,7 @@ where
         let audit = self.audit(
             &command.access.actor,
             "i18n_catalog.custom_message.deleted",
-            json!({"module": command.identity.module().as_str(), "msgid": command.identity.msgid()}),
+            json!({"key": command.identity.key()}),
         );
         self.repository
             .delete_custom_catalog_message_audited(&AuditedDeleteCustomCatalogMessageInput {

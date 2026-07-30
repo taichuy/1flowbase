@@ -14,10 +14,7 @@ use control_plane::{
     },
     ports::{CatalogManagementEntry, CatalogManagementOrigin},
 };
-use domain::{
-    CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation,
-    WorkspaceCatalogRevision,
-};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation, WorkspaceCatalogRevision};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -68,7 +65,7 @@ impl From<CatalogManagementOrigin> for CatalogManagementOriginDto {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListCatalogEntriesQuery {
-    pub module: Option<String>,
+    pub key: Option<String>,
     pub locale: Option<String>,
     pub search: Option<String>,
     pub origin: Option<CatalogManagementOriginDto>,
@@ -78,15 +75,13 @@ pub struct ListCatalogEntriesQuery {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct GetCatalogEntryQuery {
-    pub module: String,
-    pub msgid: String,
+    pub key: String,
     pub locale: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertCatalogTranslationBody {
-    pub module: String,
-    pub msgid: String,
+    pub key: String,
     pub locale: String,
     pub translation: String,
     pub expected_revision: i64,
@@ -94,16 +89,14 @@ pub struct UpsertCatalogTranslationBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RestoreCatalogOverrideBody {
-    pub module: String,
-    pub msgid: String,
+    pub key: String,
     pub locale: String,
     pub expected_revision: i64,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteCustomCatalogKeyBody {
-    pub module: String,
-    pub msgid: String,
+    pub key: String,
     pub expected_revision: i64,
 }
 
@@ -114,8 +107,7 @@ pub struct RestoreCatalogOverridesBody {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CatalogManagementEntryResponse {
-    pub module: String,
-    pub msgid: String,
+    pub key: String,
     pub locale: String,
     pub official_translation: Option<String>,
     pub override_translation: Option<String>,
@@ -130,8 +122,7 @@ pub struct CatalogManagementEntryResponse {
 impl From<CatalogManagementEntry> for CatalogManagementEntryResponse {
     fn from(entry: CatalogManagementEntry) -> Self {
         Self {
-            module: entry.module.as_str().to_owned(),
-            msgid: entry.msgid,
+            key: entry.key,
             locale: entry.locale.as_str().to_owned(),
             official_translation: entry.official_translation,
             override_translation: entry.override_translation,
@@ -222,9 +213,8 @@ fn access(actor: domain::ActorContext) -> CatalogManagementAccess {
     }
 }
 
-fn identity(module: String, msgid: String) -> Result<CatalogMessageIdentity, ApiError> {
-    let module = CatalogModuleId::new(module).map_err(|_| invalid_input("i18n_catalog_module"))?;
-    CatalogMessageIdentity::new(module, msgid).map_err(|_| invalid_input("i18n_catalog_msgid"))
+fn identity(key: String) -> Result<CatalogMessageIdentity, ApiError> {
+    CatalogMessageIdentity::new(key).map_err(|_| invalid_input("i18n_catalog_key"))
 }
 
 fn locale(value: String) -> Result<CatalogLocale, ApiError> {
@@ -237,7 +227,7 @@ fn revision(value: i64) -> Result<WorkspaceCatalogRevision, ApiError> {
 
 fn translation(body: &UpsertCatalogTranslationBody) -> Result<CatalogTranslation, ApiError> {
     CatalogTranslation::new(
-        identity(body.module.clone(), body.msgid.clone())?,
+        identity(body.key.clone())?,
         locale(body.locale.clone())?,
         body.translation.clone(),
     )
@@ -267,7 +257,7 @@ async fn mutation_access(
     get,
     path = "/api/console/settings/i18n/entries",
     summary = "List i18n catalog management entries",
-    description = "Lists the root i18n catalog management projection with server-side filters and pagination.",
+    description = "Lists the root i18n catalog management projection with key and locale filters, key or effective-translation search, and pagination.",
     params(ListCatalogEntriesQuery),
     responses((status = 200, body = CatalogManagementPageResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
 )]
@@ -282,11 +272,7 @@ pub async fn list_catalog_entries(
     let page = service
         .list(ListCatalogEntriesCommand {
             access,
-            module: query
-                .module
-                .map(CatalogModuleId::new)
-                .transpose()
-                .map_err(|_| invalid_input("i18n_catalog_module"))?,
+            key: query.key,
             locale: query.locale.map(locale).transpose()?,
             search: query.search,
             origin: query.origin.map(Into::into),
@@ -305,7 +291,7 @@ pub async fn list_catalog_entries(
     get,
     path = "/api/console/settings/i18n/entries/detail",
     summary = "Get an i18n catalog management entry",
-    description = "Returns one root i18n catalog management projection identified by module, msgid, and locale.",
+    description = "Returns one root i18n catalog management projection identified by key and locale.",
     params(GetCatalogEntryQuery),
     responses((status = 200, body = CatalogManagementEntryResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
 )]
@@ -320,7 +306,7 @@ pub async fn get_catalog_entry(
     let entry = service
         .detail(GetCatalogEntryCommand {
             access,
-            identity: identity(query.module, query.msgid)?,
+            identity: identity(query.key)?,
             locale: locale(query.locale)?,
         })
         .await?;
@@ -353,7 +339,7 @@ async fn entry_after_mutation(
     put,
     path = "/api/console/settings/i18n/overrides",
     summary = "Upsert an official i18n catalog override",
-    description = "Creates or replaces one root override for an official catalog translation at the expected revision.",
+    description = "Creates or replaces one root override for an official catalog key and locale at the expected revision.",
     request_body = UpsertCatalogTranslationBody,
     responses((status = 200, body = CatalogEntryMutationResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
 )]
@@ -384,7 +370,7 @@ pub async fn upsert_catalog_override(
     delete,
     path = "/api/console/settings/i18n/overrides",
     summary = "Restore an official i18n catalog translation",
-    description = "Removes one root override and restores the official translation at the expected revision.",
+    description = "Removes one root override and restores the official key and locale translation at the expected revision.",
     request_body = RestoreCatalogOverrideBody,
     responses((status = 200, body = CatalogEntryMutationResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
 )]
@@ -394,7 +380,7 @@ pub async fn restore_catalog_override(
     Json(body): Json<RestoreCatalogOverrideBody>,
 ) -> Result<Json<ApiSuccess<CatalogEntryMutationResponse>>, ApiError> {
     let access = mutation_access(&state, &headers).await?;
-    let identity = identity(body.module, body.msgid)?;
+    let identity = identity(body.key)?;
     let locale = locale(body.locale)?;
     let service =
         I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
@@ -415,7 +401,7 @@ pub async fn restore_catalog_override(
     put,
     path = "/api/console/settings/i18n/custom-translations",
     summary = "Upsert a custom i18n catalog translation",
-    description = "Creates or replaces one custom root catalog translation at the expected revision.",
+    description = "Creates or replaces one custom root catalog key and locale translation at the expected revision.",
     request_body = UpsertCatalogTranslationBody,
     responses((status = 200, body = CatalogEntryMutationResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
 )]
@@ -461,7 +447,7 @@ pub async fn delete_custom_catalog_key(
     let catalog_state = service
         .delete_custom_message(DeleteCustomMessageCommand {
             access,
-            identity: identity(body.module, body.msgid)?,
+            identity: identity(body.key)?,
             expected_revision: revision(body.expected_revision)?,
         })
         .await?;
