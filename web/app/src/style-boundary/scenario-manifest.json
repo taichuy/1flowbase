@@ -1344,6 +1344,7 @@
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
       "web/app/src/features/auth/pages/SignInPage.tsx",
+      "web/app/src/features/auth/pages/sign-in-page.css",
       "web/app/src/features/auth/components/HeroAnimation.tsx",
       "web/app/src/app/router.tsx"
     ],

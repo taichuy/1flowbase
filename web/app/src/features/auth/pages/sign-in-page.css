@@ -5,6 +5,11 @@
   overflow-y: auto;
 }
 
+.auth-sign-in-selector-button {
+  height: 56px;
+  font-size: 16px;
+}
+
 @media (max-width: 700px) {
   .auth-sign-in-hero {
     display: none !important;

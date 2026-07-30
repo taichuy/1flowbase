@@ -129,11 +129,15 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
       >
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {loginInstances.length > 1 && !selectedLoginInstance ? (
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
               {loginInstances.map((instance) => (
                 <Button
                   key={instance.id}
                   block
+                  className="auth-sign-in-selector-button"
+                  shape="round"
+                  size="large"
+                  type="primary"
                   onClick={() =>
                     void navigate({
                       to: '/sign-in',
