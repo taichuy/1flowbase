@@ -127,6 +127,19 @@ fn console_display_inventory_matches_key_only_fixture() {
         .consumers
         .iter()
         .all(|consumer| { consumer.path.starts_with("api/") && !consumer.key.trim().is_empty() }));
+
+    let static_references =
+        crate::routes::core_console_i18n::core_console_static_reference_inventory();
+    assert!(!static_references.is_empty());
+    assert!(static_references
+        .iter()
+        .all(|reference| { reference.starts_with("auto.") || reference.starts_with("console.") }));
+    assert!(static_references
+        .iter()
+        .all(|reference| !compiled.contains(*reference)));
+    assert!(compiled
+        .iter()
+        .all(|key| domain::CatalogMessageIdentity::new(*key).is_ok()));
 }
 
 #[test]
