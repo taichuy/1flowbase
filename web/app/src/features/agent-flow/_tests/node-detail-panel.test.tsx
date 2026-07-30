@@ -704,7 +704,7 @@ describe('NodeDetailPanel', () => {
   );
 
   test(
-    'AC-007 writes the external max output tokens strategy from the policy group',
+    'AC-001 and AC-002 default external max output tokens strategy to off and allow enabling it',
     async () => {
       let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
@@ -723,7 +723,7 @@ describe('NodeDetailPanel', () => {
       const followSwitch = screen.getByRole('switch', {
         name: '跟随外部最大输出 Token'
       });
-      expect(followSwitch).toBeChecked();
+      expect(followSwitch).not.toBeChecked();
       fireEvent.click(followSwitch);
 
       expect(latestDocument.graph.nodes).toEqual(
@@ -732,7 +732,7 @@ describe('NodeDetailPanel', () => {
             id: 'node-llm',
             config: expect.objectContaining({
               external_model_parameter_policy: {
-                follow_external_max_output_tokens: false
+                follow_external_max_output_tokens: true
               }
             })
           })

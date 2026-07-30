@@ -336,7 +336,7 @@ function createLlmContract(): NodeRuntimeUiContract {
         follow_external_reasoning: false
       },
       external_model_parameter_policy: {
-        follow_external_max_output_tokens: true
+        follow_external_max_output_tokens: false
       },
       protocol_context: cloneJsonValue(
         DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE

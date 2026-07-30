@@ -135,7 +135,7 @@ describe('llm-node-config', () => {
     });
   });
 
-  test('AC-007 external max output tokens follow policy defaults to enabled', () => {
+  test('AC-003 missing external max output tokens policy stays enabled for compatibility', () => {
     expect(getLlmExternalModelParameterPolicy({})).toEqual(
       DEFAULT_LLM_EXTERNAL_MODEL_PARAMETER_POLICY
     );
@@ -147,6 +147,15 @@ describe('llm-node-config', () => {
       })
     ).toEqual({
       follow_external_max_output_tokens: false
+    });
+    expect(
+      getLlmExternalModelParameterPolicy({
+        external_model_parameter_policy: {
+          follow_external_max_output_tokens: true
+        }
+      })
+    ).toEqual({
+      follow_external_max_output_tokens: true
     });
   });
 

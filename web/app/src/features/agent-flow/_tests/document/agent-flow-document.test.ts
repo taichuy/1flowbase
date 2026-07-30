@@ -152,7 +152,19 @@ describe('agent flow document helpers', () => {
       getBuiltinNodeRuntimeContract('llm')?.defaults.outputs
     );
     expect(llmNode?.config.external_model_parameter_policy).toEqual({
-      follow_external_max_output_tokens: true
+      follow_external_max_output_tokens: false
+    });
+    expect(
+      createNodeDocument('llm', 'node-llm').config
+        .external_model_parameter_policy
+    ).toEqual({
+      follow_external_max_output_tokens: false
+    });
+    expect(
+      getBuiltinNodeRuntimeContract('llm')?.defaults.config
+        .external_model_parameter_policy
+    ).toEqual({
+      follow_external_max_output_tokens: false
     });
 
     expect(answerNode?.outputs).toEqual(DEFAULT_ANSWER_NODE_OUTPUTS);
