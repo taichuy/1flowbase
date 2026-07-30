@@ -323,6 +323,20 @@ async fn llm_runtime_sends_enabled_model_parameters_and_keeps_undeclared_structu
 fn protocol_context_fixture() -> ProtocolContextEnvelope {
     ProtocolContextEnvelope {
         source_protocol: "anthropic_messages".to_string(),
+        source_request: Some(SourceProtocolRequest {
+            authentication: Some(ProtocolAuthenticationPresentation::AuthorizationBearer),
+            body: Some(json!({
+                "model": "claude-opus-4-8",
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "text",
+                        "text": "SOURCE-BODY-EPHEMERAL-CANARY",
+                        "cache_control": {"type": "ephemeral"}
+                    }]
+                }]
+            })),
+        }),
         query: BTreeMap::from([(
             "preview".to_string(),
             vec!["one".to_string(), "two".to_string()],
@@ -335,6 +349,7 @@ fn protocol_context_fixture() -> ProtocolContextEnvelope {
             "context_management".to_string(),
             json!({ "edits": [{ "type": "clear_thinking_20251015" }] }),
         )]),
+        ..ProtocolContextEnvelope::default()
     }
 }
 
@@ -459,9 +474,16 @@ async fn wp_d1c_start_exposes_only_the_safe_locator_while_llm_receives_the_raw_c
         .input_payload
         .to_string()
         .contains("private-beta"));
-    assert!(!Value::Object(outcome.variable_pool)
+    assert!(!outcome.node_traces[0]
+        .input_payload
+        .to_string()
+        .contains("SOURCE-BODY-EPHEMERAL-CANARY"));
+    assert!(!Value::Object(outcome.variable_pool.clone())
         .to_string()
         .contains("private-beta"));
+    assert!(!Value::Object(outcome.variable_pool)
+        .to_string()
+        .contains("SOURCE-BODY-EPHEMERAL-CANARY"));
 }
 
 #[tokio::test]

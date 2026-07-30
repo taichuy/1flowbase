@@ -204,11 +204,14 @@ pub(super) fn build_provider_error_payload(
 }
 
 pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {
-    !matches!(
-        error.kind,
+    match error.kind {
         ProviderRuntimeErrorKind::ProviderAffinityMismatch
-            | ProviderRuntimeErrorKind::ProviderTransportUnavailable
-    )
+        | ProviderRuntimeErrorKind::ProviderTransportUnavailable => false,
+        ProviderRuntimeErrorKind::ProviderUpstreamError => {
+            provider_status_code(error.provider_details.as_ref()).is_none_or(|status| status >= 500)
+        }
+        _ => true,
+    }
 }
 
 fn provider_status_code(details: Option<&Value>) -> Option<u16> {

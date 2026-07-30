@@ -25,6 +25,8 @@ pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY: &str
     "protocol_context.consume.openai_responses.v1";
 pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY: &str =
     "protocol_context.restore.anthropic_messages.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY: &str =
+    "protocol_context.restore.anthropic_messages.v2";
 pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY: &str =
     "protocol_context.restore.openai_chat.v1";
 pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY: &str =
@@ -529,8 +531,26 @@ pub struct ProviderMessage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+pub struct SourceProtocolRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authentication: Option<ProtocolAuthenticationPresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProtocolAuthenticationPresentation {
+    AuthorizationBearer,
+    XApiKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ProtocolContextEnvelope {
     pub source_protocol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_request: Option<SourceProtocolRequest>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub query: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -1090,13 +1110,10 @@ fn project_protocol_context_envelope(
     declared_capabilities: &BTreeSet<&str>,
 ) -> bool {
     required_capabilities.remove(&ProviderInvocationCapability::ProtocolContext);
-    let Some(source_protocol) = envelope
-        .as_ref()
-        .map(|envelope| envelope.source_protocol.trim())
-    else {
+    let Some(protocol_context) = envelope.as_ref() else {
         return false;
     };
-    if protocol_context_profile_is_declared(source_protocol, declared_capabilities) {
+    if protocol_context_profile_is_declared(protocol_context, declared_capabilities) {
         return false;
     }
     *envelope = None;
@@ -1104,19 +1121,24 @@ fn project_protocol_context_envelope(
 }
 
 fn protocol_context_profile_is_declared(
-    source_protocol: &str,
+    envelope: &ProtocolContextEnvelope,
     declared_capabilities: &BTreeSet<&str>,
 ) -> bool {
-    let profiles = match source_protocol {
-        "anthropic_messages" => [
+    if envelope.source_protocol == "anthropic_messages" && envelope.source_request.is_some() {
+        return declared_capabilities
+            .contains(PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY);
+    }
+    let profiles: &[&str] = match envelope.source_protocol.as_str() {
+        "anthropic_messages" => &[
             PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
             PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY,
         ],
-        "openai_chat" => [
+        "openai_chat" => &[
             PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
             PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
         ],
-        "openai_responses" => [
+        "openai_responses" => &[
             PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
             PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
         ],
@@ -1145,6 +1167,24 @@ fn validate_protocol_context_envelope(envelope: &ProtocolContextEnvelope) -> Res
         return Err(
             "protocol context contains a reserved, typed, or credential-bearing field".to_string(),
         );
+    }
+    if let Some(source_body) = envelope
+        .source_request
+        .as_ref()
+        .and_then(|request| request.body.as_ref())
+    {
+        let source_body = source_body
+            .as_object()
+            .ok_or_else(|| "protocol context source request body must be an object".to_string())?;
+        if source_body
+            .keys()
+            .any(|name| !protocol_context_field_is_safe(name))
+        {
+            return Err(
+                "protocol context source request body contains a credential-bearing root field"
+                    .to_string(),
+            );
+        }
     }
     Ok(())
 }

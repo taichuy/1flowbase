@@ -10,7 +10,8 @@ use control_plane::application_public_api::{
 };
 use control_plane::ports::ProviderProtocolContextLocator;
 use plugin_framework::provider_contract::{
-    ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+    ProtocolAuthenticationPresentation, ProtocolContextEnvelope,
+    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
 };
 use serde_json::json;
 
@@ -50,8 +51,20 @@ fn anthropic_policy_preserves_repeated_safe_headers_and_subtracts_typed_or_unsaf
         envelope.headers["anthropic-beta"],
         vec!["prompt-caching", "private-beta"]
     );
+    assert_eq!(
+        envelope
+            .source_request
+            .as_ref()
+            .and_then(|request| request.authentication),
+        Some(ProtocolAuthenticationPresentation::AuthorizationBearer)
+    );
+    assert_eq!(
+        envelope.headers["x-claude-code-session-id"],
+        vec!["typed-session"]
+    );
+    let encoded = serde_json::to_string(&envelope).unwrap();
+    assert!(!encoded.contains("platform-key"));
     for stripped in [
-        "x-claude-code-session-id",
         "authorization",
         "x-api-key",
         "cookie",
@@ -67,6 +80,26 @@ fn anthropic_policy_preserves_repeated_safe_headers_and_subtracts_typed_or_unsaf
     ] {
         assert!(!envelope.headers.contains_key(stripped), "{stripped}");
     }
+}
+
+#[test]
+fn anthropic_x_api_key_authentication_keeps_only_its_presentation() {
+    let envelope = capture_client_protocol_envelope(
+        ClientProtocolIngressPolicy::AnthropicMessages,
+        [("x-api-key", "gateway-secret-canary")],
+    )
+    .expect("Anthropic authentication presentation must create protocol context");
+
+    assert_eq!(
+        envelope
+            .source_request
+            .as_ref()
+            .and_then(|request| request.authentication),
+        Some(ProtocolAuthenticationPresentation::XApiKey)
+    );
+    assert!(!serde_json::to_string(&envelope)
+        .unwrap()
+        .contains("gateway-secret-canary"));
 }
 
 #[test]
@@ -173,6 +206,7 @@ fn wp_d1c_native_input_mapper_places_only_the_ephemeral_locator_in_durable_input
             vec!["2023-06-01".to_string()],
         )]),
         body: BTreeMap::from([("context_management".to_string(), json!({"edits": []}))]),
+        ..ProtocolContextEnvelope::default()
     });
 
     let mapped = NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())

@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use plugin_framework::provider_contract::ProtocolContextEnvelope;
+use plugin_framework::provider_contract::{
+    ProtocolAuthenticationPresentation, ProtocolContextEnvelope, SourceProtocolRequest,
+};
 use serde_json::{Map, Value};
 
 pub const ANTHROPIC_BETA_HEADER_NAME: &str = "anthropic-beta";
@@ -46,6 +48,28 @@ where
         .map(|name| name.trim().to_ascii_lowercase())
         .filter(|name| !name.is_empty())
         .collect::<BTreeSet<_>>();
+    let authentication = match policy {
+        ClientProtocolIngressPolicy::AnthropicMessages => headers
+            .iter()
+            .find(|(name, value)| {
+                name.trim().eq_ignore_ascii_case("authorization")
+                    && value.trim().split_once(' ').is_some_and(|(scheme, token)| {
+                        scheme.eq_ignore_ascii_case("bearer") && !token.trim().is_empty()
+                    })
+            })
+            .map(|_| ProtocolAuthenticationPresentation::AuthorizationBearer)
+            .or_else(|| {
+                headers
+                    .iter()
+                    .find(|(name, value)| {
+                        name.trim().eq_ignore_ascii_case("x-api-key") && !value.trim().is_empty()
+                    })
+                    .map(|_| ProtocolAuthenticationPresentation::XApiKey)
+            }),
+        ClientProtocolIngressPolicy::OpenAiChat | ClientProtocolIngressPolicy::OpenAiResponses => {
+            None
+        }
+    };
     let mut captured = BTreeMap::new();
 
     for (name, value) in headers {
@@ -64,7 +88,16 @@ where
         }
     }
 
-    protocol_context(policy, BTreeMap::new(), captured, BTreeMap::new())
+    protocol_context(
+        policy,
+        authentication.map(|authentication| SourceProtocolRequest {
+            authentication: Some(authentication),
+            body: None,
+        }),
+        BTreeMap::new(),
+        captured,
+        BTreeMap::new(),
+    )
 }
 
 pub fn anthropic_context_1m_requested<'a>(values: impl IntoIterator<Item = &'a str>) -> bool {
@@ -94,7 +127,7 @@ where
             .or_insert_with(Vec::new)
             .push(value.as_ref().to_string());
     }
-    protocol_context(policy, captured, BTreeMap::new(), BTreeMap::new())
+    protocol_context(policy, None, captured, BTreeMap::new(), BTreeMap::new())
 }
 
 pub fn capture_client_protocol_body(
@@ -109,7 +142,27 @@ pub fn capture_client_protocol_body(
         })
         .map(|(name, value)| (name.clone(), sanitized_protocol_context_value(value)))
         .collect();
-    protocol_context(policy, BTreeMap::new(), BTreeMap::new(), captured)
+    protocol_context(policy, None, BTreeMap::new(), BTreeMap::new(), captured)
+}
+
+pub fn capture_source_protocol_request_body(
+    policy: ClientProtocolIngressPolicy,
+    body: &Value,
+) -> Option<ProtocolContextEnvelope> {
+    let body = body.as_object()?;
+    let body = body
+        .iter()
+        .filter(|(name, _)| protocol_context_field_is_safe(name))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect::<Map<String, Value>>();
+    Some(ProtocolContextEnvelope {
+        source_protocol: policy.source_protocol().to_string(),
+        source_request: Some(SourceProtocolRequest {
+            authentication: None,
+            body: Some(Value::Object(body)),
+        }),
+        ..ProtocolContextEnvelope::default()
+    })
 }
 
 pub fn merge_client_protocol_envelopes(
@@ -125,6 +178,17 @@ pub fn merge_client_protocol_envelopes(
         debug_assert_eq!(envelope.source_protocol, policy.source_protocol());
         if envelope.source_protocol != policy.source_protocol() {
             continue;
+        }
+        if let Some(source_request) = envelope.source_request {
+            let target = merged
+                .source_request
+                .get_or_insert_with(SourceProtocolRequest::default);
+            if target.authentication.is_none() {
+                target.authentication = source_request.authentication;
+            }
+            if target.body.is_none() {
+                target.body = source_request.body;
+            }
         }
         extend_multi_values(&mut merged.query, envelope.query);
         extend_multi_values(&mut merged.headers, envelope.headers);
@@ -215,12 +279,14 @@ pub(crate) fn protocol_context_field_is_safe(name: &str) -> bool {
 
 fn protocol_context(
     policy: ClientProtocolIngressPolicy,
+    source_request: Option<SourceProtocolRequest>,
     query: BTreeMap<String, Vec<String>>,
     headers: BTreeMap<String, Vec<String>>,
     body: BTreeMap<String, Value>,
 ) -> Option<ProtocolContextEnvelope> {
     non_empty_protocol_context(ProtocolContextEnvelope {
         source_protocol: policy.source_protocol().to_string(),
+        source_request,
         query,
         headers,
         body,
@@ -230,8 +296,11 @@ fn protocol_context(
 fn non_empty_protocol_context(
     envelope: ProtocolContextEnvelope,
 ) -> Option<ProtocolContextEnvelope> {
-    (!envelope.query.is_empty() || !envelope.headers.is_empty() || !envelope.body.is_empty())
-        .then_some(envelope)
+    (envelope.source_request.is_some()
+        || !envelope.query.is_empty()
+        || !envelope.headers.is_empty()
+        || !envelope.body.is_empty())
+    .then_some(envelope)
 }
 
 fn extend_multi_values(
@@ -313,9 +382,6 @@ fn blocked_header(policy: ClientProtocolIngressPolicy, name: &str) -> bool {
         || matches!(
             (policy, name),
             (
-                ClientProtocolIngressPolicy::AnthropicMessages,
-                "x-claude-code-session-id"
-            ) | (
                 ClientProtocolIngressPolicy::OpenAiResponses,
                 "x-codex-turn-metadata"
             )

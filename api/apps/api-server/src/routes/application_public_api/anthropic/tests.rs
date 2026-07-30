@@ -316,15 +316,26 @@ fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     headers.insert("content-length", "42".parse().unwrap());
     headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
     headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
+    let source_body = json!({
+        "model": "claude-compatible",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {
+                    "type": "text",
+                    "text": " world",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+        }],
+        "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
+        "future_anthropic_option": {"shape": "opaque"},
+        "authorization": "body-secret",
+        "__native_transport": {"must_not_cross": true}
+    });
     let translated = translate_messages_request_with_context_window(
-        json!({
-            "model": "claude-compatible",
-            "messages": [{"role": "user", "content": "hello"}],
-            "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
-            "future_anthropic_option": {"shape": "opaque"},
-            "authorization": "body-secret",
-            "__native_transport": {"must_not_cross": true}
-        }),
+        source_body.clone(),
         anthropic_context_window_request(&headers),
     )
     .expect("safe Anthropic residual fixture should translate");
@@ -338,11 +349,32 @@ fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     let envelope = anthropic_protocol_context_from_ingress(
         Some("preview=one&preview=two&authorization=query-secret&__native_transport=internal"),
         &headers,
+        &source_body,
         translated.request.client_protocol_envelope,
     )
     .expect("safe Anthropic ingress context should produce one envelope");
 
     assert_eq!(envelope.source_protocol, "anthropic_messages");
+    assert_eq!(
+        envelope
+            .source_request
+            .as_ref()
+            .and_then(|request| request.authentication),
+        Some(
+            plugin_framework::provider_contract::ProtocolAuthenticationPresentation::AuthorizationBearer
+        )
+    );
+    let source_body = envelope
+        .source_request
+        .as_ref()
+        .and_then(|request| request.body.as_ref())
+        .expect("accepted Anthropic source body must remain ephemeral protocol context");
+    assert_eq!(
+        source_body["messages"][0]["content"][1]["cache_control"]["type"],
+        "ephemeral"
+    );
+    assert!(source_body.get("authorization").is_none());
+    assert!(source_body.get("__native_transport").is_none());
     assert_eq!(envelope.headers["anthropic-version"], vec!["2023-06-01"]);
     assert_eq!(
         envelope.headers["anthropic-beta"],
@@ -355,7 +387,6 @@ fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     );
     assert_eq!(envelope.body["future_anthropic_option"]["shape"], "opaque");
     for stripped in [
-        "x-claude-code-session-id",
         "authorization",
         "cookie",
         "host",
@@ -365,6 +396,13 @@ fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     ] {
         assert!(!envelope.headers.contains_key(stripped), "{stripped}");
     }
+    assert_eq!(
+        envelope.headers["x-claude-code-session-id"],
+        vec!["header-session-123"]
+    );
+    assert!(!serde_json::to_string(&envelope)
+        .unwrap()
+        .contains("platform-key"));
     for stripped in ["authorization", "__native_transport"] {
         assert!(!envelope.query.contains_key(stripped), "{stripped}");
         assert!(!envelope.body.contains_key(stripped), "{stripped}");

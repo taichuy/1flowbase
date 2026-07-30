@@ -1449,6 +1449,9 @@ where
             failed_attempts.push(attempt);
             if retry_enabled
                 && !failed_after_first_token
+                && provider_error
+                    .as_ref()
+                    .is_none_or(provider_error_allows_retry)
                 && attempt_index + 1 < attempt_runtimes.len()
             {
                 retry_reason = error_payload

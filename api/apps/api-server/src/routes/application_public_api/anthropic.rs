@@ -14,7 +14,8 @@ use control_plane::application_public_api::{
     },
     client_protocol_envelope::{
         capture_client_protocol_envelope, capture_client_protocol_query,
-        merge_client_protocol_envelopes, ClientProtocolIngressPolicy, ANTHROPIC_BETA_HEADER_NAME,
+        capture_source_protocol_request_body, merge_client_protocol_envelopes,
+        ClientProtocolIngressPolicy, ANTHROPIC_BETA_HEADER_NAME,
     },
     compat::anthropic::{
         translate_messages_request_with_context_window, AnthropicCompatError,
@@ -167,6 +168,7 @@ pub async fn create_message(
 ) -> Result<Response, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
+    let source_body = value.clone();
     merge_claude_code_session_header(&mut value, &headers);
     let model = value
         .get("model")
@@ -220,6 +222,7 @@ pub async fn create_message(
     request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
         uri.query(),
         &headers,
+        &source_body,
         request.client_protocol_envelope,
     );
     let model = request.model.clone().unwrap_or(model);
@@ -262,6 +265,7 @@ pub async fn count_message_tokens(
 ) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
+    let source_body = value.clone();
     merge_claude_code_session_header(&mut value, &headers);
     let mut translation = translate_messages_request_with_context_window(
         value,
@@ -270,6 +274,7 @@ pub async fn count_message_tokens(
     translation.request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
         uri.query(),
         &headers,
+        &source_body,
         translation.request.client_protocol_envelope,
     );
     translation
@@ -352,6 +357,7 @@ fn merge_claude_code_session_header(value: &mut Value, headers: &HeaderMap) {
 fn anthropic_protocol_context_from_ingress(
     raw_query: Option<&str>,
     headers: &HeaderMap,
+    source_body: &Value,
     translated: Option<ProtocolContextEnvelope>,
 ) -> Option<ProtocolContextEnvelope> {
     let policy = ClientProtocolIngressPolicy::AnthropicMessages;
@@ -367,6 +373,11 @@ fn anthropic_protocol_context_from_ingress(
             policy,
             form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
         ),
+    );
+    let captured = merge_client_protocol_envelopes(
+        policy,
+        captured,
+        capture_source_protocol_request_body(policy, source_body),
     );
     merge_client_protocol_envelopes(policy, captured, translated)
 }

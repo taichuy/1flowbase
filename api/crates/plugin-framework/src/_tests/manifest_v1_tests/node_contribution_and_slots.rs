@@ -569,6 +569,23 @@ runtime:
             "protocol_context.consume.openai_responses.v1"
         ]
     );
+
+    let anthropic_source_request_v2 = raw.replace(
+        "protocol_context.restore.anthropic_messages.v1",
+        "protocol_context.restore.anthropic_messages.v2",
+    );
+    parse_plugin_manifest(&anthropic_source_request_v2)
+        .expect("Anthropic SourceProtocolContext restore v2 must be an exact capability");
+
+    let conflicting_restore_versions = raw.replace(
+        "    - protocol_context.restore.anthropic_messages.v1\n",
+        "    - protocol_context.restore.anthropic_messages.v1\n    - protocol_context.restore.anthropic_messages.v2\n",
+    );
+    let error = parse_plugin_manifest(&conflicting_restore_versions)
+        .expect_err("one provider must not declare both Anthropic restore ABI versions");
+    assert!(error
+        .to_string()
+        .contains("conflicting protocol context profiles"));
 }
 
 #[test]

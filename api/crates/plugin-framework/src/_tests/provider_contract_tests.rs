@@ -221,6 +221,7 @@ fn provider_invocation_input_serializes_protocol_context_envelope_without_flatte
                 "context_management".to_string(),
                 json!({"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]}),
             )]),
+            ..ProtocolContextEnvelope::default()
         }),
         ..ProviderInvocationInput::default()
     };
@@ -271,6 +272,102 @@ fn protocol_context_envelope_rejects_unknown_top_level_fields() {
     .expect_err("the protocol context shell must stay minimal and typed");
 
     assert!(error.to_string().contains("unknown field"));
+}
+
+#[test]
+fn source_protocol_request_serializes_authentication_presentation_without_a_secret() {
+    let envelope: ProtocolContextEnvelope = serde_json::from_value(json!({
+        "source_protocol": "anthropic_messages",
+        "source_request": {
+            "authentication": "authorization_bearer",
+            "body": {
+                "model": "claude-opus-4-8",
+                "messages": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "text",
+                        "text": "hello",
+                        "cache_control": {"type": "ephemeral"}
+                    }]
+                }]
+            }
+        }
+    }))
+    .expect("SourceProtocolContext must deserialize the safe source request shape");
+
+    let encoded = serde_json::to_string(&envelope).unwrap();
+    assert!(encoded.contains("authorization_bearer"));
+    assert!(encoded.contains("cache_control"));
+    assert!(!encoded.contains("Bearer "));
+    assert!(!encoded.contains("api_key"));
+}
+
+#[test]
+fn anthropic_source_request_requires_the_restore_v2_provider_profile() {
+    let input = ProviderInvocationInput {
+        client_protocol_envelope: Some(
+            serde_json::from_value(json!({
+                "source_protocol": "anthropic_messages",
+                "source_request": {
+                    "authentication": "authorization_bearer",
+                    "body": {
+                        "model": "claude-opus-4-8",
+                        "messages": [{"role": "user", "content": "hello"}]
+                    }
+                }
+            }))
+            .unwrap(),
+        ),
+        ..ProviderInvocationInput::default()
+    };
+
+    let (legacy_wire, legacy_receipt) = input
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.restore.anthropic_messages.v1".to_string(),
+        ])
+        .expect("legacy residual-only provider must degrade with a receipt");
+    assert!(legacy_wire.get("client_protocol_envelope").is_none());
+    assert!(legacy_receipt
+        .decisions
+        .contains(&ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch));
+
+    let (source_wire, source_receipt) = input
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.restore.anthropic_messages.v2".to_string(),
+        ])
+        .expect("SourceProtocolContext provider must receive the complete safe context");
+    assert_eq!(
+        source_wire["client_protocol_envelope"]["source_request"]["authentication"],
+        "authorization_bearer"
+    );
+    assert!(source_receipt.decisions.is_empty());
+}
+
+#[test]
+fn provider_projection_rejects_credential_bearing_source_body_root() {
+    let input = ProviderInvocationInput {
+        client_protocol_envelope: Some(
+            serde_json::from_value(json!({
+                "source_protocol": "anthropic_messages",
+                "source_request": {
+                    "authentication": "x_api_key",
+                    "body": {
+                        "model": "claude-opus-4-8",
+                        "messages": [],
+                        "authorization": "must-not-cross"
+                    }
+                }
+            }))
+            .unwrap(),
+        ),
+        ..ProviderInvocationInput::default()
+    };
+
+    input
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.restore.anthropic_messages.v2".to_string(),
+        ])
+        .expect_err("credential-bearing source body roots must fail closed");
 }
 
 #[test]

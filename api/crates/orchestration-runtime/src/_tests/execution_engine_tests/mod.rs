@@ -8,11 +8,12 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
-        ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProtocolAuthenticationPresentation, ProtocolContextEnvelope, ProviderCompactProfile,
+        ProviderCompactResult, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
+        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
+        ProviderToolCall, ProviderUsage, ProviderWireOperation, SourceProtocolRequest,
+        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::{json, Value};

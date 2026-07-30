@@ -57,6 +57,7 @@ async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_p
         query: BTreeMap::new(),
         headers: BTreeMap::from([("openai-organization".to_string(), vec![CANARY.to_string()])]),
         body: BTreeMap::new(),
+        ..ProtocolContextEnvelope::default()
     };
 
     native::stage_client_protocol_context(&store, &run, Some(protocol_context.clone()))
