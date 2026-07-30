@@ -23,7 +23,6 @@ pub struct StoredI18nCatalogReleaseDescriptor {
     pub semantic_sha256: domain::CatalogDigest,
     pub source_locale: domain::CatalogLocale,
     pub locales: Vec<domain::CatalogLocale>,
-    pub modules: Vec<domain::CatalogModuleId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,8 +43,7 @@ pub trait CatalogResolutionRepository: Send + Sync {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeCatalogMessage {
-    pub module: domain::CatalogModuleId,
-    pub msgid: String,
+    pub key: String,
     pub value: String,
 }
 
@@ -75,8 +73,7 @@ pub enum CatalogManagementOrigin {
 #[derive(Debug, Clone)]
 pub struct CatalogManagementQuery {
     pub workspace_id: Uuid,
-    pub module: Option<domain::CatalogModuleId>,
-    pub msgid: Option<String>,
+    pub key: Option<String>,
     pub locale: Option<domain::CatalogLocale>,
     pub search: Option<String>,
     pub origin: Option<CatalogManagementOrigin>,
@@ -86,8 +83,7 @@ pub struct CatalogManagementQuery {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogManagementEntry {
-    pub module: domain::CatalogModuleId,
-    pub msgid: String,
+    pub key: String,
     pub locale: domain::CatalogLocale,
     pub official_translation: Option<String>,
     pub override_translation: Option<String>,

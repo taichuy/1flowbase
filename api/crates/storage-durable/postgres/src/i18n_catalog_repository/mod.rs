@@ -10,8 +10,8 @@ use control_plane::{
     },
 };
 use domain::{
-    ActiveOfficialCatalogMessage, CatalogLocale, CatalogMessageIdentity, CatalogModuleId,
-    CatalogTranslation, ObsoleteCatalogMessage, OfficialCatalogMessage, WorkspaceCatalogRevision,
+    ActiveOfficialCatalogMessage, CatalogLocale, CatalogMessageIdentity, CatalogTranslation,
+    ObsoleteCatalogMessage, OfficialCatalogMessage, WorkspaceCatalogRevision,
     WorkspaceCatalogState, I18N_CATALOG_SEED_SCHEMA_VERSION, I18N_CATALOG_SOURCE_LOCALE,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction};
@@ -30,10 +30,7 @@ fn state_from_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceCatalogState> 
 }
 
 fn translation_from_row(row: &sqlx::postgres::PgRow) -> Result<CatalogTranslation> {
-    let identity = CatalogMessageIdentity::new(
-        CatalogModuleId::new(row.get::<String, _>("module"))?,
-        row.get::<String, _>("msgid"),
-    )?;
+    let identity = CatalogMessageIdentity::new(row.get::<String, _>("key"))?;
     CatalogTranslation::new(
         identity,
         CatalogLocale::new(row.get::<String, _>("locale"))?,
@@ -43,10 +40,7 @@ fn translation_from_row(row: &sqlx::postgres::PgRow) -> Result<CatalogTranslatio
 }
 
 fn obsolete_from_row(row: &sqlx::postgres::PgRow) -> Result<ObsoleteCatalogMessage> {
-    let identity = CatalogMessageIdentity::new(
-        CatalogModuleId::new(row.get::<String, _>("module"))?,
-        row.get::<String, _>("msgid"),
-    )?;
+    let identity = CatalogMessageIdentity::new(row.get::<String, _>("key"))?;
     Ok(ObsoleteCatalogMessage::restored(
         identity,
         row.get("obsolete_since_release_id"),
@@ -134,8 +128,7 @@ async fn reconcile_obsolete_rows(
         using i18n_catalog_release_messages active_message
         where obsolete.workspace_id = $1
           and active_message.release_id = $2
-          and active_message.module = obsolete.module
-          and active_message.msgid = obsolete.msgid
+          and active_message.key = obsolete.key
         "#,
     )
     .bind(workspace_id)
@@ -149,9 +142,9 @@ async fn reconcile_obsolete_rows(
     sqlx::query(
         r#"
         insert into workspace_i18n_catalog_obsolete_messages (
-          workspace_id, module, msgid, obsolete_since_release_id
+          workspace_id, key, obsolete_since_release_id
         )
-        select $1, historical.module, historical.msgid, $2
+        select $1, historical.key, $2
         from i18n_catalog_release_messages historical
         join i18n_catalog_releases release on release.id = historical.release_id
         where historical.release_id = $3
@@ -160,10 +153,9 @@ async fn reconcile_obsolete_rows(
             select 1
             from i18n_catalog_release_messages active_message
             where active_message.release_id = $2
-              and active_message.module = historical.module
-              and active_message.msgid = historical.msgid
+              and active_message.key = historical.key
           )
-        on conflict (workspace_id, module, msgid) do update
+        on conflict (workspace_id, key) do update
         set obsolete_since_release_id = excluded.obsolete_since_release_id,
             marked_at = now()
         "#,
@@ -179,10 +171,10 @@ async fn reconcile_obsolete_rows(
 async fn list_obsolete(pool: &PgPool, workspace_id: Uuid) -> Result<Vec<ObsoleteCatalogMessage>> {
     sqlx::query(
         r#"
-        select module, msgid, obsolete_since_release_id
+        select key, obsolete_since_release_id
         from workspace_i18n_catalog_obsolete_messages
         where workspace_id = $1
-        order by module, msgid
+        order by key
         "#,
     )
     .bind(workspace_id)
@@ -202,17 +194,12 @@ pub(crate) async fn insert_verified_release(
         .iter()
         .map(|locale| locale.as_str().to_owned())
         .collect::<Vec<_>>();
-    let modules = release
-        .modules()
-        .iter()
-        .map(|module| module.as_str().to_owned())
-        .collect::<Vec<_>>();
     sqlx::query(
         r#"
         insert into i18n_catalog_releases (
           id, workspace_id, schema_version, catalog_version, source_locale,
-          locales, modules, generated_at, semantic_sha256
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          locales, generated_at, semantic_sha256
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
     )
     .bind(release.id())
@@ -221,7 +208,6 @@ pub(crate) async fn insert_verified_release(
     .bind(release.catalog_version().as_str())
     .bind(I18N_CATALOG_SOURCE_LOCALE)
     .bind(locales)
-    .bind(modules)
     .bind(release.generated_at())
     .bind(release.semantic_sha256().as_str())
     .execute(&mut **transaction)
@@ -230,12 +216,11 @@ pub(crate) async fn insert_verified_release(
     for file in release.files() {
         sqlx::query(
             r#"
-            insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
-            values ($1, $2, $3, $4, $5)
+            insert into i18n_catalog_release_files (release_id, locale, path, sha256)
+            values ($1, $2, $3, $4)
             "#,
         )
         .bind(release.id())
-        .bind(file.module().as_str())
         .bind(file.locale().as_str())
         .bind(file.path())
         .bind(file.sha256().as_str())
@@ -245,26 +230,24 @@ pub(crate) async fn insert_verified_release(
     for message in release.messages() {
         sqlx::query(
             r#"
-            insert into i18n_catalog_release_messages (release_id, module, msgid)
-            values ($1, $2, $3)
+            insert into i18n_catalog_release_messages (release_id, key)
+            values ($1, $2)
             "#,
         )
         .bind(release.id())
-        .bind(message.identity().module().as_str())
-        .bind(message.identity().msgid())
+        .bind(message.identity().key())
         .execute(&mut **transaction)
         .await?;
         for (locale, translation) in message.translations() {
             sqlx::query(
                 r#"
                 insert into i18n_catalog_release_translations (
-                  release_id, module, msgid, locale, translation
-                ) values ($1, $2, $3, $4, $5)
+                  release_id, key, locale, translation
+                ) values ($1, $2, $3, $4)
                 "#,
             )
             .bind(release.id())
-            .bind(message.identity().module().as_str())
-            .bind(message.identity().msgid())
+            .bind(message.identity().key())
             .bind(locale.as_str())
             .bind(translation)
             .execute(&mut **transaction)
@@ -372,7 +355,7 @@ impl I18nCatalogRepository for PgControlPlaneStore {
     ) -> Result<Option<StoredI18nCatalogReleaseDescriptor>> {
         let row = sqlx::query(
             r#"
-            select catalog_version, semantic_sha256, source_locale, locales, modules
+            select catalog_version, semantic_sha256, source_locale, locales
             from i18n_catalog_releases
             where workspace_id = $1 and id = $2
             "#,
@@ -395,11 +378,6 @@ impl I18nCatalogRepository for PgControlPlaneStore {
                     .into_iter()
                     .map(CatalogLocale::new)
                     .collect::<Result<Vec<_>, _>>()?,
-                modules: row
-                    .get::<Vec<String>, _>("modules")
-                    .into_iter()
-                    .map(CatalogModuleId::new)
-                    .collect::<Result<Vec<_>, _>>()?,
             })
         })
         .transpose()
@@ -411,17 +389,16 @@ impl I18nCatalogRepository for PgControlPlaneStore {
     ) -> Result<Vec<ActiveOfficialCatalogMessage>> {
         let rows = sqlx::query(
             r#"
-            select message.release_id, message.module, message.msgid,
+            select message.release_id, message.key,
                    translation.locale, translation.translation
             from workspace_i18n_catalog_states state
             join i18n_catalog_release_messages message
               on message.release_id = state.active_release_id
             left join i18n_catalog_release_translations translation
               on translation.release_id = message.release_id
-             and translation.module = message.module
-             and translation.msgid = message.msgid
+             and translation.key = message.key
             where state.workspace_id = $1
-            order by message.module, message.msgid, translation.locale
+            order by message.key, translation.locale
             "#,
         )
         .bind(workspace_id)
@@ -433,10 +410,7 @@ impl I18nCatalogRepository for PgControlPlaneStore {
         >::new();
         for row in rows {
             let release_id = row.get("release_id");
-            let identity = CatalogMessageIdentity::new(
-                CatalogModuleId::new(row.get::<String, _>("module"))?,
-                row.get::<String, _>("msgid"),
-            )?;
+            let identity = CatalogMessageIdentity::new(row.get::<String, _>("key"))?;
             let translations = messages.entry((release_id, identity)).or_default();
             if let (Some(locale), Some(translation)) = (
                 row.get::<Option<String>, _>("locale"),
@@ -517,12 +491,11 @@ impl I18nCatalogRepository for PgControlPlaneStore {
         let deleted = sqlx::query(
             r#"
             delete from workspace_i18n_catalog_custom_translations
-            where workspace_id = $1 and module = $2 and msgid = $3
+            where workspace_id = $1 and key = $2
             "#,
         )
         .bind(input.workspace_id)
-        .bind(input.identity.module().as_str())
-        .bind(input.identity.msgid())
+        .bind(input.identity.key())
         .execute(&mut *transaction)
         .await?;
         if deleted.rows_affected() == 0 {
@@ -584,28 +557,25 @@ impl CatalogResolutionRepository for PgControlPlaneStore {
               coalesce(
                 (select translation
                  from workspace_i18n_catalog_overrides
-                 where workspace_id = $1 and module = $2 and msgid = $3 and locale = $4),
+                 where workspace_id = $1 and key = $2 and locale = $3),
                 (select translation
                  from workspace_i18n_catalog_custom_translations
-                 where workspace_id = $1 and module = $2 and msgid = $3 and locale = $4)
+                 where workspace_id = $1 and key = $2 and locale = $3)
               ) as root_override,
               (select translation.translation
                from workspace_i18n_catalog_states state
                join i18n_catalog_release_messages message
                  on message.release_id = state.active_release_id
-                and message.module = $2
-                and message.msgid = $3
+                and message.key = $2
                join i18n_catalog_release_translations translation
                  on translation.release_id = message.release_id
-                and translation.module = message.module
-                and translation.msgid = message.msgid
-                and translation.locale = $4
+                and translation.key = message.key
+                and translation.locale = $3
                where state.workspace_id = $1) as active_official
             "#,
         )
         .bind(workspace_id)
-        .bind(identity.module().as_str())
-        .bind(identity.msgid())
+        .bind(identity.key())
         .bind(locale.as_str())
         .fetch_one(self.pool())
         .await?;
@@ -630,40 +600,35 @@ impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
               from workspace_i18n_catalog_states
               where workspace_id = $1
             ), identities as (
-              select message.module, message.msgid
+              select message.key
               from catalog_state state
               join i18n_catalog_release_messages message
                 on message.release_id = state.active_release_id
               union
-              select custom.module, custom.msgid
+              select custom.key
               from workspace_i18n_catalog_custom_translations custom
               where custom.workspace_id = $1
             )
-            select state.revision, identity.module, identity.msgid,
-                   case when $2 = 'en_US' then identity.msgid
-                        else coalesce(override_value.translation,
-                                      custom_value.translation,
-                                      official_value.translation,
-                                      identity.msgid)
-                   end as value
+            select state.revision, identity.key,
+                   coalesce(override_value.translation,
+                            custom_value.translation,
+                            official_value.translation,
+                            identity.key) as value
             from catalog_state state
             left join identities identity on true
             left join workspace_i18n_catalog_overrides override_value
               on override_value.workspace_id = $1
-             and override_value.module = identity.module
-             and override_value.msgid = identity.msgid
+             and override_value.key = identity.key
              and override_value.locale = $2
             left join workspace_i18n_catalog_custom_translations custom_value
               on custom_value.workspace_id = $1
-             and custom_value.module = identity.module
-             and custom_value.msgid = identity.msgid
+             and custom_value.key = identity.key
              and custom_value.locale = $2
             left join i18n_catalog_release_translations official_value
               on official_value.release_id = state.active_release_id
-             and official_value.module = identity.module
-             and official_value.msgid = identity.msgid
+             and official_value.key = identity.key
              and official_value.locale = $2
-            order by identity.module, identity.msgid
+            order by identity.key
             "#,
         )
         .bind(workspace_id)
@@ -677,12 +642,11 @@ impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
         let messages = rows
             .into_iter()
             .try_fold(Vec::new(), |mut messages, row| -> Result<_> {
-                let Some(module) = row.get::<Option<String>, _>("module") else {
+                let Some(key) = row.get::<Option<String>, _>("key") else {
                     return Ok(messages);
                 };
                 messages.push(RuntimeCatalogMessage {
-                    module: CatalogModuleId::new(module)?,
-                    msgid: row.get("msgid"),
+                    key,
                     value: row.get("value"),
                 });
                 Ok(messages)
@@ -697,7 +661,7 @@ async fn list_workspace_translations(
     workspace_id: Uuid,
 ) -> Result<Vec<CatalogTranslation>> {
     let sql = format!(
-        "select module, msgid, locale, translation from {table} where workspace_id = $1 order by module, msgid, locale"
+        "select key, locale, translation from {table} where workspace_id = $1 order by key, locale"
     );
     sqlx::query(&sql)
         .bind(workspace_id)
@@ -722,16 +686,15 @@ async fn upsert_workspace_translation(
     .await?;
     let sql = format!(
         r#"
-        insert into {table} (workspace_id, module, msgid, locale, translation)
-        values ($1, $2, $3, $4, $5)
-        on conflict (workspace_id, module, msgid, locale) do update
+        insert into {table} (workspace_id, key, locale, translation)
+        values ($1, $2, $3, $4)
+        on conflict (workspace_id, key, locale) do update
         set translation = excluded.translation, updated_at = now()
         "#
     );
     sqlx::query(&sql)
         .bind(input.workspace_id)
-        .bind(input.value.identity().module().as_str())
-        .bind(input.value.identity().msgid())
+        .bind(input.value.identity().key())
         .bind(input.value.locale().as_str())
         .bind(input.value.translation())
         .execute(&mut *transaction)
@@ -753,13 +716,10 @@ async fn delete_workspace_translation(
         input.expected_revision,
     )
     .await?;
-    let sql = format!(
-        "delete from {table} where workspace_id = $1 and module = $2 and msgid = $3 and locale = $4"
-    );
+    let sql = format!("delete from {table} where workspace_id = $1 and key = $2 and locale = $3");
     let deleted = sqlx::query(&sql)
         .bind(input.workspace_id)
-        .bind(input.identity.module().as_str())
-        .bind(input.identity.msgid())
+        .bind(input.identity.key())
         .bind(input.locale.as_str())
         .execute(&mut *transaction)
         .await?;

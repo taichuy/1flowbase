@@ -9,7 +9,7 @@ use control_plane::{
         CatalogManagementQuery, I18nCatalogManagementRepository,
     },
 };
-use domain::{CatalogLocale, CatalogModuleId, WorkspaceCatalogRevision, WorkspaceCatalogState};
+use domain::{CatalogLocale, WorkspaceCatalogRevision, WorkspaceCatalogState};
 use sqlx::{Postgres, Row, Transaction};
 
 use super::{increment_state_revision, insert_catalog_audit, lock_expected_state};
@@ -47,8 +47,7 @@ fn validate_audit_workspace(
 async fn official_identity_exists(
     transaction: &mut Transaction<'_, Postgres>,
     workspace_id: uuid::Uuid,
-    module: &str,
-    msgid: &str,
+    key: &str,
 ) -> Result<bool> {
     Ok(sqlx::query_scalar(
         r#"
@@ -57,13 +56,12 @@ async fn official_identity_exists(
           from workspace_i18n_catalog_states state
           join i18n_catalog_release_messages message
             on message.release_id = state.active_release_id
-          where state.workspace_id = $1 and message.module = $2 and message.msgid = $3
+          where state.workspace_id = $1 and message.key = $2
         )
         "#,
     )
     .bind(workspace_id)
-    .bind(module)
-    .bind(msgid)
+    .bind(key)
     .fetch_one(&mut **transaction)
     .await?)
 }
@@ -99,34 +97,34 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             with official_entries as (
-              select message.module, message.msgid, locale.locale,
+              select message.key, locale.locale,
                      translation.translation as official_translation,
                      override_value.translation as override_translation,
                      null::text as custom_translation,
-                     coalesce(override_value.translation, translation.translation, message.msgid) as effective_value,
+                     coalesce(override_value.translation, translation.translation, message.key) as effective_value,
                      case when override_value.translation is not null then 'official_override'
                           when translation.translation is not null then 'official'
                           else 'english' end as origin,
                      translation.translation is null as missing,
-                     obsolete.module is not null as obsolete
+                     obsolete.key is not null as obsolete
               from workspace_i18n_catalog_states state
               join i18n_catalog_releases release on release.id = state.active_release_id
               join i18n_catalog_release_messages message on message.release_id = release.id
               cross join lateral unnest(release.locales) locale(locale)
               left join i18n_catalog_release_translations translation
                 on translation.release_id = message.release_id
-               and translation.module = message.module and translation.msgid = message.msgid
+               and translation.key = message.key
                and translation.locale = locale.locale
               left join workspace_i18n_catalog_overrides override_value
                 on override_value.workspace_id = state.workspace_id
-               and override_value.module = message.module and override_value.msgid = message.msgid
+               and override_value.key = message.key
                and override_value.locale = locale.locale
               left join workspace_i18n_catalog_obsolete_messages obsolete
                 on obsolete.workspace_id = state.workspace_id
-               and obsolete.module = message.module and obsolete.msgid = message.msgid
-              where state.workspace_id = $1 and locale.locale <> 'en_US'
+               and obsolete.key = message.key
+              where state.workspace_id = $1
             ), custom_entries as (
-              select custom.module, custom.msgid, custom.locale,
+              select custom.key, custom.locale,
                      null::text as official_translation, null::text as override_translation,
                      custom.translation as custom_translation,
                      custom.translation as effective_value, 'custom'::text as origin,
@@ -134,11 +132,11 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
               from workspace_i18n_catalog_custom_translations custom
               where custom.workspace_id = $1
             ), obsolete_entries as (
-              select obsolete.module, obsolete.msgid, locale.locale,
+              select obsolete.key, locale.locale,
                      null::text as official_translation,
                      override_value.translation as override_translation,
                      null::text as custom_translation,
-                     coalesce(override_value.translation, obsolete.msgid) as effective_value,
+                     coalesce(override_value.translation, obsolete.key) as effective_value,
                      case when override_value.translation is not null then 'official_override'
                           else 'english' end as origin,
                      true as missing, true as obsolete
@@ -149,30 +147,28 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
               cross join lateral unnest(release.locales) locale(locale)
               left join workspace_i18n_catalog_overrides override_value
                 on override_value.workspace_id = obsolete.workspace_id
-               and override_value.module = obsolete.module and override_value.msgid = obsolete.msgid
+               and override_value.key = obsolete.key
                and override_value.locale = locale.locale
-              where obsolete.workspace_id = $1 and locale.locale <> 'en_US'
+              where obsolete.workspace_id = $1
             ), filtered as (
               select * from (
                 select * from official_entries
                 union all select * from custom_entries
                 union all select * from obsolete_entries
               ) entries
-              where ($2::text is null or module = $2)
-                and ($3::text is null or msgid = $3)
-                and ($4::text is null or locale = $4)
-                and ($5::text is null or lower(module || ' ' || msgid || ' ' || effective_value)
-                     like '%' || lower($5) || '%')
-                and ($6::text is null or origin = $6)
+              where ($2::text is null or key = $2)
+                and ($3::text is null or locale = $3)
+                and ($4::text is null or lower(key || ' ' || effective_value)
+                     like '%' || lower($4) || '%')
+                and ($5::text is null or origin = $5)
             )
             select *, count(*) over() as total
-            from filtered order by module, msgid, locale
-            offset $7 limit $8
+            from filtered order by key, locale
+            offset $6 limit $7
             "#,
         )
         .bind(query.workspace_id)
-        .bind(query.module.as_ref().map(CatalogModuleId::as_str))
-        .bind(query.msgid.as_deref())
+        .bind(query.key.as_deref())
         .bind(query.locale.as_ref().map(CatalogLocale::as_str))
         .bind(query.search.as_deref().filter(|value| !value.trim().is_empty()))
         .bind(origin)
@@ -191,8 +187,7 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
             .into_iter()
             .map(|row| {
                 Ok(CatalogManagementEntry {
-                    module: CatalogModuleId::new(row.get::<String, _>("module"))?,
-                    msgid: row.get("msgid"),
+                    key: row.get("key"),
                     locale: CatalogLocale::new(row.get::<String, _>("locale"))?,
                     official_translation: row.get("official_translation"),
                     override_translation: row.get("override_translation"),
@@ -227,8 +222,7 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         if !official_identity_exists(
             &mut transaction,
             input.workspace_id,
-            input.value.identity().module().as_str(),
-            input.value.identity().msgid(),
+            input.value.identity().key(),
         )
         .await?
         {
@@ -237,15 +231,14 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         sqlx::query(
             r#"
             insert into workspace_i18n_catalog_overrides
-              (workspace_id, module, msgid, locale, translation)
-            values ($1, $2, $3, $4, $5)
-            on conflict (workspace_id, module, msgid, locale) do update
+              (workspace_id, key, locale, translation)
+            values ($1, $2, $3, $4)
+            on conflict (workspace_id, key, locale) do update
             set translation = excluded.translation, updated_at = now()
             "#,
         )
         .bind(input.workspace_id)
-        .bind(input.value.identity().module().as_str())
-        .bind(input.value.identity().msgid())
+        .bind(input.value.identity().key())
         .bind(input.value.locale().as_str())
         .bind(input.value.translation())
         .execute(&mut *transaction)
@@ -270,8 +263,7 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         if official_identity_exists(
             &mut transaction,
             input.workspace_id,
-            input.value.identity().module().as_str(),
-            input.value.identity().msgid(),
+            input.value.identity().key(),
         )
         .await?
         {
@@ -282,15 +274,14 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         sqlx::query(
             r#"
             insert into workspace_i18n_catalog_custom_translations
-              (workspace_id, module, msgid, locale, translation)
-            values ($1, $2, $3, $4, $5)
-            on conflict (workspace_id, module, msgid, locale) do update
+              (workspace_id, key, locale, translation)
+            values ($1, $2, $3, $4)
+            on conflict (workspace_id, key, locale) do update
             set translation = excluded.translation, updated_at = now()
             "#,
         )
         .bind(input.workspace_id)
-        .bind(input.value.identity().module().as_str())
-        .bind(input.value.identity().msgid())
+        .bind(input.value.identity().key())
         .bind(input.value.locale().as_str())
         .bind(input.value.translation())
         .execute(&mut *transaction)
@@ -314,11 +305,10 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         .await?;
         let deleted = sqlx::query(
             r#"delete from workspace_i18n_catalog_overrides
-               where workspace_id = $1 and module = $2 and msgid = $3 and locale = $4"#,
+               where workspace_id = $1 and key = $2 and locale = $3"#,
         )
         .bind(input.workspace_id)
-        .bind(input.identity.module().as_str())
-        .bind(input.identity.msgid())
+        .bind(input.identity.key())
         .bind(input.locale.as_str())
         .execute(&mut *transaction)
         .await?;
@@ -365,11 +355,10 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         .await?;
         let deleted = sqlx::query(
             r#"delete from workspace_i18n_catalog_custom_translations
-               where workspace_id = $1 and module = $2 and msgid = $3"#,
+               where workspace_id = $1 and key = $2"#,
         )
         .bind(input.workspace_id)
-        .bind(input.identity.module().as_str())
-        .bind(input.identity.msgid())
+        .bind(input.identity.key())
         .execute(&mut *transaction)
         .await?;
         if deleted.rows_affected() == 0 {

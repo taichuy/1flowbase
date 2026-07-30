@@ -81,10 +81,10 @@ pub use host_extension::{
 };
 pub use i18n_catalog::{
     ActiveOfficialCatalogMessage, CatalogDigest, CatalogLocale, CatalogMessageIdentity,
-    CatalogModuleId, CatalogSeedFile, CatalogTranslation, CatalogVersion,
-    I18nCatalogInvariantError, ObsoleteCatalogMessage, OfficialCatalogMessage,
-    VerifiedCatalogRelease, WorkspaceCatalogRevision, WorkspaceCatalogState,
-    I18N_CATALOG_SEED_SCHEMA_VERSION, I18N_CATALOG_SOURCE_LOCALE,
+    CatalogSeedFile, CatalogTranslation, CatalogVersion, I18nCatalogInvariantError,
+    ObsoleteCatalogMessage, OfficialCatalogMessage, VerifiedCatalogRelease,
+    WorkspaceCatalogRevision, WorkspaceCatalogState, I18N_CATALOG_SEED_SCHEMA_VERSION,
+    I18N_CATALOG_SOURCE_LOCALE,
 };
 pub use js_dependency::{
     ApplicationJsDependencySelection, JsDependencyPermissions, JsDependencyRegistryEntry,

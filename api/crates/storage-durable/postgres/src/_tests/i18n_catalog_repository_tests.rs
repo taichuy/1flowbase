@@ -12,9 +12,9 @@ use control_plane::ports::{
     RuntimeI18nCatalogRepository, UpsertCatalogTranslationInput,
 };
 use domain::{
-    ActorContext, CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogModuleId,
-    CatalogSeedFile, CatalogTranslation, CatalogVersion, OfficialCatalogMessage,
-    VerifiedCatalogRelease, WorkspaceCatalogRevision,
+    ActorContext, CatalogDigest, CatalogLocale, CatalogMessageIdentity, CatalogSeedFile,
+    CatalogTranslation, CatalogVersion, OfficialCatalogMessage, VerifiedCatalogRelease,
+    WorkspaceCatalogRevision,
 };
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use time::OffsetDateTime;
@@ -53,21 +53,12 @@ fn digest(character: char) -> CatalogDigest {
     CatalogDigest::new(format!("sha256:{}", character.to_string().repeat(64))).unwrap()
 }
 
-fn module() -> CatalogModuleId {
-    CatalogModuleId::new("@1flowbase/console/settings").unwrap()
+fn identity(key: &str) -> CatalogMessageIdentity {
+    CatalogMessageIdentity::new(key).unwrap()
 }
 
-fn identity(msgid: &str) -> CatalogMessageIdentity {
-    CatalogMessageIdentity::new(module(), msgid).unwrap()
-}
-
-fn translation(msgid: &str, value: &str) -> CatalogTranslation {
-    CatalogTranslation::new(
-        identity(msgid),
-        CatalogLocale::new("zh_Hans").unwrap(),
-        value,
-    )
-    .unwrap()
+fn translation(key: &str, value: &str) -> CatalogTranslation {
+    CatalogTranslation::new(identity(key), CatalogLocale::new("zh_Hans").unwrap(), value).unwrap()
 }
 
 fn release(
@@ -78,13 +69,14 @@ fn release(
 ) -> VerifiedCatalogRelease {
     let official_messages = messages
         .iter()
-        .map(|(msgid, translated)| {
+        .map(|(key, translated)| {
             let mut translations = BTreeMap::new();
+            translations.insert(CatalogLocale::source(), (*key).to_owned());
             translations.insert(
                 CatalogLocale::new("zh_Hans").unwrap(),
                 (*translated).to_owned(),
             );
-            OfficialCatalogMessage::new(identity(msgid), translations).unwrap()
+            OfficialCatalogMessage::new(identity(key), translations).unwrap()
         })
         .collect();
     VerifiedCatalogRelease::new(
@@ -95,9 +87,7 @@ fn release(
             CatalogLocale::source(),
             CatalogLocale::new("zh_Hans").unwrap(),
         ],
-        vec![module()],
         vec![CatalogSeedFile::new(
-            module(),
             CatalogLocale::new("zh_Hans").unwrap(),
             "console/settings/zh_Hans.json",
             digest('b'),
@@ -116,7 +106,6 @@ fn official_seed(release_id: Uuid) -> control_plane::i18n_catalog::VerifiedOffic
         release.id(),
         release.catalog_version().clone(),
         release.locales().to_vec(),
-        release.modules().to_vec(),
         release.files().to_vec(),
         release.generated_at(),
         release.semantic_sha256().clone(),
@@ -320,10 +309,7 @@ async fn activation_preserves_overrides_and_custom_rows_and_marks_english_rename
         .unwrap();
     assert_eq!(overrides.len(), 1);
     assert_eq!(custom.len(), 1);
-    assert_eq!(
-        official[0].message().identity().msgid(),
-        "Workspace settings"
-    );
+    assert_eq!(official[0].message().identity().key(), "Workspace settings");
     assert_eq!(
         official[0]
             .message()
@@ -333,7 +319,7 @@ async fn activation_preserves_overrides_and_custom_rows_and_marks_english_rename
         Some("工作区设置")
     );
     assert_eq!(obsolete.len(), 1);
-    assert_eq!(obsolete[0].identity().msgid(), "Settings");
+    assert_eq!(obsolete[0].identity().key(), "Settings");
 }
 
 #[tokio::test]
@@ -443,8 +429,8 @@ async fn migration_constraints_reject_invalid_revision_digest_and_cross_workspac
     for locale in ["en_US", "zh_Hans", "fil_Latn", "en"] {
         sqlx::query(
             r#"
-            insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
-            values ($1, '@1flowbase/console/settings', $2, $3, $4)
+            insert into i18n_catalog_release_files (release_id, locale, path, sha256)
+            values ($1, $2, $3, $4)
             "#,
         )
         .bind(release_id)
@@ -458,8 +444,8 @@ async fn migration_constraints_reject_invalid_revision_digest_and_cross_workspac
     for locale in ["zh_hans", "zh_", "zh_Hans_CN", "zh_H4ns", "zh__Hans"] {
         assert!(sqlx::query(
             r#"
-            insert into i18n_catalog_release_files (release_id, module, locale, path, sha256)
-            values ($1, '@1flowbase/console/settings', $2, $3, $4)
+            insert into i18n_catalog_release_files (release_id, locale, path, sha256)
+            values ($1, $2, $3, $4)
             "#,
         )
         .bind(release_id)
@@ -501,9 +487,9 @@ async fn migration_constraints_reject_invalid_revision_digest_and_cross_workspac
         r#"
         insert into i18n_catalog_releases (
           id, workspace_id, schema_version, catalog_version, source_locale,
-          locales, modules, generated_at, semantic_sha256
-        ) values ($1, $2, '1flowbase.i18n-catalog-seed/v1', 'bad', 'en_US',
-                  array['en_US'], array['@1flowbase/console/settings'], now(), 'sha256:BAD')
+          locales, generated_at, semantic_sha256
+        ) values ($1, $2, '1flowbase.i18n-catalog-seed/v2', 'bad', 'en_US',
+                  array['en_US'], now(), 'sha256:BAD')
         "#,
     )
     .bind(Uuid::now_v7())
@@ -797,7 +783,7 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
 }
 
 #[tokio::test]
-async fn runtime_projection_rejects_a_corrupt_stored_module_identity() {
+async fn runtime_projection_applies_workspace_override_to_the_english_translation() {
     let store = empty_store().await;
     let tenant = BootstrapRepository::upsert_root_tenant(&store)
         .await
@@ -805,43 +791,46 @@ async fn runtime_projection_rejects_a_corrupt_stored_module_identity() {
     let workspace = BootstrapRepository::upsert_root_workspace_with_official_catalog(
         &store,
         tenant.id,
-        "Corrupt runtime catalog workspace",
+        "English override catalog workspace",
         &official_seed(Uuid::now_v7()),
     )
     .await
     .unwrap();
-    sqlx::query(
-        r#"
-        alter table workspace_i18n_catalog_custom_translations
-        drop constraint workspace_i18n_catalog_custom_translations_module_check
-        "#,
+    let state = I18nCatalogRepository::get_workspace_catalog_state(&store, workspace.id)
+        .await
+        .unwrap()
+        .unwrap();
+    I18nCatalogRepository::upsert_catalog_override(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: CatalogTranslation::new(
+                identity("Settings"),
+                CatalogLocale::source(),
+                "Workspace settings",
+            )
+            .unwrap(),
+            expected_revision: state.revision(),
+        },
     )
-    .execute(store.pool())
-    .await
-    .unwrap();
-    sqlx::query(
-        r#"
-        insert into workspace_i18n_catalog_custom_translations (
-          workspace_id, module, msgid, locale, translation
-        ) values ($1, 'invalid/module', 'corrupt.key', 'zh_Hans', '损坏')
-        "#,
-    )
-    .bind(workspace.id)
-    .execute(store.pool())
     .await
     .unwrap();
 
-    let error = RuntimeI18nCatalogRepository::project_runtime_catalog(
+    let projection = RuntimeI18nCatalogRepository::project_runtime_catalog(
         &store,
         workspace.id,
-        &CatalogLocale::new("zh_Hans").unwrap(),
+        &CatalogLocale::source(),
     )
     .await
-    .unwrap_err();
+    .unwrap();
 
     assert_eq!(
-        error.downcast_ref::<domain::I18nCatalogInvariantError>(),
-        Some(&domain::I18nCatalogInvariantError::InvalidModuleId)
+        projection
+            .messages
+            .iter()
+            .find(|message| message.key == "Settings")
+            .map(|message| message.value.as_str()),
+        Some("Workspace settings")
     );
 }
 
@@ -942,7 +931,7 @@ async fn ac_007_management_is_root_bootstrap_only_and_projects_searchable_entrie
     let page = service
         .list(ListCatalogEntriesCommand {
             access: fixture.root_access(),
-            module: Some(module()),
+            key: Some("Settings".to_owned()),
             locale: Some(CatalogLocale::new("zh_Hans").unwrap()),
             search: Some("settings".into()),
             origin: Some(CatalogManagementOrigin::Official),
@@ -953,7 +942,7 @@ async fn ac_007_management_is_root_bootstrap_only_and_projects_searchable_entrie
         .unwrap();
     assert_eq!(page.revision, fixture.revision);
     assert_eq!(page.total, 1);
-    assert_eq!(page.entries[0].msgid, "Settings");
+    assert_eq!(page.entries[0].key, "Settings");
     assert_eq!(
         page.entries[0].official_translation.as_deref(),
         Some("设置")
@@ -969,7 +958,7 @@ async fn ac_007_management_is_root_bootstrap_only_and_projects_searchable_entrie
         })
         .await
         .unwrap();
-    assert_eq!(detail.msgid, "Settings");
+    assert_eq!(detail.key, "Settings");
 
     let non_root = CatalogManagementAccess {
         actor: ActorContext::scoped(
@@ -983,7 +972,7 @@ async fn ac_007_management_is_root_bootstrap_only_and_projects_searchable_entrie
     assert!(service
         .list(ListCatalogEntriesCommand {
             access: non_root,
-            module: None,
+            key: None,
             locale: None,
             search: None,
             origin: None,
@@ -999,7 +988,7 @@ async fn ac_007_management_is_root_bootstrap_only_and_projects_searchable_entrie
                 actor: ActorContext::root(Uuid::now_v7(), foreign, "root"),
                 current_workspace_id: foreign,
             },
-            module: None,
+            key: None,
             locale: None,
             search: None,
             origin: None,

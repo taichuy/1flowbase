@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub const I18N_CATALOG_SEED_SCHEMA_VERSION: &str = "1flowbase.i18n-catalog-seed/v1";
+pub const I18N_CATALOG_SEED_SCHEMA_VERSION: &str = "1flowbase.i18n-catalog-seed/v2";
 pub const I18N_CATALOG_SOURCE_LOCALE: &str = "en_US";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,18 +11,13 @@ pub enum I18nCatalogInvariantError {
     EmptyCatalogVersion,
     InvalidDigest,
     InvalidLocale,
-    InvalidModuleId,
-    EmptyMessageId,
-    SourceLocaleTranslation,
+    EmptyMessageKey,
     MissingSourceLocale,
+    MissingSourceTranslation,
     DuplicateLocale,
     DuplicateMessageIdentity,
-    DuplicateModule,
-    EmptyModuleCatalog,
     EmptySeedFilePath,
     UnknownFileLocale,
-    UnknownFileModule,
-    UnknownMessageModule,
     UnknownTranslationLocale,
     InvalidRevision,
 }
@@ -112,70 +107,26 @@ impl CatalogLocale {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CatalogModuleId(String);
-
-impl CatalogModuleId {
-    pub fn new(value: impl Into<String>) -> Result<Self, I18nCatalogInvariantError> {
-        let value = value.into();
-        let segments = value.split('/').collect::<Vec<_>>();
-        let valid_segment = |segment: &str| {
-            let mut bytes = segment.bytes();
-            bytes
-                .next()
-                .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-                && bytes.all(|byte| {
-                    byte.is_ascii_lowercase()
-                        || byte.is_ascii_digit()
-                        || matches!(byte, b'-' | b'_' | b'.')
-                })
-        };
-        let organization = segments
-            .first()
-            .and_then(|segment| segment.strip_prefix('@'));
-        let valid = segments.len() >= 3
-            && organization.is_some_and(valid_segment)
-            && segments[1..].iter().copied().all(valid_segment);
-        if !valid {
-            return Err(I18nCatalogInvariantError::InvalidModuleId);
-        }
-        Ok(Self(value))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CatalogMessageIdentity {
-    module: CatalogModuleId,
-    msgid: String,
+    key: String,
 }
 
 impl CatalogMessageIdentity {
-    pub fn new(
-        module: CatalogModuleId,
-        msgid: impl Into<String>,
-    ) -> Result<Self, I18nCatalogInvariantError> {
-        let msgid = msgid.into();
-        if msgid.is_empty() {
-            return Err(I18nCatalogInvariantError::EmptyMessageId);
+    pub fn new(key: impl Into<String>) -> Result<Self, I18nCatalogInvariantError> {
+        let key = key.into();
+        if key.trim().is_empty() {
+            return Err(I18nCatalogInvariantError::EmptyMessageKey);
         }
-        Ok(Self { module, msgid })
+        Ok(Self { key })
     }
 
-    pub fn module(&self) -> &CatalogModuleId {
-        &self.module
-    }
-
-    pub fn msgid(&self) -> &str {
-        &self.msgid
+    pub fn key(&self) -> &str {
+        &self.key
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogSeedFile {
-    module: CatalogModuleId,
     locale: CatalogLocale,
     path: String,
     sha256: CatalogDigest,
@@ -183,7 +134,6 @@ pub struct CatalogSeedFile {
 
 impl CatalogSeedFile {
     pub fn new(
-        module: CatalogModuleId,
         locale: CatalogLocale,
         path: impl Into<String>,
         sha256: CatalogDigest,
@@ -193,16 +143,12 @@ impl CatalogSeedFile {
             return Err(I18nCatalogInvariantError::EmptySeedFilePath);
         }
         Ok(Self {
-            module,
             locale,
             path,
             sha256,
         })
     }
 
-    pub fn module(&self) -> &CatalogModuleId {
-        &self.module
-    }
     pub fn locale(&self) -> &CatalogLocale {
         &self.locale
     }
@@ -225,8 +171,8 @@ impl OfficialCatalogMessage {
         identity: CatalogMessageIdentity,
         translations: BTreeMap<CatalogLocale, String>,
     ) -> Result<Self, I18nCatalogInvariantError> {
-        if translations.keys().any(CatalogLocale::is_source) {
-            return Err(I18nCatalogInvariantError::SourceLocaleTranslation);
+        if !translations.keys().any(CatalogLocale::is_source) {
+            return Err(I18nCatalogInvariantError::MissingSourceTranslation);
         }
         Ok(Self {
             identity,
@@ -248,7 +194,6 @@ pub struct VerifiedCatalogRelease {
     workspace_id: Uuid,
     catalog_version: CatalogVersion,
     locales: Vec<CatalogLocale>,
-    modules: Vec<CatalogModuleId>,
     files: Vec<CatalogSeedFile>,
     generated_at: OffsetDateTime,
     semantic_sha256: CatalogDigest,
@@ -262,7 +207,6 @@ impl VerifiedCatalogRelease {
         workspace_id: Uuid,
         catalog_version: CatalogVersion,
         locales: Vec<CatalogLocale>,
-        modules: Vec<CatalogModuleId>,
         files: Vec<CatalogSeedFile>,
         generated_at: OffsetDateTime,
         semantic_sha256: CatalogDigest,
@@ -274,25 +218,9 @@ impl VerifiedCatalogRelease {
         if !locales.iter().any(CatalogLocale::is_source) {
             return Err(I18nCatalogInvariantError::MissingSourceLocale);
         }
-        if modules.iter().collect::<BTreeSet<_>>().len() != modules.len() {
-            return Err(I18nCatalogInvariantError::DuplicateModule);
-        }
-        if modules.is_empty() {
-            return Err(I18nCatalogInvariantError::EmptyModuleCatalog);
-        }
         let locale_set = locales.iter().collect::<BTreeSet<_>>();
-        let module_set = modules.iter().collect::<BTreeSet<_>>();
-        if files.iter().any(|file| !module_set.contains(file.module())) {
-            return Err(I18nCatalogInvariantError::UnknownFileModule);
-        }
         if files.iter().any(|file| !locale_set.contains(file.locale())) {
             return Err(I18nCatalogInvariantError::UnknownFileLocale);
-        }
-        if messages
-            .iter()
-            .any(|message| !module_set.contains(message.identity().module()))
-        {
-            return Err(I18nCatalogInvariantError::UnknownMessageModule);
         }
         if messages
             .iter()
@@ -315,7 +243,6 @@ impl VerifiedCatalogRelease {
             workspace_id,
             catalog_version,
             locales,
-            modules,
             files,
             generated_at,
             semantic_sha256,
@@ -334,9 +261,6 @@ impl VerifiedCatalogRelease {
     }
     pub fn locales(&self) -> &[CatalogLocale] {
         &self.locales
-    }
-    pub fn modules(&self) -> &[CatalogModuleId] {
-        &self.modules
     }
     pub fn files(&self) -> &[CatalogSeedFile] {
         &self.files
@@ -413,9 +337,6 @@ impl CatalogTranslation {
         locale: CatalogLocale,
         translation: impl Into<String>,
     ) -> Result<Self, I18nCatalogInvariantError> {
-        if locale.is_source() {
-            return Err(I18nCatalogInvariantError::SourceLocaleTranslation);
-        }
         Ok(Self {
             identity,
             locale,
