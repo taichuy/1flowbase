@@ -112,7 +112,7 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
   );
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', width: '100vw' }}>
+    <div className="auth-sign-in-page">
       <HeroAnimation />
       <div
         className="auth-sign-in-panel"
@@ -120,16 +120,18 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          background: `linear-gradient(145deg, ${token.colorBgContainer} 60%, ${token.colorBgLayout} 100%)`,
-          boxShadow: '-10px 0 32px rgba(0, 0, 0, 0.05)',
-          borderLeft: `1px solid ${token.colorBorderSecondary}`,
           position: 'relative',
           zIndex: 10
         }}
       >
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {loginInstances.length > 1 && !selectedLoginInstance ? (
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Space
+              className="auth-sign-in-selector"
+              direction="vertical"
+              size={12}
+              style={{ width: '100%' }}
+            >
               {loginInstances.map((instance) => (
                 <Button
                   key={instance.id}

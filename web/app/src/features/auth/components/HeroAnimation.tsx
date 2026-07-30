@@ -384,14 +384,11 @@ export function HeroAnimation() {
       onMouseLeave={handleMouseLeave}
       style={{
         flex: 1,
-        background: 'linear-gradient(135deg, #ffffff 40%, #e6f7f2 100%)',
         position: 'relative',
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        backgroundImage: `radial-gradient(rgba(0, 208, 132, 0.05) 1px, transparent 1px)`,
-        backgroundSize: '24px 24px'
+        justifyContent: 'center'
       }}
     >
       <canvas
