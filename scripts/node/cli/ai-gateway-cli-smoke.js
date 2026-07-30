@@ -2,6 +2,9 @@
 'use strict';
 
 const { runCliSmoke } = require('../ai-gateway-concurrency/cli-smoke');
+const {
+  runClaudeRepositoryHistorySmoke,
+} = require('../ai-gateway-concurrency/cli-smoke/repository-history');
 
 const FIELDS = new Map([
   ['--ready-manifest', 'readyManifest'],
@@ -20,6 +23,12 @@ const FIELDS = new Map([
   ['--opencode-source-root', 'opencodeSourceRoot'],
   ['--opencode-source-identity', 'opencodeSourceIdentity'],
   ['--opencode-build-command', 'opencodeBuildCommand'],
+  ['--repository', 'repository'],
+  ['--model', 'model'],
+  ['--base-url', 'baseUrl'],
+  ['--proxy-url', 'proxyUrl'],
+  ['--evidence-root', 'evidenceRoot'],
+  ['--timeout-ms', 'timeoutMs'],
 ]);
 
 function usage() {
@@ -40,6 +49,15 @@ AI_GATEWAY_CODEX_EXECUTABLE, AI_GATEWAY_CLAUDE_EXECUTABLE, and
 AI_GATEWAY_OPENCODE_EXECUTABLE. With --tmux-timing, each client runs inside an isolated
 tmux pipe-pane PTY stream (with supplementary capture-pane and util-linux timing) writes evidence below
 tmp/test-governance/compatible-stream-e2e/<run-id>/.
+
+Native Claude repository history mode:
+  --claude-repository-history --repository <git-repo> --model <claude-model> \\
+  [--claude-executable <path>] [--base-url <url>] [--proxy-url <url>] \\
+  [--evidence-root <dir>]
+
+This mode reads ANTHROPIC_BASE_URL plus ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY
+from the environment, runs only local Claude Code inside tmux, requires a completed
+read-only Bash git-log call, and verifies the exact latest three commits at runtime.
 
 ${provenance}`;
 }
@@ -63,12 +81,17 @@ function parseArgs(argv, env = process.env) {
     opencodeSourceIdentity: env.AI_GATEWAY_OPENCODE_SOURCE_IDENTITY,
     opencodeBuildCommand: env.AI_GATEWAY_OPENCODE_BUILD_COMMAND,
     secretCanary: env.AI_GATEWAY_SECRET_CANARY,
+    claudeRepositoryHistory: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     if (flag === '--help' || flag === '-h') return { help: true };
     if (flag === '--tmux-timing') {
       options.tmuxTiming = true;
+      continue;
+    }
+    if (flag === '--claude-repository-history') {
+      options.claudeRepositoryHistory = true;
       continue;
     }
     const field = FIELDS.get(flag);
@@ -78,6 +101,19 @@ function parseArgs(argv, env = process.env) {
     options[field] = value;
     index += 1;
   }
+  if (options.claudeRepositoryHistory) {
+    const repositoryOptions = {
+      claudeRepositoryHistory: true,
+      repository: options.repository,
+      model: options.model,
+      evidenceRoot: options.evidenceRoot,
+      timeoutMs: options.timeoutMs === undefined ? undefined : Number(options.timeoutMs),
+      claudeExecutable: options.claudeExecutable,
+      baseUrl: options.baseUrl,
+      proxyUrl: options.proxyUrl,
+    };
+    return Object.fromEntries(Object.entries(repositoryOptions).filter(([, value]) => value !== undefined));
+  }
   return options;
 }
 
@@ -85,6 +121,12 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     process.stdout.write(`${usage()}\n`);
+    return;
+  }
+  if (options.claudeRepositoryHistory) {
+    const result = await runClaudeRepositoryHistorySmoke(options);
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    if (!result.ok) process.exitCode = 2;
     return;
   }
   const result = await runCliSmoke(options);

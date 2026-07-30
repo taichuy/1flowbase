@@ -1,4 +1,4 @@
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
@@ -6,6 +6,12 @@ const readline = require('node:readline');
 const DEFAULT_ADAPTER_PACKAGE = '@agentclientprotocol/claude-agent-acp@0.45.0';
 const DEFAULT_OUT_DIR = path.join('tmp', 'test-governance', 'acp-claude-smoke');
 const DEFAULT_PROMPT = 'Think briefly, then answer with exactly: ACP_OK. Do not use tools.';
+const GIT_HISTORY_COMMAND = "git log -3 --format='%h %s'";
+const GIT_HISTORY_PROMPT = [
+  '最近三次提交分别是什么。',
+  `必须使用 Bash 执行只读命令 \`${GIT_HISTORY_COMMAND}\` 获取当前仓库事实。`,
+  '最后只按命令输出顺序回答三行 `<短哈希> <原始提交标题>`，不得凭记忆或改写标题。',
+].join(' ');
 const DEFAULT_NODE_BIN = process.env.CLAUDE_CODE_NODE_BIN || path.dirname(process.execPath);
 const DEFAULT_CLAUDE_EXECUTABLE = process.env.CLAUDE_CODE_EXECUTABLE || 'claude';
 
@@ -17,10 +23,11 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
       'Runs Claude Code through an ACP adapter and records session/update evidence.',
       '',
       'Options:',
+      '  --scenario <name>           thought (default) or git-history',
       '  --prompt <text>              Prompt to send',
       '  --out-dir <dir>             Evidence directory',
       '  --cwd <dir>                 ACP session cwd',
-      '  --adapter <pkg>             npx package, default @agentclientprotocol/claude-agent-acp@0.45.0',
+      '  --adapter <pkg-or-js>       npx package or local adapter JS entry',
       '  --node-bin <dir>            Directory prepended to PATH, default current Node bin',
       '  --claude-executable <path>  Claude Code executable path, default claude',
       '  --model <id>                Optional ACP model config value',
@@ -47,6 +54,7 @@ function takeValue(argv, index, flag) {
 function parseCliArgs(argv = []) {
   const options = {
     help: false,
+    scenario: 'thought',
     prompt: DEFAULT_PROMPT,
     outDir: DEFAULT_OUT_DIR,
     cwd: null,
@@ -60,13 +68,18 @@ function parseCliArgs(argv = []) {
     useDefaultSettings: true,
     requireThought: true,
   };
+  let customPrompt = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '-h' || arg === '--help') {
       options.help = true;
+    } else if (arg === '--scenario') {
+      options.scenario = takeValue(argv, index, arg);
+      index += 1;
     } else if (arg === '--prompt') {
       options.prompt = takeValue(argv, index, arg);
+      customPrompt = true;
       index += 1;
     } else if (arg === '--out-dir') {
       options.outDir = takeValue(argv, index, arg);
@@ -109,11 +122,50 @@ function parseCliArgs(argv = []) {
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error('--timeout-ms must be a positive number');
   }
+  if (!['thought', 'git-history'].includes(options.scenario)) {
+    throw new Error(`unsupported scenario: ${options.scenario}`);
+  }
+  if (options.scenario === 'git-history') {
+    if (customPrompt) throw new Error('--scenario git-history owns its fixed prompt');
+    options.prompt = GIT_HISTORY_PROMPT;
+    options.useDefaultSettings = false;
+    options.requireThought = false;
+  }
 
   return options;
 }
 
-function summarizeAcpEvidence({ updates, notifications, agentRequests, errors, paths, prompt, cwd, extra }) {
+function readRepositoryGitHistory(cwd, spawnSyncImpl = spawnSync) {
+  const result = spawnSyncImpl('git', ['log', '-3', '--format=%h%x09%s'], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`git history oracle exited with ${result.status}`);
+  }
+  const commits = result.stdout.trimEnd().split('\n').filter(Boolean).map((line) => {
+    const separator = line.indexOf('\t');
+    if (separator <= 0) throw new Error('git history oracle emitted an invalid row');
+    return { shortHash: line.slice(0, separator), subject: line.slice(separator + 1) };
+  });
+  if (commits.length !== 3) throw new Error(`git history oracle expected 3 commits, received ${commits.length}`);
+  return commits;
+}
+
+function summarizeAcpEvidence({
+  updates,
+  notifications,
+  agentRequests,
+  errors,
+  paths,
+  prompt,
+  cwd,
+  scenario = 'thought',
+  expectedGitHistory = [],
+  extra,
+}) {
   const updateCounts = {};
   for (const item of updates) {
     const kind = item?.update?.sessionUpdate ?? 'unknown';
@@ -135,6 +187,8 @@ function summarizeAcpEvidence({ updates, notifications, agentRequests, errors, p
   const rawSdkTypes = {};
   let rawThinkingDeltas = 0;
   let rawThinkingBlocks = 0;
+  const rawToolUses = [];
+  const completedToolUseIds = new Set();
   for (const message of rawSdkMessages) {
     const key =
       message.type === 'stream_event'
@@ -151,10 +205,61 @@ function summarizeAcpEvidence({ updates, notifications, agentRequests, errors, p
     ) {
       rawThinkingBlocks += 1;
     }
+    if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
+      rawToolUses.push(...message.message.content.filter((content) => content?.type === 'tool_use'));
+    }
+    if (message.type === 'user' && Array.isArray(message.message?.content)) {
+      for (const content of message.message.content) {
+        if (content?.type === 'tool_result' && typeof content.tool_use_id === 'string') {
+          completedToolUseIds.add(content.tool_use_id);
+        }
+      }
+    }
   }
 
+  const bashToolUses = rawToolUses.filter((toolUse) => toolUse.name === 'Bash');
+  const matchingToolUses = bashToolUses.filter((toolUse) => (
+    typeof toolUse.input?.command === 'string'
+      && toolUse.input.command.trim() === GIT_HISTORY_COMMAND
+  ));
+  const matchingBashToolCalls = matchingToolUses.length;
+  const unexpectedBashToolCalls = bashToolUses.length - matchingBashToolCalls;
+  const completedGitToolCalls = matchingToolUses
+    .filter((toolUse) => completedToolUseIds.has(toolUse.id)).length;
+  let searchFrom = 0;
+  let matchedCommitCount = 0;
+  for (const { shortHash, subject } of expectedGitHistory) {
+    const position = messageText.indexOf(`${shortHash} ${subject}`, searchFrom);
+    if (position === -1) break;
+    matchedCommitCount += 1;
+    searchFrom = position + shortHash.length + subject.length + 1;
+  }
+  const expectedAnswer = expectedGitHistory
+    .map(({ shortHash, subject }) => `${shortHash} ${subject}`)
+    .join('\n');
+  const exactAnswer = messageText.trim() === expectedAnswer;
+  const gitHistoryEvidence = scenario === 'git-history' ? {
+    expectedCount: expectedGitHistory.length,
+    matchingBashToolCalls,
+    unexpectedBashToolCalls,
+    completedGitToolCalls,
+    matchedCommitCount,
+    exactOrder: expectedGitHistory.length === 3 && matchedCommitCount === expectedGitHistory.length,
+    exactAnswer,
+  } : null;
+  const ok = scenario === 'git-history'
+    ? errors.length === 0
+      && updateCounts.agent_message_chunk > 0
+      && matchingBashToolCalls > 0
+      && unexpectedBashToolCalls === 0
+      && completedGitToolCalls > 0
+      && gitHistoryEvidence.exactOrder
+      && exactAnswer
+    : updateCounts.agent_thought_chunk > 0 && updateCounts.agent_message_chunk > 0;
+
   return {
-    ok: updateCounts.agent_thought_chunk > 0 && updateCounts.agent_message_chunk > 0,
+    ok,
+    scenario,
     cwd,
     prompt,
     updateCounts,
@@ -167,6 +272,7 @@ function summarizeAcpEvidence({ updates, notifications, agentRequests, errors, p
     rawSdkTypes,
     rawThinkingDeltas,
     rawThinkingBlocks,
+    gitHistoryEvidence,
     errors,
     ...paths,
     ...extra,
@@ -181,6 +287,9 @@ async function runAcpClaudeSmoke(options, deps = {}) {
   const repoRoot = deps.repoRoot || process.cwd();
   const outDir = path.resolve(repoRoot, options.outDir);
   const cwd = path.resolve(repoRoot, options.cwd || path.join(options.outDir, 'workspace'));
+  const expectedGitHistory = options.scenario === 'git-history'
+    ? readRepositoryGitHistory(cwd, deps.spawnSyncImpl || spawnSync)
+    : [];
   fs.mkdirSync(outDir, { recursive: true });
   fs.mkdirSync(cwd, { recursive: true });
 
@@ -205,7 +314,10 @@ async function runAcpClaudeSmoke(options, deps = {}) {
   if (options.nodeBin) {
     childEnv.PATH = `${options.nodeBin}:${process.env.PATH ?? ''}`;
   }
-  const child = spawnImpl('npx', ['--yes', options.adapterPackage], {
+  const localAdapter = path.resolve(options.adapterPackage);
+  const adapterCommand = fs.existsSync(localAdapter) ? process.execPath : 'npx';
+  const adapterArgs = fs.existsSync(localAdapter) ? [localAdapter] : ['--yes', options.adapterPackage];
+  const child = spawnImpl(adapterCommand, adapterArgs, {
     cwd: repoRoot,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: childEnv,
@@ -247,6 +359,13 @@ async function runAcpClaudeSmoke(options, deps = {}) {
     const { id, method, params } = message;
     if (method === 'session/request_permission') {
       const choices = Array.isArray(params?.options) ? params.options : [];
+      const requestedCommand = params?.toolCall?.rawInput?.command;
+      if (options.scenario === 'git-history'
+        && (typeof requestedCommand !== 'string'
+          || requestedCommand.trim() !== GIT_HISTORY_COMMAND)) {
+        respond(id, { outcome: { outcome: 'cancelled' } });
+        return;
+      }
       const option =
         choices.find((item) => item.kind === 'allow_once') ??
         choices.find((item) => item.kind === 'allow_always') ??
@@ -320,6 +439,8 @@ async function runAcpClaudeSmoke(options, deps = {}) {
       paths,
       prompt: options.prompt,
       cwd,
+      scenario: options.scenario,
+      expectedGitHistory,
       extra,
     });
     fs.writeFileSync(paths.summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
@@ -354,20 +475,33 @@ async function runAcpClaudeSmoke(options, deps = {}) {
       },
     }));
 
-    const sessionOptions = options.useDefaultSettings
-      ? { tools: [] }
-      : { tools: [], settingSources: [] };
+    const tools = options.scenario === 'git-history' ? ['Bash'] : [];
+    const sessionOptions = {
+      tools,
+      ...(options.scenario === 'git-history'
+        ? { allowedTools: ['Bash(git log -3 --format=*)'] }
+        : {}),
+      ...(!options.useDefaultSettings ? { settingSources: [] } : {}),
+    };
     const session = await awaitWithTimeout(request('session/new', {
       cwd,
       mcpServers: [],
       _meta: {
-        disableBuiltInTools: true,
+        disableBuiltInTools: tools.length === 0,
         claudeCode: {
           emitRawSDKMessages: true,
           options: sessionOptions,
         },
       },
     }));
+
+    let modeResult = null;
+    if (options.scenario === 'git-history') {
+      modeResult = await awaitWithTimeout(request('session/set_mode', {
+        sessionId: session.sessionId,
+        modeId: 'dontAsk',
+      }));
+    }
 
     let modelResult = null;
     if (options.model) {
@@ -395,7 +529,7 @@ async function runAcpClaudeSmoke(options, deps = {}) {
     clearTimeout(timer);
     child.stdin.end();
     child.kill('SIGTERM');
-    return finish({ initialize, session, modelResult, effortResult, promptResult });
+    return finish({ initialize, session, modeResult, modelResult, effortResult, promptResult });
   } catch (error) {
     clearTimeout(timer);
     child.kill('SIGTERM');
@@ -419,6 +553,11 @@ async function main(argv = [], deps = {}) {
 
   const summary = await runAcpClaudeSmoke(options, deps);
   const output = `${JSON.stringify(summary, null, 2)}\n`;
+  if (options.scenario === 'git-history') {
+    (summary.ok ? deps.writeStdout || process.stdout.write.bind(process.stdout)
+      : deps.writeStderr || process.stderr.write.bind(process.stderr))(output);
+    return summary.ok ? 0 : summary.failed ? 1 : 2;
+  }
   if (summary.ok || !options.requireThought) {
     (deps.writeStdout || process.stdout.write.bind(process.stdout))(output);
     return 0;
@@ -433,8 +572,11 @@ module.exports = {
   DEFAULT_NODE_BIN,
   DEFAULT_OUT_DIR,
   DEFAULT_PROMPT,
+  GIT_HISTORY_COMMAND,
+  GIT_HISTORY_PROMPT,
   main,
   parseCliArgs,
+  readRepositoryGitHistory,
   runAcpClaudeSmoke,
   summarizeAcpEvidence,
   usage,
