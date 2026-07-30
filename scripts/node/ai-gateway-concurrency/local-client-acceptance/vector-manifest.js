@@ -229,8 +229,6 @@ const SEQUENTIAL_TOOL_VECTOR = Object.freeze({
     toolMode: 'sequential_callback_tasks_one_turn',
     toolResultMarkers: [SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B],
     minimumCallbackResumes: 2,
-    thinkingSignatureMatched: true,
-    uniqueMessageIds: true,
   }),
 });
 
@@ -267,6 +265,8 @@ const TOOL_HISTORY_FOLLOWUP_VECTOR = Object.freeze({
     toolMode: 'sequential_callbacks_then_followup',
     toolResultMarkers: [SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B],
     minimumCallbackResumes: 2,
+    thinkingSignatureMatched: true,
+    uniqueMessageIds: true,
   }),
 });
 

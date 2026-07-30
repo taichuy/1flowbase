@@ -807,7 +807,7 @@ async fn success_persistence_failure_never_projects_a_success_terminal() {
 }
 
 #[tokio::test]
-async fn live_provider_reasoning_delta_is_appended_to_runtime_event_stream() {
+async fn live_provider_reasoning_signature_delta_is_transient_in_runtime_event_stream() {
     let service = OrchestrationRuntimeService::for_tests_with_provider_events(vec![
         plugin_framework::provider_contract::ProviderStreamEvent::ReasoningDelta {
             delta: "先分析".into(),

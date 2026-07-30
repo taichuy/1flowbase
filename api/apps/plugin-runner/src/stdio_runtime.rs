@@ -761,7 +761,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn required_live_lane_preserves_duplicate_text_tool_usage_and_terminal_at_capacity_one() {
+    async fn reasoning_signature_uses_required_live_lane_and_preserves_order_at_capacity_one() {
         use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
 
         let (required, mut required_receiver) = tokio::sync::mpsc::channel(1);

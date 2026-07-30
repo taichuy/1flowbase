@@ -946,7 +946,7 @@ mod tests {
     use plugin_framework::provider_contract::{
         NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
         NativePromptCacheControlType, ProtocolContextEnvelope, ProviderCompactProfile,
-        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProviderInvocationCapability, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     };
     use std::{
         fs,
