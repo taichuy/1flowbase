@@ -15,8 +15,8 @@ match_when:
   - 设计多语言初始化、更新、还原或浏览器缓存
   - 判断是否迁移前端静态 i18n
 created_at: 2026-07-28 16
-updated_at: 2026-07-30 07
-last_verified_at: 2026-07-30 07
+updated_at: 2026-07-30 10
+last_verified_at: 2026-07-30 10
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1488
@@ -49,6 +49,7 @@ scope:
 
 - 已确认：canonical locale 继续为 `zh_Hans / en_US`。
 - 已确认：key 本身是可直接展示的英文原文；引用语法必须明确且无歧义，目标语言没有翻译时原样显示英文 key。
+- 2026-07-30 身份模型重新对齐：开发期固定的英文原文 key 在目录内全局唯一，身份只使用 key，不使用 `file.metadata` 等变量式 key，也不再用 module 区分同一英文 key；`en_US` 与其他 locale 一样保存官方默认和管理员覆盖，目标语言缺失时先回退到当前生效的 `en_US`，只有目录不可用或英文也无法解析时才显示原始 key。同一 key 的某语言翻译全局共享，修改后对全部消费者生效。官方源文件可以分目录维护，但分组不得进入数据库身份、API、运行时引用或管理 UI。该方向待重构后的 Issue Tree 承接现有 module contract 迁移。
 - 已确认：官方更新保留用户覆盖；还原默认值删除覆盖并显露当前上游默认值。
 - 已确认：前端静态 i18n 文件与现有 hygiene 门禁不在首期迁移范围。
 - 已确认：首期只作用于 bootstrap root workspace；不做 system fallback、多 workspace 或 application scope。
@@ -63,3 +64,4 @@ scope:
 - QA-5：official publisher 15/15；api-server i18n 22/22；storage 13/13；domain 4/4；control-plane 13/13；access-control 18/18；orchestration 6/6；app 39/39；API client 177/177；flow-schema 41/41；Chromium 动态筛选与 Settings desktop/mobile style-boundary 通过；i18n hygiene 0 errors。console route hygiene 仅保留与 beta 相同的 2 个既有 middleware errors，#1488 新增差异为 0。
 - 边界校正：Settings 导航与 Settings feature permission DTO 继续返回静态 `label_key`；角色策略、接口 summary/description 和其他已冻结 backend consumer 使用独立 English msgid 动态投影，前端静态 locale 不迁移。
 - 2026-07-30 页面体验增量：用户确认 Settings 入口改为“多语言 / Languages”，`/settings/i18n` 复用既有 `SettingsSectionSurface + DataTable`，不新增 wrapper 或修改全局 SectionPageLayout；移除重复标题、说明和修订统计状态区，工具栏冻结为筛选条件第一行左对齐、操作按钮第二行右对齐。动作 key/value 最终为专用 `translation_catalog_filter`（筛选 / Filter）、`translation_catalog_restore_defaults`（恢复默认值 / Restore defaults）和通用 `auto.new`（新增 / New），旧 `translation_catalog_apply_filters`、`translation_catalog_create_action` 已删除。桌面/移动 style-boundary 与隔离运行时快照通过；真实 3200 路由复验因本地 API 7900 未运行、登录返回 502 未完成，等待用户最终验收。
+- 2026-07-30 Root contract replacement：用户批准将旧 `(module, msgid)` 基线整体替换为全局不可变英文 key + 每 locale（含 en_US）官方翻译/管理员覆盖，fallback 固定为 requested override/official → en_US override/official → raw key；module 从 storage/API/runtime/Flow Schema/UI 删除。Root #1488 已重构并新增 D4 #1497、D5 #1498、D6 #1499；旧 #1489～1491 仅保留 superseded evidence。official P1=`c699577c4` 生成 v2/2.0.0、628 key；主仓 assembly 已装配 P2～P5 与剩余 contract 清理，正在固定 Seed/provenance，随后只运行一次集中 QA，QA 通过后才进入用户人工验收。
