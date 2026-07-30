@@ -549,9 +549,9 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /coverage-backend-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
   );
-  assert.match(
+  assert.doesNotMatch(
     workflow,
-    /state-protocols-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
+    /state-protocols-gate:/u,
   );
   assert.match(
     workflow,
@@ -574,7 +574,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
   );
-  assert.match(workflow, /- state-protocols-gate/u);
+  assert.doesNotMatch(workflow, /- state-protocols-gate/u);
   assert.match(workflow, /- container-images-gate/u);
   assert.match(workflow, /- ai-gateway-protocol-conformance/u);
   assert.match(workflow, /scope: repo-tooling/u);
@@ -586,26 +586,13 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(workflow, /scope: backend-consistency/u);
   assert.match(workflow, /scope: coverage-frontend/u);
-  assert.match(workflow, /scope: state-protocols/u);
-  assert.doesNotMatch(
-    workflow,
-    /state-protocols-gate:[\s\S]*?Install Claude Code[\s\S]*?curl -fsSL https:\/\/claude\.ai\/install\.sh \| bash -s stable[\s\S]*?claude --version/u,
-  );
-  assert.doesNotMatch(
-    workflow,
-    /state-protocols-gate:[\s\S]*?CLAUDE_CODE_OAUTH_TOKEN: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}[\s\S]*?ANTHROPIC_AUTH_TOKEN: \$\{\{ secrets\.ANTHROPIC_AUTH_TOKEN \}\}[\s\S]*?ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}[\s\S]*?ANTHROPIC_CUSTOM_MODEL_OPTION: 1flowbase/u,
-  );
-  assert.match(
-    workflow,
-    /state-protocols-gate:[\s\S]*?scope: state-protocols[\s\S]*?start_postgres: "true"/u,
-  );
   assert.match(workflow, /scope: container-images/u);
   assert.match(workflow, /publish_issue: "false"/u);
   assert.match(workflow, /INPUT_PUBLISH_ISSUE: "true"/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-backend-image-llm-vision/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-backend-official-i18n-seed/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-frontend-react-doctor/u);
-  assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*state-protocols/u);
+  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: .*state-protocols/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*container-images/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*ai-gateway-protocol-conformance/u);
   assert.match(
@@ -618,7 +605,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /name: test-governance-\$\{\{ matrix\.scope \}\}/u);
   assert.match(workflow, /name: test-governance-backend-consistency/u);
   assert.match(workflow, /name: test-governance-coverage-frontend/u);
-  assert.match(workflow, /name: test-governance-state-protocols/u);
+  assert.doesNotMatch(workflow, /name: test-governance-state-protocols/u);
   assert.match(workflow, /name: test-governance-container-images/u);
   assert.match(workflow, /name: test-governance-artifacts/u);
 });
@@ -628,15 +615,11 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
 
   assert.match(
     workflow,
-    /repo-backend-gate:[\s\S]*?timeout-minutes: 75[\s\S]*?matrix:/u,
+    /repo-backend-gate:[\s\S]*?timeout-minutes: \$\{\{ matrix\.scope == 'repo-backend-test-api-server' && 120 \|\| 45 \}\}[\s\S]*?matrix:/u,
   );
   assert.match(
     workflow,
-    /coverage-backend-gate:[\s\S]*?timeout-minutes: 75[\s\S]*?matrix:/u,
-  );
-  assert.match(
-    workflow,
-    /state-protocols-gate:[\s\S]*?timeout-minutes: 90[\s\S]*?steps:/u,
+    /coverage-backend-gate:[\s\S]*?timeout-minutes: \$\{\{ matrix\.scope == 'coverage-backend-api-server' && 120 \|\| 45 \}\}[\s\S]*?matrix:/u,
   );
   assert.match(
     workflow,
@@ -657,10 +640,6 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.match(
     workflow,
     /coverage-backend-gate:[\s\S]*?CARGO_TARGET_DIR: \.\.\/tmp\/quality-gate-cache\/rust-coverage\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?scope: \$\{\{ matrix\.scope \}\}/u,
-  );
-  assert.match(
-    workflow,
-    /state-protocols-gate:[\s\S]*?name: Restore Rust state protocol quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-state-protocols\/target[\s\S]*?key: rust-quality-gate-state-protocols-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
     workflow,
