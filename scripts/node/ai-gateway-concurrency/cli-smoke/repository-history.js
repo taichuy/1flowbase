@@ -8,11 +8,7 @@ const { narrowEnvironment } = require('./environment');
 const { executeTmuxInvocation, parseJsonLines } = require('./runner');
 
 const GIT_HISTORY_COMMAND = "git log -3 --format='%h %s'";
-const CLAUDE_REPOSITORY_HISTORY_PROMPT = [
-  '最近三次提交分别是什么。',
-  `必须使用 Bash 执行只读命令 \`${GIT_HISTORY_COMMAND}\` 获取当前仓库事实。`,
-  '最后只按命令输出顺序回答三行 `<短哈希> <原始提交标题>`，不得凭记忆或改写标题。',
-].join(' ');
+const CLAUDE_REPOSITORY_HISTORY_PROMPT = '最近三次提交分别是什么。';
 
 function readRepositoryGitHistory(repository, spawnSyncImpl = spawnSync) {
   const result = spawnSyncImpl('git', ['log', '-3', '--format=%h%x09%s'], {
@@ -114,9 +110,9 @@ function inspectClaudeRepositoryHistoryResult(result, expected, expectedWireMode
     && !result.timed_out
     && !result.stdout.overflow
     && !result.stderr.overflow
-    && matchingToolUses.length > 0
+    && matchingToolUses.length === 1
     && unexpectedBashToolCalls === 0
-    && completedGitToolCalls > 0
+    && completedGitToolCalls === 1
     && exactOrder
     && exactAnswer
     && wireModelMatched;

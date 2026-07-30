@@ -7,11 +7,7 @@ const DEFAULT_ADAPTER_PACKAGE = '@agentclientprotocol/claude-agent-acp@0.45.0';
 const DEFAULT_OUT_DIR = path.join('tmp', 'test-governance', 'acp-claude-smoke');
 const DEFAULT_PROMPT = 'Think briefly, then answer with exactly: ACP_OK. Do not use tools.';
 const GIT_HISTORY_COMMAND = "git log -3 --format='%h %s'";
-const GIT_HISTORY_PROMPT = [
-  '最近三次提交分别是什么。',
-  `必须使用 Bash 执行只读命令 \`${GIT_HISTORY_COMMAND}\` 获取当前仓库事实。`,
-  '最后只按命令输出顺序回答三行 `<短哈希> <原始提交标题>`，不得凭记忆或改写标题。',
-].join(' ');
+const GIT_HISTORY_PROMPT = '最近三次提交分别是什么。';
 const DEFAULT_NODE_BIN = process.env.CLAUDE_CODE_NODE_BIN || path.dirname(process.execPath);
 const DEFAULT_CLAUDE_EXECUTABLE = process.env.CLAUDE_CODE_EXECUTABLE || 'claude';
 
@@ -250,9 +246,9 @@ function summarizeAcpEvidence({
   const ok = scenario === 'git-history'
     ? errors.length === 0
       && updateCounts.agent_message_chunk > 0
-      && matchingBashToolCalls > 0
+      && matchingBashToolCalls === 1
       && unexpectedBashToolCalls === 0
-      && completedGitToolCalls > 0
+      && completedGitToolCalls === 1
       && gitHistoryEvidence.exactOrder
       && exactAnswer
     : updateCounts.agent_thought_chunk > 0 && updateCounts.agent_message_chunk > 0;

@@ -172,6 +172,50 @@ test('repository history result rejects extra Bash operations even with an exact
   assert.equal(evidence.unexpectedBashToolCalls, 1);
 });
 
+test('repository history result rejects repeated matching git-log calls', () => {
+  const expected = [
+    { shortHash: 'abc1234', subject: 'third' },
+    { shortHash: 'def5678', subject: 'second' },
+    { shortHash: '987fedc', subject: 'first' },
+  ];
+  const answer = expected.map(({ shortHash, subject }) => `${shortHash} ${subject}`).join('\n');
+  const toolUses = ['toolu_git_1', 'toolu_git_2'].map((id) => ({
+    type: 'tool_use',
+    id,
+    name: 'Bash',
+    input: { command: GIT_HISTORY_COMMAND },
+  }));
+  const stdout = [{
+    type: 'assistant',
+    message: { content: toolUses },
+  }, {
+    type: 'user',
+    message: {
+      content: toolUses.map(({ id }) => ({
+        type: 'tool_result',
+        tool_use_id: id,
+        content: answer,
+      })),
+    },
+  }, {
+    type: 'result',
+    result: answer,
+  }].map((event) => JSON.stringify(event)).join('\n');
+
+  const evidence = inspectClaudeRepositoryHistoryResult({
+    exit_code: 0,
+    timed_out: false,
+    stdout: { text: stdout, overflow: false },
+    stderr: { text: '', overflow: false },
+  }, expected);
+
+  assert.equal(evidence.ok, false);
+  assert.equal(evidence.matchingBashToolCalls, 2);
+  assert.equal(evidence.completedGitToolCalls, 2);
+  assert.equal(evidence.unexpectedBashToolCalls, 0);
+  assert.equal(evidence.exactAnswer, true);
+});
+
 test('repository history result rejects an answer without completed tool evidence', () => {
   const expected = [
     { shortHash: 'abc1234', subject: 'third' },

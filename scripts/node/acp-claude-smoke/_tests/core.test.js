@@ -250,6 +250,65 @@ test('summarizeAcpEvidence rejects extra Bash operations even with an exact answ
   assert.equal(summary.gitHistoryEvidence.unexpectedBashToolCalls, 1);
 });
 
+test('summarizeAcpEvidence rejects repeated matching git-log calls', () => {
+  const expectedGitHistory = [
+    { shortHash: 'aaa1111', subject: 'third' },
+    { shortHash: 'bbb2222', subject: 'second' },
+    { shortHash: 'ccc3333', subject: 'first' },
+  ];
+  const message = expectedGitHistory
+    .map(({ shortHash, subject }) => `${shortHash} ${subject}`)
+    .join('\n');
+  const toolUses = ['toolu_git_1', 'toolu_git_2'].map((id) => ({
+    type: 'tool_use',
+    id,
+    name: 'Bash',
+    input: { command: GIT_HISTORY_COMMAND },
+  }));
+  const summary = summarizeAcpEvidence({
+    cwd: '/repo',
+    prompt: GIT_HISTORY_PROMPT,
+    scenario: 'git-history',
+    expectedGitHistory,
+    paths: {},
+    agentRequests: [],
+    errors: [],
+    updates: [{
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: message },
+      },
+    }],
+    notifications: [{
+      method: '_claude/sdkMessage',
+      params: {
+        message: { type: 'assistant', message: { content: toolUses } },
+      },
+    }, {
+      method: '_claude/sdkMessage',
+      params: {
+        message: {
+          type: 'user',
+          message: {
+            content: toolUses.map(({ id }) => ({
+              type: 'tool_result',
+              tool_use_id: id,
+              content: message,
+            })),
+          },
+        },
+      },
+    }],
+    extra: {},
+  });
+
+  assert.equal(summary.ok, false);
+  assert.equal(summary.gitHistoryEvidence.matchingBashToolCalls, 2);
+  assert.equal(summary.gitHistoryEvidence.completedGitToolCalls, 2);
+  assert.equal(summary.gitHistoryEvidence.unexpectedBashToolCalls, 0);
+  assert.equal(summary.gitHistoryEvidence.exactAnswer, true);
+});
+
 test('summarizeAcpEvidence rejects a memorized git-history answer without tool evidence', () => {
   const expectedGitHistory = [
     { shortHash: 'aaa1111', subject: 'third' },
