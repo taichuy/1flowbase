@@ -56,7 +56,7 @@ function requestPair(vector, ready, upstreamBaseUrl) {
       directBody: {
         ...common,
         model: ready.targets.anthropic.upstream_model,
-        messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }] }],
+        messages: [{ role: 'user', content: PROMPT }],
       },
       gatewayBody: {
         ...common,
