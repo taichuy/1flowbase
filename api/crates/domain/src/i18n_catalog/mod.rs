@@ -12,6 +12,7 @@ pub enum I18nCatalogInvariantError {
     InvalidDigest,
     InvalidLocale,
     EmptyMessageKey,
+    InvalidMessageKey,
     MissingSourceLocale,
     MissingSourceTranslation,
     DuplicateLocale,
@@ -117,12 +118,45 @@ impl CatalogMessageIdentity {
         if key.trim().is_empty() {
             return Err(I18nCatalogInvariantError::EmptyMessageKey);
         }
+        if key.trim() != key
+            || !key.is_ascii()
+            || key.chars().any(char::is_control)
+            || !key.bytes().any(|byte| byte.is_ascii_alphabetic())
+            || contains_unsafe_message_key_content(&key)
+            || looks_like_variable_key(&key)
+        {
+            return Err(I18nCatalogInvariantError::InvalidMessageKey);
+        }
         Ok(Self { key })
     }
 
     pub fn key(&self) -> &str {
         &self.key
     }
+}
+
+fn contains_unsafe_message_key_content(key: &str) -> bool {
+    let lowercase = key.to_ascii_lowercase();
+    key.contains('<')
+        || key.contains('>')
+        || key.contains("${")
+        || key.contains("=>")
+        || lowercase.contains("javascript:")
+        || lowercase.contains("function(")
+}
+
+fn looks_like_variable_key(key: &str) -> bool {
+    if key.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return false;
+    }
+    let identifier_part = |part: &str| {
+        !part.is_empty()
+            && part
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    (key.contains('.') && key.split('.').all(identifier_part))
+        || (key.contains('_') && key.split('_').all(identifier_part))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

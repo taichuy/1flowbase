@@ -559,7 +559,7 @@ async fn ac_003_combined_root_bootstrap_is_atomic_and_restart_idempotent() {
         &store,
         &UpsertCatalogTranslationInput {
             workspace_id: workspace.id,
-            value: translation("custom.key", "自定义"),
+            value: translation("Custom key", "自定义"),
             expected_revision: override_state.revision(),
         },
     )
@@ -742,7 +742,7 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
         &store,
         &UpsertCatalogTranslationInput {
             workspace_id: workspace.id,
-            value: translation("custom.key", "自定义"),
+            value: translation("Custom key", "自定义"),
             expected_revision: overridden_state.revision(),
         },
     )
@@ -752,7 +752,7 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
     let custom = CatalogResolutionRepository::find_catalog_resolution_candidate(
         &store,
         workspace.id,
-        &identity("custom.key"),
+        &identity("Custom key"),
         &CatalogLocale::new("zh_Hans").unwrap(),
     )
     .await
@@ -768,7 +768,7 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
     let alternate = CatalogResolutionRepository::find_catalog_resolution_candidate(
         &store,
         workspace.id,
-        &identity("custom.key"),
+        &identity("Custom key"),
         &CatalogLocale::new("fr_FR").unwrap(),
     )
     .await
@@ -783,7 +783,7 @@ async fn ac_004_resolution_projection_is_exact_locale_and_supports_custom_identi
 }
 
 #[tokio::test]
-async fn runtime_projection_applies_workspace_override_to_the_english_translation() {
+async fn runtime_projection_uses_english_fallbacks_and_marks_raw_key_fallback() {
     let store = empty_store().await;
     let tenant = BootstrapRepository::upsert_root_tenant(&store)
         .await
@@ -800,7 +800,7 @@ async fn runtime_projection_applies_workspace_override_to_the_english_translatio
         .await
         .unwrap()
         .unwrap();
-    I18nCatalogRepository::upsert_catalog_override(
+    let override_state = I18nCatalogRepository::upsert_catalog_override(
         &store,
         &UpsertCatalogTranslationInput {
             workspace_id: workspace.id,
@@ -815,11 +815,41 @@ async fn runtime_projection_applies_workspace_override_to_the_english_translatio
     )
     .await
     .unwrap();
+    let english_custom_state = I18nCatalogRepository::upsert_custom_catalog_translation(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: CatalogTranslation::new(
+                identity("English custom"),
+                CatalogLocale::source(),
+                "Edited English custom",
+            )
+            .unwrap(),
+            expected_revision: override_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+    I18nCatalogRepository::upsert_custom_catalog_translation(
+        &store,
+        &UpsertCatalogTranslationInput {
+            workspace_id: workspace.id,
+            value: CatalogTranslation::new(
+                identity("Raw fallback"),
+                CatalogLocale::new("de_DE").unwrap(),
+                "Nur Deutsch",
+            )
+            .unwrap(),
+            expected_revision: english_custom_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
 
     let projection = RuntimeI18nCatalogRepository::project_runtime_catalog(
         &store,
         workspace.id,
-        &CatalogLocale::source(),
+        &CatalogLocale::new("fr_FR").unwrap(),
     )
     .await
     .unwrap();
@@ -829,8 +859,24 @@ async fn runtime_projection_applies_workspace_override_to_the_english_translatio
             .messages
             .iter()
             .find(|message| message.key == "Settings")
-            .map(|message| message.value.as_str()),
-        Some("Workspace settings")
+            .map(|message| (message.value.as_str(), message.raw_key_fallback)),
+        Some(("Workspace settings", false))
+    );
+    assert_eq!(
+        projection
+            .messages
+            .iter()
+            .find(|message| message.key == "English custom")
+            .map(|message| (message.value.as_str(), message.raw_key_fallback)),
+        Some(("Edited English custom", false))
+    );
+    assert_eq!(
+        projection
+            .messages
+            .iter()
+            .find(|message| message.key == "Raw fallback")
+            .map(|message| (message.value.as_str(), message.raw_key_fallback)),
+        Some(("Raw fallback", true))
     );
 }
 
@@ -1031,7 +1077,7 @@ async fn ac_008_expected_revision_serializes_atomic_mutation_and_audit() {
     assert!(service
         .upsert_custom_translation(UpsertCustomTranslationCommand {
             access: actor,
-            value: translation("custom.stale", "不会写入"),
+            value: translation("Stale custom", "不会写入"),
             expected_revision: fixture.revision,
         })
         .await
@@ -1065,7 +1111,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     let created = service
         .upsert_custom_translation(UpsertCustomTranslationCommand {
             access: fixture.root_access(),
-            value: translation("custom.greeting", "问候"),
+            value: translation("Custom greeting", "问候"),
             expected_revision: fixture.revision,
         })
         .await
@@ -1075,7 +1121,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     let first_rows: Vec<(String, String)> = sqlx::query_as(
         r#"select locale, translation
            from workspace_i18n_catalog_custom_translations
-           where workspace_id = $1 and key = 'custom.greeting'
+           where workspace_id = $1 and key = 'Custom greeting'
            order by locale"#,
     )
     .bind(fixture.workspace_id)
@@ -1085,7 +1131,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     assert_eq!(
         first_rows,
         vec![
-            ("en_US".to_owned(), "custom.greeting".to_owned()),
+            ("en_US".to_owned(), "Custom greeting".to_owned()),
             ("zh_Hans".to_owned(), "问候".to_owned()),
         ]
     );
@@ -1103,9 +1149,9 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
         .upsert_custom_translation(UpsertCustomTranslationCommand {
             access: fixture.root_access(),
             value: CatalogTranslation::new(
-                identity("custom.greeting"),
+                identity("Custom greeting"),
                 CatalogLocale::source(),
-                "Custom greeting",
+                "Edited custom greeting",
             )
             .unwrap(),
             expected_revision: created.revision(),
@@ -1115,7 +1161,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     let chinese_updated = service
         .upsert_custom_translation(UpsertCustomTranslationCommand {
             access: fixture.root_access(),
-            value: translation("custom.greeting", "问候语"),
+            value: translation("Custom greeting", "问候语"),
             expected_revision: english_updated.revision(),
         })
         .await
@@ -1123,7 +1169,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     let updated_rows: Vec<(String, String)> = sqlx::query_as(
         r#"select locale, translation
            from workspace_i18n_catalog_custom_translations
-           where workspace_id = $1 and key = 'custom.greeting'
+           where workspace_id = $1 and key = 'Custom greeting'
            order by locale"#,
     )
     .bind(fixture.workspace_id)
@@ -1133,7 +1179,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     assert_eq!(
         updated_rows,
         vec![
-            ("en_US".to_owned(), "Custom greeting".to_owned()),
+            ("en_US".to_owned(), "Edited custom greeting".to_owned()),
             ("zh_Hans".to_owned(), "问候语".to_owned()),
         ]
     );
@@ -1141,7 +1187,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     sqlx::query(
         r#"insert into workspace_i18n_catalog_overrides
            (workspace_id, key, locale, translation)
-           values ($1, 'custom.protected', 'en_US', 'Protected English')"#,
+           values ($1, 'Protected custom', 'en_US', 'Protected English')"#,
     )
     .bind(fixture.workspace_id)
     .execute(fixture.store.pool())
@@ -1150,14 +1196,14 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     service
         .upsert_custom_translation(UpsertCustomTranslationCommand {
             access: fixture.root_access(),
-            value: translation("custom.protected", "受保护"),
+            value: translation("Protected custom", "受保护"),
             expected_revision: chinese_updated.revision(),
         })
         .await
         .unwrap();
     let protected_custom_english: i64 = sqlx::query_scalar(
         r#"select count(*) from workspace_i18n_catalog_custom_translations
-           where workspace_id = $1 and key = 'custom.protected' and locale = 'en_US'"#,
+           where workspace_id = $1 and key = 'Protected custom' and locale = 'en_US'"#,
     )
     .bind(fixture.workspace_id)
     .fetch_one(fixture.store.pool())
@@ -1165,7 +1211,7 @@ async fn ac_008_custom_key_initializes_english_once_in_the_audited_revision_tran
     .unwrap();
     let protected_override: String = sqlx::query_scalar(
         r#"select translation from workspace_i18n_catalog_overrides
-           where workspace_id = $1 and key = 'custom.protected' and locale = 'en_US'"#,
+           where workspace_id = $1 and key = 'Protected custom' and locale = 'en_US'"#,
     )
     .bind(fixture.workspace_id)
     .fetch_one(fixture.store.pool())
@@ -1190,7 +1236,7 @@ async fn ac_009_restore_and_explicit_custom_delete_preserve_distinct_lifecycles(
     let custom = service
         .upsert_custom_translation(UpsertCustomTranslationCommand {
             access: fixture.root_access(),
-            value: translation("custom.message", "自定义"),
+            value: translation("Custom message", "自定义"),
             expected_revision: overridden.revision(),
         })
         .await
@@ -1258,7 +1304,7 @@ async fn ac_009_restore_and_explicit_custom_delete_preserve_distinct_lifecycles(
     service
         .delete_custom_message(DeleteCustomMessageCommand {
             access: fixture.root_access(),
-            identity: identity("custom.message"),
+            identity: identity("Custom message"),
             expected_revision: globally_restored.revision(),
         })
         .await

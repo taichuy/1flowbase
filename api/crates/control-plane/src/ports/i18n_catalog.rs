@@ -45,6 +45,7 @@ pub trait CatalogResolutionRepository: Send + Sync {
 pub struct RuntimeCatalogMessage {
     pub key: String,
     pub value: String,
+    pub raw_key_fallback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

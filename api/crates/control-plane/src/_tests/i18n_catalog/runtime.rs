@@ -27,6 +27,7 @@ fn message(key: &str, value: &str) -> RuntimeCatalogMessage {
     RuntimeCatalogMessage {
         key: key.to_owned(),
         value: value.to_owned(),
+        raw_key_fallback: key == value,
     }
 }
 
@@ -69,7 +70,7 @@ async fn bundle_is_sorted_resolved_content_without_revision_or_timestamp() {
             messages: vec![
                 message("Zulu", "override"),
                 message("Alpha", "official"),
-                message("custom.key", "custom"),
+                message("Custom key", "custom"),
                 message("Fallback", "Fallback"),
             ],
         }))),
@@ -80,7 +81,7 @@ async fn bundle_is_sorted_resolved_content_without_revision_or_timestamp() {
         .await
         .unwrap();
     let body = String::from_utf8(manifest.bundle.canonical_body().unwrap()).unwrap();
-    assert_eq!(body, "{\"locale\":\"zh_Hans\",\"messages\":{\"Alpha\":\"official\",\"Fallback\":\"Fallback\",\"Zulu\":\"override\",\"custom.key\":\"custom\"}}");
+    assert_eq!(body, "{\"locale\":\"zh_Hans\",\"messages\":{\"Alpha\":\"official\",\"Custom key\":\"custom\",\"Fallback\":\"Fallback\",\"Zulu\":\"override\"}}");
     assert!(!body.contains("revision"));
     assert!(!body.contains("generated_at"));
 }

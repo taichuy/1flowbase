@@ -613,7 +613,16 @@ impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
                    coalesce(override_value.translation,
                             custom_value.translation,
                             official_value.translation,
-                            identity.key) as value
+                            english_override_value.translation,
+                            english_custom_value.translation,
+                            english_official_value.translation,
+                            identity.key) as value,
+                   coalesce(override_value.translation,
+                            custom_value.translation,
+                            official_value.translation,
+                            english_override_value.translation,
+                            english_custom_value.translation,
+                            english_official_value.translation) is null as raw_key_fallback
             from catalog_state state
             left join identities identity on true
             left join workspace_i18n_catalog_overrides override_value
@@ -628,11 +637,24 @@ impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
               on official_value.release_id = state.active_release_id
              and official_value.key = identity.key
              and official_value.locale = $2
+            left join workspace_i18n_catalog_overrides english_override_value
+              on english_override_value.workspace_id = $1
+             and english_override_value.key = identity.key
+             and english_override_value.locale = $3
+            left join workspace_i18n_catalog_custom_translations english_custom_value
+              on english_custom_value.workspace_id = $1
+             and english_custom_value.key = identity.key
+             and english_custom_value.locale = $3
+            left join i18n_catalog_release_translations english_official_value
+              on english_official_value.release_id = state.active_release_id
+             and english_official_value.key = identity.key
+             and english_official_value.locale = $3
             order by identity.key
             "#,
         )
         .bind(workspace_id)
         .bind(locale.as_str())
+        .bind(domain::I18N_CATALOG_SOURCE_LOCALE)
         .fetch_all(self.pool())
         .await?;
         let first = rows
@@ -648,6 +670,7 @@ impl RuntimeI18nCatalogRepository for PgControlPlaneStore {
                 messages.push(RuntimeCatalogMessage {
                     key,
                     value: row.get("value"),
+                    raw_key_fallback: row.get("raw_key_fallback"),
                 });
                 Ok(messages)
             })?;

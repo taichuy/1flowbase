@@ -119,13 +119,13 @@ async fn english_override_and_official_precede_raw_key() {
             "English official",
             CatalogResolutionOrigin::EnglishOfficial,
         ),
-        (empty(), "custom.key", CatalogResolutionOrigin::RawKey),
+        (empty(), "Custom key", CatalogResolutionOrigin::RawKey),
     ] {
         let repository = CandidateRepository::new(vec![empty(), english]);
         let resolved = CatalogResolver::new(repository.clone(), root_workspace_id)
             .resolve(
                 root_workspace_id,
-                &identity("custom.key"),
+                &identity("Custom key"),
                 &CatalogLocale::new("fr_FR").unwrap(),
             )
             .await
@@ -143,7 +143,7 @@ async fn source_locale_uses_stored_translation_and_repository_errors_propagate()
     let resolved = CatalogResolver::new(repository.clone(), root_workspace_id)
         .resolve(
             root_workspace_id,
-            &identity("settings.title"),
+            &identity("Settings title"),
             &CatalogLocale::source(),
         )
         .await
@@ -155,7 +155,7 @@ async fn source_locale_uses_stored_translation_and_repository_errors_propagate()
     let error = CatalogResolver::new(CandidateRepository::failing(1), root_workspace_id)
         .resolve(
             root_workspace_id,
-            &identity("settings.title"),
+            &identity("Settings title"),
             &CatalogLocale::new("zh_Hans").unwrap(),
         )
         .await

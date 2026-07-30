@@ -8,6 +8,23 @@ fn seed_contract_types_reject_noncanonical_identifiers_and_digests() {
         CatalogMessageIdentity::new("  ").unwrap_err(),
         I18nCatalogInvariantError::EmptyMessageKey
     );
+    for key in [
+        "设置",
+        "settings.title",
+        "custom_key",
+        "<b>Settings</b>",
+        "${settings}",
+        " Settings",
+    ] {
+        assert_eq!(
+            CatalogMessageIdentity::new(key).unwrap_err(),
+            I18nCatalogInvariantError::InvalidMessageKey,
+            "{key:?} must not become a catalog identity"
+        );
+    }
+    for key in ["Settings", "Save {name}", "API v2.0", "E-mail"] {
+        assert!(CatalogMessageIdentity::new(key).is_ok(), "{key:?}");
+    }
     assert!(CatalogDigest::new(format!("sha256:{}", "a".repeat(64))).is_ok());
     assert!(CatalogDigest::new(format!("sha256:{}", "A".repeat(64))).is_err());
     assert!(CatalogLocale::new("zh-cn").is_err());
@@ -37,7 +54,7 @@ fn catalog_locale_matches_the_canonical_seed_grammar() {
 
 #[test]
 fn official_messages_require_an_explicit_english_translation() {
-    let identity = CatalogMessageIdentity::new("settings.title").unwrap();
+    let identity = CatalogMessageIdentity::new("Settings title").unwrap();
     assert_eq!(
         OfficialCatalogMessage::new(identity.clone(), BTreeMap::new()).unwrap_err(),
         I18nCatalogInvariantError::MissingSourceTranslation
@@ -51,7 +68,7 @@ fn official_messages_require_an_explicit_english_translation() {
 #[test]
 fn workspace_translation_can_override_the_english_locale() {
     let translation = CatalogTranslation::new(
-        CatalogMessageIdentity::new("settings.title").unwrap(),
+        CatalogMessageIdentity::new("Settings title").unwrap(),
         CatalogLocale::source(),
         "Workspace settings",
     )

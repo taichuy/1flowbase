@@ -64,6 +64,15 @@ where
             .await?;
         let mut resolved = BTreeMap::new();
         for message in messages {
+            if message.raw_key_fallback {
+                tracing::warn!(
+                    workspace_id = %workspace_id,
+                    key = message.key.as_str(),
+                    requested_locale = locale.as_str(),
+                    fallback_locale = domain::I18N_CATALOG_SOURCE_LOCALE,
+                    "runtime i18n catalog projection fell back to the raw key"
+                );
+            }
             resolved.insert(message.key, message.value);
         }
         let bundle = ResolvedCatalogBundle {

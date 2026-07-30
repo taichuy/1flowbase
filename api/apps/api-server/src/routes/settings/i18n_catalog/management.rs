@@ -482,3 +482,18 @@ pub async fn restore_all_catalog_overrides(
         revision: catalog_state.revision().value(),
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::identity;
+
+    #[test]
+    fn i18n_catalog_management_rejects_non_english_and_variable_keys() {
+        for key in ["设置", "settings.title", "custom_key", "<b>Settings</b>"] {
+            assert!(identity(key.to_owned()).is_err(), "{key:?}");
+        }
+        for key in ["Settings", "Save {name}", "API v2.0"] {
+            assert!(identity(key.to_owned()).is_ok(), "{key:?}");
+        }
+    }
+}
