@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 254,
-  "count": 508,
+  "projected_interface_count": 264,
+  "count": 528,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -117,6 +117,18 @@
       "DELETE",
       "/api/console/settings/files/tables/:id",
       "Delete file tables"
+    ],
+    [
+      "i18n_catalog.custom_keys.delete",
+      "DELETE",
+      "/api/console/settings/i18n/custom-keys",
+      "Delete i18n catalog custom keys"
+    ],
+    [
+      "i18n_catalog.overrides.restore",
+      "DELETE",
+      "/api/console/settings/i18n/overrides",
+      "Restore i18n catalog overrides"
     ],
     [
       "members.delete",
@@ -663,6 +675,30 @@
       "GET",
       "/api/console/settings/host-infrastructure/providers",
       "View host infrastructure providers"
+    ],
+    [
+      "i18n_catalog.state.get",
+      "GET",
+      "/api/console/settings/i18n/catalog",
+      "Get i18n catalog state"
+    ],
+    [
+      "i18n_catalog.entries.list",
+      "GET",
+      "/api/console/settings/i18n/entries",
+      "List i18n catalog entries"
+    ],
+    [
+      "i18n_catalog.entries.detail",
+      "GET",
+      "/api/console/settings/i18n/entries/detail",
+      "I18n catalog entries detail"
+    ],
+    [
+      "i18n_catalog.update.check",
+      "GET",
+      "/api/console/settings/i18n/update-check",
+      "Check i18n catalog update"
     ],
     [
       "members.list",
@@ -1271,6 +1307,18 @@
       "Reveal host infrastructure memory"
     ],
     [
+      "i18n_catalog.update.activate",
+      "POST",
+      "/api/console/settings/i18n/activate",
+      "I18n catalog update activate"
+    ],
+    [
+      "i18n_catalog.overrides.restore_all",
+      "POST",
+      "/api/console/settings/i18n/restore-overrides",
+      "I18n catalog overrides restore all"
+    ],
+    [
       "members.create",
       "POST",
       "/api/console/settings/members",
@@ -1503,6 +1551,18 @@
       "PUT",
       "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
       "Host infrastructure providers configure"
+    ],
+    [
+      "i18n_catalog.custom_translations.upsert",
+      "PUT",
+      "/api/console/settings/i18n/custom-translations",
+      "Upsert i18n catalog custom translations"
+    ],
+    [
+      "i18n_catalog.overrides.upsert",
+      "PUT",
+      "/api/console/settings/i18n/overrides",
+      "Upsert i18n catalog overrides"
     ],
     [
       "members.roles.replace",

@@ -72,6 +72,39 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         fixture.description_template,
         "{summary} in the system backend."
     );
+    let compiled = projected
+        .iter()
+        .map(|interface| {
+            (
+                interface.authorization_operation_id.clone().unwrap(),
+                interface.route.method.clone(),
+                interface.route.path.clone(),
+                interface.summary.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(fixture.interfaces, compiled);
+
+    let seed: serde_json::Value =
+        serde_json::from_slice(crate::official_i18n_catalog_seed::OFFICIAL_SEED_BYTES).unwrap();
+    let official_keys = seed["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|message| message["key"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    for interface in projected {
+        assert!(
+            official_keys.contains(interface.summary.as_str()),
+            "official catalog is missing interface summary key: {}",
+            interface.summary
+        );
+        assert!(
+            official_keys.contains(interface.description.as_str()),
+            "official catalog is missing interface description key: {}",
+            interface.description
+        );
+    }
 }
 
 #[test]
@@ -152,7 +185,7 @@ fn official_seed_coverage_is_global_key_based_with_pinned_provenance() {
         .map(|message| message["key"].as_str().unwrap())
         .collect::<BTreeSet<_>>();
     assert_eq!(keys.len(), coverage.expected.catalog_keys);
-    assert_eq!(coverage.expected.p3_identities, 508);
+    assert_eq!(coverage.expected.p3_identities, 528);
     assert_eq!(coverage.expected.p4_identities, 68);
     assert_eq!(coverage.expected.p6_consumers, 19);
     for reference in coverage.p7_references {
