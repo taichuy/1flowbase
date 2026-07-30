@@ -20,6 +20,14 @@ test('AC-029: protocol conformance blocks relevant PRs and protected pushes', ()
   assert.match(source, /name: AI Gateway Protocol Conformance Gate/u);
 });
 
+test('AC-012: protocol conformance remains standalone and is reusable by the global CI gate', () => {
+  assert.match(source, /workflow_call:[\s\S]*target_ref:[\s\S]*type: string/u);
+  assert.match(source, /ref: \$\{\{ inputs\.target_ref \|\| github\.sha \}\}/u);
+  assert.match(source, /id: protocol_conformance/u);
+  assert.match(source, /component-report\.js/u);
+  assert.match(source, /name: test-governance-ai-gateway-protocol-conformance-/u);
+});
+
 test('AC-003/005/006/008/019/024: workflow delegates all blocking checks to one repository command', () => {
   assert.match(source, /Run the single blocking AI Gateway quality command/u);
   assert.match(source, /quality-gate\/cli\.js run/u);

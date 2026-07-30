@@ -8,6 +8,7 @@ This directory owns GitHub Actions automation for repository quality gates.
 | --- | --- |
 | `.github/workflows/verify.yml` | Automatic merge CI for `pull_request` and `push` to `main` / `latest`; runs lightweight repo tooling, frontend PR, and backend static/fmt/check gates, updates one PR report comment for same-repository pull requests, then publishes one aggregate issue only for `latest` pushes. |
 | `.github/workflows/quality-gate.yml` | Manual and nightly quality gate run; full `ci` scope runs component gates, coverage gates, and container image security in parallel before one aggregate Issue report. |
+| `.github/workflows/ai-gateway-concurrency.yml` | Reusable and standalone AI Gateway protocol conformance gate; remains the required `dev` check and joins full manual/nightly `ci` aggregation. |
 | `.github/workflows/container-images.yml` | Container image CD for `web`, `api-server`, and `plugin-runner`; builds scan-candidate GHCR tags, runs Trivy admission scans, promotes passing images to version and `latest` tags, then uploads artifact-only CD quality gate evidence. |
 | `.github/actions/quality-gate/action.yml` | Reusable repository-local action used by CI, manual, and nightly quality gates. |
 
@@ -129,13 +130,20 @@ environment: leave empty
 For manual `scope: ci`, runs use the full quality gate shape: repo tooling,
 full repo frontend, React Doctor, backend static/fmt/package shards, backend app test
 package shards, backend consistency, frontend coverage, backend coverage package shards,
-state protocols, and container image security run as separate jobs. Scheduled `scope: ci`
+state protocols, container image security, and mock-backed AI Gateway protocol conformance
+run as separate jobs. Scheduled `scope: ci`
 runs use the same component set.
 An aggregate job downloads their artifacts, publishes one Issue report, and uploads
 `test-governance-artifacts`.
 This keeps wall time close to the slowest component gate instead of the sum of all gates.
 Each component job publishes `publish_issue: "false"`; only the aggregate job publishes the
 final report with `publish_issue: "true"`.
+
+AI Gateway conformance remains independently dispatchable and remains the required
+`protocol-conformance` check for `dev`. The full gate invokes the same reusable workflow,
+downloads its standard component report, and lists
+`ai-gateway-protocol-conformance` explicitly in the aggregate component table. It never
+uses real Provider credentials or local client binaries.
 
 For narrower dispatch scopes such as `repo-frontend-pr`, `repo-frontend`, `repo-frontend-react-doctor`, `repo-backend`, `backend-consistency`,
 `coverage-backend`, or `container-images`,

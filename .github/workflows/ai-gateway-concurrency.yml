@@ -1,6 +1,13 @@
 name: AI Gateway Protocol Conformance Gate
 
 on:
+  workflow_call:
+    inputs:
+      target_ref:
+        description: Candidate branch, tag, or SHA to validate
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
   pull_request:
   push:
@@ -45,7 +52,13 @@ jobs:
       - name: Checkout candidate source
         uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.target_ref || github.sha }}
           fetch-depth: 1
+
+      - name: Resolve candidate source SHA
+        id: candidate_source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout paired official provider source
         uses: actions/checkout@v6
@@ -76,6 +89,7 @@ jobs:
             tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai_compatible -> target
 
       - name: Run the single blocking AI Gateway quality command
+        id: protocol_conformance
         shell: bash
         run: >-
           node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
@@ -83,13 +97,24 @@ jobs:
           --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
           --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
 
+      - name: Write aggregate-compatible AI Gateway report
+        if: always()
+        shell: bash
+        env:
+          AI_GATEWAY_COMMAND_OUTCOME: ${{ steps.protocol_conformance.outcome }}
+        run: >-
+          node scripts/node/ai-gateway-concurrency/quality-gate/component-report.js
+          --repo-root "$GITHUB_WORKSPACE"
+          --command-outcome "$AI_GATEWAY_COMMAND_OUTCOME"
+
       - name: Upload bounded protocol evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: ai-gateway-protocol-conformance-${{ github.sha }}
+          name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
           path: |
             tmp/test-governance/ai-gateway-quality-gate/**
             tmp/test-governance/ai-gateway-concurrency/**
+            tmp/test-governance/ai-gateway-protocol-conformance/**
           if-no-files-found: error
           retention-days: 14
