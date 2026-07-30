@@ -181,6 +181,7 @@ fn unique_start_operation(run_input_payload: &Value) -> Option<AiNativeOperation
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod operation_terminal_tests {
     use super::*;
 

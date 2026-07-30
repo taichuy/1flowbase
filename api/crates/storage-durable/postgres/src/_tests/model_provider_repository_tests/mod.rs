@@ -179,6 +179,8 @@ async fn seed_store_before_main_instance_aggregation() -> (
             add column if not exists scope_id uuid not null
             default '00000000-0000-0000-0000-000000000000'::uuid;
         alter table plugin_installations add column if not exists updated_by uuid;
+        alter table authenticators
+            add column if not exists public_ui_block text not null default '';
         "#,
     )
     .execute(&pool)

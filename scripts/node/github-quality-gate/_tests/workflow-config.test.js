@@ -449,7 +449,7 @@ test("GitHub automation docs place reusable AI Gateway conformance in the full c
   const docs = readGitHubAutomationDocs();
   assert.match(docs, /ai-gateway-concurrency\.yml/u);
   assert.match(docs, /ai-gateway-protocol-conformance/u);
-  assert.match(docs, /required\s+`protocol-conformance` check for `dev`/u);
+  assert.match(docs, /runs for pull requests/u);
   assert.match(docs, /never\nuses real Provider credentials or local client binaries/u);
 });
 

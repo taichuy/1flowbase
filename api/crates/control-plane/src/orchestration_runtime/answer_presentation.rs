@@ -41,7 +41,7 @@ struct AnswerPresentationCandidateCursor {
     plan: AnswerPresentationPlan,
     next_segment_index: usize,
     emitted_text: BTreeMap<usize, String>,
-    completed_outputs: BTreeMap<(String, String), CompletedOutput>,
+    completed_outputs: BTreeMap<(String, Vec<String>), CompletedOutput>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,11 +99,15 @@ fn ready_answer_output_for_plan(
             }
             AnswerPresentationSegment::NodeOutput {
                 node_id,
-                output_key,
+                output_path,
             } => {
                 let Some(value) = variable_pool
                     .get(node_id)
-                    .and_then(|node_output| node_output.get(output_key))
+                    .and_then(|node_output| {
+                        output_path
+                            .iter()
+                            .try_fold(node_output, |value, key| value.get(key))
+                    })
                     .and_then(Value::as_str)
                 else {
                     complete = false;
@@ -295,11 +299,11 @@ impl AnswerPresentationCandidateCursor {
                 AnswerPresentationSegment::StaticText(_) => continue,
                 AnswerPresentationSegment::NodeOutput {
                     node_id,
-                    output_key,
+                    output_path,
                 } => {
                     if self
                         .completed_outputs
-                        .contains_key(&(node_id.clone(), output_key.clone()))
+                        .contains_key(&(node_id.clone(), output_path.clone()))
                     {
                         continue;
                     }
@@ -341,11 +345,11 @@ impl AnswerPresentationCandidateCursor {
         node_run_id: Option<Uuid>,
         output_payload: &Value,
     ) -> Vec<RuntimeEventPayload> {
-        if let Some(output) = output_payload.as_object() {
+        if output_payload.is_object() {
             for segment in &self.plan.segments {
                 let AnswerPresentationSegment::NodeOutput {
                     node_id: source_node_id,
-                    output_key,
+                    output_path,
                 } = segment
                 else {
                     continue;
@@ -353,11 +357,15 @@ impl AnswerPresentationCandidateCursor {
                 if source_node_id != node_id {
                     continue;
                 }
-                let Some(value) = output.get(output_key).and_then(Value::as_str) else {
+                let Some(value) = output_path
+                    .iter()
+                    .try_fold(output_payload, |value, key| value.get(key))
+                    .and_then(Value::as_str)
+                else {
                     continue;
                 };
                 self.completed_outputs.insert(
-                    (source_node_id.clone(), output_key.clone()),
+                    (source_node_id.clone(), output_path.clone()),
                     CompletedOutput {
                         value: value.to_string(),
                         node_run_id,
@@ -410,8 +418,10 @@ impl AnswerPresentationCandidateCursor {
         match segment {
             AnswerPresentationSegment::NodeOutput {
                 node_id,
-                output_key,
-            } if node_id == source_node_id => Some((segment_index, output_key.as_str())),
+                output_path,
+            } if node_id == source_node_id => output_path
+                .first()
+                .map(|output_key| (segment_index, output_key.as_str())),
             _ => None,
         }
     }
@@ -436,9 +446,9 @@ impl AnswerPresentationCandidateCursor {
                 }
                 AnswerPresentationSegment::NodeOutput {
                     node_id,
-                    output_key,
+                    output_path,
                 } => {
-                    let key = (node_id.clone(), output_key.clone());
+                    let key = (node_id.clone(), output_path.clone());
                     let Some(completed) = self.completed_outputs.get(&key).cloned() else {
                         break;
                     };
@@ -454,7 +464,7 @@ impl AnswerPresentationCandidateCursor {
                             &completed.value,
                             Some(node_id),
                             completed.node_run_id,
-                            Some(output_key),
+                            output_path.first().map(String::as_str),
                         ));
                     }
                     self.next_segment_index += 1;
@@ -604,7 +614,7 @@ mod tests {
             AnswerPresentationSegment::StaticText("回答：".to_string()),
             AnswerPresentationSegment::NodeOutput {
                 node_id: "node-llm".to_string(),
-                output_key: "text".to_string(),
+                output_path: vec!["text".to_string()],
             },
         ]);
         let node_run_id = Uuid::now_v7();
@@ -679,7 +689,7 @@ mod tests {
         let mut cursor = cursor_with_segments(vec![
             AnswerPresentationSegment::NodeOutput {
                 node_id: "node-llm".to_string(),
-                output_key: "text".to_string(),
+                output_path: vec!["text".to_string()],
             },
             AnswerPresentationSegment::StaticText("!".to_string()),
         ]);
@@ -704,5 +714,30 @@ mod tests {
             .filter_map(|event| event.payload["text"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(text_deltas, vec!["!"]);
+    }
+
+    #[test]
+    fn nested_output_path_projects_the_selected_leaf() {
+        let mut cursor = cursor_with_segments(vec![
+            AnswerPresentationSegment::StaticText("Code said: ".to_string()),
+            AnswerPresentationSegment::NodeOutput {
+                node_id: "node-code".to_string(),
+                output_path: vec!["result".to_string(), "result".to_string()],
+            },
+        ]);
+        let node_run_id = Uuid::now_v7();
+
+        let events = cursor.complete_node(
+            "node-code",
+            node_run_id,
+            &json!({ "result": { "result": "hello downstream" } }),
+        );
+
+        let text = events
+            .iter()
+            .filter(|event| event.event_type == "text_delta")
+            .filter_map(|event| event.payload["text"].as_str())
+            .collect::<String>();
+        assert_eq!(text, "Code said: hello downstream");
     }
 }

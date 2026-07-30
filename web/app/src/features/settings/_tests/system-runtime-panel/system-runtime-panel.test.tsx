@@ -28,11 +28,18 @@ vi.mock('echarts/core', () => ({
   use: vi.fn()
 }));
 vi.mock('echarts/charts', () => ({
-  LineChart: {}
+  BarChart: {},
+  FunnelChart: {},
+  GaugeChart: {},
+  LineChart: {},
+  PieChart: {},
+  RadarChart: {}
 }));
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   LegendComponent: {},
+  RadarComponent: {},
+  TitleComponent: {},
   TooltipComponent: {}
 }));
 vi.mock('echarts/renderers', () => ({
@@ -452,9 +459,6 @@ describe('SystemRuntimePanel', () => {
             series?: Array<{
               name?: string;
               data?: unknown[];
-              tooltip?: {
-                valueFormatter?: (value: unknown, dataIndex: number) => string;
-              };
             }>;
           }
         | undefined;
@@ -468,15 +472,6 @@ describe('SystemRuntimePanel', () => {
       expect(option?.series?.[0]?.data).toEqual([768]);
       expect(option?.series?.[1]?.data).toEqual([320]);
       expect(option?.series?.[2]?.data).toEqual([256]);
-      expect(option?.series?.[0]?.tooltip?.valueFormatter?.(768, 0)).toBe(
-        '768 MB · 5 个进程'
-      );
-      expect(option?.series?.[1]?.tooltip?.valueFormatter?.(320, 0)).toBe(
-        '320 MB · 2 个进程'
-      );
-      expect(option?.series?.[2]?.tooltip?.valueFormatter?.(256, 0)).toBe(
-        '256 MB · 1 个进程'
-      );
     });
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行目标' }));

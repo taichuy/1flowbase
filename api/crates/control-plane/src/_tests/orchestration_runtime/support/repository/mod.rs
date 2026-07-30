@@ -47,6 +47,7 @@ struct InMemoryOrchestrationRuntimeState {
     status_before_next_flow_update: Option<(Uuid, domain::FlowRunStatus)>,
     stream_terminal_failure_before_next_flow_update: Option<Uuid>,
     fail_next_runtime_event_append: bool,
+    fail_next_terminal_runtime_event_append: bool,
     fail_next_published_stream_terminal_projection: bool,
     application_run_detail_read_count: usize,
 }
@@ -936,6 +937,13 @@ impl InMemoryOrchestrationRuntimeRepository {
             .lock()
             .expect("runtime repo mutex poisoned")
             .fail_next_runtime_event_append = true;
+    }
+
+    pub(super) fn fail_next_terminal_runtime_event_append(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .fail_next_terminal_runtime_event_append = true;
     }
 
     pub(super) fn fail_next_published_stream_terminal_projection(&self) {

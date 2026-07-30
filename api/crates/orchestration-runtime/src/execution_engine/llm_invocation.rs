@@ -101,6 +101,7 @@ pub(super) struct SystemPromptPart {
     pub(super) source: Value,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn build_provider_invocation<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,

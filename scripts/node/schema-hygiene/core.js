@@ -682,6 +682,18 @@ function parseAlterTableDropConstraint(table, action) {
   return true;
 }
 
+function parseAlterTableRenameTable({ context, table, tableName, action }) {
+  const match = /^rename\s+to\s+("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)$/iu.exec(action.trim());
+  if (!match) {
+    return false;
+  }
+  const renamedTableName = normalizeIdentifier(match[1]);
+  context.tables.delete(tableName);
+  table.name = renamedTableName;
+  context.tables.set(renamedTableName, table);
+  return true;
+}
+
 function parseAlterTable(statement, context) {
   const cleaned = stripSqlComments(statement).trim();
   const match = /^alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?([a-zA-Z0-9_."$]+)\s+([\s\S]+)$/iu.exec(cleaned);
@@ -713,6 +725,8 @@ function parseAlterTable(statement, context) {
       parsed = parseAlterTableAlterColumn(table, trimmed);
     } else if (/^rename\s+column\b/iu.test(trimmed)) {
       parsed = parseAlterTableRenameColumn(table, trimmed);
+    } else if (/^rename\s+to\b/iu.test(trimmed)) {
+      parsed = parseAlterTableRenameTable({ context, table, tableName, action: trimmed });
     }
 
     if (!parsed) {

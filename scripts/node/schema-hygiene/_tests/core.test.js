@@ -548,6 +548,28 @@ test('collectSchemaInventory applies supported alter column nullability and defa
   assert.equal(label.default, true);
 });
 
+test('collectSchemaInventory follows table renames without weakening unknown alter actions', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table catalog_rows (
+      id uuid primary key
+    );
+    alter table catalog_rows rename to catalog_rows_archived;
+    alter table catalog_rows_archived alter column id type text;
+  `);
+
+  const inventory = collectSchemaInventory({ repoRoot });
+
+  assert.equal(inventory.tables.some((table) => table.name === 'catalog_rows'), false);
+  assert.equal(
+    inventory.tables.some((table) => table.name === 'catalog_rows_archived'),
+    true
+  );
+  assert.deepEqual(
+    inventory.parseErrors.map((parseError) => parseError.rule),
+    ['unsupported-alter-table-action']
+  );
+});
+
 test('collectSchemaInventory applies unnamed constraints added by alter table', () => {
   const repoRoot = createRepoWithMigration(`
     create table parent_rows (
@@ -780,7 +802,7 @@ test('evaluateSchemaHygiene fails registered_system_table without fixed template
   );
 });
 
-test('default schema hygiene config exempts only bounded plugin projection tables', () => {
+test('default schema hygiene config exempts bounded projection and release tables', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const inventory = collectSchemaInventory({ repoRoot });
   const report = evaluateSchemaHygiene({
@@ -788,12 +810,23 @@ test('default schema hygiene config exempts only bounded plugin projection table
     config: loadConfig(repoRoot),
   });
 
-  for (const tableName of ['plugin_package_catalog_projection', 'plugin_artifact_instances']) {
+  for (const [tableName, expectedAction] of [
+    ['plugin_package_catalog_projection', 'bounded_projection_exempt'],
+    ['plugin_artifact_instances', 'bounded_projection_exempt'],
+    ['i18n_catalog_release_files', 'bounded_release_child_declared'],
+    ['i18n_catalog_release_messages', 'bounded_release_child_declared'],
+    ['i18n_catalog_release_translations', 'bounded_release_child_declared'],
+    ['i18n_catalog_releases', 'system_release_ledger_declared'],
+    ['workspace_i18n_catalog_custom_translations', 'bounded_workspace_projection_declared'],
+    ['workspace_i18n_catalog_states', 'workspace_state_root_declared'],
+    ['workspace_i18n_catalog_obsolete_messages', 'bounded_workspace_projection_declared'],
+    ['workspace_i18n_catalog_overrides', 'bounded_workspace_projection_declared'],
+  ]) {
     const table = report.tables.find((candidate) => candidate.name === tableName);
-    assert.equal(table.exemption.kind, 'bounded_projection');
+    assert.ok(table.exemption.kind);
     assert.equal(table.findings.some((finding) => finding.rule === 'managed-table-needs-owner-review'), false);
     assert.equal(table.platformReadiness.recommendedActions.includes('needs_owner_review'), false);
-    assert.deepEqual(table.platformReadiness.recommendedActions, ['bounded_projection_exempt']);
+    assert.deepEqual(table.platformReadiness.recommendedActions, [expectedAction]);
   }
 
   assert.equal(report.summary.errors, 0);

@@ -112,6 +112,7 @@ fn failed_llm_output_text(error_payload: &Value) -> String {
         .to_string()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_successful_llm_execution(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,

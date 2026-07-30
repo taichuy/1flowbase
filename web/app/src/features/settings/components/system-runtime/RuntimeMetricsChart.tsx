@@ -191,7 +191,7 @@ export function RuntimeMetricsChart({
         type: 'value',
         name: percentage ? '%' : kind === 'process_memory' ? 'MB' : 'KB/s',
         min: 0,
-        max: percentage ? 100 : undefined,
+        ...(percentage ? { max: 100 } : {}),
         nameTextStyle: { color: '#7b8982', fontSize: 11 },
         axisLabel: { color: '#7b8982', fontSize: 11 },
         splitLine: { lineStyle: { color: '#e8edea' } }

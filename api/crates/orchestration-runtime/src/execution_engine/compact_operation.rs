@@ -1,5 +1,6 @@
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_compact_consumer<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,

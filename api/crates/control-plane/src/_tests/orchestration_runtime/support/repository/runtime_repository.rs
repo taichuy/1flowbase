@@ -274,7 +274,9 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
 
         // This test seam models a database error after the statement set is assembled but before
         // the transaction commits. The real PostgreSQL implementation uses one transaction.
-        if std::mem::take(&mut inner.fail_next_runtime_event_append) {
+        if std::mem::take(&mut inner.fail_next_terminal_runtime_event_append)
+            || std::mem::take(&mut inner.fail_next_runtime_event_append)
+        {
             return Err(anyhow::anyhow!("simulated runtime event append failure"));
         }
 

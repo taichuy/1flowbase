@@ -230,7 +230,7 @@ async fn selected_answer_branch_projects_reasoning_before_text_exactly_once() {
     ]);
     let stream =
         std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
-    let service = service.with_runtime_event_stream(stream);
+    let service = service.with_runtime_event_stream(stream.clone());
     let seeded = service
         .seed_application_with_flow("Branching Answer Agent")
         .await;
@@ -264,9 +264,8 @@ async fn selected_answer_branch_projects_reasoning_before_text_exactly_once() {
         .iter()
         .all(|node_run| node_run.node_id != "node-answer-inactive"));
 
-    let presentation_events = service
-        .list_runtime_events(completed.flow_run.id, 0)
-        .await
+    let presentation_events = stream
+        .events()
         .into_iter()
         .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
         .filter(|event| matches!(event.event_type.as_str(), "reasoning_delta" | "text_delta"))
@@ -276,10 +275,16 @@ async fn selected_answer_branch_projects_reasoning_before_text_exactly_once() {
             .iter()
             .map(|event| event.event_type.as_str())
             .collect::<Vec<_>>(),
-        vec!["reasoning_delta", "text_delta"]
+        vec!["reasoning_delta", "text_delta", "text_delta"]
     );
     assert_eq!(presentation_events[0].payload["text"], json!("先分析"));
-    assert_eq!(presentation_events[1].payload["text"], json!("最终回答"));
+    assert_eq!(
+        presentation_events[1..]
+            .iter()
+            .filter_map(|event| event.payload["text"].as_str())
+            .collect::<String>(),
+        "最终回答"
+    );
 }
 
 #[tokio::test]

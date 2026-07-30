@@ -34,7 +34,7 @@ describe('TSX Studio layout', () => {
       'grid-row: 1;'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__editor-panel')).toContain(
-      'grid-template-rows: minmax(320px, 1fr) auto;'
+      'grid-template-rows: auto minmax(0, 1fr);'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__resource-panel')).toContain(
       'grid-column: 3;'
@@ -60,8 +60,8 @@ describe('TSX Studio layout', () => {
   });
 
   test('allows window header actions to shrink within a mobile viewport', () => {
-    expect(
-      cssBlock('\\.frontstage-jsx-studio__window-actions')
-    ).toContain('min-width: 0;');
+    expect(cssBlock('\\.frontstage-jsx-studio__window-actions')).toContain(
+      'min-width: 0;'
+    );
   });
 });

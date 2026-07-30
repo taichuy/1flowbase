@@ -1544,6 +1544,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn execute_count_tokens_consumer<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,

@@ -97,6 +97,33 @@ const authCenterApi = vi.hoisted(() => ({
   reorderSettingsAuthCenterAuthenticators: vi.fn()
 }));
 
+const authenticatorConfigSchema = () => [
+  {
+    key: 'title',
+    label: 'Authenticator title',
+    type: 'string' as const,
+    required: true
+  },
+  {
+    key: 'description',
+    label: 'Description',
+    type: 'string' as const,
+    control: 'textarea' as const
+  },
+  {
+    key: 'enabled',
+    label: 'Enabled',
+    type: 'boolean' as const,
+    control: 'switch' as const
+  },
+  {
+    key: 'self_registration_enabled',
+    label: 'Allow self registration',
+    type: 'boolean' as const,
+    control: 'switch' as const
+  }
+];
+
 const modelProvidersApi = vi.hoisted(() => ({
   settingsModelProviderCatalogQueryKey: [
     'settings',
@@ -325,6 +352,7 @@ vi.mock('echarts/charts', () => ({
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   LegendComponent: {},
+  RadarComponent: {},
   TitleComponent: {},
   TooltipComponent: {}
 }));
@@ -522,7 +550,7 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: true,
           sort_order: 0,
-          config_schema: [],
+          config_schema: authenticatorConfigSchema(),
           config_values: {
             title: 'Password',
             enabled: true,
@@ -1005,6 +1033,7 @@ describe('SettingsPage', () => {
           is_builtin: false,
           sort_order: 10,
           config_schema: [
+            ...authenticatorConfigSchema(),
             {
               key: 'issuer_url',
               label: 'issuer_url',
@@ -1064,10 +1093,14 @@ describe('SettingsPage', () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).queryByText('类型')).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('名称')).toHaveValue('OIDC');
-    expect(within(dialog).getByLabelText('说明')).toHaveValue('Primary OIDC');
+    expect(within(dialog).getByLabelText('Authenticator title')).toHaveValue(
+      'OIDC'
+    );
+    expect(within(dialog).getByLabelText('Description')).toHaveValue(
+      'Primary OIDC'
+    );
     expect(
-      within(dialog).getByRole('switch', { name: '启用' })
+      within(dialog).getByRole('switch', { name: 'Enabled' })
     ).not.toBeChecked();
   });
 
@@ -1084,7 +1117,7 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: true,
           sort_order: 0,
-          config_schema: [],
+          config_schema: authenticatorConfigSchema(),
           config_values: {
             description: 'Local password authentication',
             extension_config: {}
@@ -1099,11 +1132,15 @@ describe('SettingsPage', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
 
     expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('名称')).toHaveValue('Password');
-    expect(within(dialog).getByLabelText('说明')).toHaveValue(
+    expect(within(dialog).getByLabelText('Authenticator title')).toHaveValue(
+      'Password'
+    );
+    expect(within(dialog).getByLabelText('Description')).toHaveValue(
       'Local password authentication'
     );
-    expect(within(dialog).getByRole('switch', { name: '启用' })).toBeChecked();
+    expect(
+      within(dialog).getByRole('switch', { name: 'Enabled' })
+    ).toBeChecked();
     const resizeHandle = within(dialog).getByRole('separator', {
       name: '调整认证器配置抽屉宽度'
     });
@@ -1151,7 +1188,7 @@ describe('SettingsPage', () => {
             enabled: false,
             is_builtin: false,
             sort_order: 10,
-            config_schema: [],
+            config_schema: authenticatorConfigSchema(),
             config_values: {
               title: 'OIDC',
               enabled: false,
@@ -1174,7 +1211,7 @@ describe('SettingsPage', () => {
             enabled: true,
             is_builtin: false,
             sort_order: 10,
-            config_schema: [],
+            config_schema: authenticatorConfigSchema(),
             config_values: {
               title: 'OIDC Login',
               enabled: true,
@@ -1194,7 +1231,7 @@ describe('SettingsPage', () => {
         enabled: true,
         is_builtin: false,
         sort_order: 10,
-        config_schema: [],
+        config_schema: authenticatorConfigSchema(),
         config_values: {
           title: 'OIDC Login',
           enabled: true,
@@ -1213,13 +1250,13 @@ describe('SettingsPage', () => {
     const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
 
     expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('名称'), {
+    fireEvent.change(within(dialog).getByLabelText('Authenticator title'), {
       target: { value: 'OIDC Login' }
     });
-    fireEvent.change(within(dialog).getByLabelText('说明'), {
+    fireEvent.change(within(dialog).getByLabelText('Description'), {
       target: { value: 'Primary OIDC login' }
     });
-    fireEvent.click(within(dialog).getByRole('switch', { name: '启用' }));
+    fireEvent.click(within(dialog).getByRole('switch', { name: 'Enabled' }));
     fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
 
     await waitFor(() => {
@@ -1230,7 +1267,9 @@ describe('SettingsPage', () => {
         {
           title: 'OIDC Login',
           enabled: true,
-          description: 'Primary OIDC login'
+          description: 'Primary OIDC login',
+          self_registration_enabled: false,
+          extension_config: {}
         },
         'csrf-123'
       );
@@ -1256,7 +1295,7 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: false,
           sort_order: 10,
-          config_schema: [],
+          config_schema: authenticatorConfigSchema(),
           config_values: {
             title: 'OIDC',
             enabled: true,
@@ -1273,13 +1312,13 @@ describe('SettingsPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
-    fireEvent.change(within(dialog).getByLabelText('名称'), {
+    fireEvent.change(within(dialog).getByLabelText('Authenticator title'), {
       target: { value: 'OIDC Login' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
 
     expect(
-      await within(dialog).findByText('认证器配置保存失败')
+      await within(dialog).findByText('permission denied')
     ).toBeInTheDocument();
   });
 
@@ -1296,7 +1335,7 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: false,
           sort_order: 10,
-          config_schema: [],
+          config_schema: authenticatorConfigSchema(),
           config_values: {
             title: 'OIDC',
             enabled: true,
@@ -1314,8 +1353,10 @@ describe('SettingsPage', () => {
     expect(
       within(dialog).getByText('需要认证器管理权限。')
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
-    expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
+    expect(within(dialog).getByLabelText('Authenticator title')).toBeDisabled();
+    expect(
+      within(dialog).getByRole('switch', { name: 'Enabled' })
+    ).toBeDisabled();
     expect(
       within(dialog).getByRole('button', { name: /保\s*存/ })
     ).toBeDisabled();
@@ -1335,7 +1376,7 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: false,
           sort_order: 10,
-          config_schema: [],
+          config_schema: authenticatorConfigSchema(),
           config_values: {
             title: 'OIDC',
             enabled: true,
@@ -1353,8 +1394,10 @@ describe('SettingsPage', () => {
     expect(
       within(dialog).getByText('缺少安全校验令牌，请刷新页面后重试。')
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('名称')).toBeDisabled();
-    expect(within(dialog).getByRole('switch', { name: '启用' })).toBeDisabled();
+    expect(within(dialog).getByLabelText('Authenticator title')).toBeDisabled();
+    expect(
+      within(dialog).getByRole('switch', { name: 'Enabled' })
+    ).toBeDisabled();
     expect(
       within(dialog).getByRole('button', { name: /保\s*存/ })
     ).toBeDisabled();
@@ -1373,7 +1416,7 @@ describe('SettingsPage', () => {
           enabled: true,
           is_builtin: true,
           sort_order: 0,
-          config_schema: [],
+          config_schema: authenticatorConfigSchema(),
           config_values: {
             title: 'Password',
             enabled: true,
@@ -1392,9 +1435,11 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Password 配置' })
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('名称')).toBeDisabled();
-    expect(screen.getByLabelText('名称')).toHaveValue('Password');
-    expect(screen.getByRole('switch', { name: '启用' })).toBeChecked();
+    expect(screen.getByLabelText('Authenticator title')).toBeDisabled();
+    expect(screen.getByLabelText('Authenticator title')).toHaveValue(
+      'Password'
+    );
+    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeChecked();
   });
 
   test('renders API key for signed-in users without management permissions', async () => {
