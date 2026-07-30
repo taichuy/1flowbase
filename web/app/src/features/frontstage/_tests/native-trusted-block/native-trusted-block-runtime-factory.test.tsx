@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, waitFor, within } from '@testing-library/react';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { ComponentType, ReactNode } from 'react';
@@ -17,8 +17,8 @@ import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
 
 import {
-  createFrontstageNativeTrustedBlockReactAdapter,
-  type FrontstageNativeTrustedBlockCreateRoot
+  FrontstageNativeTrustedBlockPortalHost,
+  createFrontstageUnavailableBlockContext
 } from '../../lib/native-trusted-block-react-adapter';
 import {
   createFrontstageNativeTrustedBlockModuleMap,
@@ -50,36 +50,6 @@ export default function Block(props) {
     props: { title: 'Native runtime ready' },
     requiredPermissions: ['ui_block.javascript.native'],
     ...overrides
-  };
-}
-
-function createTestingRoot(): {
-  createRoot: FrontstageNativeTrustedBlockCreateRoot;
-  renderSpy: ReturnType<typeof vi.fn>;
-  unmountSpy: ReturnType<typeof vi.fn>;
-} {
-  const renderSpy = vi.fn();
-  const unmountSpy = vi.fn();
-  let unmountRendered: (() => void) | undefined;
-
-  return {
-    renderSpy,
-    unmountSpy,
-    createRoot(root) {
-      return {
-        render(children: ReactNode) {
-          renderSpy();
-          unmountRendered = render(<>{children}</>, {
-            container: root as HTMLElement
-          }).unmount;
-        },
-        unmount() {
-          unmountSpy();
-          unmountRendered?.();
-          unmountRendered = undefined;
-        }
-      };
-    }
   };
 }
 
@@ -124,31 +94,34 @@ describe('frontstage native trusted block runtime factory', () => {
     expect(manifest.contractVersion).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  test('evaluates valid non-JSX source through host modules and mounts through the React adapter', async () => {
-    const testingRoot = createTestingRoot();
-    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: testingRoot.createRoot,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
-    });
-
-    await adapter.mount({ plan: createPlan(), root: createBlockRoot() });
+  test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {
+    const root = createBlockRoot();
+    const plan = createPlan();
+    const component = createFrontstageNativeTrustedBlockRuntimeFactory()(plan);
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="runtime:1"
+        plan={plan}
+        component={component}
+        ctx={createFrontstageUnavailableBlockContext(plan)}
+      />
+    );
 
     expect(
-      await screen.findByRole('button', { name: 'Native runtime ready' })
+      await within(root.shadowRoot as unknown as HTMLElement).findByRole(
+        'button',
+        { name: 'Native runtime ready' }
+      )
     ).toBeInTheDocument();
-    expect(testingRoot.renderSpy).toHaveBeenCalledTimes(1);
   });
 
-  test('rejects evaluator failures before rendering', async () => {
-    const testingRoot = createTestingRoot();
-    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: testingRoot.createRoot,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
-    });
-
-    await expect(
-      adapter.mount({
-        plan: createPlan({
+  test('rejects evaluator failures before rendering', () => {
+    const resolver = createFrontstageNativeTrustedBlockRuntimeFactory();
+    let failure: unknown;
+    try {
+      resolver(
+        createPlan({
           source: `
 import React from 'react';
 
@@ -158,15 +131,16 @@ export default function Block() {
   return React.createElement('div', null, 'Denied');
 }
 `
-        }),
-        root: createBlockRoot()
-      })
-    ).rejects.toMatchObject({
+        })
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
       kind: 'source_policy_failed',
       message: 'Native trusted block source policy failed.'
     });
-
-    expect(testingRoot.renderSpy).not.toHaveBeenCalled();
   });
 
   test('reports component render capability guard failures with structured runtime paths', async () => {
@@ -174,17 +148,9 @@ export default function Block() {
     const consoleErrorSpy = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    const testingRoot = createTestingRoot();
-    const adapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: testingRoot.createRoot,
-      onRuntimeError,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
-    });
-
-    try {
-      await adapter.mount({
-        plan: createPlan({
-          source: `
+    const root = createBlockRoot();
+    const plan = createPlan({
+      source: `
 import React from 'react';
 
 export default function Block() {
@@ -192,9 +158,20 @@ export default function Block() {
   return React.createElement('div', null, 'Denied');
 }
 `
-        }),
-        root: createBlockRoot()
-      });
+    });
+    const component = createFrontstageNativeTrustedBlockRuntimeFactory()(plan);
+
+    try {
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="capability:1"
+          plan={plan}
+          component={component}
+          ctx={createFrontstageUnavailableBlockContext(plan)}
+          onRuntimeError={onRuntimeError}
+        />
+      );
 
       await waitFor(() => {
         expect(onRuntimeError).toHaveBeenCalledWith(
@@ -219,41 +196,54 @@ export default function Block() {
       </button>
     );
 
-    const overrideRoot = createTestingRoot();
-    const overrideAdapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: overrideRoot.createRoot,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory({
+    const overrideElement = createBlockRoot();
+    const overridePlan = createPlan({ props: { title: 'Scoped override' } });
+    const overrideComponent = createFrontstageNativeTrustedBlockRuntimeFactory(
+      {
         modules: {
           antd: { Button: OverrideButton }
         }
-      })
-    });
-
-    await overrideAdapter.mount({
-      plan: createPlan({ props: { title: 'Scoped override' } }),
-      root: createBlockRoot()
-    });
-
-    expect(await screen.findByTestId('override-button')).toHaveTextContent(
-      'Override: Scoped override'
+      }
+    )(overridePlan);
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={overrideElement}
+        renderEpoch="override:1"
+        plan={overridePlan}
+        component={overrideComponent}
+        ctx={createFrontstageUnavailableBlockContext(overridePlan)}
+      />
     );
 
-    const defaultRoot = createTestingRoot();
-    const defaultAdapter = createFrontstageNativeTrustedBlockReactAdapter({
-      createRoot: defaultRoot.createRoot,
-      resolveComponent: createFrontstageNativeTrustedBlockRuntimeFactory()
-    });
+    expect(
+      await within(
+        overrideElement.shadowRoot as unknown as HTMLElement
+      ).findByTestId('override-button')
+    ).toHaveTextContent('Override: Scoped override');
 
-    await defaultAdapter.mount({
-      plan: createPlan({ props: { title: 'Default modules' } }),
-      root: createBlockRoot()
-    });
+    const defaultElement = createBlockRoot();
+    const defaultPlan = createPlan({ props: { title: 'Default modules' } });
+    const defaultComponent =
+      createFrontstageNativeTrustedBlockRuntimeFactory()(defaultPlan);
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={defaultElement}
+        renderEpoch="default:1"
+        plan={defaultPlan}
+        component={defaultComponent}
+        ctx={createFrontstageUnavailableBlockContext(defaultPlan)}
+      />
+    );
 
     expect(
-      await screen.findByRole('button', { name: 'Default modules' })
+      await within(
+        defaultElement.shadowRoot as unknown as HTMLElement
+      ).findByRole('button', { name: 'Default modules' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByText('Override: Default modules')
+      within(
+        defaultElement.shadowRoot as unknown as HTMLElement
+      ).queryByText('Override: Default modules')
     ).not.toBeInTheDocument();
   });
 
@@ -273,11 +263,12 @@ export default function Block() {
     expect(Object.keys(moduleMap).sort()).toEqual([
       '@1flowbase/ui',
       'antd',
-      'react'
+      'react',
+      'react/jsx-runtime'
     ]);
   });
 
-  test('is not statically imported by existing FrontStage pages, components, or catalog code', () => {
+  test('is consumed only by the editor run panel and not by catalog code', () => {
     const frontstageDir = join(process.cwd(), 'src/features/frontstage');
     const scannedFiles = collectSourceFiles([
       join(frontstageDir, 'pages'),
@@ -296,7 +287,11 @@ export default function Block() {
       )
     );
 
-    expect(matches).toEqual([]);
+    expect(matches).toEqual([
+      expect.stringMatching(
+        /components\/jsx-studio\/JsxStudioRunPanel\.tsx$/u
+      )
+    ]);
   });
 });
 

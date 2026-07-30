@@ -4,6 +4,12 @@ vi.mock('@1flowbase/api-client', () => ({
   getConsoleApplicationOrchestration: vi.fn().mockResolvedValue({
     current_version_id: null,
     draft: null,
+    messages: [
+      {
+        key: 'Welcome',
+        text: '欢迎'
+      }
+    ],
     versions: []
   }),
   getDefaultApiBaseUrl: vi.fn().mockReturnValue('http://127.0.0.1:7800'),
@@ -40,12 +46,18 @@ describe('agent flow orchestration api', () => {
   });
 
   test('passes the resolved base url when fetching orchestration state', async () => {
-    await fetchOrchestrationState('app-1');
+    const state = await fetchOrchestrationState('app-1');
 
     expect(getConsoleApplicationOrchestration).toHaveBeenCalledWith(
       'app-1',
       'http://127.0.0.1:7800'
     );
+    expect(state.messages).toEqual([
+      {
+        key: 'Welcome',
+        text: '欢迎'
+      }
+    ]);
   });
 
   test('passes draft payload and csrf token unchanged when saving a draft', async () => {

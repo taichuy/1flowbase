@@ -2,6 +2,7 @@ use access_control::permission_catalog;
 use anyhow::Result;
 use domain::AuthenticatorRecord;
 
+use crate::i18n_catalog::VerifiedOfficialCatalogSeed;
 use crate::ports::BootstrapRepository;
 
 #[derive(Debug, Clone)]
@@ -33,6 +34,56 @@ where
     }
 
     pub async fn run(&self, config: &BootstrapConfig) -> Result<BootstrapResult> {
+        self.run_without_official_catalog(config).await
+    }
+
+    pub async fn run_with_official_catalog(
+        &self,
+        config: &BootstrapConfig,
+        seed: &VerifiedOfficialCatalogSeed,
+    ) -> Result<BootstrapResult> {
+        self.run_auth_bootstrap(config, Some(seed)).await
+    }
+
+    pub async fn run_with_official_catalog_loader<F>(
+        &self,
+        config: &BootstrapConfig,
+        load_seed: F,
+    ) -> Result<BootstrapResult>
+    where
+        F: FnOnce() -> Result<VerifiedOfficialCatalogSeed>,
+    {
+        if self
+            .repository
+            .root_workspace_requires_official_catalog_seed(&config.workspace_name)
+            .await?
+        {
+            let seed = load_seed()?;
+            self.run_with_official_catalog(config, &seed).await
+        } else {
+            self.run_without_official_catalog(config).await
+        }
+    }
+
+    async fn run_without_official_catalog(
+        &self,
+        config: &BootstrapConfig,
+    ) -> Result<BootstrapResult> {
+        self.run_auth_bootstrap(config, None).await
+    }
+
+    async fn run_auth_bootstrap(
+        &self,
+        config: &BootstrapConfig,
+        official_catalog: Option<&VerifiedOfficialCatalogSeed>,
+    ) -> Result<BootstrapResult> {
+        self.repository
+            .replace_authenticator_public_ui_block_if_matches(
+                domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                crate::auth::public_ui::PREVIOUS_PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
+                crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
+            )
+            .await?;
         self.repository
             .upsert_authenticator(&AuthenticatorRecord {
                 id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
@@ -52,10 +103,22 @@ where
             .await?;
 
         let tenant = self.repository.upsert_root_tenant().await?;
-        let workspace = self
-            .repository
-            .upsert_workspace(tenant.id, &config.workspace_name)
-            .await?;
+        let workspace = match official_catalog {
+            Some(seed) => {
+                self.repository
+                    .upsert_root_workspace_with_official_catalog(
+                        tenant.id,
+                        &config.workspace_name,
+                        seed,
+                    )
+                    .await?
+            }
+            None => {
+                self.repository
+                    .upsert_workspace(tenant.id, &config.workspace_name)
+                    .await?
+            }
+        };
         self.repository.upsert_builtin_roles(workspace.id).await?;
         let root_user = self
             .repository

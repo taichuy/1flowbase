@@ -12,9 +12,15 @@ export interface ConsoleFrontendBlockPermissions {
 }
 
 export interface ConsoleFrontendBlockCodeModule {
-  source:
-    | '@1flowbase/block-sdk'
-    | '@1flowbase/block-renderer/antd-facade';
+  source: string;
+  version: string;
+  binding: 'host' | 'fetched';
+  assets: Array<{
+    role: 'browser_module' | 'shadow_style' | 'support';
+    media_type: string;
+    sha256: string;
+  }>;
+  exports: string[];
   type_declarations: string;
 }
 
@@ -30,7 +36,7 @@ export interface ConsoleFrontendBlockCatalogEntry {
   code_template?: string | null;
   code_template_version?: string | null;
   code_template_language?: 'jsx' | 'tsx' | null;
-  code_modules?: ConsoleFrontendBlockCodeModule[];
+  code_modules: ConsoleFrontendBlockCodeModule[];
   context_contract: ConsoleFrontendBlockContextContract;
   permissions: ConsoleFrontendBlockPermissions;
   ui_capabilities: string[];

@@ -159,7 +159,6 @@
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",
       "web/app/src/features/frontstage/components/PageCanvas.tsx",
       "web/app/src/features/frontstage/components/page-canvas.css",
-      "web/app/src/features/frontstage/components/RestrictedBlockRuntimePreview.tsx",
       "web/app/src/features/frontstage/components/BlockHoverToolbar.tsx",
       "web/app/src/features/frontstage/components/FrontstagePageTabs.tsx",
       "web/app/src/features/frontstage/components/frontstage-page-tabs.css",
@@ -798,6 +797,190 @@
     ]
   },
   {
+    "id": "page.settings-i18n.desktop",
+    "kind": "page",
+    "title": "Settings Languages Desktop Page",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/features/settings/i18n/zh_Hans.json",
+      "web/app/src/features/settings/i18n/en_US.json"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "catalog-ready",
+        "selector": "[data-testid=\"i18n-catalog-page\"][data-ready=\"true\"]",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "catalog-desktop-toolbar",
+        "selector": ".i18n-catalog-page__toolbar",
+        "propertyAssertions": [
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "catalog-desktop-filters",
+        "selector": ".i18n-catalog-page__filters",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "justify-content",
+            "expected": "flex-start"
+          }
+        ]
+      },
+      {
+        "id": "catalog-desktop-actions",
+        "selector": ".i18n-catalog-page__actions",
+        "propertyAssertions": [
+          {
+            "property": "justify-content",
+            "expected": "flex-end"
+          }
+        ]
+      },
+      {
+        "id": "catalog-desktop-browse",
+        "selector": ".i18n-catalog-page .data-table__scroll-area",
+        "propertyAssertions": [
+          {
+            "property": "overflow-x",
+            "expected": "auto"
+          },
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "catalog-desktop-pagination-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".i18n-catalog-page .data-table__pagination"
+      }
+    ]
+  },
+  {
+    "id": "page.settings-i18n.mobile",
+    "kind": "page",
+    "title": "Settings Languages Mobile Page",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
+      "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/features/settings/i18n/zh_Hans.json",
+      "web/app/src/features/settings/i18n/en_US.json"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "catalog-ready",
+        "selector": "[data-testid=\"i18n-catalog-page\"][data-ready=\"true\"]",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "catalog-mobile-toolbar",
+        "selector": ".i18n-catalog-page__toolbar",
+        "propertyAssertions": [
+          {
+            "property": "flex-direction",
+            "expected": "column"
+          }
+        ]
+      },
+      {
+        "id": "catalog-mobile-filters",
+        "selector": ".i18n-catalog-page__filters",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          },
+          {
+            "property": "justify-content",
+            "expected": "flex-start"
+          }
+        ]
+      },
+      {
+        "id": "catalog-mobile-actions",
+        "selector": ".i18n-catalog-page__actions",
+        "propertyAssertions": [
+          {
+            "property": "justify-content",
+            "expected": "flex-end"
+          }
+        ]
+      },
+      {
+        "id": "catalog-mobile-browse",
+        "selector": ".i18n-catalog-page .data-table__scroll-area",
+        "propertyAssertions": [
+          {
+            "property": "overflow-x",
+            "expected": "auto"
+          },
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "catalog-mobile-pagination-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".i18n-catalog-page .data-table__pagination"
+      }
+    ]
+  },
+  {
     "id": "page.settings-system-runtime",
     "kind": "page",
     "title": "Settings System Runtime Page",
@@ -1161,6 +1344,7 @@
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
       "web/app/src/features/auth/pages/SignInPage.tsx",
+      "web/app/src/features/auth/pages/sign-in-page.css",
       "web/app/src/features/auth/components/HeroAnimation.tsx",
       "web/app/src/app/router.tsx"
     ],

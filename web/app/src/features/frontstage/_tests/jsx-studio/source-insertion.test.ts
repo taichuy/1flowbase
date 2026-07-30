@@ -7,7 +7,7 @@ import {
 } from '../../lib/jsx-studio/source-insertion';
 
 const sdkSource = '@1flowbase/block-sdk';
-const facadeSource = '@1flowbase/block-renderer/antd-facade';
+const componentSource = '@1flowbase/native-components';
 
 function insertBeforeReturn(source: string) {
   const offset = source.indexOf('  return');
@@ -26,11 +26,14 @@ function sourceDiagnostics(source: string): string[] {
     readonly currentUser: unknown;
     readonly api: { get(path: string): unknown };
   }
-  export interface BlockModule { readonly main: unknown; }
 }
-declare module '${facadeSource}' {
+declare module '${componentSource}' {
   export const Stack: (props?: { children?: unknown }) => unknown;
-  export const Button: (props?: { children?: unknown }) => unknown;
+  export interface ButtonProps {
+    readonly onClick?: () => void;
+    readonly children?: unknown;
+  }
+  export const Button: (props?: ButtonProps) => unknown;
 }`
     ]
   ]);
@@ -65,11 +68,11 @@ declare module '${facadeSource}' {
 }
 
 describe('Frontstage JSX source insertion', () => {
-  test('AC-001 inserts context references through the actual main parameter binding', () => {
+  test('D4-AC-005 inserts context references through the default React component binding', () => {
     const source = `import type { BlockContext } from '${sdkSource}';
 
-async function main(_ctx: BlockContext) {
-  return { view: null, outputs: {} };
+export default function Block({ ctx: _ctx }: { ctx: BlockContext }) {
+  return <div>Ready</div>;
 }`;
 
     const plan = planFrontstageJsxInsertion({
@@ -83,11 +86,11 @@ async function main(_ctx: BlockContext) {
     );
   });
 
-  test('AC-002 adds a component value import and plans snippet/import as one edit batch', () => {
+  test('D2-AC-002 adds a standard React component import and snippet as one edit batch', () => {
     const source = `import type { BlockContext } from '${sdkSource}';
 
-async function main(ctx: BlockContext) {
-  return { view: null, outputs: {} };
+export default function Block({ ctx }: { ctx: BlockContext }) {
+  return <div>Ready</div>;
 }`;
     const plan = planFrontstageJsxInsertion({
       source,
@@ -95,23 +98,26 @@ async function main(ctx: BlockContext) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource
+        moduleSource: componentSource,
+        source: '<Button onClick={() => undefined}>保存</Button>'
       }
     });
     const nextSource = applyFrontstageJsxInsertionPlan(source, plan);
 
     expect(plan.edits).toHaveLength(2);
-    expect(nextSource).toContain(`import { Button } from '${facadeSource}';`);
-    expect(nextSource).toContain('<Button></Button>');
+    expect(nextSource).toContain(`import { Button } from '${componentSource}';`);
+    expect(nextSource).toContain(
+      '<Button onClick={() => undefined}>保存</Button>'
+    );
   });
 
   test('AC-002 and AC-004 merge and deduplicate an existing multiline component import', () => {
     const source = `import {
   Stack
-} from '${facadeSource}';
+} from '${componentSource}';
 
-async function main(ctx: unknown) {
-  return { view: null, outputs: {} };
+export default function Block({ ctx }: { ctx: unknown }) {
+  return <Stack>Ready</Stack>;
 }`;
     const firstPlan = planFrontstageJsxInsertion({
       source,
@@ -119,7 +125,8 @@ async function main(ctx: unknown) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource
+        moduleSource: componentSource,
+        source: '<Button></Button>'
       }
     });
     const firstSource = applyFrontstageJsxInsertionPlan(source, firstPlan);
@@ -129,7 +136,8 @@ async function main(ctx: unknown) {
       insertion: {
         kind: 'component',
         name: 'Button',
-        moduleSource: facadeSource
+        moduleSource: componentSource,
+        source: '<Button></Button>'
       }
     });
     const secondSource = applyFrontstageJsxInsertionPlan(
@@ -137,18 +145,15 @@ async function main(ctx: unknown) {
       secondPlan
     );
 
-    expect(secondSource.match(new RegExp(facadeSource, 'g'))).toHaveLength(1);
+    expect(secondSource.match(new RegExp(componentSource, 'g'))).toHaveLength(1);
     expect(secondSource.match(/\bButton\b/g)).toHaveLength(5);
     expect(secondPlan.edits).toHaveLength(1);
   });
 
-  test('AC-003 merges the interface BlockContext type dependency into the SDK import', () => {
-    const source = `import type {
-  BlockModule,
-  BlockResult
-} from '${sdkSource}';
-
-export default {} satisfies BlockModule;`;
+  test('D4-AC-005 merges an interface BlockContext helper into standard component source', () => {
+    const source = `export default function Block() {
+  return <div>Ready</div>;
+}`;
     const insertionOffset = source.indexOf('export default');
     const plan = planFrontstageJsxInsertion({
       source,
@@ -169,46 +174,45 @@ export default {} satisfies BlockModule;`;
     const nextSource = applyFrontstageJsxInsertionPlan(source, plan);
 
     expect(nextSource.match(new RegExp(sdkSource, 'g'))).toHaveLength(1);
-    expect(nextSource).toContain('  BlockContext,');
+    expect(nextSource).toContain('import type { BlockContext }');
     expect(nextSource).toContain('const loadOrders = (ctx: BlockContext)');
   });
 
   test('AC-006 leaves valid variable, component, and interface insertions without TypeScript diagnostics', () => {
-    const baseSource = `import type { BlockContext, BlockModule } from '${sdkSource}';
-import { Stack } from '${facadeSource}';
+    const baseSource = `import type { BlockContext } from '${sdkSource}';
+import { Stack } from '${componentSource}';
 
-function main(_ctx: BlockContext) {
-  return { view: null, outputs: {} };
-}
-
-export default { main } satisfies BlockModule;`;
-    const viewOffset = baseSource.indexOf('null');
+export default function Block({ ctx: _ctx }: { ctx: BlockContext }) {
+  return <Stack>content</Stack>;
+}`;
+    const viewOffset = baseSource.indexOf('content');
     const variableSource = applyFrontstageJsxInsertionPlan(
       baseSource,
       planFrontstageJsxInsertion({
         source: baseSource,
-        selection: { start: viewOffset, end: viewOffset + 4 },
+        selection: { start: viewOffset, end: viewOffset + 7 },
         insertion: { kind: 'context-reference', memberPath: 'currentUser' }
       })
     );
-    const componentSource = applyFrontstageJsxInsertionPlan(
+    const componentInsertedSource = applyFrontstageJsxInsertionPlan(
       baseSource,
       planFrontstageJsxInsertion({
         source: baseSource,
-        selection: { start: viewOffset, end: viewOffset + 4 },
+        selection: { start: viewOffset, end: viewOffset + 7 },
         insertion: {
           kind: 'component',
           name: 'Button',
-          moduleSource: facadeSource
+          moduleSource: componentSource,
+          source: '<Button></Button>'
         }
       })
     );
-    const mainOffset = baseSource.indexOf('function main');
+    const componentOffset = baseSource.indexOf('export default');
     const interfaceSource = applyFrontstageJsxInsertionPlan(
       baseSource,
       planFrontstageJsxInsertion({
         source: baseSource,
-        selection: { start: mainOffset, end: mainOffset },
+        selection: { start: componentOffset, end: componentOffset },
         insertion: {
           kind: 'source',
           source:
@@ -225,7 +229,15 @@ export default { main } satisfies BlockModule;`;
     );
 
     expect(sourceDiagnostics(variableSource)).toEqual([]);
-    expect(sourceDiagnostics(componentSource)).toEqual([]);
+    expect(sourceDiagnostics(componentInsertedSource)).toEqual([]);
     expect(sourceDiagnostics(interfaceSource)).toEqual([]);
+  });
+
+  test('D2-AC-002 accepts standard React props from the registered declaration', () => {
+    const source = `import { Button } from '${componentSource}';
+
+const view = <Button onClick={() => undefined}>保存</Button>;`;
+
+    expect(sourceDiagnostics(source)).toEqual([]);
   });
 });

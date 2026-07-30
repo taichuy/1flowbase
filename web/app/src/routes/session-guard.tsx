@@ -13,7 +13,13 @@ export function SessionGuard({ children }: PropsWithChildren) {
   }
 
   if (sessionStatus === 'anonymous') {
-    return <Navigate to="/sign-in" replace />;
+    return (
+      <Navigate
+        to="/sign-in"
+        search={{ authenticator_id: undefined }}
+        replace
+      />
+    );
   }
 
   return <>{children}</>;

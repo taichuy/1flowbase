@@ -57,9 +57,10 @@ pub async fn list_permissions(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<PermissionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let permissions = RoleService::new(state.store.clone())
+    let permission_options = RoleService::new(state.store.clone())
         .list_permission_options(context.user.id)
-        .await?
+        .await?;
+    let permissions = permission_options
         .into_iter()
         .map(|permission| {
             let settings_feature = state

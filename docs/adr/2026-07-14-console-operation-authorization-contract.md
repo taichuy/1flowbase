@@ -1,8 +1,8 @@
 # ADR: Console operation 授权 contract
 
-- 状态：Accepted（contract 已冻结，运行时实施待后续 Issue 完成）
+- 状态：Accepted（由 #1485、#1487 更新）
 - 日期：2026-07-14
-- 关联 Issue：[GitHub Issue #1259](https://github.com/taichuy/1flowbase/issues/1259)、[#1260](https://github.com/taichuy/1flowbase/issues/1260)、[#1261](https://github.com/taichuy/1flowbase/issues/1261)、[#1262](https://github.com/taichuy/1flowbase/issues/1262)
+- 关联 Issue：[GitHub Issue #1259](https://github.com/taichuy/1flowbase/issues/1259)、[#1260](https://github.com/taichuy/1flowbase/issues/1260)、[#1261](https://github.com/taichuy/1flowbase/issues/1261)、[#1262](https://github.com/taichuy/1flowbase/issues/1262)、[#1485](https://github.com/taichuy/1flowbase/issues/1485)、[#1487](https://github.com/taichuy/1flowbase/issues/1487)
 - 前置 ADR：[SettingsFeature 注册与授权基础](./2026-07-13-settings-feature-registry-foundation.md)
 - 任务形态：`hybrid-foundation`
 
@@ -23,16 +23,17 @@
 
 ### Canonical source of truth
 
-| 对象 | Owner | 唯一 source of truth | 持久化与编辑边界 |
-| --- | --- | --- | --- |
-| SettingsFeature、console surface、owner、lifecycle | Core 或 HostExtension owner | Core registration 或 HostExtension contribution 编译结果 | 可投影为 catalog/inventory；管理员不可编辑定义 |
-| Console operation | operation owner | `ConsoleOperationRegistration` 编译结果 | `operation_id` 稳定；不得从 route 或旧 permission code 反推 |
-| `method + path` → access rule | API owner | route assembly 与 operation registration 共同编译的唯一 route index | 只作 code-owned inventory；不得成为数据库角色策略 |
-| Resource/action 与访问字段 | 领域 owner | `ResourceAccessRegistration` 与对应 control-plane/repository contract | 字段名不可由管理员或请求提交；不得生成不受控动态 SQL |
-| Policy group membership | operation owner | operation registration 中显式的 `SettingsFeature(feature_id)` 或 `Other(group_id)` | 只组织管理界面和策略编辑；`Other` 不是 fallback |
-| Role group mode 与 operation policy | 角色管理员 | PostgreSQL role console policy store | 只保存稳定 group/operation id 与窄 scope；前端不是真值 |
-| Effective authorization | authorization evaluator | active compiled inventory + role policy + actor/真实资源状态的确定性计算 | 不单独持久化；多角色 allow union、默认拒绝 |
-| label/description/scope i18n | Core 或 HostExtension owner | owner locale resources 中由 registration 引用的稳定 key | 至少 `zh_Hans / en_US`；不得把 raw code 当展示 fallback |
+| 对象                                                | Owner                       | 唯一 source of truth                                                               | 持久化与编辑边界                                                                    |
+| --------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| SettingsFeature、console surface、owner、lifecycle  | Core 或 HostExtension owner | Core registration 或 HostExtension contribution 编译结果                           | 可投影为 catalog/inventory；管理员不可编辑定义                                      |
+| Console operation                                   | operation owner             | `ConsoleOperationRegistration` 编译结果                                            | `operation_id` 稳定；不得从 route 或旧 permission code 反推                         |
+| `method + path` → access rule                       | API owner                   | route assembly 与 operation registration 共同编译的唯一 route index                | 只作 code-owned inventory；不得成为数据库角色策略                                   |
+| Console interface metadata                          | API/interface owner         | 后端静态 route/OpenAPI 元数据编译结果                                              | 每个 `method + route template` 唯一一组英文 `summary + description`；管理员不可编辑 |
+| Resource/action 与访问字段                          | 领域 owner                  | `ResourceAccessRegistration` 与对应 control-plane/repository contract              | 字段名不可由管理员或请求提交；不得生成不受控动态 SQL                                |
+| Policy group membership                             | operation owner             | operation registration 中显式的 `SettingsFeature(feature_id)` 或 `Other(group_id)` | 只组织管理界面和策略编辑；`Other` 不是 fallback                                     |
+| Role group activation、strategy 与 operation policy | 角色管理员                  | PostgreSQL role console policy store                                               | 独立保存 `enabled`、`full/custom`、稳定 operation id 与窄 scope；前端不是真值       |
+| Effective authorization                             | authorization evaluator     | active compiled inventory + role policy + actor/真实资源状态的确定性计算           | 不单独持久化；多角色 allow union、默认拒绝                                          |
+| group/resource/action/scope i18n                    | Core 或 HostExtension owner | owner locale resources 中由 registration 引用的稳定 key                            | 至少 `zh_Hans / en_US`；不承载单接口 metadata                                       |
 
 前端只消费 compiled inventory 与 role policy DTO。前端不得硬编码 SettingsFeature、operation、resource/action、scope 列表，不得根据页面 URL 或展示分类补权限语义。
 
@@ -48,8 +49,8 @@ SettingsFeatureRegistration
 ConsoleOperationRegistration
 ├── operation_id / owner / lifecycle
 ├── policy_group: settings_feature(feature_id) | other(group_id)
-├── label_ref / description_ref / order
-├── routes[] { method, path }
+├── order
+├── route { method, path }（可配置 operation 恰好一个）
 └── authorization
     ├── simple
     └── resource_action { resource_code, action_code }
@@ -61,24 +62,29 @@ ResourceAccessRegistration
 ├── owner_field?: created_by
 ├── actions[]
 └── label_ref / description_ref / action i18n refs
+
+ConsoleInterfaceRegistration
+├── interface_id
+├── route { method, path }
+└── static English summary / description
 ```
 
-`operation_id` 表达稳定的安全语义；URL 重命名、route 拆分或 operation 从 `Other` 移入 SettingsFeature 都不得改变它。一个可配置 operation 必须恰好归属一个 policy group，一个 route 必须恰好绑定一个 operation。operation regrouping 只改变 compiled UI grouping；角色 operation policy 继续按 `operation_id` 生效，inventory diff 必须把它报告为 regrouping 而不是新增授权，且 effective authorization delta 必须为空。
+`operation_id` 表达单一接口的稳定安全语义。一个可配置 operation 必须恰好归属一个 policy group，并恰好绑定一个 `method + route template`；只有非角色配置的 `Authenticated` registration 可以聚合 routes。编译期 authorization profile 可供迁移审计复用，但不得作为运行时或持久化的聚合授权 ID。
+
+operation 不再拥有展示文案。全量 Console interface catalog 独立覆盖所有 `Authenticated` 与角色可配置 route，并在编译时按 route 关联授权 operation；角色 catalog 只投影 `authorization_operation_id` 非空的接口。缺失、重复、空白或非静态英文 metadata 必须 fail closed，不得读取历史 operation i18n、根据 URL 在前端生成或提供兼容 fallback。
 
 不进入角色配置但要求登录的 route 使用独立真实变体 `Authenticated`。`Public` 不属于 `/api/console/*` control plane。不得使用空 action、bool、`AnyFeature` 或隐式 path prefix 模糊这些差异。
 
 ### Role policy state and scope
 
-每个角色对每个可配置 policy group 使用以下三态：
+每个角色对每个可配置 policy group 独立保存开放开关与授权策略：
 
 ```text
-disabled --开放--> full
-full --保存详细配置--> custom
-custom --恢复通用--> full
-任意状态 --取消开放--> disabled
+enabled: false | true
+strategy: full | custom
 ```
 
-- `disabled`：不授予该 group 的任何可配置 operation。
+- `enabled=false`：不授予该 group 的任何可配置 operation，但保留 strategy 与 operation 配置以供再次开放。
 - `full`：授予当前 active group 的全部注册 operation；simple/create 为 enabled，view/update/delete 使用 `scope_all`。后续新增 operation 自动纳入，但必须生成包含受影响角色的权限扩张 diff。
 - `custom`：只授予显式 operation policy；未出现的 operation 默认 disabled。simple/create 保存 bool，view/update/delete 保存 `disabled | own | scope_all`。
 
@@ -104,13 +110,13 @@ simple operation 与 CRUD policy 是并列授权维度，不互为前置条件�
 1. `Authenticated`；
 2. `ConsoleOperation(operation_id)`。
 
-缺失 registration、重复 `method + path`、一个 route 多 owner、inactive owner 仍声明 active route、悬空 feature/group/resource/action/i18n 引用或 operation 无 route 时，compiled registry 不得发布，boot/CI 必须失败。请求期找不到 active compiled access rule 时必须拒绝，不得继续放行。
+缺失 registration 或 interface metadata、重复 `method + path`、一个 route 多 owner/多 metadata、inactive owner 仍声明 active route、悬空 feature/group/resource/action i18n 引用或 operation 无 route 时，compiled registry 不得发布，boot/CI 必须失败。请求期找不到 active compiled access rule 时必须拒绝，不得继续放行。
 
 `Other(group_id)` 只收纳显式注册 operation，绝不吸收未注册 route。若单一 HTTP route 根据 path/query/body 混合多个安全语义，先拆 route/command；不得在请求期猜 operation。
 
 ### HostExtension boundary
 
-Core 与 HostExtension 必须使用同一 compiled contract、validation、inventory schema 与 authorization evaluator。HostExtension contribution 必须提供 extension namespace 下的稳定 owner id/version、feature/group/operation/resource/i18n 引用，并通过统一 route/resource ownership 冲突检查；不得建立平行 registry。
+Core 与 HostExtension 必须使用同一 compiled contract、validation、interface inventory schema 与 authorization evaluator。HostExtension contribution 必须提供 extension namespace 下的稳定 owner id/version、feature/group/operation/resource 引用；单接口英文 metadata 进入统一 catalog，operation 不再声明 i18n 引用。所有贡献通过统一 route/resource ownership 冲突检查，不得建立平行 registry。
 
 native HostExtension v1 仍是 trusted in-process、boot-time activated、restart-scoped：
 

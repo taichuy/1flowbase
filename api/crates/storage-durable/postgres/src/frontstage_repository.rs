@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        AuthRepository, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
-        FrontstagePageRepository, MoveFrontstagePageInput, SaveFrontstageBlockCodeInput,
-        SaveFrontstageTabDocumentInput, UpdateFrontstagePageMetadataInput,
-        UpdateFrontstagePageTabInput, WorkspaceRepository,
+        AuthRepository, CreateFrontstageBlockInput, CreateFrontstagePageInput,
+        CreateFrontstagePageTabInput, FrontstagePageRepository, MoveFrontstagePageInput,
+        SaveFrontstageBlockCodeInput, SaveFrontstageTabDocumentInput,
+        UpdateFrontstagePageMetadataInput, UpdateFrontstagePageTabInput, WorkspaceRepository,
     },
 };
 use serde_json::json;
@@ -1024,6 +1024,177 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .await?;
 
         Ok(row.map(map_frontstage_block_code_row))
+    }
+
+    async fn create_frontstage_block(
+        &self,
+        input: &CreateFrontstageBlockInput,
+    ) -> Result<domain::frontstage::FrontstagePageDetail> {
+        let mut tx = self.pool().begin().await?;
+        let owns_tab: bool = sqlx::query_scalar(
+            r#"
+            select exists (
+                select 1
+                from frontstage_page_tabs
+                where workspace_id = $1 and page_id = $2 and id = $3
+            )
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.page_id)
+        .bind(input.tab_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !owns_tab {
+            return Err(ControlPlaneError::NotFound("frontstage_page_tab").into());
+        }
+
+        let inserted_code = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            insert into frontstage_block_codes (
+                id,
+                workspace_id,
+                page_id,
+                code_ref,
+                code,
+                created_by,
+                updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $6)
+            on conflict (workspace_id, page_id, code_ref) do nothing
+            returning id
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.workspace_id)
+        .bind(input.page_id)
+        .bind(&input.code_ref)
+        .bind(&input.code)
+        .bind(input.actor_user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if inserted_code.is_none() {
+            return Err(ControlPlaneError::Conflict("frontstage_block_code_exists").into());
+        }
+
+        let row = sqlx::query(
+            r#"
+            with updated_schema as (
+                update frontstage_page_schemas
+                set schema_payload = $4,
+                    root_payload = case
+                        when jsonb_typeof($4->'blocks') = 'array'
+                            then jsonb_set(root_payload, '{blocks}', $4->'blocks', true)
+                        else root_payload
+                    end,
+                    document_payload = $4,
+                    updated_by = $5,
+                    updated_at = now()
+                where workspace_id = $1 and tab_id = $3
+                returning
+                    workspace_id,
+                    tab_id,
+                    root_uid,
+                    document_payload,
+                    created_at,
+                    updated_at
+            ),
+            updated_page as (
+                update frontstage_pages
+                set updated_by = $5,
+                    updated_at = now()
+                where workspace_id = $1
+                  and id = $2
+                  and exists (
+                      select 1 from frontstage_page_tabs t
+                      join updated_schema s on s.tab_id = t.id
+                      where t.workspace_id = $1 and t.page_id = $2 and t.id = $3
+                  )
+                returning
+                    id,
+                    workspace_id,
+                    parent_id,
+                    kind,
+                    title,
+                    icon,
+                    tooltip,
+                    is_hidden,
+                    placement,
+                    content_presentation,
+                    slug,
+                    rank,
+                    created_at,
+                    updated_at
+            )
+            select
+                p.id,
+                p.workspace_id,
+                p.parent_id,
+                p.kind,
+                p.title,
+                p.icon,
+                p.tooltip,
+                p.is_hidden,
+                p.placement,
+                p.content_presentation,
+                p.slug,
+                p.rank,
+                p.created_at,
+                p.updated_at,
+                s.workspace_id as schema_workspace_id,
+                t.id as tab_id, t.workspace_id as tab_workspace_id, t.page_id as tab_page_id,
+                t.title as tab_title, t.rank as tab_rank, t.is_default as tab_is_default,
+                t.route_segment as tab_route_segment, t.document_root_uid,
+                t.created_at as tab_created_at, t.updated_at as tab_updated_at,
+                s.tab_id as schema_tab_id,
+                s.root_uid,
+                s.document_payload,
+                s.created_at as schema_created_at,
+                s.updated_at as schema_updated_at
+            from updated_page p
+            join frontstage_page_tabs t
+              on t.workspace_id = p.workspace_id and t.page_id = p.id and t.id = $3
+            join updated_schema s
+              on s.workspace_id = t.workspace_id and s.tab_id = t.id
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.page_id)
+        .bind(input.tab_id)
+        .bind(&input.document_payload)
+        .bind(input.actor_user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let row = row.ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+        let detail = domain::frontstage::FrontstagePageDetail {
+            page: map_frontstage_page_row(&row)?,
+            tab: map_frontstage_tab_row(&row),
+            document: map_frontstage_document_row(&row),
+        };
+
+        let audit = &input.audit_log;
+        let scope_id = audit.workspace_id.unwrap_or(domain::SYSTEM_SCOPE_ID);
+        sqlx::query(
+            r#"
+            insert into audit_logs (
+                id, workspace_id, scope_id, actor_user_id, target_type, target_id,
+                event_code, payload, created_by, updated_by, created_at, updated_at
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $4, $4, $9, $9)
+            "#,
+        )
+        .bind(audit.id)
+        .bind(audit.workspace_id)
+        .bind(scope_id)
+        .bind(audit.actor_user_id)
+        .bind(&audit.target_type)
+        .bind(audit.target_id)
+        .bind(&audit.event_code)
+        .bind(&audit.payload)
+        .bind(audit.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(detail)
     }
 
     async fn save_frontstage_block_code(

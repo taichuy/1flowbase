@@ -759,8 +759,9 @@ async fn role_console_policy_catalog_returns_localized_display_and_option_object
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/roles/console-policy-catalog?locale=zh_Hans")
+                .uri("/api/console/settings/roles/console-policy-catalog")
                 .header("cookie", cookie)
+                .header("x-1flowbase-locale", "zh_Hans")
                 .body(Body::empty())
                 .unwrap(),
         )

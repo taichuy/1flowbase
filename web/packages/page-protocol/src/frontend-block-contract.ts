@@ -1,4 +1,4 @@
-export const FRONTEND_BLOCK_RUNTIMES = ['iframe'] as const;
+export const FRONTEND_BLOCK_RUNTIMES = ['native_react'] as const;
 
 export const FRONTEND_BLOCK_CONTEXT_PRIMITIVES = [
   'text',
@@ -20,8 +20,7 @@ export const FRONTEND_BLOCK_PACKAGE_BOUNDARIES = [
   'page-protocol',
   'page-runtime',
   'block-renderer',
-  'block-sdk',
-  'antd-facade'
+  'block-sdk'
 ] as const;
 
 export type FrontendBlockRuntime = (typeof FRONTEND_BLOCK_RUNTIMES)[number];
@@ -43,13 +42,7 @@ export interface FrontendBlockPermissions {
   secrets: string;
 }
 
-export const FRONTEND_BLOCK_CODE_MODULE_SOURCES = [
-  '@1flowbase/block-sdk',
-  '@1flowbase/block-renderer/antd-facade'
-] as const;
-
-export type FrontendBlockCodeModuleSource =
-  (typeof FRONTEND_BLOCK_CODE_MODULE_SOURCES)[number];
+export type FrontendBlockCodeModuleSource = string;
 
 export interface FrontendBlockCodeModule {
   source: FrontendBlockCodeModuleSource;
@@ -77,7 +70,6 @@ export interface FrontendBlockCodeCapabilities {
   } | null;
   allowedImports: FrontendBlockCodeModuleSource[];
   monacoExtraLibs: FrontendBlockMonacoExtraLib[];
-  workerModuleSources: FrontendBlockCodeModuleSource[];
 }
 
 export interface FrontendBlockCatalogEntry extends FrontendBlockCodeContribution {
@@ -107,9 +99,7 @@ export interface FrontendBlockManifestContribution extends FrontendBlockCodeCont
 export function createFrontendBlockCodeCapabilities(
   contribution: FrontendBlockCodeContribution
 ): FrontendBlockCodeCapabilities {
-  const modules = (contribution.code_modules ?? []).filter((codeModule) =>
-    FRONTEND_BLOCK_CODE_MODULE_SOURCES.includes(codeModule.source)
-  );
+  const modules = contribution.code_modules ?? [];
   return {
     template:
       contribution.code_template &&
@@ -126,8 +116,7 @@ export function createFrontendBlockCodeCapabilities(
       source: codeModule.source,
       filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
       content: codeModule.type_declarations
-    })),
-    workerModuleSources: modules.map((codeModule) => codeModule.source)
+    }))
   };
 }
 

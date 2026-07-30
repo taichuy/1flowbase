@@ -24,6 +24,7 @@ const {
   BACKEND_SHARDS,
   BACKEND_TEST_SHARDS,
   IMAGE_LLM_VISION_GATE_TARGETS,
+  OFFICIAL_I18N_SEED_GATE_TARGETS,
 } = require('./backend-targets.js');
 
 const VALID_COVERAGE_TARGETS = new Set(['frontend', 'backend', 'all']);
@@ -44,6 +45,7 @@ const VALID_BACKEND_TARGETS = new Set([
   'test',
   'check',
   'image-llm-vision',
+  'official-i18n-seed',
 ]);
 const VERIFY_COMMANDS = new Set([
   'backend',
@@ -208,6 +210,25 @@ function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads }) {
   }));
 }
 
+function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads }) {
+  return OFFICIAL_I18N_SEED_GATE_TARGETS.map((target) => ({
+    label: target.label,
+    command: 'cargo',
+    args: [
+      'test',
+      '-p',
+      target.packageName,
+      '--jobs',
+      String(cargoJobs),
+      target.filter,
+      '--',
+      `--test-threads=${cargoTestThreads}`,
+    ],
+    cwd: 'api',
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+  }));
+}
+
 function buildBackendFmtCommand({ cargoJobs }) {
   return {
     label: 'cargo-fmt',
@@ -240,6 +261,10 @@ function buildBackendCommands({
 
   if (target === 'image-llm-vision') {
     return buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads });
+  }
+
+  if (target === 'official-i18n-seed') {
+    return buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads });
   }
 
   return [
@@ -278,7 +303,7 @@ function parseBackendCliArgs(argv = []) {
 
 function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision] [core-libs|runtime-storage|apps|control-plane|api-server|plugin-runner]\n'
+    'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision|official-i18n-seed] [core-libs|runtime-storage|apps|control-plane|api-server|plugin-runner]\n'
       + 'Runs backend Rust gates, optionally restricted to a CI shard. Package-level app shards are supported for test.\n'
   );
 }

@@ -5,6 +5,7 @@ const path = require('node:path');
 const {
   buildTemporaryFrontendCommand,
   collectRelationshipViolations,
+  createScenePage,
   createProbeUrl,
   formatBoundaryFailure,
   formatRelationshipFailure,
@@ -14,7 +15,8 @@ const {
   resolveStyleBoundaryBaseUrl,
   resolveStyleBoundaryFrontendHost,
   resolveTemporaryFrontendPort,
-  resolveSceneIds
+  resolveSceneIds,
+  resolveSceneViewport
 } = require('../core.js');
 
 test('parseCliArgs supports component, page, file, and all-pages modes', () => {
@@ -79,6 +81,69 @@ test('createProbeUrl targets the dedicated Vite entry', () => {
     createProbeUrl('http://127.0.0.1:3100', 'page.home'),
     'http://127.0.0.1:3100/style-boundary.html?scene=page.home'
   );
+});
+
+test('createScenePage applies an explicit scene viewport before navigation', async () => {
+  const calls = [];
+  const page = {};
+  const browser = {
+    async newPage(...args) {
+      calls.push(args);
+      return page;
+    }
+  };
+
+  assert.equal(
+    await createScenePage(browser, {
+      id: 'page.settings-i18n.mobile',
+      viewport: { width: 390, height: 844 }
+    }),
+    page
+  );
+  assert.deepEqual(calls, [[{ viewport: { width: 390, height: 844 } }]]);
+});
+
+test('createScenePage preserves the browser default for scenes without viewport', async () => {
+  const calls = [];
+  const browser = {
+    async newPage(...args) {
+      calls.push(args);
+      return {};
+    }
+  };
+
+  await createScenePage(browser, { id: 'page.home' });
+
+  assert.deepEqual(calls, [[]]);
+  assert.equal(resolveSceneViewport({ id: 'page.home' }), undefined);
+});
+
+test('resolveSceneViewport rejects invalid dimensions before creating a page', async () => {
+  let pageCreated = false;
+  const browser = {
+    async newPage() {
+      pageCreated = true;
+      return {};
+    }
+  };
+
+  await assert.rejects(
+    () =>
+      createScenePage(browser, {
+        id: 'page.settings-i18n.mobile',
+        viewport: { width: 0, height: 844 }
+      }),
+    /width must be a positive integer/u
+  );
+  await assert.rejects(
+    () =>
+      createScenePage(browser, {
+        id: 'page.settings-i18n.desktop',
+        viewport: { width: 1280, height: 844.5 }
+      }),
+    /height must be a positive integer/u
+  );
+  assert.equal(pageCreated, false);
 });
 
 test('resolveStyleBoundaryBaseUrl defaults to the user frontend and respects explicit hosts', () => {

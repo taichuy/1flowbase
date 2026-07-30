@@ -38,6 +38,7 @@ pub(super) fn compile_variable_reference(
 
 pub(super) fn extract_selector_paths(kind: &str, raw_value: &Value) -> Result<Vec<Vec<String>>> {
     match kind {
+        "i18n_text" => Ok(Vec::new()),
         "templated_text" => {
             let template = raw_value
                 .as_str()

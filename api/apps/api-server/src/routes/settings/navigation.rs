@@ -78,7 +78,6 @@ pub async fn get_console_navigation(
     let navigation = state
         .console_surface_registry
         .accessible_navigation(&context.actor);
-
     Ok(Json(ApiSuccess::new(ConsoleNavigationResponse::from(
         navigation,
     ))))

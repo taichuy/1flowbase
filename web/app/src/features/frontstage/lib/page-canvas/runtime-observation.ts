@@ -1,16 +1,19 @@
-export type FrontstageRuntimeObservationStage =
+export type FrontstageNativeRuntimeObservationStage =
   | 'source_fetch'
-  | 'worker_boot'
+  | 'artifact_lookup'
   | 'compile'
+  | 'module_resolve'
+  | 'shadow_attach'
+  | 'react_mount'
   | 'api_wait'
-  | 'main'
-  | 'schema_validate'
   | 'present';
+
+export type FrontstageRuntimeObservationStage =
+  FrontstageNativeRuntimeObservationStage;
 
 export type FrontstageRuntimeObservationCacheTier =
   | 'network'
   | 'runtime'
-  | 'l1'
   | 'l2'
   | 'miss';
 
@@ -20,7 +23,23 @@ export interface FrontstageRuntimeObservation {
   stage: FrontstageRuntimeObservationStage;
   timestampMs: number;
   durationMs: number;
-  cacheTier: FrontstageRuntimeObservationCacheTier;
+  cacheTier?: FrontstageRuntimeObservationCacheTier;
+  actorId: string;
+  workspaceId: string;
+  pageId: string;
+  tabId: string | null;
+  blockId: string;
+  runtimeKind?: 'native';
+  generation?: number;
+  instanceEpoch?: string;
+  callId?: string;
+  apiCallStatus?: 'pending' | 'succeeded' | 'failed';
+  method?: string;
+  path?: string;
+  error?: string;
+}
+
+export interface FrontstageRuntimeObservationContext {
   actorId: string;
   workspaceId: string;
   pageId: string;
@@ -49,9 +68,8 @@ export class FrontstageRuntimeObservationBuffer {
     FrontstageRuntimeObservationStage,
     number
   >();
-  private readonly subscribers = new Set<
-    FrontstageRuntimeObservationSubscriber
-  >();
+  private readonly subscribers =
+    new Set<FrontstageRuntimeObservationSubscriber>();
   private sequence = 0;
 
   constructor(maxEntries = DEFAULT_MAX_RUNTIME_OBSERVATIONS) {
@@ -78,7 +96,17 @@ export class FrontstageRuntimeObservationBuffer {
       workspaceId: input.workspaceId,
       pageId: input.pageId,
       tabId: input.tabId,
-      blockId: input.blockId
+      blockId: input.blockId,
+      ...(input.runtimeKind ? { runtimeKind: input.runtimeKind } : {}),
+      ...(input.generation === undefined
+        ? {}
+        : { generation: input.generation }),
+      ...(input.instanceEpoch ? { instanceEpoch: input.instanceEpoch } : {}),
+      ...(input.callId ? { callId: input.callId } : {}),
+      ...(input.apiCallStatus ? { apiCallStatus: input.apiCallStatus } : {}),
+      ...(input.method ? { method: input.method } : {}),
+      ...(input.path ? { path: input.path } : {}),
+      ...(input.error ? { error: input.error } : {})
     };
 
     if (this.maxEntries > 0) {

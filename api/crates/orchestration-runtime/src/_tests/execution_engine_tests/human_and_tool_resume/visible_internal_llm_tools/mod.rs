@@ -209,6 +209,7 @@ fn fusion_panel_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     selector_paths: vec![vec![
                         "visible_internal_llm_tool".to_string(),
@@ -251,6 +252,7 @@ fn fusion_panel_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt_messages".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "prompt_messages".to_string(),
                     selector_paths: vec![
                         vec!["node-panel-a".to_string(), "text".to_string()],
@@ -305,6 +307,7 @@ fn fusion_panel_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "result_template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     selector_paths: vec![vec!["node-judge".to_string(), "text".to_string()]],
                     raw_value: json!("{{ node-judge.text }}"),
@@ -422,6 +425,7 @@ fn fusion_panel_llm_node(node_id: &str, prompt_prefix: &str) -> CompiledNode {
         bindings: BTreeMap::from([(
             "prompt_messages".to_string(),
             CompiledBinding {
+                i18n_text_ref: None,
                 kind: "prompt_messages".to_string(),
                 selector_paths: vec![vec![
                     "visible_internal_llm_tool".to_string(),

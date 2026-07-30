@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 
@@ -24,6 +24,8 @@ struct MemoryBootstrapRepositoryInner {
     authenticator_upserts: AtomicUsize,
     root_tenant_upserts: AtomicUsize,
     workspace_upserts: AtomicUsize,
+    official_catalog_initialized: AtomicBool,
+    official_catalog_bootstraps: AtomicUsize,
     root_user_creates: AtomicUsize,
     authenticators: RwLock<Vec<AuthenticatorRecord>>,
     root_tenant: RwLock<Option<TenantRecord>>,
@@ -48,6 +50,18 @@ impl MemoryBootstrapRepository {
         self.inner.workspace_upserts.load(Ordering::SeqCst)
     }
 
+    pub fn mark_official_catalog_initialized(&self) {
+        self.inner
+            .official_catalog_initialized
+            .store(true, Ordering::SeqCst);
+    }
+
+    pub fn official_catalog_bootstraps(&self) -> usize {
+        self.inner
+            .official_catalog_bootstraps
+            .load(Ordering::SeqCst)
+    }
+
     pub async fn authenticator(&self, id: Uuid) -> Option<AuthenticatorRecord> {
         self.inner
             .authenticators
@@ -57,10 +71,34 @@ impl MemoryBootstrapRepository {
             .find(|authenticator| authenticator.id == id)
             .cloned()
     }
+
+    pub async fn seed_authenticator(&self, authenticator: AuthenticatorRecord) {
+        self.inner.authenticators.write().await.push(authenticator);
+    }
 }
 
 #[async_trait]
 impl BootstrapRepository for MemoryBootstrapRepository {
+    async fn replace_authenticator_public_ui_block_if_matches(
+        &self,
+        authenticator_id: Uuid,
+        expected: &str,
+        replacement: &str,
+    ) -> Result<bool> {
+        let mut authenticators = self.inner.authenticators.write().await;
+        let Some(authenticator) = authenticators
+            .iter_mut()
+            .find(|authenticator| authenticator.id == authenticator_id)
+        else {
+            return Ok(false);
+        };
+        if authenticator.public_ui_block != expected {
+            return Ok(false);
+        }
+        authenticator.public_ui_block = replacement.to_string();
+        Ok(true)
+    }
+
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         self.inner
             .authenticator_upserts
@@ -70,7 +108,13 @@ impl BootstrapRepository for MemoryBootstrapRepository {
             .iter_mut()
             .find(|stored| stored.id == authenticator.id)
         {
-            Some(stored) => *stored = authenticator.clone(),
+            Some(stored) => {
+                let saved_public_ui_block = stored.public_ui_block.clone();
+                *stored = authenticator.clone();
+                if !saved_public_ui_block.is_empty() {
+                    stored.public_ui_block = saved_public_ui_block;
+                }
+            }
             None => authenticators.push(authenticator.clone()),
         }
         Ok(())
@@ -99,6 +143,16 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         Ok(tenant)
     }
 
+    async fn root_workspace_requires_official_catalog_seed(
+        &self,
+        _workspace_name: &str,
+    ) -> Result<bool> {
+        Ok(!self
+            .inner
+            .official_catalog_initialized
+            .load(Ordering::SeqCst))
+    }
+
     async fn upsert_workspace(
         &self,
         tenant_id: Uuid,
@@ -118,6 +172,21 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         };
         *self.inner.workspace.write().await = Some(workspace.clone());
         Ok(workspace)
+    }
+
+    async fn upsert_root_workspace_with_official_catalog(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+        _seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
+    ) -> Result<WorkspaceRecord> {
+        self.inner
+            .official_catalog_bootstraps
+            .fetch_add(1, Ordering::SeqCst);
+        self.inner
+            .official_catalog_initialized
+            .store(true, Ordering::SeqCst);
+        BootstrapRepository::upsert_workspace(self, tenant_id, workspace_name).await
     }
 
     async fn upsert_builtin_roles(&self, _workspace_id: Uuid) -> Result<()> {

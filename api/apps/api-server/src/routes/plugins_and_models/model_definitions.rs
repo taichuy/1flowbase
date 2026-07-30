@@ -3,7 +3,7 @@ use std::sync::Arc;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     Json, Router,
 };
 use control_plane::model_definition::{
@@ -16,6 +16,10 @@ use control_plane::resource_crud::{
     parse_resource_filter, ResourceBatchSelection, ResourceCrudDescriptor,
 };
 use control_plane::runtime_registry_sync::ModelDefinitionMutationService;
+use control_plane::{
+    file_management::project_attachments_model_titles, i18n_catalog::CatalogResolver,
+    system_metadata::project_system_metadata_titles,
+};
 use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
 use utoipa::ToSchema;
@@ -279,6 +283,31 @@ fn empty_json_object() -> serde_json::Value {
 
 fn default_true() -> bool {
     true
+}
+
+fn request_catalog_locale(
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+) -> domain::CatalogLocale {
+    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+        query_locale: None,
+        explicit_header_locale: headers
+            .get("x-1flowbase-locale")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        user_preferred_locale: preferred_locale,
+        accept_language: headers
+            .get(ACCEPT_LANGUAGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        fallback_locale: runtime_profile::FALLBACK_LOCALE,
+        supported_locales: runtime_profile::SUPPORTED_LOCALES
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+    });
+    domain::CatalogLocale::new(resolved.resolved_locale)
+        .expect("runtime profile must resolve a supported catalog locale")
 }
 
 fn to_record_capabilities_response(
@@ -566,6 +595,14 @@ pub async fn list_models(
     }
     let filter = parse_resource_filter(query.filter.as_deref())?;
     models = STATE_MODEL_RESOURCE.filter_records(models, filter.as_ref())?;
+    let locale = request_catalog_locale(&headers, context.user.preferred_locale);
+    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
+    for model in &mut models {
+        project_system_metadata_titles(&resolver, state.bootstrap_workspace_id, &locale, model)
+            .await?;
+        project_attachments_model_titles(&resolver, state.bootstrap_workspace_id, &locale, model)
+            .await?;
+    }
 
     Ok(helpers::ok(
         models

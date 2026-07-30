@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const membersApi = vi.hoisted(() => ({
@@ -12,23 +12,53 @@ const membersApi = vi.hoisted(() => ({
 
 const rolesApi = vi.hoisted(() => ({
   settingsRolesQueryKey: ['settings', 'roles'],
+  settingsRoleConsolePolicyQueryKey: vi.fn((roleCode: string) => [
+    'settings',
+    'roles',
+    roleCode,
+    'console-policy'
+  ]),
   settingsRolePermissionsQueryKey: vi.fn((roleCode: string) => [
     'settings',
     'roles',
     roleCode,
     'permissions'
   ]),
+  settingsRoleDataPolicyQueryKey: vi.fn((roleCode: string) => [
+    'settings',
+    'roles',
+    roleCode,
+    'data-policy'
+  ]),
+  settingsRoleFrontstageRoutesQueryKey: vi.fn((roleCode: string) => [
+    'settings',
+    'roles',
+    roleCode,
+    'frontstage-routes'
+  ]),
   fetchSettingsRoles: vi.fn(),
   createSettingsRole: vi.fn(),
   updateSettingsRole: vi.fn(),
   deleteSettingsRole: vi.fn(),
+  fetchSettingsRoleConsolePolicy: vi.fn(),
+  replaceSettingsRoleConsolePolicy: vi.fn(),
   fetchSettingsRolePermissions: vi.fn(),
-  replaceSettingsRolePermissions: vi.fn()
+  replaceSettingsRolePermissions: vi.fn(),
+  fetchSettingsRoleFrontstageRoutes: vi.fn(),
+  replaceSettingsRoleFrontstageRoutes: vi.fn(),
+  fetchSettingsRoleDataPolicy: vi.fn(),
+  replaceSettingsRoleDataPolicy: vi.fn()
 }));
 
 const permissionsApi = vi.hoisted(() => ({
   settingsPermissionsQueryKey: ['settings', 'permissions'],
-  fetchSettingsPermissions: vi.fn()
+  fetchSettingsPermissions: vi.fn(),
+  settingsConsolePolicyCatalogQueryKey: vi.fn((locale: string) => [
+    'settings',
+    'console-policy-catalog',
+    locale
+  ]),
+  fetchSettingsConsolePolicyCatalog: vi.fn()
 }));
 
 const docsApi = vi.hoisted(() => ({
@@ -102,6 +132,7 @@ const fileManagementApi = vi.hoisted(() => ({
 }));
 
 const dataModelsApi = vi.hoisted(() => ({
+  settingsAllDataModelsQueryKey: ['settings', 'data-models', 'models', 'all'],
   settingsDataSourcesQueryKey: ['settings', 'data-models', 'sources'],
   settingsDataModelsQueryKey: vi.fn((sourceId: string) => [
     'settings',
@@ -113,6 +144,7 @@ const dataModelsApi = vi.hoisted(() => ({
   settingsDataModelAdvisorFindingsQueryKey: vi.fn(),
   settingsDataModelRecordPreviewQueryKey: vi.fn(),
   fetchSettingsDataSourceInstances: vi.fn(),
+  fetchSettingsAllDataModels: vi.fn(),
   fetchSettingsDataModels: vi.fn(),
   fetchSettingsDataModelScopeGrants: vi.fn(),
   fetchSettingsDataModelAdvisorFindings: vi.fn(),
@@ -240,12 +272,69 @@ describe('section shell routing', () => {
       settingsConsoleNavigation(['api-key-authentication'])
     );
     membersApi.fetchSettingsMembers.mockResolvedValue([]);
-    rolesApi.fetchSettingsRoles.mockResolvedValue([]);
+    rolesApi.fetchSettingsRoles.mockResolvedValue([
+      {
+        code: 'member',
+        name: 'Member',
+        introduction: 'Default role',
+        scope_kind: 'workspace',
+        is_builtin: true,
+        is_editable: true,
+        auto_grant_new_permissions: false,
+        is_default_member_role: true,
+        permission_codes: []
+      }
+    ]);
     rolesApi.fetchSettingsRolePermissions.mockResolvedValue({
       role_code: 'member',
       permission_codes: []
     });
+    rolesApi.fetchSettingsRoleFrontstageRoutes.mockResolvedValue({
+      role_code: 'member',
+      tree: [],
+      checked_page_ids: [],
+      checked_tab_ids: []
+    });
+    rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
+      role_code: 'member',
+      groups: []
+    });
+    rolesApi.fetchSettingsRoleDataPolicy.mockResolvedValue({
+      role_code: 'member',
+      default_policy: {
+        can_view: false,
+        can_create: false,
+        can_update: false,
+        can_delete: false,
+        default_view_scope: 'own',
+        default_update_scope: 'own',
+        default_delete_scope: 'own'
+      },
+      model_policies: []
+    });
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
+      schema_version: '2026-07-15',
+      locale: 'zh_Hans',
+      group_mode_options: [],
+      groups: [
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.applications',
+          label: '应用管理',
+          description: null,
+          operations: []
+        },
+        {
+          kind: 'other',
+          group_id: 'other.general',
+          label: '其他设置',
+          description: null,
+          operations: []
+        }
+      ],
+      resources: []
+    });
     docsApi.fetchSettingsApiDocsCatalog.mockResolvedValue({
       title: '1flowbase API',
       version: '0.1.0',
@@ -286,6 +375,7 @@ describe('section shell routing', () => {
       distribution_rule: 'none'
     });
     dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([]);
+    dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModels.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModelScopeGrants.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModelAdvisorFindings.mockResolvedValue([]);
@@ -457,6 +547,95 @@ describe('section shell routing', () => {
       expect(
         modelProvidersApi.fetchSettingsModelProviderRequestLogs
       ).toHaveBeenCalled();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-001 redirects the legacy roles URL to the canonical console policy tab',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['roles'])
+      );
+      authenticateWithPermissions(['role_permission.manage.all']);
+
+      renderApp('/settings/roles');
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/settings/roles/console-policy');
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(
+        await screen.findByRole('tab', { name: '后台设置', selected: true })
+      ).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-002 restores and navigates every role permission tab on its independent URL',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['roles'])
+      );
+      authenticateWithPermissions(['role_permission.manage.all']);
+
+      renderApp('/settings/roles/table-general-policy');
+
+      expect(
+        await screen.findByRole('tab', {
+          name: '表-通用配置',
+          selected: true
+        })
+      ).toBeInTheDocument();
+      expect(window.location.pathname).toBe(
+        '/settings/roles/table-general-policy'
+      );
+
+      const tabRoutes = [
+        ['动态路由', 'dynamic-routes'],
+        ['表-单独配置', 'table-single-policy'],
+        ['后台设置', 'console-policy'],
+        ['其他', 'other-policy']
+      ] as const;
+
+      for (const [tabLabel, pathSegment] of tabRoutes) {
+        fireEvent.click(screen.getByRole('tab', { name: tabLabel }));
+        await waitFor(() => {
+          expect(window.location.pathname).toBe(
+            `/settings/roles/${pathSegment}`
+          );
+        });
+        expect(
+          screen.getByRole('tab', { name: tabLabel, selected: true })
+        ).toBeInTheDocument();
+      }
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-003 replaces an unavailable role permission tab with the first available URL',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['roles'])
+      );
+      permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue({
+        schema_version: '2026-07-15',
+        locale: 'zh_Hans',
+        group_mode_options: [],
+        groups: [],
+        resources: []
+      });
+      authenticateWithPermissions(['role_permission.manage.all']);
+
+      renderApp('/settings/roles/other-policy');
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/settings/roles/dynamic-routes');
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(
+        screen.getByRole('tab', { name: '动态路由', selected: true })
+      ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

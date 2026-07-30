@@ -304,6 +304,7 @@ async fn llm_runtime_sends_rendered_prompt_messages_to_provider() {
     llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
             raw_value: json!([

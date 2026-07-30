@@ -1,19 +1,16 @@
-import type {
-  FrontendBlockCodeModuleSource,
-  FrontendBlockMonacoExtraLib
-} from '@1flowbase/page-protocol';
+import type { BlockSourceExtraLib } from '../../../../shared/code-block/extra-lib';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
-
-export interface FrontstageJsxComponent {
-  name: string;
-  moduleSource: FrontendBlockCodeModuleSource;
-}
+import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from './native-react-editor-contract';
 
 export interface FrontstageJsxEditorProjection {
-  components: FrontstageJsxComponent[];
+  allowedImportSources: ReadonlySet<string>;
+  componentCatalogQuery: {
+    installation_id: string;
+    contribution_code: string;
+  } | null;
   contextComment: string;
-  monacoExtraLibs: FrontendBlockMonacoExtraLib[];
+  monacoExtraLibs: BlockSourceExtraLib[];
 }
 
 export function createFrontstageJsxEditorProjection({
@@ -21,9 +18,25 @@ export function createFrontstageJsxEditorProjection({
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
 }): FrontstageJsxEditorProjection {
-  const monacoExtraLibs = catalogEntry?.codeCapabilities?.monacoExtraLibs ?? [];
+  const codeModules = catalogEntry?.codeModules ?? [];
+  const monacoExtraLibs = [
+    ...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS,
+    ...codeModules.map((codeModule) => ({
+      source: codeModule.source,
+      filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
+      content: codeModule.type_declarations
+    }))
+  ];
   return {
-    components: collectCatalogComponents(monacoExtraLibs),
+    allowedImportSources: new Set(
+      codeModules.map((codeModule) => codeModule.source)
+    ),
+    componentCatalogQuery: catalogEntry
+      ? {
+          installation_id: catalogEntry.installationId,
+          contribution_code: catalogEntry.contributionCode
+        }
+      : null,
     contextComment: createFrontstageContextComment(),
     monacoExtraLibs
   };
@@ -37,28 +50,4 @@ export function createFrontstageContextComment(): string {
     ' * outputs: 无',
     ' */'
   ].join('\n');
-}
-
-function collectCatalogComponents(
-  extraLibs: readonly FrontendBlockMonacoExtraLib[]
-): FrontstageJsxComponent[] {
-  const components = new Map<string, FrontstageJsxComponent>();
-  const pattern = /export\s+(?:declare\s+)?const\s+([A-Z][A-Za-z0-9_$]*)\b/g;
-  for (const extraLib of extraLibs) {
-    for (const match of extraLib.content.matchAll(pattern)) {
-      if (match[1]) {
-        const component = {
-          name: match[1],
-          moduleSource: extraLib.source
-        };
-        components.set(
-          `${component.moduleSource}:${component.name}`,
-          component
-        );
-      }
-    }
-  }
-  return [...components.values()].sort((left, right) =>
-    left.name.localeCompare(right.name)
-  );
 }

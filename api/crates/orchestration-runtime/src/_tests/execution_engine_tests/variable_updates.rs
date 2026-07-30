@@ -46,6 +46,7 @@ async fn variable_assigner_updates_conversation_for_current_run_only() {
             bindings: BTreeMap::from([(
                 "operations".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "state_write".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!([
@@ -82,6 +83,7 @@ async fn variable_assigner_updates_conversation_for_current_run_only() {
     answer.bindings = BTreeMap::from([(
         "answer_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "templated_text".to_string(),
             selector_paths: vec![vec!["conversation".to_string(), "ApiBaseUrl".to_string()]],
             raw_value: json!("{{conversation.ApiBaseUrl}}"),

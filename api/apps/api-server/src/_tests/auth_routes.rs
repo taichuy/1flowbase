@@ -546,6 +546,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
 
     let staff = &instances[0];
     assert_eq!(staff["auth_type"], json!("password-local"));
+    assert_eq!(staff["is_builtin"], json!(false));
     assert_eq!(staff["title"], json!("Staff Password"));
     assert_eq!(staff["description"], json!("Staff login"));
     assert_eq!(staff["sort_order"], json!(0));
@@ -816,12 +817,18 @@ async fn public_auth_login_instances_projects_public_ui_block_and_registration_v
         .find(|instance| instance["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
         .expect("password-local should be publicly discoverable");
 
+    assert_eq!(password_local["is_builtin"], json!(true));
     assert!(password_local["public_ui_block"]
         .as_str()
-        .is_some_and(|source| source.contains("satisfies BlockModule")));
+        .is_some_and(|source| source.contains("export default function PasswordLocalAuth")));
     assert_eq!(
         password_local["public_variables"],
-        json!({ "self_registration_enabled": false })
+        json!({
+            "title": "Password",
+            "description": "Local password authentication",
+            "enabled": true,
+            "self_registration_enabled": false
+        })
     );
     assert!(password_local.get("flow").is_none());
     assert!(password_local.get("sign_in_path").is_none());

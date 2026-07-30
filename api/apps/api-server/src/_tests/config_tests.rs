@@ -587,6 +587,60 @@ fn api_config_reads_official_plugin_github_proxy_url() {
 }
 
 #[test]
+fn api_config_resolves_independent_official_i18n_catalog_mirror_and_proxy() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        (
+            "API_OFFICIAL_I18N_CATALOG_REPOSITORY",
+            "independent/i18n-catalog",
+        ),
+        (
+            "API_OFFICIAL_I18N_CATALOG_DEFAULT_LATEST_URL",
+            "https://raw.githubusercontent.com/official/i18n/main/latest.json",
+        ),
+        (
+            "API_OFFICIAL_I18N_CATALOG_DEFAULT_RELEASE_BASE_URL",
+            "https://github.com/official/i18n/releases/download",
+        ),
+        (
+            "API_OFFICIAL_I18N_CATALOG_MIRROR_LATEST_URL",
+            "https://mirror.example/i18n/latest.json",
+        ),
+        (
+            "API_OFFICIAL_I18N_CATALOG_MIRROR_RELEASE_BASE_URL",
+            "https://mirror.example/i18n/releases",
+        ),
+        (
+            "API_OFFICIAL_I18N_CATALOG_GITHUB_PROXY_URL",
+            "https://github-proxy.example",
+        ),
+    ]);
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    let resolved = config.resolve_official_i18n_catalog_source();
+
+    assert_eq!(
+        config.official_i18n_catalog_repository,
+        "independent/i18n-catalog"
+    );
+    assert_eq!(
+        resolved.latest_url,
+        "https://mirror.example/i18n/latest.json"
+    );
+    assert_eq!(
+        resolved.release_base_url,
+        "https://mirror.example/i18n/releases"
+    );
+    assert_eq!(
+        resolved.github_proxy_url.as_deref(),
+        Some("https://github-proxy.example")
+    );
+    assert_ne!(
+        config.official_i18n_catalog_github_proxy_url,
+        config.official_plugin_github_proxy_url
+    );
+}
+
+#[test]
 fn api_config_resolves_official_agent_flow_template_catalog_source() {
     let config = ApiConfig::from_env_map(&[
         (

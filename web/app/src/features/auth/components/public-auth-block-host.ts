@@ -1,60 +1,25 @@
 import { apiFetch } from '@1flowbase/api-client';
-import type { BlockRendererActionEvent } from '@1flowbase/block-renderer';
 import type {
-  JsBlockHostEffectHandler,
-  JsBlockHostInterfaceEffect,
-  JsBlockRunRequest
+  BlockHostEffectHandler,
+  BlockHostInterfaceEffect,
+  NativeBlockContextApiCallObservation,
+  NativeBlockContextCapabilityDiagnostic,
+  NativeBlockContextEventInput
 } from '@1flowbase/page-runtime';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
+import type { BlockContextOutputs } from '@1flowbase/page-protocol';
 
-import { getAuthApiBaseUrl, type PublicLoginInstance } from '../api/session';
-
-export const PUBLIC_AUTH_RUNTIME_LIMITS = {
-  timeoutMs: 10_000,
-  maxRenderDepth: 32,
-  maxRenderNodes: 500
-} as const;
+import { getAuthApiBaseUrl } from '../api/session';
 
 export function createPublicAuthInputs(
   authenticatorId: string,
   publicVariables: Record<string, unknown>,
-  event?: BlockRendererActionEvent
+  authenticatorSelectionAvailable = false
 ): Record<string, unknown> {
   return {
     authenticator_id: authenticatorId,
-    public_variables: publicVariables,
-    ...(event
-      ? {
-          auth_event: {
-            action_id: event.actionId,
-            values: event.formValues ?? {},
-            ...(event.payload === undefined ? {} : { payload: event.payload })
-          }
-        }
-      : {})
-  };
-}
-
-export function createPublicAuthRunRequest(
-  instance: PublicLoginInstance,
-  sequence: number,
-  event?: BlockRendererActionEvent
-): JsBlockRunRequest {
-  return {
-    requestId: `public-auth:${instance.id}:${sequence}`,
-    blockId: `public-auth:${instance.id}`,
-    program: {
-      kind: 'source',
-      source: instance.public_ui_block,
-      allowedImports: [
-        '@1flowbase/block-sdk',
-        '@1flowbase/block-renderer/antd-facade'
-      ]
-    },
-    inputs: createPublicAuthInputs(instance.id, instance.public_variables, event),
-    props: {},
-    state: {},
-    contextSnapshot: {},
-    limits: PUBLIC_AUTH_RUNTIME_LIMITS
+    authenticator_selection_available: authenticatorSelectionAvailable,
+    public_variables: publicVariables
   };
 }
 
@@ -65,12 +30,37 @@ interface PublicAuthPreviewRunAuthorization {
 }
 
 export interface PublicAuthPreviewCapabilityHandlers {
-  interface: JsBlockHostEffectHandler<JsBlockHostInterfaceEffect>;
+  interface: BlockHostEffectHandler<BlockHostInterfaceEffect>;
   prepareDraftRun(input: {
     runId: string;
     confirmWrite: () => Promise<boolean>;
   }): Promise<void>;
   revokeDraftRun(runId: string): void;
+}
+
+export function createPublicAuthNativeBlockContextCapabilities(input: {
+  requestId: string;
+  instanceEpoch: string;
+  isCurrentInstance(): boolean;
+  outputs: BlockContextOutputs;
+  interfaceHandler?: BlockHostEffectHandler<BlockHostInterfaceEffect>;
+  emitEvent?(event: NativeBlockContextEventInput): void;
+  observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
+  reportDiagnostic?(diagnostic: NativeBlockContextCapabilityDiagnostic): void;
+}) {
+  return createNativeBlockContextCapabilities({
+    requestId: input.requestId,
+    instanceEpoch: input.instanceEpoch,
+    isCurrentInstance: input.isCurrentInstance,
+    outputs: input.outputs,
+    interfaceHandler:
+      input.interfaceHandler ??
+      ((effect) =>
+        dispatchPublicAuthApi(effect.method, effect.path, effect.request)),
+    emitEvent: input.emitEvent,
+    observeApiCall: input.observeApiCall,
+    reportDiagnostic: input.reportDiagnostic
+  });
 }
 
 export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCapabilityHandlers {
@@ -93,12 +83,19 @@ export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCa
         throw new Error('Public authentication preview run is not registered.');
       }
       if (effect.operation && effect.operation !== 'call') {
-        throw new Error('Public authentication preview streaming is not supported.');
+        throw new Error(
+          'Public authentication preview streaming is not supported.'
+        );
       }
       if (isPublicAuthWriteMethod(effect.method)) {
         const confirmed = await confirmPublicAuthPreviewWrite(draftRun);
         if (!confirmed) {
           throw new Error('Public authentication preview write was cancelled.');
+        }
+        if (draftRuns.get(effect.requestId) !== draftRun) {
+          throw new Error(
+            'Public authentication preview run is not registered.'
+          );
         }
       }
       return dispatchPublicAuthApi(effect.method, effect.path, effect.request);
@@ -116,7 +113,9 @@ export async function dispatchPublicAuthApi(
     normalizedUrl.origin !== 'http://public-auth.local' ||
     !normalizedUrl.pathname.startsWith('/api/public/')
   ) {
-    throw new Error('Public authentication Block requested a forbidden API path.');
+    throw new Error(
+      'Public authentication Block requested a forbidden API path.'
+    );
   }
   const options = isRecord(request) ? request : {};
   const query = isRecord(options.query) ? options.query : undefined;
@@ -138,7 +137,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function toStringRecord(value: Record<string, unknown>): Record<string, string> {
+function toStringRecord(
+  value: Record<string, unknown>
+): Record<string, string> {
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, String(item)])
   );

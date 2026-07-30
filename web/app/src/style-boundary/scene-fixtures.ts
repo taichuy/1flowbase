@@ -8,6 +8,10 @@ import {
   modelProviderOptionsContract,
   primaryContractProviderEnabledModelIds
 } from '../test/model-provider-contract-fixtures';
+import {
+  createSettingsI18nCatalogTestServer,
+  settingsI18nCatalogTestNavigation
+} from '../features/settings/pages/i18n-catalog/_tests/i18n-catalog-test-fixture';
 
 const styleBoundaryProviderInstances = [
   {
@@ -482,7 +486,8 @@ function getStyleBoundaryCommonResponse(
             surface_key: 'docs',
             path: '/settings/docs',
             surface_kind: 'system'
-          }
+          },
+          ...settingsI18nCatalogTestNavigation.route_definitions
         ],
         navigation_items: [
           {
@@ -532,7 +537,8 @@ function getStyleBoundaryCommonResponse(
             label_key: 'auto.api_documentation',
             navigation_slot: 'settings',
             order: 3
-          }
+          },
+          ...settingsI18nCatalogTestNavigation.navigation_items
         ],
         permission_bindings: []
       },
@@ -605,6 +611,7 @@ function createStyleBoundaryAgentFlowDocument() {
 export function createStyleBoundaryOrchestrationState() {
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',
@@ -762,6 +769,8 @@ export function seedStyleBoundarySettingsFetch() {
 
   styleBoundaryOriginalFetch ??= globalThis.fetch.bind(globalThis);
   const originalFetch = styleBoundaryOriginalFetch;
+  const i18nCatalogServer = createSettingsI18nCatalogTestServer();
+  window.__STYLE_BOUNDARY_I18N_CATALOG_REQUESTS__ = [];
 
   globalThis.fetch = async (input, init) => {
     const url = getStyleBoundaryRequestUrl(input);
@@ -845,6 +854,57 @@ export function seedStyleBoundarySettingsFetch() {
             }
           ]
         },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/settings/i18n/entries'
+    ) {
+      window.__STYLE_BOUNDARY_I18N_CATALOG_REQUESTS__?.push(
+        Object.fromEntries(requestUrl.searchParams)
+      );
+      return createStyleBoundaryJsonResponse({
+        data: await i18nCatalogServer.listEntriesFromSearchParams(
+          requestUrl.searchParams
+        ),
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/settings/i18n/entries/detail'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: await i18nCatalogServer.getEntry({
+          key: requestUrl.searchParams.get('key') ?? '',
+          locale: requestUrl.searchParams.get('locale') ?? ''
+        }),
+        meta: null
+      });
+    }
+
+    if (
+      ['PUT', 'DELETE'].includes(method.toUpperCase()) &&
+      requestUrl.pathname === '/api/console/settings/i18n/overrides'
+    ) {
+      const request = JSON.parse(String(init?.body ?? '{}'));
+      const data =
+        method.toUpperCase() === 'PUT'
+          ? await i18nCatalogServer.saveOverride(request)
+          : await i18nCatalogServer.restoreOverride(request);
+      return createStyleBoundaryJsonResponse({ data, meta: null });
+    }
+
+    if (
+      method.toUpperCase() === 'PUT' &&
+      requestUrl.pathname === '/api/console/settings/i18n/custom-translations'
+    ) {
+      const request = JSON.parse(String(init?.body ?? '{}'));
+      return createStyleBoundaryJsonResponse({
+        data: await i18nCatalogServer.saveCustomTranslation(request),
         meta: null
       });
     }
@@ -1229,6 +1289,7 @@ export function seedStyleBoundaryApplicationFetch() {
         JSON.stringify({
           data: {
             flow_id: 'flow-1',
+            messages: [],
             draft: {
               id: 'draft-1',
               flow_id: 'flow-1',
@@ -1253,6 +1314,7 @@ export function seedStyleBoundaryApplicationFetch() {
         JSON.stringify({
           data: {
             flow_id: 'flow-1',
+            messages: [],
             draft: {
               id: 'draft-1',
               flow_id: 'flow-1',

@@ -1,4 +1,5 @@
 import {
+  createFrontstageBlock,
   getFrontstagePageTabDetail,
   saveFrontstageTabDocument,
   type ConsoleFrontstagePageDetail,
@@ -41,6 +42,12 @@ export interface FrontstagePageContent {
 
 export interface SaveFrontstageTabDocumentInput {
   payload: unknown;
+}
+
+export interface CreateFrontstageBlockInput {
+  payload: unknown;
+  code_ref: string;
+  code: string;
 }
 
 type FrontstagePageDetailDto = ConsoleFrontstagePageDetail;
@@ -116,6 +123,25 @@ export async function saveFrontstagePageContent(
   csrfToken: string
 ): Promise<FrontstagePageContent> {
   const detail = await saveFrontstageTabDocument(
+    workspaceId,
+    pageId,
+    tabId,
+    input,
+    csrfToken,
+    getFrontstageApiBaseUrl()
+  );
+
+  return mapFrontstagePageContent(detail);
+}
+
+export async function createFrontstagePageBlock(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: CreateFrontstageBlockInput,
+  csrfToken: string
+): Promise<FrontstagePageContent> {
+  const detail = await createFrontstageBlock(
     workspaceId,
     pageId,
     tabId,

@@ -1,0 +1,232 @@
+[
+  {
+    "key": "Users",
+    "resource": "users",
+    "field": null
+  },
+  {
+    "key": "User ID",
+    "resource": "users",
+    "field": "id"
+  },
+  {
+    "key": "Created By",
+    "resource": "users",
+    "field": "created_by"
+  },
+  {
+    "key": "Updated By",
+    "resource": "users",
+    "field": "updated_by"
+  },
+  {
+    "key": "Account",
+    "resource": "users",
+    "field": "account"
+  },
+  {
+    "key": "Email",
+    "resource": "users",
+    "field": "email"
+  },
+  {
+    "key": "Phone",
+    "resource": "users",
+    "field": "phone"
+  },
+  {
+    "key": "Name",
+    "resource": "users",
+    "field": "name"
+  },
+  {
+    "key": "Nickname",
+    "resource": "users",
+    "field": "nickname"
+  },
+  {
+    "key": "Avatar",
+    "resource": "users",
+    "field": "avatar_url"
+  },
+  {
+    "key": "Introduction",
+    "resource": "users",
+    "field": "introduction"
+  },
+  {
+    "key": "Preferred Language",
+    "resource": "users",
+    "field": "preferred_locale"
+  },
+  {
+    "key": "Metadata",
+    "resource": "users",
+    "field": "meta"
+  },
+  {
+    "key": "Default Display Role",
+    "resource": "users",
+    "field": "default_display_role"
+  },
+  {
+    "key": "Email Login",
+    "resource": "users",
+    "field": "email_login_enabled"
+  },
+  {
+    "key": "Phone Login",
+    "resource": "users",
+    "field": "phone_login_enabled"
+  },
+  {
+    "key": "Status",
+    "resource": "users",
+    "field": "status"
+  },
+  {
+    "key": "Created At",
+    "resource": "users",
+    "field": "created_at"
+  },
+  {
+    "key": "Updated At",
+    "resource": "users",
+    "field": "updated_at"
+  },
+  {
+    "key": "Roles",
+    "resource": "roles",
+    "field": null
+  },
+  {
+    "key": "Role ID",
+    "resource": "roles",
+    "field": "id"
+  },
+  {
+    "key": "Created By",
+    "resource": "roles",
+    "field": "created_by"
+  },
+  {
+    "key": "Updated By",
+    "resource": "roles",
+    "field": "updated_by"
+  },
+  {
+    "key": "Scope ID",
+    "resource": "roles",
+    "field": "scope_id"
+  },
+  {
+    "key": "Scope",
+    "resource": "roles",
+    "field": "scope_kind"
+  },
+  {
+    "key": "Workspace ID",
+    "resource": "roles",
+    "field": "workspace_id"
+  },
+  {
+    "key": "Role Code",
+    "resource": "roles",
+    "field": "code"
+  },
+  {
+    "key": "Role Name",
+    "resource": "roles",
+    "field": "name"
+  },
+  {
+    "key": "Introduction",
+    "resource": "roles",
+    "field": "introduction"
+  },
+  {
+    "key": "Builtin Role",
+    "resource": "roles",
+    "field": "is_builtin"
+  },
+  {
+    "key": "Editable",
+    "resource": "roles",
+    "field": "is_editable"
+  },
+  {
+    "key": "Automatically Grant New Permissions",
+    "resource": "roles",
+    "field": "auto_grant_new_permissions"
+  },
+  {
+    "key": "Default Member Role",
+    "resource": "roles",
+    "field": "is_default_member_role"
+  },
+  {
+    "key": "System Role Type",
+    "resource": "roles",
+    "field": "system_kind"
+  },
+  {
+    "key": "Created At",
+    "resource": "roles",
+    "field": "created_at"
+  },
+  {
+    "key": "Updated At",
+    "resource": "roles",
+    "field": "updated_at"
+  },
+  {
+    "key": "Attachments",
+    "resource": "attachments",
+    "field": null
+  },
+  {
+    "key": "Title",
+    "resource": "attachments",
+    "field": "title"
+  },
+  {
+    "key": "Filename",
+    "resource": "attachments",
+    "field": "filename"
+  },
+  {
+    "key": "Extension",
+    "resource": "attachments",
+    "field": "extname"
+  },
+  {
+    "key": "Size",
+    "resource": "attachments",
+    "field": "size"
+  },
+  {
+    "key": "MIME Type",
+    "resource": "attachments",
+    "field": "mimetype"
+  },
+  {
+    "key": "Storage Path",
+    "resource": "attachments",
+    "field": "path"
+  },
+  {
+    "key": "Metadata",
+    "resource": "attachments",
+    "field": "meta"
+  },
+  {
+    "key": "Cached URL",
+    "resource": "attachments",
+    "field": "url"
+  },
+  {
+    "key": "Storage ID",
+    "resource": "attachments",
+    "field": "storage_id"
+  }
+]

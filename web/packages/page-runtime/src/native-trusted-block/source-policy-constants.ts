@@ -52,7 +52,6 @@ export const deniedCallIdentifiers = new Set([
 ]);
 
 export const deniedConstructorIdentifiers = new Set([
-  'CSSStyleSheet',
   'Function',
   'XMLHttpRequest',
   'WebSocket'
@@ -65,9 +64,3 @@ export const deniedEscapeIdentifiers = new Set([
 ]);
 
 export const deniedCallForwarders = new Set(['call', 'apply', 'bind']);
-
-export const deniedStylesheetProperties = new Set([
-  'adoptedStyleSheets',
-  'insertRule',
-  'styleSheets'
-]);

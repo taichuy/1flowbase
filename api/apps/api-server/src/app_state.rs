@@ -3,16 +3,21 @@ use std::{
     sync::Arc,
 };
 
+use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
+use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{OfficialPluginSourcePort, RuntimeEventStream, SessionStore};
+use domain::{CatalogLocale, CatalogMessageIdentity};
 use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
 use storage_durable::MainDurableStore;
 use time::OffsetDateTime;
 
+use crate::error_response::ApiError;
 use crate::host_infrastructure::HostInfrastructureRegistry;
 use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
+    config::ApiConfig,
     console_surface_registry::ConsoleSurfaceRegistry,
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     routes::console_route_assembly::{
@@ -22,11 +27,87 @@ use crate::{
 };
 use crate::{
     official_agent_flow_templates::OfficialAgentFlowTemplateSourcePort,
+    official_i18n_catalog_source::ApiOfficialI18nCatalogSource,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::ApiRuntimeServices,
     runtime_activity::ApplicationRuntimeActivityTracker,
     runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
 };
+
+pub fn build_official_i18n_catalog_update_service(
+    store: MainDurableStore,
+    config: &ApiConfig,
+) -> Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>> {
+    let source = Arc::new(ApiOfficialI18nCatalogSource::new(
+        config.resolve_official_i18n_catalog_source(),
+    ));
+    Arc::new(control_plane::i18n_catalog::OfficialI18nCatalogUpdateService::new(store, source))
+}
+
+pub(crate) fn request_catalog_locale(
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+) -> CatalogLocale {
+    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+        query_locale: None,
+        explicit_header_locale: headers
+            .get("x-1flowbase-locale")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        user_preferred_locale: preferred_locale,
+        accept_language: headers
+            .get(ACCEPT_LANGUAGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        fallback_locale: runtime_profile::FALLBACK_LOCALE,
+        supported_locales: runtime_profile::SUPPORTED_LOCALES
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+    });
+    CatalogLocale::new(resolved.resolved_locale)
+        .expect("runtime profile must resolve a supported catalog locale")
+}
+
+pub(crate) async fn resolve_request_text(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    key: &str,
+) -> Result<String, ApiError> {
+    let identity =
+        CatalogMessageIdentity::new(key).expect("backend display catalog key must be valid");
+    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
+    Ok(resolver
+        .resolve(state.bootstrap_workspace_id, &identity, locale)
+        .await?
+        .value)
+}
+
+pub(crate) async fn project_canonical_display(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    key: &'static str,
+    stored: &str,
+) -> Result<String, ApiError> {
+    if !stored.trim().is_empty() && stored != key {
+        return Ok(stored.to_owned());
+    }
+    resolve_request_text(state, locale, key).await
+}
+
+pub(crate) async fn resolve_official_source_label(
+    state: &ApiState,
+    locale: &CatalogLocale,
+    source_kind: &str,
+    fallback: String,
+) -> Result<String, ApiError> {
+    let key = match source_kind {
+        "official_registry" => "Official source",
+        "mirror_registry" => "Mirror source",
+        _ => return Ok(fallback),
+    };
+    resolve_request_text(state, locale, key).await
+}
 
 pub fn compile_core_settings_feature_registry() -> Result<
     Arc<access_control::SettingsFeatureRegistry>,
@@ -86,20 +167,16 @@ pub fn compile_core_console_operation_inventory_snapshot(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Core console operation inventory has no locale catalog"))?;
     let references = inventory
-        .operations
+        .resources
         .iter()
-        .flat_map(|operation| {
-            std::iter::once(operation.label_ref.as_str())
-                .chain(operation.description_ref.as_deref())
-        })
-        .chain(inventory.resources.iter().flat_map(|resource| {
+        .flat_map(|resource| {
             std::iter::once(resource.label_ref.as_str())
                 .chain(resource.description_ref.as_deref())
                 .chain(resource.actions.iter().flat_map(|action| {
                     std::iter::once(action.label_ref.as_str())
                         .chain(action.description_ref.as_deref())
                 }))
-        }))
+        })
         .collect::<BTreeSet<_>>();
     let locales = ["zh_Hans", "en_US"]
         .into_iter()
@@ -224,6 +301,8 @@ pub struct ApiState {
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_agent_flow_template_source: Arc<dyn OfficialAgentFlowTemplateSourcePort>,
     pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
+    pub official_i18n_catalog_update_service:
+        Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>>,
     pub api_node_id: String,
     pub provider_install_root: String,
     pub provider_secret_master_key: String,
@@ -236,5 +315,6 @@ pub struct ApiState {
     pub cookie_name: String,
     pub cookie_secure: bool,
     pub session_ttl_days: i64,
+    pub bootstrap_workspace_id: uuid::Uuid,
     pub bootstrap_workspace_name: String,
 }

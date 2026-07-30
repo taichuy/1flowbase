@@ -27,8 +27,10 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const dataCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageDataCapabilities: vi.fn()
@@ -40,7 +42,7 @@ vi.mock(
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock(
@@ -161,7 +163,7 @@ describe('FrontStagePage trial panel link', () => {
       items: [
         {
           id: '1flowbase:frontstage.js-ui-block',
-          runtimeKind: 'iframe',
+          runtimeKind: 'native_react',
           installationId: 'builtin-installation',
           providerCode: '1flowbase',
           pluginId: 'builtin-frontstage',
@@ -178,9 +180,8 @@ describe('FrontStagePage trial panel link', () => {
           uiCapabilities: ['configurable', 'data_binding'],
           codeCapabilities: {
             template: null,
-            allowedImports: ['@1flowbase/block-renderer/antd-facade'],
-            monacoExtraLibs: [],
-            workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
+            allowedImports: ['@1flowbase/native-components'],
+            monacoExtraLibs: []
           },
           raw: {}
         }
@@ -206,15 +207,9 @@ describe('FrontStagePage trial panel link', () => {
       loading: false,
       error: null
     });
-    runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-      entries: [],
-      snapshotsBySlot: {},
-      running: false,
-      hasError: false
-    });
   });
 
-  test('opens the run preview inside the shared JSX Studio', async () => {
+  test('AC-001/002/003 runs from the header into the shared preview and console', async () => {
     authenticate();
     renderFrontStagePage();
 
@@ -222,17 +217,22 @@ describe('FrontStagePage trial panel link', () => {
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '预览' }));
+    fireEvent.click(within(studio).getByRole('button', { name: /^运\s*行$/ }));
 
     const resourcePanel = studio.querySelector(
       '.frontstage-jsx-studio__resource-panel'
     );
     expect(resourcePanel).not.toBeNull();
     expect(
-      within(resourcePanel as HTMLElement).getByRole('button', {
-        name: /^运\s*行$/
-      })
+      within(resourcePanel as HTMLElement).getByTestId(
+        'js-block-preview-console'
+      )
     ).toBeInTheDocument();
+    expect(
+      within(resourcePanel as HTMLElement).queryByRole('button', {
+        name: '停止'
+      })
+    ).not.toBeInTheDocument();
   }, 10000);
 
   test('closes the whole JSX Studio when exiting design mode', async () => {
@@ -243,16 +243,16 @@ describe('FrontStagePage trial panel link', () => {
     fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: '预览' }));
+    fireEvent.click(within(studio).getByRole('button', { name: /^运\s*行$/ }));
 
     const resourcePanel = studio.querySelector(
       '.frontstage-jsx-studio__resource-panel'
     );
     expect(resourcePanel).not.toBeNull();
     expect(
-      within(resourcePanel as HTMLElement).getByRole('button', {
-        name: /^运\s*行$/
-      })
+      within(resourcePanel as HTMLElement).getByTestId(
+        'js-block-preview-console'
+      )
     ).toBeInTheDocument();
 
     // Exit design mode — Drawer should close

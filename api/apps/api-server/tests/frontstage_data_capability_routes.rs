@@ -175,7 +175,7 @@ async fn fixture() -> Fixture {
         .hash_password(config.bootstrap_root_password.as_bytes(), &salt)
         .unwrap()
         .to_string();
-    BootstrapService::new(store.clone())
+    let bootstrap = BootstrapService::new(store.clone())
         .run(&BootstrapConfig {
             workspace_name: config.bootstrap_workspace_name.clone(),
             root_account: config.bootstrap_root_account.clone(),
@@ -222,7 +222,7 @@ async fn fixture() -> Fixture {
             .unwrap();
     let process_started_at = OffsetDateTime::now_utc();
     let state = Arc::new(ApiState {
-        store,
+        store: store.clone(),
         authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
         settings_feature_registry,
         console_operation_registry,
@@ -244,6 +244,11 @@ async fn fixture() -> Fixture {
         official_plugin_source: Arc::new(NoopPluginSource),
         official_agent_flow_template_source: Arc::new(NoopAgentFlowSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
+        official_i18n_catalog_update_service:
+            api_server::app_state::build_official_i18n_catalog_update_service(
+                store.clone(),
+                &config,
+            ),
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),
@@ -256,6 +261,7 @@ async fn fixture() -> Fixture {
         cookie_name: config.cookie_name.clone(),
         cookie_secure: config.cookie_secure,
         session_ttl_days: config.session_ttl_days,
+        bootstrap_workspace_id: bootstrap.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
     Fixture {

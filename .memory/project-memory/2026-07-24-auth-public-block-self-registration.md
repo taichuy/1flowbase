@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 认证器协议驱动的公开认证区块与自行注册
-summary: 用户确认代码区块是认证器公开 UI 的唯一真值，Core 登录页只做实例选择与共享 Block 宿主；#1444 已进入用户验收，认证中心完整共享 Studio、动态 Auth 上下文和直接区块预览已合入 beta。
+summary: 用户确认代码区块是认证器正常公开 UI 的唯一真值，Core 登录页只做实例选择与共享 Block 宿主；已启用的内置账号密码认证新增 Block 故障时的 Core 紧急登录表单，#1444 继续处于用户验收。
 keywords:
   - auth center
   - authenticator
@@ -15,8 +15,8 @@ match_when:
   - 调整认证器 public projection、HostExtension Auth Provider contract 或注册接口
   - 讨论登录页应由 Core、Schema UI 还是代码区块拥有
 created_at: 2026-07-24 00
-updated_at: 2026-07-25 00
-last_verified_at: 2026-07-25 00
+updated_at: 2026-07-29 10
+last_verified_at: 2026-07-29 10
 decision_policy: verify_before_decision
 status: phase_user_acceptance
 source_issue: "#1444"
@@ -51,7 +51,8 @@ scope:
 ## 已确认决策
 
 - 每个认证器实例只有一个完整 `public_ui_block`，登录和注册可以同时存在于同一 Block；Core 不保留第二份账号密码表单。
-- 一个实例直接渲染；多个实例显示一列按钮并渲染所选 Block；零实例显示不可用状态。
+- 一个实例直接渲染；多个实例先只显示一列认证方式按钮，点击后把 `authenticator_id` 写入 `/sign-in` URL 并以所选 Block 替换选择器，刷新或直接访问恢复同一表单；零实例显示不可用状态。
+- 多认证器返回选择器属于认证器 UI：Core 只向 Block 注入 `inputs.authenticator_selection_available` 并处理 `authenticator_selector_requested` 事件，正常 Block 与内置故障兜底表单都在自身表单内部决定返回图标；Core 不在 Block 外渲染返回入口。
 - `self_registration_enabled` 等配置由后端持久化并投影为 `public_variables`，仅供 Block 决定显示；注册 API 必须重新读取后端配置并 fail closed。
 - Auth 页面复用 canonical `BlockModule + main`、typed inputs、renderer/runtime 和 `ctx.api.<method>(path, request)`，只增加 Auth host adapter，不创建 Auth 专用 AST/TSX/runtime 或接口目录。
 - 插件默认 Block 只用于新实例与历史空值回填；插件升级不覆盖已保存的用户 Block。
@@ -71,3 +72,8 @@ scope:
 - 共享 Studio 顶部顺序为“上下文 / 重置 / 保存 / 运行”，运行是 primary 主操作：点击时冻结当前未保存草稿、切换到预览并通过显式 revision 运行；继续编辑不自动重跑。“保存”只持久化，不切换或运行；预览轨道只负责查看最近结果。Auth 使用 `direct-preview`，Frontstage 继续使用既有 `debugger` runtime。语义交付提交：implementation `496e47c30`，beta merge `df6be02b3`；顺序与主操作修正：implementation `2b090cbe0`，beta merge `0cb0e2141`。
 - Auth `direct-preview` 使用 65% / 35% 的预览与控制台垂直分屏；控制台直接消费 runtime 已清洗的 `snapshot.logs`，展示 level、message 与结构化 data。中间 splitter 支持鼠标和键盘调节，两侧独立滚动；Frontstage debugger 保持原控制台能力。交付提交：implementation `4589fa9e1`，beta merge `56cc7f370`。
 - Auth 内嵌控制台使用白色轻量 DevTools 风格而非深色终端：空状态只显示左侧高亮 `>` prompt，日志行使用固定 gutter，info/debug/warn/error 通过符号和颜色区分；不提供输入或 REPL。交付提交：implementation `0d4c1db14`，beta merge `cbc428360`。
+- `2026-07-26 00` 用户批准普通区块与认证中心 Studio 统一：顶部仅运行，运行区固定为“实际区块预览 + 单一输出控制台”，不包含停止、多标签或调试浮窗；设置共享同一 `Descriptions` 骨架并保留领域字段与编辑性。实现已进入任务级 QA，未修改后端或 runtime contract。
+- `2026-07-28 19` 用户批准内置账号密码认证锁死保护：正常路径继续以 `public_ui_block` 为唯一 UI 真值；只有后端投影为已启用、`is_builtin` 且 `auth_type=password-local` 的实例，才在编译、准备、运行时失败或 10 秒超时后自动切换 Core 最小登录表单。实现提交 `7ca5fd92e` 已合入 `beta`。
+- `2026-07-29 10` 用户人工验收发现并批准修正正常态常驻的手动紧急切换：`ready` 只显示配置 Block；已启用的内置 `password-local` 在编译、准备或运行时首次失败后自动重试一次，重试仍失败或第二次 10 秒超时才进入 Core 内置表单；其他认证器保持原错误与人工重试。修复提交 `3aba07707` 已合入 `beta`，等待用户重启后再次验收。
+- `2026-07-29 10` 用户人工验收进一步纠正多认证器入口：选择器与表单不能同时出现；多实例必须先选认证方式，再进入该实例 Block，并能返回重新选择。当前代码仍会默认选择实例并同时渲染两者，待方向确认后修复。
+- `2026-07-29 10` 用户确认进一步收敛多认证器产品心智：URL 参数 `authenticator_id` 是选中实例的前端真值；有效参数刷新直达，无效或禁用参数返回选择器；返回动作由认证器 Block 通过受控 runtime input/event 提供，Core 外层不再绘制。官方内置 Block 只在已保存源码精确等于上一版官方默认时启动升级，自定义源码不得覆盖。

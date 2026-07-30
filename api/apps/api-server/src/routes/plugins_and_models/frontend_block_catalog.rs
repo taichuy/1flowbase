@@ -30,8 +30,19 @@ pub struct FrontendBlockContextContractResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct FrontendBlockModuleAssetResponse {
+    pub role: String,
+    pub media_type: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockCodeModuleResponse {
     pub source: String,
+    pub version: String,
+    pub exports: Vec<String>,
+    pub binding: String,
+    pub assets: Vec<FrontendBlockModuleAssetResponse>,
     pub type_declarations: String,
 }
 
@@ -86,9 +97,35 @@ fn to_response(entry: domain::FrontendBlockCatalogEntry) -> FrontendBlockCatalog
         code_modules: entry
             .code_modules
             .into_iter()
-            .map(|code_module| FrontendBlockCodeModuleResponse {
-                source: code_module.source,
-                type_declarations: code_module.type_declarations,
+            .map(|code_module| {
+                let type_declarations = code_module.resolved_type_declarations();
+                FrontendBlockCodeModuleResponse {
+                    source: code_module.source,
+                    version: code_module.version,
+                    exports: code_module.exports,
+                    binding: match code_module.binding {
+                        domain::FrontendModuleBinding::Host => "host".to_string(),
+                        domain::FrontendModuleBinding::Fetched => "fetched".to_string(),
+                    },
+                    assets: code_module
+                        .assets
+                        .into_iter()
+                        .map(|asset| FrontendBlockModuleAssetResponse {
+                            role: match asset.role {
+                                domain::FrontendModuleAssetRole::BrowserModule => {
+                                    "browser_module".to_string()
+                                }
+                                domain::FrontendModuleAssetRole::ShadowStyle => {
+                                    "shadow_style".to_string()
+                                }
+                                domain::FrontendModuleAssetRole::Support => "support".to_string(),
+                            },
+                            media_type: asset.media_type,
+                            sha256: asset.sha256,
+                        })
+                        .collect(),
+                    type_declarations,
+                }
             })
             .collect(),
         context_contract: FrontendBlockContextContractResponse {

@@ -6,13 +6,14 @@ use access_control::{
 };
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     Json, Router,
 };
 use control_plane::file_management::{
-    BindFileTableStorageCommand, CreateFileTableCommand, DeleteFileTableCommand, FileTableService,
-    FileTableWithStorageTitle,
+    project_builtin_file_table_title, BindFileTableStorageCommand, CreateFileTableCommand,
+    DeleteFileTableCommand, FileTableService, FileTableWithStorageTitle,
 };
+use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::RuntimeRegistrySync;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -58,6 +59,31 @@ pub struct FileTableResponse {
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
+}
+
+fn request_catalog_locale(
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+) -> domain::CatalogLocale {
+    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+        query_locale: None,
+        explicit_header_locale: headers
+            .get("x-1flowbase-locale")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        user_preferred_locale: preferred_locale,
+        accept_language: headers
+            .get(ACCEPT_LANGUAGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        fallback_locale: runtime_profile::FALLBACK_LOCALE,
+        supported_locales: runtime_profile::SUPPORTED_LOCALES
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+    });
+    domain::CatalogLocale::new(resolved.resolved_locale)
+        .expect("runtime profile must resolve a supported catalog locale")
 }
 
 fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
@@ -125,9 +151,20 @@ pub async fn list_file_tables(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FileTableResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let tables = FileTableService::new(state.store.clone())
+    let mut tables = FileTableService::new(state.store.clone())
         .list_tables(context.user.id)
         .await?;
+    let locale = request_catalog_locale(&headers, context.user.preferred_locale);
+    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
+    for result in &mut tables {
+        project_builtin_file_table_title(
+            &resolver,
+            state.bootstrap_workspace_id,
+            &locale,
+            &mut result.table,
+        )
+        .await?;
+    }
 
     Ok(Json(ApiSuccess::new(
         tables.into_iter().map(to_response).collect(),

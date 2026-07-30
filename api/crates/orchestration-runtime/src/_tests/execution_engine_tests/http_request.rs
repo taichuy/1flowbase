@@ -229,6 +229,7 @@ fn http_request_plan(config: Value, bindings: BTreeMap<String, CompiledBinding>)
 
 fn templated_binding(value: impl Into<String>) -> CompiledBinding {
     CompiledBinding {
+        i18n_text_ref: None,
         kind: "templated_text".to_string(),
         raw_value: json!(value.into()),
         selector_paths: Vec::new(),
@@ -237,6 +238,7 @@ fn templated_binding(value: impl Into<String>) -> CompiledBinding {
 
 fn selector_binding(selector: Vec<&str>) -> CompiledBinding {
     CompiledBinding {
+        i18n_text_ref: None,
         kind: "selector".to_string(),
         raw_value: json!(selector),
         selector_paths: vec![selector.into_iter().map(str::to_string).collect()],
@@ -245,6 +247,7 @@ fn selector_binding(selector: Vec<&str>) -> CompiledBinding {
 
 fn named_bindings(entries: Value) -> CompiledBinding {
     CompiledBinding {
+        i18n_text_ref: None,
         kind: "named_bindings".to_string(),
         raw_value: entries,
         selector_paths: Vec::new(),

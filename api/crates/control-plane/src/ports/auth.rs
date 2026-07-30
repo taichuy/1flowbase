@@ -135,6 +135,12 @@ where
 
 #[async_trait]
 pub trait BootstrapRepository: Send + Sync {
+    async fn replace_authenticator_public_ui_block_if_matches(
+        &self,
+        authenticator_id: Uuid,
+        expected: &str,
+        replacement: &str,
+    ) -> anyhow::Result<bool>;
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord)
         -> anyhow::Result<()>;
     async fn upsert_permission_catalog(
@@ -142,10 +148,20 @@ pub trait BootstrapRepository: Send + Sync {
         permissions: &[PermissionDefinition],
     ) -> anyhow::Result<()>;
     async fn upsert_root_tenant(&self) -> anyhow::Result<TenantRecord>;
+    async fn root_workspace_requires_official_catalog_seed(
+        &self,
+        workspace_name: &str,
+    ) -> anyhow::Result<bool>;
     async fn upsert_workspace(
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
+    ) -> anyhow::Result<WorkspaceRecord>;
+    async fn upsert_root_workspace_with_official_catalog(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+        seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
     ) -> anyhow::Result<WorkspaceRecord>;
     async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> anyhow::Result<()>;
     async fn upsert_root_user(

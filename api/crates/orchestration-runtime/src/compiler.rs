@@ -6,9 +6,9 @@ use serde_json::Value;
 use crate::answer_presentation::validate_answer_presentation;
 use crate::compiled_plan::{
     CodeExecutorCapability, CodeIsolationProfile, CompileIssue, CompileIssueCode, CompiledBinding,
-    CompiledCodeDependency, CompiledCodeRuntime, CompiledEdge, CompiledLlmRouteTarget,
-    CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput, CompiledPlan,
-    CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
+    CompiledCodeDependency, CompiledCodeRuntime, CompiledEdge, CompiledI18nTextRef,
+    CompiledLlmRouteTarget, CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput,
+    CompiledPlan, CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
 };
 use crate::output_schema::{history_messages_schema, output_schema_is_llm_context_messages};
 use crate::payload_builder::PublicOutputContract;

@@ -368,6 +368,7 @@ js_dependencies:
 pub(crate) fn create_frontend_block_fixture(root: &Path) {
     fs::create_dir_all(root.join("bin")).unwrap();
     fs::create_dir_all(root.join("blocks/hero")).unwrap();
+    fs::create_dir_all(root.join("browser-assets")).unwrap();
     fs::write(
         root.join("manifest.yaml"),
         r#"manifest_version: 1
@@ -401,16 +402,26 @@ runtime:
 block_contributions:
   - contribution_code: hero_banner
     title: Hero Banner
-    runtime: iframe
+    runtime: native_react
     entry: blocks/hero/index.html
     code_template: |
-      import { defineBlock } from '@1flowbase/block-sdk';
-      export default defineBlock({ render() { return { primitive: 'Text' }; } });
+      import type { BlockComponentProps } from '@1flowbase/block-sdk';
+      export default function Hero({ ctx }: BlockComponentProps) {
+        return <section>{ctx.workspace.id}</section>;
+      }
     code_template_version: 1.0.0
     code_template_language: tsx
     code_modules:
       - source: "@1flowbase/block-sdk"
-        type_declarations: "export declare function defineBlock(input: unknown): unknown;"
+        version: "1.0.0"
+        exports: [blockSdkVersion]
+        binding: fetched
+        assets:
+          - path: "browser-assets/block-sdk.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+        type_declarations: "export interface BlockComponentProps { readonly ctx: { readonly workspace: { readonly id: string } } }"
     context_contract:
       primitives:
         - text
@@ -428,6 +439,11 @@ block_contributions:
     )
     .unwrap();
     fs::write(root.join("bin/fixture-frontend-blocks"), "echo fixture").unwrap();
+    fs::write(
+        root.join("browser-assets/block-sdk.js"),
+        "export const blockSdkVersion = \"1.0.0\";\n",
+    )
+    .unwrap();
     fs::write(root.join("blocks/hero/index.html"), "<div>hero</div>").unwrap();
 }
 

@@ -522,14 +522,7 @@ fn validate_console_contributions(
     }
 
     for operation in &manifest.console_operations {
-        validate_console_operation(
-            manifest,
-            operation,
-            &declared_i18n_refs,
-            &mut referenced_i18n_refs,
-            &mut operation_ids,
-            &mut route_owners,
-        )?;
+        validate_console_operation(manifest, operation, &mut operation_ids, &mut route_owners)?;
     }
 
     for resource in &manifest.console_resources {
@@ -639,8 +632,6 @@ fn validate_console_contributions(
 fn validate_console_operation(
     manifest: &HostExtensionContributionManifest,
     operation: &ConsoleOperationRegistration,
-    declared_i18n_refs: &BTreeSet<String>,
-    referenced_i18n_refs: &mut BTreeSet<String>,
     operation_ids: &mut BTreeSet<String>,
     route_owners: &mut BTreeMap<(String, String), String>,
 ) -> FrameworkResult<()> {
@@ -659,22 +650,6 @@ fn validate_console_operation(
     )?;
     validate_active_lifecycle(operation.lifecycle, &format!("{field}.lifecycle"))?;
     validate_console_policy_group(manifest, &operation.policy_group, field)?;
-    validate_i18n_reference(
-        manifest,
-        &operation.label_ref,
-        &format!("{field}.label_ref"),
-        declared_i18n_refs,
-        referenced_i18n_refs,
-    )?;
-    if let Some(description_ref) = operation.description_ref.as_deref() {
-        validate_i18n_reference(
-            manifest,
-            description_ref,
-            &format!("{field}.description_ref"),
-            declared_i18n_refs,
-            referenced_i18n_refs,
-        )?;
-    }
     if operation.routes.is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(
             "console_operations[].routes must not be empty",

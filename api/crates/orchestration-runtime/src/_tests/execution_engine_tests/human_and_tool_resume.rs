@@ -504,6 +504,7 @@ async fn resume_llm_tool_results_passes_native_response_cursor_system_and_delta_
     llm.bindings.insert(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
             raw_value: json!([

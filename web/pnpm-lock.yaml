@@ -88,6 +88,9 @@ importers:
       '@1flowbase/block-renderer':
         specifier: workspace:*
         version: link:../packages/block-renderer
+      '@1flowbase/charts':
+        specifier: workspace:*
+        version: link:../packages/charts
       '@1flowbase/embed-sdk':
         specifier: workspace:*
         version: link:../packages/embed-sdk
@@ -97,12 +100,21 @@ importers:
       '@1flowbase/flow-schema':
         specifier: workspace:^
         version: link:../packages/flow-schema
+      '@1flowbase/native-components':
+        specifier: workspace:*
+        version: link:../packages/native-components
+      '@1flowbase/rich-text':
+        specifier: workspace:*
+        version: link:../packages/rich-text
       '@1flowbase/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
       '@1flowbase/ui':
         specifier: workspace:*
         version: link:../packages/ui
+      '@ant-design/cssinjs':
+        specifier: ^1.24.0
+        version: 1.24.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/icons':
         specifier: ^5.6.1
         version: 5.6.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -201,12 +213,6 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@24.12.3)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@8.0.16(@types/node@24.12.3)(yaml@2.8.4))
 
-  packages/antd-facade:
-    dependencies:
-      '@1flowbase/page-protocol':
-        specifier: workspace:*
-        version: link:../page-protocol
-
   packages/api-client:
     dependencies:
       '@1flowbase/flow-schema':
@@ -218,9 +224,6 @@ importers:
 
   packages/block-renderer:
     dependencies:
-      '@1flowbase/antd-facade':
-        specifier: workspace:*
-        version: link:../antd-facade
       '@1flowbase/page-protocol':
         specifier: workspace:*
         version: link:../page-protocol
@@ -243,22 +246,40 @@ importers:
         specifier: workspace:*
         version: link:../page-protocol
 
+  packages/ant-design-icons-catalog:
+    dependencies:
+      '@ant-design/icons':
+        specifier: 5.6.1
+        version: 5.6.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
+  packages/charts:
+    dependencies:
+      echarts:
+        specifier: 6.1.0
+        version: 6.1.0
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
   packages/embed-sdk: {}
 
   packages/embedded-contracts: {}
 
   packages/flow-schema: {}
 
+  packages/native-components:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
   packages/page-protocol: {}
 
   packages/page-runtime:
     dependencies:
-      '@1flowbase/block-renderer':
-        specifier: workspace:*
-        version: link:../block-renderer
-      '@1flowbase/block-sdk':
-        specifier: workspace:*
-        version: link:../block-sdk
       '@1flowbase/page-protocol':
         specifier: workspace:*
         version: link:../page-protocol
@@ -268,6 +289,15 @@ importers:
       sucrase:
         specifier: ^3.35.0
         version: 3.35.1
+
+  packages/rich-text:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+      vditor:
+        specifier: 3.11.2
+        version: 3.11.2
 
   packages/shared-types: {}
 

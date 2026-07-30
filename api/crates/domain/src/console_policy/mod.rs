@@ -146,16 +146,21 @@ impl ConsolePolicyGroup {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ConsolePolicyStrategy {
+    Full,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsolePolicyMode {
     Disabled,
     Full,
     Custom,
 }
 
-impl ConsolePolicyMode {
+impl ConsolePolicyStrategy {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Disabled => "disabled",
             Self::Full => "full",
             Self::Custom => "custom",
         }
@@ -163,7 +168,6 @@ impl ConsolePolicyMode {
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
-            "disabled" => Some(Self::Disabled),
             "full" => Some(Self::Full),
             "custom" => Some(Self::Custom),
             _ => None,
@@ -262,53 +266,71 @@ impl ConsoleOperationPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "mode", rename_all = "snake_case")]
-pub enum RoleConsoleGroupPolicy {
-    Disabled {
-        group: ConsolePolicyGroup,
-    },
-    Full {
-        group: ConsolePolicyGroup,
-    },
-    Custom {
-        group: ConsolePolicyGroup,
-        operations: Vec<ConsoleOperationPolicy>,
-    },
+pub struct RoleConsoleGroupPolicy {
+    group: ConsolePolicyGroup,
+    enabled: bool,
+    strategy: ConsolePolicyStrategy,
+    operations: Vec<ConsoleOperationPolicy>,
 }
 
 impl RoleConsoleGroupPolicy {
-    pub fn disabled(group: ConsolePolicyGroup) -> Self {
-        Self::Disabled { group }
-    }
-
-    pub fn full(group: ConsolePolicyGroup) -> Self {
-        Self::Full { group }
-    }
-
-    pub fn custom(group: ConsolePolicyGroup, mut operations: Vec<ConsoleOperationPolicy>) -> Self {
+    pub fn new(
+        group: ConsolePolicyGroup,
+        enabled: bool,
+        strategy: ConsolePolicyStrategy,
+        mut operations: Vec<ConsoleOperationPolicy>,
+    ) -> Self {
         operations.sort_by(|left, right| left.operation_id().cmp(right.operation_id()));
-        Self::Custom { group, operations }
-    }
-
-    pub fn group(&self) -> &ConsolePolicyGroup {
-        match self {
-            Self::Disabled { group } | Self::Full { group } | Self::Custom { group, .. } => group,
+        Self {
+            group,
+            enabled,
+            strategy,
+            operations,
         }
     }
 
+    pub fn disabled(group: ConsolePolicyGroup) -> Self {
+        Self::new(group, false, ConsolePolicyStrategy::Full, Vec::new())
+    }
+
+    pub fn full(group: ConsolePolicyGroup) -> Self {
+        Self::new(group, true, ConsolePolicyStrategy::Full, Vec::new())
+    }
+
+    pub fn custom(group: ConsolePolicyGroup, operations: Vec<ConsoleOperationPolicy>) -> Self {
+        Self::new(group, true, ConsolePolicyStrategy::Custom, operations)
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn group(&self) -> &ConsolePolicyGroup {
+        &self.group
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn strategy(&self) -> ConsolePolicyStrategy {
+        self.strategy
+    }
+
     pub fn mode(&self) -> ConsolePolicyMode {
-        match self {
-            Self::Disabled { .. } => ConsolePolicyMode::Disabled,
-            Self::Full { .. } => ConsolePolicyMode::Full,
-            Self::Custom { .. } => ConsolePolicyMode::Custom,
+        if !self.enabled {
+            ConsolePolicyMode::Disabled
+        } else {
+            match self.strategy {
+                ConsolePolicyStrategy::Full => ConsolePolicyMode::Full,
+                ConsolePolicyStrategy::Custom => ConsolePolicyMode::Custom,
+            }
         }
     }
 
     pub fn operations(&self) -> &[ConsoleOperationPolicy] {
-        match self {
-            Self::Custom { operations, .. } => operations,
-            Self::Disabled { .. } | Self::Full { .. } => &[],
-        }
+        &self.operations
     }
 }
 
@@ -343,10 +365,13 @@ pub fn effective_console_simple_operation(
             if group_policy.group() != group {
                 return false;
             }
-            match group_policy {
-                RoleConsoleGroupPolicy::Full { .. } => true,
-                RoleConsoleGroupPolicy::Custom { operations, .. } => {
-                    operations.iter().any(|operation| {
+            if !group_policy.enabled() {
+                return false;
+            }
+            match group_policy.strategy() {
+                ConsolePolicyStrategy::Full => true,
+                ConsolePolicyStrategy::Custom => {
+                    group_policy.operations().iter().any(|operation| {
                         matches!(
                             operation,
                             ConsoleOperationPolicy::Simple {
@@ -356,7 +381,6 @@ pub fn effective_console_simple_operation(
                         )
                     })
                 }
-                RoleConsoleGroupPolicy::Disabled { .. } => false,
             }
         })
     })
@@ -374,21 +398,25 @@ pub fn effective_console_row_scope(
         .fold(
             ConsoleOperationRowScope::Disabled,
             |effective, group_policy| {
-                let granted = match group_policy {
-                    RoleConsoleGroupPolicy::Full { .. } => ConsoleOperationRowScope::ScopeAll,
-                    RoleConsoleGroupPolicy::Custom { operations, .. } => operations
-                        .iter()
-                        .filter_map(|operation| match operation {
-                            ConsoleOperationPolicy::Row {
-                                operation_id: candidate,
-                                scope,
-                            } if candidate == operation_id => Some(*scope),
-                            ConsoleOperationPolicy::Simple { .. }
-                            | ConsoleOperationPolicy::Row { .. } => None,
-                        })
-                        .max()
-                        .unwrap_or(ConsoleOperationRowScope::Disabled),
-                    RoleConsoleGroupPolicy::Disabled { .. } => ConsoleOperationRowScope::Disabled,
+                let granted = if !group_policy.enabled() {
+                    ConsoleOperationRowScope::Disabled
+                } else {
+                    match group_policy.strategy() {
+                        ConsolePolicyStrategy::Full => ConsoleOperationRowScope::ScopeAll,
+                        ConsolePolicyStrategy::Custom => group_policy
+                            .operations()
+                            .iter()
+                            .filter_map(|operation| match operation {
+                                ConsoleOperationPolicy::Row {
+                                    operation_id: candidate,
+                                    scope,
+                                } if candidate == operation_id => Some(*scope),
+                                ConsoleOperationPolicy::Simple { .. }
+                                | ConsoleOperationPolicy::Row { .. } => None,
+                            })
+                            .max()
+                            .unwrap_or(ConsoleOperationRowScope::Disabled),
+                    }
                 };
                 effective.max(granted)
             },

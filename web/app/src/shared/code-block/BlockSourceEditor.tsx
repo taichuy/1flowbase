@@ -3,12 +3,14 @@ import Editor, {
   type Monaco,
   type OnMount
 } from '@monaco-editor/react';
-import type { FrontendBlockMonacoExtraLib } from '@1flowbase/page-protocol';
 import { useCallback, useEffect, useRef } from 'react';
+
+import type { BlockSourceExtraLib } from './extra-lib';
 
 export interface BlockSourceEditorProps {
   ariaLabel: string;
-  extraLibs?: readonly FrontendBlockMonacoExtraLib[];
+  diagnostics?: readonly BlockSourceEditorDiagnostic[];
+  extraLibs?: readonly BlockSourceExtraLib[];
   height?: string | number;
   path: string;
   readOnly?: boolean;
@@ -17,8 +19,20 @@ export interface BlockSourceEditorProps {
   onMount?: OnMount;
 }
 
+export interface BlockSourceEditorDiagnostic {
+  code?: string;
+  message: string;
+  sourceLocation?: {
+    line: number;
+    column: number;
+    endLine?: number;
+    endColumn?: number;
+  };
+}
+
 export function BlockSourceEditor({
   ariaLabel,
+  diagnostics = [],
   extraLibs = [],
   height = '100%',
   onChange,
@@ -28,8 +42,14 @@ export function BlockSourceEditor({
   value
 }: BlockSourceEditorProps) {
   const monacoRef = useRef<Monaco | null>(null);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const registeredMarkersRef = useRef<{
+    monaco: Monaco;
+    model: NonNullable<ReturnType<Parameters<OnMount>[0]['getModel']>>;
+    owner: string;
+  } | null>(null);
   const registeredExtraLibsRef = useRef<{
-    source: readonly FrontendBlockMonacoExtraLib[];
+    source: readonly BlockSourceExtraLib[];
     disposables: Array<{ dispose: () => void }>;
   } | null>(null);
   const configureMonaco: BeforeMount = (monaco) => {
@@ -60,16 +80,76 @@ export function BlockSourceEditor({
     [extraLibs]
   );
 
+  const registerDiagnostics = useCallback(
+    (editor: Parameters<OnMount>[0], monaco: Monaco) => {
+      if (
+        typeof editor.getModel !== 'function' ||
+        typeof monaco.editor?.setModelMarkers !== 'function'
+      ) {
+        return;
+      }
+      const model = editor.getModel();
+      if (!model) return;
+      const owner = `1flowbase:block-source:${path}`;
+      const registered = registeredMarkersRef.current;
+      if (
+        registered &&
+        (registered.model !== model || registered.owner !== owner)
+      ) {
+        registered.monaco.editor.setModelMarkers(
+          registered.model,
+          registered.owner,
+          []
+        );
+      }
+      monaco.editor.setModelMarkers(
+        model,
+        owner,
+        diagnostics.map((diagnostic) => {
+          const line = diagnostic.sourceLocation?.line ?? 1;
+          const column = diagnostic.sourceLocation?.column ?? 1;
+          return {
+            severity: monaco.MarkerSeverity.Error,
+            message: diagnostic.message,
+            source: '1flowbase',
+            ...(diagnostic.code ? { code: diagnostic.code } : {}),
+            startLineNumber: line,
+            startColumn: column,
+            endLineNumber: diagnostic.sourceLocation?.endLine ?? line,
+            endColumn:
+              diagnostic.sourceLocation?.endColumn ?? Math.max(2, column + 1)
+          };
+        })
+      );
+      registeredMarkersRef.current = { monaco, model, owner };
+    },
+    [diagnostics, path]
+  );
+
   useEffect(() => {
     const monaco = monacoRef.current;
     if (monaco) registerExtraLibs(monaco);
   }, [registerExtraLibs]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (editor && monaco) registerDiagnostics(editor, monaco);
+  }, [registerDiagnostics]);
 
   useEffect(
     () => () => {
       registeredExtraLibsRef.current?.disposables.forEach((disposable) =>
         disposable.dispose()
       );
+      const registeredMarkers = registeredMarkersRef.current;
+      if (registeredMarkers) {
+        registeredMarkers.monaco.editor.setModelMarkers(
+          registeredMarkers.model,
+          registeredMarkers.owner,
+          []
+        );
+      }
     },
     []
   );
@@ -83,8 +163,10 @@ export function BlockSourceEditor({
         value={value}
         beforeMount={configureMonaco}
         onMount={(editor, monaco) => {
+          editorRef.current = editor;
           monacoRef.current = monaco;
           registerExtraLibs(monaco);
+          registerDiagnostics(editor, monaco);
           onMount?.(editor, monaco);
         }}
         onChange={(nextValue) => onChange(nextValue ?? '')}

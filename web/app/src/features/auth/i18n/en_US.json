@@ -3,7 +3,13 @@
     "product_tagline": "AI app base begins from chat history."
   },
   "sign_in": {
-    "footer": "power by taichuy",
+    "back_to_login_options": "Back to other sign-in options",
+    "fallback_authentication_failed": "Authentication failed. Check your account and password and try again.",
+    "fallback_identifier_label": "Account or email",
+    "fallback_password_label": "Password",
+    "fallback_submit": "Sign in",
+    "fallback_title": "Welcome",
+    "footer": "Powered by 1flowbase",
     "login_instances_load_failed": "Failed to load sign-in options. Please refresh the page and try again.",
     "no_login_instances": "No sign-in option is available."
   }

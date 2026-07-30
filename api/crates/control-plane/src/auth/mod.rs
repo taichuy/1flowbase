@@ -383,6 +383,12 @@ impl AuthenticatorRegistry {
             },
             AuthenticatorContextVariableDefinition {
                 group: AuthenticatorContextVariableGroup::Runtime,
+                label: "Authenticator selection available".to_string(),
+                member_path: "inputs.authenticator_selection_available".to_string(),
+                schema: serde_json::json!({ "type": "boolean" }),
+            },
+            AuthenticatorContextVariableDefinition {
+                group: AuthenticatorContextVariableGroup::Runtime,
                 label: "Authentication event".to_string(),
                 member_path: "inputs.auth_event".to_string(),
                 schema: serde_json::json!({

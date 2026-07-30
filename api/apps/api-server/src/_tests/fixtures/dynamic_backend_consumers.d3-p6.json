@@ -1,0 +1,120 @@
+{
+  "packet": "D3-P6",
+  "count": 19,
+  "consumers": [
+    {
+      "category": "authentication",
+      "path": "api/crates/control-plane/src/bootstrap/mod.rs",
+      "projection": "public auth and auth-center title",
+      "key": "Password"
+    },
+    {
+      "category": "authentication",
+      "path": "api/apps/api-server/src/lib.rs",
+      "projection": "default file-storage title",
+      "key": "Local"
+    },
+    {
+      "category": "authentication",
+      "path": "api/crates/control-plane/src/auth/mod.rs",
+      "projection": "auth-center context variable label",
+      "key": "Authenticator ID"
+    },
+    {
+      "category": "authentication",
+      "path": "api/crates/control-plane/src/auth/mod.rs",
+      "projection": "auth-center context variable label",
+      "key": "Authenticator selection available"
+    },
+    {
+      "category": "authentication",
+      "path": "api/crates/control-plane/src/auth/mod.rs",
+      "projection": "auth-center context variable label",
+      "key": "Authentication event"
+    },
+    {
+      "category": "authentication",
+      "path": "api/crates/control-plane/src/auth/mod.rs",
+      "projection": "auth-center context variable label",
+      "key": "API"
+    },
+    {
+      "category": "application_type",
+      "path": "api/apps/api-server/src/routes/applications/applications.rs",
+      "projection": "application catalog type label",
+      "key": "Agent Flow"
+    },
+    {
+      "category": "application_type",
+      "path": "api/apps/api-server/src/routes/applications/applications.rs",
+      "projection": "application catalog type label",
+      "key": "Workflow"
+    },
+    {
+      "category": "frontstage_default_tab",
+      "path": "api/crates/control-plane/src/frontstage/mod.rs",
+      "projection": "frontstage default-tab title",
+      "key": "Default"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/config.rs",
+      "projection": "plugin source canonical label",
+      "key": "Mirror source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/config.rs",
+      "projection": "plugin source canonical label",
+      "key": "Official source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/config.rs",
+      "projection": "Agent Flow template source canonical label",
+      "key": "Mirror source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/config.rs",
+      "projection": "Agent Flow template source canonical label",
+      "key": "Official source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/config.rs",
+      "projection": "MCP bundle source canonical label",
+      "key": "Mirror source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/config.rs",
+      "projection": "MCP bundle source canonical label",
+      "key": "Official source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/routes/plugins_and_models/plugins.rs",
+      "projection": "plugin official-catalog source label",
+      "key": "Official source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/routes/plugins_and_models/plugins/settings_routes.rs",
+      "projection": "model-provider plugin official-catalog source label",
+      "key": "Mirror source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/routes/applications/application_orchestration.rs",
+      "projection": "Agent Flow template official-catalog source label",
+      "key": "Official source"
+    },
+    {
+      "category": "official_source",
+      "path": "api/apps/api-server/src/routes/settings/mcp_management/bundles.rs",
+      "projection": "MCP bundle official-catalog source label",
+      "key": "Mirror source"
+    }
+  ]
+}

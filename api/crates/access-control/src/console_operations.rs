@@ -132,39 +132,34 @@ struct ConsoleCatalogOptionSpec {
     description_ref: &'static str,
 }
 
-const CONSOLE_POLICY_GROUP_MODE_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
-    ConsoleCatalogOptionSpec {
-        value: "disabled",
-        label_ref: "console.policy.group_modes.disabled.label",
-        description_ref: "console.policy.group_modes.disabled.description",
-    },
+const CONSOLE_POLICY_GROUP_STRATEGY_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
     ConsoleCatalogOptionSpec {
         value: "full",
-        label_ref: "console.policy.group_modes.full.label",
-        description_ref: "console.policy.group_modes.full.description",
+        label_ref: "Full access",
+        description_ref: "Grant every operation in this group",
     },
     ConsoleCatalogOptionSpec {
         value: "custom",
-        label_ref: "console.policy.group_modes.custom.label",
-        description_ref: "console.policy.group_modes.custom.description",
+        label_ref: "Custom access",
+        description_ref: "Choose operations and row scopes individually",
     },
 ];
 
 const CONSOLE_POLICY_ROW_SCOPE_OPTIONS: &[ConsoleCatalogOptionSpec] = &[
     ConsoleCatalogOptionSpec {
         value: "disabled",
-        label_ref: "console.policy.row_scopes.disabled.label",
-        description_ref: "console.policy.row_scopes.disabled.description",
+        label_ref: "Disabled",
+        description_ref: "Do not grant this operation",
     },
     ConsoleCatalogOptionSpec {
         value: "own",
-        label_ref: "console.policy.row_scopes.own.label",
-        description_ref: "console.policy.row_scopes.own.description",
+        label_ref: "Own records",
+        description_ref: "Allow records created by the current user",
     },
     ConsoleCatalogOptionSpec {
         value: "scope_all",
-        label_ref: "console.policy.row_scopes.scope_all.label",
-        description_ref: "console.policy.row_scopes.scope_all.description",
+        label_ref: "Current workspace",
+        description_ref: "Allow records in the current workspace",
     },
 ];
 
@@ -195,11 +190,11 @@ impl ConsoleLocaleCatalog {
         })
     }
 
-    pub fn group_mode_options(
+    pub fn group_strategy_options(
         &self,
         locale: &str,
     ) -> Result<Vec<ConsoleLocalizedOption>, ConsoleOperationRegistryError> {
-        self.localized_options(CONSOLE_POLICY_GROUP_MODE_OPTIONS, locale)
+        self.localized_options(CONSOLE_POLICY_GROUP_STRATEGY_OPTIONS, locale)
     }
 
     pub fn row_scope_options(
@@ -277,11 +272,11 @@ pub struct ConsoleRouteAssemblyBinding {
 #[serde(deny_unknown_fields)]
 pub struct ConsoleOperationRegistration {
     pub operation_id: String,
+    #[serde(default)]
+    pub authorization_profile_id: Option<String>,
     pub owner: ConsoleOperationOwner,
     pub lifecycle: SettingsFeatureLifecycle,
     pub policy_group: ConsolePolicyGroup,
-    pub label_ref: String,
-    pub description_ref: Option<String>,
     pub order: i32,
     pub routes: Vec<ConsoleRouteBinding>,
     pub authorization: ConsoleAuthorization,
@@ -320,11 +315,10 @@ pub struct ResourceAccessRegistration {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsoleOperationInventoryEntry {
     pub operation_id: String,
+    pub authorization_profile_id: String,
     pub owner: ConsoleOperationOwner,
     pub lifecycle: SettingsFeatureLifecycle,
     pub policy_group: ConsolePolicyGroup,
-    pub label_ref: String,
-    pub description_ref: Option<String>,
     pub order: i32,
     pub routes: Vec<ConsoleRouteBinding>,
     pub authorization: ConsoleAuthorization,
@@ -333,10 +327,28 @@ pub struct ConsoleOperationInventoryEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsoleOperationCompiledInventory {
     pub schema_version: &'static str,
+    pub interfaces: Vec<ConsoleInterfaceInventoryEntry>,
     pub operations: Vec<ConsoleOperationInventoryEntry>,
     pub resources: Vec<ResourceAccessRegistration>,
     #[serde(skip)]
     pub locale_catalog: Option<ConsoleLocaleCatalog>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleInterfaceRegistration {
+    pub interface_id: String,
+    pub route: ConsoleRouteBinding,
+    pub summary: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConsoleInterfaceInventoryEntry {
+    pub interface_id: String,
+    pub route: ConsoleRouteBinding,
+    pub summary: String,
+    pub description: String,
+    pub authorization_operation_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -423,47 +435,7 @@ impl ConsoleOperationRegistry {
         for registration in &registrations {
             validate_operation(registration, &settings_feature_ids, &compiled_resources)?;
         }
-        let explicit_operation_routes = registrations
-            .iter()
-            .flat_map(|registration| registration.routes.iter())
-            .map(|route| (route.method.to_ascii_uppercase(), route_shape(&route.path)))
-            .collect::<BTreeSet<_>>();
-
-        // Settings API ownership stays in the #1256 registry. This projection gives the
-        // unified inventory an operation identity without creating another route table. Stable
-        // operation registrations replace their legacy feature-level route ownership atomically.
-        for feature in &settings_features.inventory().features {
-            let routes = feature
-                .api_routes
-                .iter()
-                .filter(|route| {
-                    !explicit_operation_routes
-                        .contains(&(route.method.to_ascii_uppercase(), route_shape(&route.path)))
-                })
-                .map(|route| ConsoleRouteBinding {
-                    method: route.method.clone(),
-                    path: route.path.clone(),
-                })
-                .collect::<Vec<_>>();
-            if routes.is_empty() {
-                continue;
-            }
-            let operation = ConsoleOperationRegistration {
-                operation_id: settings_feature_operation_id(&feature.feature_id),
-                owner: feature.owner.clone(),
-                lifecycle: feature.lifecycle,
-                policy_group: ConsolePolicyGroup::SettingsFeature(feature.feature_id.clone()),
-                label_ref: feature.console_surface.label_key.clone(),
-                description_ref: Some(feature.console_surface.description_key.clone()),
-                order: feature.console_surface.order,
-                routes,
-                authorization: ConsoleAuthorization::Simple,
-            };
-            for route in &operation.routes {
-                validate_route(route)?;
-            }
-            compile_operation(operation, &mut operations, &mut route_owners)?;
-        }
+        validate_settings_feature_operation_coverage(settings_features, &registrations)?;
 
         for registration in registrations {
             compile_operation(registration, &mut operations, &mut route_owners)?;
@@ -471,6 +443,7 @@ impl ConsoleOperationRegistry {
 
         let mut inventory = ConsoleOperationCompiledInventory {
             schema_version: CONSOLE_OPERATION_INVENTORY_SCHEMA_VERSION,
+            interfaces: Vec::new(),
             operations: operations
                 .into_values()
                 .map(ConsoleOperationInventoryEntry::from)
@@ -490,6 +463,80 @@ impl ConsoleOperationRegistry {
             inventory,
             route_owners,
         })
+    }
+
+    pub fn with_interface_metadata(
+        mut self,
+        registrations: impl IntoIterator<Item = ConsoleInterfaceRegistration>,
+    ) -> Result<Self, ConsoleOperationRegistryError> {
+        let mut interface_ids = BTreeSet::new();
+        let mut interfaces = BTreeMap::new();
+
+        for registration in registrations {
+            validate_non_empty(&registration.interface_id, "interface_id")?;
+            validate_non_empty(&registration.summary, "interface summary")?;
+            validate_non_empty(&registration.description, "interface description")?;
+            if !registration.summary.is_ascii() || !registration.description.is_ascii() {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "interface {} metadata must be static English ASCII",
+                    registration.interface_id
+                )));
+            }
+            if !interface_ids.insert(registration.interface_id.clone()) {
+                return Err(ConsoleOperationRegistryError::new(format!(
+                    "duplicate interface_id {}",
+                    registration.interface_id
+                )));
+            }
+
+            validate_route(&registration.route)?;
+            let route = normalize_route(registration.route);
+            let key = (route.method.clone(), route_shape(&route.path));
+            let operation_id = self.route_owners.get(&key).ok_or_else(|| {
+                ConsoleOperationRegistryError::new(format!(
+                    "interface {} references an unregistered console route {} {}",
+                    registration.interface_id, route.method, route.path
+                ))
+            })?;
+            let operation = self
+                .inventory
+                .operations
+                .binary_search_by(|operation| operation.operation_id.cmp(operation_id))
+                .ok()
+                .and_then(|index| self.inventory.operations.get(index))
+                .ok_or_else(|| {
+                    ConsoleOperationRegistryError::new(format!(
+                        "compiled operation {operation_id} is missing from inventory"
+                    ))
+                })?;
+            let authorization_operation_id =
+                (!matches!(operation.authorization, ConsoleAuthorization::Authenticated))
+                    .then(|| operation_id.clone());
+            let entry = ConsoleInterfaceInventoryEntry {
+                interface_id: registration.interface_id,
+                route,
+                summary: registration.summary,
+                description: registration.description,
+                authorization_operation_id,
+            };
+            if interfaces.insert(key, entry).is_some() {
+                return Err(ConsoleOperationRegistryError::new(
+                    "duplicate interface metadata route",
+                ));
+            }
+        }
+
+        if let Some((method, path)) = self
+            .route_owners
+            .keys()
+            .find(|key| !interfaces.contains_key(*key))
+        {
+            return Err(ConsoleOperationRegistryError::new(format!(
+                "console route is missing interface metadata: {method} {path}"
+            )));
+        }
+        self.inventory.interfaces = interfaces.into_values().collect();
+        Ok(self)
     }
 
     pub fn inventory(&self) -> &ConsoleOperationCompiledInventory {
@@ -713,13 +760,15 @@ pub struct ConsoleRouteAccess<'a> {
 
 impl From<ConsoleOperationRegistration> for ConsoleOperationInventoryEntry {
     fn from(registration: ConsoleOperationRegistration) -> Self {
+        let authorization_profile_id = registration
+            .authorization_profile_id
+            .unwrap_or_else(|| registration.operation_id.clone());
         Self {
             operation_id: registration.operation_id,
+            authorization_profile_id,
             owner: registration.owner,
             lifecycle: registration.lifecycle,
             policy_group: registration.policy_group,
-            label_ref: registration.label_ref,
-            description_ref: registration.description_ref,
             order: registration.order,
             routes: registration.routes,
             authorization: registration.authorization,
@@ -838,15 +887,6 @@ fn compile_console_locale_catalog(
 
     let mut referenced_other_groups = BTreeSet::new();
     for operation in &inventory.operations {
-        required_references.insert(operation.label_ref.clone());
-        let description_ref = operation.description_ref.as_ref().ok_or_else(|| {
-            ConsoleOperationRegistryError::new(format!(
-                "operation {} must provide a locale description reference",
-                operation.operation_id
-            ))
-        })?;
-        required_references.insert(description_ref.clone());
-
         if let ConsolePolicyGroup::Other(group_id) = &operation.policy_group {
             let key = ("other".to_string(), group_id.clone());
             let (owner, display) = declared_other_groups.get(&key).ok_or_else(|| {
@@ -889,7 +929,7 @@ fn compile_console_locale_catalog(
         }
     }
 
-    for option in CONSOLE_POLICY_GROUP_MODE_OPTIONS
+    for option in CONSOLE_POLICY_GROUP_STRATEGY_OPTIONS
         .iter()
         .chain(CONSOLE_POLICY_ROW_SCOPE_OPTIONS)
     {
@@ -926,6 +966,55 @@ fn compile_console_locale_catalog(
     })
 }
 
+fn validate_settings_feature_operation_coverage(
+    settings_features: &SettingsFeatureRegistry,
+    registrations: &[ConsoleOperationRegistration],
+) -> Result<(), ConsoleOperationRegistryError> {
+    let feature_routes = settings_features
+        .inventory()
+        .features
+        .iter()
+        .map(|feature| {
+            let routes = feature
+                .api_routes
+                .iter()
+                .map(|route| (route.method.to_ascii_uppercase(), route_shape(&route.path)))
+                .collect::<BTreeSet<_>>();
+            (feature.feature_id.as_str(), routes)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut claimed_routes = BTreeMap::<&str, BTreeSet<(String, String)>>::new();
+
+    for registration in registrations {
+        let ConsolePolicyGroup::SettingsFeature(feature_id) = &registration.policy_group else {
+            continue;
+        };
+        let expected_routes = feature_routes.get(feature_id.as_str()).ok_or_else(|| {
+            ConsoleOperationRegistryError::new(format!(
+                "operation {} references unknown settings feature {feature_id}",
+                registration.operation_id
+            ))
+        })?;
+        let claims = claimed_routes.entry(feature_id.as_str()).or_default();
+        for route in &registration.routes {
+            let route_key = (route.method.to_ascii_uppercase(), route_shape(&route.path));
+            if expected_routes.contains(&route_key) {
+                claims.insert(route_key);
+            }
+        }
+    }
+
+    for (feature_id, expected_routes) in feature_routes {
+        let claims = claimed_routes.get(feature_id).cloned().unwrap_or_default();
+        if let Some((method, path)) = expected_routes.difference(&claims).next() {
+            return Err(ConsoleOperationRegistryError::new(format!(
+                "settings feature {feature_id} route has no configurable operation: {method} {path}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_operation(
     registration: &ConsoleOperationRegistration,
     settings_feature_ids: &BTreeSet<&str>,
@@ -938,11 +1027,6 @@ fn validate_operation(
         &registration.operation_id,
         "operation_id",
     )?;
-    validate_non_empty(&registration.label_ref, "operation label_ref")?;
-    validate_optional_non_empty(
-        registration.description_ref.as_deref(),
-        "operation description_ref",
-    )?;
     if registration.lifecycle == SettingsFeatureLifecycle::Inactive {
         return Err(ConsoleOperationRegistryError::new(format!(
             "inactive operation {} cannot own console routes",
@@ -952,6 +1036,16 @@ fn validate_operation(
     if registration.routes.is_empty() {
         return Err(ConsoleOperationRegistryError::new(format!(
             "operation {} must own at least one console route",
+            registration.operation_id
+        )));
+    }
+    if !matches!(
+        registration.authorization,
+        ConsoleAuthorization::Authenticated
+    ) && registration.routes.len() != 1
+    {
+        return Err(ConsoleOperationRegistryError::new(format!(
+            "configurable operation {} must bind exactly one console route",
             registration.operation_id
         )));
     }
@@ -1179,10 +1273,6 @@ fn route_literal_specificity(path: &str) -> usize {
         .count()
 }
 
-fn settings_feature_operation_id(feature_id: &str) -> String {
-    format!("settings_feature.access.{feature_id}")
-}
-
 fn console_policy_group_key(policy_group: &ConsolePolicyGroup) -> (String, String) {
     match policy_group {
         ConsolePolicyGroup::SettingsFeature(group_id) => {
@@ -1215,8 +1305,6 @@ fn operation_contract_without_group(
 ) -> (
     &ConsoleOperationOwner,
     SettingsFeatureLifecycle,
-    &str,
-    Option<&str>,
     i32,
     &[ConsoleRouteBinding],
     &ConsoleAuthorization,
@@ -1224,8 +1312,6 @@ fn operation_contract_without_group(
     (
         &operation.owner,
         operation.lifecycle,
-        &operation.label_ref,
-        operation.description_ref.as_deref(),
         operation.order,
         &operation.routes,
         &operation.authorization,

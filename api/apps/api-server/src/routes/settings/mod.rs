@@ -5,6 +5,7 @@ pub mod docs;
 pub mod file_storages;
 pub mod file_tables;
 pub mod host_infrastructure;
+pub mod i18n_catalog;
 pub mod mcp_management;
 pub mod members;
 pub mod navigation;

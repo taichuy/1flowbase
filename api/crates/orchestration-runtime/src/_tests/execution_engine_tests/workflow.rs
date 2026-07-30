@@ -42,6 +42,7 @@ fn workflow_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     raw_value: json!("ticket-{{ node-workflow-start.customer_id }}"),
                     selector_paths: vec![vec![
@@ -75,6 +76,7 @@ fn workflow_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "ticket_id".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "selector".to_string(),
                     raw_value: json!(["node-transform", "ticket_id"]),
                     selector_paths: vec![vec![

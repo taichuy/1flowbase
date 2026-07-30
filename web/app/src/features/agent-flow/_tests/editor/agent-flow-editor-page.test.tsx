@@ -88,6 +88,7 @@ function createInitialState(
 ) {
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',
@@ -762,6 +763,7 @@ describe('AgentFlowEditorShell', () => {
     ];
     const restoreVersion = vi.fn().mockResolvedValue({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-2',
         flow_id: 'flow-1',

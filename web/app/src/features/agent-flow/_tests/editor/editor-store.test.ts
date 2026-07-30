@@ -9,6 +9,7 @@ describe('agent flow editor store', () => {
     const initialDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const store = createAgentFlowEditorStore({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',
@@ -38,6 +39,7 @@ describe('agent flow editor store', () => {
     };
     const store = createAgentFlowEditorStore({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',
@@ -67,6 +69,7 @@ describe('agent flow editor store', () => {
 
     store.getState().replaceFromServerState({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',
@@ -101,6 +104,7 @@ describe('agent flow editor store', () => {
     };
     const store = createAgentFlowEditorStore({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',
@@ -129,6 +133,7 @@ describe('agent flow editor store', () => {
 
     store.getState().syncSavedServerState({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-2',
         flow_id: 'flow-1',
@@ -160,6 +165,7 @@ describe('agent flow editor store', () => {
   test('keeps application-specific panel state outside the shared store', () => {
     const store = createAgentFlowEditorStore({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',
@@ -182,6 +188,7 @@ describe('agent flow editor store', () => {
     const initialDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const store = createAgentFlowEditorStore({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-1',
         flow_id: 'flow-1',
@@ -196,6 +203,7 @@ describe('agent flow editor store', () => {
     store.getState().setPanelState({ nodeDetailWidth: 560 });
     store.getState().replaceFromServerState({
       flow_id: 'flow-1',
+      messages: [],
       draft: {
         id: 'draft-2',
         flow_id: 'flow-1',

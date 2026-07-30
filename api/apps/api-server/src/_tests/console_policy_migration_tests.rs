@@ -515,7 +515,7 @@ async fn ac_010_ac_011_supported_release_schema_cohorts_rehearse_apply_finalize_
 }
 
 #[test]
-fn ac_010_live_core_crosswalk_disposes_each_of_176_operations() {
+fn ac_010_live_core_crosswalk_disposes_each_of_187_operations() {
     let settings = compile_core_settings_feature_registry()
         .expect("the Core settings feature registry must compile before migration planning");
     let registry = compile_core_console_operation_registry(&settings)
@@ -524,7 +524,7 @@ fn ac_010_live_core_crosswalk_disposes_each_of_176_operations() {
     let migration = compile_core_console_policy_migration_plan(registry.inventory())
         .expect("the audited Core crosswalk must compile against the live registry");
 
-    assert_eq!(migration.dispositions().len(), 176);
+    assert_eq!(migration.dispositions().len(), 187);
     assert!(migration
         .dispositions()
         .iter()
@@ -621,6 +621,43 @@ fn ac_010_new_role_console_policy_operations_are_default_disabled() {
             .effective_after
             .iter()
             .all(|entry| entry.operation_id.as_str() != operation_id));
+    }
+}
+
+#[test]
+fn ac_010_new_i18n_catalog_operations_are_default_disabled() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
+    let operation_ids = [
+        "i18n_catalog.custom_keys.delete",
+        "i18n_catalog.custom_translations.upsert",
+        "i18n_catalog.entries.detail",
+        "i18n_catalog.entries.list",
+        "i18n_catalog.overrides.restore",
+        "i18n_catalog.overrides.restore_all",
+        "i18n_catalog.overrides.upsert",
+        "i18n_catalog.state.get",
+        "i18n_catalog.update.activate",
+        "i18n_catalog.update.check",
+    ];
+
+    for operation_id in operation_ids {
+        let disposition = migration
+            .disposition(operation_id)
+            .expect("every i18n catalog operation must have a migration disposition");
+        assert_eq!(disposition.policy_group_id, "system.i18n-catalog");
+        assert!(disposition.is_default_disabled_new_operation());
+    }
+
+    for mapping in migration.legacy_mappings() {
+        if let ConsolePolicyMigrationLegacyGrantProjection::Operations(operations) =
+            &mapping.projection
+        {
+            assert!(operations
+                .iter()
+                .all(|operation| !operation_ids.contains(&operation.operation_id().as_str())));
+        }
     }
 }
 

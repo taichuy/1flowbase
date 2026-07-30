@@ -18,7 +18,7 @@ export interface ConsoleRolePermissions {
 }
 
 export type ConsolePolicyGroupKind = 'settings_feature' | 'other';
-export type ConsolePolicyMode = 'disabled' | 'full' | 'custom';
+export type ConsolePolicyStrategy = 'full' | 'custom';
 export type ConsolePolicyRowScope = 'disabled' | 'own' | 'scope_all';
 export type ConsolePolicyCatalogLocale = 'zh_Hans' | 'en_US';
 
@@ -63,10 +63,10 @@ export interface ConsolePolicyCatalogRoute {
 
 export interface ConsolePolicyCatalogOperation {
   operation_id: string;
-  label: string;
+  summary: string;
   description: string;
   order: number;
-  routes: ConsolePolicyCatalogRoute[];
+  route: ConsolePolicyCatalogRoute;
   full_profile: ConsolePolicyCatalogFullProfile;
   allowed_row_scopes: ConsolePolicyCatalogOption<ConsolePolicyRowScope>[];
   authorization: ConsolePolicyOperationAuthorization;
@@ -96,7 +96,7 @@ export interface ConsolePolicyCatalogResource {
 export interface ConsolePolicyCatalog {
   schema_version: string;
   locale: ConsolePolicyCatalogLocale;
-  group_mode_options: ConsolePolicyCatalogOption<ConsolePolicyMode>[];
+  group_strategy_options: ConsolePolicyCatalogOption<ConsolePolicyStrategy>[];
   groups: ConsolePolicyCatalogGroup[];
   resources: ConsolePolicyCatalogResource[];
 }
@@ -120,7 +120,8 @@ export type ConsoleRoleConsolePolicyOperation =
 export interface ConsoleRoleConsolePolicyGroup {
   kind: ConsolePolicyGroupKind;
   group_id: string;
-  mode: ConsolePolicyMode;
+  enabled: boolean;
+  strategy: ConsolePolicyStrategy;
   operations: ConsoleRoleConsolePolicyOperation[];
 }
 
@@ -156,8 +157,7 @@ export interface ReplaceConsoleRoleFrontstageRoutesInput {
 
 export type ConsoleRoleDataPolicyScope = 'own' | 'scope_all' | 'system_all';
 export type ConsoleRoleDataPolicyOverrideScope =
-  | ConsoleRoleDataPolicyScope
-  | null;
+  ConsoleRoleDataPolicyScope | null;
 
 export interface ConsoleRoleDefaultDataPolicy {
   can_view: boolean;

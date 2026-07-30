@@ -159,7 +159,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         .unwrap()
         .to_string();
 
-    BootstrapService::new(store.clone())
+    let bootstrap = BootstrapService::new(store.clone())
         .run(&BootstrapConfig {
             workspace_name: config.bootstrap_workspace_name.clone(),
             root_account: config.bootstrap_root_account.clone(),
@@ -214,7 +214,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
-            store,
+            store: store.clone(),
             authenticator_registry: std::sync::Arc::new(
                 control_plane::auth::AuthenticatorRegistry::new(),
             ),
@@ -240,6 +240,11 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
                 NoopOfficialAgentFlowTemplateSource,
             ),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
+            official_i18n_catalog_update_service:
+                api_server::app_state::build_official_i18n_catalog_update_service(
+                    store.clone(),
+                    &config,
+                ),
             api_node_id: config.api_node_id.clone(),
             provider_install_root: config.provider_install_root.clone(),
             provider_secret_master_key: config.provider_secret_master_key.clone(),
@@ -252,6 +257,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             cookie_name: config.cookie_name.clone(),
             cookie_secure: config.cookie_secure,
             session_ttl_days: config.session_ttl_days,
+            bootstrap_workspace_id: bootstrap.workspace_id,
             bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
         }),
         &config,

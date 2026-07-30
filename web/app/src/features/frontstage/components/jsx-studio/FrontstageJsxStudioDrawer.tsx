@@ -1,8 +1,8 @@
 import type { OnMount } from '@monaco-editor/react';
-import type { BlockRuntimeDiagnostic } from '@1flowbase/page-protocol';
 import {
   createJsBlockDiagnostics,
-  validateJsBlockSource
+  diagnoseLegacyBlockModuleSource,
+  validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -20,7 +20,6 @@ import {
   type FrontstageJsxInsertion
 } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
-import { BlockRuntimeDiagnostics } from '../BlockRuntimeDiagnostics';
 import {
   JsxStudioResourcePanel,
   type FrontstageJsxStudioSection
@@ -35,14 +34,9 @@ export interface FrontstageJsxStudioDrawerProps {
   block: FrontstageBlockInstance;
   pageBlocks?: readonly FrontstageBlockInstance[];
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
-  diagnostics: BlockRuntimeDiagnostic[];
   runPanel?:
     | ReactNode
-    | ((context: {
-        code: string;
-        onCodeChange: (code: string) => void;
-        runRevision: number | null;
-      }) => ReactNode);
+    | ((context: { code: string; runRevision: number | null }) => ReactNode);
   onClose: () => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
@@ -50,7 +44,6 @@ export interface FrontstageJsxStudioDrawerProps {
 export function FrontstageJsxStudioDrawer({
   block,
   catalogEntry,
-  diagnostics,
   initialSection,
   onClose,
   onSaveBlock,
@@ -85,26 +78,25 @@ export function FrontstageJsxStudioDrawer({
   useEffect(() => {
     if (open) setRunRevision(null);
   }, [block.id, open]);
-  const allowedImports = useMemo(
-    () => catalogEntry?.codeCapabilities?.allowedImports ?? [],
-    [catalogEntry]
-  );
   const compileDiagnostics = useMemo(() => {
     if (!tabId || draft.trim().length === 0) return [];
-    const validation = validateJsBlockSource(draft, { allowedImports });
+    const legacyDiagnostic = diagnoseLegacyBlockModuleSource(draft);
+    if (legacyDiagnostic) {
+      return createJsBlockDiagnostics({ pageId, tabId, blockId: block.id }, [
+        legacyDiagnostic
+      ]);
+    }
+    const validation = validateNativeTrustedBlockSource(draft, {
+      allowedImportSources: projection.allowedImportSources
+    });
     return validation.ok
       ? []
       : createJsBlockDiagnostics(
           { pageId, tabId, blockId: block.id },
           validation.errors
         );
-  }, [allowedImports, block.id, draft, pageId, tabId]);
-  const selectedDiagnostics = [...diagnostics, ...compileDiagnostics].filter(
-    (diagnostic) =>
-      diagnostic.pageId === pageId &&
-      diagnostic.tabId === tabId &&
-      diagnostic.blockId === block.id
-  );
+  }, [block.id, draft, pageId, projection.allowedImportSources, tabId]);
+  const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
@@ -151,7 +143,7 @@ export function FrontstageJsxStudioDrawer({
   };
   const resolvedRunPanel =
     typeof runPanel === 'function'
-      ? runPanel({ code: draft, onCodeChange: setDraft, runRevision })
+      ? runPanel({ code: draft, runRevision })
       : runPanel;
 
   return (
@@ -175,11 +167,7 @@ export function FrontstageJsxStudioDrawer({
       testId={`frontstage-jsx-studio-${block.codeRef}`}
       windowId={`frontstage-jsx-studio:${block.codeRef}`}
       editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
-      editorFooter={(
-        <div className="frontstage-jsx-studio__problems">
-          <BlockRuntimeDiagnostics diagnostics={selectedDiagnostics} />
-        </div>
-      )}
+      editorDiagnostics={compileDiagnostics}
       onChange={setDraft}
       onClose={onClose}
       onEditorMount={(editor) => {
@@ -187,8 +175,14 @@ export function FrontstageJsxStudioDrawer({
       }}
       onInjectContext={injectFrontstageContextComment}
       onReset={reset}
-      onRun={() => setRunRevision((current) => (current ?? 0) + 1)}
-      onSave={() => void save().catch(() => undefined)}
+      onRun={() => {
+        if (!hasLegacySource) {
+          setRunRevision((current) => (current ?? 0) + 1);
+        }
+      }}
+      onSave={() => {
+        if (!hasLegacySource) void save().catch(() => undefined);
+      }}
       renderResource={(section) => (
         <JsxStudioResourcePanel
           block={block}

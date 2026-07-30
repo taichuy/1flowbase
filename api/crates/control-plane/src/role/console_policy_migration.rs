@@ -1051,15 +1051,17 @@ fn expand_policy(
 ) -> BTreeMap<ConsoleOperationId, ConsoleOperationPolicy> {
     let mut effective = BTreeMap::new();
     for group_policy in policy.groups() {
-        match group_policy {
-            RoleConsoleGroupPolicy::Disabled { .. } => {}
-            RoleConsoleGroupPolicy::Full { group } => {
-                if let Some(operations) = catalog_groups.get(group) {
+        if !group_policy.enabled() {
+            continue;
+        }
+        match group_policy.strategy() {
+            domain::ConsolePolicyStrategy::Full => {
+                if let Some(operations) = catalog_groups.get(group_policy.group()) {
                     effective.extend(operation_map(operations));
                 }
             }
-            RoleConsoleGroupPolicy::Custom { operations, .. } => {
-                effective.extend(operation_map(operations));
+            domain::ConsolePolicyStrategy::Custom => {
+                effective.extend(operation_map(group_policy.operations()));
             }
         }
     }

@@ -178,6 +178,14 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/model-providers');
   },
+  'page.settings-i18n.desktop': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderRouterScene('/settings/i18n');
+  },
+  'page.settings-i18n.mobile': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderRouterScene('/settings/i18n');
+  },
   'page.settings-applications': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/applications');

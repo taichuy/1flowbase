@@ -203,6 +203,7 @@ describe('ApplicationManagementPanel', () => {
     ]);
     orchestrationApi.fetchOrchestrationState.mockResolvedValue({
       flow_id: 'flow-extension',
+      messages: [],
       draft: {
         id: 'draft-extension',
         flow_id: 'flow-extension',

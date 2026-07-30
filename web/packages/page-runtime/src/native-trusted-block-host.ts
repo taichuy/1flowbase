@@ -1,164 +1,112 @@
-import type { BlockProtocolError } from '@1flowbase/page-protocol';
+const NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE =
+  'data-flowbase-native-trusted-block-root';
+const NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE =
+  'data-flowbase-native-trusted-block-id';
+const NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE =
+  'data-flowbase-native-trusted-block-mount';
 
-import type { NativeTrustedBlockPreparePlan } from './native-trusted-block-manifest';
+const ownedShadowRoots = new WeakMap<Element, ShadowRoot>();
+const activeRoots = new WeakSet<Element>();
 
-export type NativeTrustedBlockRootHandle = unknown;
-
-export interface NativeTrustedBlockMountInput {
-  plan: NativeTrustedBlockPreparePlan;
-  root: NativeTrustedBlockRootHandle;
+export interface NativeTrustedBlockPortalSurface {
+  root: Element;
+  shadowRoot: ShadowRoot;
+  mountElement: HTMLElement;
+  dispose(): void;
 }
 
-export interface NativeTrustedBlockMountedInstance {
-  dispose?: () => void | Promise<void>;
+export interface NativeTrustedBlockPortalSurfaceInput {
+  root: Element;
+  blockId: string;
 }
 
-export interface NativeTrustedBlockHostAdapter {
-  mount(
-    input: NativeTrustedBlockMountInput
-  ):
-    | NativeTrustedBlockMountedInstance
-    | void
-    | Promise<NativeTrustedBlockMountedInstance | void>;
-}
+/**
+ * Attaches the DOM boundary for one surface-owned React portal.
+ * React render and unmount remain exclusively owned by the caller's tree.
+ */
+export function attachNativeTrustedBlockPortalSurface({
+  root,
+  blockId
+}: NativeTrustedBlockPortalSurfaceInput): NativeTrustedBlockPortalSurface {
+  validatePortalSurfaceRoot(root);
+  if (activeRoots.has(root)) {
+    throw new Error('Native trusted block root is already active.');
+  }
 
-export type NativeTrustedBlockHostStatus =
-  | 'idle'
-  | 'mounted'
-  | 'failed'
-  | 'disposed';
-
-export interface NativeTrustedBlockHostState {
-  status: NativeTrustedBlockHostStatus;
-  blockId?: string;
-  runtime?: NativeTrustedBlockPreparePlan['runtime'];
-  error?: BlockProtocolError;
-}
-
-export interface NativeTrustedBlockHostOptions {
-  adapter: NativeTrustedBlockHostAdapter;
-}
-
-export interface NativeTrustedBlockHost {
-  getState(): NativeTrustedBlockHostState;
-  mount(
-    plan: NativeTrustedBlockPreparePlan,
-    root: NativeTrustedBlockRootHandle
-  ): Promise<NativeTrustedBlockHostState>;
-  dispose(): Promise<NativeTrustedBlockHostState>;
-}
-
-export function createNativeTrustedBlockHost(
-  options: NativeTrustedBlockHostOptions
-): NativeTrustedBlockHost {
-  let state: NativeTrustedBlockHostState = { status: 'idle' };
-  let mountedInstance: NativeTrustedBlockMountedInstance | undefined;
-  let didDisposeInstance = false;
-  let didDisposeHost = false;
-
-  const disposeMountedInstanceOnce = async (): Promise<void> => {
-    if (didDisposeInstance) {
-      return;
+  let shadowRoot = ownedShadowRoots.get(root);
+  if (!shadowRoot) {
+    if (root.shadowRoot) {
+      throw new Error(
+        'Native trusted block root must not contain a pre-existing ShadowRoot.'
+      );
     }
+    shadowRoot = root.attachShadow({ mode: 'open' });
+    ownedShadowRoots.set(root, shadowRoot);
+  }
 
-    didDisposeInstance = true;
-    await mountedInstance?.dispose?.();
-    mountedInstance = undefined;
-  };
+  const styleScope = applyStyleScope(root, blockId);
+  const mountElement = document.createElement('div');
+  mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE, '');
+  mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
+  shadowRoot.replaceChildren(mountElement);
+  activeRoots.add(root);
 
+  let didDispose = false;
   return {
-    getState() {
-      return state;
-    },
-    async mount(plan, root) {
-      if (didDisposeHost || state.status === 'disposed') {
-        return state;
-      }
-
-      if (state.status === 'mounted') {
-        return state;
-      }
-
-      try {
-        const instance = await options.adapter.mount({ plan, root });
-        if (didDisposeHost) {
-          if (isMountedInstance(instance)) {
-            await instance.dispose?.();
-          }
-          return state;
-        }
-
-        mountedInstance = isMountedInstance(instance) ? instance : undefined;
-        didDisposeInstance = false;
-        state = {
-          status: 'mounted',
-          blockId: plan.blockId,
-          runtime: plan.runtime
-        };
-      } catch (error) {
-        if (didDisposeHost) {
-          return state;
-        }
-
-        state = {
-          status: 'failed',
-          blockId: plan.blockId,
-          runtime: plan.runtime,
-          error: createRuntimeError(
-            'runtime.mount',
-            `Native trusted block adapter mount failed: ${getErrorMessage(error)}`
-          )
-        };
-      }
-
-      return state;
-    },
-    async dispose() {
-      if (didDisposeHost) {
-        return state;
-      }
-
-      didDisposeHost = true;
-      try {
-        await disposeMountedInstanceOnce();
-        state = { status: 'disposed' };
-      } catch (error) {
-        state = {
-          status: 'failed',
-          error: createRuntimeError(
-            'runtime.dispose',
-            `Native trusted block adapter dispose failed: ${getErrorMessage(error)}`
-          )
-        };
-      }
-
-      return state;
+    root,
+    shadowRoot,
+    mountElement,
+    dispose() {
+      if (didDispose) return;
+      didDispose = true;
+      activeRoots.delete(root);
+      shadowRoot.replaceChildren();
+      styleScope.restore();
     }
   };
 }
 
-function isMountedInstance(
-  value: NativeTrustedBlockMountedInstance | void
-): value is NativeTrustedBlockMountedInstance {
-  return typeof value === 'object' && value !== null;
+function validatePortalSurfaceRoot(root: unknown): asserts root is Element {
+  if (typeof Element === 'undefined' || !(root instanceof Element)) {
+    throw new Error('Native trusted block portal root must be a DOM Element.');
+  }
 }
 
-function createRuntimeError(path: string, message: string): BlockProtocolError {
+interface AttributeSnapshot {
+  attribute: string;
+  value: string | null;
+}
+
+function applyStyleScope(
+  root: Element,
+  blockId: string
+): { restore(): void } {
+  const snapshots = [
+    snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE),
+    snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE)
+  ];
+
+  root.setAttribute(NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE, '');
+  root.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
+
   return {
-    code: 'runtime_error',
-    path,
-    message
+    restore() {
+      snapshots.forEach(restoreAttribute.bind(null, root));
+    }
   };
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
+function snapshotAttribute(
+  root: Element,
+  attribute: string
+): AttributeSnapshot {
+  return { attribute, value: root.getAttribute(attribute) };
+}
 
-  if (typeof error === 'string' && error.trim() !== '') {
-    return error;
+function restoreAttribute(root: Element, snapshot: AttributeSnapshot): void {
+  if (snapshot.value === null) {
+    root.removeAttribute(snapshot.attribute);
+    return;
   }
-
-  return 'unknown error';
+  root.setAttribute(snapshot.attribute, snapshot.value);
 }

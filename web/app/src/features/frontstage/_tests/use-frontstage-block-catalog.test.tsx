@@ -116,7 +116,9 @@ describe('useFrontstageBlockCatalog', () => {
     const { rerender } = setupCatalog('workspace-1', queryClient);
 
     await waitFor(() => {
-      expect(frontstageApi.fetchFrontstageBlockCatalog).toHaveBeenCalledTimes(1);
+      expect(frontstageApi.fetchFrontstageBlockCatalog).toHaveBeenCalledTimes(
+        1
+      );
     });
 
     act(() => useAuthStore.getState().setAnonymous());
@@ -170,7 +172,9 @@ describe('useFrontstageBlockCatalog', () => {
     await waitFor(() => expect(result.current.items).toBe(permissionItems));
 
     expect(frontstageApi.fetchFrontstageBlockCatalog).toHaveBeenCalledTimes(4);
-    expect(frontstageApi.frontstageBlockCatalogQueryKey).toHaveBeenNthCalledWith(
+    expect(
+      frontstageApi.frontstageBlockCatalogQueryKey
+    ).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         workspaceId: 'workspace-1',
@@ -195,8 +199,9 @@ describe('useFrontstageBlockCatalog', () => {
         plugin_version: '1.0.0',
         contribution_code: 'hero_banner',
         title: 'Hero Banner',
-        runtime: 'iframe',
+        runtime: 'native_react',
         entry: 'blocks/hero/index.html',
+        code_modules: [],
         context_contract: {
           primitives: ['text'],
           input_schema: { type: 'object' }
@@ -212,7 +217,7 @@ describe('useFrontstageBlockCatalog', () => {
     const items = [
       {
         id: 'official:hero_banner',
-        runtimeKind: 'iframe',
+        runtimeKind: 'native_react',
         installationId: 'installation-1',
         providerCode: 'official',
         pluginId: 'official.blocks',
@@ -259,9 +264,9 @@ describe('useFrontstageBlockCatalog', () => {
     });
 
     expect(frontstageApi.fetchFrontstageBlockCatalog).toHaveBeenCalledTimes(1);
-    expect(blockCatalogLib.normalizeFrontstageBlockCatalog).toHaveBeenCalledWith(
-      rawEntries
-    );
+    expect(
+      blockCatalogLib.normalizeFrontstageBlockCatalog
+    ).toHaveBeenCalledWith(rawEntries);
     expect(result.current.diagnostics).toBe(diagnostics);
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
@@ -278,9 +283,9 @@ describe('useFrontstageBlockCatalog', () => {
     });
 
     expect(frontstageApi.fetchFrontstageBlockCatalog).toHaveBeenCalledTimes(1);
-    expect(blockCatalogLib.normalizeFrontstageBlockCatalog).toHaveBeenCalledWith(
-      []
-    );
+    expect(
+      blockCatalogLib.normalizeFrontstageBlockCatalog
+    ).toHaveBeenCalledWith([]);
     expect(result.current.items).toEqual([]);
     expect(result.current.diagnostics).toEqual([]);
     expect(result.current.loading).toBe(false);

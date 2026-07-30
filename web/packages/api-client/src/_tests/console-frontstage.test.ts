@@ -3,6 +3,7 @@ import * as transport from '../transport';
 
 import {
   createFrontstageGroup,
+  createFrontstageBlock,
   createFrontstagePage,
   createFrontstagePageTab,
   deleteFrontstagePageTab,
@@ -12,15 +13,19 @@ import {
   issueFrontstageCallableWriteGrant,
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
+  getFrontstageComponentCapability,
   getFrontstageBlockCode,
   getFrontstagePageTabDetail,
+  frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
   listFrontstageInterfaceCapabilities,
+  listFrontstageComponentCapabilities,
   listFrontstagePages,
   moveFrontstagePageNode,
   saveFrontstageBlockCode,
   saveFrontstageTabDocument,
   type ConsoleFrontstageBlockCode,
+  type ConsoleFrontstageComponentCapabilitySummary,
   updateFrontstagePageTab,
   updateFrontstagePageNodeTitle
 } from '../console/frontstage';
@@ -69,6 +74,49 @@ describe('console-frontstage client', () => {
     );
   });
 
+  test('D2-AC-001 exposes the canonical registered React module identity', () => {
+    const component = {
+      component_id: 'installation-1:frontstage.js-ui-block:surface',
+      installation_id: 'installation-1',
+      provider_code: '1flowbase',
+      plugin_id: '1flowbase',
+      plugin_version: '1.0.0',
+      contribution_code: 'frontstage.js-ui-block',
+      module_source: '@1flowbase/native-components',
+      module_version: '1.0.0',
+      browser_asset: {
+        sha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      },
+      export_name: 'Surface',
+      upstream: null,
+      description: 'Native React surface with standard DOM props.',
+      insert_snippet: '<Surface className="card">Content</Surface>'
+    } satisfies ConsoleFrontstageComponentCapabilitySummary;
+
+    expect(component).toMatchObject({
+      module_source: '@1flowbase/native-components',
+      module_version: '1.0.0',
+      browser_asset: {
+        sha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      },
+      export_name: 'Surface'
+    });
+  });
+
+  test('D2-P2F builds the single same-origin component module asset route', () => {
+    expect(
+      frontstageComponentModuleAssetPath(
+        'workspace/one',
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      )
+    ).toBe(
+      '/api/console/frontstage/workspace%2Fone/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    );
+  });
+
   test.each([
     {
       name: 'OpenAPI capability catalog',
@@ -86,6 +134,22 @@ describe('console-frontstage client', () => {
         }),
       expected: {
         path: '/api/console/frontstage/workspace-1/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F%2C%2Fapi%2Fconsole%2Fsettings%2Fauth-center%2F&path_query=%2Fapi%2Fconsole%2Fapplications&adapter_id=console_openapi&method=GET&offset=20&limit=20',
+        method: 'GET'
+      }
+    },
+    {
+      name: 'component capability catalog',
+      request: () =>
+        listFrontstageComponentCapabilities('workspace-1', {
+          installation_id: 'installation-1',
+          contribution_code: 'frontstage.js-ui-block',
+          query: 'button',
+          module_source: '@1flowbase/native-components',
+          offset: 20,
+          limit: 20
+        }),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/component-capabilities?installation_id=installation-1&contribution_code=frontstage.js-ui-block&query=button&module_source=%401flowbase%2Fnative-components&offset=20&limit=20',
         method: 'GET'
       }
     },
@@ -138,6 +202,18 @@ describe('console-frontstage client', () => {
       )
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace-1/interface-capabilities/published%2Finterface%3Adetail',
+      method: 'GET'
+    });
+  });
+
+  test('loads one encoded component capability detail on demand', async () => {
+    await expect(
+      getFrontstageComponentCapability(
+        'workspace-1',
+        'installation-1:block:button'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/component-capabilities/installation-1%3Ablock%3Abutton',
       method: 'GET'
     });
   });
@@ -453,6 +529,31 @@ describe('console-frontstage client', () => {
         path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
         method: 'PUT',
         body: { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
+      name: 'atomic block creation',
+      request: () =>
+        createFrontstageBlock(
+          'workspace-1',
+          'page-1',
+          'tab-1',
+          {
+            payload: { version: 1, blocks: [{ id: 'hero-1' }] },
+            code_ref: 'hero-1-code',
+            code: 'export default function Hero() {}'
+          },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/blocks',
+        method: 'POST',
+        body: {
+          payload: { version: 1, blocks: [{ id: 'hero-1' }] },
+          code_ref: 'hero-1-code',
+          code: 'export default function Hero() {}'
+        },
         csrfToken: 'csrf-123'
       }
     },

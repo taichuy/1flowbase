@@ -24,7 +24,6 @@ import {
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -43,8 +42,10 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -72,7 +73,7 @@ vi.mock(
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
@@ -466,17 +467,6 @@ function mockFrontstageBlockCode() {
   });
 }
 
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
-) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
-}
 describe('FrontStagePage - routing fallback', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -485,7 +475,6 @@ describe('FrontStagePage - routing fallback', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
-    mockRuntimeSessions();
     blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',
@@ -704,9 +693,7 @@ describe('FrontStagePage - routing fallback', () => {
     );
     const workspace = screen.getByTestId('frontstage-page-workspace');
 
-    expect(
-      workspace.querySelector('.ant-empty')
-    ).toBeInTheDocument();
+    expect(workspace.querySelector('.ant-empty')).toBeInTheDocument();
     expect(
       workspace.querySelector('.frontstage-page-workspace__header')
     ).not.toBeInTheDocument();

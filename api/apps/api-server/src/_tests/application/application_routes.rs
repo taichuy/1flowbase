@@ -375,6 +375,13 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
         catalog_payload["data"]["types"].as_array().unwrap().len(),
         2
     );
+    assert_eq!(catalog_payload["data"]["types"][0]["label"], "Agent Flow");
+    assert_eq!(catalog_payload["data"]["types"][1]["label"], "Workflow");
+    assert!(catalog_payload["data"]["types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|entry| !entry["label"].as_str().unwrap().contains('工')));
     assert_eq!(catalog_payload["data"]["tags"].as_array().unwrap().len(), 0);
 
     let create_tag = app

@@ -150,6 +150,7 @@ fn code_runtime_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "query".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "selector".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!(["node-start", "query"]),
@@ -194,6 +195,7 @@ fn code_runtime_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "answer_template".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "templated_text".to_string(),
                     selector_paths: vec![vec![
                         "node-code".to_string(),
@@ -748,6 +750,7 @@ async fn code_runtime_resolves_templated_named_bindings_as_top_level_args() {
     code_node.bindings = BTreeMap::from([(
         "named_bindings".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "named_bindings".to_string(),
             selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
             raw_value: json!([
@@ -792,6 +795,7 @@ async fn code_runtime_resolves_constant_named_bindings_with_json_types() {
     code_node.bindings = BTreeMap::from([(
         "named_bindings".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "named_bindings".to_string(),
             selector_paths: Vec::new(),
             raw_value: json!([

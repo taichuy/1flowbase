@@ -187,14 +187,25 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
             entries: vec![FrontendBlockCatalogRegistryInput {
                 contribution_code: "hero_banner".into(),
                 title: "Hero Banner".into(),
-                runtime: "iframe".into(),
+                runtime: "native_react".into(),
                 entry: "blocks/hero/index.html".into(),
                 code_template: Some("export default {}".into()),
                 code_template_version: Some("1.0.0".into()),
                 code_template_language: Some("tsx".into()),
                 code_modules: vec![domain::FrontendBlockCodeModule {
                     source: "@1flowbase/block-sdk".into(),
+                    version: "1.0.0".into(),
+                    exports: vec!["blockSdkVersion".into()],
+                    binding: domain::FrontendModuleBinding::Fetched,
+                    assets: vec![domain::FrontendModuleAsset {
+                        path: "browser-assets/block-sdk.js".into(),
+                        role: domain::FrontendModuleAssetRole::BrowserModule,
+                        media_type: "text/javascript; charset=utf-8".into(),
+                        sha256: "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+                            .into(),
+                    }],
                     type_declarations: "export declare function defineBlock(): unknown;".into(),
+                    components: vec![],
                 }],
                 context_contract: domain::FrontendBlockContextContract {
                     primitives: vec!["text".into(), "image".into()],
@@ -267,6 +278,15 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     assert_eq!(entries[0].code_template_version.as_deref(), Some("1.0.0"));
     assert_eq!(entries[0].code_template_language.as_deref(), Some("tsx"));
     assert_eq!(entries[0].code_modules.len(), 1);
+    assert_eq!(entries[0].code_modules[0].exports, vec!["blockSdkVersion"]);
+    assert_eq!(
+        entries[0].code_modules[0].binding,
+        domain::FrontendModuleBinding::Fetched
+    );
+    assert_eq!(
+        entries[0].code_modules[0].assets[0].role,
+        domain::FrontendModuleAssetRole::BrowserModule
+    );
 
     let code_modules_column = sqlx::query(
         r#"
@@ -327,4 +347,17 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     .execute(store.pool())
     .await;
     assert!(unsupported_language.is_err());
+
+    sqlx::query("update plugin_installations set verification_status = 'invalid' where id = $1")
+        .bind(installation.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(
+        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "D2-AC-004: unverified installations must not publish registered module assets"
+    );
 }

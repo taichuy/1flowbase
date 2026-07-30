@@ -205,6 +205,7 @@ async fn visible_internal_llm_tool_branch_commits_conversation_updates_on_sync_c
             bindings: BTreeMap::from([(
                 "operations".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "state_write".to_string(),
                     selector_paths: Vec::new(),
                     raw_value: json!([{
@@ -371,6 +372,7 @@ async fn visible_internal_llm_tool_branch_llm_can_wait_for_external_tool_callbac
             bindings: BTreeMap::from([(
                 "operations".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "state_write".to_string(),
                     selector_paths: Vec::new(),
                     raw_value: json!([{
@@ -888,6 +890,7 @@ async fn visible_internal_llm_tool_branch_inherits_run_context_query_when_argume
     mounted_llm.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec![
                 "visible_internal_llm_tool".to_string(),

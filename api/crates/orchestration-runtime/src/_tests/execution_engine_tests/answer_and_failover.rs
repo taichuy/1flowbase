@@ -19,6 +19,7 @@ async fn failed_llm_does_not_expose_error_text_to_downstream_answer_contract() {
     answer.bindings = BTreeMap::from([(
         "answer_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "templated_text".to_string(),
             selector_paths: vec![
                 vec!["node-llm".to_string(), "text".to_string()],
@@ -232,6 +233,7 @@ async fn failed_llm_with_error_branch_policy_activates_only_error_branch() {
     error_answer.bindings = BTreeMap::from([(
         "answer_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "templated_text".to_string(),
             selector_paths: Vec::new(),
             raw_value: json!("handled: provider unavailable"),
@@ -331,6 +333,7 @@ async fn failed_llm_with_inactive_later_branch_still_stops_before_terminal_answe
             bindings: BTreeMap::from([(
                 "branches".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "if_else_branches".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!({
@@ -421,6 +424,7 @@ async fn answer_node_keeps_partial_output_when_template_selector_is_unresolved()
     answer.bindings = BTreeMap::from([(
         "answer_template".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "templated_text".to_string(),
             selector_paths: vec![
                 vec!["node-llm".to_string(), "text".to_string()],

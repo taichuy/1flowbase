@@ -55,6 +55,12 @@ pub struct ApiConfig {
     pub official_agent_flow_template_mirror_index_url: Option<String>,
     pub official_mcp_bundle_default_catalog_url: String,
     pub official_mcp_bundle_mirror_catalog_url: Option<String>,
+    pub official_i18n_catalog_repository: String,
+    pub official_i18n_catalog_default_latest_url: String,
+    pub official_i18n_catalog_mirror_latest_url: Option<String>,
+    pub official_i18n_catalog_default_release_base_url: String,
+    pub official_i18n_catalog_mirror_release_base_url: Option<String>,
+    pub official_i18n_catalog_github_proxy_url: Option<String>,
     pub bootstrap_workspace_name: String,
     pub bootstrap_root_account: String,
     pub bootstrap_root_email: String,
@@ -85,6 +91,13 @@ pub struct ResolvedOfficialMcpBundleSourceConfig {
     pub source_kind: String,
     pub source_label: String,
     pub catalog_url: String,
+    pub github_proxy_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedOfficialI18nCatalogSourceConfig {
+    pub latest_url: String,
+    pub release_base_url: String,
     pub github_proxy_url: Option<String>,
 }
 
@@ -208,6 +221,36 @@ impl ApiConfig {
             .get("API_OFFICIAL_MCP_BUNDLE_MIRROR_CATALOG_URL")
             .cloned()
             .filter(|value| !value.trim().is_empty());
+        let official_i18n_catalog_repository = map
+            .get("API_OFFICIAL_I18N_CATALOG_REPOSITORY")
+            .cloned()
+            .unwrap_or_else(|| "taichuy/1flowbase-official-plugins".to_owned());
+        let official_i18n_catalog_default_latest_url = map
+            .get("API_OFFICIAL_I18N_CATALOG_DEFAULT_LATEST_URL")
+            .cloned()
+            .unwrap_or_else(|| {
+                format!(
+                    "https://raw.githubusercontent.com/{official_i18n_catalog_repository}/main/i18n/dist/catalog-seed.json"
+                )
+            });
+        let official_i18n_catalog_mirror_latest_url = map
+            .get("API_OFFICIAL_I18N_CATALOG_MIRROR_LATEST_URL")
+            .cloned()
+            .filter(|value| !value.trim().is_empty());
+        let official_i18n_catalog_default_release_base_url = map
+            .get("API_OFFICIAL_I18N_CATALOG_DEFAULT_RELEASE_BASE_URL")
+            .cloned()
+            .unwrap_or_else(|| {
+                format!("https://github.com/{official_i18n_catalog_repository}/releases/download")
+            });
+        let official_i18n_catalog_mirror_release_base_url = map
+            .get("API_OFFICIAL_I18N_CATALOG_MIRROR_RELEASE_BASE_URL")
+            .cloned()
+            .filter(|value| !value.trim().is_empty());
+        let official_i18n_catalog_github_proxy_url = map
+            .get("API_OFFICIAL_I18N_CATALOG_GITHUB_PROXY_URL")
+            .cloned()
+            .filter(|value| !value.trim().is_empty());
 
         if env == ApiEnvironment::Production && cors_allowed_origins.is_none() {
             return Err(anyhow!(
@@ -271,6 +314,12 @@ impl ApiConfig {
             official_agent_flow_template_mirror_index_url,
             official_mcp_bundle_default_catalog_url,
             official_mcp_bundle_mirror_catalog_url,
+            official_i18n_catalog_repository,
+            official_i18n_catalog_default_latest_url,
+            official_i18n_catalog_mirror_latest_url,
+            official_i18n_catalog_default_release_base_url,
+            official_i18n_catalog_mirror_release_base_url,
+            official_i18n_catalog_github_proxy_url,
             bootstrap_workspace_name: get("BOOTSTRAP_WORKSPACE_NAME")?,
             bootstrap_root_account: get("BOOTSTRAP_ROOT_ACCOUNT")?,
             bootstrap_root_email: get("BOOTSTRAP_ROOT_EMAIL")?,
@@ -294,7 +343,7 @@ impl ApiConfig {
         {
             return ResolvedOfficialPluginSourceConfig {
                 source_kind: "mirror_registry".into(),
-                source_label: "镜像源".into(),
+                source_label: "Mirror source".into(),
                 registry_url: mirror_url,
                 github_proxy_url: self.official_plugin_github_proxy_url.clone(),
                 trust_mode: self.official_plugin_trust_mode(),
@@ -303,7 +352,7 @@ impl ApiConfig {
 
         ResolvedOfficialPluginSourceConfig {
             source_kind: "official_registry".into(),
-            source_label: "官方源".into(),
+            source_label: "Official source".into(),
             registry_url: self.official_plugin_default_registry_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
             trust_mode: self.official_plugin_trust_mode(),
@@ -328,7 +377,7 @@ impl ApiConfig {
         {
             return ResolvedOfficialAgentFlowTemplateSourceConfig {
                 source_kind: "mirror_registry".into(),
-                source_label: "镜像源".into(),
+                source_label: "Mirror source".into(),
                 index_url: mirror_url,
                 github_proxy_url: self.official_plugin_github_proxy_url.clone(),
             };
@@ -336,7 +385,7 @@ impl ApiConfig {
 
         ResolvedOfficialAgentFlowTemplateSourceConfig {
             source_kind: "official_registry".into(),
-            source_label: "官方源".into(),
+            source_label: "Official source".into(),
             index_url: self.official_agent_flow_template_default_index_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
         }
@@ -350,16 +399,34 @@ impl ApiConfig {
         {
             return ResolvedOfficialMcpBundleSourceConfig {
                 source_kind: "mirror_registry".into(),
-                source_label: "镜像源".into(),
+                source_label: "Mirror source".into(),
                 catalog_url: mirror_url,
                 github_proxy_url: self.official_plugin_github_proxy_url.clone(),
             };
         }
         ResolvedOfficialMcpBundleSourceConfig {
             source_kind: "official_registry".into(),
-            source_label: "官方源".into(),
+            source_label: "Official source".into(),
             catalog_url: self.official_mcp_bundle_default_catalog_url.clone(),
             github_proxy_url: self.official_plugin_github_proxy_url.clone(),
+        }
+    }
+
+    pub fn resolve_official_i18n_catalog_source(&self) -> ResolvedOfficialI18nCatalogSourceConfig {
+        let mirror_latest = self
+            .official_i18n_catalog_mirror_latest_url
+            .clone()
+            .filter(|value| !value.trim().is_empty());
+        let mirror_release_base = self
+            .official_i18n_catalog_mirror_release_base_url
+            .clone()
+            .filter(|value| !value.trim().is_empty());
+        ResolvedOfficialI18nCatalogSourceConfig {
+            latest_url: mirror_latest
+                .unwrap_or_else(|| self.official_i18n_catalog_default_latest_url.clone()),
+            release_base_url: mirror_release_base
+                .unwrap_or_else(|| self.official_i18n_catalog_default_release_base_url.clone()),
+            github_proxy_url: self.official_i18n_catalog_github_proxy_url.clone(),
         }
     }
 

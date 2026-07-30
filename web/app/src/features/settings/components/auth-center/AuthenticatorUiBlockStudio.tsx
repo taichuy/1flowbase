@@ -1,19 +1,23 @@
 import type { OnMount } from '@monaco-editor/react';
-import { Descriptions } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
   createPublicAuthInputs,
-  createPublicAuthPreviewCapabilityHandlers,
-  PUBLIC_AUTH_RUNTIME_LIMITS
+  createPublicAuthNativeBlockContextCapabilities,
+  createPublicAuthPreviewCapabilityHandlers
 } from '../../../auth/components/public-auth-block-host';
-import { JsBlockTrialPanel } from '../../../frontstage/components/JsBlockTrialPanel';
+import {
+  JsxStudioRunPanel,
+  type JsxStudioRunBlockContextInput
+} from '../../../frontstage/components/jsx-studio/JsxStudioRunPanel';
 import {
   JsxStudioResourcePanel,
   type JsxStudioContextVariable
 } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
+import { JsxStudioConfigurationPanel } from '../../../frontstage/components/jsx-studio/JsxStudioConfigurationPanel';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
@@ -24,6 +28,7 @@ import {
 } from '../../../frontstage/lib/jsx-studio/source-insertion';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../../frontstage/lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
+import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
 
 export interface AuthenticatorUiBlockStudioProps {
   authenticatorId: string;
@@ -48,7 +53,7 @@ export interface AuthenticatorUiBlockStudioProps {
 const AUTH_CONTEXT_COMMENT = [
   '/**',
   ' * @1flowbase-context',
-  ' * inputs: authenticator_id, public_variables, auth_event',
+  ' * inputs: authenticator_id, public_variables',
   ' * interfaces: ctx.api',
   ' * outputs: 无',
   ' */'
@@ -73,11 +78,12 @@ export function AuthenticatorUiBlockStudio({
   workspaceId
 }: AuthenticatorUiBlockStudioProps) {
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
-  const authoringCatalogEntry = blockCatalog.items.find(
-    (entry) =>
-      entry.providerCode === '1flowbase' &&
-      entry.contributionCode === 'frontstage.js-ui-block'
-  ) ?? null;
+  const authoringCatalogEntry =
+    blockCatalog.items.find(
+      (entry) =>
+        entry.providerCode === '1flowbase' &&
+        entry.contributionCode === 'frontstage.js-ui-block'
+    ) ?? null;
   const editorProjection = useMemo(
     () => ({
       ...createFrontstageJsxEditorProjection({
@@ -88,6 +94,10 @@ export function AuthenticatorUiBlockStudio({
     [authoringCatalogEntry]
   );
   const [draft, setDraft] = useState(source);
+  const legacyDiagnostic = useMemo(
+    () => diagnoseLegacyBlockModuleSource(draft),
+    [draft]
+  );
   const [previewRequest, setPreviewRequest] = useState<{
     revision: string;
     source: string;
@@ -99,6 +109,32 @@ export function AuthenticatorUiBlockStudio({
   const previewCapabilities = useMemo(
     () => createPublicAuthPreviewCapabilityHandlers(),
     []
+  );
+  const createPreviewBlockContext = useCallback(
+    ({
+      requestId,
+      instanceEpoch,
+      plan,
+      isCurrentInstance,
+      observeApiCall
+    }: JsxStudioRunBlockContextInput) => {
+      const unavailable = createFrontstageUnavailableBlockContext(plan);
+      return {
+        ...unavailable,
+        workspace: { id: workspaceId },
+        application: null,
+        inputs: createPublicAuthInputs(authenticatorId, publicVariables ?? {}),
+        ...createPublicAuthNativeBlockContextCapabilities({
+          requestId,
+          instanceEpoch,
+          isCurrentInstance,
+          outputs: unavailable.outputs,
+          interfaceHandler: previewCapabilities.interface,
+          observeApiCall
+        })
+      };
+    },
+    [authenticatorId, previewCapabilities, publicVariables, workspaceId]
   );
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
@@ -165,7 +201,7 @@ export function AuthenticatorUiBlockStudio({
     <BlockSourceStudio
       contextComment={AUTH_CONTEXT_COMMENT}
       dirty={draft !== source}
-      errorMessage={errorMessage}
+      errorMessage={legacyDiagnostic?.message ?? errorMessage}
       extraLibs={editorProjection.monacoExtraLibs}
       initialSection="code"
       loading={false}
@@ -185,6 +221,7 @@ export function AuthenticatorUiBlockStudio({
       onInjectContext={injectFrontstageContextComment}
       onReset={() => setDraft(source)}
       onRun={(runSource) => {
+        if (diagnoseLegacyBlockModuleSource(runSource)) return;
         previewSequenceRef.current += 1;
         setPreviewRequest({
           revision: `run:${previewSequenceRef.current}`,
@@ -192,91 +229,71 @@ export function AuthenticatorUiBlockStudio({
         });
       }}
       onSave={() => {
-        void onSave(draft).catch(() => undefined);
+        if (!legacyDiagnostic) void onSave(draft).catch(() => undefined);
       }}
       renderResource={(section) => (
         <JsxStudioResourcePanel
           block={authoringBlock}
           codeSource={draft}
-          contextVariables={contextVariables ?? null}
+          contextVariables={contextVariables}
           interfacePathPrefixes={interfacePathPrefixes}
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
           runPanel={
             publicVariables && authoringCatalogEntry && previewRequest ? (
-              <JsBlockTrialPanel
+              <JsxStudioRunPanel
                 key={authenticatorId}
                 block={authoringBlock}
-                catalogEntry={authoringCatalogEntry}
                 code={previewRequest.source}
-                contextSnapshot={{}}
-                createRunInputs={(event) =>
-                  createPublicAuthInputs(
-                    authenticatorId,
-                    publicVariables,
-                    event
-                  )
-                }
-                handlers={previewCapabilities}
-                limits={PUBLIC_AUTH_RUNTIME_LIMITS}
+                createBlockContext={createPreviewBlockContext}
                 onPrepareDraftRun={previewCapabilities.prepareDraftRun}
                 onRevokeDraftRun={previewCapabilities.revokeDraftRun}
-                presentation={{
-                  mode: 'direct-preview',
-                  revision: previewRequest.revision
-                }}
+                revision={previewRequest.revision}
               />
             ) : undefined
           }
           section={section}
           workspaceId={workspaceId}
-          configurationPanel={(
-            <div className="frontstage-jsx-studio__resource-scroll">
-              <Descriptions
-                column={1}
-                size="small"
-                items={[
-                  {
-                    key: 'title',
-                    label: i18nText('settings', 'auto.name'),
-                    children: authenticatorTitle
-                  },
-                  {
-                    key: 'type',
-                    label: i18nText(
-                      'settings',
-                      'auto.auth_center_auth_type'
-                    ),
-                    children: authType
-                  },
-                  {
-                    key: 'description',
-                    label: i18nText('settings', 'auto.description'),
-                    children: description || '-'
-                  },
-                  {
-                    key: 'enabled',
-                    label: i18nText('settings', 'auto.enabled'),
-                    children: i18nText(
-                      'settings',
-                      enabled ? 'auto.yes' : 'auto.no'
-                    )
-                  },
-                  {
-                    key: 'registration',
-                    label: i18nText(
-                      'settings',
-                      'auto.auth_center_self_registration'
-                    ),
-                    children: i18nText(
-                      'settings',
-                      selfRegistrationEnabled ? 'auto.yes' : 'auto.no'
-                    )
-                  }
-                ]}
-              />
-            </div>
-          )}
+          configurationPanel={
+            <JsxStudioConfigurationPanel
+              items={[
+                {
+                  key: 'title',
+                  label: i18nText('settings', 'auto.name'),
+                  children: authenticatorTitle
+                },
+                {
+                  key: 'type',
+                  label: i18nText('settings', 'auto.auth_center_auth_type'),
+                  children: authType
+                },
+                {
+                  key: 'description',
+                  label: i18nText('settings', 'auto.description'),
+                  children: description || '-'
+                },
+                {
+                  key: 'enabled',
+                  label: i18nText('settings', 'auto.enabled'),
+                  children: i18nText(
+                    'settings',
+                    enabled ? 'auto.yes' : 'auto.no'
+                  )
+                },
+                {
+                  key: 'registration',
+                  label: i18nText(
+                    'settings',
+                    'auto.auth_center_self_registration'
+                  ),
+                  children: i18nText(
+                    'settings',
+                    selfRegistrationEnabled ? 'auto.yes' : 'auto.no'
+                  )
+                }
+              ]}
+            />
+          }
           onInsertCode={insertCode}
           onSaveBlock={async (block) => {
             setAuthoringBlock(block);
@@ -312,9 +329,9 @@ function createAuthoringBlock(
     layout: { order: 0 },
     order: 0,
     runtime: {
-      kind: catalogEntry?.runtimeKind ?? 'iframe',
+      kind: 'native_trusted_block',
       entry: catalogEntry?.entry ?? 'index.js',
-      hint: catalogEntry?.runtimeKind ?? 'iframe'
+      hint: 'native_trusted_block'
     }
   };
 }

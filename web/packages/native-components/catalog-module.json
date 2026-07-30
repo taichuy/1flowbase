@@ -1,0 +1,8 @@
+{
+  "module_source": "@1flowbase/native-components",
+  "module_version": "1.0.0",
+  "entry": "src/index.tsx",
+  "exports": ["ScrollableSurface", "Surface"],
+  "type_declarations": "src/catalog-module.d.ts",
+  "support_assets": ["src/styles.css"]
+}

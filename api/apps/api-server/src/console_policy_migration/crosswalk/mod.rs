@@ -221,7 +221,18 @@ pub fn compile_core_console_policy_migration_plan(
 ) -> Result<CompiledCoreConsolePolicyMigration> {
     let expected_operations = expected_operation_index()?;
     let live_operations = validate_live_core_inventory(inventory, &expected_operations)?;
-    let (legacy_mappings, projected_grants) = compile_legacy_mappings(&expected_operations)?;
+    let profile_operations = live_operations.iter().fold(
+        BTreeMap::<String, Vec<String>>::new(),
+        |mut profiles, (operation_id, profile_id)| {
+            profiles
+                .entry(profile_id.clone())
+                .or_default()
+                .push(operation_id.clone());
+            profiles
+        },
+    );
+    let (legacy_mappings, projected_grants) =
+        compile_legacy_mappings(&expected_operations, &profile_operations)?;
     let plan = compile_console_policy_migration_plan(inventory, &legacy_mappings)
         .map_err(|error| anyhow!("cannot compile live console-policy migration plan: {error}"))?;
     let dispositions =
@@ -254,8 +265,9 @@ fn expected_operation_index(
 fn validate_live_core_inventory(
     inventory: &ConsoleOperationCompiledInventory,
     expected_operations: &BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>,
-) -> Result<BTreeMap<String, ()>> {
+) -> Result<BTreeMap<String, String>> {
     let mut seen = BTreeMap::new();
+    let mut seen_profiles = BTreeSet::new();
     for operation in inventory
         .operations
         .iter()
@@ -263,18 +275,19 @@ fn validate_live_core_inventory(
     {
         match operation.owner.kind {
             SettingsFeatureOwnerKind::Core => {
+                let profile_id = operation.authorization_profile_id.as_str();
                 let (expected_group, expected_authorization) = expected_operations
-                    .get(operation.operation_id.as_str())
+                    .get(profile_id)
                     .ok_or_else(|| {
                         anyhow!(
                             "unknown active Core console operation {} has no migration disposition",
-                            operation.operation_id
+                            operation.authorization_profile_id
                         )
                     })?;
                 if !expected_group.matches(&operation.policy_group) {
                     bail!(
                         "Core migration policy-group mismatch for {}",
-                        operation.operation_id
+                        operation.authorization_profile_id
                     );
                 }
                 if *expected_authorization
@@ -282,10 +295,14 @@ fn validate_live_core_inventory(
                 {
                     bail!(
                         "Core migration operation-type mismatch for {}",
-                        operation.operation_id
+                        operation.authorization_profile_id
                     );
                 }
-                if seen.insert(operation.operation_id.clone(), ()).is_some() {
+                seen_profiles.insert(profile_id);
+                if seen
+                    .insert(operation.operation_id.clone(), profile_id.to_string())
+                    .is_some()
+                {
                     bail!(
                         "ambiguous active Core console operation {}",
                         operation.operation_id
@@ -301,7 +318,7 @@ fn validate_live_core_inventory(
         }
     }
     for operation_id in expected_operations.keys() {
-        if !seen.contains_key(*operation_id) {
+        if !seen_profiles.contains(operation_id) {
             bail!(
                 "audited Core console operation {operation_id} is absent or inactive in the live compiled registry"
             );
@@ -354,6 +371,7 @@ type CompiledLegacyMappings = (
 
 fn compile_legacy_mappings(
     expected_operations: &BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>,
+    profile_operations: &BTreeMap<String, Vec<String>>,
 ) -> Result<CompiledLegacyMappings> {
     let mut mappings = BTreeMap::new();
     for mapping in LEGACY_NO_PROJECTIONS {
@@ -386,11 +404,13 @@ fn compile_legacy_mappings(
                 operation_id,
                 ExpectedAuthorization::Simple,
             )?;
-            operations.push(simple_operation(operation_id)?);
-            projected_grants
-                .entry((*operation_id).to_string())
-                .or_default()
-                .insert(mapping.legacy_grant.to_string());
+            for interface_id in &profile_operations[*operation_id] {
+                operations.push(simple_operation(interface_id)?);
+                projected_grants
+                    .entry(interface_id.clone())
+                    .or_default()
+                    .insert(mapping.legacy_grant.to_string());
+            }
         }
         for operation_id in mapping.own_row_operations {
             validate_projection_operation(
@@ -399,11 +419,13 @@ fn compile_legacy_mappings(
                 operation_id,
                 ExpectedAuthorization::Row,
             )?;
-            operations.push(row_operation(operation_id, ConsoleOperationRowScope::Own)?);
-            projected_grants
-                .entry((*operation_id).to_string())
-                .or_default()
-                .insert(mapping.legacy_grant.to_string());
+            for interface_id in &profile_operations[*operation_id] {
+                operations.push(row_operation(interface_id, ConsoleOperationRowScope::Own)?);
+                projected_grants
+                    .entry(interface_id.clone())
+                    .or_default()
+                    .insert(mapping.legacy_grant.to_string());
+            }
         }
         for operation_id in mapping.scope_all_row_operations {
             validate_projection_operation(
@@ -412,14 +434,16 @@ fn compile_legacy_mappings(
                 operation_id,
                 ExpectedAuthorization::Row,
             )?;
-            operations.push(row_operation(
-                operation_id,
-                ConsoleOperationRowScope::ScopeAll,
-            )?);
-            projected_grants
-                .entry((*operation_id).to_string())
-                .or_default()
-                .insert(mapping.legacy_grant.to_string());
+            for interface_id in &profile_operations[*operation_id] {
+                operations.push(row_operation(
+                    interface_id,
+                    ConsoleOperationRowScope::ScopeAll,
+                )?);
+                projected_grants
+                    .entry(interface_id.clone())
+                    .or_default()
+                    .insert(mapping.legacy_grant.to_string());
+            }
         }
         if operations.is_empty() {
             bail!("legacy mapping {} has no projection", mapping.legacy_grant);
@@ -489,26 +513,26 @@ fn row_operation(
 
 fn compile_operation_dispositions(
     expected_operations: &BTreeMap<&'static str, (ExpectedPolicyGroup, ExpectedAuthorization)>,
-    live_operations: &BTreeMap<String, ()>,
+    live_operations: &BTreeMap<String, String>,
     projected_grants: &BTreeMap<String, BTreeSet<String>>,
 ) -> Result<Vec<ConsolePolicyMigrationOperationDisposition>> {
-    let mut dispositions = Vec::with_capacity(expected_operations.len());
-    for (operation_id, (group, authorization)) in expected_operations {
-        if !live_operations.contains_key(*operation_id) {
-            bail!("missing live operation disposition for {operation_id}");
-        }
+    let mut dispositions = Vec::with_capacity(live_operations.len());
+    for (operation_id, profile_id) in live_operations {
+        let (group, authorization) = expected_operations
+            .get(profile_id.as_str())
+            .ok_or_else(|| anyhow!("missing live operation disposition for {operation_id}"))?;
         let (policy_group_kind, policy_group_id) = group.kind_and_id();
         let disposition = if *authorization == ExpectedAuthorization::Authenticated {
             ConsolePolicyMigrationOperationDispositionKind::NoProjection {
                 evidence: AUTHENTICATED_OPERATION_EVIDENCE.to_string(),
             }
-        } else if DEFAULT_DISABLED_NEW_OPERATION_IDS.contains(operation_id) {
+        } else if DEFAULT_DISABLED_NEW_OPERATION_IDS.contains(&profile_id.as_str()) {
             ConsolePolicyMigrationOperationDispositionKind::DefaultDisabledNewOperation {
                 evidence: DEFAULT_DISABLED_EVIDENCE.to_string(),
             }
         } else {
             let legacy_grants = projected_grants
-                .get(*operation_id)
+                .get(operation_id)
                 .ok_or_else(|| {
                     anyhow!(
                         "active configurable operation {operation_id} has no migration disposition"
@@ -520,7 +544,7 @@ fn compile_operation_dispositions(
             ConsolePolicyMigrationOperationDispositionKind::Operations { legacy_grants }
         };
         dispositions.push(ConsolePolicyMigrationOperationDisposition {
-            operation_id: (*operation_id).to_string(),
+            operation_id: operation_id.clone(),
             policy_group_kind: policy_group_kind.to_string(),
             policy_group_id: policy_group_id.to_string(),
             authorization: authorization.as_str().to_string(),

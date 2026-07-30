@@ -261,14 +261,29 @@ function normalizeOperation(operation) {
 
   return {
     operation_id: operation.operation_id || operation.operationId || '',
+    authorization_profile_id:
+      operation.authorization_profile_id || operation.authorizationProfileId
+      || operation.operation_id || operation.operationId || '',
     owner: normalizeOwner(operation.owner),
     lifecycle: normalizeLifecycle(operation.lifecycle),
     policy_group: normalizePolicyGroup(operation.policy_group || operation.policyGroup),
-    label_ref: operation.label_ref || operation.labelRef || '',
-    description_ref: operation.description_ref || operation.descriptionRef || null,
     order: operation.order ?? null,
     routes,
     authorization: normalizeAuthorization(operation.authorization),
+  };
+}
+
+function normalizeInterface(item) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  return {
+    interface_id: item.interface_id || item.interfaceId || '',
+    route: normalizeRoute(item.route),
+    summary: item.summary || '',
+    description: item.description || '',
+    authorization_operation_id:
+      item.authorization_operation_id || item.authorizationOperationId || null,
   };
 }
 
@@ -315,6 +330,9 @@ function normalizeCompiledEvidence(raw) {
 
   return {
     schemaVersion: compiled.schema_version || compiled.schemaVersion || null,
+    interfaces: Array.isArray(compiled.interfaces)
+      ? compiled.interfaces.map(normalizeInterface)
+      : null,
     operations: Array.isArray(compiled.operations)
       ? compiled.operations.map(normalizeOperation)
       : null,
@@ -436,8 +454,7 @@ function compactContract(operation) {
   return {
     lifecycle: operation.lifecycle,
     policy_group: operation.policy_group,
-    label_ref: operation.label_ref,
-    description_ref: operation.description_ref,
+    authorization_profile_id: operation.authorization_profile_id,
     authorization: operation.authorization,
     routes: operation.routes,
   };
@@ -547,15 +564,17 @@ function validateCompiledEvidence(evidence, findings, diff) {
     return;
   }
 
-  if (!Array.isArray(evidence.operations) || !Array.isArray(evidence.resources)) {
+  if (!Array.isArray(evidence.interfaces) || !Array.isArray(evidence.operations) || !Array.isArray(evidence.resources)) {
     findings.push(createFinding({
       rule: 'compiled-inventory-shape-invalid',
-      message: 'compiled inventory must expose operations and resources arrays',
+      message: 'compiled inventory must expose interfaces, operations, and resources arrays',
     }));
     return;
   }
 
   const operationById = new Map();
+  const interfaceById = new Map();
+  const interfaceByRoute = new Map();
   const resourceByCode = new Map();
   const expectedRoutes = new Map();
 
@@ -624,6 +643,49 @@ function validateCompiledEvidence(evidence, findings, diff) {
       } else {
         expectedRoutes.set(key, { route, operation });
       }
+    }
+  }
+
+  for (const item of evidence.interfaces) {
+    if (!item?.interface_id || !item.route?.method || !item.route?.path) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-contract-incomplete',
+        message: 'compiled interface is missing interface_id or route metadata',
+      }));
+      continue;
+    }
+    if (interfaceById.has(item.interface_id)) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-id-duplicate',
+        subject: item.interface_id,
+        message: `compiled interface ID is registered more than once: ${item.interface_id}`,
+      }));
+    }
+    interfaceById.set(item.interface_id, item);
+    const key = routeKey(item.route);
+    if (interfaceByRoute.has(key)) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-route-duplicate',
+        subject: key,
+        message: `compiled route has more than one interface metadata entry: ${routeDisplay(item.route)}`,
+      }));
+    }
+    interfaceByRoute.set(key, item);
+    if (!item.summary.trim() || !item.description.trim()
+      || !/^[\x00-\x7F]+$/.test(item.summary)
+      || !/^[\x00-\x7F]+$/.test(item.description)) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-metadata-invalid',
+        subject: item.interface_id,
+        message: `compiled interface ${item.interface_id} must provide non-empty static English ASCII summary and description`,
+      }));
+    }
+    if (item.authorization_operation_id && !operationById.has(item.authorization_operation_id)) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-operation-missing',
+        subject: item.interface_id,
+        message: `compiled interface ${item.interface_id} references unknown authorization operation ${item.authorization_operation_id}`,
+      }));
     }
   }
 
@@ -729,6 +791,14 @@ function validateCompiledEvidence(evidence, findings, diff) {
     }
     assembledRoutes.set(key, { route, ownership });
 
+    if (!interfaceByRoute.has(key)) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-route-missing',
+        subject: routeDisplay(route),
+        message: `assembled route ${routeDisplay(route)} has no static interface metadata`,
+      }));
+    }
+
     const expected = expectedRoutes.get(key);
     if (!expected) {
       findings.push(createFinding({
@@ -748,14 +818,16 @@ function validateCompiledEvidence(evidence, findings, diff) {
         }));
       }
     } else if (ownership.kind === 'console_operation') {
-      if (ownership.operation_id !== expected.operation.operation_id) {
+      const ownershipMatches = ownership.operation_id === expected.operation.operation_id
+        || ownership.operation_id === expected.operation.authorization_profile_id;
+      if (!ownershipMatches) {
         findings.push(createFinding({
           rule: 'compiled-route-ownership-mismatch',
           subject: routeDisplay(route),
           message: `assembled route ${routeDisplay(route)} declares ${ownership.operation_id}, expected ${expected.operation.operation_id}`,
         }));
       }
-      const owner = operationById.get(ownership.operation_id);
+      const owner = ownershipMatches ? expected.operation : operationById.get(ownership.operation_id);
       if (!owner) {
         findings.push(createFinding({
           rule: 'compiled-route-owner-missing',
@@ -794,6 +866,16 @@ function validateCompiledEvidence(evidence, findings, diff) {
       }));
     }
   }
+
+  for (const [key, item] of interfaceByRoute) {
+    if (!assembledRoutes.has(key)) {
+      findings.push(createFinding({
+        rule: 'compiled-interface-route-unmounted',
+        subject: item.interface_id,
+        message: `compiled interface ${item.interface_id} references an unmounted route ${routeDisplay(item.route)}`,
+      }));
+    }
+  }
 }
 
 function flattenLocale(value, prefix = '', output = new Set()) {
@@ -812,10 +894,6 @@ function flattenLocale(value, prefix = '', output = new Set()) {
 
 function collectI18nRefs(evidence) {
   const refs = [];
-  for (const operation of evidence?.operations || []) {
-    if (operation?.label_ref) refs.push({ ref: operation.label_ref, subject: operation.operation_id });
-    if (operation?.description_ref) refs.push({ ref: operation.description_ref, subject: operation.operation_id });
-  }
   for (const resource of evidence?.resources || []) {
     if (resource?.label_ref) refs.push({ ref: resource.label_ref, subject: resource.resource_code });
     if (resource?.description_ref) refs.push({ ref: resource.description_ref, subject: resource.resource_code });

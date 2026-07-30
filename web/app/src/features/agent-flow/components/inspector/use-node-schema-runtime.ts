@@ -14,12 +14,15 @@ export function useNodeSchemaRuntime(enabled = true) {
   const setWorkingDocument = useAgentFlowEditorStore(
     (state) => state.setWorkingDocument
   );
+  const messages = useAgentFlowEditorStore((state) => state.messages);
   const selectedNode = selectedNodeId
-    ? document.graph.nodes.find((node) => node.id === selectedNodeId) ?? null
+    ? (document.graph.nodes.find((node) => node.id === selectedNodeId) ?? null)
     : null;
   const schema = useMemo(
     () =>
-      enabled && selectedNode ? resolveAgentFlowNodeSchema(selectedNode.type) : null,
+      enabled && selectedNode
+        ? resolveAgentFlowNodeSchema(selectedNode.type)
+        : null,
     [enabled, selectedNode]
   );
   const adapter = useMemo(
@@ -29,10 +32,11 @@ export function useNodeSchemaRuntime(enabled = true) {
             document,
             nodeId: selectedNodeId,
             setWorkingDocument,
+            messages,
             dispatch: () => undefined
           })
         : null,
-    [document, enabled, selectedNodeId, setWorkingDocument]
+    [document, enabled, messages, selectedNodeId, setWorkingDocument]
   );
 
   return {

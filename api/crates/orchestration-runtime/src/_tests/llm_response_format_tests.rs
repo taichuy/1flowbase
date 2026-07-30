@@ -113,6 +113,7 @@ fn llm_plan(response_format: serde_json::Value) -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt_messages".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "prompt_messages".to_string(),
                     raw_value: json!([
                         {

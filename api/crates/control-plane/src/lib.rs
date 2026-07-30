@@ -20,6 +20,7 @@ pub mod host_extension_boot;
 pub mod host_extension_inventory;
 pub mod host_infrastructure_config;
 pub mod i18n;
+pub mod i18n_catalog;
 pub mod js_dependency;
 pub mod mcp_bundle;
 pub mod mcp_management;

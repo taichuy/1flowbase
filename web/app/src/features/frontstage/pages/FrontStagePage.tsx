@@ -8,22 +8,26 @@ import {
   Typography
 } from 'antd';
 import type { CSSProperties, FC } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
 
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
-import { saveFrontstageBlockCode } from '../api/block-code';
 import type { FrontstagePageContent } from '../api/page-content';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
-import { JsBlockTrialPanel } from '../components/JsBlockTrialPanel';
-import { PageCanvas } from '../components/PageCanvas';
+import {
+  JsxStudioRunPanel,
+  type JsxStudioRunBlockContextInput
+} from '../components/jsx-studio/JsxStudioRunPanel';
+import {
+  PageCanvas,
+  type FrontstagePageCanvasRuntimeContext
+} from '../components/PageCanvas';
 import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
-import { useFrontstagePageCanvasRuntimeSessions } from '../hooks/use-frontstage-page-canvas-runtime-sessions';
-import { useFrontstagePageCanvasRuntimeSources } from '../hooks/use-frontstage-page-canvas-runtime-sources';
-import { useFrontstagePageCanvasCompiledArtifacts } from '../hooks/use-frontstage-page-canvas-compiled-artifacts';
+import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
 import {
   appendFrontstageBlock,
@@ -35,9 +39,12 @@ import {
   updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
+import {
+  resolveFrontstageNativeDependencyLock
+} from '../lib/block-catalog';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
-import { createFrontstageBlockBindingRuntimeLimits } from '../lib/jsx-studio/block-data-binding';
+import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
 import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
@@ -45,11 +52,13 @@ import {
   type FrontstagePageLayoutMode
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
-import { createFrontstagePageCanvasRuntimeRunPlanState } from '../lib/page-canvas/runtime-run-plan';
+import { createFrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
 import type {
   FrontstageRuntimeDemandByBlockId,
   FrontstageRuntimeDemandPriority
 } from '../lib/page-canvas/runtime-demand';
+import type { FrontstageNativeBlockContextHost } from '../lib/page-canvas/native-block-context-host';
+import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -65,20 +74,13 @@ import {
   resolveSelectedPageId
 } from '../lib/page-tree';
 import type { FrontStageTreeNode } from '../lib/page-tree';
-import type { RestrictedBlockLoaderLimits } from '../lib/restricted-block-loader';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   createCatalogBlockInput,
   findMatchingFrontstageBlockCatalogEntry
 } from './frontstage-page/block-catalog-helpers';
-import {
-  requireCsrfToken,
-  toDisplayErrorMessage
-} from './frontstage-page/page-action-helpers';
-import {
-  DEFAULT_JS_BLOCK_TRIAL_LIMITS,
-  DESIGN_MODE_PERMISSION
-} from './frontstage-page/page-constants';
+import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
+import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import {
   PageTreeFormModal,
@@ -97,8 +99,6 @@ import {
   type PageTreeOperationStatus
 } from './frontstage-page/page-tree-operations';
 import './frontstage-page.css';
-
-const DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID = '1flowbase:frontstage.js-ui-block';
 
 export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
@@ -146,13 +146,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
-  const [jsBlockTrialContextSnapshot, setJsBlockTrialContextSnapshot] =
-    useState<Record<string, unknown>>({});
-  const [jsBlockTrialLimits, setJsBlockTrialLimits] =
-    useState<RestrictedBlockLoaderLimits>(DEFAULT_JS_BLOCK_TRIAL_LIMITS);
   const [savedPageContent, setSavedPageContent] =
     useState<FrontstagePageContent | null>(null);
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
+  const blockCreationPendingRef = useRef(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
   const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(() =>
     normalizePageTree(initialPageTree ?? [])
@@ -208,6 +205,34 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : undefined,
     [csrfToken, displayedPageDocument, selectedPageId, tabId, workspaceId]
   );
+  const nativeContextHost = useMemo<
+    FrontstageNativeBlockContextHost | undefined
+  >(
+    () =>
+      jsBlockCapabilityHandlers && selectedPageId && tabId
+        ? {
+            interface: jsBlockCapabilityHandlers.interface,
+            observeApiCall: (observation) =>
+              recordFrontstageRuntimeObservation({
+                actorId: actor?.id ?? 'anonymous',
+                workspaceId,
+                pageId: selectedPageId,
+                tabId,
+                blockId: observation.requestId.split(':')[1] ?? '',
+                runtimeKind: 'native',
+                stage: 'api_wait',
+                instanceEpoch: observation.instanceEpoch,
+                callId: observation.callId,
+                apiCallStatus: observation.status,
+                method: observation.method,
+                path: observation.path,
+                durationMs: observation.durationMs,
+                error: observation.error
+              })
+          }
+        : undefined,
+    [actor?.id, jsBlockCapabilityHandlers, selectedPageId, tabId, workspaceId]
+  );
   const activePageRenderPlan = useMemo(
     () =>
       displayedPageDocument
@@ -230,56 +255,95 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     },
     []
   );
-  const pageCanvasRuntimeSources = useFrontstagePageCanvasRuntimeSources({
-    actorId: actor?.id,
-    actorWorkspaceId: actor?.current_workspace_id,
-    workspaceId,
-    tabId: activePageContent?.tab.id ?? null,
-    renderPlan: activePageRenderPlan,
-    demandsByBlockId: runtimeDemandsByBlockId
-  });
-  const pageCanvasCompiledArtifacts = useFrontstagePageCanvasCompiledArtifacts({
-    actorId: actor?.id,
-    workspaceId,
-    sourceState: pageCanvasRuntimeSources.sourceState,
-    demandsByBlockId: runtimeDemandsByBlockId
-  });
-  const pageCanvasRuntimeRunPlanState = useMemo(() => {
-    const sourceState = pageCanvasCompiledArtifacts.sourceState;
-    if (!sourceState) {
-      return null;
-    }
-
-    return createFrontstagePageCanvasRuntimeRunPlanState({
-      sourceState,
-      catalogEntries: blockCatalog.items,
-      contextSnapshot: (source) => ({
-        workspaceId,
-        pageId: activePageContent?.page.id ?? sourceState.pageId,
-        pageTitle: activePageContent?.page.title ?? null,
-        blockId: source.blockId,
-        codeRef: source.codeRef,
-        props: source.block.props
-      }),
-      limits: jsBlockTrialLimits
+  const pageCanvasCodeReadPlan = useMemo(
+    () =>
+      activePageRenderPlan
+        ? createFrontstagePageCanvasBlockCodeReadPlan({
+            workspaceId,
+            renderPlan: activePageRenderPlan
+          })
+        : null,
+    [activePageRenderPlan, workspaceId]
+  );
+  const nativeDependencyLocksByBlockId = useMemo(
+    () =>
+      Object.fromEntries(
+        (displayedPageDocument?.blocks ?? []).map((block) => {
+          const catalogEntry = findMatchingFrontstageBlockCatalogEntry(
+            block,
+            blockCatalog.items
+          );
+          return [
+            block.id,
+            resolveFrontstageNativeDependencyLock({
+              catalogEntry,
+              workspaceId
+            }).dependencyLock
+          ];
+        })
+      ),
+    [blockCatalog.items, displayedPageDocument?.blocks, workspaceId]
+  );
+  const pageCanvasNativePreparations =
+    useFrontstagePageCanvasNativePreparations({
+      actorId: actor?.id,
+      actorWorkspaceId: actor?.current_workspace_id,
+      readPlan: pageCanvasCodeReadPlan,
+      dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
+      demandsByBlockId: runtimeDemandsByBlockId
     });
+  const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
+    () => ({
+      currentUser: actor
+        ? {
+            id: actor.id,
+            displayName:
+              me?.nickname?.trim() || me?.name?.trim() || actor.account
+          }
+        : null,
+      workspace: { id: workspaceId },
+      application: null,
+      theme: { mode: 'light', tokens: {} },
+      ui: { locale: me?.preferred_locale ?? undefined }
+    }),
+    [actor, me?.name, me?.nickname, me?.preferred_locale, workspaceId]
+  );
+  const createTrialBlockContext = useMemo(() => {
+    if (!jsBlockCapabilityHandlers || !selectedPageId || !tabId) {
+      return undefined;
+    }
+    return (input: JsxStudioRunBlockContextInput) => {
+      const unavailable = createFrontstageUnavailableBlockContext(input.plan);
+      const capabilities = createNativeBlockContextCapabilities({
+        requestId: input.requestId,
+        instanceEpoch: input.instanceEpoch,
+        isCurrentInstance: input.isCurrentInstance,
+        interfaceHandler: jsBlockCapabilityHandlers.interface,
+        outputs: unavailable.outputs,
+        observeApiCall: input.observeApiCall
+      });
+      return {
+        ...unavailable,
+        ...nativeBlockRuntimeContext,
+        page: {
+          id: selectedPageId,
+          route: activePageContent?.tab.routeSegment ?? selectedPageId,
+          ...(activePageContent?.page.title
+            ? { title: activePageContent.page.title }
+            : {})
+        },
+        ...capabilities,
+        props: { ...input.plan.props }
+      };
+    };
   }, [
-    activePageContent?.page.id,
     activePageContent?.page.title,
-    blockCatalog.items,
-    jsBlockTrialLimits,
-    pageCanvasCompiledArtifacts.sourceState,
-    workspaceId
+    activePageContent?.tab.routeSegment,
+    jsBlockCapabilityHandlers,
+    nativeBlockRuntimeContext,
+    selectedPageId,
+    tabId
   ]);
-  const pageCanvasRuntimeSessions = useFrontstagePageCanvasRuntimeSessions({
-    actorId: actor?.id,
-    actorWorkspaceId: actor?.current_workspace_id,
-    runtimeRunPlanState: pageCanvasRuntimeRunPlanState,
-    handlers: jsBlockCapabilityHandlers,
-    demandsByBlockId: runtimeDemandsByBlockId,
-    blocks: displayedPageDocument?.blocks,
-    tabId: activePageContent?.tab.id
-  });
   const blockCompositionState = useMemo(
     () =>
       displayedPageDocument
@@ -344,26 +408,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       ),
     [blockCatalog.items, selectedBlock]
   );
-  const defaultJsBlockTrialContextSnapshot = useMemo(
-    () => ({
-      workspaceId,
-      pageId: activePageContent?.page.id ?? selectedPageId,
-      pageTitle: activePageContent?.page.title ?? null,
-      blockId: selectedBlock?.id ?? null,
-      blockCodeRef: selectedBlock?.codeRef ?? null,
-      props: selectedBlock?.props ?? {}
-    }),
-    [activePageContent, selectedBlock, selectedPageId, workspaceId]
-  );
-  const selectedBlockRuntimeLimits = useMemo(
+  const nativeDependencyLockResolution = useMemo(
     () =>
-      selectedBlock
-        ? createFrontstageBlockBindingRuntimeLimits(
-            selectedBlock,
-            jsBlockTrialLimits
-          )
-        : jsBlockTrialLimits,
-    [jsBlockTrialLimits, selectedBlock]
+      resolveFrontstageNativeDependencyLock({
+        catalogEntry: matchingJsBlockCatalogEntry,
+        workspaceId
+      }),
+    [matchingJsBlockCatalogEntry, workspaceId]
   );
   useEffect(() => {
     const resolution =
@@ -451,11 +502,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       setIsJsxStudioOpen(false);
     }
   }, [canEnterDesignMode, isDesignMode]);
-
-  useEffect(() => {
-    setJsBlockTrialContextSnapshot(defaultJsBlockTrialContextSnapshot);
-    setJsBlockTrialLimits(DEFAULT_JS_BLOCK_TRIAL_LIMITS);
-  }, [defaultJsBlockTrialContextSnapshot]);
 
   useEffect(() => {
     if (!pageTreeFormDialog) {
@@ -1039,8 +1085,17 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   };
 
   const handleAddBlock = async () => {
+    if (
+      !canAddBlock ||
+      blockCatalog.loading ||
+      blockCreationPendingRef.current
+    ) {
+      return;
+    }
+    setBlockSaveError(null);
+    pageContentSave.clearError();
     const sourceContent = activePageContent;
-    if (!canAddBlock || !sourceContent || !blockCompositionState) {
+    if (!sourceContent || !blockCompositionState) {
       return;
     }
 
@@ -1049,15 +1104,22 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       return;
     }
 
-    const entry = blockCatalog.items.find(
-      (item) => item.id === DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID
-    );
-    if (!entry) {
+    if (blockCatalog.items.length === 0) {
       setBlockSaveError(
         i18nText('frontstage', 'auto.no_available_block_catalog_entries')
       );
       return;
     }
+
+    if (blockCatalog.items.length !== 1) {
+      setBlockSaveError(
+        i18nText('frontstage', 'auto.block_catalog_load_failed')
+      );
+      return;
+    }
+
+    const [entry] = blockCatalog.items;
+    if (!entry) return;
 
     const codeTemplate = entry.codeCapabilities?.template;
     if (!codeTemplate) {
@@ -1076,18 +1138,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       nextBlockInput
     );
 
+    blockCreationPendingRef.current = true;
     setIsBlockSavePending(true);
-    setBlockSaveError(null);
-    pageContentSave.clearError();
-    let persistedContent: FrontstagePageContent | null = null;
-
     try {
       const input = createFrontstagePageDocumentSaveInput(
         sourceContent,
         nextCompositionState.document
       );
-      const nextContent = await pageContentSave.save(input);
-      persistedContent = nextContent;
       const createdBlock =
         nextCompositionState.document.blocks.find(
           (block) => block.id === nextCompositionState.selectedBlockId
@@ -1100,39 +1157,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       }
 
       const codeRef = createdBlock.codeRef;
-
-      await saveFrontstageBlockCode(
-        workspaceId,
-        selectedPageId ?? sourceContent.page.id,
-        {
-          codeRef,
-          code: codeTemplate.source
-        },
-        requireCsrfToken(csrfToken)
-      );
+      const nextContent = await pageContentSave.createBlock({
+        payload: input.payload,
+        code_ref: codeRef,
+        code: codeTemplate.source
+      });
 
       setSavedPageContent(nextContent);
       setSelectedBlockId(nextCompositionState.selectedBlockId);
     } catch (error) {
-      let errorMessage = toDisplayErrorMessage(error);
-      if (persistedContent) {
-        try {
-          const rollbackInput = createFrontstagePageDocumentSaveInput(
-            sourceContent,
-            blockCompositionState.document
-          );
-          const rollbackContent = await pageContentSave.save(rollbackInput);
-          setSavedPageContent(rollbackContent);
-        } catch (rollbackError) {
-          setSavedPageContent(persistedContent);
-          errorMessage = `${errorMessage}; ${i18nText(
-            'frontstage',
-            'auto.operation_failed'
-          )}: ${toDisplayErrorMessage(rollbackError)}`;
-        }
-      }
-      setBlockSaveError(errorMessage);
+      setBlockSaveError(toDisplayErrorMessage(error));
     } finally {
+      blockCreationPendingRef.current = false;
       setIsBlockSavePending(false);
     }
   };
@@ -1201,11 +1237,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             : undefined
         }
         onRetry={onRetryLoadPageContent}
-        runtimeSourceState={pageCanvasCompiledArtifacts.sourceState}
-        runtimeRunPlanState={pageCanvasRuntimeRunPlanState}
-        runtimeSessionEntries={pageCanvasRuntimeSessions.entries}
+        runtimePreparations={pageCanvasNativePreparations.preparations}
+        runtimeContext={nativeBlockRuntimeContext}
+        nativeContextHost={nativeContextHost}
         onRuntimeDemandChange={handleRuntimeDemandChange}
-        onRuntimeRetry={pageCanvasRuntimeSessions.retryBlock}
+        onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
         designActions={designActions}
         toolbarDisabled={isPageContentSavePending}
@@ -1238,11 +1274,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         <Button
           size="middle"
           aria-label={i18nText('frontstage', 'auto.create_block')}
-          onClick={() => {
-            void handleAddBlock();
-          }}
+          onClick={() => void handleAddBlock()}
           disabled={!canAddBlock || blockCatalog.loading}
-          loading={isBlockSavePending}
+          loading={isBlockSavePending || blockCatalog.loading}
           style={{
             margin: '8px 16px 16px',
             borderStyle: 'dashed',
@@ -1366,30 +1400,26 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             block={selectedBlock}
             pageBlocks={displayedPageDocument?.blocks}
             catalogEntry={matchingJsBlockCatalogEntry}
-            diagnostics={[]}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
-            runPanel={({ code, onCodeChange, runRevision }) => (
-              <JsBlockTrialPanel
-                block={selectedBlock}
-                catalogEntry={matchingJsBlockCatalogEntry}
-                code={code}
-                contextSnapshot={jsBlockTrialContextSnapshot}
-                handlers={jsBlockCapabilityHandlers}
-                onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
-                onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
-                limits={selectedBlockRuntimeLimits}
-                onCodeChange={onCodeChange}
-                onContextSnapshotChange={setJsBlockTrialContextSnapshot}
-                onLimitsChange={setJsBlockTrialLimits}
-                presentation={{
-                  mode: 'debugger',
-                  ...(runRevision === null
-                    ? {}
-                    : { revision: `run:${runRevision}` })
-                }}
-              />
-            )}
+            runPanel={({ code, runRevision }) =>
+              runRevision === null ? undefined : (
+                <JsxStudioRunPanel
+                  block={selectedBlock}
+                  code={code}
+                  createBlockContext={createTrialBlockContext}
+                  onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
+                  onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
+                  nativeDependencyLock={
+                    nativeDependencyLockResolution.dependencyLock
+                  }
+                  nativeDependencyLockError={
+                    nativeDependencyLockResolution.error
+                  }
+                  revision={`run:${runRevision}`}
+                />
+              )
+            }
           />
         ) : null}
       </>

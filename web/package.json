@@ -9,6 +9,7 @@
     "dev": "turbo run dev --parallel --filter=@1flowbase/web",
     "dev:app": "pnpm --filter @1flowbase/web dev",
     "build": "turbo run build",
+    "build:official-browser-assets": "node scripts/build-official-browser-assets.mjs",
     "lint": "turbo run lint",
     "test": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/cli/run-frontend-workspace-test.js",
     "test:fast": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/test-frontend.js fast",

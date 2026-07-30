@@ -1,1 +1,1 @@
-// Declarative-only package entry. JSX source executes in the frontstage worker sandbox.
+// Declarative-only package entry. Registered modules execute through the Native React host.

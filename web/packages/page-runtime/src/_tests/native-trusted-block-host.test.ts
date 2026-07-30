@@ -1,127 +1,101 @@
-import { describe, expect, test, vi } from 'vitest';
+// @vitest-environment jsdom
 
-import {
-  NATIVE_TRUSTED_BLOCK_PERMISSION,
-  NATIVE_TRUSTED_BLOCK_RUNTIME,
-  createNativeTrustedBlockHost,
-  type NativeTrustedBlockHostAdapter,
-  type NativeTrustedBlockMountedInstance,
-  type NativeTrustedBlockPreparePlan
-} from '../index';
+import { describe, expect, test } from 'vitest';
 
-function createPreparePlan(
-  overrides: Partial<NativeTrustedBlockPreparePlan> = {}
-): NativeTrustedBlockPreparePlan {
-  return {
-    runtime: NATIVE_TRUSTED_BLOCK_RUNTIME,
-    blockId: 'block-1',
-    entry: './Block.tsx',
-    source: 'export default function Block() { return null; }',
-    normalizedSource: 'export default function Block() { return null; }',
-    props: { recordId: 'record-1' },
-    requiredPermissions: [NATIVE_TRUSTED_BLOCK_PERMISSION],
-    ...overrides
-  };
+import { attachNativeTrustedBlockPortalSurface } from '../index';
+
+function createRoot(): HTMLDivElement {
+  const root = document.createElement('div');
+  document.body.append(root);
+  return root;
 }
 
-describe('Native trusted block host lifecycle adapter', () => {
-  test('mount delegates the prepare plan and caller root to the injected adapter', async () => {
-    const plan = createPreparePlan();
-    const root = { handle: 'root-1' };
-    const mountedInstance = { dispose: vi.fn() };
-    const adapter: NativeTrustedBlockHostAdapter = {
-      mount: vi.fn().mockResolvedValue(mountedInstance)
-    };
-    const host = createNativeTrustedBlockHost({ adapter });
+describe('native trusted block portal surface', () => {
+  test('D3R-AC-001 attaches an isolated ShadowRoot mount without owning React lifecycle', () => {
+    const firstRoot = createRoot();
+    const secondRoot = createRoot();
 
-    const state = await host.mount(plan, root);
-
-    expect(adapter.mount).toHaveBeenCalledTimes(1);
-    expect(adapter.mount).toHaveBeenCalledWith({ plan, root });
-    expect(state).toMatchObject({
-      status: 'mounted',
-      blockId: 'block-1',
-      runtime: NATIVE_TRUSTED_BLOCK_RUNTIME
+    const first = attachNativeTrustedBlockPortalSurface({
+      root: firstRoot,
+      blockId: 'first'
     });
-    expect(host.getState()).toBe(state);
-  });
-
-  test('maps adapter mount failures to structured runtime errors scoped to the session', async () => {
-    const adapter: NativeTrustedBlockHostAdapter = {
-      mount: vi.fn().mockRejectedValue(new Error('mount exploded'))
-    };
-    const host = createNativeTrustedBlockHost({ adapter });
-
-    const state = await host.mount(createPreparePlan({ blockId: 'block-fail' }), {
-      handle: 'root-fail'
+    const second = attachNativeTrustedBlockPortalSurface({
+      root: secondRoot,
+      blockId: 'second'
     });
 
-    expect(state).toMatchObject({
-      status: 'failed',
-      blockId: 'block-fail',
-      runtime: NATIVE_TRUSTED_BLOCK_RUNTIME,
-      error: {
-        code: 'runtime_error',
-        path: 'runtime.mount',
-        message: expect.stringContaining('mount exploded')
-      }
+    expect(first.shadowRoot).not.toBe(second.shadowRoot);
+    expect(first.mountElement.getRootNode()).toBe(first.shadowRoot);
+    expect(second.mountElement.getRootNode()).toBe(second.shadowRoot);
+    expect(first).not.toHaveProperty('render');
+    expect(first).not.toHaveProperty('unmount');
+    expect(first).not.toHaveProperty('update');
+  });
+
+  test('D3R-AC-008 cleanup is idempotent, restores host markers, and permits a fresh epoch', () => {
+    const root = createRoot();
+    root.setAttribute('data-flowbase-native-trusted-block-id', 'host-value');
+    const first = attachNativeTrustedBlockPortalSurface({
+      root,
+      blockId: 'epoch-1'
     });
-  });
+    const shadowRoot = first.shadowRoot;
 
-  test('dispose calls the mounted instance dispose exactly once and is idempotent', async () => {
-    const dispose = vi.fn();
-    const adapter: NativeTrustedBlockHostAdapter = {
-      mount: vi.fn().mockReturnValue({ dispose })
-    };
-    const host = createNativeTrustedBlockHost({ adapter });
-
-    await host.mount(createPreparePlan(), { handle: 'root-1' });
-    const firstState = await host.dispose();
-    const secondState = await host.dispose();
-
-    expect(dispose).toHaveBeenCalledTimes(1);
-    expect(firstState).toEqual({ status: 'disposed' });
-    expect(secondState).toBe(firstState);
-  });
-
-  test('disposes instances that resolve after dispose while mount is pending', async () => {
-    const plan = createPreparePlan();
-    const root = { handle: 'root-1' };
-    const dispose = vi.fn();
-    let resolveMount!: (instance: NativeTrustedBlockMountedInstance) => void;
-    const pendingMount = new Promise<NativeTrustedBlockMountedInstance>(
-      (resolve) => {
-        resolveMount = resolve;
-      }
+    expect(root.getAttribute('data-flowbase-native-trusted-block-root')).toBe(
+      ''
     );
-    const adapter: NativeTrustedBlockHostAdapter = {
-      mount: vi.fn().mockReturnValue(pendingMount)
-    };
-    const host = createNativeTrustedBlockHost({ adapter });
+    expect(root.getAttribute('data-flowbase-native-trusted-block-id')).toBe(
+      'epoch-1'
+    );
 
-    const mountStatePromise = host.mount(plan, root);
-    const disposedState = await host.dispose();
-    resolveMount({ dispose });
-    const mountState = await mountStatePromise;
+    first.dispose();
+    first.dispose();
 
-    expect(dispose).toHaveBeenCalledTimes(1);
-    expect(disposedState).toEqual({ status: 'disposed' });
-    expect(mountState).toBe(disposedState);
-    expect(host.getState()).toBe(disposedState);
+    expect(shadowRoot.childNodes).toHaveLength(0);
+    expect(root.hasAttribute('data-flowbase-native-trusted-block-root')).toBe(
+      false
+    );
+    expect(root.getAttribute('data-flowbase-native-trusted-block-id')).toBe(
+      'host-value'
+    );
+
+    const second = attachNativeTrustedBlockPortalSurface({
+      root,
+      blockId: 'epoch-2'
+    });
+    expect(second.shadowRoot).toBe(shadowRoot);
+    expect(second.mountElement).not.toBe(first.mountElement);
+    second.dispose();
   });
 
-  test('calls after dispose do not remount or reach mounted state', async () => {
-    const adapter: NativeTrustedBlockHostAdapter = {
-      mount: vi.fn()
-    };
-    const host = createNativeTrustedBlockHost({ adapter });
+  test('rejects invalid, pre-shadowed, and concurrently active roots', () => {
+    expect(() =>
+      attachNativeTrustedBlockPortalSurface({
+        root: { nodeType: 1 } as Element,
+        blockId: 'invalid'
+      })
+    ).toThrow('portal root must be a DOM Element');
 
-    const disposedState = await host.dispose();
-    const mountState = await host.mount(createPreparePlan(), { handle: 'root-1' });
+    const preShadowed = createRoot();
+    preShadowed.attachShadow({ mode: 'open' });
+    expect(() =>
+      attachNativeTrustedBlockPortalSurface({
+        root: preShadowed,
+        blockId: 'pre-shadowed'
+      })
+    ).toThrow('must not contain a pre-existing ShadowRoot');
 
-    expect(adapter.mount).not.toHaveBeenCalled();
-    expect(disposedState).toEqual({ status: 'disposed' });
-    expect(mountState).toBe(disposedState);
-    expect(host.getState().status).toBe('disposed');
+    const activeRoot = createRoot();
+    const active = attachNativeTrustedBlockPortalSurface({
+      root: activeRoot,
+      blockId: 'active'
+    });
+    expect(() =>
+      attachNativeTrustedBlockPortalSurface({
+        root: activeRoot,
+        blockId: 'duplicate'
+      })
+    ).toThrow('root is already active');
+    active.dispose();
   });
 });

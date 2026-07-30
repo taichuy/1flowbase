@@ -1,0 +1,316 @@
+import { ApiClientError } from '@1flowbase/api-client';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const catalogApi = vi.hoisted(() => ({
+  settingsI18nCatalogQueryKey: ['settings', 'i18n-catalog'] as const,
+  settingsI18nCatalogListQueryKey: vi.fn((request) => [
+    'settings',
+    'i18n-catalog',
+    'list',
+    request
+  ]),
+  settingsI18nCatalogEntryQueryKey: vi.fn((request) => [
+    'settings',
+    'i18n-catalog',
+    'entry',
+    request
+  ]),
+  fetchSettingsI18nCatalogEntries: vi.fn(),
+  fetchSettingsI18nCatalogEntry: vi.fn(),
+  saveSettingsI18nCatalogOverride: vi.fn(),
+  saveSettingsCustomI18nCatalogTranslation: vi.fn(),
+  restoreSettingsI18nCatalogOverride: vi.fn(),
+  deleteSettingsCustomI18nCatalogKey: vi.fn(),
+  restoreAllSettingsI18nCatalogOverrides: vi.fn()
+}));
+
+vi.mock('../../../api/i18n-catalog', () => catalogApi);
+
+import { AppProviders } from '../../../../../app/AppProviders';
+import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
+import { I18nCatalogPage } from '../I18nCatalogPage';
+import {
+  createSettingsI18nCatalogTestServer,
+  settingsI18nCatalogTestLocales
+} from './i18n-catalog-test-fixture';
+
+function authenticate() {
+  useAuthStore.getState().setAuthenticated({
+    csrfToken: 'csrf-123',
+    actor: {
+      id: 'root-1',
+      account: 'root',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace-1'
+    },
+    me: {
+      id: 'root-1',
+      account: 'root',
+      email: 'root@example.com',
+      phone: null,
+      nickname: 'Root',
+      name: 'Root',
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: 'root',
+      permissions: []
+    }
+  });
+}
+
+function renderPage() {
+  return render(
+    <AppProviders>
+      <I18nCatalogPage />
+    </AppProviders>
+  );
+}
+
+async function findLoadedDesktopEntry(value: string) {
+  const table = screen.getByTestId('i18n-catalog-table');
+  const entry = await within(table).findByText(value);
+
+  await waitFor(() =>
+    expect(table.querySelector('.ant-spin-spinning')).not.toBeInTheDocument()
+  );
+  return entry;
+}
+
+describe('I18nCatalogPage batch fixtures', () => {
+  beforeEach(() => {
+    const catalogServer = createSettingsI18nCatalogTestServer();
+
+    resetAuthStore();
+    authenticate();
+    vi.clearAllMocks();
+    catalogApi.fetchSettingsI18nCatalogEntries.mockImplementation(
+      catalogServer.listEntries
+    );
+    catalogApi.fetchSettingsI18nCatalogEntry.mockImplementation(
+      catalogServer.getEntry
+    );
+    catalogApi.saveSettingsI18nCatalogOverride.mockImplementation(
+      catalogServer.saveOverride
+    );
+    catalogApi.saveSettingsCustomI18nCatalogTranslation.mockImplementation(
+      catalogServer.saveCustomTranslation
+    );
+    catalogApi.restoreSettingsI18nCatalogOverride.mockImplementation(
+      catalogServer.restoreOverride
+    );
+    catalogApi.deleteSettingsCustomI18nCatalogKey.mockImplementation(
+      catalogServer.deleteCustomKey
+    );
+    catalogApi.restoreAllSettingsI18nCatalogOverrides.mockImplementation(
+      catalogServer.restoreAllOverrides
+    );
+  });
+
+  test('AC-007 renders the shared table browse contract from real entries', async () => {
+    renderPage();
+
+    expect(settingsI18nCatalogTestLocales).toEqual(['en_US', 'zh_Hans']);
+    await findLoadedDesktopEntry('系统设置');
+    expect(screen.getByTestId('i18n-catalog-table')).toBeInTheDocument();
+    expect(screen.getAllByText('官方覆盖值').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('过期翻译').length).toBeGreaterThan(0);
+  });
+
+  test('AC-002/003 keeps the management table and removes the redundant text status', async () => {
+    const view = renderPage();
+
+    await findLoadedDesktopEntry('系统设置');
+
+    const surface = screen.getByTestId('settings-section-surface');
+    expect(surface).toHaveClass('settings-section-surface--fill');
+
+    const toolbar = surface.querySelector('.settings-section-surface__toolbar');
+    expect(toolbar).not.toBeNull();
+    expect(
+      within(toolbar as HTMLElement).getByTestId('i18n-catalog-search')
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar as HTMLElement).getByTestId('i18n-catalog-apply-filters')
+    ).toHaveTextContent(/筛\s*选/);
+    expect(
+      within(toolbar as HTMLElement).getByRole('button', {
+        name: /恢复默认值/
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar as HTMLElement).getByRole('button', { name: /新增/ })
+    ).toBeInTheDocument();
+
+    const status = surface.querySelector('.settings-section-surface__status');
+    expect(status).toBeNull();
+    expect(
+      screen.queryByText('浏览生效翻译，并管理当前工作区的覆盖翻译和自定义键。')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('5 条翻译 · 修订 8')).not.toBeInTheDocument();
+
+    expect(
+      view.container.querySelector('.data-table__scroll-area')
+    ).not.toBeNull();
+    const table = screen.getByTestId('i18n-catalog-table');
+    expect(within(table).getByText('Key')).toBeInTheDocument();
+    expect(within(table).getByText('语言')).toBeInTheDocument();
+    expect(within(table).getByText('生效翻译')).toBeInTheDocument();
+    expect(within(table).getByText('值来源')).toBeInTheDocument();
+    expect(within(table).getByText('状态')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('i18n-catalog-module-filter')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('i18n-catalog-mobile-list')
+    ).not.toBeInTheDocument();
+  });
+
+  test('AC-008 opens all source layers and saves with the selected entry revision', async () => {
+    renderPage();
+    fireEvent.click(await findLoadedDesktopEntry('系统设置'));
+
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    await within(drawer).findByLabelText('覆盖翻译');
+    expect(within(drawer).getByText('设置')).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByLabelText('覆盖翻译'), {
+      target: { value: '新设置' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存翻译' }));
+
+    await waitFor(() =>
+      expect(catalogApi.saveSettingsI18nCatalogOverride).toHaveBeenCalledWith(
+        {
+          key: 'Settings',
+          locale: 'zh_Hans',
+          translation: '新设置',
+          expected_revision: 8
+        },
+        'csrf-123'
+      )
+    );
+    expect(
+      within(drawer).queryByRole('button', { name: '删除自定义翻译键' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('AC-008 creates a key-only locale translation and leaves English initialization to the backend', async () => {
+    renderPage();
+    await findLoadedDesktopEntry('系统设置');
+
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    const drawer = await screen.findByTestId('i18n-catalog-create-drawer');
+    fireEvent.change(within(drawer).getByLabelText('Key'), {
+      target: { value: 'Welcome headline' }
+    });
+    fireEvent.change(within(drawer).getByLabelText('自定义键翻译'), {
+      target: { value: '欢迎标题' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '创建翻译键' }));
+
+    await waitFor(() =>
+      expect(
+        catalogApi.saveSettingsCustomI18nCatalogTranslation
+      ).toHaveBeenCalledWith(
+        {
+          key: 'Welcome headline',
+          locale: 'zh_Hans',
+          translation: '欢迎标题',
+          expected_revision: 8
+        },
+        'csrf-123'
+      )
+    );
+  });
+
+  test('AC-008 exposes the same key-only edit and restore controls for en_US', async () => {
+    renderPage();
+    const table = screen.getByTestId('i18n-catalog-table');
+    const englishLocale = (await within(table).findAllByText('en_US'))[0];
+    fireEvent.click(englishLocale.closest('tr')!);
+
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    await within(drawer).findByLabelText('覆盖翻译');
+    expect(within(drawer).getAllByText('Settings').length).toBeGreaterThan(0);
+    expect(
+      within(drawer).getByRole('button', { name: '恢复官方翻译' })
+    ).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByLabelText('覆盖翻译'), {
+      target: { value: 'Settings EN' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存翻译' }));
+
+    await waitFor(() =>
+      expect(catalogApi.saveSettingsI18nCatalogOverride).toHaveBeenCalledWith(
+        {
+          key: 'Settings',
+          locale: 'en_US',
+          translation: 'Settings EN',
+          expected_revision: 8
+        },
+        'csrf-123'
+      )
+    );
+  });
+
+  test('AC-009 reports revision conflicts and refetches instead of overwriting silently', async () => {
+    catalogApi.saveSettingsI18nCatalogOverride.mockRejectedValueOnce(
+      new ApiClientError({ status: 409, message: 'revision conflict' })
+    );
+    renderPage();
+    fireEvent.click(await findLoadedDesktopEntry('系统设置'));
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    await within(drawer).findByLabelText('覆盖翻译');
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存翻译' }));
+
+    expect(
+      await screen.findByTestId('i18n-catalog-conflict')
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        catalogApi.fetchSettingsI18nCatalogEntries.mock.calls.length
+      ).toBeGreaterThan(1)
+    );
+  });
+
+  test('AC-013 keeps global restore and custom deletion as distinct confirmed actions', async () => {
+    renderPage();
+    await findLoadedDesktopEntry('系统设置');
+
+    fireEvent.click(screen.getByRole('button', { name: /恢复默认值/ }));
+    const restoreDialog = await screen.findByTestId(
+      'i18n-catalog-restore-all-confirmation'
+    );
+    expect(
+      within(restoreDialog).getByText(/自定义键及其翻译会保留/)
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(restoreDialog).getByRole('button', { name: '恢复翻译' })
+    );
+    await waitFor(() =>
+      expect(
+        catalogApi.restoreAllSettingsI18nCatalogOverrides
+      ).toHaveBeenCalledWith({ expected_revision: 8 }, 'csrf-123')
+    );
+    expect(
+      await within(screen.getByTestId('i18n-catalog-table')).findByText('设置')
+    ).toBeInTheDocument();
+
+    fireEvent.click(await findLoadedDesktopEntry('欢迎'));
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    fireEvent.click(
+      await within(drawer).findByRole('button', {
+        name: '删除自定义翻译键'
+      })
+    );
+    expect(
+      await screen.findByTestId('i18n-catalog-delete-confirmation')
+    ).toBeInTheDocument();
+  });
+});

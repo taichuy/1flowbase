@@ -18,6 +18,7 @@ import {
 import { SettingsRouteShell } from './settings-page/SettingsRouteShell';
 import { SettingsSectionBody } from './settings-page/SettingsSectionBody';
 import { useSettingsSections } from './settings-page/use-settings-sections';
+import type { RolePermissionTab } from '../components/RolePermissionPanel';
 
 function hasAnyPermission(permissions: string[], candidates: string[]) {
   return candidates.some((permission) => permissions.includes(permission));
@@ -25,10 +26,12 @@ function hasAnyPermission(permissions: string[], candidates: string[]) {
 
 export function SettingsPage({
   requestedSectionKey,
-  modelProviderTab
+  modelProviderTab,
+  rolePermissionTab
 }: {
   requestedSectionKey?: string;
   modelProviderTab?: 'providers' | 'request-logs';
+  rolePermissionTab?: RolePermissionTab;
 }) {
   const { t } = useTranslation('settings');
   const actor = useAuthStore((state) => state.actor);
@@ -154,6 +157,7 @@ export function SettingsPage({
           sectionKey={activeSection.key}
           access={sectionAccess}
           modelProviderTab={modelProviderTab}
+          rolePermissionTab={rolePermissionTab}
         />
       ) : null}
     </SettingsRouteShell>

@@ -14,7 +14,6 @@ import {
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import type { UseFrontstagePageCanvasRuntimeSessionsResult } from '../../hooks/use-frontstage-page-canvas-runtime-sessions';
 import {
   insertPageIntoGroup,
   moveNodeInTree,
@@ -33,8 +32,10 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  clearFrontstageRuntimeSessionCache: vi.fn(),
-  useFrontstagePageCanvasRuntimeSessions: vi.fn()
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -62,7 +63,7 @@ vi.mock(
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
-  '../../hooks/use-frontstage-page-canvas-runtime-sessions',
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
@@ -317,7 +318,7 @@ function createCatalogEntry(
 ): NormalizedFrontstageBlockCatalogEntry {
   return {
     id: '1flowbase:frontstage.js-ui-block',
-    runtimeKind: 'iframe',
+    runtimeKind: 'native_react',
     installationId: 'builtin-installation',
     providerCode: '1flowbase',
     pluginId: 'builtin-frontstage',
@@ -364,9 +365,9 @@ function createCatalogMatchedBlockPayload(
       region: 'main'
     },
     runtime: {
-      kind: 'iframe',
+      kind: 'native_react',
       entry: 'index.js',
-      hint: 'iframe'
+      hint: 'native_react'
     },
     ...overrides
   };
@@ -397,17 +398,6 @@ function mockFrontstageBlockCode() {
   });
 }
 
-function mockRuntimeSessions(
-  overrides: Partial<UseFrontstagePageCanvasRuntimeSessionsResult> = {}
-) {
-  runtimeSessionsHook.useFrontstagePageCanvasRuntimeSessions.mockReturnValue({
-    entries: [],
-    snapshotsBySlot: {},
-    running: false,
-    hasError: false,
-    ...overrides
-  });
-}
 describe('FrontStagePage - runtime canvas state', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -416,7 +406,6 @@ describe('FrontStagePage - runtime canvas state', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
-    mockRuntimeSessions();
     blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',
@@ -444,7 +433,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(screen.getAllByText('页面 page-1').length).toBeGreaterThan(0);
   });
 
-  test('connects ready runtime run plan state into the PageCanvas slot', async () => {
+  test('connects the page read plan and catalog lock into Native preparation', async () => {
     authenticate([]);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
 
@@ -469,14 +458,26 @@ describe('FrontStagePage - runtime canvas state', () => {
       await screen.findByTestId('block-slot-frontstage-js-block-1')
     ).toBeInTheDocument();
     expect(screen.queryByText('区块加载中...')).not.toBeInTheDocument();
-    expect(blockCodeApi.fetchFrontstageBlockCode).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'frontstage-js-block-1-code'
+    expect(
+      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        readPlan: expect.objectContaining({
+          requests: [
+            expect.objectContaining({
+              blockId: 'frontstage-js-block-1',
+              codeRef: 'frontstage-js-block-1-code'
+            })
+          ]
+        }),
+        dependencyLocksByBlockId: expect.objectContaining({
+          'frontstage-js-block-1': []
+        })
+      })
     );
   });
 
-  test('surfaces catalog-missing runtime run plan state from the PageCanvas container', async () => {
+  test('keeps a catalog-missing block locally loading without Restricted fallback execution', async () => {
     authenticate([]);
     mockFrontstageBlockCatalog([]);
 

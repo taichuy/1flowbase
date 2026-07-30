@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use access_control::{
     APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
@@ -19,6 +19,13 @@ use control_plane::{
         ImportAgentFlowTemplateCommand, ImportAgentFlowTemplateResult,
         PreviewAgentFlowTemplateCommand, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand,
     },
+    i18n_catalog::CatalogResolver,
+};
+use domain::CatalogMessageIdentity;
+use orchestration_runtime::{
+    binding_runtime::referenced_i18n_text_refs,
+    compiled_plan::CompiledI18nTextRef,
+    compiler::{FlowCompileContext, FlowCompiler},
 };
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
@@ -90,9 +97,16 @@ pub struct FlowDraftResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct ReferencedI18nMessageResponse {
+    pub key: String,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct OrchestrationStateResponse {
     pub flow_id: String,
     pub draft: FlowDraftResponse,
+    pub messages: Vec<ReferencedI18nMessageResponse>,
     pub versions: Vec<FlowVersionResponse>,
     pub autosave_interval_seconds: u16,
     pub user_protection_limit: usize,
@@ -314,8 +328,83 @@ fn to_official_agent_flow_template_catalog_response(
     }
 }
 
-fn to_response(state: domain::FlowEditorState) -> OrchestrationStateResponse {
-    OrchestrationStateResponse {
+fn collect_referenced_i18n_text_refs(document: &serde_json::Value) -> Vec<CompiledI18nTextRef> {
+    let mut references = FlowCompiler::compile(
+        Uuid::nil(),
+        "i18n-projection",
+        document,
+        &FlowCompileContext::default(),
+    )
+    .map(|plan| referenced_i18n_text_refs(&plan))
+    .unwrap_or_default()
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+
+    references.extend(
+        document
+            .pointer("/graph/nodes")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|node| node.get("bindings").and_then(serde_json::Value::as_object))
+            .flat_map(|bindings| bindings.values())
+            .filter(|binding| {
+                binding.get("kind").and_then(serde_json::Value::as_str) == Some("i18n_text")
+            })
+            .filter_map(|binding| {
+                let binding = binding.as_object()?;
+                if binding.len() != 2
+                    || !binding.contains_key("kind")
+                    || !binding.contains_key("value")
+                {
+                    return None;
+                }
+                let value = binding.get("value")?.as_object()?;
+                if value.len() != 1 || !value.contains_key("key") {
+                    return None;
+                }
+                Some(CompiledI18nTextRef {
+                    key: value.get("key")?.as_str()?.to_owned(),
+                })
+            })
+            .collect::<BTreeSet<_>>(),
+    );
+    references.into_iter().collect()
+}
+
+async fn referenced_messages(
+    api_state: &ApiState,
+    locale: &domain::CatalogLocale,
+    document: &serde_json::Value,
+) -> Result<Vec<ReferencedI18nMessageResponse>, ApiError> {
+    let resolver = CatalogResolver::new(api_state.store.clone(), api_state.bootstrap_workspace_id);
+    let mut messages = Vec::new();
+
+    for reference in collect_referenced_i18n_text_refs(document) {
+        let Ok(identity) = CatalogMessageIdentity::new(reference.key.clone()) else {
+            continue;
+        };
+        let text = resolver
+            .resolve(api_state.bootstrap_workspace_id, &identity, locale)
+            .await?
+            .value;
+        messages.push(ReferencedI18nMessageResponse {
+            key: reference.key,
+            text,
+        });
+    }
+
+    Ok(messages)
+}
+
+async fn to_response(
+    api_state: &ApiState,
+    locale: &domain::CatalogLocale,
+    state: domain::FlowEditorState,
+) -> Result<OrchestrationStateResponse, ApiError> {
+    let messages = referenced_messages(api_state, locale, &state.draft.document).await?;
+
+    Ok(OrchestrationStateResponse {
         flow_id: state.flow.id.to_string(),
         draft: FlowDraftResponse {
             id: state.draft.id.to_string(),
@@ -323,6 +412,7 @@ fn to_response(state: domain::FlowEditorState) -> OrchestrationStateResponse {
             document: state.draft.document,
             updated_at: state.draft.updated_at.format(&Rfc3339).unwrap(),
         },
+        messages,
         versions: state
             .versions
             .into_iter()
@@ -340,7 +430,7 @@ fn to_response(state: domain::FlowEditorState) -> OrchestrationStateResponse {
             .collect(),
         autosave_interval_seconds: state.autosave_interval_seconds,
         user_protection_limit: domain::FLOW_USER_PROTECTION_LIMIT,
-    }
+    })
 }
 
 fn to_template_application_response(
@@ -436,8 +526,12 @@ fn to_template_preview_response(
     }
 }
 
-fn to_import_response(imported: ImportAgentFlowTemplateResult) -> ImportAgentFlowTemplateResponse {
-    ImportAgentFlowTemplateResponse {
+async fn to_import_response(
+    api_state: &ApiState,
+    locale: &domain::CatalogLocale,
+    imported: ImportAgentFlowTemplateResult,
+) -> Result<ImportAgentFlowTemplateResponse, ApiError> {
+    Ok(ImportAgentFlowTemplateResponse {
         application: AgentFlowTemplateImportedApplicationResponse {
             id: imported.application.id.to_string(),
             application_type: imported.application.application_type.as_str().to_string(),
@@ -452,9 +546,9 @@ fn to_import_response(imported: ImportAgentFlowTemplateResult) -> ImportAgentFlo
                 Err(_) => imported.application.updated_at.to_string(),
             },
         },
-        orchestration: to_response(imported.orchestration),
+        orchestration: to_response(api_state, locale, imported.orchestration).await?,
         preview: to_template_preview_response(imported.preview),
-    }
+    })
 }
 
 fn parse_template(value: serde_json::Value) -> Result<AgentFlowTemplatePackage, ApiError> {
@@ -488,11 +582,14 @@ pub async fn get_orchestration(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
     let flow_state = FlowService::new(state.store.clone())
         .get_or_create_editor_state(context.user.id, id)
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_response(flow_state))))
+    Ok(Json(ApiSuccess::new(
+        to_response(&state, &locale, flow_state).await?,
+    )))
 }
 
 #[utoipa::path(
@@ -517,6 +614,8 @@ pub async fn save_draft(
     Json(body): Json<SaveDraftBody>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
     let flow_state = FlowService::new(state.store.clone())
@@ -529,7 +628,9 @@ pub async fn save_draft(
         })
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_response(flow_state))))
+    Ok(Json(ApiSuccess::new(
+        to_response(&state, &locale, flow_state).await?,
+    )))
 }
 
 #[utoipa::path(
@@ -615,6 +716,8 @@ pub async fn import_agent_flow_template(
     ApiError,
 > {
     let context = require_session(&state, &headers).await?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
     let service = FlowService::new(state.store.clone());
@@ -633,7 +736,9 @@ pub async fn import_agent_flow_template(
 
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_import_response(imported))),
+        Json(ApiSuccess::new(
+            to_import_response(&state, &locale, imported).await?,
+        )),
     ))
 }
 
@@ -651,11 +756,19 @@ pub async fn list_official_agent_flow_template_catalog(
     headers: HeaderMap,
     Query(query): Query<OfficialAgentFlowTemplateCatalogQuery>,
 ) -> Result<Json<ApiSuccess<OfficialAgentFlowTemplateCatalogResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let catalog = state
+    let context = require_session(&state, &headers).await?;
+    let mut catalog = state
         .official_agent_flow_template_source
         .list_catalog_page(query.cursor)
         .await?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    catalog.source.source_label = crate::app_state::resolve_official_source_label(
+        &state,
+        &locale,
+        &catalog.source.source_kind,
+        catalog.source.source_label,
+    )
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         to_official_agent_flow_template_catalog_response(catalog),
@@ -710,13 +823,17 @@ pub async fn restore_version(
     Path((id, version_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
     let flow_state = FlowService::new(state.store.clone())
         .restore_version(context.user.id, id, version_id)
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_response(flow_state))))
+    Ok(Json(ApiSuccess::new(
+        to_response(&state, &locale, flow_state).await?,
+    )))
 }
 
 #[utoipa::path(
@@ -742,6 +859,8 @@ pub async fn update_version(
     Json(body): Json<UpdateVersionBody>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
     let flow_state = FlowService::new(state.store.clone())
@@ -755,5 +874,7 @@ pub async fn update_version(
         })
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_response(flow_state))))
+    Ok(Json(ApiSuccess::new(
+        to_response(&state, &locale, flow_state).await?,
+    )))
 }

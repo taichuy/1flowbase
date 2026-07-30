@@ -131,9 +131,21 @@ pub async fn list_file_storages(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FileStorageResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let storages = FileStorageService::new(state.store.clone())
+    let mut storages = FileStorageService::new(state.store.clone())
         .list_storages(context.user.id)
         .await?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    for storage in &mut storages {
+        if storage.code == "local_default" && storage.is_default {
+            storage.title = crate::app_state::project_canonical_display(
+                &state,
+                &locale,
+                "Local",
+                &storage.title,
+            )
+            .await?;
+        }
+    }
 
     Ok(Json(ApiSuccess::new(
         storages.into_iter().map(to_response).collect(),

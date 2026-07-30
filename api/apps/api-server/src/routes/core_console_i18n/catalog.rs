@@ -1,314 +1,137 @@
-use super::CoreConsoleLocaleText;
+use super::CoreConsoleDisplayText;
 
-pub(super) const TEXTS: &[CoreConsoleLocaleText] = &[
-    text!("auto.api_documentation", "API documentation", "API 文档"),
-    text!(
-        "auto.api_key_authentication",
-        "API key authentication",
-        "API Key 认证"
-    ),
-    text!("auto.system_runtime", "System runtime", "系统运行"),
-    text!(
-        "auto.application_management",
-        "Application management",
-        "应用管理"
-    ),
-    text!("auto.auth_center", "Authentication center", "认证中心"),
-    text!("auto.data_source", "Data source", "数据源"),
-    text!("auto.file_management", "File management", "文件管理"),
-    text!("auto.infrastructure", "Infrastructure", "基础设施"),
-    text!("auto.memory_observation", "Memory observation", "内存观测"),
-    text!("auto.user_management", "User management", "用户管理"),
-    text!("auto.model_providers", "Model providers", "模型提供商"),
-    text!("auto.mcp_management", "MCP management", "MCP 管理"),
-    text!(
-        "auto.permission_management",
-        "Permission management",
-        "权限管理"
-    ),
-    text!(
+macro_rules! settings_feature {
+    ($reference:expr, $key:expr) => {
+        CoreConsoleDisplayText::referenced($reference, $key)
+    };
+}
+
+macro_rules! policy {
+    ($key:expr) => {
+        CoreConsoleDisplayText::new($key)
+    };
+}
+
+macro_rules! resource {
+    ($key:expr) => {
+        CoreConsoleDisplayText::new($key)
+    };
+}
+
+/// Canonical English identities for the Core console display consumers migrated by D3-P4.
+///
+/// The compiled locale inventory keeps these identities for fail-closed registry validation. It
+/// deliberately contains no translated value: request projections resolve translations from the
+/// dynamic catalog and the resolver falls back to the English key.
+pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
+    settings_feature!("auto.api_documentation", "API documentation"),
+    settings_feature!("auto.translation_catalog_title", "Language catalog"),
+    settings_feature!("auto.api_key_authentication", "API key authentication"),
+    settings_feature!("auto.system_runtime", "System runtime"),
+    settings_feature!("auto.application_management", "Application management"),
+    settings_feature!("auto.auth_center", "Authentication center"),
+    settings_feature!("auto.data_source", "Data source"),
+    settings_feature!("auto.file_management", "File management"),
+    settings_feature!("auto.infrastructure", "Infrastructure"),
+    settings_feature!("auto.memory_observation", "Memory observation"),
+    settings_feature!("auto.user_management", "User management"),
+    settings_feature!("auto.model_providers", "Model providers"),
+    settings_feature!("auto.mcp_management", "MCP management"),
+    settings_feature!("auto.permission_management", "Permission management"),
+    settings_feature!(
         "console.policy_groups.settings.system.docs.description",
-        "API documentation operations",
-        "API 文档操作",
+        "API documentation operations"
     ),
-    text!(
+    settings_feature!(
+        "auto.translation_catalog_description",
+        "Root language catalog operations"
+    ),
+    settings_feature!(
         "console.policy_groups.settings.system.api-key-authentication.description",
-        "API key authentication operations",
-        "API Key 认证操作",
+        "API key authentication operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.system-runtime.description",
-        "System runtime operations",
-        "系统运行操作",
+        "System runtime operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.applications.description",
-        "Application management operations",
-        "应用管理操作",
+        "Application management operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.auth-center.description",
-        "Authentication center operations",
-        "认证中心操作",
+        "Authentication center operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.data-models.description",
-        "Data model and data source operations",
-        "数据模型与数据源操作",
+        "Data model and data source operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.files.description",
-        "File management operations",
-        "文件管理操作",
+        "File management operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.host-infrastructure.description",
-        "Host infrastructure operations",
-        "主机基础设施操作",
+        "Host infrastructure operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.memory-observation.description",
-        "Memory observation operations",
-        "内存观测操作",
+        "Memory observation operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.members.description",
-        "Member management operations",
-        "成员管理操作",
+        "Member management operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.model-providers.description",
-        "Model provider operations",
-        "模型提供商操作",
+        "Model provider operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.mcp-management.description",
-        "MCP management operations",
-        "MCP 管理操作",
+        "MCP management operations"
     ),
-    text!(
+    settings_feature!(
         "console.policy_groups.settings.system.roles.description",
-        "Role and permission operations",
-        "角色与权限操作",
+        "Role and permission operations"
     ),
-    text!(
-        "console.policy_groups.other.core.authenticated.label",
-        "Signed-in console",
-        "已登录后台",
-    ),
-    text!(
-        "console.policy_groups.other.core.authenticated.description",
-        "Console routes available to every signed-in user",
-        "所有已登录用户可访问的后台路由",
-    ),
-    text!(
-        "console.policy_groups.other.other.agent-flow.label",
-        "Agent Flow",
-        "智能体流程",
-    ),
-    text!(
-        "console.policy_groups.other.other.agent-flow.description",
-        "Registered Agent Flow operations outside system settings",
-        "系统设置之外已注册的智能体流程操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.data-sources.label",
-        "Data source utilities",
-        "数据源工具",
-    ),
-    text!(
-        "console.policy_groups.other.other.data-sources.description",
-        "Registered data source operations outside system settings",
-        "系统设置之外已注册的数据源操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.frontend-blocks.label",
-        "Frontend blocks",
-        "前端区块",
-    ),
-    text!(
-        "console.policy_groups.other.other.frontend-blocks.description",
-        "Registered frontend block catalog operations",
-        "已注册的前端区块目录操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.js-dependencies.label",
-        "JavaScript dependencies",
-        "JavaScript 依赖",
-    ),
-    text!(
-        "console.policy_groups.other.other.js-dependencies.description",
-        "Registered JavaScript dependency operations",
-        "已注册的 JavaScript 依赖操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.model-providers.label",
-        "Model provider utilities",
-        "模型提供商工具",
-    ),
-    text!(
-        "console.policy_groups.other.other.model-providers.description",
-        "Registered model provider operations outside system settings",
-        "系统设置之外已注册的模型提供商操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.node-contributions.label",
-        "Node contributions",
-        "节点贡献",
-    ),
-    text!(
-        "console.policy_groups.other.other.node-contributions.description",
-        "Registered node contribution catalog operations",
-        "已注册的节点贡献目录操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.plugins.label",
-        "Plugins",
-        "插件",
-    ),
-    text!(
-        "console.policy_groups.other.other.plugins.description",
-        "Registered plugin catalog and lifecycle operations",
-        "已注册的插件目录与生命周期操作",
-    ),
-    text!(
-        "console.policy_groups.other.other.workspace.label",
-        "Current workspace",
-        "当前工作区",
-    ),
-    text!(
-        "console.policy_groups.other.other.workspace.description",
-        "Registered operations for the current workspace",
-        "当前工作区的已注册操作",
-    ),
-    text!(
-        "console.policy.group_modes.disabled.label",
-        "Disabled",
-        "关闭"
-    ),
-    text!(
-        "console.policy.group_modes.disabled.description",
-        "Do not grant operations in this group",
-        "不授予此组中的操作",
-    ),
-    text!(
-        "console.policy.group_modes.full.label",
-        "Full access",
-        "完全开放"
-    ),
-    text!(
-        "console.policy.group_modes.full.description",
-        "Grant every operation in this group",
-        "授予此组中的全部操作",
-    ),
-    text!(
-        "console.policy.group_modes.custom.label",
-        "Custom access",
-        "自定义"
-    ),
-    text!(
-        "console.policy.group_modes.custom.description",
-        "Choose operations and row scopes individually",
-        "逐项选择操作和行范围",
-    ),
-    text!(
-        "console.policy.row_scopes.disabled.label",
-        "Disabled",
-        "关闭"
-    ),
-    text!(
-        "console.policy.row_scopes.disabled.description",
-        "Do not grant this operation",
-        "不授予此操作",
-    ),
-    text!(
-        "console.policy.row_scopes.own.label",
-        "Own records",
-        "仅自己"
-    ),
-    text!(
-        "console.policy.row_scopes.own.description",
-        "Allow records created by the current user",
-        "允许当前用户创建的记录",
-    ),
-    text!(
-        "console.policy.row_scopes.scope_all.label",
-        "Current workspace",
-        "当前空间",
-    ),
-    text!(
-        "console.policy.row_scopes.scope_all.description",
-        "Allow records in the current workspace",
-        "允许当前工作区中的记录",
-    ),
-    text!(
-        "console.resources.applications.label",
-        "Applications",
-        "应用"
-    ),
-    text!(
-        "console.resources.applications.description",
-        "Applications in the current workspace",
-        "当前工作区中的应用",
-    ),
-    text!(
-        "console.resources.applications.actions.create.label",
-        "Create",
-        "创建",
-    ),
-    text!(
-        "console.resources.applications.actions.create.description",
-        "Create an application",
-        "创建应用",
-    ),
-    text!(
-        "console.resources.applications.actions.view.label",
-        "View",
-        "查看"
-    ),
-    text!(
-        "console.resources.applications.actions.view.description",
-        "View an application",
-        "查看应用",
-    ),
-    text!(
-        "console.resources.applications.actions.update.label",
-        "Update",
-        "修改",
-    ),
-    text!(
-        "console.resources.applications.actions.update.description",
-        "Update an application",
-        "修改应用",
-    ),
-    text!(
-        "console.resources.applications.actions.delete.label",
-        "Delete",
-        "删除",
-    ),
-    text!(
-        "console.resources.applications.actions.delete.description",
-        "Delete an application",
-        "删除应用",
-    ),
-    text!(
-        "console.resources.data_source_instances.label",
-        "Data source instances",
-        "数据源实例",
-    ),
-    text!(
-        "console.resources.data_source_instances.description",
-        "Configured data source instances in the current workspace",
-        "当前工作区中配置的数据源实例",
-    ),
-    text!(
-        "console.resources.data_source_instances.actions.view.label",
-        "View",
-        "查看",
-    ),
-    text!(
-        "console.resources.data_source_instances.actions.view.description",
-        "View a data source instance",
-        "查看数据源实例",
-    ),
+    policy!("Signed-in console"),
+    policy!("Console routes available to every signed-in user"),
+    policy!("Agent Flow"),
+    policy!("Registered Agent Flow operations outside system settings"),
+    policy!("Data source utilities"),
+    policy!("Registered data source operations outside system settings"),
+    policy!("Frontend blocks"),
+    policy!("Registered frontend block catalog operations"),
+    policy!("JavaScript dependencies"),
+    policy!("Registered JavaScript dependency operations"),
+    policy!("Model provider utilities"),
+    policy!("Registered model provider operations outside system settings"),
+    policy!("Node contributions"),
+    policy!("Registered node contribution catalog operations"),
+    policy!("Plugins"),
+    policy!("Registered plugin catalog and lifecycle operations"),
+    policy!("Current workspace"),
+    policy!("Registered operations for the current workspace"),
+    policy!("Full access"),
+    policy!("Grant every operation in this group"),
+    policy!("Custom access"),
+    policy!("Choose operations and row scopes individually"),
+    policy!("Disabled"),
+    policy!("Do not grant this operation"),
+    policy!("Own records"),
+    policy!("Allow records created by the current user"),
+    policy!("Allow records in the current workspace"),
+    resource!("Applications"),
+    resource!("Applications in the current workspace"),
+    resource!("Create"),
+    resource!("Create an application"),
+    resource!("View"),
+    resource!("View an application"),
+    resource!("Update"),
+    resource!("Update an application"),
+    resource!("Delete"),
+    resource!("Delete an application"),
+    resource!("Data source instances"),
+    resource!("Configured data source instances in the current workspace"),
+    resource!("View a data source instance"),
 ];

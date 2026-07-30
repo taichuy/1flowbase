@@ -1,6 +1,5 @@
 use access_control::{
-    core_settings_feature_registrations, ConsoleAuthorization, ConsoleOperationRegistry,
-    ConsolePolicyGroup, SettingsFeatureRegistry,
+    ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup, SettingsFeatureRegistry,
 };
 use plugin_framework::parse_host_extension_contribution_manifest;
 
@@ -63,8 +62,8 @@ fn ac_001_host_extension_console_contribution_compiles_with_core_registry() {
         .console_contribution()
         .expect("valid HostExtension console contribution should convert");
 
-    let settings_features = SettingsFeatureRegistry::compile(core_settings_feature_registrations())
-        .expect("Core SettingsFeature registrations should compile");
+    let settings_features = SettingsFeatureRegistry::compile([])
+        .expect("empty Core SettingsFeature fixture should compile");
     let registry = ConsoleOperationRegistry::compile(
         &settings_features,
         contribution.operations,
@@ -240,8 +239,8 @@ fn rejects_unknown_host_extension_console_group_resource_action_and_i18n_ref() {
         .contains("console_operations[].authorization"));
 
     let unknown_i18n = host_extension_console_manifest().replace(
-        "    - reference: file-security.console.operations.scan.label",
-        "    - reference: other.console.operations.scan.label",
+        "    - reference: file-security.console.resources.secured-files.label",
+        "    - reference: other.console.resources.secured-files.label",
     );
     let error = parse_host_extension_contribution_manifest(&unknown_i18n).unwrap_err();
     assert!(error.to_string().contains("console_locale_catalog"));
@@ -259,8 +258,6 @@ fn rejects_duplicate_host_extension_console_operations_resources_actions_routes_
       version: 0.1.0
     lifecycle: active
     policy_group: !other file-security.security
-    label_ref: file-security.console.operations.scan.label
-    description_ref: file-security.console.operations.scan.description
     order: 100
     routes:
       - method: POST
@@ -330,8 +327,8 @@ console_resources:
     assert!(error.to_string().contains("console_operations[].routes"));
 
     let duplicate_i18n = host_extension_console_manifest().replace(
-        "    - reference: file-security.console.operations.scan.label\n      en_us: Scan records\n      zh_hans: 扫描记录\n",
-        "    - reference: file-security.console.operations.scan.label\n      en_us: Scan records\n      zh_hans: 扫描记录\n    - reference: file-security.console.operations.scan.label\n      en_us: Scan records\n      zh_hans: 扫描记录\n",
+        "    - reference: file-security.console.resources.secured-files.label\n      en_us: Secured files\n      zh_hans: 受保护文件\n",
+        "    - reference: file-security.console.resources.secured-files.label\n      en_us: Secured files\n      zh_hans: 受保护文件\n    - reference: file-security.console.resources.secured-files.label\n      en_us: Secured files\n      zh_hans: 受保护文件\n",
     );
     let error = parse_host_extension_contribution_manifest(&duplicate_i18n).unwrap_err();
     assert!(error.to_string().contains("console_locale_catalog"));
@@ -918,12 +915,6 @@ fn host_extension_console_manifest() -> String {
         r#"
 console_locale_catalog:
   texts:
-    - reference: file-security.console.operations.scan.label
-      en_us: Scan records
-      zh_hans: 扫描记录
-    - reference: file-security.console.operations.scan.description
-      en_us: Scan a secured file
-      zh_hans: 扫描受保护文件
     - reference: file-security.console.resources.secured-files.label
       en_us: Secured files
       zh_hans: 受保护文件
@@ -954,8 +945,6 @@ console_operations:
       version: 0.1.0
     lifecycle: active
     policy_group: !other file-security.security
-    label_ref: file-security.console.operations.scan.label
-    description_ref: file-security.console.operations.scan.description
     order: 100
     routes:
       - method: POST

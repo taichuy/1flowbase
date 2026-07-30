@@ -37,6 +37,7 @@ fn plugin_plan() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "query".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "selector".to_string(),
                     selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
                     raw_value: json!(["node-start", "query"]),

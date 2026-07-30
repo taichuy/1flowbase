@@ -12,6 +12,9 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
+import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
+
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
@@ -27,9 +30,13 @@ const interfaceCapabilitiesHook = vi.hoisted(() => ({
 const interfaceCapabilitiesApi = vi.hoisted(() => ({
   fetchFrontstageInterfaceCapability: vi.fn()
 }));
+const componentCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageComponentCapabilities: vi.fn()
+}));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
-  setCompilerOptions: vi.fn()
+  setCompilerOptions: vi.fn(),
+  setModelMarkers: vi.fn()
 }));
 const monacoEditor = vi.hoisted(() => ({
   executeEdits: vi.fn(),
@@ -45,6 +52,10 @@ vi.mock(
   () => interfaceCapabilitiesHook
 );
 vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
+vi.mock(
+  '../../hooks/use-frontstage-component-capabilities',
+  () => componentCapabilitiesHook
+);
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
     children,
@@ -76,6 +87,8 @@ vi.mock('@monaco-editor/react', () => ({
     options?: { editContext?: boolean };
   }) => {
     const monaco = {
+      MarkerSeverity: { Error: 8 },
+      editor: { setModelMarkers: monacoHook.setModelMarkers },
       languages: {
         typescript: {
           JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
@@ -120,12 +133,12 @@ const block: FrontstageBlockInstance = {
   presentation: { heightMode: 'auto', height: null },
   layout: { order: 0 },
   order: 0,
-  runtime: { kind: 'iframe', entry: 'index.js', hint: 'iframe' }
+  runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
 };
 
 const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   id: '1flowbase:frontstage.js-ui-block',
-  runtimeKind: 'iframe',
+  runtimeKind: 'native_react',
   installationId: 'builtin-installation',
   providerCode: '1flowbase',
   pluginId: 'builtin-frontstage',
@@ -136,21 +149,58 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   permissions: { network: 'none', storage: 'none', secrets: 'none' },
   contextContract: { primitives: [], inputSchema: {} },
   uiCapabilities: ['configurable', 'data_binding'],
+  codeModules: [
+    {
+      source: '@1flowbase/native-components',
+      version: '1.0.0',
+      binding: 'fetched',
+      assets: [
+        {
+          role: 'browser_module',
+          media_type: 'text/javascript; charset=utf-8',
+          sha256:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        }
+      ],
+      exports: ['Button'],
+      type_declarations:
+        "declare module '@1flowbase/native-components' { export const Button: unknown; }"
+    }
+  ],
   codeCapabilities: {
     template: null,
-    allowedImports: ['@1flowbase/block-renderer/antd-facade'],
+    allowedImports: ['@1flowbase/native-components'],
     monacoExtraLibs: [
       {
-        source: '@1flowbase/block-renderer/antd-facade',
-        filePath: 'file:///node_modules/antd-facade/index.d.ts',
+        source: '@1flowbase/native-components',
+        filePath:
+          'file:///node_modules/@1flowbase/native-components/index.d.ts',
         content:
-          "declare module '@1flowbase/block-renderer/antd-facade' { export const Button: unknown; export const Stack: unknown; }"
+          "declare module '@1flowbase/native-components' { export const Button: unknown; }"
       }
-    ],
-    workerModuleSources: ['@1flowbase/block-renderer/antd-facade']
+    ]
   },
   raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
 };
+
+const buttonComponent = {
+  component_id: 'builtin-installation:frontstage.js-ui-block:button',
+  installation_id: 'builtin-installation',
+  provider_code: '1flowbase',
+  plugin_id: 'builtin-frontstage',
+  plugin_version: '1.0.0',
+  contribution_code: 'frontstage.js-ui-block',
+  module_source: '@1flowbase/native-components',
+  module_version: '1.0.0',
+  browser_asset: {
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  },
+  export_name: 'Button',
+  upstream: null,
+  description: 'Native button component.',
+  insert_snippet: '<Button>Action</Button>'
+} satisfies ConsoleFrontstageComponentCapabilitySummary;
 
 describe('FrontstageJsxStudioDrawer', () => {
   afterEach(async () => {
@@ -236,6 +286,21 @@ describe('FrontstageJsxStudioDrawer', () => {
     interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability.mockResolvedValue(
       capability
     );
+    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
+      {
+        data: {
+          items: [buttonComponent],
+          total: 1,
+          offset: 0,
+          limit: 10,
+          has_more: false,
+          next_offset: null,
+          module_sources: [buttonComponent.module_source]
+        },
+        loading: false,
+        error: null
+      }
+    );
   });
 
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {
@@ -250,7 +315,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={onSaveBlock}
       />
@@ -264,7 +328,11 @@ describe('FrontstageJsxStudioDrawer', () => {
       'data-edit-context',
       'false'
     );
-    expect(screen.getByText('区块设置')).toBeInTheDocument();
+    expect(
+      screen
+        .getByLabelText('标题')
+        .closest('.frontstage-jsx-studio__configuration-panel')
+    ).not.toBeNull();
     expect(
       interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
     ).not.toHaveBeenCalled();
@@ -291,7 +359,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
@@ -332,7 +399,6 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
@@ -343,15 +409,77 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
   });
 
-  test('AC-005 submits snippet and import changes as one Monaco edit batch', () => {
-    const source = `import {
-  Stack
-} from '@1flowbase/block-renderer/antd-facade';
+  test('R5-AC-001/002 uses Catalog imports for inline Monaco problems', async () => {
+    const model = {};
+    monacoEditor.getModel.mockReturnValue(model);
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: "import { Button } from '@1flowbase/native-components';",
+      draft: "import { Button } from '@1flowbase/native-components';",
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined)
+    });
+    const props = {
+      open: true,
+      initialSection: 'code' as const,
+      workspaceId: 'workspace-1',
+      pageId: 'page-1',
+      tabId: 'tab-1',
+      block,
+      catalogEntry,
+      onClose: vi.fn(),
+      onSaveBlock: vi.fn()
+    };
+    const view = render(<FrontstageJsxStudioDrawer {...props} />);
 
-async function main(ctx: unknown) {
-  return { view: null, outputs: {} };
+    expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
+      model,
+      expect.any(String),
+      []
+    );
+    expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
+
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: "import dayjs from 'dayjs';",
+      draft: "import dayjs from 'dayjs';",
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined)
+    });
+    view.rerender(<FrontstageJsxStudioDrawer {...props} />);
+
+    await waitFor(() =>
+      expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
+        model,
+        expect.any(String),
+        [
+          expect.objectContaining({
+            code: 'import_denied',
+            message: "Import source 'dayjs' is not allowed.",
+            startLineNumber: 1,
+            startColumn: 1
+          })
+        ]
+      )
+    );
+    expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
+  });
+
+  test('AC-005 submits snippet and import changes as one Monaco edit batch', () => {
+    const source = `export default function Block({ ctx }: NativeReactBlockProps) {
+  return <div>content</div>;
 }`;
-    const selectionOffset = source.indexOf('null');
+    const selectionOffset = source.indexOf('content');
     const positionAt = (offset: number) => {
       const before = source.slice(0, offset).split('\n');
       return {
@@ -407,13 +535,12 @@ async function main(ctx: unknown) {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
     );
-    const row = screen.getByText('Button').closest('div');
-    fireEvent.click(within(row!).getByRole('button', { name: '插入代码' }));
+    const row = screen.getByText('Button').closest('tr');
+    fireEvent.click(within(row!).getByRole('button', { name: '插入' }));
 
     expect(monacoEditor.executeEdits).toHaveBeenCalledTimes(1);
     expect(monacoEditor.executeEdits.mock.calls[0]?.[1]).toHaveLength(2);
@@ -432,7 +559,6 @@ async function main(ctx: unknown) {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={onSaveBlock}
       />
@@ -463,7 +589,6 @@ async function main(ctx: unknown) {
         block={block}
         pageBlocks={[block]}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         onClose={vi.fn()}
         onSaveBlock={onSaveBlock}
       />
@@ -503,7 +628,6 @@ async function main(ctx: unknown) {
         tabId="tab-1"
         block={block}
         catalogEntry={catalogEntry}
-        diagnostics={[]}
         runPanel={({ code, runRevision }) => (
           <div>{`Preview ${runRevision ?? 'idle'}: ${code}`}</div>
         )}
@@ -523,9 +647,9 @@ async function main(ctx: unknown) {
       'button'
     );
     expect(
-      headerButtons.slice(0, 4).map((button) =>
-        button.textContent?.replace(/\s+/gu, '')
-      )
+      headerButtons
+        .slice(0, 4)
+        .map((button) => button.textContent?.replace(/\s+/gu, ''))
     ).toEqual(['上下文', '重置', '保存', '运行']);
     expect(
       within(windowHeader as HTMLElement).getByRole('button', {
@@ -546,9 +670,70 @@ async function main(ctx: unknown) {
       expect.stringContaining('@1flowbase-context')
     );
     fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
-    expect(screen.getByText('Preview 1: export default {}')).toBeInTheDocument();
+    expect(
+      screen.getByText('Preview 1: export default {}')
+    ).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  });
+
+  test('D4-AC-006 preserves controlled legacy source and blocks save/run with the stable diagnostic', () => {
+    const legacySource = `async function main(ctx) { return { view: null, outputs: {} }; }
+export default { main } satisfies BlockModule;`;
+    const save = vi.fn();
+    const runPanel = vi.fn(({ runRevision }) => (
+      <div>{String(runRevision)}</div>
+    ));
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: legacySource,
+      draft: legacySource,
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft: vi.fn(),
+      reset: vi.fn(),
+      save
+    });
+    const model = {};
+    monacoEditor.getModel.mockReturnValue(model);
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        runPanel={runPanel}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('textbox', { name: 'JSX source' })).toHaveValue(
+      legacySource
+    );
+    expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
+      model,
+      expect.any(String),
+      [
+        expect.objectContaining({
+          message: LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message
+        })
+      ]
+    );
+    expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    expect(save).not.toHaveBeenCalled();
+    expect(runPanel.mock.calls.at(-1)?.[0]).toMatchObject({
+      code: legacySource,
+      runRevision: null
+    });
   });
 });

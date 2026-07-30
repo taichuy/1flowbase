@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 pub mod callable_interfaces;
+pub mod component_capabilities;
 pub mod data_capabilities;
 
 use axum::{
@@ -9,10 +10,10 @@ use axum::{
     Json, Router,
 };
 use control_plane::frontstage::{
-    CreateFrontstageGroupCommand, CreateFrontstagePageCommand, CreateFrontstagePageTabCommand,
-    DeleteFrontstagePageCommand, DeleteFrontstagePageTabCommand, FrontstagePageService,
-    GetFrontstageBlockCodeCommand, GetFrontstagePageDetailCommand, MoveFrontstagePageCommand,
-    SaveFrontstageBlockCodeCommand, SaveFrontstageTabDocumentCommand,
+    CreateFrontstageBlockCommand, CreateFrontstageGroupCommand, CreateFrontstagePageCommand,
+    CreateFrontstagePageTabCommand, DeleteFrontstagePageCommand, DeleteFrontstagePageTabCommand,
+    FrontstagePageService, GetFrontstageBlockCodeCommand, GetFrontstagePageDetailCommand,
+    MoveFrontstagePageCommand, SaveFrontstageBlockCodeCommand, SaveFrontstageTabDocumentCommand,
     UpdateFrontstagePageMetadataCommand, UpdateFrontstagePageTabCommand,
 };
 use control_plane::resource_action::{
@@ -197,6 +198,13 @@ pub struct SaveFrontstageBlockCodeBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateFrontstageBlockBody {
+    pub payload: Value,
+    pub code_ref: String,
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DispatchFrontstageQueryBody {
     pub query_id: String,
     #[serde(default)]
@@ -273,6 +281,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_put(save_frontstage_tab_document, Authenticated),
         )
         .route(
+            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/blocks",
+            console_post(create_frontstage_block, Authenticated),
+        )
+        .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
             console_post(dispatch_frontstage_query, Authenticated),
         )
@@ -298,6 +310,27 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/frontstage/:workspace_id/interface-capabilities/:interface_id",
             console_get(
                 callable_interfaces::get_frontstage_interface_capability,
+                Authenticated,
+            ),
+        )
+        .route(
+            "/frontstage/:workspace_id/component-capabilities",
+            console_get(
+                component_capabilities::list_frontstage_component_capabilities,
+                Authenticated,
+            ),
+        )
+        .route(
+            "/frontstage/:workspace_id/component-capabilities/:component_id",
+            console_get(
+                component_capabilities::get_frontstage_component_capability,
+                Authenticated,
+            ),
+        )
+        .route(
+            "/frontstage/:workspace_id/component-module-assets/:sha256",
+            console_get(
+                component_capabilities::get_frontstage_component_module_asset,
                 Authenticated,
             ),
         )
@@ -586,12 +619,19 @@ pub async fn create_frontstage_page(
             slug: body.slug,
         })
         .await?;
-    let default_tab =
+    let mut default_tab =
         creation
             .default_tab
             .ok_or(control_plane::errors::ControlPlaneError::Conflict(
                 "frontstage_page_requires_tab",
             ))?;
+    project_default_tab_title(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        &mut default_tab,
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -627,7 +667,7 @@ pub async fn get_frontstage_page_detail(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    let detail = FrontstagePageService::new(state.store.clone())
+    let mut detail = FrontstagePageService::new(state.store.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -635,6 +675,13 @@ pub async fn get_frontstage_page_detail(
             tab_reference,
         })
         .await?;
+    project_default_tab_title(
+        &state,
+        &headers,
+        context.user.preferred_locale,
+        &mut detail.tab,
+    )
+    .await?;
 
     Ok(Json(ApiSuccess::new(to_page_detail_response(detail))))
 }
@@ -772,9 +819,13 @@ pub async fn list_frontstage_page_tabs(
     let context = require_session(&state, &headers).await?;
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
-    let tabs = FrontstagePageService::new(state.store.clone())
+    let mut tabs = FrontstagePageService::new(state.store.clone())
         .list_page_tabs(context.user.id, workspace_id, page_id)
         .await?;
+    for tab in &mut tabs {
+        project_default_tab_title(&state, &headers, context.user.preferred_locale.clone(), tab)
+            .await?;
+    }
     Ok(Json(ApiSuccess::new(
         tabs.into_iter().map(to_tab_response).collect(),
     )))
@@ -872,6 +923,45 @@ pub async fn save_frontstage_tab_document(
         .await?;
 
     Ok(Json(ApiSuccess::new(to_page_detail_response(detail))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/blocks",
+    request_body = CreateFrontstageBlockBody,
+    responses(
+        (status = 201, body = FrontstagePageDetailResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody),
+        (status = 409, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn create_frontstage_block(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Json(body): Json<CreateFrontstageBlockBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageDetailResponse>>), ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let detail = FrontstagePageService::new(state.store.clone())
+        .create_block(CreateFrontstageBlockCommand {
+            actor_user_id: context.user.id,
+            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+            page_id: parse_uuid(&page_id, "page_id")?,
+            tab_id: parse_uuid(&tab_id, "tab_id")?,
+            document_payload: body.payload,
+            code_ref: body.code_ref,
+            code: body.code,
+        })
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(to_page_detail_response(detail))),
+    ))
 }
 
 #[utoipa::path(
@@ -1034,6 +1124,22 @@ fn to_page_response(page: domain::FrontstagePageRecord) -> FrontstagePageRespons
         content_presentation: to_content_presentation_response(page.content_presentation),
         slug: page.slug,
     }
+}
+
+async fn project_default_tab_title(
+    state: &ApiState,
+    headers: &HeaderMap,
+    preferred_locale: Option<String>,
+    tab: &mut domain::frontstage::FrontstagePageTabRecord,
+) -> Result<(), ApiError> {
+    if !tab.is_default {
+        return Ok(());
+    }
+    let locale = crate::app_state::request_catalog_locale(headers, preferred_locale);
+    let stored = tab.title.as_deref().unwrap_or_default();
+    tab.title =
+        Some(crate::app_state::project_canonical_display(state, &locale, "Default", stored).await?);
+    Ok(())
 }
 
 fn to_tab_response(tab: domain::frontstage::FrontstagePageTabRecord) -> FrontstagePageTabResponse {

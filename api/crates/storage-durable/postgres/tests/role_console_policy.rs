@@ -577,7 +577,7 @@ async fn ac_010_ac_011_migration_artifacts_bind_multi_role_probe_union_to_single
 }
 
 #[tokio::test]
-async fn ac_004_console_policy_repository_round_trips_custom_and_full_without_materializing_full() {
+async fn ac_002_console_policy_repository_retains_custom_operations_while_disabled() {
     let (store, workspace_id, actor_user_id) = role_store().await;
     RoleRepository::replace_role_console_policy(
         &store,
@@ -601,7 +601,12 @@ async fn ac_004_console_policy_repository_round_trips_custom_and_full_without_ma
             actor_user_id,
             workspace_id,
             role_code: "operator".into(),
-            groups: vec![RoleConsoleGroupPolicy::full(group())],
+            groups: vec![RoleConsoleGroupPolicy::new(
+                group(),
+                false,
+                domain::ConsolePolicyStrategy::Custom,
+                custom.groups()[0].operations().to_vec(),
+            )],
         },
     )
     .await
@@ -609,7 +614,8 @@ async fn ac_004_console_policy_repository_round_trips_custom_and_full_without_ma
     let full = RoleRepository::get_role_console_policy(&store, workspace_id, "operator")
         .await
         .unwrap();
-    assert!(full.groups()[0].operations().is_empty());
+    assert!(!full.groups()[0].enabled());
+    assert_eq!(full.groups()[0].operations().len(), 1);
 
     let operation_rows: i64 = sqlx::query_scalar(
         r#"
@@ -623,35 +629,7 @@ async fn ac_004_console_policy_repository_round_trips_custom_and_full_without_ma
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(operation_rows, 0);
-
-    let group_policy_id: Uuid = sqlx::query_scalar(
-        r#"
-        select group_policy.id
-        from role_console_group_policies group_policy
-        join roles role on role.id = group_policy.role_id
-        where role.workspace_id = $1 and role.code = 'operator'
-        "#,
-    )
-    .bind(workspace_id)
-    .fetch_one(store.pool())
-    .await
-    .unwrap();
-    let materialized_full = sqlx::query(
-        r#"
-        insert into role_console_operation_policies (
-          id, role_id, group_policy_id, group_mode, operation_id, policy_kind,
-          simple_enabled, row_scope
-        )
-        values ($1, $2, $3, 'custom', 'applications.create', 'simple', true, null)
-        "#,
-    )
-    .bind(Uuid::now_v7())
-    .bind(full.role_id())
-    .bind(group_policy_id)
-    .execute(store.pool())
-    .await;
-    assert!(materialized_full.is_err());
+    assert_eq!(operation_rows, 1);
 }
 
 #[tokio::test]

@@ -7,11 +7,133 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
 use domain::AuthenticatorRecord;
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use serde_json::json;
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
+
+async fn seed_authentication_translation(
+    state: &crate::app_state::ApiState,
+    msgid: &str,
+    value: &str,
+) {
+    let workspace_id = state.bootstrap_workspace_id;
+    let catalog_state =
+        I18nCatalogRepository::bootstrap_workspace_catalog_state(&state.store, workspace_id)
+            .await
+            .unwrap();
+    I18nCatalogRepository::upsert_catalog_override(
+        &state.store,
+        &UpsertCatalogTranslationInput {
+            workspace_id,
+            value: CatalogTranslation::new(
+                CatalogMessageIdentity::new(msgid).unwrap(),
+                CatalogLocale::new("zh_Hans").unwrap(),
+                value,
+            )
+            .unwrap(),
+            expected_revision: catalog_state.revision(),
+        },
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customized_title() {
+    let (state, _) = test_api_state_with_database_url().await;
+    for (msgid, value) in [
+        ("Password", "密码"),
+        ("Authenticator ID", "认证器 ID"),
+        ("Authenticator selection available", "可选择其他认证器"),
+        ("Authentication event", "认证事件"),
+    ] {
+        seed_authentication_translation(&state, msgid, value).await;
+    }
+    let custom_id = Uuid::now_v7();
+    state
+        .store
+        .upsert_authenticator(&AuthenticatorRecord {
+            id: custom_id,
+            auth_type: "password-local".to_owned(),
+            title: "Staff Password".to_owned(),
+            enabled: true,
+            is_builtin: false,
+            sort_order: 10,
+            public_ui_block: control_plane::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK
+                .to_owned(),
+            options: json!({}),
+        })
+        .await
+        .unwrap();
+    let app = crate::app_with_state(state);
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/auth-center/overview")
+                .header("cookie", &cookie)
+                .header("x-1flowbase-locale", "zh-Hans")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let authenticators = payload["data"]["authenticators"].as_array().unwrap();
+    let builtin = authenticators
+        .iter()
+        .find(|item| item["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .unwrap();
+    assert_eq!(builtin["title"], "密码");
+    assert_eq!(builtin["config_values"]["title"], "密码");
+    assert_eq!(builtin["auth_type"], "password-local");
+    let runtime = builtin["context_variables"].as_array().unwrap();
+    assert!(runtime.iter().any(
+        |item| item["label"] == "认证器 ID" && item["member_path"] == "inputs.authenticator_id"
+    ));
+    assert!(runtime
+        .iter()
+        .any(|item| item["label"] == "认证事件" && item["member_path"] == "inputs.auth_event"));
+    assert!(runtime
+        .iter()
+        .any(|item| item["label"] == "API" && item["member_path"] == "api"));
+    assert_eq!(
+        authenticators
+            .iter()
+            .find(|item| item["id"] == custom_id.to_string())
+            .unwrap()["title"],
+        "Staff Password"
+    );
+
+    let english = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/auth-center/overview")
+                .header("cookie", cookie)
+                .header("x-1flowbase-locale", "en-US")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let english: serde_json::Value =
+        serde_json::from_slice(&to_bytes(english.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let builtin = english["data"]["authenticators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .unwrap();
+    assert_eq!(builtin["title"], "Password");
+}
 
 #[tokio::test]
 async fn console_auth_center_overview_lists_authenticators_with_schema_form_values() {
@@ -90,7 +212,13 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     assert_eq!(password_local["sort_order"], json!(0));
     assert!(password_local["public_ui_block"]
         .as_str()
-        .is_some_and(|source| source.contains("satisfies BlockModule")));
+        .is_some_and(
+            |source| source.contains("export default function PasswordLocalAuth")
+                && source.contains("onSubmit={submitSignIn}")
+                && source.contains("self_registration_enabled === true")
+                && source.contains("onClick={() => setMode")
+                && !source.contains("function main")
+        ));
     assert_eq!(
         password_local["public_variables"],
         json!({
@@ -131,11 +259,20 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
                 && variable["schema"]["type"] == schema_type
         }));
     }
-    for member_path in ["inputs.authenticator_id", "inputs.auth_event", "api"] {
+    for member_path in [
+        "inputs.authenticator_id",
+        "inputs.authenticator_selection_available",
+        "inputs.auth_event",
+        "api",
+    ] {
         assert!(context_variables.iter().any(|variable| {
             variable["group"] == "runtime" && variable["member_path"] == member_path
         }));
     }
+    assert!(context_variables.iter().any(|variable| {
+        variable["member_path"] == "inputs.authenticator_selection_available"
+            && variable["label"] == "可选择其他认证器"
+    }));
     assert!(!context_variables.iter().any(|variable| {
         matches!(
             variable["member_path"].as_str(),
@@ -292,7 +429,10 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
     );
     assert!(created["data"]["public_ui_block"]
         .as_str()
-        .is_some_and(|source| source.contains("satisfies BlockModule")));
+        .is_some_and(
+            |source| source.contains("export default function PasswordLocalAuth")
+                && source.contains("onSubmit={submitSignUp}")
+        ));
 
     let update = app
         .clone()

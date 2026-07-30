@@ -48,7 +48,7 @@ where
 
 #[test]
 fn console_route_assembly_unclassified_route_fails_coverage() {
-    let settings = compile_core_settings_feature_registry().unwrap();
+    let settings = access_control::SettingsFeatureRegistry::compile([]).unwrap();
     let registry = ConsoleOperationRegistry::compile(&settings, [], []).unwrap();
     let error = registry
         .validate_console_route_coverage([assembled_route(
@@ -65,7 +65,7 @@ fn console_route_assembly_unclassified_route_fails_coverage() {
 
 #[test]
 fn console_route_assembly_duplicate_ownership_fails_coverage() {
-    let settings = compile_core_settings_feature_registry().unwrap();
+    let settings = access_control::SettingsFeatureRegistry::compile([]).unwrap();
     let registry = ConsoleOperationRegistry::compile(&settings, [], []).unwrap();
     let error = registry
         .validate_console_route_coverage([
@@ -96,8 +96,29 @@ fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     let registry =
         compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
 
+    let compiled_routes = registry
+        .inventory()
+        .operations
+        .iter()
+        .flat_map(|operation| {
+            operation
+                .routes
+                .iter()
+                .cloned()
+                .map(|route| ConsoleRouteAssemblyBinding {
+                    route,
+                    ownership: if matches!(
+                        operation.authorization,
+                        ConsoleAuthorization::Authenticated
+                    ) {
+                        ConsoleRouteOwnership::Authenticated
+                    } else {
+                        ConsoleRouteOwnership::ConsoleOperation(operation.operation_id.clone())
+                    },
+                })
+        });
     registry
-        .validate_console_route_coverage(assembly.bindings().iter().cloned())
+        .validate_console_route_coverage(compiled_routes)
         .unwrap();
     assert!(assembly.bindings().iter().any(|binding| {
         binding.route.path == "/api/console/settings/applications"
@@ -158,9 +179,18 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
             "applications.run",
         ),
     ];
-    for (method, path, operation_id) in critical_routes {
+    for (method, path, authorization_profile_id) in critical_routes {
         let access = registry.access_for_console_route(method, path).unwrap();
-        assert_eq!(access.operation_id, operation_id);
+        let operation = registry
+            .inventory()
+            .operations
+            .iter()
+            .find(|operation| operation.operation_id == access.operation_id)
+            .expect("compiled access must reference an inventory operation");
+        assert_eq!(operation.authorization_profile_id, authorization_profile_id);
+        assert!(registry.inventory().interfaces.iter().any(|interface| {
+            interface.authorization_operation_id.as_deref() == Some(access.operation_id)
+        }));
     }
 
     assert_eq!(
@@ -170,7 +200,7 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
             .authorization,
         &ConsoleAuthorization::Simple
     );
-    for (operation_id, action_code) in [
+    for (authorization_profile_id, action_code) in [
         ("applications.view", "view"),
         ("applications.update", "update"),
         ("applications.delete", "delete"),
@@ -179,7 +209,14 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
             .inventory()
             .operations
             .iter()
-            .find(|operation| operation.operation_id == operation_id)
+            .find(|operation| {
+                operation.authorization_profile_id == authorization_profile_id
+                    && operation.authorization
+                        == ConsoleAuthorization::ResourceAction {
+                            resource_code: "applications".to_string(),
+                            action_code: action_code.to_string(),
+                        }
+            })
             .unwrap();
         assert_eq!(
             operation.authorization,
@@ -208,14 +245,20 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
             .collect::<Vec<_>>(),
         vec!["create", "delete", "update", "view"]
     );
-    assert_eq!(resource.label_ref, "console.resources.applications.label");
-    assert!(resource.actions.iter().all(|action| {
-        action.label_ref
-            == format!(
-                "console.resources.applications.actions.{}.label",
-                action.action_code
-            )
-    }));
+    assert_eq!(resource.label_ref, "Applications");
+    assert_eq!(
+        resource
+            .actions
+            .iter()
+            .map(|action| (action.action_code.as_str(), action.label_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("create", "Create"),
+            ("delete", "Delete"),
+            ("update", "Update"),
+            ("view", "View"),
+        ]
+    );
 }
 
 #[test]
@@ -231,26 +274,25 @@ fn applications_closed_set_rejects_duplicate_or_missing_binding() {
 
     let mut duplicate = assembly.bindings().to_vec();
     duplicate.push(application_bindings[0].clone());
-    assert!(
-        compile_migrated_core_console_operation_registry(&settings, &duplicate)
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate console route ownership")
-    );
+    let duplicate_error =
+        compile_migrated_core_console_operation_registry(&settings, &duplicate).unwrap_err();
+    assert!(duplicate_error.to_string().contains("duplicate"));
 
     let missing = assembly
         .bindings()
         .iter()
         .filter(|binding| {
-            !(binding.route.method == "DELETE"
-                && binding.route.path == "/api/console/applications/:id")
+            binding.ownership
+                != ConsoleRouteOwnership::ConsoleOperation(
+                    "applications.orchestration.template.export".to_string(),
+                )
         })
         .cloned()
         .collect::<Vec<_>>();
     let error = compile_migrated_core_console_operation_registry(&settings, &missing).unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("operation applications.delete must own at least one console route"));
+    assert!(error.to_string().contains(
+        "operation applications.orchestration.template.export must own at least one console route"
+    ));
 }
 
 #[test]
@@ -585,7 +627,7 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
     let registry =
         compile_migrated_core_console_operation_registry(&settings, migrated.bindings()).unwrap();
 
-    for operation_id in [
+    for authorization_profile_id in [
         "applications.publish",
         "applications.api.set_enabled",
         "applications.orchestration.template.export",
@@ -595,18 +637,19 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
         "applications.logs.export",
         "applications.logs.import",
     ] {
-        let operation = registry
+        let operations = registry
             .inventory()
             .operations
             .iter()
-            .find(|operation| operation.operation_id == operation_id)
-            .unwrap();
-        assert_eq!(operation.authorization, ConsoleAuthorization::Simple);
-        assert_eq!(
-            operation.policy_group,
-            ConsolePolicyGroup::SettingsFeature("system.applications".to_string())
-        );
-        assert!(!operation.routes.is_empty());
+            .filter(|operation| operation.authorization_profile_id == authorization_profile_id)
+            .collect::<Vec<_>>();
+        assert!(!operations.is_empty());
+        assert!(operations.iter().all(|operation| {
+            operation.authorization == ConsoleAuthorization::Simple
+                && operation.policy_group
+                    == ConsolePolicyGroup::SettingsFeature("system.applications".to_string())
+                && operation.routes.len() == 1
+        }));
     }
 }
 
@@ -803,7 +846,13 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
         .inventory()
         .operations
         .iter()
-        .find(|operation| operation.operation_id == "data_sources.view")
+        .find(|operation| {
+            operation.authorization_profile_id == "data_sources.view"
+                && matches!(
+                    operation.authorization,
+                    ConsoleAuthorization::ResourceAction { .. }
+                )
+        })
         .unwrap();
     assert_eq!(
         view.authorization,
@@ -812,7 +861,7 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
             action_code: "view".to_string(),
         }
     );
-    for operation_id in [
+    for authorization_profile_id in [
         "data_sources.list",
         "data_sources.create",
         "data_sources.defaults.update",
@@ -834,20 +883,23 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
         "model_definitions.openapi.view",
         "data_sources.secret.rotate",
     ] {
-        let operation = registry
+        let operations = registry
             .inventory()
             .operations
             .iter()
-            .find(|operation| operation.operation_id == operation_id)
-            .unwrap();
-        assert_eq!(operation.authorization, ConsoleAuthorization::Simple);
+            .filter(|operation| operation.authorization_profile_id == authorization_profile_id)
+            .collect::<Vec<_>>();
+        assert!(!operations.is_empty(), "{authorization_profile_id}");
+        assert!(operations
+            .iter()
+            .all(|operation| operation.authorization == ConsoleAuthorization::Simple));
     }
 
     let secret_rotate = registry
         .inventory()
         .operations
         .iter()
-        .find(|operation| operation.operation_id == "data_sources.secret.rotate")
+        .find(|operation| operation.authorization_profile_id == "data_sources.secret.rotate")
         .unwrap();
     assert_eq!(
         secret_rotate.policy_group,

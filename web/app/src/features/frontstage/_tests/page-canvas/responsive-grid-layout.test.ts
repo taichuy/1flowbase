@@ -22,8 +22,8 @@ function frontstageBlockFixture(): FrontstageBlockRenderPlanItem {
     sourceCodeRef: null,
     sourceIndex: 0,
     order: 0,
-    renderMode: 'restricted_js_block',
-    canEnterRestrictedJsRuntime: true,
+    renderMode: 'native_react',
+    canPrepareNativeReact: true,
     fallbackReasons: [],
     catalog: { providerCode: null, installationId: null },
     contribution: { pluginId: null, pluginVersion: null, code: 'hero' },
@@ -40,7 +40,9 @@ function frontstageBlockFixture(): FrontstageBlockRenderPlanItem {
 
 describe('frontstage responsive grid layout', () => {
   test('AC-001/002 migrates legacy width to 24 units and derives mobile single-column layout', () => {
-    const layouts = createFrontstageResponsiveLayouts([frontstageBlockFixture()]);
+    const layouts = createFrontstageResponsiveLayouts([
+      frontstageBlockFixture()
+    ]);
 
     expect(layouts.lg?.[0]).toMatchObject({
       i: 'hero',
@@ -79,9 +81,9 @@ describe('frontstage responsive grid layout', () => {
 
       expect(quantizedHeight).toBeGreaterThanOrEqual(height);
       expect(quantizedHeight - height).toBeLessThanOrEqual(2);
-      expect(
-        rows * FRONTSTAGE_GRID_ROW_HEIGHT - height
-      ).toBeGreaterThanOrEqual(10);
+      expect(rows * FRONTSTAGE_GRID_ROW_HEIGHT - height).toBeGreaterThanOrEqual(
+        10
+      );
       expect(rows * FRONTSTAGE_GRID_ROW_HEIGHT - height).toBeLessThanOrEqual(
         12
       );
@@ -137,7 +139,9 @@ describe('frontstage responsive grid layout', () => {
   });
 
   test('persists the drag-stop layout for the active breakpoint without changing the others', () => {
-    const layouts = createFrontstageResponsiveLayouts([frontstageBlockFixture()]);
+    const layouts = createFrontstageResponsiveLayouts([
+      frontstageBlockFixture()
+    ]);
     const nextLayouts = replaceFrontstageBreakpointLayout(layouts, 'lg', [
       { i: 'hero', x: 0, y: 8, w: 12, h: 5 }
     ]);

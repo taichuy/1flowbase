@@ -1,8 +1,17 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use anyhow::{anyhow, bail, Result};
 use plugin_framework::provider_contract::NativePromptBlock;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::compiled_plan::{CompiledBinding, CompiledNode};
+use crate::compiled_plan::{CompiledBinding, CompiledI18nTextRef, CompiledNode, CompiledPlan};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReferencedI18nMessage {
+    pub key: String,
+    pub text: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingResolutionIssue {
@@ -75,8 +84,43 @@ pub fn render_templated_bindings(
         .collect()
 }
 
+pub fn referenced_i18n_text_refs(plan: &CompiledPlan) -> Vec<CompiledI18nTextRef> {
+    plan.nodes
+        .values()
+        .flat_map(|node| node.bindings.values())
+        .filter(|binding| binding.kind == "i18n_text")
+        .filter_map(|binding| binding.i18n_text_ref.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+pub fn project_referenced_i18n_messages(
+    plan: &CompiledPlan,
+    translations: &BTreeMap<CompiledI18nTextRef, String>,
+) -> Vec<ReferencedI18nMessage> {
+    referenced_i18n_text_refs(plan)
+        .into_iter()
+        .map(|reference| ReferencedI18nMessage {
+            text: translations
+                .get(&reference)
+                .cloned()
+                .unwrap_or_else(|| reference.key.clone()),
+            key: reference.key,
+        })
+        .collect()
+}
+
 fn resolve_binding(binding: &CompiledBinding, variable_pool: &Map<String, Value>) -> Result<Value> {
     match binding.kind.as_str() {
+        "i18n_text" => binding
+            .i18n_text_ref
+            .as_ref()
+            .ok_or_else(|| anyhow!("i18n_text binding is missing its typed reference"))
+            .and_then(|reference| {
+                serde_json::to_value(reference)
+                    .map_err(|error| anyhow!("failed to serialize i18n_text reference: {error}"))
+            }),
         "selector" => {
             let selector = binding
                 .selector_paths

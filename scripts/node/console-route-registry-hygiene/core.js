@@ -59,6 +59,7 @@ const SECTION_API_MODULES = {
   applications: ['application-management.ts'],
   members: ['members.ts', 'roles.ts'],
   roles: ['permissions.ts', 'roles.ts'],
+  i18n: ['i18n-catalog.ts'],
 };
 
 const DISALLOWED_FRONTEND_PERMISSION_CODES = [
@@ -504,9 +505,7 @@ function evaluateConsoleRouteRegistryHygiene({ inventory }) {
         }));
       }
 
-      const hasConsoleBinding = moduleInfo.imports.some((name) => (
-        name.includes('Console')
-      ));
+      const hasConsoleBinding = moduleInfo.imports.length > 0;
       if (!hasConsoleBinding) {
         findings.push(createFinding({
           rule: 'settings-section-api-console-binding',

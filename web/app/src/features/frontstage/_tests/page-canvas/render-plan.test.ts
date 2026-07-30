@@ -41,20 +41,23 @@ function createBlock(
       code: 'official.hero'
     },
     props: { title: 'Hello' },
-    presentation: overrides.presentation ?? { heightMode: 'auto', height: null },
+    presentation: overrides.presentation ?? {
+      heightMode: 'auto',
+      height: null
+    },
     layout: { order: 0, region: 'main' },
     order: 0,
     runtime: {
-      kind: 'iframe',
+      kind: 'native_react',
       entry: 'blocks/hero/index.js',
-      hint: 'iframe'
+      hint: 'native_react'
     },
     ...overrides
   };
 }
 
 describe('frontstage page canvas render plan', () => {
-  test('creates stable restricted JS block items ordered by block order', () => {
+  test('creates stable Native React block items ordered by block order', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
         root: {
@@ -67,7 +70,7 @@ describe('frontstage page canvas render plan', () => {
                 codeRef: 'second-code',
                 contributionCode: 'official.second',
                 props: { label: 'Second' },
-                runtime: { kind: 'iframe', entry: 'blocks/second.js' },
+                runtime: { kind: 'native_react', entry: 'blocks/second.js' },
                 layout: { order: 20, region: 'main' }
               },
               {
@@ -76,7 +79,7 @@ describe('frontstage page canvas render plan', () => {
                 codeRef: 'first-code',
                 contributionCode: 'official.first',
                 props: { label: 'First' },
-                runtime: { kind: 'iframe', entry: 'blocks/first.js' },
+                runtime: { kind: 'native_react', entry: 'blocks/first.js' },
                 layout: { order: 10, region: 'header' }
               },
               {
@@ -84,7 +87,7 @@ describe('frontstage page canvas render plan', () => {
                 renderer_version: 'v1',
                 codeRef: 'same-order-code',
                 contributionCode: 'official.same',
-                runtime: { kind: 'iframe', entry: 'blocks/same.js' },
+                runtime: { kind: 'native_react', entry: 'blocks/same.js' },
                 layout: { order: 10, region: 'footer' }
               }
             ]
@@ -109,13 +112,13 @@ describe('frontstage page canvas render plan', () => {
     expect(plan.items[0]).toMatchObject({
       blockId: 'first',
       codeRef: 'first-code',
-      renderMode: 'restricted_js_block',
-      canEnterRestrictedJsRuntime: true,
+      renderMode: 'native_react',
+      canPrepareNativeReact: true,
       fallbackReasons: [],
       runtime: {
-        kind: 'iframe',
+        kind: 'native_react',
         entry: 'blocks/first.js',
-        hint: 'iframe'
+        hint: 'native_react'
       },
       contribution: {
         code: 'official.first'
@@ -165,7 +168,7 @@ describe('frontstage page canvas render plan', () => {
       expect.objectContaining({
         blockId: 'legacy',
         renderMode: 'placeholder',
-        canEnterRestrictedJsRuntime: false,
+        canPrepareNativeReact: false,
         fallbackReasons: [
           expect.objectContaining({
             code: 'unsupported_runtime',
@@ -176,7 +179,7 @@ describe('frontstage page canvas render plan', () => {
       expect.objectContaining({
         blockId: 'unknown',
         renderMode: 'placeholder',
-        canEnterRestrictedJsRuntime: false,
+        canPrepareNativeReact: false,
         fallbackReasons: [
           expect.objectContaining({
             code: 'unknown_runtime',
@@ -187,7 +190,7 @@ describe('frontstage page canvas render plan', () => {
     ]);
   });
 
-  test('does not enter the JS runtime for missing or unsupported renderer versions', () => {
+  test('does not prepare Native React for missing or unsupported renderer versions', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
         root: {
@@ -199,13 +202,13 @@ describe('frontstage page canvas render plan', () => {
                 renderer_version: 'v2',
                 codeRef: 'future-code',
                 contributionCode: 'official.future',
-                runtime: { kind: 'iframe', entry: 'blocks/future.js' }
+                runtime: { kind: 'native_react', entry: 'blocks/future.js' }
               },
               {
                 id: 'legacy',
                 codeRef: 'legacy-code',
                 contributionCode: 'official.legacy',
-                runtime: { kind: 'iframe', entry: 'blocks/legacy.js' }
+                runtime: { kind: 'native_react', entry: 'blocks/legacy.js' }
               }
             ]
           }
@@ -219,7 +222,7 @@ describe('frontstage page canvas render plan', () => {
       expect.objectContaining({
         blockId: 'future',
         renderMode: 'placeholder',
-        canEnterRestrictedJsRuntime: false,
+        canPrepareNativeReact: false,
         fallbackReasons: [
           expect.objectContaining({
             code: 'unsupported_renderer_version',
@@ -230,7 +233,7 @@ describe('frontstage page canvas render plan', () => {
       expect.objectContaining({
         blockId: 'legacy',
         renderMode: 'placeholder',
-        canEnterRestrictedJsRuntime: false,
+        canPrepareNativeReact: false,
         fallbackReasons: [
           expect.objectContaining({
             code: 'missing_renderer_version',
@@ -251,7 +254,7 @@ describe('frontstage page canvas render plan', () => {
               {
                 renderer_version: 'v1',
                 contributionCode: 'official.missing',
-                runtime: { kind: 'iframe' },
+                runtime: { kind: 'native_react' },
                 props: 'invalid-props'
               },
               {
@@ -259,7 +262,7 @@ describe('frontstage page canvas render plan', () => {
                 renderer_version: 'v1',
                 codeRef: 'explicit-code',
                 contributionCode: 'official.explicit',
-                runtime: { kind: 'iframe' }
+                runtime: { kind: 'native_react' }
               }
             ]
           }
@@ -279,7 +282,7 @@ describe('frontstage page canvas render plan', () => {
         sourceCodeRef: null,
         props: {},
         renderMode: 'placeholder',
-        canEnterRestrictedJsRuntime: false,
+        canPrepareNativeReact: false,
         fallbackReasons: [
           expect.objectContaining({
             code: 'missing_code_ref',
@@ -297,7 +300,7 @@ describe('frontstage page canvas render plan', () => {
         sourceBlockId: 'explicit',
         sourceCodeRef: 'explicit-code',
         renderMode: 'placeholder',
-        canEnterRestrictedJsRuntime: false,
+        canPrepareNativeReact: false,
         fallbackReasons: [
           expect.objectContaining({
             code: 'missing_runtime_entry',
@@ -345,9 +348,9 @@ describe('frontstage page canvas render plan', () => {
         id: 'metric',
         codeRef: 'metric-code',
         runtime: {
-          kind: 'iframe',
+          kind: 'native_react',
           entry: 'blocks/metric.js',
-          hint: 'iframe'
+          hint: 'native_react'
         }
       }),
       7
@@ -356,8 +359,8 @@ describe('frontstage page canvas render plan', () => {
     expect(item).toMatchObject({
       blockId: 'metric',
       sourceIndex: 7,
-      renderMode: 'restricted_js_block',
-      canEnterRestrictedJsRuntime: true,
+      renderMode: 'native_react',
+      canPrepareNativeReact: true,
       fallbackReasons: []
     });
   });

@@ -1,8 +1,13 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 
+import { useNavigate } from '@tanstack/react-router';
+
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import { MemberManagementPanel } from '../../components/MemberManagementPanel';
-import { RolePermissionPanel } from '../../components/RolePermissionPanel';
+import {
+  RolePermissionPanel,
+  type RolePermissionTab
+} from '../../components/RolePermissionPanel';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 import type { SettingsSectionKey } from '../../lib/settings-sections';
@@ -51,6 +56,11 @@ const ApplicationManagementPanel = lazy(() =>
     })
   )
 );
+const I18nCatalogPage = lazy(() =>
+  import('../i18n-catalog/I18nCatalogPage').then((module) => ({
+    default: module.I18nCatalogPage
+  }))
+);
 
 function SettingsSectionFallback() {
   return <LoadingState compact />;
@@ -74,12 +84,16 @@ interface SettingsSectionAccess {
 export function SettingsSectionBody({
   sectionKey,
   access,
-  modelProviderTab = 'providers'
+  modelProviderTab = 'providers',
+  rolePermissionTab = 'console-policy'
 }: {
   sectionKey: SettingsSectionKey;
   access: SettingsSectionAccess;
   modelProviderTab?: 'providers' | 'request-logs';
+  rolePermissionTab?: RolePermissionTab;
 }) {
+  const navigate = useNavigate();
+
   switch (sectionKey) {
     case 'applications':
       return (
@@ -144,8 +158,25 @@ export function SettingsSectionBody({
           </SettingsSectionSurface>
         </SettingsSectionBoundary>
       );
+    case 'i18n':
+      return (
+        <SettingsSectionBoundary>
+          <I18nCatalogPage />
+        </SettingsSectionBoundary>
+      );
     case 'roles':
-      return <RolePermissionPanel canManageRoles={access.canManageRoles} />;
+      return (
+        <RolePermissionPanel
+          canManageRoles={access.canManageRoles}
+          activePermissionTab={rolePermissionTab}
+          onPermissionTabChange={(tab, navigationMode) =>
+            navigate({
+              to: `/settings/roles/${tab}`,
+              replace: navigationMode === 'replace'
+            })
+          }
+        />
+      );
     case 'api-key-authentication':
       return (
         <SettingsSectionBoundary>

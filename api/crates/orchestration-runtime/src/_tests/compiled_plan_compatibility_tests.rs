@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::compiled_plan::{
-    CompiledLlmRouteTarget, CompiledLlmRuntime, CompiledNode, VariableReference,
+    CompiledBinding, CompiledLlmRouteTarget, CompiledLlmRuntime, CompiledNode, VariableReference,
 };
 use serde_json::json;
 
@@ -30,6 +30,19 @@ fn compiled_llm_route_target_accepts_legacy_payload_without_provider_display_nam
     .unwrap();
 
     assert_eq!(target.provider_instance_display_name, "");
+}
+
+#[test]
+fn compiled_binding_accepts_legacy_payload_without_i18n_text_ref() {
+    let binding: CompiledBinding = serde_json::from_value(json!({
+        "kind": "templated_text",
+        "raw_value": "Hello {{node-start.query}}",
+        "selector_paths": [["node-start", "query"]]
+    }))
+    .unwrap();
+
+    assert_eq!(binding.i18n_text_ref, None);
+    assert_eq!(binding.kind, "templated_text");
 }
 
 #[test]

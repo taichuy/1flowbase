@@ -1,0 +1,356 @@
+{
+  "packet": "D3-P4",
+  "count": 70,
+  "consumers": [
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "API documentation"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Language catalog"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "API key authentication"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "System runtime"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Application management"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Authentication center"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Data source"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "File management"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Infrastructure"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Memory observation"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "User management"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Model providers"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "MCP management"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Permission management"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "API documentation operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Root language catalog operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "API key authentication operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "System runtime operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Application management operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Authentication center operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Data model and data source operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "File management operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Host infrastructure operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Memory observation operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Member management operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Model provider operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "MCP management operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Role and permission operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Signed-in console"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Console routes available to every signed-in user"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Agent Flow"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered Agent Flow operations outside system settings"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Data source utilities"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered data source operations outside system settings"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Frontend blocks"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered frontend block catalog operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "JavaScript dependencies"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered JavaScript dependency operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Model provider utilities"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered model provider operations outside system settings"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Node contributions"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered node contribution catalog operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Plugins"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered plugin catalog and lifecycle operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Current workspace"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
+      "key": "Registered operations for the current workspace"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Full access"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Grant every operation in this group"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Custom access"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Choose operations and row scopes individually"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Disabled"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Do not grant this operation"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Own records"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Allow records created by the current user"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Current workspace"
+    },
+    {
+      "category": "policy_option",
+      "path": "api/crates/access-control/src/console_operations.rs",
+      "key": "Allow records in the current workspace"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Applications"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Applications in the current workspace"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Create"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Create an application"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "View"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "View an application"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Update"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Update an application"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Delete"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Delete an application"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Data source instances"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "Configured data source instances in the current workspace"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "View"
+    },
+    {
+      "category": "resource_action",
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "key": "View a data source instance"
+    }
+  ]
+}

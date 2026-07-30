@@ -229,7 +229,7 @@ async fn test_state_with_runtime_profile_state(
     (
         Arc::new(ApiState {
             test_database: Some(Arc::new(database)),
-            store,
+            store: store.clone(),
             authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
             settings_feature_registry,
             console_operation_registry,
@@ -249,6 +249,8 @@ async fn test_state_with_runtime_profile_state(
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
             official_agent_flow_template_source: Arc::new(InMemoryOfficialAgentFlowTemplateSource),
             official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
+            official_i18n_catalog_update_service:
+                crate::app_state::build_official_i18n_catalog_update_service(store.clone(), &config),
             api_node_id: config.api_node_id.clone(),
             provider_install_root: config.provider_install_root.clone(),
             provider_secret_master_key: config.provider_secret_master_key.clone(),
@@ -261,6 +263,7 @@ async fn test_state_with_runtime_profile_state(
             cookie_name: config.cookie_name.clone(),
             cookie_secure: config.cookie_secure,
             session_ttl_days: config.session_ttl_days,
+            bootstrap_workspace_id: bootstrap.workspace_id,
             bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
         }),
         config.database_url,

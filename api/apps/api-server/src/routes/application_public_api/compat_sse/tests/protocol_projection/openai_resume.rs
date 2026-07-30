@@ -80,6 +80,9 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
         official_plugin_source: base_state.official_plugin_source.clone(),
         official_agent_flow_template_source: base_state.official_agent_flow_template_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
+        official_i18n_catalog_update_service: base_state
+            .official_i18n_catalog_update_service
+            .clone(),
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),
@@ -92,6 +95,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
         cookie_name: base_state.cookie_name.clone(),
         cookie_secure: base_state.cookie_secure,
         session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_id: base_state.bootstrap_workspace_id,
         bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
     });
     let (sender, mut receiver) = mpsc::channel(32);
@@ -324,6 +328,9 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
         official_plugin_source: base_state.official_plugin_source.clone(),
         official_agent_flow_template_source: base_state.official_agent_flow_template_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
+        official_i18n_catalog_update_service: base_state
+            .official_i18n_catalog_update_service
+            .clone(),
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),
@@ -336,6 +343,7 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
         cookie_name: base_state.cookie_name.clone(),
         cookie_secure: base_state.cookie_secure,
         session_ttl_days: base_state.session_ttl_days,
+        bootstrap_workspace_id: base_state.bootstrap_workspace_id,
         bootstrap_workspace_name: base_state.bootstrap_workspace_name.clone(),
     });
     let (sender, mut receiver) = mpsc::channel(32);

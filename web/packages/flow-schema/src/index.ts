@@ -350,6 +350,84 @@ export interface NamedBindingEntry {
   content?: { kind: 'templated_text'; value: string };
 }
 
+export interface I18nTextRef {
+  key: string;
+}
+
+export type I18nTextRefValidationResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | 'invalid_i18n_shape'
+        | 'blank_i18n_key'
+        | 'workflow_template_conflict'
+        | 'non_plain_i18n_text'
+        | 'invalid_named_placeholder';
+    };
+
+function hasValidNamedPlaceholders(key: string): boolean {
+  let cursor = 0;
+
+  while (cursor < key.length) {
+    const character = key[cursor];
+
+    if (character === '}') {
+      return false;
+    }
+    if (character !== '{') {
+      cursor += 1;
+      continue;
+    }
+
+    const end = key.indexOf('}', cursor + 1);
+
+    if (
+      end < 0 ||
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key.slice(cursor + 1, end))
+    ) {
+      return false;
+    }
+    cursor = end + 1;
+  }
+
+  return true;
+}
+
+export function validateI18nTextRef(
+  value: unknown
+): I18nTextRefValidationResult {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).length !== 1 ||
+    typeof value.key !== 'string'
+  ) {
+    return { ok: false, reason: 'invalid_i18n_shape' };
+  }
+  if (value.key.trim().length === 0) {
+    return { ok: false, reason: 'blank_i18n_key' };
+  }
+  if (value.key.includes('{{') || value.key.includes('}}')) {
+    return { ok: false, reason: 'workflow_template_conflict' };
+  }
+
+  const lowercaseKey = value.key.toLowerCase();
+
+  if (
+    value.key.includes('<') ||
+    value.key.includes('>') ||
+    lowercaseKey.includes('javascript:') ||
+    lowercaseKey.includes('data:text/html')
+  ) {
+    return { ok: false, reason: 'non_plain_i18n_text' };
+  }
+  if (!hasValidNamedPlaceholders(value.key)) {
+    return { ok: false, reason: 'invalid_named_placeholder' };
+  }
+
+  return { ok: true };
+}
+
 export type FlowConditionComparator =
   | 'exists'
   | 'empty'
@@ -397,6 +475,7 @@ export interface IfElseBranchDocument {
 
 export type FlowBinding =
   | { kind: 'templated_text'; value: string }
+  | { kind: 'i18n_text'; value: I18nTextRef }
   | { kind: 'selector'; value: string[] }
   | { kind: 'selector_list'; value: string[][] }
   | {

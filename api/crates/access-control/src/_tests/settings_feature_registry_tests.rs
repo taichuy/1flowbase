@@ -54,6 +54,22 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             .collect::<Vec<_>>()
     };
 
+    assert_eq!(
+        routes("system.i18n-catalog"),
+        vec![
+            ("DELETE", "/api/console/settings/i18n/custom-keys"),
+            ("DELETE", "/api/console/settings/i18n/overrides"),
+            ("GET", "/api/console/settings/i18n/catalog"),
+            ("GET", "/api/console/settings/i18n/entries"),
+            ("GET", "/api/console/settings/i18n/entries/detail"),
+            ("GET", "/api/console/settings/i18n/update-check"),
+            ("POST", "/api/console/settings/i18n/activate"),
+            ("POST", "/api/console/settings/i18n/restore-overrides"),
+            ("PUT", "/api/console/settings/i18n/custom-translations"),
+            ("PUT", "/api/console/settings/i18n/overrides"),
+        ]
+    );
+
     assert_eq!(routes("system.model-providers").len(), 26);
     assert_eq!(
         routes("system.model-providers"),

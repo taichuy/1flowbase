@@ -57,11 +57,11 @@ export function HeroAnimation() {
     let animationFrameId: number;
     const leaves: Leaf[] = [];
     let ripples: Ripple[] = [];
-    const leafCount = 55;
+    const leafCount = 75;
 
     // Resize handler to adjust canvas bounds with retina display support
     const resizeCanvas = () => {
-      const rect = container.getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
@@ -88,7 +88,7 @@ export function HeroAnimation() {
     ];
 
     const createLeaf = (initYRandom = false): Leaf => {
-      const rect = container.getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
       const width = rect.width || 800;
       const height = rect.height || 600;
 
@@ -140,7 +140,7 @@ export function HeroAnimation() {
     const animate = () => {
       time += 1;
 
-      const rect = container.getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
       const waterHorizon = height * 0.75; // Define water surface horizon (occupying bottom 25% height)
@@ -377,36 +377,34 @@ export function HeroAnimation() {
   };
 
   return (
-    <div
-      className="auth-sign-in-hero"
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={{
-        flex: 1,
-        background: 'linear-gradient(135deg, #ffffff 40%, #e6f7f2 100%)',
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundImage: `radial-gradient(rgba(0, 208, 132, 0.05) 1px, transparent 1px)`,
-        backgroundSize: '24px 24px'
-      }}
-    >
+    <>
       <canvas
         ref={canvasRef}
         style={{
-          position: 'absolute',
+          position: 'fixed',
           top: 0,
           left: 0,
-          width: '100%',
-          height: '100%',
+          width: '100vw',
+          height: '100vh',
           pointerEvents: 'none',
           zIndex: 0
         }}
       />
 
+      <div
+        className="auth-sign-in-hero"
+        ref={containerRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          flex: 1,
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
       <div
         className="hero-shape shape-1"
         style={{
@@ -548,6 +546,7 @@ export function HeroAnimation() {
           }
         `}
       </style>
-    </div>
+      </div>
+    </>
   );
 }

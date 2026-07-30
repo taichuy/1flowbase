@@ -139,11 +139,10 @@ mod tests {
             [
                 ConsoleOperationRegistration {
                     operation_id: "middleware.simple".to_string(),
+                    authorization_profile_id: None,
                     owner: owner.clone(),
                     lifecycle: SettingsFeatureLifecycle::Active,
                     policy_group: group.clone(),
-                    label_ref: "test.simple".to_string(),
-                    description_ref: None,
                     order: 1,
                     routes: vec![ConsoleRouteBinding {
                         method: "GET".to_string(),
@@ -153,11 +152,10 @@ mod tests {
                 },
                 ConsoleOperationRegistration {
                     operation_id: "middleware.row".to_string(),
+                    authorization_profile_id: None,
                     owner: owner.clone(),
                     lifecycle: SettingsFeatureLifecycle::Active,
                     policy_group: group.clone(),
-                    label_ref: "test.row".to_string(),
-                    description_ref: None,
                     order: 2,
                     routes: vec![ConsoleRouteBinding {
                         method: "GET".to_string(),
@@ -170,11 +168,10 @@ mod tests {
                 },
                 ConsoleOperationRegistration {
                     operation_id: "middleware.authenticated".to_string(),
+                    authorization_profile_id: None,
                     owner,
                     lifecycle: SettingsFeatureLifecycle::Active,
                     policy_group: group,
-                    label_ref: "test.authenticated".to_string(),
-                    description_ref: None,
                     order: 3,
                     routes: vec![ConsoleRouteBinding {
                         method: "GET".to_string(),

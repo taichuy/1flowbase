@@ -562,11 +562,34 @@ function ModelProviderInstanceDrawerContent({
           : undefined);
 
     if (isSecret && mode === 'edit') {
+      const configuredSecret = instance?.config_json[field.key];
+      const hasConfiguredSecret =
+        typeof configuredSecret === 'string' && configuredSecret.length > 0;
+
+      if (!hasConfiguredSecret) {
+        return (
+          <Form.Item key={field.key} label={label} extra={fieldExtra}>
+            <Input.Password
+              aria-label={label}
+              autoComplete="off"
+              placeholder={field.placeholder ?? i18nText("settings", "auto.please_enter")}
+              value={secretDrafts[field.key] ?? ''}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSecretDrafts((current) => ({
+                  ...current,
+                  [field.key]: value
+                }));
+                clearPreviewState();
+              }}
+            />
+          </Form.Item>
+        );
+      }
+
       const previewSource =
         secretDrafts[field.key] ??
-        (typeof instance?.config_json[field.key] === 'string'
-          ? String(instance.config_json[field.key])
-          : '');
+        String(configuredSecret);
       const previewValue = previewSource
         ? previewSource.includes('****')
           ? previewSource

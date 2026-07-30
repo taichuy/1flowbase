@@ -4,7 +4,7 @@ import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-inj
 
 describe('Frontstage context source injection', () => {
   test('AC-005 inserts before default export and replaces a deleted/stale comment', () => {
-    const source = `async function main() { return { view: {}, outputs: {} }; }\nexport default { main };\n`;
+    const source = `export default function Block({ ctx }) { return <div>{String(ctx.props.title)}</div>; }\n`;
     const comment =
       '/**\n * @1flowbase-context\n * inputs: 无\n * outputs: 无\n */';
     const injected = injectFrontstageContextComment(source, comment);

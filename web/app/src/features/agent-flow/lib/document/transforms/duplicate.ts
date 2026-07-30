@@ -149,6 +149,8 @@ function remapBinding(
         ...binding,
         value: remapTemplateSelectorTokens(binding.value, idMap)
       };
+    case 'i18n_text':
+      return { ...binding, value: { ...binding.value } };
     case 'selector':
       return {
         ...binding,

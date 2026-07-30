@@ -4,6 +4,7 @@ export const BLOCK_CONTEXT_KEYS = [
   'application',
   'page',
   'inputs',
+  'outputs',
   'params',
   'props',
   'state',
@@ -102,6 +103,20 @@ export interface BlockContextEvents {
   emit(event: string, payload?: BlockContextRecord): void;
 }
 
+export interface BlockContextOutputPublishResult {
+  ok: boolean;
+  stale: boolean;
+  error?: string;
+}
+
+export interface BlockContextOutputs<
+  TOutputs extends BlockContextRecord = BlockContextRecord
+> {
+  publish(
+    values: TOutputs
+  ): BlockContextOutputPublishResult | Promise<BlockContextOutputPublishResult>;
+}
+
 export interface BlockContextTheme {
   mode: 'light' | 'dark';
   tokens: BlockContextRecord;
@@ -113,13 +128,15 @@ export interface BlockContextUi {
 }
 
 export interface BlockContext<
-  TInputs extends BlockContextRecord = BlockContextRecord
+  TInputs extends BlockContextRecord = BlockContextRecord,
+  TOutputs extends BlockContextRecord = BlockContextRecord
 > {
   currentUser: BlockContextIdentity | null;
   workspace: BlockContextEntity;
-  application: BlockContextEntity;
+  application: BlockContextEntity | null;
   page: BlockContextPage;
   inputs: Readonly<TInputs>;
+  outputs: BlockContextOutputs<TOutputs>;
   params: BlockContextRecord;
   props: BlockContextRecord;
   state: BlockContextRecord;

@@ -1,6 +1,6 @@
 import {
   FRONTSTAGE_BLOCK_RUNTIME_KINDS,
-  isFrontstageBlockRestrictedRuntime,
+  isFrontstageBlockNativeRuntime,
   type FrontstageBlockRuntimeKind
 } from '../block-catalog';
 import { isSupportedFrontstageBlockRendererVersion } from '../block-renderer-version';
@@ -15,9 +15,7 @@ import type {
   FrontstagePageDocumentDiagnostic
 } from '../page-document';
 
-export type FrontstagePageRenderMode =
-  | 'restricted_js_block'
-  | 'placeholder';
+export type FrontstagePageRenderMode = 'native_react' | 'placeholder';
 
 export type FrontstagePageRenderPlanFallbackReasonCode =
   | 'missing_code_ref'
@@ -42,7 +40,7 @@ export interface FrontstageBlockRenderPlanItem {
   sourceIndex: number;
   order: number;
   renderMode: FrontstagePageRenderMode;
-  canEnterRestrictedJsRuntime: boolean;
+  canPrepareNativeReact: boolean;
   fallbackReasons: FrontstagePageRenderPlanFallbackReason[];
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
@@ -63,9 +61,7 @@ export interface FrontstagePageRenderPlan {
 const knownRuntimeKinds = new Set<string>(FRONTSTAGE_BLOCK_RUNTIME_KINDS);
 
 function asRequiredString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0
-    ? value
-    : null;
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
 function cloneValue<T>(value: T): T {
@@ -108,9 +104,7 @@ function cloneLayout(layout: FrontstageBlockLayout): FrontstageBlockLayout {
   return cloneValue(layout);
 }
 
-function cloneProps(
-  props: Record<string, unknown>
-): Record<string, unknown> {
+function cloneProps(props: Record<string, unknown>): Record<string, unknown> {
   return cloneValue(props);
 }
 
@@ -127,7 +121,7 @@ function createMissingCodeRefReason(
     code: 'missing_code_ref',
     path: `blocks.${sourceIndex}.codeRef`,
     message:
-      'Frontstage block cannot enter the restricted JS runtime without an original codeRef.'
+      'Frontstage block cannot enter the Native React runtime without an original codeRef.'
   };
 }
 
@@ -138,7 +132,7 @@ function createMissingRuntimeEntryReason(
     code: 'missing_runtime_entry',
     path: `blocks.${sourceIndex}.runtime.entry`,
     message:
-      'Frontstage block cannot enter the restricted JS runtime without a runtime entry.'
+      'Frontstage block cannot enter the Native React runtime without a runtime entry.'
   };
 }
 
@@ -182,7 +176,7 @@ function createUnsupportedRuntimeReason(
   return {
     code: 'unsupported_runtime',
     path: `blocks.${sourceIndex}.runtime.kind`,
-    message: `Frontstage block runtime "${runtimeKind}" is not supported by the restricted JS runtime.`
+    message: `Frontstage block runtime "${runtimeKind}" is not supported by the Native React runtime.`
   };
 }
 
@@ -198,7 +192,7 @@ function resolveRuntimeReason(
 
   if (
     !knownRuntimeKinds.has(runtimeKind) ||
-    !isFrontstageBlockRestrictedRuntime(runtimeKind as FrontstageBlockRuntimeKind)
+    !isFrontstageBlockNativeRuntime(runtimeKind as FrontstageBlockRuntimeKind)
   ) {
     return createUnsupportedRuntimeReason(sourceIndex, runtimeKind);
   }
@@ -277,7 +271,7 @@ export function createFrontstageBlockRenderPlanItem(
   sourceIndex = 0
 ): FrontstageBlockRenderPlanItem {
   const fallbackReasons = createFallbackReasons(block, sourceIndex);
-  const canEnterRestrictedJsRuntime = fallbackReasons.length === 0;
+  const canPrepareNativeReact = fallbackReasons.length === 0;
 
   return {
     blockId: block.id,
@@ -287,10 +281,8 @@ export function createFrontstageBlockRenderPlanItem(
     rendererVersion: block.rendererVersion,
     sourceIndex,
     order: block.order,
-    renderMode: canEnterRestrictedJsRuntime
-      ? 'restricted_js_block'
-      : 'placeholder',
-    canEnterRestrictedJsRuntime,
+    renderMode: canPrepareNativeReact ? 'native_react' : 'placeholder',
+    canPrepareNativeReact,
     fallbackReasons,
     catalog: cloneCatalog(block.catalog),
     contribution: cloneContribution(block.contribution),

@@ -398,17 +398,22 @@ fn to_application_js_dependency_selection(
     }
 }
 
-fn application_type_catalog() -> Vec<ApplicationTypeOptionResponse> {
-    vec![
+async fn application_type_catalog(
+    state: &ApiState,
+    locale: &domain::CatalogLocale,
+) -> Result<Vec<ApplicationTypeOptionResponse>, ApiError> {
+    let agent_flow = crate::app_state::resolve_request_text(state, locale, "Agent Flow").await?;
+    let workflow = crate::app_state::resolve_request_text(state, locale, "Workflow").await?;
+    Ok(vec![
         ApplicationTypeOptionResponse {
             value: "agent_flow".to_string(),
-            label: "AgentFlow".to_string(),
+            label: agent_flow,
         },
         ApplicationTypeOptionResponse {
             value: "workflow".to_string(),
-            label: "工作流".to_string(),
+            label: workflow,
         },
-    ]
+    ])
 }
 
 fn to_application_summary(application: domain::ApplicationRecord) -> ApplicationSummaryResponse {
@@ -646,9 +651,10 @@ pub async fn get_application_catalog(
     let tags = ApplicationService::new(state.store.clone())
         .list_application_tags(context.user.id)
         .await?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
 
     Ok(Json(ApiSuccess::new(ApplicationCatalogResponse {
-        types: application_type_catalog(),
+        types: application_type_catalog(&state, &locale).await?,
         tags: tags
             .into_iter()
             .map(to_application_tag_catalog_entry)

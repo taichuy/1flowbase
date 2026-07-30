@@ -107,6 +107,12 @@ export interface SaveFrontstageBlockCodeInput {
   code: string;
 }
 
+export interface CreateFrontstageBlockInput {
+  payload: unknown;
+  code_ref: string;
+  code: string;
+}
+
 export interface DispatchFrontstageQueryInput {
   query_id: string;
   params?: unknown;
@@ -160,6 +166,73 @@ export interface ConsoleFrontstageInterfaceCapabilityQuery {
   path_query?: string;
   adapter_id?: string;
   method?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface ConsoleFrontendComponentUpstream {
+  package: string;
+  component: string;
+  version: string;
+}
+
+export interface ConsoleFrontendComponentProp {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
+export interface ConsoleFrontendComponentExample {
+  title: string;
+  code: string;
+}
+
+export interface ConsoleFrontendModuleBrowserAsset {
+  sha256: string;
+  url: string;
+}
+
+export interface ConsoleFrontstageComponentCapabilitySummary {
+  component_id: string;
+  installation_id: string;
+  provider_code: string;
+  plugin_id: string;
+  plugin_version: string;
+  contribution_code: string;
+  module_source: string;
+  module_version: string;
+  browser_asset: ConsoleFrontendModuleBrowserAsset;
+  export_name: string;
+  upstream: ConsoleFrontendComponentUpstream | null;
+  description: string;
+  insert_snippet: string;
+}
+
+export interface ConsoleFrontstageComponentCapability
+  extends ConsoleFrontstageComponentCapabilitySummary {
+  props: ConsoleFrontendComponentProp[];
+  limitations: string[];
+  examples: ConsoleFrontendComponentExample[];
+  typescript_declaration: string;
+  api_documentation: string;
+}
+
+export interface ConsoleFrontstageComponentCapabilityPage {
+  items: ConsoleFrontstageComponentCapabilitySummary[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+  next_offset: number | null;
+  module_sources: string[];
+}
+
+export interface ConsoleFrontstageComponentCapabilityQuery {
+  installation_id?: string;
+  contribution_code?: string;
+  query?: string;
+  module_source?: string;
   offset?: number;
   limit?: number;
 }
@@ -236,6 +309,49 @@ export function getFrontstageInterfaceCapability(
     method: 'GET',
     baseUrl
   });
+}
+
+export function listFrontstageComponentCapabilities(
+  workspaceId: string,
+  query: ConsoleFrontstageComponentCapabilityQuery = {},
+  baseUrl?: string
+): Promise<ConsoleFrontstageComponentCapabilityPage> {
+  const params = new URLSearchParams();
+  if (query.installation_id) {
+    params.set('installation_id', query.installation_id);
+  }
+  if (query.contribution_code) {
+    params.set('contribution_code', query.contribution_code);
+  }
+  if (query.query) params.set('query', query.query);
+  if (query.module_source) params.set('module_source', query.module_source);
+  if (query.offset !== undefined) params.set('offset', String(query.offset));
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const suffix = params.size > 0 ? `?${params.toString()}` : '';
+  return apiFetch<ConsoleFrontstageComponentCapabilityPage>({
+    path: `/api/console/frontstage/${workspaceId}/component-capabilities${suffix}`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function getFrontstageComponentCapability(
+  workspaceId: string,
+  componentId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageComponentCapability> {
+  return apiFetch<ConsoleFrontstageComponentCapability>({
+    path: `/api/console/frontstage/${workspaceId}/component-capabilities/${encodeURIComponent(componentId)}`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function frontstageComponentModuleAssetPath(
+  workspaceId: string,
+  sha256: string
+): string {
+  return `/api/console/frontstage/${encodeURIComponent(workspaceId)}/component-module-assets/${encodeURIComponent(sha256)}`;
 }
 
 export function dispatchFrontstageCallable<T = unknown>(
@@ -597,6 +713,23 @@ export function saveFrontstageTabDocument(
   return apiFetch<ConsoleFrontstagePageDetail>({
     path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
     method: 'PUT',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function createFrontstageBlock(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: CreateFrontstageBlockInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstagePageDetail> {
+  return apiFetch<ConsoleFrontstagePageDetail>({
+    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/blocks`,
+    method: 'POST',
     body: input,
     csrfToken,
     baseUrl

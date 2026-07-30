@@ -117,6 +117,7 @@ function createInitialState(
 ) {
   return {
     flow_id: 'flow-1',
+    messages: [],
     draft: {
       id: 'draft-1',
       flow_id: 'flow-1',

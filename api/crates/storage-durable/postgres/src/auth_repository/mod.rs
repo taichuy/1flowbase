@@ -21,6 +21,7 @@ use self::identity_binding::{
     upsert_password_local_identities,
 };
 use crate::{
+    i18n_catalog_repository::insert_verified_release,
     mappers::{
         auth_mapper::{PgAuthMapper, StoredAuthenticatorRow},
         member_mapper::{PgMemberMapper, StoredMemberRow},
@@ -144,6 +145,29 @@ async fn find_user_by_account(pool: &PgPool, account: &str) -> Result<Option<Use
 
 #[async_trait]
 impl BootstrapRepository for PgControlPlaneStore {
+    async fn replace_authenticator_public_ui_block_if_matches(
+        &self,
+        authenticator_id: Uuid,
+        expected: &str,
+        replacement: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            update authenticators
+            set public_ui_block = $3,
+                updated_at = now()
+            where id = $1
+              and public_ui_block = $2
+            "#,
+        )
+        .bind(authenticator_id)
+        .bind(expected)
+        .bind(replacement)
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
         sqlx::query(
             r#"
@@ -304,6 +328,32 @@ impl BootstrapRepository for PgControlPlaneStore {
         })
     }
 
+    async fn root_workspace_requires_official_catalog_seed(
+        &self,
+        workspace_name: &str,
+    ) -> Result<bool> {
+        let root_tenant_id =
+            Uuid::parse_str(ROOT_TENANT_ID).expect("root tenant id should be valid");
+        let initialized = sqlx::query_scalar::<_, bool>(
+            r#"
+            select exists(
+              select 1
+              from workspaces w
+              join workspace_i18n_catalog_states state on state.workspace_id = w.id
+              where w.tenant_id = $1
+                and lower(w.name) = lower($2)
+                and state.active_release_id is not null
+            )
+            "#,
+        )
+        .bind(root_tenant_id)
+        .bind(workspace_name)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(!initialized)
+    }
+
     async fn upsert_workspace(
         &self,
         tenant_id: Uuid,
@@ -362,6 +412,113 @@ impl BootstrapRepository for PgControlPlaneStore {
             logo_url: None,
             introduction: String::new(),
         }))
+    }
+
+    async fn upsert_root_workspace_with_official_catalog(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+        seed: &control_plane::i18n_catalog::VerifiedOfficialCatalogSeed,
+    ) -> Result<domain::WorkspaceRecord> {
+        let mut transaction = self.pool().begin().await?;
+        let existing = sqlx::query(
+            r#"
+            select id, tenant_id, name, logo_url, introduction
+            from workspaces
+            where tenant_id = $1 and lower(name) = lower($2)
+            order by created_at asc
+            limit 1
+            for update
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(workspace_name)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let workspace = if let Some(row) = existing {
+            PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
+                id: row.get("id"),
+                tenant_id: row.get("tenant_id"),
+                name: row.get("name"),
+                logo_url: row.get("logo_url"),
+                introduction: row.get("introduction"),
+            })
+        } else {
+            let has_workspace: bool =
+                sqlx::query_scalar("select exists(select 1 from workspaces where tenant_id = $1)")
+                    .bind(tenant_id)
+                    .fetch_one(&mut *transaction)
+                    .await?;
+            let root_tenant_id =
+                Uuid::parse_str(ROOT_TENANT_ID).expect("root tenant id should be valid");
+            let id = if tenant_id == root_tenant_id && !has_workspace {
+                domain::DEFAULT_SCOPE_ID
+            } else {
+                Uuid::now_v7()
+            };
+            sqlx::query(
+                "insert into workspaces (id, tenant_id, name, logo_url, introduction) values ($1, $2, $3, null, '')",
+            )
+            .bind(id)
+            .bind(tenant_id)
+            .bind(workspace_name)
+            .execute(&mut *transaction)
+            .await?;
+            PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
+                id,
+                tenant_id,
+                name: workspace_name.to_owned(),
+                logo_url: None,
+                introduction: String::new(),
+            })
+        };
+
+        let existing_release = sqlx::query(
+            r#"
+            select id, semantic_sha256
+            from i18n_catalog_releases
+            where workspace_id = $1 and catalog_version = $2
+            "#,
+        )
+        .bind(workspace.id)
+        .bind(seed.catalog_version().as_str())
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let release_id = if let Some(row) = existing_release {
+            if row.get::<String, _>("semantic_sha256") != seed.semantic_sha256().as_str() {
+                return Err(ControlPlaneError::Conflict("official_i18n_catalog_seed").into());
+            }
+            row.get("id")
+        } else {
+            let release = seed.bind_to_workspace(workspace.id)?;
+            insert_verified_release(&mut transaction, &release).await?;
+            release.id()
+        };
+
+        sqlx::query(
+            r#"
+            insert into workspace_i18n_catalog_states (workspace_id)
+            values ($1)
+            on conflict (workspace_id) do nothing
+            "#,
+        )
+        .bind(workspace.id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            r#"
+            update workspace_i18n_catalog_states
+            set active_release_id = $2, revision = revision + 1, updated_at = now()
+            where workspace_id = $1 and active_release_id is null
+            "#,
+        )
+        .bind(workspace.id)
+        .bind(release_id)
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+        Ok(workspace)
     }
 
     async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> Result<()> {

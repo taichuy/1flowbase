@@ -124,6 +124,7 @@ fn plan_with_empty_prompt_messages() -> CompiledPlan {
             bindings: BTreeMap::from([(
                 "prompt_messages".to_string(),
                 CompiledBinding {
+                    i18n_text_ref: None,
                     kind: "prompt_messages".to_string(),
                     selector_paths: vec![],
                     raw_value: json!([
@@ -187,6 +188,7 @@ fn plan_with_templated_prompt_message() -> CompiledPlan {
     node.bindings.insert(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![vec!["node-start".to_string(), "query".to_string()]],
             raw_value: json!([
@@ -213,6 +215,7 @@ fn plan_with_system_only_prompt_message() -> CompiledPlan {
     node.bindings.insert(
         "prompt_messages".to_string(),
         CompiledBinding {
+            i18n_text_ref: None,
             kind: "prompt_messages".to_string(),
             selector_paths: vec![
                 vec!["node-start".to_string(), "query".to_string()],

@@ -795,7 +795,7 @@ async fn plugin_installation_commit_preserves_previous_installation_and_catalog_
     let installation_id = Uuid::now_v7();
     PluginRepository::commit_plugin_installation_projection(
         &store,
-        &installation_commit_input(installation_id, actor.id, "Original", "iframe"),
+        &installation_commit_input(installation_id, actor.id, "Original", "native_react"),
     )
     .await
     .unwrap();
@@ -819,5 +819,5 @@ async fn plugin_installation_commit_preserves_previous_installation_and_catalog_
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(catalog, ("Original".into(), "iframe".into()));
+    assert_eq!(catalog, ("Original".into(), "native_react".into()));
 }
