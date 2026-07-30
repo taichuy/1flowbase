@@ -628,6 +628,18 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
 
   assert.match(
     workflow,
+    /repo-backend-gate:[\s\S]*?timeout-minutes: 75[\s\S]*?matrix:/u,
+  );
+  assert.match(
+    workflow,
+    /coverage-backend-gate:[\s\S]*?timeout-minutes: 75[\s\S]*?matrix:/u,
+  );
+  assert.match(
+    workflow,
+    /state-protocols-gate:[\s\S]*?timeout-minutes: 90[\s\S]*?steps:/u,
+  );
+  assert.match(
+    workflow,
     /repo-backend-gate:[\s\S]*?name: Restore Rust backend quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?key: rust-quality-gate-backend-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
