@@ -589,7 +589,7 @@ pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiE
                 .and_then(|status| u16::try_from(status).ok())
                 .and_then(|status| StatusCode::from_u16(status).ok())
                 .filter(|status| status.is_client_error() || status.is_server_error())
-                .unwrap_or_else(|| match code {
+                .unwrap_or(match code {
                     "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
                     "provider_affinity_mismatch" => StatusCode::CONFLICT,
                     "provider_transport_unavailable" => StatusCode::SERVICE_UNAVAILABLE,

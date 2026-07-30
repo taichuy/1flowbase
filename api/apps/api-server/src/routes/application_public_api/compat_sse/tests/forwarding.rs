@@ -331,7 +331,7 @@ async fn d2_ac_008_compatible_eof_fallback_projects_recovered_failed_winner() {
 fn equal_answer_chunks_are_ordered_facts_and_are_all_claimed() {
     let run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
-    let mut first = RuntimeEventEnvelope::new(
+    let first = RuntimeEventEnvelope::new(
         run.id,
         1,
         debug_stream_events::answer_text_delta(
@@ -343,7 +343,7 @@ fn equal_answer_chunks_are_ordered_facts_and_are_all_claimed() {
             Some("text"),
         ),
     );
-    let mut second = RuntimeEventEnvelope::new(
+    let second = RuntimeEventEnvelope::new(
         run.id,
         2,
         debug_stream_events::answer_text_delta(
@@ -379,7 +379,7 @@ fn equal_answer_chunks_are_ordered_facts_and_are_all_claimed() {
 fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
     let run = native_run();
     let node_run_id = Uuid::from_u128(0x55555555555555555555555555555555);
-    let mut first = RuntimeEventEnvelope::new(
+    let first = RuntimeEventEnvelope::new(
         run.id,
         1,
         debug_stream_events::answer_text_delta(
@@ -391,7 +391,7 @@ fn live_answer_chunks_are_not_treated_as_cumulative_snapshots() {
             Some("text"),
         ),
     );
-    let mut second = RuntimeEventEnvelope::new(
+    let second = RuntimeEventEnvelope::new(
         run.id,
         2,
         debug_stream_events::answer_text_delta(

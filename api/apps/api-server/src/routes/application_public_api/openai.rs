@@ -104,7 +104,7 @@ enum OpenAiResponseDelivery {
 
 enum OpenAiResponseDispatch {
     Http(Response),
-    TypedEvents(PreparedOpenAiResponseTurn),
+    TypedEvents(Box<PreparedOpenAiResponseTurn>),
 }
 
 #[utoipa::path(
@@ -372,7 +372,7 @@ pub(crate) async fn prepare_typed_response_turn(
     )
     .await?
     {
-        OpenAiResponseDispatch::TypedEvents(prepared) => Ok(prepared),
+        OpenAiResponseDispatch::TypedEvents(prepared) => Ok(*prepared),
         OpenAiResponseDispatch::Http(_) => {
             Err(OpenAiRouteError::Native(native::NativeApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -504,16 +504,18 @@ async fn dispatch_response_for_endpoint(
                                 .map(OpenAiResponseDispatch::Http)
                                 .map_err(Into::into)
                             }
-                            OpenAiResponseDelivery::TypedEvents => Ok(
-                                OpenAiResponseDispatch::TypedEvents(PreparedOpenAiResponseTurn {
-                                    model,
-                                    previous_response_id,
-                                    runtime: compat_sse::PreparedCompatibleTurn::resume(
-                                        plan.initial_run,
-                                        plan.command,
-                                    ),
-                                }),
-                            ),
+                            OpenAiResponseDelivery::TypedEvents => {
+                                Ok(OpenAiResponseDispatch::TypedEvents(Box::new(
+                                    PreparedOpenAiResponseTurn {
+                                        model,
+                                        previous_response_id,
+                                        runtime: compat_sse::PreparedCompatibleTurn::resume(
+                                            plan.initial_run,
+                                            plan.command,
+                                        ),
+                                    },
+                                )))
+                            }
                         };
                     }
                     let run = execute_openai_tool_resume(state, plan.command).await?;
@@ -666,14 +668,14 @@ async fn dispatch_response_for_endpoint(
                     .map(OpenAiResponseDispatch::Http)
                     .map_err(Into::into),
                     OpenAiResponseDelivery::TypedEvents => Ok(OpenAiResponseDispatch::TypedEvents(
-                        PreparedOpenAiResponseTurn {
+                        Box::new(PreparedOpenAiResponseTurn {
                             model,
                             previous_response_id,
                             runtime: compat_sse::PreparedCompatibleTurn::start(
                                 run,
                                 provider_transport_slot,
                             ),
-                        },
+                        }),
                     )),
                 };
             }
