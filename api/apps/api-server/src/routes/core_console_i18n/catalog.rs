@@ -1,20 +1,20 @@
 use super::CoreConsoleDisplayText;
 
 macro_rules! settings_feature {
-    ($reference:expr, $msgid:expr) => {
-        CoreConsoleDisplayText::referenced($reference, $msgid)
+    ($reference:expr, $key:expr) => {
+        CoreConsoleDisplayText::referenced($reference, $key)
     };
 }
 
 macro_rules! policy {
-    ($msgid:expr) => {
-        CoreConsoleDisplayText::new($msgid)
+    ($key:expr) => {
+        CoreConsoleDisplayText::new($key)
     };
 }
 
 macro_rules! resource {
-    ($msgid:expr) => {
-        CoreConsoleDisplayText::new($msgid)
+    ($key:expr) => {
+        CoreConsoleDisplayText::new($key)
     };
 }
 
@@ -22,7 +22,7 @@ macro_rules! resource {
 ///
 /// The compiled locale inventory keeps these identities for fail-closed registry validation. It
 /// deliberately contains no translated value: request projections resolve translations from the
-/// dynamic catalog and the resolver falls back to the English msgid.
+/// dynamic catalog and the resolver falls back to the English key.
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("auto.api_documentation", "API documentation"),
     settings_feature!("auto.translation_catalog_title", "Language catalog"),

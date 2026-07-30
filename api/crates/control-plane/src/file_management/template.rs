@@ -1,18 +1,16 @@
 use anyhow::Result;
-use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, ModelFieldKind};
+use domain::{CatalogLocale, CatalogMessageIdentity, ModelFieldKind};
 use uuid::Uuid;
 
 use crate::{i18n_catalog::CatalogResolver, ports::CatalogResolutionRepository};
 
-pub const FILE_MANAGEMENT_CATALOG_MODULE: &str = "@taichuy/platform/file-management";
 pub const ATTACHMENTS_DEFAULT_TITLE: &str = "Attachments";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileMetadataTitleReference {
     pub resource_code: &'static str,
     pub field_code: Option<&'static str>,
-    pub module: &'static str,
-    pub msgid: &'static str,
+    pub key: &'static str,
     pub historical_default: &'static str,
 }
 
@@ -92,8 +90,7 @@ pub fn file_metadata_title_references() -> Vec<FileMetadataTitleReference> {
     std::iter::once(FileMetadataTitleReference {
         resource_code: "attachments",
         field_code: None,
-        module: FILE_MANAGEMENT_CATALOG_MODULE,
-        msgid: ATTACHMENTS_DEFAULT_TITLE,
+        key: ATTACHMENTS_DEFAULT_TITLE,
         historical_default: ATTACHMENTS_DEFAULT_TITLE,
     })
     .chain(
@@ -103,8 +100,7 @@ pub fn file_metadata_title_references() -> Vec<FileMetadataTitleReference> {
                 |(code, title, historical_title, _, _)| FileMetadataTitleReference {
                     resource_code: "attachments",
                     field_code: Some(*code),
-                    module: FILE_MANAGEMENT_CATALOG_MODULE,
-                    msgid: *title,
+                    key: *title,
                     historical_default: *historical_title,
                 },
             ),
@@ -190,17 +186,13 @@ async fn resolve_builtin_title<R>(
     resolver: &CatalogResolver<R>,
     workspace_id: Uuid,
     locale: &CatalogLocale,
-    msgid: &str,
+    key: &str,
 ) -> Result<String>
 where
     R: CatalogResolutionRepository,
 {
-    let identity = CatalogMessageIdentity::new(
-        CatalogModuleId::new(FILE_MANAGEMENT_CATALOG_MODULE)
-            .expect("file management catalog module must be valid"),
-        msgid,
-    )
-    .expect("file metadata title msgid must be non-empty");
+    let identity =
+        CatalogMessageIdentity::new(key).expect("file metadata title key must be non-empty");
     Ok(resolver
         .resolve(workspace_id, &identity, locale)
         .await?

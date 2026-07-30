@@ -138,7 +138,6 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::workspace::get_workspace,
         crate::routes::workspace::patch_workspace,
         crate::routes::i18n_catalog::get_i18n_catalog_state,
-        crate::routes::i18n_catalog::get_resolved_i18n_catalog_bundle,
         crate::routes::i18n_catalog::get_i18n_catalog_update_status,
         crate::routes::i18n_catalog::activate_i18n_catalog_update,
         crate::routes::i18n_catalog::management::list_catalog_entries,

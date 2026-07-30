@@ -9,19 +9,19 @@ use crate::{app_state::ApiState, error_response::ApiError};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CoreConsoleDisplayText {
     pub(super) reference: &'static str,
-    pub(super) msgid: &'static str,
+    pub(super) key: &'static str,
 }
 
 impl CoreConsoleDisplayText {
-    pub(super) const fn new(msgid: &'static str) -> Self {
+    pub(super) const fn new(key: &'static str) -> Self {
         Self {
-            reference: msgid,
-            msgid,
+            reference: key,
+            key,
         }
     }
 
-    pub(super) const fn referenced(reference: &'static str, msgid: &'static str) -> Self {
-        Self { reference, msgid }
+    pub(super) const fn referenced(reference: &'static str, key: &'static str) -> Self {
+        Self { reference, key }
     }
 }
 
@@ -33,8 +33,8 @@ pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalog
         .flat_map(|texts| texts.iter())
         .map(|text| ConsoleLocaleText {
             reference: text.reference.to_string(),
-            en_us: text.msgid.to_string(),
-            zh_hans: text.msgid.to_string(),
+            en_us: text.key.to_string(),
+            zh_hans: text.key.to_string(),
         })
         .collect();
 
@@ -114,11 +114,8 @@ fn other_policy_group_msgids(group_id: &str) -> (&'static str, &'static str) {
 }
 
 #[cfg(test)]
-pub(crate) fn core_console_display_inventory() -> Vec<(&'static str, &'static str)> {
-    catalog::TEXTS
-        .iter()
-        .map(|text| (text.module, text.msgid))
-        .collect()
+pub(crate) fn core_console_display_inventory() -> Vec<&'static str> {
+    catalog::TEXTS.iter().map(|text| text.key).collect()
 }
 
 pub(super) async fn resolve_core_console_display(
@@ -128,9 +125,9 @@ pub(super) async fn resolve_core_console_display(
 ) -> Result<String, ApiError> {
     let Some(text) = catalog::TEXTS
         .iter()
-        .find(|text| text.reference == reference || text.msgid == reference)
+        .find(|text| text.reference == reference || text.key == reference)
     else {
         return Ok(reference.to_string());
     };
-    crate::app_state::resolve_request_text(state, locale, text.msgid).await
+    crate::app_state::resolve_request_text(state, locale, text.key).await
 }

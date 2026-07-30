@@ -7,7 +7,7 @@ use control_plane::ports::{
 };
 use control_plane::system_metadata::{
     project_system_metadata_titles, role_metadata_template, system_metadata_title_references,
-    user_metadata_template, SystemMetadataBootstrapService, SYSTEM_METADATA_CATALOG_MODULE,
+    user_metadata_template, SystemMetadataBootstrapService,
 };
 use domain::{
     DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
@@ -31,7 +31,7 @@ impl CatalogResolutionRepository for MetadataTranslationFixture {
         Ok(CatalogResolutionCandidate {
             root_override: None,
             active_official: (self.provide_zh_hans && locale.as_str() == "zh_Hans")
-                .then(|| format!("zh:{}", identity.msgid())),
+                .then(|| format!("zh:{}", identity.key())),
         })
     }
 }
@@ -116,9 +116,6 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
 fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
     let references = system_metadata_title_references();
     assert_eq!(references.len(), 36);
-    assert!(references
-        .iter()
-        .all(|reference| reference.module == SYSTEM_METADATA_CATALOG_MODULE));
     assert_eq!(
         references
             .iter()
@@ -166,7 +163,7 @@ fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
     assert_eq!(
         references
             .iter()
-            .map(|reference| (reference.model_code, reference.field_code, reference.msgid))
+            .map(|reference| (reference.model_code, reference.field_code, reference.key))
             .collect::<Vec<_>>(),
         vec![
             ("users", None, "Users"),
@@ -230,8 +227,7 @@ fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_46_refs() {
         .into_iter()
         .map(|reference| {
             serde_json::json!({
-                "module": reference.module,
-                "msgid": reference.msgid,
+                "key": reference.key,
                 "resource": reference.model_code,
                 "field": reference.field_code,
             })
@@ -241,8 +237,7 @@ fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_46_refs() {
                 .into_iter()
                 .map(|reference| {
                     serde_json::json!({
-                        "module": reference.module,
-                        "msgid": reference.msgid,
+                        "key": reference.key,
                         "resource": reference.resource_code,
                         "field": reference.field_code,
                     })

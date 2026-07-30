@@ -4,26 +4,22 @@
   "semantic_sha256": "sha256:651798b6bc7343202aadae04e93603554d066aeefbaf75c98c29ad6aa0a94039",
   "official_commit": "69754721577e1d0af0e540a4bd2ee073ea110661",
   "expected": {
-    "catalog_modules": 11,
-    "catalog_identities": 630,
-    "frozen_identities": 628,
     "p3_identities": 508,
     "p4_identities": 68,
     "p5_consumers": 46,
     "p5_identities": 41,
     "p6_consumers": 19,
-    "p6_identities": 11
+    "p6_identities": 11,
+    "catalog_keys": 628
   },
   "p7_references": [
     {
-      "module": "@taichuy/platform/common",
-      "msgid": "Cancel",
-      "classification": "official_demonstration"
+      "classification": "official_demonstration",
+      "key": "Cancel"
     },
     {
-      "module": "@taichuy/platform/common",
-      "msgid": "Missing English",
-      "classification": "custom_fallback_not_official"
+      "classification": "custom_fallback_not_official",
+      "key": "Missing English"
     }
   ],
   "p7_source": "api/apps/api-server/src/_tests/application/application_orchestration_routes.rs"

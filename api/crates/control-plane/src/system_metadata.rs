@@ -1,7 +1,6 @@
 use anyhow::Result;
 use domain::{
-    CatalogLocale, CatalogMessageIdentity, CatalogModuleId, DataModelScopeKind, ModelFieldKind,
-    SYSTEM_SCOPE_ID,
+    CatalogLocale, CatalogMessageIdentity, DataModelScopeKind, ModelFieldKind, SYSTEM_SCOPE_ID,
 };
 use uuid::Uuid;
 
@@ -13,14 +12,11 @@ use crate::ports::{
 
 use crate::i18n_catalog::CatalogResolver;
 
-pub const SYSTEM_METADATA_CATALOG_MODULE: &str = "@taichuy/platform/system-metadata";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SystemMetadataTitleReference {
     pub model_code: &'static str,
     pub field_code: Option<&'static str>,
-    pub module: &'static str,
-    pub msgid: &'static str,
+    pub key: &'static str,
     pub historical_default: &'static str,
 }
 
@@ -408,16 +404,14 @@ pub fn system_metadata_title_references() -> Vec<SystemMetadataTitleReference> {
             std::iter::once(SystemMetadataTitleReference {
                 model_code: model.code,
                 field_code: None,
-                module: SYSTEM_METADATA_CATALOG_MODULE,
-                msgid: model.title,
+                key: model.title,
                 historical_default: model.historical_title,
             })
             .chain(model.fields.into_iter().map(move |field| {
                 SystemMetadataTitleReference {
                     model_code: model.code,
                     field_code: Some(field.code),
-                    module: SYSTEM_METADATA_CATALOG_MODULE,
-                    msgid: field.title,
+                    key: field.title,
                     historical_default: field.historical_title,
                 }
             }))
@@ -481,17 +475,13 @@ async fn resolve_builtin_title<R>(
     resolver: &CatalogResolver<R>,
     workspace_id: Uuid,
     locale: &CatalogLocale,
-    msgid: &'static str,
+    key: &'static str,
 ) -> Result<String>
 where
     R: CatalogResolutionRepository,
 {
-    let identity = CatalogMessageIdentity::new(
-        CatalogModuleId::new(SYSTEM_METADATA_CATALOG_MODULE)
-            .expect("system metadata catalog module must be valid"),
-        msgid,
-    )
-    .expect("system metadata title msgid must be non-empty");
+    let identity =
+        CatalogMessageIdentity::new(key).expect("system metadata title key must be non-empty");
     Ok(resolver
         .resolve(workspace_id, &identity, locale)
         .await?

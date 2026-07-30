@@ -2,7 +2,7 @@ use control_plane::_tests::support::MemoryProvisioningRepository;
 use control_plane::file_management::{
     attachments_template_fields, file_metadata_title_references, project_attachments_model_titles,
     project_builtin_file_table_title, CreateWorkspaceFileTableCommand,
-    FileManagementBootstrapService, FileTableProvisioningService, FILE_MANAGEMENT_CATALOG_MODULE,
+    FileManagementBootstrapService, FileTableProvisioningService,
 };
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{
@@ -27,7 +27,7 @@ impl CatalogResolutionRepository for FileMetadataTranslationFixture {
         Ok(CatalogResolutionCandidate {
             root_override: None,
             active_official: (locale.as_str() == "zh_Hans")
-                .then(|| format!("zh:{}", identity.msgid())),
+                .then(|| format!("zh:{}", identity.key())),
         })
     }
 }
@@ -59,9 +59,6 @@ fn attachments_template_fields_match_the_approved_v1_schema() {
 fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
     let references = file_metadata_title_references();
     assert_eq!(references.len(), 10);
-    assert!(references
-        .iter()
-        .all(|reference| reference.module == FILE_MANAGEMENT_CATALOG_MODULE));
     assert_eq!(
         references
             .iter()
@@ -83,11 +80,7 @@ fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
     assert_eq!(
         references
             .iter()
-            .map(|reference| (
-                reference.resource_code,
-                reference.field_code,
-                reference.msgid
-            ))
+            .map(|reference| (reference.resource_code, reference.field_code, reference.key))
             .collect::<Vec<_>>(),
         vec![
             ("attachments", None, "Attachments"),

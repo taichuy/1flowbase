@@ -9,12 +9,7 @@ use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput}
 use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use tower::ServiceExt;
 
-async fn seed_translation(
-    state: &crate::app_state::ApiState,
-    _module: &str,
-    msgid: &str,
-    value: &str,
-) {
+async fn seed_translation(state: &crate::app_state::ApiState, key: &str, value: &str) {
     let workspace_id = state.bootstrap_workspace_id;
     let catalog_state =
         I18nCatalogRepository::bootstrap_workspace_catalog_state(&state.store, workspace_id)
@@ -25,7 +20,7 @@ async fn seed_translation(
         &UpsertCatalogTranslationInput {
             workspace_id,
             value: CatalogTranslation::new(
-                CatalogMessageIdentity::new(msgid).unwrap(),
+                CatalogMessageIdentity::new(key).unwrap(),
                 CatalogLocale::new("zh_Hans").unwrap(),
                 value,
             )
@@ -37,7 +32,6 @@ async fn seed_translation(
     .unwrap();
 }
 
-const CONSOLE_INTERFACE_MODULE: &str = "@taichuy/platform/console/interfaces";
 const USER_API_KEY_INTERFACE_TEXTS: &[(&str, &str, &str, &str, &str)] = &[
     (
         "list_user_api_keys",
@@ -120,47 +114,19 @@ async fn core_console_display_routes_resolve_dynamic_zh_hans_and_fallback_to_eng
     }
 
     let (state, _) = test_api_state_with_database_url().await;
-    for (module, msgid, value) in [
-        (
-            "@taichuy/platform/console/settings",
-            "Application management",
-            "应用管理（动态）",
-        ),
-        (
-            "@taichuy/platform/console/settings",
-            "Application management operations",
-            "应用管理操作（动态）",
-        ),
-        (
-            "@taichuy/platform/console/settings/policy",
-            "Full access",
-            "完全开放（动态）",
-        ),
-        (
-            "@taichuy/platform/console/settings/resources",
-            "Applications",
-            "应用（动态）",
-        ),
+    for (key, value) in [
+        ("Application management", "应用管理（动态）"),
+        ("Application management operations", "应用管理操作（动态）"),
+        ("Full access", "完全开放（动态）"),
+        ("Applications", "应用（动态）"),
     ] {
-        seed_translation(&state, module, msgid, value).await;
+        seed_translation(&state, key, value).await;
     }
     for (_, summary, description, translated_summary, translated_description) in
         USER_API_KEY_INTERFACE_TEXTS
     {
-        seed_translation(
-            &state,
-            CONSOLE_INTERFACE_MODULE,
-            summary,
-            translated_summary,
-        )
-        .await;
-        seed_translation(
-            &state,
-            CONSOLE_INTERFACE_MODULE,
-            description,
-            translated_description,
-        )
-        .await;
+        seed_translation(&state, summary, translated_summary).await;
+        seed_translation(&state, description, translated_description).await;
     }
     let app = crate::app_with_state_and_config(state, &test_config());
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
