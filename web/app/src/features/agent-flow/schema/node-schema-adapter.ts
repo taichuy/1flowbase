@@ -1,5 +1,4 @@
 import {
-  getStartCompactDispatch,
   type FlowAuthoringDocument,
   type FlowBinding,
   type FlowNodeDocument,
@@ -252,10 +251,6 @@ export function createAgentFlowNodeSchemaAdapter({
       }
 
       if (path.startsWith('config.')) {
-        if (node.type === 'start' && path === 'config.compact_dispatch') {
-          return getStartCompactDispatch(node.config);
-        }
-
         return node.config[path.slice('config.'.length)];
       }
 

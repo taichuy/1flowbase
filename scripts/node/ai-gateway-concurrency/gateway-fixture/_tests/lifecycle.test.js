@@ -26,6 +26,7 @@ function fixtureFiles() {
       pluginRunnerBin: make('plugin-runner', 0o700),
       openaiPackage: make('openai.1flowbasepkg'),
       anthropicPackage: make('anthropic.1flowbasepkg'),
+      openaiCompatiblePackage: make('openai_compatible.1flowbasepkg'),
       upstreamBaseUrl: 'http://127.0.0.1:9123',
       artifactRoot: path.join(root, 'artifacts'),
     },
@@ -39,8 +40,8 @@ class FakeOwnerClient {
     this.baseUrl = baseUrl;
     this.cookie = null;
     this.csrf = null;
-    this.applicationCount = 0;
-    this.instanceCounts = { openai: 0, anthropic: 0 };
+    this.applicationCounts = { openai: 0, anthropic: 0, openai_compatible: 0 };
+    this.instanceCounts = { openai: 0, anthropic: 0, openai_compatible: 0 };
   }
 
   async signIn(identifier, password) {
@@ -50,7 +51,10 @@ class FakeOwnerClient {
   }
 
   async uploadPackage(archivePath) {
-    const code = path.basename(archivePath).startsWith('openai.') ? 'openai' : 'anthropic';
+    const basename = path.basename(archivePath);
+    const code = basename.startsWith('openai_compatible.')
+      ? 'openai_compatible'
+      : basename.startsWith('openai.') ? 'openai' : 'anthropic';
     FakeOwnerClient.calls.push({ kind: 'upload', code });
     return {
       installation: { id: `${code}-installation`, provider_code: code },
@@ -61,14 +65,16 @@ class FakeOwnerClient {
   async write(pathname, method = 'POST', body) {
     FakeOwnerClient.calls.push({ kind: 'write', pathname, method, body });
     if (pathname === '/api/console/settings/model-providers/instances') {
-      const code = body.installation_id.split('-', 1)[0];
+      const code = body.installation_id.replace(/-installation$/u, '');
       this.instanceCounts[code] += 1;
       return { data: { id: `${code}-instance-${this.instanceCounts[code]}` } };
     }
     if (pathname === '/api/console/applications') {
-      const code = body.name.includes('openai') ? 'openai' : 'anthropic';
-      this.applicationCount += 1;
-      const ordinal = code === 'openai' ? 1 : this.applicationCount - 1;
+      const code = body.name.includes('openai_compatible')
+        ? 'openai_compatible'
+        : body.name.includes('openai') ? 'openai' : 'anthropic';
+      this.applicationCounts[code] += 1;
+      const ordinal = this.applicationCounts[code];
       return { data: { id: `${code}-application-${ordinal}` } };
     }
     if (pathname.endsWith('/api-keys')) {
@@ -111,6 +117,7 @@ function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persist
     events,
     dependencies: {
       reserveLoopbackPort: async () => ports.shift(),
+      assertLoopbackPortAvailable: async (port) => events.push(`assert-port:${port}`),
       spawnOwned(binary, env) {
         const output = [
           env.API_DATABASE_URL,
@@ -119,6 +126,7 @@ function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persist
           'gateway_session=fake',
           'fixture-openai-token',
           'fixture-anthropic-token',
+          'fixture-openai_compatible-token',
           'sk-application-canary',
         ].filter(Boolean).join(' ');
         const handle = {
@@ -162,7 +170,14 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     fixture = await createGatewayFixture(files.options, fake.dependencies);
     assert.equal(fixture.result.gateway_base_url, 'http://127.0.0.1:41002');
     assert.equal(fixture.result.targets.openai.application_id, 'openai-application-1');
-    assert.equal(fixture.result.targets.anthropic.model, 'gateway-fixture-model');
+    assert.equal(fixture.result.targets.anthropic.model, '1flowbase');
+    assert.equal(fixture.result.targets.anthropic.upstream_model, 'gateway-fixture-model');
+    assert.equal(fixture.result.model, '1flowbase');
+    assert.equal(fixture.result.upstream_model, 'gateway-fixture-model');
+    assert.equal(
+      fixture.result.targets.openai_compatible.application_id,
+      'openai_compatible-application-1'
+    );
     assert.equal(fixture.result.pools.anthropic.length, 2);
     assert.deepEqual(
       fixture.result.pools.anthropic.map((target) => target.application_id),
@@ -191,7 +206,10 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     );
     assert.equal(instanceWrite.body.config.base_url, `${files.options.upstreamBaseUrl}/v1`);
     assert.equal(instanceWrite.body.included_in_main, true);
-    assert.match(instanceWrite.body.config.api_key, /^fixture-(openai|anthropic)-token$/u);
+    assert.match(
+      instanceWrite.body.config.api_key,
+      /^fixture-(openai|anthropic|openai_compatible)-token$/u
+    );
     const draftWrite = FakeOwnerClient.calls.find(
       (call) => call.kind === 'write' && call.pathname.endsWith('/orchestration/draft')
     );
@@ -223,7 +241,7 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     for (const service of ['api-server', 'plugin-runner']) {
       const log = fs.readFileSync(path.join(files.options.artifactRoot, `service-${service}.log`), 'utf8');
       assert.match(log, /\[REDACTED\]/u);
-      assert.doesNotMatch(log, /postgres:\/\/|Fixture-|master|gateway_session=fake|fixture-(?:openai|anthropic)-token|sk-application-canary/u);
+      assert.doesNotMatch(log, /postgres:\/\/|Fixture-|master|gateway_session=fake|fixture-(?:openai|anthropic|openai_compatible)-token|sk-application-canary/u);
     }
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
@@ -232,7 +250,7 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
   }
 });
 
-test('publication source binds Generate for Responses, Chat Completions, and Anthropic Messages', async () => {
+test('publication source binds Generate and protocol context for all gateway protocols', async () => {
   FakeOwnerClient.calls = [];
   const client = new FakeOwnerClient('http://127.0.0.1:41002');
   const provider = (providerCode) => ({
@@ -241,45 +259,61 @@ test('publication source binds Generate for Responses, Chat Completions, and Ant
     model: 'gateway-fixture-model',
   });
 
-  await createPublishedApplication(client, provider('openai'));
-  await createPublishedApplication(client, provider('anthropic'));
+  await createPublishedApplication(client, provider('openai'), '1flowbase');
+  await createPublishedApplication(client, provider('anthropic'), '1flowbase');
+  await createPublishedApplication(client, provider('openai_compatible'), '1flowbase');
+
+  const drafts = FakeOwnerClient.calls.filter(
+    (call) => call.kind === 'write' && call.pathname.endsWith('/orchestration/draft')
+  );
+  assert.equal(drafts.length, 3);
+  for (const providerCode of ['openai', 'anthropic', 'openai_compatible']) {
+    const draft = drafts.find(
+      (call) => call.pathname.includes(`/${providerCode}-application-1/`)
+    );
+    assert.ok(draft, `${providerCode} orchestration draft write must exist`);
+    const llmConfig = draft.body.document.graph.nodes.find((node) => node.type === 'llm').config;
+    const startConfig = draft.body.document.graph.nodes.find((node) => node.type === 'start').config;
+    assert.equal(startConfig.model_list[0].id, '1flowbase');
+    assert.deepEqual(llmConfig.model_provider, {
+      provider_code: providerCode,
+      source_instance_id: `${providerCode}-instance-1`,
+      model_id: 'gateway-fixture-model',
+    });
+    assert.deepEqual(llmConfig.protocol_context, {
+      kind: 'selector',
+      value: ['sys', 'protocol_context'],
+    });
+    assert.deepEqual(llmConfig.external_reasoning_policy, {
+      follow_external_reasoning: true,
+    });
+  }
 
   const publications = FakeOwnerClient.calls.filter(
     (call) => call.kind === 'write' && call.pathname.endsWith('/api-publications')
   );
-  assert.equal(publications.length, 2);
+  assert.equal(publications.length, 3);
   const openaiPublication = publications.find(
     (call) => call.pathname.includes('/openai-application-1/')
   );
   const anthropicPublication = publications.find(
     (call) => call.pathname.includes('/anthropic-application-1/')
   );
+  const compatiblePublication = publications.find(
+    (call) => call.pathname.includes('/openai_compatible-application-1/')
+  );
   const protocolPublications = [
     ['OpenAI Responses', openaiPublication],
     ['OpenAI Chat Completions', openaiPublication],
+    ['OpenAI-compatible Chat Completions', compatiblePublication],
     ['Anthropic Messages', anthropicPublication],
   ];
   for (const [protocol, publication] of protocolPublications) {
     assert.ok(publication, `${protocol} publication write must exist`);
-    const draft = FakeOwnerClient.calls.find(
-      (call) => call.kind === 'write'
-        && call.pathname.startsWith(publication.pathname.replace('/api-publications', ''))
-        && call.pathname.endsWith('/orchestration/draft')
-    );
-    const generateTargetNodeId = draft.body.document.graph.nodes.find(
-      (node) => node.type === 'llm'
-    ).id;
-    assert.deepEqual(
-      publication.body.mapping.operation_bindings,
-      {
-        generate: { target_node_id: generateTargetNodeId },
-        count_tokens: null,
-        compact: {
-          responses_compact: null,
-          responses_compaction_v2: null,
-        },
-      },
-      `${protocol} must publish the backend Generate operation target`
+    assert.equal(
+      Object.hasOwn(publication.body.mapping, 'operation_bindings'),
+      false,
+      `${protocol} must route through the published workflow without a second target`
     );
   }
 });
@@ -307,6 +341,35 @@ test('controlled bootstrap failure terminates both owned children and removes sc
     }
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
+  } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('explicit API port is asserted before either child starts and is not randomly reserved', async () => {
+  class FailingOwnerClient extends FakeOwnerClient {
+    async signIn() {
+      throw new Error('controlled sign-in failure');
+    }
+  }
+  const files = fixtureFiles();
+  const fake = fakeDependencies({ OwnerClient: FailingOwnerClient });
+  const originalSpawn = fake.dependencies.spawnOwned;
+  fake.dependencies.spawnOwned = (...args) => {
+    fake.events.push(`spawn:${path.basename(args[0])}`);
+    return originalSpawn(...args);
+  };
+  try {
+    await assert.rejects(
+      createGatewayFixture({ ...files.options, apiPort: 7800 }, fake.dependencies),
+      /controlled sign-in failure/u,
+    );
+    assert.equal(fake.spawned[1].env.API_SERVER_ADDR, '127.0.0.1:7800');
+    assert.deepEqual(fake.events.slice(0, 3), [
+      'assert-port:7800',
+      'spawn:plugin-runner',
+      'spawn:api-server',
+    ]);
   } finally {
     fs.rmSync(files.root, { recursive: true, force: true });
   }

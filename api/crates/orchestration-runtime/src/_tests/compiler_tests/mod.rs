@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use orchestration_runtime::compiled_plan::{
     CodeIsolationProfile, CompileIssueCode, CompiledCodeDependency, CompiledLlmRouting,
+    VariableReference,
 };
 use orchestration_runtime::compiler::{
     ensure_plan_execution_contract, FlowCompileContext, FlowCompileJsDependency,
@@ -446,5 +447,4 @@ fn code_js_dependency_context(alias: &str, target: &str) -> FlowCompileContext {
 mod bindings_and_outputs;
 mod branches;
 mod code_runtime;
-mod compact_response;
 mod provider_and_plugin;

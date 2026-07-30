@@ -57,9 +57,9 @@ async fn compatible_routes_return_not_published_for_unpublished_key_application(
     assert_eq!(payload["error"]["type"], json!("application_not_published"));
 }
 
-/// Root #1366 AC-003 / AC-005: Native, OpenAI and Anthropic share one pre-run route failure.
+/// Root #1453: Native, OpenAI and Anthropic create full runs without Generate bindings.
 #[tokio::test]
-async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
+async fn three_ingress_routes_create_agentflow_runs_without_generate_bindings() {
     let (app, state) = test_app_with_state().await;
     let token = setup_unbound_published_app_key(&app, "Three Ingress Unbound App").await;
     assert_published_compat_plan_has_provider_route(state.as_ref()).await;
@@ -76,11 +76,7 @@ async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
         }),
     )
     .await;
-    assert_eq!(native.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(
-        response_json(native).await["code"],
-        json!("operation_unbound")
-    );
+    assert_eq!(native.status(), StatusCode::CREATED);
 
     let mut openai_body = openai_body(false);
     openai_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
@@ -91,21 +87,13 @@ async fn three_ingress_routes_fail_unbound_generate_before_creating_a_run() {
         openai_body,
     )
     .await;
-    assert_eq!(openai.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(
-        response_json(openai).await["error"]["code"],
-        json!("operation_unbound")
-    );
+    assert_eq!(openai.status(), StatusCode::OK);
 
     let mut anthropic_body = anthropic_body(false);
     anthropic_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
     let anthropic = post_json(&app, "/v1/messages", ("x-api-key", token), anthropic_body).await;
-    assert_eq!(anthropic.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(
-        response_json(anthropic).await["error"]["type"],
-        json!("operation_unbound")
-    );
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(anthropic.status(), StatusCode::OK);
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 3);
 }
 
 /// Root #1366 AC-003 / AC-005: OpenAI user remains a conversation identity.

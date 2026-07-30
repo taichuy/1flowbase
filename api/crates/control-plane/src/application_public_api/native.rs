@@ -7,9 +7,9 @@ pub use orchestration_runtime::answer_projection::{
     AnswerProjectionSegment, AnswerProjectionSegmentKind, ANSWER_SEGMENTS_KEY,
 };
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext, NativePromptBlock,
-    CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY, NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
-    NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+    NativeModelPromptContext, NativeModelRequestContext, NativePromptBlock,
+    ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+    NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
@@ -22,7 +22,8 @@ use super::{
     conversations::ApplicationPublicConversationRepository,
     mapping::ApplicationApiMappingConfig,
     protocol_translation::{
-        TranslationDecisionKind, TranslationReport, TranslationSafeRepresentation,
+        TranslationDecisionKind, TranslationProtocol, TranslationReport,
+        TranslationSafeRepresentation,
     },
     run_service::{
         ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
@@ -32,7 +33,8 @@ use super::{
 use crate::flow_run_title::build_flow_run_title;
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-    ApplicationRepository, AuthRepository, CacheStore, RuntimeEventDurability, RuntimeEventStream,
+    ApplicationRepository, AuthRepository, CacheStore, ProviderProtocolContextValue,
+    RuntimeEventDurability, RuntimeEventStream,
 };
 
 mod compaction;
@@ -40,13 +42,13 @@ mod metadata;
 mod model_parameters;
 
 pub use compaction::{
-    CompactionIntent, CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
-    RemoteCompactionProfile,
+    compaction_intent, operation_result_requirement, CompactionIntent, CompactionProfile,
+    CompactionResultRequirement,
 };
 pub use metadata::NativeRequestMetadata;
 pub(crate) use metadata::ResponsesTransportRequirement;
 pub use model_parameters::{
-    NativeExecution, NativeExecutionModelParameters, NativeReasoningParameters,
+    NativeExecution, NativeExecutionModelParameters, NativeReasoningMode, NativeReasoningParameters,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,7 +90,7 @@ pub struct NativeRunRequest {
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub title: Option<String>,
     #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
 }
 
 impl NativeRunRequest {
@@ -648,6 +650,8 @@ pub struct NativeRunResult {
     pub usage: Option<NativeUsage>,
     #[serde(default)]
     pub error: Option<NativeError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_terminal: Option<orchestration_runtime::execution_state::NativeOperationTerminal>,
     pub created_at: OffsetDateTime,
 }
 
@@ -742,6 +746,12 @@ impl NativeInputMapper {
             input.inputs_target.as_deref(),
             request.inputs.as_value(),
         )?;
+        write_selector(
+            &mut node_input_payload,
+            &operation_target(input)?,
+            serde_json::to_value(request.execution.execution_operation())
+                .expect("canonical AI Native operation must serialize"),
+        )?;
         if input.inputs_target.is_none() {
             let (start_selector, _) = input.query_target.rsplit_once('.').ok_or_else(|| {
                 NativeInputMappingError::InvalidSelector {
@@ -811,12 +821,25 @@ impl NativeInputMapper {
     }
 }
 
-fn client_protocol_envelope_payload(envelope: &ClientProtocolEnvelope) -> Value {
-    json!({
-        "source_protocol": &envelope.source_protocol,
-        "policy": &envelope.policy,
-        "headers": &envelope.headers,
-    })
+fn operation_target(
+    input: &super::mapping::ApplicationApiMappingInput,
+) -> std::result::Result<String, NativeInputMappingError> {
+    if let Some(inputs_target) = &input.inputs_target {
+        return Ok(format!("{inputs_target}.operation"));
+    }
+    let (start_selector, _) = input.query_target.rsplit_once('.').ok_or_else(|| {
+        NativeInputMappingError::InvalidSelector {
+            selector: input.query_target.clone(),
+        }
+    })?;
+    Ok(format!("{start_selector}.operation"))
+}
+
+fn client_protocol_envelope_payload(envelope: &ProtocolContextEnvelope) -> Value {
+    ProviderProtocolContextValue::from_envelope(envelope.clone())
+        .expect("the typed protocol context must serialize")
+        .original_locator()
+        .as_value()
 }
 
 fn split_system_context_from_history(
@@ -886,6 +909,7 @@ fn system_target(input: &super::mapping::ApplicationApiMappingInput) -> Option<S
 pub struct CreateNativeRunCommand {
     pub bearer_token: String,
     pub request: NativeRunRequest,
+    pub protocol: TranslationProtocol,
 }
 
 #[derive(Debug, Clone)]
@@ -913,11 +937,9 @@ pub enum NativeRunValidationError {
     Forbidden,
     NotFound,
     InvalidMapping,
-    InvalidModelParameters(&'static str),
     InvalidToolResults(String),
     InvalidState,
     IdempotencyConflict,
-    RouteUnavailable(super::run_service::PublishedRouteResolutionError),
 }
 
 pub struct ApplicationNativeRunService<R> {
@@ -937,7 +959,6 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
-        + super::run_service::PublishedProviderManifestCapabilityRepository
         + Clone,
 {
     pub fn new(repository: R) -> Self {
@@ -968,15 +989,6 @@ where
             .await?;
 
         Ok(run)
-    }
-
-    pub async fn create_application_flow_compact_run(
-        &self,
-        command: CreateNativeRunCommand,
-    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        self.published_run_service()
-            .start_application_flow_compact_run(command)
-            .await
     }
 
     pub async fn get_native_run(
@@ -1464,6 +1476,23 @@ mod tests {
     }
 
     #[test]
+    fn mapper_keeps_requested_model_in_the_existing_start_model_builtin() {
+        let mapped = NativeInputMapper::map(
+            &request_with_model("provider/requested-model"),
+            &ApplicationApiMappingConfig::default_native(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["model"],
+            json!("provider/requested-model")
+        );
+        assert!(mapped.node_input_payload["node-start"]
+            .get("requested_model")
+            .is_none());
+    }
+
+    #[test]
     fn mapper_places_tool_registry_under_default_start_input() {
         let request: NativeRunRequest = serde_json::from_value(json!({
             "query": "hello",
@@ -1548,8 +1577,41 @@ mod tests {
 
         assert_eq!(mapped.node_input_payload["node-start"]["system"], json!([]));
         assert_eq!(
+            mapped.node_input_payload["node-start"]["operation"],
+            json!({"kind": "generate", "profile": "standard"})
+        );
+        assert_eq!(
             mapped.node_input_payload["node-start"]["history"],
             json!([])
+        );
+    }
+
+    #[test]
+    fn mapper_materializes_only_the_safe_canonical_operation_view() {
+        let request: NativeRunRequest = serde_json::from_value(json!({
+            "query": "compact",
+            "execution": {
+                "operation": {
+                    "kind": "compact",
+                    "profile": "responses_compaction_v2"
+                }
+            }
+        }))
+        .unwrap();
+
+        let mapped =
+            NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
+                .unwrap();
+
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["operation"],
+            json!({"kind": "compact", "profile": "responses_compaction_v2"})
+        );
+        assert_eq!(
+            mapped.node_input_payload["node-start"]["operation"]
+                .as_object()
+                .map(|operation| operation.len()),
+            Some(2)
         );
     }
 

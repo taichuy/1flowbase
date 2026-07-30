@@ -119,10 +119,13 @@ fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
     assert_eq!(answer_snapshot.text, "LLM1 final\n----\n");
     assert!(!answer_snapshot.complete);
     assert_eq!(answer_snapshot.materialized_from, "waiting_prefix");
-    assert_eq!(answer_snapshot.answer_node_id, "node-answer");
     assert_eq!(
-        answer_snapshot.answer_node_run_id,
-        virtual_answer_node_run_id.to_string()
+        answer_snapshot.answer_node_id.as_deref(),
+        Some("node-answer")
+    );
+    assert_eq!(
+        answer_snapshot.answer_node_run_id.as_deref(),
+        Some(virtual_answer_node_run_id.to_string().as_str())
     );
     assert_eq!(
         answer_snapshot.waiting_node_id.as_deref(),
@@ -136,6 +139,71 @@ fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
         .node_runs
         .iter()
         .all(|node_run| node_run.node_id != "node-answer"));
+}
+
+#[test]
+fn ac_004_answer_node_truth_waiting_snapshot_uses_flow_run_output_without_synthetic_node_run() {
+    let application = test_application_record();
+    let flow_run_id = Uuid::now_v7();
+    let waiting_node_run_id = Uuid::now_v7();
+    let detail = domain::ApplicationRunDetail {
+        flow_run: test_flow_run_record(
+            application.id,
+            flow_run_id,
+            domain::FlowRunStatus::WaitingCallback,
+            serde_json::json!({ "answer": "checking policy" }),
+        ),
+        node_runs: vec![domain::NodeRunRecord {
+            id: waiting_node_run_id,
+            flow_run_id,
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "LLM".to_string(),
+            status: domain::NodeRunStatus::WaitingCallback,
+            input_payload: serde_json::json!({}),
+            output_payload: serde_json::json!({ "tool_calls": [] }),
+            error_payload: None,
+            metrics_payload: serde_json::json!({}),
+            debug_payload: serde_json::json!({}),
+            started_at: OffsetDateTime::UNIX_EPOCH,
+            finished_at: None,
+        }],
+        checkpoints: vec![domain::CheckpointRecord {
+            id: Uuid::now_v7(),
+            flow_run_id,
+            node_run_id: Some(waiting_node_run_id),
+            status: "waiting_callback".to_string(),
+            reason: "等待 callback 回填".to_string(),
+            locator_payload: serde_json::json!({
+                "node_id": "node-llm",
+                "next_node_index": 1
+            }),
+            variable_snapshot: serde_json::json!({}),
+            external_ref_payload: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        }],
+        callback_tasks: Vec::new(),
+        events: Vec::new(),
+        stitched_trace: Vec::new(),
+        subagent_traces: Vec::new(),
+    };
+
+    let response = to_application_run_detail_response(&application, detail);
+
+    assert_eq!(response.node_runs.len(), 1);
+    assert_eq!(response.node_runs[0].node_type, "llm");
+    let snapshot = response
+        .answer_snapshot
+        .expect("waiting flow output should remain available as an Answer snapshot");
+    assert_eq!(snapshot.text, "checking policy");
+    assert_eq!(snapshot.materialized_from, "flow_run_output");
+    assert_eq!(snapshot.answer_node_id, None);
+    assert_eq!(snapshot.answer_node_run_id, None);
+    assert_eq!(snapshot.waiting_node_id.as_deref(), Some("node-llm"));
+    assert_eq!(
+        snapshot.waiting_node_run_id.as_deref(),
+        Some(waiting_node_run_id.to_string().as_str())
+    );
 }
 
 #[test]

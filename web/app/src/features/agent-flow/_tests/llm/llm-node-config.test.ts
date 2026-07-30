@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
+import { DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE } from '@1flowbase/flow-schema';
+
 import {
   DEFAULT_LLM_PARAMETERS,
   DEFAULT_LLM_CONTEXT_POLICY,
@@ -13,6 +15,7 @@ import {
   getLlmParameterDefaultValue,
   getLlmModelProvider,
   getLlmParameters,
+  getLlmProtocolContextReference,
   getLlmVisibleInternalToolsEnabled,
   getLlmVisibleInternalTools,
   getLlmToolExternalToolPolicy,
@@ -86,6 +89,35 @@ describe('llm-node-config', () => {
       integration_context: 'disabled',
       context_selector: ['node-code', 'result', 'chat_history']
     });
+  });
+
+  test('FUA-WEB reads protocol context with legacy three-state compatibility', () => {
+    expect(getLlmProtocolContextReference({})).toEqual(
+      DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE
+    );
+    expect(
+      getLlmProtocolContextReference({ protocol_context: null })
+    ).toBeNull();
+    expect(
+      getLlmProtocolContextReference({
+        protocol_context: {
+          kind: 'selector',
+          value: ['node-code', 'result', 'protocol_context']
+        }
+      })
+    ).toEqual({
+      kind: 'selector',
+      value: ['node-code', 'result', 'protocol_context']
+    });
+    expect(
+      getLlmProtocolContextReference({
+        protocol_context: {
+          kind: 'selector',
+          value: ['sys', 'protocol_context'],
+          enabled: true
+        }
+      })
+    ).toBeNull();
   });
 
   test('getLlmExternalReasoningPolicy defaults follow external reasoning to false', () => {

@@ -1,37 +1,9 @@
 use std::collections::BTreeMap;
 
-use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use uuid::Uuid;
 
-pub const COMPACT_SOURCE_HANDLE_ID: &str = "compact";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum StartCompactDispatch {
-    #[default]
-    Transparent,
-    ApplicationFlow,
-}
-
-impl StartCompactDispatch {
-    /// Older documents did not persist this field. Their established behavior
-    /// is transparent provider routing, so absence remains transparent.
-    pub fn from_start_config(config: &Value) -> Result<Self> {
-        match config.get("compact_dispatch") {
-            None => Ok(Self::Transparent),
-            Some(Value::String(value)) => match value.as_str() {
-                "transparent" => Ok(Self::Transparent),
-                "application_flow" => Ok(Self::ApplicationFlow),
-                _ => bail!("start config.compact_dispatch must be transparent or application_flow"),
-            },
-            Some(_) => {
-                bail!("start config.compact_dispatch must be transparent or application_flow")
-            }
-        }
-    }
-}
+pub const SYSTEM_PROTOCOL_CONTEXT_SELECTOR: [&str; 2] = ["sys", "protocol_context"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledPlan {
@@ -79,6 +51,53 @@ pub struct CompiledNode {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CompiledI18nTextRef {
     pub key: String,
+}
+
+impl CompiledNode {
+    pub fn protocol_context_reference(
+        &self,
+    ) -> Result<Option<VariableReference>, serde_json::Error> {
+        match self.config.get("protocol_context") {
+            Some(value) if !value.is_null() => serde_json::from_value(value.clone()).map(Some),
+            Some(_) => Ok(None),
+            None => Ok(Some(VariableReference::system_protocol_context())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum VariableReference {
+    Selector { value: Vec<String> },
+}
+
+impl VariableReference {
+    pub fn selector(value: Vec<String>) -> Self {
+        Self::Selector { value }
+    }
+
+    pub(crate) fn system_protocol_context() -> Self {
+        Self::selector(
+            SYSTEM_PROTOCOL_CONTEXT_SELECTOR
+                .map(str::to_string)
+                .to_vec(),
+        )
+    }
+
+    pub fn selector_path(&self) -> &[String] {
+        match self {
+            Self::Selector { value } => value,
+        }
+    }
+
+    pub fn is_system_protocol_context(&self) -> bool {
+        let selector = self.selector_path();
+        selector.len() == SYSTEM_PROTOCOL_CONTEXT_SELECTOR.len()
+            && selector
+                .iter()
+                .zip(SYSTEM_PROTOCOL_CONTEXT_SELECTOR)
+                .all(|(actual, expected)| actual.as_str() == expected)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

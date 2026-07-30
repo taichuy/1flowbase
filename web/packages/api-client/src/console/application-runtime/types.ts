@@ -441,8 +441,8 @@ export interface ConsoleAnswerSnapshot {
   output_payload: Record<string, unknown>;
   complete: boolean;
   materialized_from: string;
-  answer_node_id: string;
-  answer_node_run_id: string;
+  answer_node_id: string | null;
+  answer_node_run_id: string | null;
   waiting_node_id?: string | null;
   waiting_node_run_id?: string | null;
 }

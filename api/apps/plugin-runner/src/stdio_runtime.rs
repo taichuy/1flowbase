@@ -102,25 +102,39 @@ impl ProviderWorker {
     pub async fn call_streaming(
         &mut self,
         request: &ProviderStdioRequest,
-        live_events: Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>,
+        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let limits = self.limits.clone();
-        self.call_streaming_with_limits(request, &limits, live_events, event_observer)
-            .await
+        self.call_streaming_with_limits(
+            request,
+            &limits,
+            required_live_events,
+            diagnostic_live_events,
+            event_observer,
+        )
+        .await
     }
 
     pub async fn call_streaming_with_limits(
         &mut self,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
-        live_events: Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>,
+        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let timeout_ms = provider_invocation_timeout_ms(timeout_limits);
         match tokio::time::timeout(
             Duration::from_millis(timeout_ms),
-            self.call_streaming_inner(request, timeout_limits, live_events, event_observer),
+            self.call_streaming_inner(
+                request,
+                timeout_limits,
+                required_live_events,
+                diagnostic_live_events,
+                event_observer,
+            ),
         )
         .await
         {
@@ -178,7 +192,8 @@ impl ProviderWorker {
         &mut self,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
-        live_events: Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>,
+        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let executable_path = self.executable_path.clone();
@@ -222,9 +237,12 @@ impl ProviderWorker {
                         if let Some(event_observer) = &event_observer {
                             let _ = event_observer.send(());
                         }
-                        if let Some(live_events) = &live_events {
-                            let _ = live_events.send(event.clone());
-                        }
+                        forward_provider_live_event(
+                            required_live_events.as_ref(),
+                            diagnostic_live_events.as_ref(),
+                            event.clone(),
+                        )
+                        .await?;
                         events.push(event);
                     }
                 }
@@ -296,7 +314,8 @@ pub async fn call_executable_streaming(
     executable_path: &Path,
     request: &ProviderStdioRequest,
     limits: &PluginRuntimeLimits,
-    live_events: Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>,
+    required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
     event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 ) -> FrameworkResult<StreamingProviderOutput> {
     let mut command = Command::new(executable_path);
@@ -375,9 +394,12 @@ pub async fn call_executable_streaming(
                     if let Some(event_observer) = &event_observer {
                         let _ = event_observer.send(());
                     }
-                    if let Some(live_events) = &live_events {
-                        let _ = live_events.send(event.clone());
-                    }
+                    forward_provider_live_event(
+                        required_live_events.as_ref(),
+                        diagnostic_live_events.as_ref(),
+                        event.clone(),
+                    )
+                    .await?;
                     events.push(event);
                 }
             }
@@ -415,6 +437,30 @@ pub async fn call_executable_streaming(
     })?;
 
     Ok(StreamingProviderOutput { events, result })
+}
+
+async fn forward_provider_live_event(
+    required: Option<&tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    diagnostic: Option<&tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    event: ProviderStreamEvent,
+) -> FrameworkResult<()> {
+    if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
+        if let Some(diagnostic) = diagnostic {
+            let _ = diagnostic.try_send(event);
+        }
+        return Ok(());
+    }
+
+    if let Some(required) = required {
+        required.send(event).await.map_err(|_| {
+            PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
+                "provider_live_event_lane_closed",
+                "required provider live event lane closed",
+                None,
+            ))
+        })?;
+    }
+    Ok(())
 }
 
 fn spawn_worker_process(
@@ -713,6 +759,74 @@ fn apply_memory_limit(command: &mut Command, memory_bytes: Option<u64>) -> Frame
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn required_live_lane_preserves_duplicate_text_tool_usage_and_terminal_at_capacity_one() {
+        use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
+
+        let (required, mut required_receiver) = tokio::sync::mpsc::channel(1);
+        let (diagnostic, _diagnostic_receiver) = tokio::sync::mpsc::channel(1);
+        let expected = vec![
+            ProviderStreamEvent::TextDelta {
+                delta: "same".to_string(),
+            },
+            ProviderStreamEvent::TextDelta {
+                delta: "same".to_string(),
+            },
+            ProviderStreamEvent::ToolCallDelta {
+                call_id: "call-1".to_string(),
+                delta: serde_json::json!({"arguments":"{}"}),
+            },
+            ProviderStreamEvent::UsageDelta {
+                usage: ProviderUsage::default(),
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Stop,
+            },
+        ];
+        let produced = expected.clone();
+        let producer = tokio::spawn(async move {
+            for event in produced {
+                forward_provider_live_event(Some(&required), Some(&diagnostic), event)
+                    .await
+                    .unwrap();
+            }
+        });
+
+        let mut received = Vec::new();
+        while received.len() < expected.len() {
+            tokio::task::yield_now().await;
+            received.push(required_receiver.recv().await.unwrap());
+        }
+        producer.await.unwrap();
+
+        assert_eq!(received, expected);
+    }
+
+    #[tokio::test]
+    async fn saturated_diagnostic_lane_does_not_block_required_live_events() {
+        let (required, mut required_receiver) = tokio::sync::mpsc::channel(1);
+        let (diagnostic, _diagnostic_receiver) = tokio::sync::mpsc::channel(1);
+        let native = ProviderStreamEvent::NativeEvent {
+            protocol: "fixture".to_string(),
+            event: serde_json::json!({"progress":1}),
+        };
+        forward_provider_live_event(Some(&required), Some(&diagnostic), native.clone())
+            .await
+            .unwrap();
+        forward_provider_live_event(Some(&required), Some(&diagnostic), native)
+            .await
+            .unwrap();
+
+        let required_event = ProviderStreamEvent::ReasoningDelta {
+            delta: "truth".to_string(),
+        };
+        forward_provider_live_event(Some(&required), Some(&diagnostic), required_event.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(required_receiver.recv().await, Some(required_event));
+    }
 
     fn assert_expired_timeout_contract(
         timeout_state: ProviderStreamTimeoutState,

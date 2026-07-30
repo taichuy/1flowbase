@@ -3,7 +3,15 @@
 const TRANSPORT = Object.freeze({
   RESPONSES_SSE: 'responses-sse',
   RESPONSES_WEBSOCKET: 'responses-websocket',
+  CHAT_COMPLETIONS_SSE: 'chat-completions-sse',
   ANTHROPIC_SSE: 'anthropic-sse',
+});
+
+const PUBLIC_PROTOCOL = Object.freeze({
+  NATIVE: 'native',
+  OPENAI_RESPONSES: 'openai-responses',
+  OPENAI_CHAT_COMPLETIONS: 'openai-chat-completions',
+  ANTHROPIC_MESSAGES: 'anthropic-messages',
 });
 
 const SCENARIO = Object.freeze({
@@ -25,6 +33,7 @@ const MOCK_SCENARIO_SENTINEL_PREFIX = '1flowbase-test-scenario=';
 const SUCCESS_TERMINAL = Object.freeze({
   [TRANSPORT.RESPONSES_SSE]: 'response.completed',
   [TRANSPORT.RESPONSES_WEBSOCKET]: 'response.completed',
+  [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'chat.completion.done',
   [TRANSPORT.ANTHROPIC_SSE]: 'message_stop',
 });
 
@@ -60,6 +69,7 @@ function assertDistinctRequestNonces(nonces) {
 module.exports = {
   MOCK_ROUTE,
   MOCK_SCENARIO_SENTINEL_PREFIX,
+  PUBLIC_PROTOCOL,
   SCENARIO,
   SUCCESS_TERMINAL,
   TRANSPORT,

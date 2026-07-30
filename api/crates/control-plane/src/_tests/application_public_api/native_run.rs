@@ -457,8 +457,9 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
         "execution": {
             "model_parameters": {
                 "max_output_tokens": 4096,
+                "requested_context_window": 1000000,
                 "reasoning": {
-                    "enabled": true,
+                    "mode": "adaptive",
                     "effort": " high ",
                     "budget_tokens": 2048
                 }
@@ -479,13 +480,18 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
             TranslationDecisionKind::Exact,
         ),
         (
+            "$.execution.model_parameters.requested_context_window",
+            "$.execution.model_parameters.requested_context_window",
+            TranslationDecisionKind::Exact,
+        ),
+        (
             "$.execution.model_parameters.reasoning",
             "$.execution.model_parameters.reasoning",
             TranslationDecisionKind::Exact,
         ),
         (
-            "$.execution.model_parameters.reasoning.enabled",
-            "$.execution.model_parameters.reasoning.enabled",
+            "$.execution.model_parameters.reasoning.mode",
+            "$.execution.model_parameters.reasoning.mode",
             TranslationDecisionKind::Exact,
         ),
         (
@@ -521,8 +527,9 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
             ["execution"]["model_parameters"],
         json!({
             "max_output_tokens": 4096,
+            "requested_context_window": 1000000,
             "reasoning": {
-                "enabled": true,
+                "mode": "adaptive",
                 "effort": "high",
                 "budget_tokens": 2048
             }
@@ -537,6 +544,16 @@ fn d2_ac_001_native_model_parameter_shape_errors_are_safe_and_specific() {
         (
             json!({"max_output_tokens": 0}),
             "$.execution.model_parameters.max_output_tokens",
+            TranslationSafeRepresentation::Present,
+        ),
+        (
+            json!({"requested_context_window": 0}),
+            "$.execution.model_parameters.requested_context_window",
+            TranslationSafeRepresentation::Present,
+        ),
+        (
+            json!({"reasoning": {"mode": "automatic"}}),
+            "$.execution.model_parameters.reasoning.mode",
             TranslationSafeRepresentation::Present,
         ),
         (
@@ -589,14 +606,14 @@ fn d2_ac_001_native_model_parameter_shape_errors_are_safe_and_specific() {
         "query": "hello",
         "execution": {"model_parameters": {"reasoning": {}}}
     }))
-    .expect("a missing reasoning.enabled value uses the documented default");
+    .expect("a missing reasoning.mode value uses the documented default");
     let decisions = translated
         .report
         .decisions
         .iter()
-        .filter(|decision| decision.source_path == "$.execution.model_parameters.reasoning.enabled")
+        .filter(|decision| decision.source_path == "$.execution.model_parameters.reasoning.mode")
         .collect::<Vec<_>>();
-    assert_eq!(decisions.len(), 1, "missing enabled needs one receipt");
+    assert_eq!(decisions.len(), 1, "missing mode needs one receipt");
     assert_eq!(decisions[0].kind, TranslationDecisionKind::Defaulted);
     assert_eq!(
         decisions[0].effective_value,
@@ -753,6 +770,7 @@ async fn native_run_with_null_model_target_keeps_model_metadata_out_of_node_inpu
 
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(native_request(json!("pass-through-model"))).unwrap(),
         })
@@ -789,6 +807,7 @@ async fn native_run_returns_application_not_published_when_key_application_has_n
 
     let error = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -823,12 +842,12 @@ async fn native_run_read_rejects_run_created_by_different_application_api_key() 
     let service = ApplicationNativeRunService::new(harness.repository());
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: first_token,
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
         .await
         .unwrap();
-
     let error = service
         .get_native_run(GetNativeRunCommand {
             bearer_token: second_token,
@@ -856,6 +875,7 @@ async fn native_run_read_loads_durable_published_flow_run_without_test_only_resu
     let service = ApplicationNativeRunService::new(repository.clone());
     let created = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -899,6 +919,7 @@ async fn native_run_read_resolves_provider_response_id_within_api_key_scope() {
     let service = ApplicationNativeRunService::new(repository.clone());
     let created = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
@@ -947,14 +968,23 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         other_user_id(),
     )
     .await;
-    let service = ApplicationNativeRunService::new(harness.repository());
+    let repository = harness.repository();
+    let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: first_token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })
         .await
         .unwrap();
+    repository.seed_flow_run_output_payload(
+        run.id,
+        json!({
+            "answer": "canonical partial before cancellation",
+            "__canonical_answer_presentation": true
+        }),
+    );
 
     let forbidden = service
         .cancel_native_run(CancelNativeRunCommand {
@@ -974,9 +1004,9 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         .unwrap();
 
     assert_eq!(cancelled.status, NativeRunStatus::Cancelled);
-    assert!(
-        cancelled.answer.is_none(),
-        "cancelled runs never expose an Answer"
+    assert_eq!(
+        cancelled.answer.as_deref(),
+        Some("canonical partial before cancellation")
     );
     let error = cancelled
         .error
@@ -1001,6 +1031,7 @@ async fn native_run_cancel_cas_miss_reloads_durable_winner_without_second_public
     .await;
     let created = ApplicationNativeRunService::new(repository.clone())
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(native_request(json!("any-model"))).unwrap(),
         })

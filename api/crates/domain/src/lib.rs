@@ -1,5 +1,6 @@
 extern crate self as domain;
 
+pub mod ai_native_operation;
 pub mod application;
 pub mod audit;
 pub mod auth;
@@ -27,6 +28,7 @@ pub mod runtime_observability;
 pub mod scope;
 pub mod system_defaults;
 
+pub use ai_native_operation::{AiNativeCompactProfile, AiNativeGenerateProfile, AiNativeOperation};
 pub use application::{
     ApplicationApiSection, ApplicationEnvironmentVariable, ApplicationLogsSection,
     ApplicationMonitoringSection, ApplicationOrchestrationSection, ApplicationPublicationStatus,

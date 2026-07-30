@@ -31,7 +31,6 @@ const EXECUTABLE_NODE_TYPES: &[&str] = &[
     "workflow_start",
     "workflow_end",
     "answer",
-    "compact_response",
     "llm",
     "if_else",
     "code",
@@ -113,7 +112,7 @@ impl FlowCompiler {
         }
         let (nodes, edges, topological_order, mut compile_issues) =
             build_nodes_and_topology(document, context)?;
-        validate_document_kind(document_kind, &nodes, &edges)?;
+        validate_document_kind(document_kind, &nodes)?;
 
         let mut plan = CompiledPlan {
             flow_id,
@@ -134,18 +133,14 @@ impl FlowCompiler {
 fn validate_document_kind(
     document_kind: FlowDocumentKind,
     nodes: &BTreeMap<String, CompiledNode>,
-    edges: &[CompiledEdge],
 ) -> Result<()> {
     match document_kind {
-        FlowDocumentKind::AgentFlow => validate_agent_flow_node_family(nodes, edges),
+        FlowDocumentKind::AgentFlow => validate_agent_flow_node_family(nodes),
         FlowDocumentKind::Workflow => validate_workflow_node_family(nodes),
     }
 }
 
-fn validate_agent_flow_node_family(
-    nodes: &BTreeMap<String, CompiledNode>,
-    edges: &[CompiledEdge],
-) -> Result<()> {
+fn validate_agent_flow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Result<()> {
     for workflow_node_type in ["workflow_start", "workflow_end"] {
         if let Some(node) = nodes
             .values()
@@ -159,8 +154,6 @@ fn validate_agent_flow_node_family(
         }
     }
 
-    validate_compact_response_topology(nodes, edges)?;
-
     Ok(())
 }
 
@@ -170,7 +163,7 @@ fn validate_workflow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Resu
 
     for node in nodes.values() {
         match node.node_type.as_str() {
-            "start" | "answer" | "compact_response" => {
+            "start" | "answer" => {
                 bail!(
                     "workflow document cannot contain {} node {}",
                     node.node_type,
@@ -189,167 +182,6 @@ fn validate_workflow_node_family(nodes: &BTreeMap<String, CompiledNode>) -> Resu
 
     if workflow_end_count == 0 {
         bail!("workflow document must contain at least one workflow_end node");
-    }
-
-    Ok(())
-}
-
-/// Validates the reserved AgentFlow Compact branch after edges have been
-/// resolved. The graph has no authorable value channel into Compact Response:
-/// its result arrives only through the typed runtime ingress.
-pub(super) fn validate_compact_response_topology(
-    nodes: &BTreeMap<String, CompiledNode>,
-    edges: &[CompiledEdge],
-) -> Result<()> {
-    let start_nodes = nodes
-        .values()
-        .filter(|node| node.node_type == "start")
-        .collect::<Vec<_>>();
-    let compact_response_nodes = nodes
-        .values()
-        .filter(|node| node.node_type == "compact_response")
-        .collect::<Vec<_>>();
-    let compact_handle_edges = edges
-        .iter()
-        .filter(|edge| {
-            edge.source_handle.as_deref() == Some(COMPACT_SOURCE_HANDLE_ID)
-                && nodes
-                    .get(&edge.source)
-                    .is_some_and(|source| source.node_type == "start")
-        })
-        .collect::<Vec<_>>();
-
-    let mut application_flow_start_count = 0;
-    for start_node in &start_nodes {
-        let dispatch = StartCompactDispatch::from_start_config(&start_node.config)
-            .map_err(|error| anyhow!("start node {} {error}", start_node.node_id))?;
-        let start_compact_edges = compact_handle_edges
-            .iter()
-            .copied()
-            .filter(|edge| edge.source == start_node.node_id)
-            .collect::<Vec<_>>();
-
-        match dispatch {
-            StartCompactDispatch::Transparent => {
-                if !start_compact_edges.is_empty() {
-                    bail!(
-                        "transparent start node {} cannot retain a compact edge",
-                        start_node.node_id
-                    );
-                }
-            }
-            StartCompactDispatch::ApplicationFlow => {
-                application_flow_start_count += 1;
-                if start_compact_edges.len() != 1 {
-                    bail!(
-                        "application_flow start node {} must have exactly one compact edge",
-                        start_node.node_id
-                    );
-                }
-
-                let edge = start_compact_edges[0];
-                let target = nodes.get(&edge.target).ok_or_else(|| {
-                    anyhow!(
-                        "compact edge {} references unknown target node: {}",
-                        edge.edge_id,
-                        edge.target
-                    )
-                })?;
-                if target.node_type != "compact_response" {
-                    bail!(
-                        "compact edge {} from start node {} must target a compact_response node",
-                        edge.edge_id,
-                        start_node.node_id
-                    );
-                }
-            }
-        }
-    }
-
-    if application_flow_start_count > 0 && start_nodes.len() != 1 {
-        bail!("application_flow compact dispatch requires exactly one start node");
-    }
-
-    for edge in &compact_handle_edges {
-        let source = nodes.get(&edge.source).ok_or_else(|| {
-            anyhow!(
-                "compact edge {} references unknown source node: {}",
-                edge.edge_id,
-                edge.source
-            )
-        })?;
-        if StartCompactDispatch::from_start_config(&source.config)
-            .map_err(|error| anyhow!("start node {} {error}", source.node_id))?
-            != StartCompactDispatch::ApplicationFlow
-        {
-            bail!(
-                "compact edge {} must originate from an application_flow start node",
-                edge.edge_id
-            );
-        }
-    }
-
-    for compact_response in &compact_response_nodes {
-        validate_compact_response_node_contract(compact_response)?;
-
-        let incoming_edges = edges
-            .iter()
-            .filter(|edge| edge.target == compact_response.node_id)
-            .collect::<Vec<_>>();
-        if incoming_edges.len() != 1 {
-            bail!(
-                "compact_response node {} must have exactly one incoming compact edge",
-                compact_response.node_id
-            );
-        }
-
-        let incoming_edge = incoming_edges[0];
-        let source = nodes.get(&incoming_edge.source).ok_or_else(|| {
-            anyhow!(
-                "compact_response node {} incoming edge {} references unknown source node: {}",
-                compact_response.node_id,
-                incoming_edge.edge_id,
-                incoming_edge.source
-            )
-        })?;
-        if source.node_type != "start"
-            || incoming_edge.source_handle.as_deref() != Some(COMPACT_SOURCE_HANDLE_ID)
-            || StartCompactDispatch::from_start_config(&source.config)
-                .map_err(|error| anyhow!("start node {} {error}", source.node_id))?
-                != StartCompactDispatch::ApplicationFlow
-        {
-            bail!(
-                "compact_response node {} must be reached directly from an application_flow start compact edge",
-                compact_response.node_id
-            );
-        }
-    }
-
-    let compact_surface_present = application_flow_start_count > 0
-        || !compact_response_nodes.is_empty()
-        || !compact_handle_edges.is_empty();
-    for node in nodes.values().filter(|node| {
-        node.node_type == "compact_response"
-            || (compact_surface_present && node.node_type == "answer")
-    }) {
-        if edges.iter().any(|edge| edge.source == node.node_id) {
-            bail!(
-                "terminal node {} must not have downstream edges",
-                node.node_id
-            );
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_compact_response_node_contract(node: &CompiledNode) -> Result<()> {
-    if node.config != serde_json::json!({}) || !node.bindings.is_empty() || !node.outputs.is_empty()
-    {
-        bail!(
-            "compact_response node {} must not define config, bindings, or outputs",
-            node.node_id
-        );
     }
 
     Ok(())
@@ -541,9 +373,101 @@ pub(super) fn validate_variable_scope_contracts(
         if let Some(selector) = context_policy_selector(node) {
             validate_variable_selector(nodes, node, &selector, &mut issues);
         }
+
+        if node.node_type == "llm" {
+            match node.protocol_context_reference() {
+                Ok(Some(reference)) => {
+                    validate_variable_selector(nodes, node, reference.selector_path(), &mut issues);
+                    validate_protocol_context_reference(nodes, node, &reference, &mut issues);
+                }
+                Ok(None) => {}
+                Err(error) => issues.push(CompileIssue {
+                    node_id: node.node_id.clone(),
+                    code: CompileIssueCode::InvalidLlmContextSelector,
+                    message: format!(
+                        "node {} protocol_context is not a valid VariableReference: {error}",
+                        node.node_id
+                    ),
+                }),
+            }
+        }
     }
 
     issues
+}
+
+fn validate_protocol_context_reference(
+    nodes: &BTreeMap<String, CompiledNode>,
+    target: &CompiledNode,
+    reference: &crate::compiled_plan::VariableReference,
+    issues: &mut Vec<CompileIssue>,
+) {
+    if reference.is_system_protocol_context() {
+        return;
+    }
+
+    let selector = reference.selector_path();
+    let Some(source_id) = selector.first() else {
+        return;
+    };
+    if RUN_LEVEL_VARIABLE_NAMESPACES.contains(&source_id.as_str()) {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidLlmContextSelector,
+            message: format!(
+                "node {} protocol_context {} must reference sys.protocol_context or an upstream Start/Code JSON output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    }
+
+    let Some(source) = nodes.get(source_id) else {
+        return;
+    };
+    if !node_depends_on(nodes, &target.node_id, source_id) {
+        return;
+    }
+    if !matches!(
+        source.node_type.as_str(),
+        "start" | "workflow_start" | "code"
+    ) {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidLlmContextSelector,
+            message: format!(
+                "node {} protocol_context {} must reference sys.protocol_context or an upstream Start/Code JSON output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    }
+
+    let Some(output) = output_for_selector(nodes, selector) else {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::InvalidLlmContextSelector,
+            message: format!(
+                "node {} protocol_context {} is not a declared Start/Code output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+        return;
+    };
+    if output.value_type != "json" {
+        issues.push(CompileIssue {
+            node_id: target.node_id.clone(),
+            code: CompileIssueCode::IncompatibleLlmContextSchema,
+            message: format!(
+                "node {} protocol_context {} must reference a JSON output",
+                target.node_id,
+                selector.join(".")
+            ),
+        });
+    }
 }
 
 fn validate_variable_selector(
@@ -669,19 +593,6 @@ fn validate_edge_source_handle(
     source_handle: Option<&str>,
     if_else_source_handles: &BTreeMap<String, BTreeSet<String>>,
 ) -> Result<()> {
-    if source_node.node_type == "start" && source_handle == Some(COMPACT_SOURCE_HANDLE_ID) {
-        if StartCompactDispatch::from_start_config(&source_node.config)?
-            != StartCompactDispatch::ApplicationFlow
-        {
-            bail!(
-                "edge {edge_id} uses compact sourceHandle on start node {} without application_flow dispatch",
-                source_node.node_id
-            );
-        }
-
-        return Ok(());
-    }
-
     if source_handle == Some(ERROR_BRANCH_SOURCE_HANDLE) {
         if node_uses_error_branch(source_node) {
             return Ok(());
@@ -1365,6 +1276,21 @@ fn output_for_selector(
     nodes: &BTreeMap<String, CompiledNode>,
     selector: &[String],
 ) -> Option<CompiledOutput> {
+    if selector.len() == crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR.len()
+        && selector
+            .iter()
+            .zip(crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR)
+            .all(|(actual, expected)| actual.as_str() == expected)
+    {
+        return Some(CompiledOutput {
+            key: "protocol_context".to_string(),
+            title: "sys.protocol_context".to_string(),
+            value_type: "json".to_string(),
+            selector: Vec::new(),
+            json_schema: None,
+        });
+    }
+
     let node_id = selector.first()?;
     let selector_tail = selector.get(1..)?;
     let output_key = selector_tail.first()?;

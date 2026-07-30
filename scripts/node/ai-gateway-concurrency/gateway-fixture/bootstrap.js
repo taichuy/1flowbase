@@ -24,6 +24,7 @@ async function installProvider(client, archivePath, expectedProviderCode) {
 }
 
 async function createProviderInstance(client, installation, upstreamBaseUrl, model, ordinal = 1) {
+  const fixtureSuffix = crypto.randomBytes(5).toString('hex');
   const providerBaseUrl = installation.provider_code === 'openai'
     ? `${upstreamBaseUrl}/v1`
     : upstreamBaseUrl;
@@ -38,7 +39,7 @@ async function createProviderInstance(client, installation, upstreamBaseUrl, mod
     'POST',
     {
       installation_id: installation.installation_id,
-      display_name: `Gateway fixture ${installation.provider_code} ${ordinal}`,
+      display_name: `Gateway fixture ${installation.provider_code} ${ordinal} ${fixtureSuffix}`,
       configured_models: [{
         model_id: model,
         enabled: true,
@@ -55,16 +56,16 @@ async function createProviderInstance(client, installation, upstreamBaseUrl, mod
   return { ...installation, provider_instance_id: data.id, model };
 }
 
-function configureDraft(document, provider) {
+function configureDraft(document, provider, publicModel) {
   const nodes = document?.graph?.nodes;
   if (!Array.isArray(nodes)) throw new Error('application draft omitted graph nodes');
   const start = nodes.find((node) => node?.type === 'start');
   const llm = nodes.find((node) => node?.type === 'llm');
   if (!start || !llm) throw new Error('application draft omitted start or llm node');
   start.config.model_list = [{
-    id: provider.model,
-    name: provider.model,
-    context_window: 128000,
+    id: publicModel,
+    name: publicModel,
+    context_window: 1000000,
     max_output_tokens: 4096,
     capabilities: {
       reasoning: true,
@@ -78,10 +79,17 @@ function configureDraft(document, provider) {
     source_instance_id: provider.provider_instance_id,
     model_id: provider.model,
   };
+  llm.config.protocol_context = {
+    kind: 'selector',
+    value: ['sys', 'protocol_context'],
+  };
+  llm.config.external_reasoning_policy = {
+    follow_external_reasoning: true,
+  };
   return document;
 }
 
-async function createPublishedApplication(client, provider, ordinal = 1) {
+async function createPublishedApplication(client, provider, publicModel, ordinal = 1) {
   const suffix = crypto.randomBytes(5).toString('hex');
   const created = await client.write('/api/console/applications', 'POST', {
     application_type: 'agent_flow',
@@ -105,11 +113,7 @@ async function createPublishedApplication(client, provider, ordinal = 1) {
   }
 
   const orchestration = await client.read(`/api/console/applications/${applicationId}/orchestration`);
-  const document = configureDraft(orchestration.data?.draft?.document, provider);
-  const generateTargetNodeId = document.graph.nodes.find((node) => node.type === 'llm')?.id;
-  if (typeof generateTargetNodeId !== 'string' || !generateTargetNodeId) {
-    throw new Error('application draft omitted a Generate target node');
-  }
+  const document = configureDraft(orchestration.data?.draft?.document, provider, publicModel);
   await client.write(`/api/console/applications/${applicationId}/orchestration/draft`, 'PUT', {
     document,
     change_kind: 'logical',
@@ -130,14 +134,6 @@ async function createPublishedApplication(client, provider, ordinal = 1) {
       files_selector: null,
       error_selector: null,
     },
-    operation_bindings: {
-      generate: { target_node_id: generateTargetNodeId },
-      count_tokens: null,
-      compact: {
-        responses_compact: null,
-        responses_compaction_v2: null,
-      },
-    },
   };
   const publication = await client.write(
     `/api/console/applications/${applicationId}/api-publications`,
@@ -151,6 +147,8 @@ async function createPublishedApplication(client, provider, ordinal = 1) {
 
   return {
     ...provider,
+    upstream_model: provider.model,
+    model: publicModel,
     application_id: applicationId,
     api_key_id: key.data.id,
     api_key: key.data.token,
@@ -163,19 +161,31 @@ async function bootstrapGateway(client, options) {
   const packages = await Promise.all([
     installProvider(client, options.openaiPackage, 'openai'),
     installProvider(client, options.anthropicPackage, 'anthropic'),
+    installProvider(client, options.openaiCompatiblePackage, 'openai_compatible'),
   ]);
   const openaiInstallation = packages.find((item) => item.provider_code === 'openai');
   const anthropicInstallation = packages.find((item) => item.provider_code === 'anthropic');
+  const openaiCompatibleInstallation = packages.find(
+    (item) => item.provider_code === 'openai_compatible'
+  );
   const openaiInstance = await createProviderInstance(
-    client, openaiInstallation, options.upstreamBaseUrl, options.model
+    client, openaiInstallation, options.upstreamBaseUrl, options.upstreamModel
   );
   const anthropicInstances = await Promise.all([1, 2].map((ordinal) => createProviderInstance(
-    client, anthropicInstallation, options.upstreamBaseUrl, options.model, ordinal
+    client, anthropicInstallation, options.upstreamBaseUrl, options.upstreamModel, ordinal
   )));
+  const openaiCompatibleInstance = await createProviderInstance(
+    client, openaiCompatibleInstallation, `${options.upstreamBaseUrl}/v1`, options.upstreamModel
+  );
   return {
-    openai: await createPublishedApplication(client, openaiInstance),
+    openai: await createPublishedApplication(client, openaiInstance, options.publicModel),
+    openai_compatible: await createPublishedApplication(
+      client, openaiCompatibleInstance, options.publicModel
+    ),
     anthropic: await Promise.all(anthropicInstances.map(
-      (instance, index) => createPublishedApplication(client, instance, index + 1)
+      (instance, index) => createPublishedApplication(
+        client, instance, options.publicModel, index + 1
+      )
     )),
   };
 }

@@ -15,7 +15,8 @@ function usage() {
 
 Runs the actual .1flowbasepkg provider artifacts through the actual plugin-runner
 against a loopback fake upstream. The runner refuses dirty or SHA-mismatched source
-pairs and writes the sole paired-SHA artifact only after all six cases pass.
+pairs and writes the sole paired-SHA provenance artifact only after all six source,
+package, installed-manifest, runtime-identity, and wire cases pass.
 `;
 }
 

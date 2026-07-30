@@ -1,5 +1,6 @@
 use super::*;
 use axum::body::Bytes;
+use control_plane::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
@@ -22,6 +23,7 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         tool_calls: None,
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
 }
@@ -77,6 +79,7 @@ fn anthropic_response_projects_native_tool_calls() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -95,7 +98,7 @@ fn anthropic_response_projects_native_tool_calls() {
 }
 
 #[test]
-fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
+fn anthropic_resume_rejects_mixed_callback_groups() {
     let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
     let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
     let request = json!({
@@ -128,18 +131,7 @@ fn anthropic_resume_uses_latest_callback_group_from_accumulated_tool_results() {
         ]
     });
 
-    let resume = anthropic_tool_resume_request(&request)
-        .expect("accumulated tool results should be valid")
-        .expect("the latest callback should resume");
-
-    assert_eq!(resume.callback_task_id, latest_callback);
-    assert_eq!(resume.tool_results.as_array().map(Vec::len), Some(1));
-    assert_eq!(
-        resume.tool_results[0]["tool_call_id"],
-        json!("toolu_latest")
-    );
-    assert_eq!(resume.tool_results[0]["content"], json!("LATEST"));
-    assert_eq!(resume.tool_results[0]["is_error"], json!(true));
+    assert!(correlate_anthropic_callback(&request).is_err());
 }
 
 #[test]
@@ -174,7 +166,7 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
         ]
     });
 
-    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
+    let resume = correlate_anthropic_callback(&request).expect("request should parse");
 
     assert!(
         resume.is_none(),
@@ -183,7 +175,7 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
 }
 
 #[test]
-fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
+fn ac_002_anthropic_orphan_tool_result_is_invalid() {
     let callback_task_id = Uuid::from_u128(0x44444444444444444444444444444444);
     let request = json!({
         "messages": [{
@@ -196,12 +188,7 @@ fn ac_002_anthropic_orphan_tool_result_starts_a_new_run() {
         }]
     });
 
-    let resume = anthropic_tool_resume_request(&request).expect("request should parse");
-
-    assert!(
-        resume.is_none(),
-        "orphan tool results must not resume callbacks"
-    );
+    assert!(correlate_anthropic_callback(&request).is_err());
 }
 
 #[test]
@@ -234,6 +221,7 @@ fn anthropic_response_filters_internal_visible_llm_tool_calls() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 
@@ -274,6 +262,7 @@ fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
             tool_calls: None,
             usage: None,
             error: None,
+            operation_terminal: None,
             created_at: OffsetDateTime::UNIX_EPOCH,
         };
 
@@ -286,38 +275,6 @@ fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
         payload["content"][0]["text"],
         json!("<think>private reasoning</think>raw draft<tool_call>{}</tool_call>\n\n---\n\n下面是美化后内容\n\nVisible answer")
     );
-}
-
-#[test]
-fn c1_count_tokens_projects_typed_unsupported_and_malformed_provider_errors() {
-    let unsupported = token_count::anthropic_count_tokens_error(
-        control_plane::application_public_api::run_service::PublishedCountTokensError::Provider(
-            plugin_framework::provider_contract::ProviderCountTokensError::Unsupported {
-                capabilities: vec!["count_tokens"],
-            },
-        ),
-    );
-    let AnthropicRouteError::Native(unsupported) = unsupported else {
-        panic!("CountTokens capability rejection must stay a typed native error");
-    };
-    assert_eq!(unsupported.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(unsupported.code, "provider_count_tokens_unsupported");
-
-    let malformed = token_count::anthropic_count_tokens_error(
-        control_plane::application_public_api::run_service::PublishedCountTokensError::Provider(
-            plugin_framework::provider_contract::ProviderCountTokensError::Runtime {
-                error: plugin_framework::provider_contract::ProviderRuntimeError::new(
-                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
-                    "malformed upstream CountTokens result",
-                ),
-            },
-        ),
-    );
-    let AnthropicRouteError::Native(malformed) = malformed else {
-        panic!("malformed upstream CountTokens result must stay a typed native error");
-    };
-    assert_eq!(malformed.status, StatusCode::BAD_GATEWAY);
-    assert_eq!(malformed.code, "provider_invalid_response");
 }
 
 #[test]
@@ -341,37 +298,80 @@ fn claude_code_session_header_fills_missing_metadata_session_id() {
 }
 
 #[test]
-fn anthropic_ingress_captures_client_protocol_envelope_from_headers() {
+fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
     let mut headers = HeaderMap::new();
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
-    headers.insert("anthropic-beta", "prompt-caching".parse().unwrap());
+    headers.insert(
+        "anthropic-beta",
+        "prompt-caching, context-1m-2025-08-07".parse().unwrap(),
+    );
+    headers.append("anthropic-beta", "private-beta".parse().unwrap());
     headers.insert(
         "x-claude-code-session-id",
         "header-session-123".parse().unwrap(),
     );
     headers.insert("authorization", "Bearer platform-key".parse().unwrap());
+    headers.insert("cookie", "session=secret".parse().unwrap());
+    headers.insert("host", "api.example.test".parse().unwrap());
     headers.insert("content-length", "42".parse().unwrap());
+    headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
+    headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
+    let translated = translate_messages_request_with_context_window(
+        json!({
+            "model": "claude-compatible",
+            "messages": [{"role": "user", "content": "hello"}],
+            "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
+            "future_anthropic_option": {"shape": "opaque"},
+            "authorization": "body-secret",
+            "__native_transport": {"must_not_cross": true}
+        }),
+        anthropic_context_window_request(&headers),
+    )
+    .expect("safe Anthropic residual fixture should translate");
+    assert_eq!(
+        serde_json::to_value(&translated.request)
+            .expect("typed Anthropic request should serialize")["execution"]["model_parameters"]
+            ["requested_context_window"],
+        json!(1_000_000)
+    );
 
-    let envelope = anthropic_client_protocol_envelope_from_headers(&headers)
-        .expect("anthropic headers should produce client protocol envelope");
+    let envelope = anthropic_protocol_context_from_ingress(
+        Some("preview=one&preview=two&authorization=query-secret&__native_transport=internal"),
+        &headers,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Anthropic ingress context should produce one envelope");
 
     assert_eq!(envelope.source_protocol, "anthropic_messages");
+    assert_eq!(envelope.headers["anthropic-version"], vec!["2023-06-01"]);
     assert_eq!(
-        envelope
-            .headers
-            .get("anthropic-version")
-            .map(String::as_str),
-        Some("2023-06-01")
+        envelope.headers["anthropic-beta"],
+        vec!["prompt-caching", "private-beta"]
     );
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
     assert_eq!(
-        envelope
-            .headers
-            .get("x-claude-code-session-id")
-            .map(String::as_str),
-        Some("header-session-123")
+        envelope.body["context_management"]["edits"][0]["type"],
+        "clear_thinking_20251015"
     );
-    assert!(!envelope.headers.contains_key("authorization"));
-    assert!(!envelope.headers.contains_key("content-length"));
+    assert_eq!(envelope.body["future_anthropic_option"]["shape"], "opaque");
+    for stripped in [
+        "x-claude-code-session-id",
+        "authorization",
+        "cookie",
+        "host",
+        "content-length",
+        "connection",
+        "x-hop-secret",
+    ] {
+        assert!(!envelope.headers.contains_key(stripped), "{stripped}");
+    }
+    for stripped in ["authorization", "__native_transport"] {
+        assert!(!envelope.query.contains_key(stripped), "{stripped}");
+        assert!(!envelope.body.contains_key(stripped), "{stripped}");
+    }
+    for typed in ["model", "messages"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
 }
 
 #[test]
@@ -400,6 +400,7 @@ fn anthropic_response_encodes_callback_task_id_into_tool_use_ids() {
         ])),
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     };
 

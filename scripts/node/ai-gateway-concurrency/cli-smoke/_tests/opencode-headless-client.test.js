@@ -34,3 +34,13 @@ test('AC-014/019: headless session allows only client-owned Read and submits the
     parts: [{ type: 'text', text: 'sentinel' }],
   });
 });
+
+test('Root #1477 R7 grants Bash/Edit only to the isolated meaningful Git vector', () => {
+  const session = sessionCreateBody('1flowbase-client-vector=meaningful-git-workflow');
+  assert.equal(session.permission.some((rule) => (
+    rule.permission === 'bash' && rule.action === 'allow'
+  )), true);
+  assert.equal(session.permission.some((rule) => (
+    rule.permission === 'edit' && rule.action === 'allow'
+  )), true);
+});

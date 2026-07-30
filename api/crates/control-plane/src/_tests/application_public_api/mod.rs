@@ -9,7 +9,6 @@ use control_plane::{
         mapping::{
             validate_application_api_mapping, ApplicationApiMappingConfig,
             ApplicationApiMappingInput, ApplicationApiMappingOutput, ApplicationApiMappingService,
-            ApplicationOperationBindings, ApplicationOperationTargetBinding,
             GetApplicationApiMappingCommand, ReplaceApplicationApiMappingCommand,
             WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
@@ -46,7 +45,6 @@ mod client_protocol_envelope;
 mod conversations;
 mod native_run;
 mod openai_compat;
-mod operation_bindings;
 mod publications;
 mod published_workflow_operation;
 mod resume;
@@ -753,27 +751,18 @@ async fn application_public_api_mapping_service_returns_default_then_replaces_st
 }
 
 #[tokio::test]
-async fn application_public_api_mapping_draft_retains_bindings_and_extension_identity() {
+async fn application_public_api_mapping_draft_retains_extension_identity() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Support Bot");
     let service = ApplicationApiMappingService::new(harness.repository());
     let mapping = workflow_extension_mapping("open-ticket");
-    let operation_bindings = ApplicationOperationBindings {
-        generate: Some(ApplicationOperationTargetBinding {
-            target_node_id: "node-llm".into(),
-        }),
-        ..Default::default()
-    };
 
     service
-        .replace_mapping_draft(
-            ReplaceApplicationApiMappingCommand {
-                actor_user_id: actor_user_id(),
-                application_id: application.id,
-                mapping: mapping.clone(),
-            },
-            Some(operation_bindings.clone()),
-        )
+        .replace_mapping_draft(ReplaceApplicationApiMappingCommand {
+            actor_user_id: actor_user_id(),
+            application_id: application.id,
+            mapping: mapping.clone(),
+        })
         .await
         .unwrap();
     service
@@ -808,7 +797,6 @@ async fn application_public_api_mapping_draft_retains_bindings_and_extension_ide
         ))
     );
     assert_eq!(stored.mapping, mapping);
-    assert_eq!(stored.operation_bindings, operation_bindings);
 }
 
 #[tokio::test]

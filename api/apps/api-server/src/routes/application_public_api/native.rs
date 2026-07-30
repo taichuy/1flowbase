@@ -35,13 +35,17 @@ use control_plane::{
     },
     file_management::{FileUploadService, UploadFileCommand},
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
-    ports::AuthRepository,
+    ports::{
+        AuthRepository, ProviderProtocolContextSlotId, ProviderProtocolContextValue,
+        ProviderTransportStore,
+    },
 };
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -63,6 +67,50 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
     )
+}
+
+pub(crate) async fn stage_client_protocol_context(
+    store: &dyn ProviderTransportStore,
+    run: &NativeRunResult,
+    protocol_context: Option<ProtocolContextEnvelope>,
+) -> Result<(), NativeApiError> {
+    let Some(protocol_context) = protocol_context else {
+        return Ok(());
+    };
+    if matches!(
+        run.status,
+        NativeRunStatus::Succeeded
+            | NativeRunStatus::Incomplete
+            | NativeRunStatus::Failed
+            | NativeRunStatus::Cancelled
+    ) {
+        return Ok(());
+    }
+    let value = ProviderProtocolContextValue::from_envelope(protocol_context).map_err(|_| {
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "protocol_context_staging_failed",
+            "protocol context could not be sealed",
+        )
+    })?;
+    store
+        .put_protocol_context(
+            ProviderProtocolContextSlotId::for_original_flow_run(run.id),
+            value,
+        )
+        .await
+        .map_err(|error| {
+            warn!(
+                flow_run_id = %run.id,
+                error = %error,
+                "protocol context ephemeral staging failed"
+            );
+            NativeApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "protocol_context_staging_failed",
+                "protocol context storage is temporarily unavailable",
+            )
+        })
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -90,6 +138,8 @@ pub struct NativeRunResponse {
     pub tool_calls: Option<Value>,
     pub usage: Option<Value>,
     pub error: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_terminal: Option<Value>,
     pub created_at: String,
 }
 
@@ -265,11 +315,6 @@ pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
             "invalid_mapping",
             "application public API mapping is invalid",
         ),
-        NativeRunValidationError::InvalidModelParameters(field) => NativeApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_model_parameters",
-            format!("invalid native request model parameter field: {field}"),
-        ),
         NativeRunValidationError::InvalidToolResults(message) => {
             NativeApiError::new(StatusCode::BAD_REQUEST, "tool_results", message)
         }
@@ -282,11 +327,6 @@ pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
             StatusCode::CONFLICT,
             "idempotency_conflict",
             "idempotency key was already used with a different request",
-        ),
-        NativeRunValidationError::RouteUnavailable(error) => NativeApiError::new(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            error.code(),
-            format!("published operation route is unavailable: {}", error.code()),
         ),
     }
 }
@@ -452,6 +492,10 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
         tool_calls: run.tool_calls,
         usage: run.usage.and_then(|value| serde_json::to_value(value).ok()),
         error: run.error.and_then(|value| serde_json::to_value(value).ok()),
+        operation_terminal: run.operation_terminal.map(|terminal| {
+            serde_json::to_value(terminal)
+                .expect("typed Native operation terminal must serialize at the protocol boundary")
+        }),
         created_at: run.created_at.to_string(),
     }
 }
@@ -521,6 +565,22 @@ pub(crate) async fn execute_blocking_native_run_with_provider_transport(
 pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiError {
     match run.status {
         NativeRunStatus::Failed => {
+            let code = match run
+                .error
+                .as_ref()
+                .map(|error| error.code.as_str())
+                .unwrap_or("runtime_error")
+            {
+                "auth_failed" => "auth_failed",
+                "endpoint_unreachable" => "endpoint_unreachable",
+                "model_not_found" => "model_not_found",
+                "provider_affinity_mismatch" => "provider_affinity_mismatch",
+                "provider_transport_unavailable" => "provider_transport_unavailable",
+                "rate_limited" => "rate_limited",
+                "provider_upstream_error" => "provider_upstream_error",
+                "provider_invalid_response" => "provider_invalid_response",
+                _ => "runtime_error",
+            };
             let status = run
                 .error
                 .as_ref()
@@ -529,13 +589,21 @@ pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiE
                 .and_then(|status| u16::try_from(status).ok())
                 .and_then(|status| StatusCode::from_u16(status).ok())
                 .filter(|status| status.is_client_error() || status.is_server_error())
-                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                .unwrap_or_else(|| match code {
+                    "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
+                    "provider_affinity_mismatch" => StatusCode::CONFLICT,
+                    "provider_transport_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
+                    "endpoint_unreachable"
+                    | "provider_upstream_error"
+                    | "provider_invalid_response" => StatusCode::BAD_GATEWAY,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                });
             let message = run
                 .error
                 .as_ref()
                 .map(|error| error.message.as_str())
                 .unwrap_or("published run failed");
-            NativeApiError::new(status, "runtime_error", message)
+            NativeApiError::new(status, code, message)
         }
         NativeRunStatus::Cancelled => NativeApiError::new(
             StatusCode::CONFLICT,
@@ -596,6 +664,7 @@ pub async fn create_native_run(
         .create_native_run(CreateNativeRunCommand {
             bearer_token: bearer_token.clone(),
             request,
+            protocol: TranslationProtocol::Native,
         })
         .await
         .map_err(native_error)?;
@@ -678,6 +747,7 @@ async fn start_native_run_stream(
         .with_file_storage_registry(background_state.file_storage_registry.clone())
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
+        .with_provider_transport_store(background_state.infrastructure.provider_transport_store())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         if let Err(runtime_error) = scope_application_activity(
             background_run.application_id,
@@ -814,6 +884,7 @@ pub async fn resume_native_run(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)

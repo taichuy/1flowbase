@@ -470,8 +470,7 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
         default_payload["data"]["input"]["model_target"].as_str(),
         Some("node-start.model")
     );
-    assert!(default_payload["data"]["operation_bindings"]["generate"].is_null());
-    assert!(default_payload["data"]["operation_bindings"]["count_tokens"].is_null());
+    assert!(default_payload["data"].get("operation_bindings").is_none());
 
     let replace = app
         .clone()
@@ -498,14 +497,6 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
                             "usage_selector": null,
                             "files_selector": "end.files",
                             "error_selector": "end.error"
-                        },
-                        "operation_bindings": {
-                            "generate": null,
-                            "count_tokens": null,
-                            "compact": {
-                                "responses_compact": null,
-                                "responses_compaction_v2": null
-                            }
                         }
                     })
                     .to_string(),
@@ -525,7 +516,7 @@ async fn application_api_mapping_routes_get_and_replace_nullable_model_target() 
         replace_payload["data"]["output"]["answer_selector"].as_str(),
         Some("end.answer")
     );
-    assert!(replace_payload["data"]["operation_bindings"]["generate"].is_null());
+    assert!(replace_payload["data"].get("operation_bindings").is_none());
 }
 
 #[tokio::test]
@@ -766,14 +757,6 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
             "usage_selector": null,
             "files_selector": null,
             "error_selector": null
-        },
-        "operation_bindings": {
-            "generate": null,
-            "count_tokens": null,
-            "compact": {
-                "responses_compact": null,
-                "responses_compaction_v2": null
-            }
         }
     });
 
@@ -857,35 +840,7 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
         publish_payload["data"]["public_url"].as_str(),
         Some("/api/agent/v1/runs")
     );
-    assert!(publish_payload["data"]["operation_bindings"]["generate"].is_null());
-
-    let mut invalid_binding_mapping = mapping.clone();
-    invalid_binding_mapping["operation_bindings"]["generate"] = json!({
-        "target_node_id": "missing-llm-node"
-    });
-    let invalid_publish = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/applications/{application_id}/api-publications"
-                ))
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "mapping": invalid_binding_mapping,
-                        "api_enabled": true
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(invalid_publish.status(), StatusCode::BAD_REQUEST);
+    assert!(publish_payload["data"].get("operation_bindings").is_none());
 
     let patch_status = app
         .clone()
@@ -1235,68 +1190,4 @@ async fn application_public_api_js_dependency_snapshot_is_returned_on_publish_re
             Some("outbound_only")
         );
     }
-}
-
-/// Root #1366 B2b: the console gets one server-owned binding projection rather
-/// than reconstructing target capability, publication support, or editability.
-#[tokio::test]
-async fn application_operation_binding_projection_route_returns_exact_consumer_dto() {
-    let app = test_app().await;
-    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let application_id =
-        create_application(&app, &root_cookie, &root_csrf, "Binding DTO App").await;
-
-    let root_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/api-operation-bindings"
-                ))
-                .header("cookie", &root_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(root_response.status(), StatusCode::OK);
-    let root_payload = response_json(root_response).await;
-    assert_eq!(root_payload["data"]["editable"], json!(true));
-    assert!(root_payload["data"]["draft"]["operation_bindings"]["generate"].is_null());
-    assert_eq!(
-        root_payload["data"]["draft"]["options"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|option| option["operation"].as_str())
-            .collect::<Vec<_>>(),
-        vec![
-            Some("generate"),
-            Some("count_tokens"),
-            Some("compact.responses_compact"),
-            Some("compact.responses_compaction_v2"),
-        ]
-    );
-    assert!(root_payload["data"]["published"].is_null());
-
-    let (viewer_cookie, _) =
-        create_member_with_permissions(&app, &root_cookie, &root_csrf, &["application.view.all"])
-            .await;
-    let viewer_response = app
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/api-operation-bindings"
-                ))
-                .header("cookie", &viewer_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(viewer_response.status(), StatusCode::OK);
-    assert_eq!(
-        response_json(viewer_response).await["data"]["editable"],
-        json!(false)
-    );
 }

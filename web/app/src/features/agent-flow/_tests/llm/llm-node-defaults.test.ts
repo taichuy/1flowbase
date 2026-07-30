@@ -15,6 +15,10 @@ describe('LLM node defaults', () => {
   test('manual LLM nodes seed only an empty system prompt message', () => {
     const node = createNodeDocument('llm', 'node-llm-2');
 
+    expect(node.config.protocol_context).toEqual({
+      kind: 'selector',
+      value: ['sys', 'protocol_context']
+    });
     expect(node.config.context_policy).toEqual({
       integration_context: 'enabled',
       context_selector: ['node-start', 'history']

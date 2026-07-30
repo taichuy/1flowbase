@@ -136,7 +136,7 @@ function isEditableOutputContractNodeType(nodeType: FlowNodeType) {
 }
 
 function isTerminalNodeType(nodeType: FlowNodeType) {
-  return nodeType === 'answer' || nodeType === 'compact_response';
+  return nodeType === 'answer';
 }
 
 function shouldExposeGeneratedOutputVariables(nodeType: FlowNodeType) {

@@ -12,7 +12,7 @@ use control_plane::ports::{
     AppendTerminalIfMissingAndCloseOutcome, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
     EphemeralInspectionCapabilities, EphemeralValueRevealMode, RuntimeEventCloseReason,
     RuntimeEventClosure, RuntimeEventDurability, RuntimeEventEnvelope,
-    RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventStream,
+    RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventReceiver, RuntimeEventStream,
     RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
 use time::{Duration as TimeDuration, OffsetDateTime};
@@ -307,15 +307,46 @@ fn is_required_event(event: &RuntimeEventEnvelope) -> bool {
     )
 }
 
-fn send_retained_after_sequence(
+fn is_required_delivery_event(event: &RuntimeEventEnvelope) -> bool {
+    is_required_event(event)
+        || matches!(
+            event.event_type.as_str(),
+            "text_delta"
+                | "reasoning_delta"
+                | "tool_call_delta"
+                | "tool_call_commit"
+                | "mcp_call_delta"
+                | "mcp_call_commit"
+                | "usage_delta"
+                | "usage_snapshot"
+                | "usage_recorded"
+                | "finish"
+                | "flow_finished"
+                | "flow_incomplete"
+                | "flow_failed"
+                | "flow_cancelled"
+                | "waiting_human"
+                | "waiting_callback"
+        )
+}
+
+async fn send_retained_after_sequence(
     run: &LocalRunEventStream,
-    sender: &mpsc::UnboundedSender<RuntimeEventEnvelope>,
+    required: &mpsc::Sender<RuntimeEventEnvelope>,
+    diagnostic: &mpsc::Sender<RuntimeEventEnvelope>,
     last_sent_sequence: &mut i64,
 ) -> bool {
     for event in run.events_after_sequence(*last_sent_sequence, usize::MAX) {
         let sequence = event.sequence;
-        if sender.send(event).is_err() {
-            return false;
+        if is_required_delivery_event(&event) {
+            if required.send(event).await.is_err() {
+                return false;
+            }
+        } else {
+            match diagnostic.try_send(event) {
+                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+                Err(mpsc::error::TrySendError::Closed(_)) => return false,
+            }
         }
         *last_sent_sequence = sequence;
     }
@@ -464,10 +495,13 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             .last()
             .map(|event| event.sequence)
             .unwrap_or_else(|| from_sequence.unwrap_or(0));
-        let (sender, live_events) = mpsc::unbounded_channel();
+        let (required_sender, required_events) = mpsc::channel(self.broadcast_capacity);
+        let (diagnostic_sender, diagnostic_events) = mpsc::channel(self.broadcast_capacity);
+        let live_events = RuntimeEventReceiver::new(required_events, diagnostic_events);
 
         if closure.borrow().is_some() {
-            drop(sender);
+            drop(required_sender);
+            drop(diagnostic_sender);
             return Ok(RuntimeEventSubscription {
                 replay,
                 live_events,
@@ -478,7 +512,8 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         let live_run = Arc::clone(&run);
         let mut closed_receiver = closure.clone();
         if closed_receiver.borrow().is_some() {
-            drop(sender);
+            drop(required_sender);
+            drop(diagnostic_sender);
             return Ok(RuntimeEventSubscription {
                 replay,
                 live_events,
@@ -493,9 +528,10 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                         if changed.is_err() || closed_receiver.borrow().is_some() {
                             let _ = send_retained_after_sequence(
                                 &live_run,
-                                &sender,
+                                &required_sender,
+                                &diagnostic_sender,
                                 &mut last_sent_sequence,
-                            );
+                            ).await;
                             break;
                         }
                     }
@@ -505,26 +541,35 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                             Ok(event) => {
                                 if !send_retained_after_sequence(
                                     &live_run,
-                                    &sender,
+                                    &required_sender,
+                                    &diagnostic_sender,
                                     &mut last_sent_sequence,
-                                ) {
+                                ).await {
                                     break;
                                 }
                                 if event.sequence <= last_sent_sequence {
                                     continue;
                                 }
                                 let sequence = event.sequence;
-                                if sender.send(event).is_err() {
-                                    break;
+                                if is_required_delivery_event(&event) {
+                                    if required_sender.send(event).await.is_err() {
+                                        break;
+                                    }
+                                } else {
+                                    match diagnostic_sender.try_send(event) {
+                                        Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+                                        Err(mpsc::error::TrySendError::Closed(_)) => break,
+                                    }
                                 }
                                 last_sent_sequence = sequence;
                             }
                             Err(broadcast::error::RecvError::Lagged(_)) => {
                                 if !send_retained_after_sequence(
                                     &live_run,
-                                    &sender,
+                                    &required_sender,
+                                    &diagnostic_sender,
                                     &mut last_sent_sequence,
-                                ) {
+                                ).await {
                                     break;
                                 }
                             }

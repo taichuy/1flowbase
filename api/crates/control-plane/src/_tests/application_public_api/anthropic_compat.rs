@@ -2,12 +2,14 @@ use control_plane::application_public_api::compat::anthropic::{
     map_messages_request, translate_messages_request, AnthropicCompatError,
 };
 use control_plane::application_public_api::{
+    callback_tool_ids::encode_anthropic_callback_tool_use_id,
     mapping::ApplicationApiMappingConfig,
     native::NativeInputMapper,
     protocol_translation::{TranslationDecisionKind, TranslationSafeRepresentation},
 };
 use plugin_framework::provider_contract::NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 fn base_request() -> Value {
     json!({
@@ -36,16 +38,29 @@ fn assert_anthropic_unsupported_feature(error: AnthropicCompatError) {
 }
 
 #[test]
-fn context_management_retains_full_history_with_a_dropped_receipt() {
+fn context_management_is_preserved_only_in_the_anthropic_protocol_context_residual() {
     let mut request = base_request();
-    request["context_management"] = json!({"edits": []});
+    request["context_management"] = json!({
+        "edits": [{"type": "clear_thinking_20251015"}]
+    });
 
     let translated = translate_messages_request(request)
         .expect("context management is an optional context optimization");
 
     assert!(translated
         .report
-        .has_decision("$.context_management", TranslationDecisionKind::Dropped));
+        .has_decision("$.context_management", TranslationDecisionKind::Exact));
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("Anthropic context management should have one protocol residual");
+    assert_eq!(
+        envelope.body["context_management"]["edits"][0]["type"],
+        "clear_thinking_20251015"
+    );
+    for typed in ["model", "messages", "max_tokens"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
 }
 
 #[test]
@@ -166,8 +181,8 @@ fn ac_005_anthropic_adaptive_thinking_maps_to_native_reasoning() {
         serde_json::to_value(translated.request.execution).expect("execution should serialize");
 
     assert_eq!(
-        execution["model_parameters"]["reasoning"]["enabled"],
-        json!(true)
+        execution["model_parameters"]["reasoning"]["mode"],
+        json!("adaptive")
     );
     assert!(translated
         .report
@@ -175,18 +190,23 @@ fn ac_005_anthropic_adaptive_thinking_maps_to_native_reasoning() {
 }
 
 #[test]
-fn ac_005_anthropic_output_effort_maps_to_native_reasoning() {
+fn wp_d2a_anthropic_adaptive_max_reasoning_has_one_typed_owner() {
     let mut request = base_request();
     request["thinking"] = json!({"type": "adaptive"});
-    request["output_config"] = json!({"effort": "high"});
+    request["output_config"] = json!({"effort": "max"});
 
     let native = map_messages_request(request).expect("output effort should map to Native");
     let execution = serde_json::to_value(native.execution).expect("execution should serialize");
 
     assert_eq!(
-        execution["model_parameters"]["reasoning"]["effort"],
-        json!("high")
+        execution["model_parameters"]["reasoning"]["mode"],
+        json!("adaptive")
     );
+    assert_eq!(
+        execution["model_parameters"]["reasoning"]["effort"],
+        json!("max")
+    );
+    assert!(native.client_protocol_envelope.is_none());
 }
 
 #[test]
@@ -295,22 +315,19 @@ fn model_maps_exactly_without_validation() {
 }
 
 #[test]
-fn one_m_model_suffix_maps_to_native_model_and_anthropic_beta() {
+fn wp_d2a_one_m_model_suffix_maps_to_typed_requested_context_only() {
     let mut request = base_request();
     request["model"] = json!("claude-opus-4-8[1M]");
 
     let native = map_messages_request(request).unwrap();
 
     assert_eq!(native.model.as_deref(), Some("claude-opus-4-8"));
-    let envelope = native
-        .client_protocol_envelope
-        .expect("1M suffix should request anthropic client protocol beta");
-    assert_eq!(envelope.source_protocol, "anthropic_messages");
-    assert_eq!(envelope.policy, "anthropic_messages_v1");
     assert_eq!(
-        envelope.headers.get("anthropic-beta").map(String::as_str),
-        Some("context-1m-2025-08-07")
+        serde_json::to_value(&native).unwrap()["execution"]["model_parameters"]
+            ["requested_context_window"],
+        json!(1_000_000)
     );
+    assert!(native.client_protocol_envelope.is_none());
 }
 
 #[test]
@@ -874,6 +891,8 @@ fn d2_ac_001_anthropic_marker_rejection_replaces_preliminary_decision_for_the_sa
 
 #[test]
 fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
+    let external_tool_id =
+        encode_anthropic_callback_tool_use_id(Uuid::from_u128(0x123), "call_read");
     let request = json!({
         "model": "claude-compatible-custom",
         "messages": [
@@ -883,7 +902,7 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
                 "content": [
                     {
                         "type": "tool_use",
-                        "id": "toolu_read",
+                        "id": external_tool_id,
                         "name": "Read",
                         "input": {"file_path": "uploads/agent-flow-preview-debug.png"}
                     }
@@ -894,7 +913,7 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
                 "content": [
                     {
                         "type": "tool_result",
-                        "tool_use_id": "toolu_read",
+                        "tool_use_id": external_tool_id,
                         "content": "<tool_use_error>old tool payload</tool_use_error>\nold image output"
                     },
                     {"type": "text", "text": "帮我找找这个代码位置"}
@@ -909,7 +928,13 @@ fn mixed_tool_result_and_text_maps_visible_text_to_native_query() {
     assert_eq!(translated.request.history[1]["role"], "assistant");
     assert_eq!(
         translated.request.history[1]["tool_calls"][0]["id"],
-        "toolu_read"
+        "call_read"
+    );
+    assert_eq!(translated.request.history[2]["role"], "tool");
+    assert_eq!(translated.request.history[2]["tool_call_id"], "call_read");
+    assert_eq!(
+        translated.request.history[2]["content"],
+        "<tool_use_error>old tool payload</tool_use_error>\nold image output"
     );
 }
 
@@ -1108,17 +1133,17 @@ fn d2_f1_anthropic_nested_failures_reject_system_and_messages_containers() {
 }
 
 #[test]
-fn d2_f1_anthropic_unknown_defined_keys_are_anonymous_and_complete() {
+fn d2_f1_anthropic_unknown_defined_keys_are_anonymous_and_preserved_as_residuals() {
     let alpha = "D2-F1-ANTHROPIC-UNKNOWN-KEY-ALPHA";
     let beta = "D2-F1-ANTHROPIC-UNKNOWN-KEY-BETA";
-    let error = translate_messages_request(json!({
+    let translated = translate_messages_request(json!({
         "model": "claude-compatible",
         "messages": [{"role": "user", "content": "hello"}],
         alpha: true,
         beta: false
     }))
-    .expect_err("unknown Anthropic keys must not become receipt content");
-    let unknown_paths = error
+    .expect("safe unknown Anthropic roots should remain protocol-authentic residuals");
+    let unknown_paths = translated
         .report
         .decisions
         .iter()
@@ -1126,9 +1151,21 @@ fn d2_f1_anthropic_unknown_defined_keys_are_anonymous_and_complete() {
         .map(|decision| decision.source_path.as_str())
         .collect::<Vec<_>>();
     assert_eq!(unknown_paths, ["$.<unknown>[0]", "$.<unknown>[1]"]);
-    let serialized = serde_json::to_string(&error.report).expect("receipt serializes");
+    assert!(translated
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path.starts_with("$.<unknown>"))
+        .all(|decision| decision.kind == TranslationDecisionKind::Exact));
+    let serialized = serde_json::to_string(&translated.report).expect("receipt serializes");
     assert!(!serialized.contains(alpha));
     assert!(!serialized.contains(beta));
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Anthropic roots should create one residual envelope");
+    assert_eq!(envelope.body[alpha], true);
+    assert_eq!(envelope.body[beta], false);
 }
 
 #[test]

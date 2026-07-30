@@ -1057,4 +1057,68 @@ describe('ModelProvidersPage - instances modal', () => {
       });
     }
   );
+
+  test(
+    'AC-001 allows an unconfigured optional secret to be entered and submitted in edit mode',
+    { timeout: 15000 },
+    async () => {
+      authenticateAsModelProviderManager();
+      modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([
+        {
+          ...modelProviderCatalogEntries[0],
+          form_schema: [
+            ...modelProviderCatalogEntries[0].form_schema,
+            {
+              key: 'proxy_url',
+              field_type: 'secret',
+              label: '代理地址',
+              required: false,
+              advanced: true
+            }
+          ]
+        }
+      ]);
+
+      renderApp('/settings/model-providers');
+
+      const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
+      fireEvent.click(
+        within(modal).getByRole('button', {
+          name: '编辑 API Key OpenAI Production'
+        })
+      );
+
+      expect(await screen.findByText('编辑 API 密钥配置')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('高级配置（可选）'));
+
+      const proxyUrlInput = await screen.findByLabelText('代理地址');
+      expect(proxyUrlInput).not.toHaveAttribute('readonly');
+      expect(
+        screen.queryByRole('button', { name: '显示 代理地址' })
+      ).not.toBeInTheDocument();
+
+      fireEvent.change(proxyUrlInput, {
+        target: { value: 'http://127.0.0.1:7897' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.updateSettingsModelProviderInstance
+        ).toHaveBeenCalledWith(
+          'provider-1',
+          expect.objectContaining({
+            config: expect.objectContaining({
+              proxy_url: 'http://127.0.0.1:7897'
+            })
+          }),
+          'csrf-123'
+        );
+      });
+      expect(
+        modelProvidersApi.revealSettingsModelProviderSecret
+      ).not.toHaveBeenCalledWith('provider-1', 'proxy_url', 'csrf-123');
+    }
+  );
 });

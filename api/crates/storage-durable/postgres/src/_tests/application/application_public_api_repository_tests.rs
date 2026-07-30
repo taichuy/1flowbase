@@ -2,8 +2,8 @@ use control_plane::{
     application_public_api::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
-            ApplicationApiMappingOutput, ApplicationOperationBindings, WorkflowExtensionApiConfig,
-            WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
+            ApplicationApiMappingOutput, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+            WorkflowExtensionResponseMode,
         },
         publications::ApplicationPublicationJsDependencySnapshot,
     },
@@ -493,7 +493,6 @@ async fn application_public_api_repository_mapping_round_trips_default_and_repla
             actor_user_id,
             application_id,
             mapping: replacement.clone(),
-            operation_bindings: ApplicationOperationBindings::default(),
         },
     )
     .await
@@ -530,7 +529,6 @@ async fn application_public_api_repository_mapping_extension_slug_round_trips_an
             actor_user_id,
             application_id: first_application_id,
             mapping: mapping.clone(),
-            operation_bindings: ApplicationOperationBindings::default(),
         },
     )
     .await
@@ -553,7 +551,6 @@ async fn application_public_api_repository_mapping_extension_slug_round_trips_an
             actor_user_id,
             application_id: second_application_id,
             mapping,
-            operation_bindings: ApplicationOperationBindings::default(),
         },
     )
     .await;
@@ -643,7 +640,6 @@ async fn application_public_api_repository_publication_insert_uses_real_foreign_
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
@@ -712,7 +708,6 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
                 actor_user_id,
                 application_id: first_application_id,
                 mapping_snapshot: mapping.clone(),
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: Some("open-ticket-pg-publication".into()),
                 api_enabled: true,
                 compiled_plan_id: first_compiled_plan_id,
@@ -746,7 +741,6 @@ async fn application_public_api_repository_publication_extension_slug_lookup_lis
                 actor_user_id,
                 application_id: second_application_id,
                 mapping_snapshot: mapping,
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: Some("open-ticket-pg-publication".into()),
                 api_enabled: true,
                 compiled_plan_id: second_compiled_plan_id,
@@ -814,7 +808,6 @@ async fn application_public_api_repository_republish_updates_single_current_publ
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id: first_compiled_plan_id,
@@ -837,7 +830,6 @@ async fn application_public_api_repository_republish_updates_single_current_publ
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: false,
                 compiled_plan_id: second_compiled_plan_id,
@@ -916,7 +908,6 @@ async fn application_public_api_js_dependency_snapshot_persists_empty_array_with
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
@@ -980,7 +971,6 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
                 actor_user_id,
                 application_id,
                 mapping_snapshot: ApplicationApiMappingConfig::default_native(),
-                operation_bindings: ApplicationOperationBindings::default(),
                 extension_slug: None,
                 api_enabled: true,
                 compiled_plan_id,
@@ -1388,7 +1378,8 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
     assert!(tables.contains(&"workflow_schedule_triggers".to_string()));
     assert!(application_columns.contains(&"api_enabled".to_string()));
     assert!(mapping_columns.contains(&"extension_slug".to_string()));
-    assert!(mapping_columns.contains(&"operation_bindings".to_string()));
+    assert!(!mapping_columns.contains(&"operation_bindings".to_string()));
+    assert!(!publication_columns.contains(&"operation_bindings".to_string()));
     for expected_column in [
         "application_id",
         "flow_id",
@@ -1399,7 +1390,6 @@ async fn application_public_api_repository_migration_creates_publication_core_ta
         "api_enabled",
         "document_snapshot",
         "mapping_snapshot",
-        "operation_bindings",
         "runtime_profile_snapshot",
         "output_selector",
         "dependency_snapshot",

@@ -126,7 +126,7 @@ pub fn trace_projection_source_watermark_from_counts(
 fn trace_visible_node_runs(node_runs: &[domain::NodeRunRecord]) -> Vec<domain::NodeRunRecord> {
     node_runs
         .iter()
-        .filter(|node_run| !is_waiting_prefix_answer_node_run(node_run))
+        .filter(|node_run| !is_legacy_waiting_answer_snapshot_node_run(node_run))
         .cloned()
         .collect()
 }
@@ -187,7 +187,10 @@ fn stitched_context_target_index(
         })
 }
 
-fn is_waiting_prefix_answer_node_run(node_run: &domain::NodeRunRecord) -> bool {
+fn is_legacy_waiting_answer_snapshot_node_run(node_run: &domain::NodeRunRecord) -> bool {
+    if node_run.node_type != "answer" {
+        return false;
+    }
     let input_marker = node_run
         .input_payload
         .get("presentation")
@@ -201,7 +204,10 @@ fn is_waiting_prefix_answer_node_run(node_run: &domain::NodeRunRecord) -> bool {
         .and_then(|presentation| presentation.get("materialized_from"))
         .and_then(serde_json::Value::as_str);
 
-    input_marker == Some("waiting_prefix") || debug_marker == Some("waiting_prefix")
+    [input_marker, debug_marker]
+        .into_iter()
+        .flatten()
+        .any(|marker| matches!(marker, "waiting_prefix" | "canonical_stream_state"))
 }
 
 fn trace_node_duration_ms(

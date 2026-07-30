@@ -44,7 +44,6 @@ impl ApplicationPublicationRepository for ApplicationPublicApiTestRepository {
             flow_id: input.flow_id,
             flow_version_id: input.flow_version_id,
             mapping_snapshot: input.mapping_snapshot.clone(),
-            operation_bindings: input.operation_bindings.clone(),
             extension_slug: input.extension_slug.clone(),
             compiled_plan_id: input.compiled_plan_id,
             version_sequence: 1,

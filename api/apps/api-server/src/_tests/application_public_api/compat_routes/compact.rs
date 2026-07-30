@@ -41,7 +41,7 @@ async fn k3_codex_turn_metadata_is_not_parsed_before_application_key_authenticat
 }
 
 #[tokio::test]
-async fn k3_legacy_compact_returns_exact_provider_items_without_a_flow_run() {
+async fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_compact_published_app(
         &app,
@@ -60,8 +60,9 @@ async fn k3_legacy_compact_returns_exact_provider_items_without_a_flow_run() {
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
     let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
     assert_eq!(
         payload,
         json!([
@@ -78,11 +79,11 @@ async fn k3_legacy_compact_returns_exact_provider_items_without_a_flow_run() {
             }
         ])
     );
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]
-async fn k3_v2_compact_stream_preserves_one_opaque_item_without_flow_persistence() {
+async fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
     let (app, state) = test_app_with_state().await;
     let token = setup_compact_published_app(
         &app,
@@ -127,7 +128,7 @@ async fn k3_v2_compact_stream_preserves_one_opaque_item_without_flow_persistence
     assert_eq!(output.len(), 1);
     assert_eq!(output[0]["type"], json!("compaction"));
     assert_eq!(output[0]["encrypted_content"], json!(V2_OPAQUE_CANARY));
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 #[tokio::test]
@@ -199,34 +200,13 @@ async fn k3_compact_provider_failure_is_an_error_without_completed_projection() 
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let status = response.status();
     let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
     assert_eq!(payload["error"]["code"], json!("provider_upstream_error"));
     assert!(payload.get("response").is_none());
     assert!(!payload.to_string().contains("response.completed"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
-}
-
-#[tokio::test]
-async fn k3_compact_unbound_route_is_a_typed_error_without_a_flow_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_unbound_published_app_key(&app, "OpenAI Compact Unbound Route App").await;
-    let before = flow_run_count(state.as_ref()).await;
-
-    let response = post_openai_responses(
-        &app,
-        "/v1/responses/compact",
-        &token,
-        responses_body(false),
-        None,
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("operation_unbound"));
-    assert!(payload.get("output").is_none());
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
 async fn setup_compact_published_app(app: &Router, name: &str, mode: CompactFixtureMode) -> String {
@@ -448,14 +428,6 @@ async fn publish_compact_application(
                                 "usage_selector": null,
                                 "files_selector": null,
                                 "error_selector": null
-                            },
-                            "operation_bindings": {
-                                "generate": null,
-                                "count_tokens": null,
-                                "compact": {
-                                    "responses_compact": {"target_node_id": "node-llm"},
-                                    "responses_compaction_v2": {"target_node_id": "node-llm"}
-                                }
                             }
                         },
                         "api_enabled": true
@@ -483,7 +455,7 @@ fn write_compact_provider_fixture(root: &std::path::Path) {
     let mut manifest = fs::read_to_string(root.join("manifest.yaml"))
         .expect("Compact fixture manifest should be readable");
     manifest.push_str(
-        "  capabilities:\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n",
+        "  capabilities:\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n",
     );
     fs::write(root.join("manifest.yaml"), manifest)
         .expect("Compact fixture manifest should declare both Compact capabilities");

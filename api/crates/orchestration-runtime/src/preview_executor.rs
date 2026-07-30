@@ -234,11 +234,6 @@ where
         .nodes
         .get(target_node_id)
         .ok_or_else(|| anyhow!("target node not found: {target_node_id}"))?;
-    if node.node_type == "compact_response" {
-        return Err(anyhow!(
-            "compact_response nodes do not support preview; use a typed Compact ingress through an application-flow run"
-        ));
-    }
     replay_deterministic_upstream_state(plan, target_node_id, &mut variable_pool)?;
     let resolved_inputs = if node.node_type == "start" {
         variable_pool
@@ -292,7 +287,7 @@ where
             execution.provider_events,
         )
     } else if node.node_type == "code" {
-        let execution = execute_code_node(node, &resolved_inputs, invoker).await?;
+        let execution = execute_code_node(plan, node, &resolved_inputs, invoker).await?;
         (
             execution.output_payload,
             execution.error_payload,

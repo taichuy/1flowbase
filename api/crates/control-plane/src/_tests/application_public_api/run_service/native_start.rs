@@ -2,7 +2,6 @@ use super::*;
 use control_plane::application_public_api::{
     compat::anthropic::translate_messages_request, protocol_translation::TranslationDecisionKind,
 };
-use std::collections::BTreeSet;
 
 #[tokio::test]
 async fn start_native_run_creates_published_api_flow_run_from_frozen_publication() {
@@ -15,6 +14,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("streaming", None),
         })
@@ -39,10 +39,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
     );
     assert_eq!(flow_run.document_hash, publication.document_hash);
     assert_eq!(flow_run.publication_version_id, Some(publication.id));
-    assert_eq!(
-        flow_run.target_node_id.as_deref(),
-        Some("node-published-llm")
-    );
+    assert_eq!(flow_run.target_node_id, None);
     assert_eq!(flow_run.title, "Summarize the incident");
     assert_eq!(flow_run.external_user.as_deref(), Some("customer-1"));
     assert_eq!(
@@ -50,7 +47,7 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
         Some("conversation-1")
     );
     assert_eq!(flow_run.external_trace_id.as_deref(), Some("trace-1"));
-    assert!(flow_run.compatibility_mode.is_none());
+    assert_eq!(flow_run.compatibility_mode.as_deref(), Some("native-v1"));
     assert_eq!(
         flow_run.input_payload,
         json!({
@@ -58,16 +55,58 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
             "node-start": {
                 "query": "Summarize the incident",
                 "priority": "high",
-                "system": []
+                "system": [],
+                "operation": {"kind": "generate", "profile": "standard"}
             }
         })
     );
     assert_eq!(result.metadata["model"], json!("public-model/pass-through"));
-    // D4-AC-002: the semantic subset remains admitted without native passthrough capability.
-    assert_eq!(
-        repository.published_generate_capability_requirements(),
-        vec![BTreeSet::new()]
-    );
+    assert_eq!(repository.published_generate_capability_checks(), 0);
+}
+
+#[tokio::test]
+async fn trusted_translation_protocol_is_persisted_as_the_canonical_compatibility_mode() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Protocol Persistence App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    for (protocol, expected) in [
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
+            "native-v1",
+        ),
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
+            "anthropic-messages-v1",
+        ),
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiChat,
+            "openai-chat-completions-v1",
+        ),
+        (
+            control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            "openai-responses-v1",
+        ),
+    ] {
+        let result = service
+            .start_native_run(CreateNativeRunCommand {
+                protocol,
+                bearer_token: token.clone(),
+                request: native_request("blocking", None),
+            })
+            .await
+            .expect("trusted protocol should create a durable run");
+        let flow_run = repository
+            .get_flow_run(application.id, result.id)
+            .await
+            .unwrap()
+            .expect("protocol-tagged run should be durable");
+
+        assert_eq!(flow_run.compatibility_mode.as_deref(), Some(expected));
+    }
 }
 
 #[tokio::test]
@@ -94,6 +133,7 @@ async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_ru
 
     let result = ApplicationPublishedRunService::new(repository.clone())
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: translated.request,
         })
@@ -116,6 +156,72 @@ async fn d2_f1_anthropic_trace_id_reaches_canonical_metadata_and_durable_flow_ru
 }
 
 #[tokio::test]
+async fn wp_d2a_anthropic_one_m_is_explicit_typed_intent_not_catalog_inference() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Anthropic 1M Context App");
+    let token = issue_key(&harness, application.id).await;
+    save_start_model_catalog(&repository, &application).await;
+    publish_runnable_application(&repository, application.id).await;
+    let translated = translate_messages_request(json!({
+        "model": "claude-opus-4-8[1M]",
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": "use declared context"}]
+    }))
+    .expect("Anthropic request should translate");
+
+    let result = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
+            bearer_token: token.clone(),
+            request: translated.request,
+        })
+        .await
+        .expect("declared 1M workflow model should create a run");
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
+    assert_eq!(
+        flow_run.input_payload["sys"]["model_parameters"]["requested_context_window"],
+        json!(1_000_000)
+    );
+    assert!(flow_run
+        .input_payload
+        .get("__client_protocol_envelope")
+        .is_none());
+
+    let catalog_only = translate_messages_request(json!({
+        "model": "claude-opus-4-8",
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": "do not infer context intent"}]
+    }))
+    .expect("the catalog model without an explicit 1M request should translate");
+    let catalog_only_result = ApplicationPublishedRunService::new(repository.clone())
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
+            bearer_token: token,
+            request: catalog_only.request,
+        })
+        .await
+        .expect("a catalog model without context intent should create a run");
+    let catalog_only_run = repository
+        .get_published_flow_run(catalog_only_result.id)
+        .await
+        .unwrap()
+        .expect("catalog-only flow run should be durable");
+
+    assert!(catalog_only_run.input_payload["sys"]["model_parameters"]
+        .get("requested_context_window")
+        .is_none());
+    assert!(catalog_only_run
+        .input_payload
+        .get("__client_protocol_envelope")
+        .is_none());
+}
+
+#[tokio::test]
 async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtime() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
@@ -127,6 +233,7 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(json!({
                 "query": "Summarize the incident",
@@ -137,7 +244,7 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
                 "execution": {
                     "model_parameters": {
                         "reasoning": {
-                            "enabled": true,
+                            "mode": "adaptive",
                             "effort": "high",
                             "budget_tokens": 4096
                         }
@@ -158,17 +265,17 @@ async fn start_native_run_freezes_valid_external_reasoning_parameters_for_runtim
         flow_run.input_payload["sys"]["model_parameters"],
         json!({
             "reasoning": {
-                "enabled": true,
+                "mode": "adaptive",
                 "effort": "high",
                 "budget_tokens": 4096
             }
         })
     );
     assert_eq!(
-        flow_run.input_payload["node-start"]["reasoning_effort"],
-        json!("high")
+        flow_run.input_payload["sys"]["model_parameters"]["reasoning"]["mode"],
+        json!("adaptive")
     );
-    assert!(flow_run.input_payload["sys"]
+    assert!(flow_run.input_payload["node-start"]
         .get("reasoning_effort")
         .is_none());
 }
@@ -185,6 +292,7 @@ async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime(
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request_with_model_parameters(
                 "gpt-5.4",
@@ -203,10 +311,9 @@ async fn ac_004_start_native_run_freezes_external_max_output_tokens_for_runtime(
         flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
         json!(32000)
     );
-    assert_eq!(
-        flow_run.input_payload["node-start"]["max_output_tokens"],
-        json!(32000)
-    );
+    assert!(flow_run.input_payload["node-start"]
+        .get("max_output_tokens")
+        .is_none());
 }
 
 #[test]
@@ -231,7 +338,7 @@ fn native_adapter_rejects_context_window_as_runtime_model_parameter() {
 }
 
 #[tokio::test]
-async fn start_native_run_rejects_external_reasoning_for_unknown_model() {
+async fn start_native_run_defers_requested_model_validation_to_the_selected_llm_node() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Unknown App");
@@ -242,88 +349,30 @@ async fn start_native_run_rejects_external_reasoning_for_unknown_model() {
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request_with_model_parameters(
                 "missing-model",
                 json!({
                     "reasoning": {
-                        "enabled": true,
+                        "mode": "enabled",
                         "effort": "high"
                     }
                 }),
             ),
         })
-        .await;
+        .await
+        .expect("the workflow must select its LLM node before model capability validation");
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
 
+    assert_eq!(result.metadata["model"], json!("missing-model"));
     assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters("model"))
-    );
-}
-
-#[tokio::test]
-async fn start_native_run_rejects_external_reasoning_for_unsupported_model() {
-    let harness = ApplicationPublicApiTestHarness::new();
-    let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Plain App");
-    let token = issue_key(&harness, application.id).await;
-    save_start_model_catalog(&repository, &application).await;
-    publish_runnable_application(&repository, application.id).await;
-    let service = ApplicationPublishedRunService::new(repository.clone());
-
-    let result = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: native_request_with_model_parameters(
-                "plain-model",
-                json!({
-                    "reasoning": {
-                        "enabled": true,
-                        "effort": "high"
-                    }
-                }),
-            ),
-        })
-        .await;
-
-    assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.reasoning"
-        ))
-    );
-}
-
-#[tokio::test]
-async fn start_native_run_rejects_unsupported_reasoning_effort() {
-    let harness = ApplicationPublicApiTestHarness::new();
-    let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Effort App");
-    let token = issue_key(&harness, application.id).await;
-    save_start_model_catalog(&repository, &application).await;
-    publish_runnable_application(&repository, application.id).await;
-    let service = ApplicationPublishedRunService::new(repository.clone());
-
-    let result = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: native_request_with_model_parameters(
-                "gpt-5.4",
-                json!({
-                    "reasoning": {
-                        "enabled": true,
-                        "effort": "xhigh"
-                    }
-                }),
-            ),
-        })
-        .await;
-
-    assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.reasoning.effort"
-        ))
+        flow_run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
+        json!("high")
     );
 }
 
@@ -342,6 +391,7 @@ async fn ac_004_start_native_run_accepts_request_cap_over_catalog_default_output
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
@@ -360,7 +410,7 @@ async fn ac_004_start_native_run_accepts_request_cap_over_catalog_default_output
 }
 
 #[tokio::test]
-async fn ac_004_start_native_run_rejects_max_output_tokens_over_context_limit() {
+async fn ac_004_start_native_run_defers_output_limit_validation_to_the_selected_llm_node() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Output App");
@@ -376,57 +426,23 @@ async fn ac_004_start_native_run_rejects_max_output_tokens_over_context_limit() 
         "user": "catalog-over-limit-user"
     }))
     .expect("conversation fixture must be valid Native data");
-    let conversations_before = repository.conversation_count();
-    let flow_runs_before = repository.flow_run_count();
-
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request,
         })
-        .await;
+        .await
+        .expect("the selected LLM/provider owns its output limit");
+    let flow_run = repository
+        .get_published_flow_run(result.id)
+        .await
+        .unwrap()
+        .expect("published flow run should be durable");
 
     assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.max_output_tokens"
-        ))
-    );
-    assert_eq!(repository.conversation_count(), conversations_before);
-    assert_eq!(repository.flow_run_count(), flow_runs_before);
-}
-
-#[tokio::test]
-async fn start_native_run_rejects_reasoning_budget_over_model_output_limit() {
-    let harness = ApplicationPublicApiTestHarness::new();
-    let repository = harness.repository();
-    let application = harness.seed_application(actor_user_id(), "Published Native Budget App");
-    let token = issue_key(&harness, application.id).await;
-    save_start_model_catalog(&repository, &application).await;
-    publish_runnable_application(&repository, application.id).await;
-    let service = ApplicationPublishedRunService::new(repository.clone());
-
-    let result = service
-        .start_native_run(CreateNativeRunCommand {
-            bearer_token: token,
-            request: native_request_with_model_parameters(
-                "gpt-5.4",
-                json!({
-                    "reasoning": {
-                        "enabled": true,
-                        "effort": "high",
-                        "budget_tokens": 32001
-                    }
-                }),
-            ),
-        })
-        .await;
-
-    assert_eq!(
-        result,
-        Err(NativeRunValidationError::InvalidModelParameters(
-            "execution.model_parameters.reasoning.budget_tokens"
-        ))
+        flow_run.input_payload["sys"]["model_parameters"]["max_output_tokens"],
+        json!(128001)
     );
 }
 
@@ -457,6 +473,7 @@ async fn start_native_run_freezes_application_environment_variables() {
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("streaming", None),
         })
@@ -503,6 +520,7 @@ async fn start_native_run_uses_expand_id_and_truncates_title() {
 
     let result = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: serde_json::from_value(json!({
                 "query": long_query,
@@ -548,6 +566,7 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
 
     let first = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: native_request("blocking", Some("idem-1")),
         })
@@ -555,6 +574,7 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
         .unwrap();
     let second = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: native_request("blocking", Some("idem-1")),
         })
@@ -562,6 +582,37 @@ async fn start_native_run_replays_existing_run_for_same_idempotency_key() {
         .unwrap();
 
     assert_eq!(first.id, second.id);
+    assert_eq!(repository.flow_run_count(), 1);
+}
+
+#[tokio::test]
+async fn same_idempotency_key_cannot_replay_a_run_created_through_another_protocol() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Cross Protocol Idempotency App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+    let request = native_request("blocking", Some("cross-protocol-idem"));
+
+    service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiChat,
+            bearer_token: token.clone(),
+            request: request.clone(),
+        })
+        .await
+        .expect("first protocol should create the run");
+    let error = service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token,
+            request,
+        })
+        .await
+        .expect_err("a different trusted protocol must change the fingerprint");
+
+    assert_eq!(error, NativeRunValidationError::IdempotencyConflict);
     assert_eq!(repository.flow_run_count(), 1);
 }
 
@@ -588,6 +639,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
 
     let normal = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: request_with_effort("normal-effort", "high"),
         })
@@ -595,6 +647,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
         .unwrap();
     let spaced = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: request_with_effort("spaced-effort", " high "),
         })
@@ -602,6 +655,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
         .unwrap();
     let conflict = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: request_with_effort("normal-effort", " high "),
         })
@@ -619,10 +673,9 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
             run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
             json!("high")
         );
-        assert_eq!(
-            run.input_payload["node-start"]["reasoning_effort"],
-            json!("high")
-        );
+        assert!(run.input_payload["node-start"]
+            .get("reasoning_effort")
+            .is_none());
     }
     assert_eq!(repository.flow_run_count(), 2);
 }
@@ -637,6 +690,7 @@ async fn start_native_run_rejects_same_idempotency_key_with_different_request() 
     let service = ApplicationPublishedRunService::new(repository.clone());
     service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: native_request("blocking", Some("idem-conflict")),
         })
@@ -647,6 +701,7 @@ async fn start_native_run_rejects_same_idempotency_key_with_different_request() 
 
     let error = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
             request: changed_request,
         })

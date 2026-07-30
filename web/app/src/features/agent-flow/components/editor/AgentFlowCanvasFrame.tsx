@@ -1019,17 +1019,9 @@ export function AgentFlowCanvasFrame({
               environmentVariables={environmentVariables}
               issues={issues}
               onClose={detailActions.closeDetail}
-              onDebugNode={
-                selectedNodeId && selectedNode?.type !== 'compact_response'
-                  ? handleDebugSelectedNode
-                  : undefined
-              }
+              onDebugNode={selectedNodeId ? handleDebugSelectedNode : undefined}
               onResolveRunScope={debugSession.selectRunScope}
-              onRunNode={
-                selectedNodeId && selectedNode?.type !== 'compact_response'
-                  ? handleRunSelectedNode
-                  : undefined
-              }
+              onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
               previewActionsDisabled={nodePreviewMutation.isPending}
               runLoading={nodePreviewAction === 'run'}
             />

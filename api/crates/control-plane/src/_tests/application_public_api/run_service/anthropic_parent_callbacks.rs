@@ -11,6 +11,7 @@ async fn start_anthropic_run_does_not_dispatch_by_legacy_protocol_mode() {
 
     let first = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("hi"),
         })
@@ -20,6 +21,7 @@ async fn start_anthropic_run_does_not_dispatch_by_legacy_protocol_mode() {
 
     let second = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_request("new message"),
         })
@@ -55,6 +57,7 @@ async fn start_anthropic_subagent_run_keeps_parent_waiting_callback_alive() {
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads\\test-01.png 找一下这幅图相关代码"),
         })
@@ -64,6 +67,7 @@ async fn start_anthropic_subagent_run_keeps_parent_waiting_callback_alive() {
 
     let subagent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_subagent_request("Find nav bar code"),
         })
@@ -99,6 +103,7 @@ async fn start_anthropic_builtin_agent_run_keeps_parent_waiting_callback_alive()
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads/image-1.png 这部分代码在哪里？"),
         })
@@ -108,6 +113,7 @@ async fn start_anthropic_builtin_agent_run_keeps_parent_waiting_callback_alive()
 
     let agent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_builtin_agent_request(
                 "在 /home/taichu/git/1flowbase 项目中，找到工作台页面相关的前端代码。",
@@ -146,6 +152,7 @@ async fn start_anthropic_tool_result_continuation_keeps_parent_waiting_callback_
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads\\test-01.png 找一下这幅图相关代码"),
         })
@@ -155,6 +162,7 @@ async fn start_anthropic_tool_result_continuation_keeps_parent_waiting_callback_
 
     let continuation = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_request(
                 "-rw-r--r-- 1 Lw 197121 17907 Jun 12 15:25 uploads/test-01.png",
@@ -193,6 +201,7 @@ async fn start_anthropic_claude_code_control_run_keeps_parent_waiting_callback_a
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads/image-1.png 这部分代码在哪里？"),
         })
@@ -202,6 +211,7 @@ async fn start_anthropic_claude_code_control_run_keeps_parent_waiting_callback_a
 
     let control = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_claude_code_control_request(
                 "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.",
@@ -240,6 +250,7 @@ async fn start_anthropic_away_summary_run_keeps_parent_waiting_callback_alive() 
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads/image-1.png 这部分代码在哪里？"),
         })
@@ -249,6 +260,7 @@ async fn start_anthropic_away_summary_run_keeps_parent_waiting_callback_alive() 
 
     let control = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_away_summary_request(),
         })
@@ -284,6 +296,7 @@ async fn start_anthropic_compact_resume_run_keeps_parent_waiting_callback_alive(
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads/image-1.png 这部分代码在哪里？"),
         })
@@ -293,6 +306,7 @@ async fn start_anthropic_compact_resume_run_keeps_parent_waiting_callback_alive(
 
     let control = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_compact_resume_request(),
         })
@@ -329,6 +343,7 @@ async fn start_anthropic_compact_resume_run_does_not_dispatch_by_prompt_marker()
 
     let parent = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_request("uploads/image-1.png 这部分代码在哪里？"),
         })
@@ -337,6 +352,7 @@ async fn start_anthropic_compact_resume_run_does_not_dispatch_by_prompt_marker()
     let parent_callback = repository.seed_pending_callback_task(parent.id);
     let old_control = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token.clone(),
             request: anthropic_compact_resume_request(),
         })
@@ -346,6 +362,7 @@ async fn start_anthropic_compact_resume_run_does_not_dispatch_by_prompt_marker()
 
     let next_control = service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::AnthropicMessages,
             bearer_token: token,
             request: anthropic_compact_resume_request(),
         })

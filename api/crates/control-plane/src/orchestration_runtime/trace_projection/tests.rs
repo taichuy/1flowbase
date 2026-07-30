@@ -38,6 +38,115 @@ fn legacy_locator_component_uses_source_payload_fingerprint() {
 }
 
 #[test]
+fn ac_004_answer_node_truth_trace_hides_legacy_waiting_snapshots() {
+    let flow_run_id = Uuid::now_v7();
+    let now = OffsetDateTime::UNIX_EPOCH;
+    let final_answer_node_run_id = Uuid::now_v7();
+    let node_run = |id: Uuid,
+                    node_id: &str,
+                    node_type: &str,
+                    input_payload: serde_json::Value,
+                    debug_payload: serde_json::Value,
+                    offset: i64| {
+        domain::NodeRunRecord {
+            id,
+            flow_run_id,
+            node_id: node_id.to_string(),
+            node_type: node_type.to_string(),
+            node_alias: match node_type {
+                "start" => "Start",
+                "llm" => "LLM",
+                "answer" => "Answer",
+                other => other,
+            }
+            .to_string(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload,
+            output_payload: json!({ "answer": "visible" }),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload,
+            started_at: now + time::Duration::seconds(offset),
+            finished_at: Some(now + time::Duration::seconds(offset)),
+        }
+    };
+    let detail = domain::ApplicationRunDetail {
+        flow_run: flow_run(flow_run_id, now),
+        node_runs: vec![
+            node_run(
+                Uuid::now_v7(),
+                "node-start",
+                "start",
+                json!({}),
+                json!({}),
+                0,
+            ),
+            node_run(Uuid::now_v7(), "node-llm", "llm", json!({}), json!({}), 1),
+            node_run(
+                Uuid::now_v7(),
+                "node-answer",
+                "answer",
+                json!({
+                    "presentation": {
+                        "kind": "answer",
+                        "materialized_from": "waiting_prefix"
+                    }
+                }),
+                json!({}),
+                2,
+            ),
+            node_run(Uuid::now_v7(), "node-llm", "llm", json!({}), json!({}), 3),
+            node_run(
+                Uuid::now_v7(),
+                "node-answer",
+                "answer",
+                json!({}),
+                json!({
+                    "answer_presentation": {
+                        "materialized_from": "canonical_stream_state"
+                    }
+                }),
+                4,
+            ),
+            node_run(Uuid::now_v7(), "node-llm", "llm", json!({}), json!({}), 5),
+            node_run(
+                final_answer_node_run_id,
+                "node-answer",
+                "answer",
+                json!({ "answer_template": "final answer" }),
+                json!({}),
+                6,
+            ),
+        ],
+        checkpoints: Vec::new(),
+        callback_tasks: Vec::new(),
+        events: Vec::new(),
+        stitched_trace: Vec::new(),
+        subagent_traces: Vec::new(),
+    };
+
+    let projection = build_application_run_trace_projection(&detail).unwrap();
+    let top_level_node_runs = projection
+        .nodes
+        .iter()
+        .filter(|node| node.parent_trace_node_id.is_none() && node.node_kind == "node_run")
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        top_level_node_runs
+            .iter()
+            .filter_map(|node| node.node_type.as_deref())
+            .collect::<Vec<_>>(),
+        vec!["start", "llm", "answer"]
+    );
+    let answer = top_level_node_runs
+        .iter()
+        .find(|node| node.node_type.as_deref() == Some("answer"))
+        .expect("the executed final Answer node should remain visible");
+    assert_eq!(answer.owner_id, Some(final_answer_node_run_id.to_string()));
+}
+
+#[test]
 fn builder_projects_node_run_tool_group_and_tool_callbacks() {
     let flow_run_id = Uuid::now_v7();
     let node_run_id = Uuid::now_v7();

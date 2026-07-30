@@ -444,7 +444,7 @@ where
             )))
         }
         "code" => {
-            let execution = execute_code_node(node, resolved_inputs, invoker).await?;
+            let execution = execute_code_node(plan, node, resolved_inputs, invoker).await?;
             if let Some(error_payload) = execution.error_payload {
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }

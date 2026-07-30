@@ -5,7 +5,6 @@ export const NODE_CONTRIBUTION_SCHEMA_VERSION =
 export type BuiltinFlowNodeType =
   | 'start'
   | 'answer'
-  | 'compact_response'
   | 'workflow_start'
   | 'workflow_end'
   | 'llm'
@@ -44,29 +43,6 @@ export type FlowStartInputType =
   | 'url';
 
 export type FlowStartInputSource = 'path' | 'query' | 'body' | 'form';
-
-export type FlowCompactDispatch = 'transparent' | 'application_flow';
-
-export const DEFAULT_START_COMPACT_DISPATCH = 'transparent' as const;
-export const COMPACT_SOURCE_HANDLE_ID = 'compact' as const;
-
-export function isFlowCompactDispatch(
-  value: unknown
-): value is FlowCompactDispatch {
-  return value === 'transparent' || value === 'application_flow';
-}
-
-/**
- * Documents created before compact dispatch existed do not need a storage
- * migration: an absent value keeps the legacy transparent behavior.
- */
-export function getStartCompactDispatch(
-  config: Record<string, unknown> | null | undefined
-): FlowCompactDispatch {
-  return config?.compact_dispatch === 'application_flow'
-    ? 'application_flow'
-    : DEFAULT_START_COMPACT_DISPATCH;
-}
 
 export interface FlowStartInputField {
   key: string;
@@ -113,6 +89,16 @@ export interface FlowNodeOutputDocument {
   selector?: string[];
   jsonSchema?: Record<string, unknown>;
 }
+
+export interface FlowVariableReference {
+  kind: 'selector';
+  value: string[];
+}
+
+export const DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE: FlowVariableReference = {
+  kind: 'selector',
+  value: ['sys', 'protocol_context']
+};
 
 export type PublicOutputKeyValidationResult =
   | { ok: true }
@@ -244,8 +230,7 @@ export const DEFAULT_LLM_NODE_OUTPUTS = [
 
 export const DEFAULT_START_NODE_CONFIG = {
   input_fields: [] as unknown[],
-  model_list: [] as unknown[],
-  compact_dispatch: DEFAULT_START_COMPACT_DISPATCH
+  model_list: [] as unknown[]
 } satisfies Record<string, unknown>;
 
 export const DEFAULT_WORKFLOW_SYNC_TIMEOUT_MS = 30000;
@@ -258,9 +243,6 @@ export const DEFAULT_WORKFLOW_START_NODE_CONFIG = {
 export const DEFAULT_ANSWER_NODE_OUTPUTS = [
   { key: 'answer', title: '对话输出', valueType: 'string' }
 ] satisfies FlowNodeOutputDocument[];
-
-export const DEFAULT_COMPACT_RESPONSE_NODE_OUTPUTS =
-  [] satisfies FlowNodeOutputDocument[];
 
 export const LLM_STRUCTURED_OUTPUT = {
   key: 'structured_output',
@@ -623,8 +605,7 @@ export function createDefaultAgentFlowDocument({
           configVersion: 1,
           config: {
             input_fields: [...DEFAULT_START_NODE_CONFIG.input_fields],
-            model_list: [...DEFAULT_START_NODE_CONFIG.model_list],
-            compact_dispatch: DEFAULT_START_NODE_CONFIG.compact_dispatch
+            model_list: [...DEFAULT_START_NODE_CONFIG.model_list]
           },
           bindings: {},
           outputs: []
@@ -655,6 +636,10 @@ export function createDefaultAgentFlowDocument({
             },
             external_model_parameter_policy: {
               follow_external_max_output_tokens: true
+            },
+            protocol_context: {
+              kind: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.kind,
+              value: [...DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value]
             },
             visible_internal_llm_tools_enabled: false,
             visible_internal_llm_tools: [],

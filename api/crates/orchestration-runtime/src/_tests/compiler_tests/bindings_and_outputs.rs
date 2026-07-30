@@ -661,6 +661,134 @@ fn compile_llm_node_carries_context_policy_into_routing() {
 }
 
 #[test]
+fn wp_fua_host_compiled_llm_protocol_context_preserves_three_state_compatibility() {
+    let flow_id = Uuid::now_v7();
+    let document = sample_document(flow_id);
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+    let llm = &plan.nodes["node-llm"];
+
+    let system_protocol_context =
+        VariableReference::selector(vec!["sys".to_string(), "protocol_context".to_string()]);
+    assert_eq!(
+        llm.config["protocol_context"],
+        serde_json::to_value(&system_protocol_context).unwrap()
+    );
+    assert_eq!(
+        llm.protocol_context_reference().unwrap(),
+        Some(system_protocol_context.clone())
+    );
+
+    let mut document = document;
+    document["graph"]["nodes"][1]["config"]["protocol_context"] = Value::Null;
+    let plan = FlowCompiler::compile(flow_id, "draft-2", &document, &compile_context()).unwrap();
+    let llm = &plan.nodes["node-llm"];
+
+    assert_eq!(llm.config["protocol_context"], Value::Null);
+    assert_eq!(llm.protocol_context_reference().unwrap(), None);
+
+    document["graph"]["nodes"][1]["config"]["protocol_context"] = json!({
+        "kind": "selector",
+        "value": ["sys", "protocol_context"]
+    });
+    let plan = FlowCompiler::compile(flow_id, "draft-3", &document, &compile_context()).unwrap();
+    let llm = &plan.nodes["node-llm"];
+
+    assert_eq!(
+        llm.config["protocol_context"],
+        json!({
+            "kind": "selector",
+            "value": ["sys", "protocol_context"]
+        })
+    );
+    assert_eq!(
+        llm.protocol_context_reference().unwrap(),
+        Some(system_protocol_context)
+    );
+    assert!(!plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-llm"
+            && matches!(
+                issue.code,
+                CompileIssueCode::InvalidLlmContextSelector
+                    | CompileIssueCode::IncompatibleLlmContextSchema
+            )
+    }));
+}
+
+#[test]
+fn wp_d1b_protocol_context_accepts_existing_code_json_output_contract() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    let nodes = document["graph"]["nodes"].as_array_mut().unwrap();
+    nodes.insert(
+        1,
+        json!({
+            "id": "node-code",
+            "type": "code",
+            "alias": "Protocol Context",
+            "description": "",
+            "containerId": null,
+            "position": { "x": 180, "y": 0 },
+            "configVersion": 1,
+            "config": {},
+            "bindings": {},
+            "outputs": [{
+                "key": "protocol_context",
+                "title": "Protocol Context",
+                "valueType": "json"
+            }]
+        }),
+    );
+    nodes[2]["config"]["protocol_context"] = json!({
+        "kind": "selector",
+        "value": ["node-code", "result", "protocol_context"]
+    });
+    document["graph"]["edges"] = json!([
+        {
+            "id": "edge-start-code",
+            "source": "node-start",
+            "target": "node-code",
+            "sourceHandle": null,
+            "targetHandle": null,
+            "containerId": null,
+            "points": []
+        },
+        {
+            "id": "edge-code-llm",
+            "source": "node-code",
+            "target": "node-llm",
+            "sourceHandle": null,
+            "targetHandle": null,
+            "containerId": null,
+            "points": []
+        }
+    ]);
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+
+    assert_eq!(
+        plan.nodes["node-code"].outputs[0].selector,
+        vec!["result".to_string(), "protocol_context".to_string()]
+    );
+    assert_eq!(
+        plan.nodes["node-llm"].protocol_context_reference().unwrap(),
+        Some(VariableReference::selector(vec![
+            "node-code".to_string(),
+            "result".to_string(),
+            "protocol_context".to_string(),
+        ]))
+    );
+    assert!(!plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-llm" && issue.code == CompileIssueCode::IncompatibleLlmContextSchema
+    }));
+
+    document["graph"]["nodes"][1]["outputs"][0]["valueType"] = json!("string");
+    let plan = FlowCompiler::compile(flow_id, "draft-2", &document, &compile_context()).unwrap();
+    assert!(plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-llm" && issue.code == CompileIssueCode::IncompatibleLlmContextSchema
+    }));
+}
+
+#[test]
 fn compile_reports_invalid_llm_context_selector() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);

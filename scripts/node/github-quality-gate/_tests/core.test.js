@@ -7,6 +7,7 @@ const path = require('node:path');
 const {
   buildReport,
   buildGateCommand,
+  boundIssueBody,
   buildIssueTitle,
   buildIssueLabels,
   COVERAGE_BACKEND_COMPONENT_SCOPES,
@@ -15,6 +16,15 @@ const {
   runQualityGateAggregate,
   runQualityGate,
 } = require('../core.js');
+
+test('quality gate bounds GitHub Issue bodies while preserving the report summary', () => {
+  const body = `# Quality Gate Report\n\n## Result Summary\n\n${'错误🙂\n'.repeat(30_000)}`;
+  const bounded = boundIssueBody(body);
+  assert.equal(Buffer.byteLength(bounded, 'utf8') <= 60 * 1024, true);
+  assert.match(bounded, /^# Quality Gate Report/u);
+  assert.match(bounded, /Issue report truncated to GitHub’s body limit/u);
+  assert.doesNotMatch(bounded, /\uFFFD/u);
+});
 
 test('buildGateCommand maps supported scopes to repository verify scripts', () => {
   const repoRoot = '/repo';

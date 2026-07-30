@@ -3,7 +3,15 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { runWireAudit, vectorBodies } = require('../runner');
+const {
+  assertErrorFidelityAudit,
+  assertRequestFidelityAudit,
+  errorFidelityInventory,
+  requestFidelityInventory,
+  runWireAudit,
+  vectorBodies,
+} = require('../runner');
+const { ERROR_SURFACES, UPSTREAM_ERROR_FIXTURES } = require('../../protocol-oracle/error-fidelity');
 
 // Root AC-019/020/023/024/027: finite vectors preserve owner and observer boundaries.
 test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approval, and canary paths', () => {
@@ -19,9 +27,9 @@ test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approva
   const wire = JSON.stringify(vectors);
   for (const value of [
     'tool_search_call', 'tool_search_output', 'additional_tools', 'file_search',
-    'programmatic_tool_calling', 'shell', 'mcp_list_tools', 'mcp_call',
-    'mcp_approval_request', canary,
+    'programmatic_tool_calling', 'shell', 'ordinary user request for an MCP lookup', canary,
   ]) assert.match(wire, new RegExp(value, 'u'));
+  assert.doesNotMatch(wire, /mcp_list_tools|mcp_call|mcp_approval_request/u);
   assert.doesNotMatch(wire, /mcp_approval_response/u);
   assert.doesNotMatch(wire, /wire_audit_vector/u);
 });
@@ -60,18 +68,31 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
       data = { ...data, fixture: ['tool_search_output', 'additional_tools'] };
     }
     if (toolTypes.includes('file_search')) {
-      data = { ...data, fixture: ['file_search_call', 'program', 'shell_call', 'response.future_gateway_drift'] };
+      data = { ...data, fixture: ['file_search_call', 'program', 'shell_call'] };
     }
     if (toolTypes.includes('mcp')) {
       data = {
-        type: 'response.created', response: { id: providerResponseId },
-        fixture: ['mcp_list_tools', 'mcp_call'],
-        item: { type: 'mcp_approval_request', id: approvalRequestId },
+        type: 'response.created',
+        response: {
+          id: providerResponseId,
+          output: [
+            {
+              type: 'mcp_list_tools', id: 'mcp_list_provider_owned',
+              server_label: 'fixture_mcp', status: 'completed', tools: [{ name: 'lookup' }],
+            },
+            {
+              type: 'mcp_call', id: 'mcp_call_provider_owned', server_label: 'fixture_mcp',
+              status: 'completed', name: 'lookup', arguments: '{"query":"fixture"}',
+            },
+            {
+              type: 'mcp_approval_request', id: approvalRequestId, server_label: 'fixture_mcp',
+              status: 'in_progress', name: 'lookup', arguments: '{"query":"approval fixture"}',
+            },
+          ],
+        },
       };
     }
-    if (inputTypes.includes('mcp_approval_response')) {
-      data = { ...data, fixture: 'mcp_approval_response' };
-    }
+    if (inputTypes.includes('mcp_approval_response')) data = { ...data, fixture: 'approval-accepted' };
     return new Response(`data: ${JSON.stringify(data)}\n\n`, {
       status: 200, headers: { 'content-type': 'text/event-stream' },
     });
@@ -89,10 +110,59 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
 
   const startIndex = requests.findIndex((body) => body.tools?.some((tool) => tool.type === 'mcp'));
   assert.notEqual(startIndex, -1);
-  assert.equal(requests[startIndex].input.some((item) => item.type === 'mcp_approval_response'), false);
+  assert.equal(requests[startIndex].input, 'ordinary user request for an MCP lookup');
+  assert.equal(JSON.stringify(requests[startIndex].input).includes('mcp_'), false);
   const continuation = requests[startIndex + 1];
   assert.equal(continuation.previous_response_id, providerResponseId);
   assert.deepEqual(continuation.input, [{
     type: 'mcp_approval_response', approval_request_id: approvalRequestId, approve: true,
   }]);
+});
+
+test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail closed', () => {
+  const inventory = requestFidelityInventory();
+  assert.equal(inventory.positive_rows.length, 3);
+  assert.equal(inventory.negative_rows.length, 2);
+  assert.equal(inventory.translation_rows.length, 1);
+  assert.equal(inventory.raw_sinks_forbidden.includes('durable'), true);
+  const digest = 'a'.repeat(64);
+  const evidence = {
+    positive: inventory.positive_rows.map((id) => ({ id, direct_sha256: digest, gateway_sha256: digest })),
+    negative: inventory.negative_rows.map((id) => ({ id, failed: true, upstream_arrivals: 0 })),
+    translation: inventory.translation_rows.map((id) => ({
+      id,
+      succeeded: true,
+      upstream_arrivals: 1,
+      foreign_raw_in_upstream: false,
+      decisions: ['omitted_protocol_context_profile_mismatch'],
+    })),
+    ephemeral: {
+      preserved_phases: ['initial-invocation', 'tool-callback', 'retry'],
+      cleanup_phases: ['terminal-success', 'terminal-failure'],
+      missing_before_terminal_failed: true,
+    },
+  };
+  assert.equal(assertRequestFidelityAudit(evidence).verdict, 'PASS');
+  evidence.negative[0].upstream_arrivals = 1;
+  assert.throws(() => assertRequestFidelityAudit(evidence), /did not fail before upstream/u);
+  evidence.negative[0].upstream_arrivals = 0;
+  evidence.translation[0].foreign_raw_in_upstream = true;
+  assert.throws(() => assertRequestFidelityAudit(evidence), /did not omit foreign wire context/u);
+});
+
+test('Root #1477 AC-008: error audit requires 5 fixtures across all 4 public surfaces', () => {
+  const inventory = errorFidelityInventory();
+  assert.equal(inventory.rows, 20);
+  const rows = UPSTREAM_ERROR_FIXTURES.flatMap((fixture) => ERROR_SURFACES.map((surface) => {
+    const message = fixture.body || `upstream returned HTTP ${fixture.status}`;
+    return {
+      fixture: fixture.id, surface, attempts: fixture.attempts,
+      native_message: message, durable_message: message, client_message: message,
+    };
+  }));
+  assert.deepEqual(assertErrorFidelityAudit({ rows }), {
+    schema_version: '1flowbase.ai-gateway-error-fidelity-result/v1', verdict: 'PASS', rows: 20,
+  });
+  rows.pop();
+  assert.throws(() => assertErrorFidelityAudit({ rows }), /evidence omitted/u);
 });

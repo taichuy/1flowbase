@@ -1,6 +1,5 @@
 use super::*;
 use crate::binding_runtime::lookup_selector_value;
-use crate::compiled_plan::COMPACT_SOURCE_HANDLE_ID;
 use crate::node_error_policy::ERROR_BRANCH_SOURCE_HANDLE;
 
 pub fn initial_active_node_ids(plan: &CompiledPlan) -> BTreeSet<String> {
@@ -10,11 +9,6 @@ pub fn initial_active_node_ids(plan: &CompiledPlan) -> BTreeSet<String> {
         return plan
             .topological_order
             .iter()
-            .filter(|node_id| {
-                plan.nodes
-                    .get(*node_id)
-                    .is_none_or(|node| node.node_type != "compact_response")
-            })
             .filter(|node_id| !mounted_llm_target_node_ids.contains(*node_id))
             .cloned()
             .collect();
@@ -23,7 +17,6 @@ pub fn initial_active_node_ids(plan: &CompiledPlan) -> BTreeSet<String> {
     plan.nodes
         .values()
         .filter(|node| node.dependency_node_ids.is_empty())
-        .filter(|node| node.node_type != "compact_response")
         .filter(|node| !mounted_llm_target_node_ids.contains(&node.node_id))
         .map(|node| node.node_id.clone())
         .collect()
@@ -45,11 +38,6 @@ pub fn activate_downstream_nodes(
     if plan.edges.is_empty() {
         let mut activated = false;
         for target_node_id in &node.downstream_node_ids {
-            if target_is_compact_response(plan, target_node_id)
-                && !is_selected_start_compact_edge(node, selected_source_handle)
-            {
-                continue;
-            }
             active_node_ids.insert(target_node_id.clone());
             activated = true;
         }
@@ -59,18 +47,6 @@ pub fn activate_downstream_nodes(
     let mut activated = false;
 
     for edge in outgoing_edges(plan, &node.node_id) {
-        if node.node_type == "start"
-            && edge.source_handle.as_deref() == Some(COMPACT_SOURCE_HANDLE_ID)
-            && !is_selected_start_compact_edge(node, selected_source_handle)
-        {
-            continue;
-        }
-        if target_is_compact_response(plan, &edge.target)
-            && !is_selected_start_compact_edge(node, selected_source_handle)
-        {
-            continue;
-        }
-
         if node.node_type == "if_else" && edge.source_handle.as_deref() != selected_source_handle {
             continue;
         }
@@ -93,19 +69,6 @@ pub fn activate_downstream_nodes(
     }
 
     activated
-}
-
-fn is_selected_start_compact_edge(
-    node: &CompiledNode,
-    selected_source_handle: Option<&str>,
-) -> bool {
-    node.node_type == "start" && selected_source_handle == Some(COMPACT_SOURCE_HANDLE_ID)
-}
-
-fn target_is_compact_response(plan: &CompiledPlan, node_id: &str) -> bool {
-    plan.nodes
-        .get(node_id)
-        .is_some_and(|node| node.node_type == "compact_response")
 }
 
 pub fn checkpoint_active_node_ids(active_node_ids: &BTreeSet<String>) -> Vec<String> {

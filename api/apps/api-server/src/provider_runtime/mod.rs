@@ -12,7 +12,7 @@ use control_plane::{
     plugin_lifecycle::reconcile_installation_snapshot,
     ports::{
         DataSourceCrudRuntimePort, DataSourceRepository, DataSourceRuntimePort, PluginRepository,
-        ProviderRuntimeInvocationOutput, ProviderRuntimePort,
+        ProviderLiveEventSenders, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
     },
 };
 use plugin_framework::{
@@ -317,20 +317,20 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         &self,
         installation: &domain::PluginInstallationRecord,
         input: ProviderInvocationInput,
-        live_events: Option<
-            tokio::sync::mpsc::UnboundedSender<
-                plugin_framework::provider_contract::ProviderStreamEvent,
-            >,
-        >,
+        live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
         self.ensure_provider_loaded(installation).await?;
         let operation = {
             let host = self.services.provider_host.read().await;
+            let (required_live_events, diagnostic_live_events) = live_events
+                .map(|senders| (Some(senders.required), Some(senders.diagnostic)))
+                .unwrap_or((None, None));
             host.invoke_stream_with_live_events_operation(
                 &installation.plugin_id,
                 input,
-                live_events,
+                required_live_events,
+                diagnostic_live_events,
             )
             .map_err(map_provider_framework_error)
         };
@@ -779,7 +779,7 @@ impl ApiProviderRuntime {
                 &installation.installed_path,
                 Some(source_identity.as_str()),
             )
-            .map_err(|error| map_framework_error(error, "provider_runtime"));
+            .map_err(map_provider_framework_error);
         tracing::debug!(
             plugin_id = %installation.plugin_id,
             provider_ensure_loaded_ms = ensure_loaded_started.elapsed().as_millis() as u64,
@@ -825,7 +825,8 @@ fn provider_source_identity(installation: &domain::PluginInstallationRecord) -> 
 
 fn map_provider_framework_error(error: PluginFrameworkError) -> anyhow::Error {
     match error {
-        runtime_error @ PluginFrameworkError::RuntimeContract { .. } => runtime_error.into(),
+        preserved_error @ (PluginFrameworkError::RuntimeContract { .. }
+        | PluginFrameworkError::InvalidProviderContract { .. }) => preserved_error.into(),
         other => map_framework_error(other, "provider_runtime"),
     }
 }

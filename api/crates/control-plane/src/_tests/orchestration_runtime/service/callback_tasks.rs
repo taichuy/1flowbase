@@ -118,9 +118,10 @@ async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
         &attempts,
         llm_node.id,
     );
-    let answer_node = node_run(&waiting_detail, "node-answer");
-    assert_eq!(answer_node.status, domain::NodeRunStatus::Succeeded);
-    assert_eq!(answer_node.output_payload["answer"], json!(""));
+    assert!(waiting_detail
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
     assert_eq!(waiting_detail.flow_run.output_payload, json!({}));
     assert_eq!(waiting_detail.callback_tasks.len(), 1);
     assert_eq!(
@@ -424,55 +425,79 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
 }
 
 #[tokio::test]
-async fn callback_resume_waiting_again_projects_completed_answer_prefix_before_tool_call() {
+async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_answer_run() {
     use plugin_framework::provider_contract::{
-        ProviderFinishReason, ProviderInvocationResult, ProviderToolCall, ProviderUsage,
+        ProviderFinishReason, ProviderInvocationResult, ProviderStreamEvent, ProviderToolCall,
     };
 
-    let service = OrchestrationRuntimeService::for_tests_with_provider_results(vec![
-        ProviderInvocationResult {
-            final_content: Some("need first tool".to_string()),
-            tool_calls: vec![ProviderToolCall {
-                id: "call_weather".to_string(),
-                name: "lookup_weather".to_string(),
-                arguments: json!({ "city": "Shanghai" }),
-                provider_metadata: json!({}),
-            }],
-            usage: ProviderUsage {
-                total_tokens: Some(12),
-                ..ProviderUsage::default()
+    let first_call = ProviderToolCall {
+        id: "call_weather".to_string(),
+        name: "lookup_weather".to_string(),
+        arguments: json!({ "city": "Shanghai" }),
+        provider_metadata: json!({}),
+    };
+    let second_call = ProviderToolCall {
+        id: "call_policy".to_string(),
+        name: "lookup_policy".to_string(),
+        arguments: json!({ "topic": "refund" }),
+        provider_metadata: json!({}),
+    };
+    let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "checking weather".to_string(),
+                },
+                ProviderStreamEvent::ToolCallCommit {
+                    call: first_call.clone(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::ToolCall,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("checking weather".to_string()),
+                tool_calls: vec![first_call],
+                finish_reason: Some(ProviderFinishReason::ToolCall),
+                ..ProviderInvocationResult::default()
             },
-            finish_reason: Some(ProviderFinishReason::ToolCall),
-            ..ProviderInvocationResult::default()
         },
-        ProviderInvocationResult {
-            final_content: Some("LLM1 final".to_string()),
-            usage: ProviderUsage {
-                total_tokens: Some(16),
-                ..ProviderUsage::default()
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "checking policy".to_string(),
+                },
+                ProviderStreamEvent::ToolCallCommit {
+                    call: second_call.clone(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::ToolCall,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("checking policy".to_string()),
+                tool_calls: vec![second_call],
+                finish_reason: Some(ProviderFinishReason::ToolCall),
+                ..ProviderInvocationResult::default()
             },
-            finish_reason: Some(ProviderFinishReason::Stop),
-            ..ProviderInvocationResult::default()
         },
-        ProviderInvocationResult {
-            final_content: Some("need second tool".to_string()),
-            tool_calls: vec![ProviderToolCall {
-                id: "call_policy".to_string(),
-                name: "lookup_policy".to_string(),
-                arguments: json!({ "topic": "refund" }),
-                provider_metadata: json!({}),
-            }],
-            usage: ProviderUsage {
-                total_tokens: Some(20),
-                ..ProviderUsage::default()
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "final answer".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("final answer".to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
             },
-            finish_reason: Some(ProviderFinishReason::ToolCall),
-            ..ProviderInvocationResult::default()
         },
     ]);
-    let seeded = service
-        .seed_application_with_second_llm_failure_flow("Support Agent")
-        .await;
+    let seeded = service.seed_application_with_flow("Support Agent").await;
     let started = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
             actor_user_id: seeded.actor_user_id,
@@ -498,6 +523,14 @@ async fn callback_resume_waiting_again_projects_completed_answer_prefix_before_t
         first_waiting.flow_run.status,
         domain::FlowRunStatus::WaitingCallback
     );
+    assert_eq!(
+        first_waiting.flow_run.output_payload["answer"],
+        json!("checking weather")
+    );
+    assert!(first_waiting
+        .node_runs
+        .iter()
+        .all(|node_run| node_run.node_id != "node-answer"));
 
     let second_waiting = service
         .complete_callback_task(CompleteCallbackTaskCommand {
@@ -520,32 +553,18 @@ async fn callback_resume_waiting_again_projects_completed_answer_prefix_before_t
         second_waiting.flow_run.status,
         domain::FlowRunStatus::WaitingCallback
     );
+    assert_eq!(
+        second_waiting.flow_run.output_payload["answer"],
+        json!("checking policy")
+    );
     let second_callback_task_id = second_waiting.callback_tasks.last().unwrap().id;
     let runtime_events = service
         .list_runtime_events(second_waiting.flow_run.id, 0)
         .await;
-    let presentation_text = runtime_events
-        .iter()
-        .filter(|event| event.event_type == "text_delta")
-        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
-        .filter_map(|event| event.payload["text"].as_str())
-        .collect::<String>();
-    assert_eq!(presentation_text, "LLM1 final\n----\n");
-    let answer_node = second_waiting
+    assert!(second_waiting
         .node_runs
         .iter()
-        .rev()
-        .find(|node_run| node_run.node_id == "node-answer")
-        .expect("waiting run should materialize Answer node with visible prefix");
-    assert_eq!(answer_node.status, domain::NodeRunStatus::Succeeded);
-    assert_eq!(
-        answer_node.output_payload["answer"],
-        json!("LLM1 final\n----\n")
-    );
-    assert_eq!(
-        second_waiting.flow_run.output_payload["answer"],
-        json!("LLM1 final\n----\n")
-    );
+        .all(|node_run| node_run.node_id != "node-answer"));
 
     let waiting_callback_sequence = runtime_events
         .iter()
@@ -556,16 +575,51 @@ async fn callback_resume_waiting_again_projects_completed_answer_prefix_before_t
         })
         .expect("second waiting callback runtime event should be persisted")
         .sequence;
-    let last_answer_sequence = runtime_events
+    assert!(waiting_callback_sequence > 0);
+
+    let completed = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id: second_callback_task_id,
+            response_payload: json!({
+                "tool_results": [{
+                    "tool_call_id": "call_policy",
+                    "content": "policy found"
+                }]
+            }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(
+        completed.flow_run.output_payload["answer"],
+        json!("final answer")
+    );
+    assert_eq!(completed.callback_tasks.len(), 2);
+    assert!(completed
+        .callback_tasks
         .iter()
-        .filter(|event| event.event_type == "text_delta")
-        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
-        .map(|event| event.sequence)
-        .max()
-        .expect("answer presentation delta should be persisted");
-    assert!(
-        last_answer_sequence < waiting_callback_sequence,
-        "answer presentation should be durable before waiting callback"
+        .all(|task| task.status == domain::CallbackTaskStatus::Completed));
+    assert_eq!(
+        completed
+            .node_runs
+            .iter()
+            .filter(|node_run| node_run.node_id == "node-llm")
+            .count(),
+        3
+    );
+    let answer_node_runs = completed
+        .node_runs
+        .iter()
+        .filter(|node_run| node_run.node_id == "node-answer")
+        .collect::<Vec<_>>();
+    assert_eq!(answer_node_runs.len(), 1);
+    assert_eq!(answer_node_runs[0].status, domain::NodeRunStatus::Succeeded);
+    assert_eq!(
+        answer_node_runs[0].output_payload["answer"],
+        json!("final answer")
     );
 }
 

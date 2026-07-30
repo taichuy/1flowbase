@@ -64,8 +64,8 @@ export interface AgentFlowAnswerSnapshot {
   outputPayload: Record<string, unknown>;
   complete: boolean;
   materializedFrom: string;
-  answerNodeId: string;
-  answerNodeRunId: string;
+  answerNodeId: string | null;
+  answerNodeRunId: string | null;
   waitingNodeId?: string | null;
   waitingNodeRunId?: string | null;
 }

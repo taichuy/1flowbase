@@ -40,6 +40,8 @@ use crate::{
 };
 
 mod answer_presentation;
+pub(crate) use answer_presentation::is_canonical_answer_presentation_output;
+pub mod canonical_stream;
 pub(crate) mod compile_context;
 mod data_model_runtime;
 pub mod debug_artifacts;
@@ -121,16 +123,6 @@ pub struct StartPublishedFlowRunCommand {
     pub provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
 }
 
-/// Starts a published application-flow Compact branch with the already
-/// classified, typed provider result. The ingress is transient; the runtime
-/// persists only the Compact Response terminal receipt through the normal
-/// terminal winner path.
-pub struct StartPublishedCompactFlowRunCommand {
-    pub application_id: Uuid,
-    pub flow_run_id: Uuid,
-    pub ingress: orchestration_runtime::execution_state::CompactResponseIngress,
-}
-
 #[derive(Debug, Clone)]
 pub struct LiveProviderStreamEvent {
     pub node_id: String,
@@ -138,7 +130,7 @@ pub struct LiveProviderStreamEvent {
     pub event: ProviderStreamEvent,
 }
 
-pub type LiveProviderStreamEventSender = mpsc::UnboundedSender<LiveProviderStreamEvent>;
+pub type LiveProviderStreamEventSender = mpsc::Sender<LiveProviderStreamEvent>;
 
 #[derive(Debug, Clone, Copy)]
 struct FirstTokenTiming {
@@ -287,6 +279,8 @@ struct RuntimeProviderInvoker<R, H> {
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
+    provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
+    provider_continuation: Option<crate::ports::ProviderContinuation>,
 }
 
 struct RuntimeFlowExecutionContext {
@@ -322,6 +316,8 @@ struct ResumeExecutionSegmentInput<'a> {
 struct ResumeExecutionSegmentOutput {
     outcome: orchestration_runtime::execution_state::FlowDebugExecutionOutcome,
     prepared_node_runs: PreparedNodeRuns,
+    answer_presentation:
+        Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
@@ -474,6 +470,8 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             provider_transport_payload: None,
+            provider_transport_store: self.provider_transport_store.clone(),
+            provider_continuation: None,
         }
     }
 
@@ -497,6 +495,8 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             provider_transport_payload: None,
+            provider_transport_store: self.provider_transport_store.clone(),
+            provider_continuation: None,
         }
     }
 
@@ -528,6 +528,26 @@ where
             .runtime_invoker(input.application.workspace_id)
             .for_flow_run(input.flow_run.id)
             .with_flow_execution_context(flow_execution_context);
+        let provider_continuation = if orchestration_runtime::execution_engine::pending_llm_tool_callback_requires_ephemeral_provider_continuation(
+            &input.snapshot.variable_pool,
+            input.waiting_node_id,
+        ) {
+            let store = self
+                .provider_transport_store
+                .as_ref()
+                .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?;
+            Some(
+                store
+                    .get_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
+                        input.flow_run.id,
+                    ))
+                    .await?
+                    .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?,
+            )
+        } else {
+            None
+        };
+        let invoker = invoker.with_provider_continuation(provider_continuation);
         let answer_presentation = answer_presentation::AnswerPresentationCursor::from_plan(
             input.compiled_plan,
         )
@@ -542,12 +562,21 @@ where
             }
             Arc::new(tokio::sync::Mutex::new(cursor))
         });
-        let invoker = match answer_presentation {
-            Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation),
+        let invoker = match &answer_presentation {
+            Some(answer_presentation) => {
+                invoker.with_answer_presentation(answer_presentation.clone())
+            }
             None => invoker,
         };
         let mut runtime_context =
             self.execution_runtime_context(input.compiled_plan, &input.snapshot.variable_pool)?;
+        runtime_context = self
+            .attach_provider_protocol_context(
+                input.flow_run.id,
+                &input.flow_run.input_payload,
+                runtime_context,
+            )
+            .await;
         if let Some(http_file_persister) = self.http_response_file_persister(input.actor.clone()) {
             runtime_context =
                 runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
@@ -567,6 +596,7 @@ where
         Ok(ResumeExecutionSegmentOutput {
             outcome,
             prepared_node_runs: lifecycle.prepared_node_runs()?,
+            answer_presentation,
         })
     }
 
@@ -855,23 +885,6 @@ where
             command.application_id,
             command.flow_run_id,
             command.provider_transport_slot,
-            None,
-        )
-        .await
-    }
-
-    pub async fn start_published_compact_flow_run(
-        &self,
-        command: StartPublishedCompactFlowRunCommand,
-    ) -> Result<domain::ApplicationRunDetail>
-    where
-        R: crate::ports::FileManagementRepository,
-    {
-        self.start_published_flow_run_inner(
-            command.application_id,
-            command.flow_run_id,
-            None,
-            Some(command.ingress),
         )
         .await
     }
@@ -881,9 +894,6 @@ where
         application_id: Uuid,
         flow_run_id: Uuid,
         provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
-        compact_response_ingress: Option<
-            orchestration_runtime::execution_state::CompactResponseIngress,
-        >,
     ) -> Result<domain::ApplicationRunDetail>
     where
         R: crate::ports::FileManagementRepository,
@@ -901,9 +911,6 @@ where
         ) {
             return Err(ControlPlaneError::InvalidInput("run_mode").into());
         }
-        let provider_transport_payload = self
-            .resolve_provider_transport_payload(&flow_run, provider_transport_slot)
-            .await?;
         let actor = ApplicationRepository::load_actor_context_for_user(
             &self.repository,
             flow_run.created_by,
@@ -987,8 +994,13 @@ where
             flow_run_id: running.id,
             workspace_id: application.workspace_id,
         };
-        let result = match (provider_transport_payload, compact_response_ingress) {
-            (Some(payload), None) => {
+        // Keep the slot available until the complete execution segment has exhausted Provider
+        // retries. A disconnected SSE receiver does not own this background execution lifetime.
+        let provider_transport_payload = self
+            .resolve_provider_transport_payload(&running, provider_transport_slot)
+            .await?;
+        let result = match provider_transport_payload {
+            Some(payload) => {
                 live_debug_run::continue_flow_debug_run_with_provider_transport(
                     self,
                     continuation,
@@ -996,19 +1008,11 @@ where
                 )
                 .await
             }
-            (None, Some(ingress)) => {
-                live_debug_run::continue_flow_debug_run_with_compact_ingress(
-                    self,
-                    continuation,
-                    ingress,
-                )
-                .await
-            }
-            (None, None) => self.continue_flow_debug_run(continuation).await,
-            (Some(_), Some(_)) => Err(anyhow!(
-                "provider transport payload cannot be combined with compact ingress"
-            )),
+            None => self.continue_flow_debug_run(continuation).await,
         };
+        if let Some(slot_id) = provider_transport_slot {
+            self.delete_provider_transport_slot(slot_id).await;
+        }
         let detail = match result {
             Ok(detail) => detail,
             Err(error) => {
@@ -1137,6 +1141,7 @@ where
             compiled_plan: Some(&compiled_plan),
             outcome: &execution.outcome,
             prepared_node_runs: Some(&execution.prepared_node_runs),
+            answer_presentation: execution.answer_presentation.as_ref(),
             trigger_event_type: "flow_run_resumed",
             trigger_event_payload: json!({
                 "checkpoint_id": checkpoint.id,
@@ -1278,6 +1283,7 @@ where
             compiled_plan: Some(&compiled_plan),
             outcome: &execution.outcome,
             prepared_node_runs: Some(&execution.prepared_node_runs),
+            answer_presentation: execution.answer_presentation.as_ref(),
             trigger_event_type: "flow_run_resumed",
             trigger_event_payload: json!({
                 "callback_task_id": callback_task.id,
@@ -1426,6 +1432,7 @@ where
             compiled_plan: Some(compiled_plan),
             outcome: &resumed_execution.outcome,
             prepared_node_runs: Some(&resumed_execution.prepared_node_runs),
+            answer_presentation: resumed_execution.answer_presentation.as_ref(),
             trigger_event_type: "data_model_side_effect_confirmed",
             trigger_event_payload: json!({
                 "callback_task_id": callback_task.id,
@@ -1542,6 +1549,15 @@ where
                     }
                 }
             }
+        }
+        if matches!(
+            persisted.flow_run.status,
+            domain::FlowRunStatus::Succeeded
+                | domain::FlowRunStatus::Incomplete
+                | domain::FlowRunStatus::Failed
+                | domain::FlowRunStatus::Cancelled
+        ) {
+            self.clear_provider_protocol_contexts(flow_run_id).await;
         }
         Ok(persisted.flow_run)
     }

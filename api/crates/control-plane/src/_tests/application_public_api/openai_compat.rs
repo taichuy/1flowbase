@@ -4,13 +4,12 @@ use control_plane::application_public_api::compat::openai::{
     OpenAiResponsesEndpoint, OpenAiResponsesRequestContext,
 };
 use control_plane::application_public_api::native::{
-    CompactionProfile, CompactionResultRequirement, NativeExecutionOperation,
-    RemoteCompactionProfile,
+    compaction_intent, CompactionProfile, CompactionResultRequirement,
 };
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationSafeRepresentation,
 };
-use control_plane::application_public_api::run_service::GenerateExecutionProfile;
+use domain::{AiNativeCompactProfile, AiNativeGenerateProfile, AiNativeOperation};
 use serde_json::{json, Value};
 
 fn base_request() -> Value {
@@ -49,10 +48,7 @@ fn assert_compaction_intent(
     profile: CompactionProfile,
     result_requirement: CompactionResultRequirement,
 ) {
-    let intent = request
-        .execution
-        .execution_operation()
-        .compaction_intent()
+    let intent = compaction_intent(*request.execution.execution_operation())
         .expect("Codex compaction evidence must select a compaction intent");
     assert_eq!(intent.profile(), profile);
     assert_eq!(intent.result_requirement(), result_requirement);
@@ -658,16 +654,82 @@ fn d2_ac_001_openai_trimmed_user_is_recorded_as_normalized() {
 }
 
 #[test]
-fn d2_ac_001_chat_unknown_field_is_rejected_with_a_safe_receipt() {
+fn d2_ac_001_chat_unknown_field_is_preserved_in_one_safe_protocol_residual() {
     let mut request = base_request();
     request["unmapped_top_level_option"] = json!(true);
 
-    let error = translate_chat_completion_request(request)
-        .expect_err("unknown Chat field must not be silently dropped");
+    let translated = translate_chat_completion_request(request)
+        .expect("safe unknown Chat roots should stay protocol-authentic");
 
-    assert!(error
+    assert!(translated
         .report
-        .has_decision("$.<unknown>[0]", TranslationDecisionKind::Rejected));
+        .has_decision("$.<unknown>[0]", TranslationDecisionKind::Exact));
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Chat root should create a protocol residual");
+    assert_eq!(envelope.source_protocol, "openai_chat");
+    assert_eq!(envelope.body["unmapped_top_level_option"], true);
+    for typed in ["model", "messages", "max_tokens"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
+}
+
+#[test]
+fn openai_responses_unknown_root_is_residual_without_duplicating_typed_roots() {
+    let translated = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": "hello",
+        "stream": true,
+        "future_responses_extension": {"shape": "opaque"}
+    }))
+    .expect("safe unknown Responses root should stay protocol-authentic");
+
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Responses root should create a protocol residual");
+    assert_eq!(envelope.source_protocol, "openai_responses");
+    assert_eq!(
+        envelope.body["future_responses_extension"]["shape"],
+        "opaque"
+    );
+    for typed in ["model", "input", "stream"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
+}
+
+#[test]
+fn wp_d2a_chat_and_responses_reasoning_have_one_typed_owner() {
+    let chat = translate_chat_completion_request(json!({
+        "model": "gpt-compatible",
+        "messages": [{"role": "user", "content": "hello"}],
+        "reasoning_effort": "high"
+    }))
+    .expect("Chat reasoning effort should map to Native");
+    let responses = translate_response_request(json!({
+        "model": "gpt-compatible",
+        "input": "hello",
+        "reasoning": {"effort": "xhigh"}
+    }))
+    .expect("Responses reasoning effort should map to Native");
+
+    for (translated, effort) in [(chat, "high"), (responses, "xhigh")] {
+        let execution = serde_json::to_value(&translated.request.execution)
+            .expect("typed execution should serialize");
+        assert_eq!(
+            execution["model_parameters"]["reasoning"]["mode"],
+            json!("enabled")
+        );
+        assert_eq!(
+            execution["model_parameters"]["reasoning"]["effort"],
+            json!(effort)
+        );
+        assert!(
+            translated.request.client_protocol_envelope.is_none(),
+            "typed reasoning must not remain in an opaque protocol residual"
+        );
+    }
 }
 
 #[test]
@@ -1009,17 +1071,17 @@ fn d2_f1_openai_nested_failures_reject_the_messages_and_input_containers() {
 }
 
 #[test]
-fn d2_f1_openai_unknown_defined_keys_are_anonymous_and_complete() {
+fn d2_f1_openai_unknown_defined_keys_are_anonymous_and_preserved_as_residuals() {
     let alpha = "D2-F1-OPENAI-UNKNOWN-KEY-ALPHA";
     let beta = "D2-F1-OPENAI-UNKNOWN-KEY-BETA";
-    let error = translate_chat_completion_request(json!({
+    let translated = translate_chat_completion_request(json!({
         "model": "gpt-compatible",
         "messages": [{"role": "user", "content": "hello"}],
         alpha: true,
         beta: false
     }))
-    .expect_err("unknown Chat keys must not become receipt content");
-    let unknown_paths = error
+    .expect("safe unknown Chat roots should remain protocol-authentic residuals");
+    let unknown_paths = translated
         .report
         .decisions
         .iter()
@@ -1027,9 +1089,21 @@ fn d2_f1_openai_unknown_defined_keys_are_anonymous_and_complete() {
         .map(|decision| decision.source_path.as_str())
         .collect::<Vec<_>>();
     assert_eq!(unknown_paths, ["$.<unknown>[0]", "$.<unknown>[1]"]);
-    let serialized = serde_json::to_string(&error.report).expect("receipt serializes");
+    assert!(translated
+        .report
+        .decisions
+        .iter()
+        .filter(|decision| decision.source_path.starts_with("$.<unknown>"))
+        .all(|decision| decision.kind == TranslationDecisionKind::Exact));
+    let serialized = serde_json::to_string(&translated.report).expect("receipt serializes");
     assert!(!serialized.contains(alpha));
     assert!(!serialized.contains(beta));
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .expect("unknown Chat roots should create one residual envelope");
+    assert_eq!(envelope.body[alpha], true);
+    assert_eq!(envelope.body[beta], false);
 }
 
 #[test]
@@ -1115,7 +1189,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
     .expect("Codex local compaction metadata should be explicit enough to classify");
     assert_eq!(
         local.request.execution.execution_operation(),
-        &NativeExecutionOperation::Generate(GenerateExecutionProfile::LocalSummary)
+        &AiNativeOperation::Generate(AiNativeGenerateProfile::LocalSummary)
     );
     assert_compaction_intent(
         &local.request,
@@ -1131,7 +1205,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
     .expect("Codex legacy compact endpoint should select its dedicated profile");
     assert_eq!(
         legacy.request.execution.execution_operation(),
-        &NativeExecutionOperation::Compact(RemoteCompactionProfile::ResponsesCompact)
+        &AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompact)
     );
     assert_compaction_intent(
         &legacy.request,
@@ -1152,7 +1226,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
     .expect("Codex V2 trigger and metadata should select the opaque V2 profile");
     assert_eq!(
         v2.request.execution.execution_operation(),
-        &NativeExecutionOperation::Compact(RemoteCompactionProfile::ResponsesCompactionV2)
+        &AiNativeOperation::Compact(AiNativeCompactProfile::ResponsesCompactionV2)
     );
     assert_compaction_intent(
         &v2.request,
@@ -1169,7 +1243,7 @@ fn k1_ordinary_summary_and_uncaptured_client_compaction_stay_generate() {
     .expect("ordinary summarization text remains a Generate request");
     assert_eq!(
         ordinary_summary.request.execution.execution_operation(),
-        &NativeExecutionOperation::Generate(GenerateExecutionProfile::Standard)
+        &AiNativeOperation::Generate(AiNativeGenerateProfile::Standard)
     );
 
     let regular_metadata = translate_response_request(json!({
@@ -1180,7 +1254,7 @@ fn k1_ordinary_summary_and_uncaptured_client_compaction_stay_generate() {
     .expect("regular OpenAI metadata is not captured Codex compaction evidence");
     assert_eq!(
         regular_metadata.request.execution.execution_operation(),
-        &NativeExecutionOperation::Generate(GenerateExecutionProfile::Standard)
+        &AiNativeOperation::Generate(AiNativeGenerateProfile::Standard)
     );
 }
 

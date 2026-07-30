@@ -17,6 +17,20 @@ pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.respons
 pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
     "compact.responses_compaction_v2";
 pub const PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY: &str = "responses.native_passthrough";
+pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY: &str =
+    "protocol_context.consume.anthropic_messages.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY: &str =
+    "protocol_context.consume.openai_chat.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY: &str =
+    "protocol_context.consume.openai_responses.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY: &str =
+    "protocol_context.restore.anthropic_messages.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY: &str =
+    "protocol_context.restore.openai_chat.v1";
+pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY: &str =
+    "protocol_context.restore.openai_responses.v1";
+pub const PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY: &str =
+    "1flowbase_generate_translation";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -403,6 +417,7 @@ pub enum ProviderInvocationCapability {
     SystemPromptBlocks,
     SystemPromptCacheControl,
     EndUserReference,
+    ProtocolContext,
 }
 
 impl ProviderInvocationCapability {
@@ -418,7 +433,56 @@ impl ProviderInvocationCapability {
             Self::SystemPromptBlocks => "system_prompt_blocks",
             Self::SystemPromptCacheControl => "system_prompt_cache_control",
             Self::EndUserReference => "end_user_reference",
+            // Kept as an input compatibility marker for host call sites. It is stripped before
+            // provider projection and is not a package manifest capability.
+            Self::ProtocolContext => "protocol_context",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderGenerateTranslationDecision {
+    OmittedSystemPromptCacheControl,
+    OmittedEndUserReference,
+    OmittedProtocolContextProfileMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderGenerateTranslationReceipt {
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub decisions: BTreeSet<ProviderGenerateTranslationDecision>,
+}
+
+impl ProviderGenerateTranslationReceipt {
+    pub fn attach_to_provider_metadata(
+        &self,
+        provider_metadata: &mut Value,
+    ) -> Result<(), PluginFrameworkError> {
+        if self.decisions.is_empty() {
+            return Ok(());
+        }
+        if provider_metadata.is_null() {
+            *provider_metadata = empty_provider_metadata();
+        }
+        let metadata = provider_metadata.as_object_mut().ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_contract(
+                "provider metadata must be an object when Generate translation decisions exist",
+            )
+        })?;
+        if metadata.contains_key(PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY) {
+            return Err(PluginFrameworkError::invalid_provider_contract(format!(
+                "provider metadata must not define reserved key {PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY}"
+            )));
+        }
+        metadata.insert(
+            PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY.to_string(),
+            serde_json::to_value(self).map_err(|error| {
+                PluginFrameworkError::invalid_provider_contract(error.to_string())
+            })?,
+        );
+        Ok(())
     }
 }
 
@@ -463,12 +527,16 @@ pub struct ProviderMessage {
     pub content_blocks: Option<Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct ClientProtocolEnvelope {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ProtocolContextEnvelope {
     pub source_protocol: String,
-    pub policy: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub headers: BTreeMap<String, String>,
+    pub query: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub body: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -522,7 +590,7 @@ pub struct ProviderInvocationInput {
     #[serde(default)]
     pub model_parameters: BTreeMap<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_transport: Option<ProviderNativeTransport>,
     #[serde(default)]
@@ -564,7 +632,7 @@ pub struct ProviderCountTokensInput {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub required_capabilities: BTreeSet<ProviderInvocationCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
 }
 
 impl Default for ProviderCountTokensInput {
@@ -608,8 +676,24 @@ impl ProviderCountTokensInput {
                 message: "CountTokens input must declare operation=count_tokens".to_string(),
             });
         }
-        let unsupported =
-            undeclared_provider_capabilities(&self.required_capabilities(), declared_capabilities);
+        if let Some(envelope) = &self.client_protocol_envelope {
+            validate_protocol_context_envelope(envelope)
+                .map_err(|message| ProviderCountTokensError::InvalidContract { message })?;
+        }
+        let declared_protocol_profiles = declared_capabilities
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let mut invocation = self.clone();
+        project_protocol_context_envelope(
+            &mut invocation.client_protocol_envelope,
+            &mut invocation.required_capabilities,
+            &declared_protocol_profiles,
+        );
+        let unsupported = undeclared_provider_capabilities(
+            &invocation.required_capabilities(),
+            declared_capabilities,
+        );
         if !unsupported.is_empty() {
             return Err(ProviderCountTokensError::Unsupported {
                 capabilities: unsupported
@@ -619,8 +703,10 @@ impl ProviderCountTokensInput {
             });
         }
 
-        serde_json::to_value(self).map_err(|error| ProviderCountTokensError::InvalidContract {
-            message: error.to_string(),
+        serde_json::to_value(invocation).map_err(|error| {
+            ProviderCountTokensError::InvalidContract {
+                message: error.to_string(),
+            }
         })
     }
 }
@@ -746,8 +832,16 @@ impl ProviderInvocationInput {
         &self,
         declared_capabilities: &[String],
     ) -> Result<Value, PluginFrameworkError> {
-        let invocation = self
-            .prepared_current_provider_invocation()
+        self.to_current_provider_generate_wire_value(declared_capabilities)
+            .map(|(wire_value, _)| wire_value)
+    }
+
+    pub fn to_current_provider_generate_wire_value(
+        &self,
+        declared_capabilities: &[String],
+    ) -> Result<(Value, ProviderGenerateTranslationReceipt), PluginFrameworkError> {
+        let (invocation, receipt) = self
+            .prepared_current_provider_generate_invocation(declared_capabilities)
             .map_err(PluginFrameworkError::invalid_provider_contract)?;
         let unsupported = undeclared_provider_capabilities(
             &invocation.required_capabilities,
@@ -765,8 +859,9 @@ impl ProviderInvocationInput {
             )));
         }
 
-        serde_json::to_value(invocation)
-            .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
+        let wire_value = serde_json::to_value(invocation)
+            .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))?;
+        Ok((wire_value, receipt))
     }
 
     // Compact errors preserve the same typed upstream diagnostics contract.
@@ -778,9 +873,18 @@ impl ProviderInvocationInput {
         let profile = self
             .compact_profile()
             .map_err(|message| ProviderCompactError::InvalidContract { message })?;
-        let invocation = self
+        let mut invocation = self
             .prepared_current_provider_invocation()
             .map_err(|message| ProviderCompactError::InvalidContract { message })?;
+        let declared_protocol_profiles = declared_capabilities
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        project_protocol_context_envelope(
+            &mut invocation.client_protocol_envelope,
+            &mut invocation.required_capabilities,
+            &declared_protocol_profiles,
+        );
         let unsupported = undeclared_provider_capabilities(
             &invocation.required_capabilities,
             declared_capabilities,
@@ -842,6 +946,77 @@ impl ProviderInvocationInput {
         Ok(invocation)
     }
 
+    fn prepared_current_provider_generate_invocation(
+        &self,
+        declared_capabilities: &[String],
+    ) -> Result<(Self, ProviderGenerateTranslationReceipt), String> {
+        self.validate_current_provider_operation()?;
+        if self.operation != ProviderWireOperation::Generate {
+            return Err("Generate translation requires operation=generate".to_string());
+        }
+        let declared_capabilities = declared_capabilities
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let mut invocation = self.clone();
+        let mut receipt = ProviderGenerateTranslationReceipt::default();
+
+        if invocation
+            .system
+            .iter()
+            .any(NativePromptBlock::has_cache_control)
+            && !declared_capabilities.contains(
+                ProviderInvocationCapability::SystemPromptCacheControl.manifest_capability_name(),
+            )
+        {
+            for block in &mut invocation.system {
+                let NativePromptBlock::Text { cache_control, .. } = block;
+                *cache_control = None;
+            }
+            for capability in [
+                ProviderInvocationCapability::SystemPromptBlocks,
+                ProviderInvocationCapability::SystemPromptCacheControl,
+            ] {
+                invocation.required_capabilities.remove(&capability);
+            }
+            receipt
+                .decisions
+                .insert(ProviderGenerateTranslationDecision::OmittedSystemPromptCacheControl);
+        }
+
+        if invocation.request_context.end_user_reference.is_some()
+            && !declared_capabilities
+                .contains(ProviderInvocationCapability::EndUserReference.manifest_capability_name())
+        {
+            invocation.request_context.end_user_reference = None;
+            invocation
+                .required_capabilities
+                .remove(&ProviderInvocationCapability::EndUserReference);
+            receipt
+                .decisions
+                .insert(ProviderGenerateTranslationDecision::OmittedEndUserReference);
+        }
+
+        if project_protocol_context_envelope(
+            &mut invocation.client_protocol_envelope,
+            &mut invocation.required_capabilities,
+            &declared_capabilities,
+        ) {
+            receipt
+                .decisions
+                .insert(ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch);
+        }
+
+        if invocation.native_transport.is_some() {
+            invocation
+                .required_capabilities
+                .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
+        }
+
+        invocation.synchronize_required_capabilities();
+        Ok((invocation, receipt))
+    }
+
     fn derived_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
         let mut capabilities = self.semantic_required_capabilities();
         if self.operation == ProviderWireOperation::Compact {
@@ -853,6 +1028,9 @@ impl ProviderInvocationInput {
     }
 
     fn validate_current_provider_operation(&self) -> Result<(), String> {
+        if let Some(envelope) = &self.client_protocol_envelope {
+            validate_protocol_context_envelope(envelope)?;
+        }
         let claimed_compact_capability = self.required_capabilities.iter().find(|capability| {
             matches!(
                 capability,
@@ -904,6 +1082,114 @@ impl ProviderInvocationInput {
 
 fn bounded_wire_count(length: usize) -> u32 {
     u32::try_from(length).unwrap_or(u32::MAX)
+}
+
+fn project_protocol_context_envelope(
+    envelope: &mut Option<ProtocolContextEnvelope>,
+    required_capabilities: &mut BTreeSet<ProviderInvocationCapability>,
+    declared_capabilities: &BTreeSet<&str>,
+) -> bool {
+    required_capabilities.remove(&ProviderInvocationCapability::ProtocolContext);
+    let Some(source_protocol) = envelope
+        .as_ref()
+        .map(|envelope| envelope.source_protocol.trim())
+    else {
+        return false;
+    };
+    if protocol_context_profile_is_declared(source_protocol, declared_capabilities) {
+        return false;
+    }
+    *envelope = None;
+    true
+}
+
+fn protocol_context_profile_is_declared(
+    source_protocol: &str,
+    declared_capabilities: &BTreeSet<&str>,
+) -> bool {
+    let profiles = match source_protocol {
+        "anthropic_messages" => [
+            PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+        ],
+        "openai_chat" => [
+            PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
+        ],
+        "openai_responses" => [
+            PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
+            PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
+        ],
+        _ => return false,
+    };
+    profiles
+        .iter()
+        .any(|profile| declared_capabilities.contains(profile))
+}
+
+fn validate_protocol_context_envelope(envelope: &ProtocolContextEnvelope) -> Result<(), String> {
+    if envelope.source_protocol.trim().is_empty() {
+        return Err("protocol context source_protocol must not be empty".to_string());
+    }
+    if envelope
+        .query
+        .keys()
+        .chain(envelope.headers.keys())
+        .chain(envelope.body.keys())
+        .any(|name| !protocol_context_root_field_is_safe(name))
+        || envelope
+            .body
+            .values()
+            .any(protocol_context_value_contains_unsafe_field)
+    {
+        return Err(
+            "protocol context contains a reserved, typed, or credential-bearing field".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn protocol_context_root_field_is_safe(name: &str) -> bool {
+    const TYPED_ROOTS: &str = "contract-version operation profile provider-instance-id provider-code protocol model previous-response-id provider-config messages system request-context required-capabilities tools mcp-bindings response-format model-parameters client-protocol-envelope native-transport trace-context run-context";
+    let normalized = normalized_protocol_context_field(name);
+    protocol_context_field_is_safe(&normalized)
+        && !TYPED_ROOTS
+            .split_ascii_whitespace()
+            .any(|typed| typed == normalized.as_str())
+}
+
+fn protocol_context_value_contains_unsafe_field(value: &Value) -> bool {
+    match value {
+        Value::Array(values) => values
+            .iter()
+            .any(protocol_context_value_contains_unsafe_field),
+        Value::Object(object) => object.iter().any(|(name, value)| {
+            !protocol_context_field_is_safe(name)
+                || protocol_context_value_contains_unsafe_field(value)
+        }),
+        _ => false,
+    }
+}
+
+fn normalized_protocol_context_field(name: &str) -> String {
+    name.trim().to_ascii_lowercase().replace('_', "-")
+}
+
+fn protocol_context_field_is_safe(name: &str) -> bool {
+    const BLOCKED_FIELDS: &str = "auth authentication authentication-info authorization x-authorization proxy-authorization proxy-authenticate proxy-authentication-info www-authenticate x-api-key api-key x-auth-token auth-token bearer-token x-access-token access-token refresh-token id-token client-secret api-secret password passwd x-csrf-token x-xsrf-token csrf-token cookie set-cookie host connection proxy-connection keep-alive te trailer transfer-encoding upgrade content-length client-protocol-envelope native-model-prompt-context native-model-request-context native-transport provider-transport request-context run-context trace-context compatibility-mode sys env trigger forwarded via x-real-ip true-client-ip cf-connecting-ip cf-ray traceparent tracestate baggage x-request-id internal x-internal 1flowbase x-1flowbase";
+    let normalized = normalized_protocol_context_field(name);
+    if normalized.is_empty() || normalized.starts_with("--") {
+        return false;
+    }
+    !BLOCKED_FIELDS
+        .split_ascii_whitespace()
+        .any(|blocked| blocked == normalized.as_str())
+        && !normalized.starts_with("x-1flowbase-")
+        && !normalized.starts_with("x-internal-")
+        && !normalized.starts_with("internal-")
+        && !normalized.starts_with("x-forwarded-")
+        && !normalized.starts_with("x-envoy-")
+        && !normalized.starts_with("x-amzn-")
 }
 
 fn provider_invocation_capability_name(capability: &ProviderInvocationCapability) -> &'static str {
@@ -964,6 +1250,8 @@ pub enum ProviderRuntimeErrorKind {
     AuthFailed,
     EndpointUnreachable,
     ModelNotFound,
+    ProviderAffinityMismatch,
+    ProviderTransportUnavailable,
     RateLimited,
     ProviderUpstreamError,
     ProviderInvalidResponse,
@@ -1118,34 +1406,98 @@ impl std::error::Error for ProviderCompactError {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderStreamEvent {
-    NativeEvent { protocol: String, event: Value },
-    TextDelta { delta: String },
-    ReasoningDelta { delta: String },
-    ToolCallDelta { call_id: String, delta: Value },
-    ToolCallCommit { call: ProviderToolCall },
-    McpCallDelta { call_id: String, delta: Value },
-    McpCallCommit { call: ProviderMcpCall },
-    UsageDelta { usage: ProviderUsage },
-    UsageSnapshot { usage: ProviderUsage },
-    Finish { reason: ProviderFinishReason },
-    Error { error: ProviderRuntimeError },
+    NativeEvent {
+        protocol: String,
+        event: Value,
+    },
+    TextDelta {
+        delta: String,
+    },
+    ReasoningDelta {
+        delta: String,
+    },
+    ToolCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    ToolCallCommit {
+        call: ProviderToolCall,
+    },
+    McpCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    McpCallCommit {
+        call: ProviderMcpCall,
+    },
+    OutputItem {
+        phase: ProviderOutputItemPhase,
+        output_index: usize,
+        #[serde(deserialize_with = "deserialize_provider_output_item")]
+        item: Value,
+    },
+    UsageDelta {
+        usage: ProviderUsage,
+    },
+    UsageSnapshot {
+        usage: ProviderUsage,
+    },
+    Finish {
+        reason: ProviderFinishReason,
+    },
+    Error {
+        error: ProviderRuntimeError,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRuntimeLine {
-    NativeEvent { protocol: String, event: Value },
-    TextDelta { delta: String },
-    ReasoningDelta { delta: String },
-    ToolCallDelta { call_id: String, delta: Value },
-    ToolCallCommit { call: ProviderToolCall },
-    McpCallDelta { call_id: String, delta: Value },
-    McpCallCommit { call: ProviderMcpCall },
-    UsageDelta { usage: ProviderUsage },
-    UsageSnapshot { usage: ProviderUsage },
-    Finish { reason: ProviderFinishReason },
-    Error { error: ProviderRuntimeError },
-    Result { result: ProviderInvocationResult },
+    NativeEvent {
+        protocol: String,
+        event: Value,
+    },
+    TextDelta {
+        delta: String,
+    },
+    ReasoningDelta {
+        delta: String,
+    },
+    ToolCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    ToolCallCommit {
+        call: ProviderToolCall,
+    },
+    McpCallDelta {
+        call_id: String,
+        delta: Value,
+    },
+    McpCallCommit {
+        call: ProviderMcpCall,
+    },
+    OutputItem {
+        phase: ProviderOutputItemPhase,
+        output_index: usize,
+        #[serde(deserialize_with = "deserialize_provider_output_item")]
+        item: Value,
+    },
+    UsageDelta {
+        usage: ProviderUsage,
+    },
+    UsageSnapshot {
+        usage: ProviderUsage,
+    },
+    Finish {
+        reason: ProviderFinishReason,
+    },
+    Error {
+        error: ProviderRuntimeError,
+    },
+    Result {
+        result: ProviderInvocationResult,
+    },
 }
 
 impl ProviderRuntimeLine {
@@ -1164,6 +1516,15 @@ impl ProviderRuntimeLine {
                 Some(ProviderStreamEvent::McpCallDelta { call_id, delta })
             }
             Self::McpCallCommit { call } => Some(ProviderStreamEvent::McpCallCommit { call }),
+            Self::OutputItem {
+                phase,
+                output_index,
+                item,
+            } => Some(ProviderStreamEvent::OutputItem {
+                phase,
+                output_index,
+                item,
+            }),
             Self::UsageDelta { usage } => Some(ProviderStreamEvent::UsageDelta { usage }),
             Self::UsageSnapshot { usage } => Some(ProviderStreamEvent::UsageSnapshot { usage }),
             Self::Finish { reason } => Some(ProviderStreamEvent::Finish { reason }),
@@ -1171,4 +1532,61 @@ impl ProviderRuntimeLine {
             Self::Result { .. } => None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderOutputItemPhase {
+    Added,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProviderOutputItemValidationError {
+    #[error("provider output item must be an object")]
+    NotObject,
+    #[error("provider output item id must be a non-empty string")]
+    InvalidId,
+    #[error("provider output item type is not supported by the typed Responses projection")]
+    InvalidType,
+}
+
+pub fn validate_provider_output_item(
+    item: &Value,
+) -> Result<(), ProviderOutputItemValidationError> {
+    let object = item
+        .as_object()
+        .ok_or(ProviderOutputItemValidationError::NotObject)?;
+    if !matches!(
+        object.get("id").and_then(Value::as_str),
+        Some(id) if !id.trim().is_empty()
+    ) {
+        return Err(ProviderOutputItemValidationError::InvalidId);
+    }
+    if !matches!(
+        object.get("type").and_then(Value::as_str),
+        Some(
+            "tool_search_call"
+                | "tool_search_output"
+                | "additional_tools"
+                | "file_search_call"
+                | "program"
+                | "shell_call"
+                | "mcp_list_tools"
+                | "mcp_call"
+                | "mcp_approval_request"
+        )
+    ) {
+        return Err(ProviderOutputItemValidationError::InvalidType);
+    }
+    Ok(())
+}
+
+fn deserialize_provider_output_item<'de, D>(deserializer: D) -> Result<Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let item = Value::deserialize(deserializer)?;
+    validate_provider_output_item(&item).map_err(serde::de::Error::custom)?;
+    Ok(item)
 }

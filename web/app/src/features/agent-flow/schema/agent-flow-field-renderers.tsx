@@ -1,11 +1,13 @@
 import type { ConsoleReferencedI18nMessage } from '@1flowbase/api-client';
 import type {
+  FlowAuthoringDocument,
   FlowConditionGroupDocument,
   FlowNodeDocument,
   IfElseBranchDocument
 } from '@1flowbase/flow-schema';
+import { DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE } from '@1flowbase/flow-schema';
 import type { ReactNode } from 'react';
-import { Input, InputNumber, Select, Switch, Typography } from 'antd';
+import { Cascader, Input, InputNumber, Select, Switch, Typography } from 'antd';
 
 import type {
   SchemaFieldRenderer,
@@ -56,13 +58,16 @@ import {
 import { normalizeIfElseBranches } from '../lib/if-else-branches';
 import {
   getLlmContextPolicy,
-  getLlmExternalReasoningPolicy
+  getLlmExternalReasoningPolicy,
+  getLlmProtocolContextReference
 } from '../lib/llm-node-config';
 import { HTTP_REQUEST_METHOD_OPTIONS } from '../lib/http-request/contract';
 import { getNamedBindingExpression } from '../lib/named-binding-expressions';
 import {
   encodeSelectorValue,
   decodeSelectorValue,
+  listLlmProtocolContextSelectorOptions,
+  toCascaderSelectorOptions,
   type FlowSelectorOption
 } from '../lib/selector-options';
 import type { AgentFlowConversationVariable } from '../lib/variables/conversation-variables';
@@ -199,7 +204,73 @@ function renderSwitchField({ adapter, block }: SchemaFieldRendererProps) {
   );
 }
 
-function renderSelectorField({ adapter, block }: SchemaFieldRendererProps) {
+function renderLlmProtocolContextField({
+  adapter,
+  block
+}: SchemaFieldRendererProps) {
+  const reference = getLlmProtocolContextReference({
+    protocol_context: adapter.getValue(block.path)
+  });
+  const document = adapter.getDerived('document') as
+    | FlowAuthoringDocument
+    | undefined;
+  const node = adapter.getDerived('node') as FlowNodeDocument | undefined;
+  const options =
+    document && node
+      ? listLlmProtocolContextSelectorOptions(document, node.id)
+      : [];
+
+  return (
+    <div
+      className="agent-flow-node-detail__context-policy"
+      data-testid="agent-flow-llm-protocol-context"
+    >
+      <Cascader
+        allowClear={false}
+        aria-label={`${block.label}变量`}
+        className="agent-flow-node-detail__context-select"
+        disabled={reference === null}
+        options={toCascaderSelectorOptions(options)}
+        value={reference?.value ?? []}
+        onChange={(nextValue) => {
+          const selector = Array.isArray(nextValue)
+            ? nextValue.map(String)
+            : [];
+
+          if (selector.length >= 2) {
+            adapter.setValue(block.path, {
+              kind: 'selector',
+              value: selector
+            });
+          }
+        }}
+      />
+      <Switch
+        aria-label={block.label}
+        checked={reference !== null}
+        onChange={(checked) =>
+          adapter.setValue(
+            block.path,
+            checked
+              ? {
+                  kind: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.kind,
+                  value: [...DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value]
+                }
+              : null
+          )
+        }
+      />
+    </div>
+  );
+}
+
+function renderSelectorField(props: SchemaFieldRendererProps) {
+  if (props.block.path === 'config.protocol_context') {
+    return renderLlmProtocolContextField(props);
+  }
+
+  const { adapter, block } = props;
+
   const value = adapter.getValue(block.path);
   const binding = getBindingValue<string[]>(value, 'selector', []);
 

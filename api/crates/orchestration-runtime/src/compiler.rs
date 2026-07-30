@@ -8,8 +8,7 @@ use crate::compiled_plan::{
     CodeExecutorCapability, CodeIsolationProfile, CompileIssue, CompileIssueCode, CompiledBinding,
     CompiledCodeDependency, CompiledCodeRuntime, CompiledEdge, CompiledI18nTextRef,
     CompiledLlmRouteTarget, CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput,
-    CompiledPlan, CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode, StartCompactDispatch,
-    COMPACT_SOURCE_HANDLE_ID,
+    CompiledPlan, CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
 };
 use crate::output_schema::{history_messages_schema, output_schema_is_llm_context_messages};
 use crate::payload_builder::PublicOutputContract;
@@ -35,8 +34,6 @@ pub fn ensure_plan_execution_contract(plan: &CompiledPlan) -> Result<()> {
     {
         bail!(issue.message);
     }
-    topology::validate_compact_response_topology(&plan.nodes, &plan.edges)?;
-
     Ok(())
 }
 

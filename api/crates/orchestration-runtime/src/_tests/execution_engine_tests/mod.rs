@@ -8,9 +8,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
-        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage,
+        ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
+        ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::{json, Value};
@@ -18,16 +20,19 @@ use uuid::Uuid;
 
 use crate::{
     compiled_plan::{
-        CompiledBinding, CompiledCodeRuntime, CompiledEdge, CompiledLlmRouteTarget,
-        CompiledLlmRouting, CompiledLlmRuntime, CompiledNode, CompiledOutput, CompiledPlan,
-        CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
+        CodeIsolationProfile, CompiledBinding, CompiledCodeRuntime, CompiledEdge,
+        CompiledLlmRouteTarget, CompiledLlmRouting, CompiledLlmRuntime, CompiledNode,
+        CompiledOutput, CompiledPlan, CompiledPluginRuntime, LlmDistributionRule, LlmRoutingMode,
     },
     execution_engine::{
         resume_flow_debug_run, start_flow_debug_run, start_flow_debug_run_with_runtime_context,
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
         ExecutionRuntimeContext, LlmRoutingCounterStore, ProviderInvocationOutput, ProviderInvoker,
     },
-    execution_state::ExecutionStopReason,
+    execution_state::{
+        compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
+        ExecutionStopReason,
+    },
 };
 
 struct StubProviderInvoker {
@@ -199,6 +204,7 @@ impl_noop_code_invoker!(
     UnknownCapabilityOutputInvoker,
     ReservedCapabilityOutputInvoker,
     RuntimeContractErrorInvoker,
+    InvalidProviderContractInvoker,
     ProviderUpstreamErrorInvoker,
     FailsAfterFirstTokenInvoker,
     InputCacheUsageSnapshotInvoker,
@@ -241,7 +247,41 @@ impl CapabilityInvoker for RuntimeContractErrorInvoker {
     }
 }
 
+struct InvalidProviderContractInvoker;
+
+const INVALID_PROVIDER_CONTRACT_DISPLAY: &str =
+    "invalid provider contract: provider stream invocation must declare operation=generate";
+
+#[async_trait]
+impl ProviderInvoker for InvalidProviderContractInvoker {
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        Err(PluginFrameworkError::invalid_provider_contract(
+            "provider stream invocation must declare operation=generate",
+        )
+        .into())
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for InvalidProviderContractInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("base plan does not execute capability nodes")
+    }
+}
+
 struct ProviderUpstreamErrorInvoker;
+
+const PROVIDER_UPSTREAM_ERROR_BODY: &str =
+    " {\"future_error\":{\"shape\":\"unknown\"},\"message\":\"keep complete body\"}\n ";
 
 #[async_trait]
 impl ProviderInvoker for ProviderUpstreamErrorInvoker {
@@ -254,21 +294,11 @@ impl ProviderInvoker for ProviderUpstreamErrorInvoker {
             events: vec![ProviderStreamEvent::Error {
                 error: ProviderRuntimeError {
                     kind: ProviderRuntimeErrorKind::ProviderUpstreamError,
-                    message: "400 Bad Request: OpenAI codex passthrough requires a non-empty instructions field".to_string(),
-                    provider_summary: Some(
-                        "Authorization: Bearer sk-secret-value; x-request-id=req_123".to_string(),
-                    ),
+                    message: PROVIDER_UPSTREAM_ERROR_BODY.to_string(),
+                    provider_summary: Some(PROVIDER_UPSTREAM_ERROR_BODY.to_string()),
                     provider_details: Some(json!({
                         "status": 400,
-                        "content_type": "application/json; charset=utf-8",
-                        "headers": {
-                            "content-type": "application/json; charset=utf-8",
-                            "x-request-id": "req_123"
-                        },
-                        "raw_body": concat!(
-                            "{\"error\":{\"message\":\"OpenAI codex passthrough requires a non-empty instructions field\"}}\n",
-                            "data: {\"type\":\"response.failed\"}\n\n"
-                        )
+                        "request_id": "req_123"
                     })),
                 },
             }],
@@ -424,7 +454,12 @@ impl ProviderInvoker for ToolMcpMetadataInvoker {
                     arguments: json!({ "id": "order_123" }),
                 }],
                 finish_reason: Some(ProviderFinishReason::ToolCall),
-                provider_metadata: json!({ "raw_id": "provider-response-1" }),
+                provider_metadata: json!({
+                    "raw_id": "provider-response-1",
+                    (PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY): {
+                        "decisions": ["omitted_protocol_context_profile_mismatch"]
+                    }
+                }),
                 ..ProviderInvocationResult::default()
             },
             first_token_at: None,
@@ -1118,7 +1153,6 @@ fn provider_output(result: ProviderInvocationResult) -> ProviderInvocationOutput
 
 mod answer_and_failover;
 mod branches;
-mod compact_response;
 mod failures_and_parameters;
 mod http_request;
 mod human_and_tool_resume;

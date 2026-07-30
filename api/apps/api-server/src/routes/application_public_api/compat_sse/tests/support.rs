@@ -113,7 +113,7 @@ impl RuntimeEventStream for ReplayBeforeFallbackRuntimeEventStream {
         }
         Ok(RuntimeEventSubscription {
             replay: self.subscription_replay.clone(),
-            live_events,
+            live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live_events),
             closure,
         })
     }
@@ -162,6 +162,7 @@ pub(super) fn native_run() -> NativeRunResult {
         tool_calls: None,
         usage: None,
         error: None,
+        operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
 }

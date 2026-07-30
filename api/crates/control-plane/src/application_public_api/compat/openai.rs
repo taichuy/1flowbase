@@ -2,6 +2,7 @@ use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 use crate::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
+use crate::application_public_api::client_protocol_envelope::protocol_context_field_is_safe;
 
 pub use crate::application_public_api::model_catalog::{
     extract_agent_model_catalog_from_start_node as extract_model_list_from_start_node,
@@ -11,6 +12,55 @@ use crate::application_public_api::native::NativeRunRequest;
 use crate::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
 };
+
+const OPENAI_CHAT_TYPED_ROOT_FIELDS: &[&str] = &[
+    "model",
+    "messages",
+    "stream",
+    "user",
+    "metadata",
+    "max_completion_tokens",
+    "max_tokens",
+    "audio",
+    "modalities",
+    "tools",
+    "tool_choice",
+    "function_call",
+    "parallel_tool_calls",
+    "response_format",
+    "reasoning_effort",
+    "temperature",
+    "top_p",
+    "presence_penalty",
+    "frequency_penalty",
+    "seed",
+    "stop",
+    "stream_options",
+];
+const OPENAI_RESPONSES_TYPED_ROOT_FIELDS: &[&str] = &[
+    "model",
+    "input",
+    "instructions",
+    "stream",
+    "user",
+    "metadata",
+    "max_output_tokens",
+    "store",
+    "previous_response_id",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
+    "response_format",
+    "text",
+    "reasoning",
+    "background",
+    "include",
+    "prompt_cache_key",
+    "client_metadata",
+    "max_tool_calls",
+    "truncation",
+];
+const OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD: &str = "responses_optional_tools";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiCompatError {
@@ -116,7 +166,7 @@ pub fn run_id_from_response_id(response_id: &str) -> Result<Uuid, OpenAiCompatEr
         .map_err(|_| OpenAiCompatError::invalid("previous_response_id", "invalid response id"))
 }
 
-fn reject_unknown_chat_fields(
+fn validate_chat_root_fields(
     object: &Map<String, Value>,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
@@ -147,47 +197,27 @@ fn reject_unknown_chat_fields(
         );
         return Err(OpenAiCompatError::unsupported(field).with_report(report.clone()));
     }
-    let unknown_fields = object
+    let mut residual_fields = object
         .keys()
-        .filter(|field| {
-            !matches!(
-                field.as_str(),
-                "model"
-                    | "messages"
-                    | "stream"
-                    | "user"
-                    | "metadata"
-                    | "max_completion_tokens"
-                    | "max_tokens"
-                    | "audio"
-                    | "modalities"
-                    | "tools"
-                    | "tool_choice"
-                    | "function_call"
-                    | "parallel_tool_calls"
-                    | "response_format"
-                    | "reasoning_effort"
-                    | "temperature"
-                    | "top_p"
-                    | "presence_penalty"
-                    | "frequency_penalty"
-                    | "seed"
-                    | "stop"
-                    | "stream_options"
-            )
-        })
+        .filter(|field| !OPENAI_CHAT_TYPED_ROOT_FIELDS.contains(&field.as_str()))
         .collect::<Vec<_>>();
-    if report.record_anonymous_unknown_fields(
-        "$",
-        unknown_fields,
-        TranslationDecisionKind::Rejected,
-        "unknown OpenAI Chat field",
-        TranslationSafeRepresentation::Present,
-    ) > 0
-    {
-        return Err(
-            OpenAiCompatError::invalid("body", "unknown OpenAI Chat field")
-                .with_report(report.clone()),
+    residual_fields.sort_unstable();
+    for (index, field) in residual_fields.into_iter().enumerate() {
+        let retained = protocol_context_field_is_safe(field);
+        report.record(
+            &format!("$.<unknown>[{index}]"),
+            None,
+            if retained {
+                TranslationDecisionKind::Exact
+            } else {
+                TranslationDecisionKind::Dropped
+            },
+            Some(if retained {
+                "preserved in the OpenAI Chat protocol context residual"
+            } else {
+                "credential, transport, or internal fields cannot enter protocol context"
+            }),
+            TranslationSafeRepresentation::Redacted,
         );
     }
     Ok(())
@@ -590,32 +620,7 @@ fn validate_response_transport_fields(
         }
         let unknown_fields = object
             .keys()
-            .filter(|field| {
-                !matches!(
-                    field.as_str(),
-                    "model"
-                        | "input"
-                        | "instructions"
-                        | "stream"
-                        | "user"
-                        | "metadata"
-                        | "max_output_tokens"
-                        | "store"
-                        | "previous_response_id"
-                        | "tools"
-                        | "tool_choice"
-                        | "parallel_tool_calls"
-                        | "response_format"
-                        | "text"
-                        | "reasoning"
-                        | "background"
-                        | "include"
-                        | "prompt_cache_key"
-                        | "client_metadata"
-                        | "max_tool_calls"
-                        | "truncation"
-                )
-            })
+            .filter(|field| !OPENAI_RESPONSES_TYPED_ROOT_FIELDS.contains(&field.as_str()))
             .collect::<Vec<_>>();
         report.record_anonymous_unknown_fields(
             "$",
@@ -632,38 +637,13 @@ fn validate_response_transport_fields(
     accept_responses_codex_metadata_hints(object, report)?;
     let unknown_fields = object
         .keys()
-        .filter(|field| {
-            !matches!(
-                field.as_str(),
-                "model"
-                    | "input"
-                    | "instructions"
-                    | "stream"
-                    | "user"
-                    | "metadata"
-                    | "max_output_tokens"
-                    | "store"
-                    | "previous_response_id"
-                    | "tools"
-                    | "tool_choice"
-                    | "parallel_tool_calls"
-                    | "response_format"
-                    | "text"
-                    | "reasoning"
-                    | "background"
-                    | "include"
-                    | "prompt_cache_key"
-                    | "client_metadata"
-                    | "max_tool_calls"
-                    | "truncation"
-            )
-        })
+        .filter(|field| !OPENAI_RESPONSES_TYPED_ROOT_FIELDS.contains(&field.as_str()))
         .collect::<Vec<_>>();
     report.record_anonymous_unknown_fields(
         "$",
         unknown_fields,
         TranslationDecisionKind::Exact,
-        "preserved only in native Responses provider transport",
+        "preserved in the protocol context envelope for a declared Provider profile",
         TranslationSafeRepresentation::Redacted,
     );
     Ok(())
@@ -674,31 +654,24 @@ fn responses_transport_requirement(
 ) -> crate::application_public_api::native::ResponsesTransportRequirement {
     use crate::application_public_api::native::ResponsesTransportRequirement;
 
-    let has_native_only_top_level_extension = object.keys().any(|field| {
-        !matches!(
+    let has_known_native_only_top_level_field = object.keys().any(|field| {
+        matches!(
             field.as_str(),
-            "model"
-                | "input"
-                | "instructions"
-                | "stream"
-                | "user"
-                | "metadata"
-                | "max_output_tokens"
-                | "store"
-                | "previous_response_id"
-                | "tools"
-                | "tool_choice"
-                | "parallel_tool_calls"
-                | "reasoning"
-                | "include"
-                | "prompt_cache_key"
-                | "client_metadata"
+            "response_format" | "text" | "background" | "max_tool_calls" | "truncation"
         )
     });
-    let has_native_only_tools = object
-        .get("tools")
-        .and_then(Value::as_array)
-        .is_some_and(|tools| tools.iter().any(responses_tool_requires_native_passthrough));
+    let may_omit_unsupported_optional_tools = responses_may_omit_unsupported_optional_tools(object);
+    let has_native_only_tools =
+        object
+            .get("tools")
+            .and_then(Value::as_array)
+            .is_some_and(|tools| {
+                tools.iter().any(|tool| {
+                    !(may_omit_unsupported_optional_tools
+                        && responses_tool_is_unsupported_optional(tool))
+                        && responses_tool_requires_native_passthrough(tool)
+                })
+            });
     let has_native_only_tool_choice = object
         .get("tool_choice")
         .is_some_and(responses_tool_choice_requires_native_passthrough);
@@ -706,10 +679,17 @@ fn responses_transport_requirement(
         .get("input")
         .is_some_and(responses_input_requires_native_passthrough);
     let has_native_only_execution_hint = object.get("store").and_then(Value::as_bool) == Some(true)
-        || object.get("parallel_tool_calls").and_then(Value::as_bool) == Some(true)
-        || object.get("include").is_some();
+        || object
+            .get("include")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|item| item != "reasoning.encrypted_content")
+            });
 
-    if has_native_only_top_level_extension
+    if has_known_native_only_top_level_field
         || has_native_only_tools
         || has_native_only_tool_choice
         || has_native_only_input
@@ -719,6 +699,41 @@ fn responses_transport_requirement(
     } else {
         ResponsesTransportRequirement::SemanticCompatible
     }
+}
+
+fn responses_may_omit_unsupported_optional_tools(object: &Map<String, Value>) -> bool {
+    object
+        .get("tool_choice")
+        .is_none_or(responses_tool_choice_allows_optional_omission)
+}
+
+fn responses_omitted_optional_tools(object: &Map<String, Value>) -> Vec<Value> {
+    if !responses_may_omit_unsupported_optional_tools(object) {
+        return Vec::new();
+    }
+    object
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|tool| responses_tool_is_unsupported_optional(tool))
+        .cloned()
+        .collect()
+}
+
+fn responses_tool_choice_allows_optional_omission(choice: &Value) -> bool {
+    match choice {
+        Value::String(choice) => matches!(choice.as_str(), "auto" | "none"),
+        Value::Object(choice) => choice.get("type").and_then(Value::as_str) == Some("function"),
+        _ => false,
+    }
+}
+
+fn responses_tool_is_unsupported_optional(tool: &Value) -> bool {
+    tool.as_object()
+        .and_then(|tool| tool.get("type"))
+        .and_then(Value::as_str)
+        .is_some_and(|kind| matches!(kind, "namespace" | "web_search"))
 }
 
 fn responses_tool_requires_native_passthrough(tool: &Value) -> bool {
@@ -967,11 +982,11 @@ fn accept_responses_parallel_tool_calls_hint(
             report.record(
                 "$.parallel_tool_calls",
                 None,
-                TranslationDecisionKind::Unsupported,
-                Some("Native execution cannot promise parallel tool calls"),
+                TranslationDecisionKind::Dropped,
+                Some("Provider scheduling remains authoritative for Native tool calls"),
                 TranslationSafeRepresentation::Present,
             );
-            Err(OpenAiCompatError::unsupported("parallel_tool_calls").with_report(report.clone()))
+            Ok(())
         }
         None => {
             report.record(
@@ -1157,6 +1172,18 @@ fn openai_inputs(
                 );
                 continue;
             }
+            if tool_mapping == OpenAiToolMapping::ResponsesSemantic
+                && tool.get("type").and_then(Value::as_str) != Some("function")
+            {
+                report.record(
+                    &format!("$.tools[{index}]"),
+                    Some("$.client_protocol_envelope.body.responses_optional_tools[]"),
+                    TranslationDecisionKind::Exact,
+                    Some("unsupported optional Responses tool retained in protocol context"),
+                    TranslationSafeRepresentation::Redacted,
+                );
+                continue;
+            }
             let function = if tool_mapping == OpenAiToolMapping::ChatCompletions {
                 if tool.get("type").and_then(Value::as_str) != Some("function") {
                     return Err(OpenAiCompatError::invalid(
@@ -1254,6 +1281,22 @@ fn openai_inputs(
                     OpenAiCompatError::invalid("tool_choice", "tool_choice name is required")
                         .with_report(report.clone())
                 })?;
+                if tool_mapping == OpenAiToolMapping::ResponsesSemantic
+                    && !inputs
+                        .get("tools")
+                        .and_then(Value::as_array)
+                        .is_some_and(|tools| {
+                            tools
+                                .iter()
+                                .any(|tool| tool.get("name").and_then(Value::as_str) == Some(name))
+                        })
+                {
+                    return Err(OpenAiCompatError::invalid(
+                        "tool_choice",
+                        "tool_choice must select a declared function tool",
+                    )
+                    .with_report(report.clone()));
+                }
                 json!({ "type": "tool", "name": name })
             }
             _ => {
@@ -1329,8 +1372,8 @@ fn openai_reasoning(
         TranslationSafeRepresentation::Present,
     );
     Ok(Some(
-        crate::application_public_api::native::NativeReasoningParameters::with_enabled_budget_and_effort(
-            true,
+        crate::application_public_api::native::NativeReasoningParameters::with_mode_budget_and_effort(
+            crate::application_public_api::native::NativeReasoningMode::Enabled,
             None,
             Some(effort),
         ),
@@ -2879,40 +2922,38 @@ mod tests {
     }
 
     #[test]
-    fn codex_parallel_tool_calls_false_matches_published_capability() {
-        let translated = translate_response_request(json!({
-            "model": "1flowbase",
-            "input": "hello",
-            "parallel_tool_calls": false
-        }))
-        .expect("parallel_tool_calls=false matches the published model capability");
+    fn codex_parallel_tool_calls_is_an_optional_provider_scheduling_hint() {
+        for value in [false, true] {
+            let translated = translate_response_request(json!({
+                "model": "1flowbase",
+                "input": "hello",
+                "parallel_tool_calls": value
+            }))
+            .expect("parallel tool scheduling must not bind a request to an OpenAI Provider");
 
-        assert!(translated
-            .report
-            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Dropped));
+            assert!(translated
+                .report
+                .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Dropped));
+        }
     }
 
     #[test]
-    fn d4_ac_016_reasoning_encrypted_content_include_is_exact_native_transport() {
+    fn ac_016_reasoning_encrypted_content_include_is_an_optional_native_hint() {
         let mut translated = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": ["reasoning.encrypted_content"]
         }))
-        .expect("encrypted reasoning include should remain in native Responses transport");
+        .expect("encrypted reasoning include should not bind a request to an OpenAI Provider");
 
         assert!(translated
             .report
-            .has_decision("$.include", TranslationDecisionKind::Exact));
-        let payload = translated
+            .has_decision("$.include", TranslationDecisionKind::Dropped));
+        assert!(translated
             .request
             .metadata
             .take_provider_transport_payload()
-            .expect("include should remain in ephemeral provider transport");
-        assert_eq!(
-            payload.wire_body()["include"][0],
-            "reasoning.encrypted_content"
-        );
+            .is_none());
     }
 
     #[test]
@@ -2994,46 +3035,18 @@ mod tests {
     }
 
     #[test]
-    fn d4_ac_016_untyped_include_remains_exact_in_native_transport() {
-        let mut translated = translate_response_request(json!({
+    fn responses_include_requires_an_array_wire_type() {
+        let error = translate_response_request(json!({
             "model": "1flowbase",
             "input": "hello",
             "include": "reasoning.encrypted_content"
         }))
-        .expect("untyped include should remain opaque in native Responses transport");
+        .expect_err("include must retain its array wire type");
 
-        assert!(translated
+        assert_eq!(error.param.as_deref(), Some("include"));
+        assert!(error
             .report
-            .has_decision("$.include", TranslationDecisionKind::Exact));
-        let payload = translated
-            .request
-            .metadata
-            .take_provider_transport_payload()
-            .expect("untyped include should remain in ephemeral provider transport");
-        assert_eq!(
-            payload.wire_body()["include"],
-            "reasoning.encrypted_content"
-        );
-    }
-
-    #[test]
-    fn d4_ac_016_parallel_tool_calls_true_remains_exact_in_native_transport() {
-        let mut translated = translate_response_request(json!({
-            "model": "1flowbase",
-            "input": "hello",
-            "parallel_tool_calls": true
-        }))
-        .expect("parallel tool calls should remain in native Responses transport");
-
-        assert!(translated
-            .report
-            .has_decision("$.parallel_tool_calls", TranslationDecisionKind::Exact));
-        let payload = translated
-            .request
-            .metadata
-            .take_provider_transport_payload()
-            .expect("parallel tool calls should remain in ephemeral provider transport");
-        assert_eq!(payload.wire_body()["parallel_tool_calls"], true);
+            .has_decision("$.include", TranslationDecisionKind::Rejected));
     }
 
     #[test]
@@ -3124,12 +3137,13 @@ mod tests {
     }
 
     #[test]
-    fn d4_ac_001_responses_classifier_marks_opaque_tools_choices_items_and_extensions_native() {
+    fn d4_ac_001_responses_classifier_marks_opaque_tools_choices_items_and_hints_native() {
         for request in [
             json!({
                 "model": "1flowbase",
                 "input": "hi",
-                "tools": [{"type": "web_search_preview"}]
+                "tools": [{"type": "web_search_preview"}],
+                "tool_choice": "required"
             }),
             json!({
                 "model": "1flowbase",
@@ -3143,22 +3157,17 @@ mod tests {
             json!({
                 "model": "1flowbase",
                 "input": "hi",
-                "future_responses_extension": {"opaque": true}
-            }),
-            json!({
-                "model": "1flowbase",
-                "input": "hi",
-                "parallel_tool_calls": true
-            }),
-            json!({
-                "model": "1flowbase",
-                "input": "hi",
                 "store": true
             }),
             json!({
                 "model": "1flowbase",
                 "input": "hi",
-                "include": ["reasoning.encrypted_content"]
+                "truncation": "auto"
+            }),
+            json!({
+                "model": "1flowbase",
+                "input": "hi",
+                "text": {"format": {"type": "json_schema"}}
             }),
         ] {
             assert_eq!(
@@ -3168,6 +3177,136 @@ mod tests {
                 crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
             );
         }
+    }
+
+    #[test]
+    fn ac_017_codex_optional_hosted_tools_stay_in_context_without_binding_transport() {
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": [{"type": "message", "role": "user", "content": "inspect git"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "exec_command",
+                    "description": "Run a command",
+                    "parameters": {"type": "object"},
+                    "strict": false
+                },
+                {"type": "namespace", "name": "multi_agent_v1"},
+                {"type": "web_search"}
+            ],
+            "tool_choice": "auto",
+            "parallel_tool_calls": false,
+            "store": false,
+            "include": []
+        }))
+        .expect("optional Codex hosted tools should not bind a cross-provider request");
+
+        assert_eq!(
+            translated.request.metadata.responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        );
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            translated.request.inputs.as_value()["tools"][0]["name"],
+            "exec_command"
+        );
+        assert!(translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .is_none());
+        let envelope = translated
+            .request
+            .client_protocol_envelope
+            .expect("omitted tools remain available to a matching Provider profile");
+        assert_eq!(
+            envelope.body[OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            envelope.body[OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD][0]["type"],
+            "namespace"
+        );
+        assert_eq!(
+            envelope.body[OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD][1]["type"],
+            "web_search"
+        );
+        assert!(translated
+            .report
+            .has_decision("$.tools[1]", TranslationDecisionKind::Exact));
+        assert!(translated
+            .report
+            .has_decision("$.tools[2]", TranslationDecisionKind::Exact));
+    }
+
+    #[test]
+    fn ac_017_explicit_hosted_tool_choice_remains_native_passthrough() {
+        let translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "search",
+            "tools": [{"type": "web_search"}],
+            "tool_choice": {"type": "web_search"}
+        }))
+        .expect("an explicitly selected hosted tool remains a native operation");
+
+        assert_eq!(
+            translated
+                .request
+                .metadata
+                .responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+        );
+    }
+
+    #[test]
+    fn ac_017_explicit_function_choice_must_select_a_projected_function() {
+        let error = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "delegate",
+            "tools": [
+                {"type": "function", "name": "exec_command", "parameters": {"type": "object"}},
+                {"type": "namespace", "name": "multi_agent_v1"}
+            ],
+            "tool_choice": {"type": "function", "name": "multi_agent_v1"}
+        }))
+        .expect_err("an omitted namespace cannot be selected as a Native function");
+
+        assert_eq!(error.param.as_deref(), Some("tool_choice"));
+    }
+
+    #[test]
+    fn ac_016_safe_unknown_responses_extension_stays_optional_protocol_context() {
+        let mut translated = translate_response_request(json!({
+            "model": "1flowbase",
+            "input": "hi",
+            "future_responses_extension": {"opaque": true}
+        }))
+        .expect("safe unknown Responses fields should remain optional protocol context");
+
+        assert_eq!(
+            translated.request.metadata.responses_transport_requirement(),
+            crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        );
+        assert!(translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .is_none());
+        assert_eq!(
+            translated.request.client_protocol_envelope.unwrap().body["future_responses_extension"]
+                ["opaque"],
+            true
+        );
     }
 
     #[test]

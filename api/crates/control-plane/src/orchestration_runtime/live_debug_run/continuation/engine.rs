@@ -13,9 +13,6 @@ pub(super) async fn continue_flow_debug_run_inner<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     command: &ContinueFlowDebugRunCommand,
     live_provider_events: Option<LiveProviderStreamEventSender>,
-    compact_response_ingress: Option<
-        orchestration_runtime::execution_state::CompactResponseIngress,
-    >,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
 ) -> Result<domain::ApplicationRunDetail>
 where
@@ -124,11 +121,14 @@ where
             &compiled_plan,
         )
         .map(|cursor| Arc::new(tokio::sync::Mutex::new(cursor)));
-    let invoker = match answer_presentation {
-        Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation),
+    let invoker = match &answer_presentation {
+        Some(answer_presentation) => invoker.with_answer_presentation(answer_presentation.clone()),
         None => invoker,
     };
     let mut runtime_context = service.execution_runtime_context(&compiled_plan, &variable_pool)?;
+    runtime_context = service
+        .attach_provider_protocol_context(flow_run.id, &flow_run.input_payload, runtime_context)
+        .await;
     if let Some(capability) = provider_invocation_capability {
         runtime_context = runtime_context.with_provider_invocation_capability(capability);
     }
@@ -136,10 +136,6 @@ where
         runtime_context =
             runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
     }
-    if let Some(ingress) = compact_response_ingress {
-        runtime_context = runtime_context.with_application_flow_compact_ingress(ingress);
-    }
-
     let outcome = orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
         &compiled_plan,
         &Value::Object(variable_pool),
@@ -160,6 +156,7 @@ where
             compiled_plan: Some(&compiled_plan),
             outcome: &outcome,
             prepared_node_runs: Some(&prepared_node_runs),
+            answer_presentation: answer_presentation.as_ref(),
             trigger_event_type: "flow_run_execution_started",
             trigger_event_payload: json!({
                 "run_mode": flow_run.run_mode.as_str(),

@@ -9,7 +9,7 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 
-const PAIR_ARTIFACT_SCHEMA = '1flowbase.provider-conformance-pair/v1';
+const PAIR_ARTIFACT_SCHEMA = '1flowbase.provider-conformance-pair/v2';
 const REQUIRED_PROVIDER_CODES = [
   'openai',
   'anthropic',
@@ -44,6 +44,10 @@ function sha256Bytes(value) {
 
 function sha256File(filePath) {
   return sha256Bytes(fs.readFileSync(filePath));
+}
+
+function sha256FingerprintFile(filePath) {
+  return `sha256:${sha256File(filePath)}`;
 }
 
 function stableValue(value) {
@@ -164,12 +168,45 @@ function readJson(filePath, label) {
 function normalizeDigestList(packages) {
   return [...packages]
     .map(({ provider_code, sha256 }) => ({ provider_code, sha256 }))
-    .sort((left, right) => left.provider_code.localeCompare(right.provider_code));
+    .sort((left, right) =>
+      String(left.provider_code).localeCompare(String(right.provider_code))
+    );
 }
 
-function validateExpectedPairArtifact({ artifactPath, mainSha, officialSha, matrixSha, packages }) {
+function normalizeProviderReceiptList(receipts) {
+  return [...receipts]
+    .map((receipt) => ({
+      provider_code: receipt?.provider_code ?? null,
+      official_source_sha: receipt?.official_source_sha ?? null,
+      official_manifest: {
+        path: receipt?.official_manifest?.path ?? null,
+        plugin_id: receipt?.official_manifest?.plugin_id ?? null,
+        version: receipt?.official_manifest?.version ?? null,
+        fingerprint: receipt?.official_manifest?.fingerprint ?? null,
+      },
+      package: {
+        sha256: receipt?.package?.sha256 ?? null,
+      },
+      installed_manifest: {
+        plugin_id: receipt?.installed_manifest?.plugin_id ?? null,
+        version: receipt?.installed_manifest?.version ?? null,
+        fingerprint: receipt?.installed_manifest?.fingerprint ?? null,
+      },
+      runtime_loaded: {
+        plugin_id: receipt?.runtime_loaded?.plugin_id ?? null,
+        provider_code: receipt?.runtime_loaded?.provider_code ?? null,
+        plugin_version: receipt?.runtime_loaded?.plugin_version ?? null,
+        protocol: receipt?.runtime_loaded?.protocol ?? null,
+      },
+    }))
+    .sort((left, right) =>
+      String(left.provider_code).localeCompare(String(right.provider_code))
+    );
+}
+
+function readExpectedPairArtifact({ artifactPath, mainSha, officialSha, matrixSha, packages }) {
   if (!artifactPath) {
-    return;
+    return null;
   }
   const artifact = readJson(artifactPath, 'expected paired SHA artifact');
   requireCondition(
@@ -187,6 +224,19 @@ function validateExpectedPairArtifact({ artifactPath, mainSha, officialSha, matr
   );
   if (stableJson(normalizeDigestList(artifact.package_digests || [])) !== stableJson(packages)) {
     fail('package digest mismatch');
+  }
+  return artifact;
+}
+
+function validateExpectedProviderReceipts(artifact, receipts) {
+  if (!artifact) {
+    return;
+  }
+  if (
+    stableJson(normalizeProviderReceiptList(artifact.provider_receipts || [])) !==
+    stableJson(normalizeProviderReceiptList(receipts))
+  ) {
+    fail('provider receipt mismatch');
   }
 }
 
@@ -296,6 +346,34 @@ function assertManifest(provider, actual) {
   );
 }
 
+function bindOfficialManifestReceipts(packages, officialRoot) {
+  for (const packageInfo of packages.values()) {
+    const providerCode = packageInfo.provider.provider_code;
+    const manifestPath = path.join(
+      officialRoot,
+      'runtime-extensions',
+      'model-providers',
+      providerCode,
+      'manifest.yaml'
+    );
+    requireCondition(
+      fs.existsSync(manifestPath),
+      `official source manifest is missing for ${providerCode}`
+    );
+    const officialManifest = parseManifestFacts(manifestPath);
+    requireCondition(
+      stableJson(officialManifest) === stableJson(packageInfo.manifest),
+      `actual package manifest does not match official source for ${providerCode}`
+    );
+    packageInfo.official_manifest = {
+      path: path.relative(officialRoot, manifestPath).split(path.sep).join('/'),
+      plugin_id: officialManifest.plugin_id,
+      version: officialManifest.version,
+      fingerprint: sha256FingerprintFile(manifestPath),
+    };
+  }
+}
+
 function walkPackageFiles(root) {
   const files = [];
   const visit = (current) => {
@@ -327,7 +405,7 @@ function discoverActualPackages(packageDir, matrix, scratchRoot) {
   const discovered = new Map();
 
   for (const [index, packagePath] of files.entries()) {
-    const extractionRoot = path.join(scratchRoot, `package-${index}`);
+    const extractionRoot = path.join(scratchRoot, 'installed', `package-${index}`);
     extractPackage(packagePath, extractionRoot);
     const manifestPath = path.join(extractionRoot, 'manifest.yaml');
     requireCondition(fs.existsSync(manifestPath), 'actual package is missing manifest.yaml');
@@ -341,6 +419,7 @@ function discoverActualPackages(packageDir, matrix, scratchRoot) {
       package_path: packagePath,
       package_root: extractionRoot,
       manifest,
+      manifest_fingerprint: sha256FingerprintFile(manifestPath),
       sha256: sha256File(packagePath),
     });
   }
@@ -695,15 +774,64 @@ function cloneJson(value) {
 }
 
 async function loadPackage(runner, packageInfo) {
+  const expectedPackageSha256 = `sha256:${packageInfo.sha256}`;
   const loaded = await requestJson(`${runner.base_url}/providers/load`, 'POST', {
     package_root: packageInfo.package_root,
+    artifact_receipt: {
+      package_path: packageInfo.package_path,
+      expected_artifact_sha256: expectedPackageSha256,
+      expected_manifest_fingerprint: packageInfo.official_manifest.fingerprint,
+    },
   });
   requireCondition(loaded.status === 200, 'plugin runner rejected an actual package');
   requireCondition(
     loaded.body?.provider_code === packageInfo.provider.provider_code,
     'plugin runner loaded the wrong actual package'
   );
-  return loaded.body.plugin_id;
+  requireCondition(
+    loaded.body?.plugin_id === `${packageInfo.manifest.plugin_id}@${packageInfo.manifest.version}` &&
+      loaded.body?.plugin_version === packageInfo.manifest.version,
+    'plugin runner loaded a stale package identity'
+  );
+  requireCondition(
+    loaded.body?.verified_artifact_receipt?.package_sha256 === expectedPackageSha256 &&
+      loaded.body?.verified_artifact_receipt?.manifest_fingerprint ===
+        packageInfo.manifest_fingerprint,
+    'plugin runner returned an unverifiable artifact receipt'
+  );
+  return {
+    plugin_id: loaded.body.plugin_id,
+    provider_code: loaded.body.provider_code,
+    plugin_version: loaded.body.plugin_version,
+    protocol: loaded.body.protocol,
+    verified_artifact_receipt: loaded.body.verified_artifact_receipt,
+  };
+}
+
+async function assertStaleArtifactReceiptFixture(runner, packages, fixture) {
+  const packageInfo = packages.get(fixture.target_provider);
+  requireCondition(packageInfo, 'stale artifact receipt fixture targets an unknown provider');
+  runner.output.clear();
+  const loaded = await requestJson(`${runner.base_url}/providers/load`, 'POST', {
+    package_root: packageInfo.package_root,
+    artifact_receipt: {
+      package_path: packageInfo.package_path,
+      expected_artifact_sha256: `sha256:${packageInfo.sha256}`,
+      expected_manifest_fingerprint: fixture.expected_manifest_fingerprint,
+    },
+  });
+  requireCondition(
+    Math.floor(loaded.status / 100) === fixture.expected_status_family,
+    'stale artifact receipt did not fail at the plugin load boundary'
+  );
+  requireCondition(
+    loaded.body?.message?.includes(fixture.expected_error),
+    'stale artifact receipt returned the wrong error'
+  );
+  requireCondition(
+    !runner.output.snapshot().includes('provider generate wire prepared'),
+    'stale artifact receipt prepared a provider wire'
+  );
 }
 
 async function invokePackage(runner, pluginId, input) {
@@ -771,7 +899,40 @@ function makeCanaries() {
   };
 }
 
-function writePairArtifact({ artifactPath, mainSha, officialSha, matrixSha, packages, providers, tokens }) {
+function buildProviderReceipts(packages, officialSha) {
+  return normalizeProviderReceiptList(
+    [...packages.values()].map((item) => ({
+      provider_code: item.provider.provider_code,
+      official_source_sha: officialSha,
+      official_manifest: item.official_manifest,
+      package: {
+        sha256: item.runtime_identity.verified_artifact_receipt.package_sha256,
+      },
+      installed_manifest: {
+        plugin_id: item.manifest.plugin_id,
+        version: item.manifest.version,
+        fingerprint: item.runtime_identity.verified_artifact_receipt.manifest_fingerprint,
+      },
+      runtime_loaded: {
+        plugin_id: item.runtime_identity.plugin_id,
+        provider_code: item.runtime_identity.provider_code,
+        plugin_version: item.runtime_identity.plugin_version,
+        protocol: item.runtime_identity.protocol,
+      },
+    }))
+  );
+}
+
+function writePairArtifact({
+  artifactPath,
+  mainSha,
+  officialSha,
+  matrixSha,
+  packages,
+  providers,
+  providerReceipts,
+  tokens,
+}) {
   const artifact = {
     schema_version: PAIR_ARTIFACT_SCHEMA,
     main_sha: mainSha,
@@ -779,6 +940,7 @@ function writePairArtifact({ artifactPath, mainSha, officialSha, matrixSha, pack
     matrix_sha256: matrixSha,
     matrix_provider_codes: REQUIRED_PROVIDER_CODES,
     package_digests: normalizeDigestList(packages),
+    provider_receipts: normalizeProviderReceiptList(providerReceipts),
     providers: providers
       .map(({ provider_code, plugin_id, plugin_version }) => ({
         provider_code,
@@ -822,11 +984,12 @@ async function runConformance(options) {
       official: { ...official, expected_sha: options.officialSha },
     });
     const packages = discoverActualPackages(options.packageDir, matrix, scratchRoot);
+    bindOfficialManifestReceipts(packages, options.officialRoot);
     const packageDigests = [...packages.values()].map((item) => ({
       provider_code: item.provider.provider_code,
       sha256: item.sha256,
     }));
-    validateExpectedPairArtifact({
+    const expectedPairArtifact = readExpectedPairArtifact({
       artifactPath: options.expectedPairArtifact,
       mainSha: options.mainSha,
       officialSha: options.officialSha,
@@ -835,11 +998,20 @@ async function runConformance(options) {
     });
 
     runner = await startPluginRunner(options.pluginRunnerBin);
+    await assertStaleArtifactReceiptFixture(
+      runner,
+      packages,
+      matrix.negative_cases.stale_artifact_receipt
+    );
     upstream = await createFakeUpstream();
     for (const providerCode of REQUIRED_PROVIDER_CODES) {
       const packageInfo = packages.get(providerCode);
-      packageInfo.loaded_plugin_id = await loadPackage(runner, packageInfo);
+      packageInfo.runtime_identity = await loadPackage(runner, packageInfo);
+      packageInfo.loaded_plugin_id = packageInfo.runtime_identity.plugin_id;
     }
+
+    const providerReceipts = buildProviderReceipts(packages, options.officialSha);
+    validateExpectedProviderReceipts(expectedPairArtifact, providerReceipts);
 
     await runNoSpawnNegatives({
       runner,
@@ -873,6 +1045,7 @@ async function runConformance(options) {
       officialSha: options.officialSha,
       matrixSha,
       packages: packageDigests,
+      providerReceipts,
       providers: [...packages.values()].map((item) => ({
         provider_code: item.provider.provider_code,
         plugin_id: item.manifest.plugin_id,

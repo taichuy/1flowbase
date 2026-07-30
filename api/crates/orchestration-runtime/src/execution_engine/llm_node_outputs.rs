@@ -117,6 +117,7 @@ pub(super) fn build_successful_llm_execution(
     runtime: &CompiledLlmRuntime,
     result: &ProviderInvocationResult,
     final_content: Option<String>,
+    native_responses_passthrough: bool,
     metrics_payload: Value,
     provider_events: Vec<ProviderStreamEvent>,
     debug_invocation: LlmDebugInvocation<'_>,
@@ -165,10 +166,17 @@ pub(super) fn build_successful_llm_execution(
         .as_deref()
         .filter(|value| !value.trim().is_empty())
     {
-        executor_output.insert(
-            "response_id".to_string(),
-            Value::String(response_id.to_string()),
-        );
+        if native_responses_passthrough {
+            executor_output.insert(
+                "provider_continuation".to_string(),
+                json!({ "storage": "ephemeral" }),
+            );
+        } else {
+            executor_output.insert(
+                "response_id".to_string(),
+                Value::String(response_id.to_string()),
+            );
+        }
     }
     if declares_public_output(node, "structured_output")
         && is_structured_response_format(&node.config)

@@ -116,6 +116,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     let service = ApplicationNativeRunService::new(repository.clone());
     let first = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(json!({ "query": "First" })).unwrap(),
         })
@@ -123,6 +124,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
         .unwrap();
     let second = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(json!({ "query": "Second" })).unwrap(),
         })
@@ -169,6 +171,7 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: first_token,
             request: serde_json::from_value(json!({ "query": "First" })).unwrap(),
         })
@@ -212,6 +215,7 @@ async fn native_get_run_exposes_pending_callback_required_action() {
     let service = ApplicationNativeRunService::new(repository.clone());
     let run = service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(json!({ "query": "First" })).unwrap(),
         })
@@ -294,6 +298,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
     let native_service = ApplicationNativeRunService::new(repository.clone());
     let run = native_service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(json!({ "query": "First" })).unwrap(),
         })
@@ -347,7 +352,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() {
+async fn callback_resume_preserves_original_compatibility_mode() {
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor_user_id(), "Canonical Callback Resume App");
     let token = issue_key(&harness, application.id, actor_user_id()).await;
@@ -358,6 +363,7 @@ async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() 
 
     let absent_parent = run_service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: anthropic_request("Find the navigation code"),
         })
@@ -375,6 +381,7 @@ async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() 
     );
     let absent_subagent = run_service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: anthropic_builtin_agent_request(agent_prompt),
         })
@@ -384,6 +391,7 @@ async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() 
 
     let legacy_parent = run_service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: anthropic_request("Find the navigation code"),
         })
@@ -401,6 +409,7 @@ async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() 
     );
     let legacy_subagent = run_service
         .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: anthropic_builtin_agent_request(agent_prompt),
         })
@@ -470,6 +479,18 @@ async fn d2_ac_007_callback_resume_treats_legacy_compatibility_mode_as_opaque() 
         assert!(!events.contains(&"public_run_internal_agent_result_projected".to_string()));
         assert!(!events.contains(&"public_run_callback_cancelled".to_string()));
     }
+
+    for (flow_run_id, expected) in [
+        (absent_parent.id, "native-v1"),
+        (legacy_parent.id, "anthropic-messages-v1"),
+    ] {
+        let resumed = repository
+            .get_flow_run(application.id, flow_run_id)
+            .await
+            .unwrap()
+            .expect("resumed parent run should remain durable");
+        assert_eq!(resumed.compatibility_mode.as_deref(), Some(expected));
+    }
 }
 
 #[tokio::test]
@@ -482,6 +503,7 @@ async fn native_cancel_clears_pending_callback_required_action() {
     let native_service = ApplicationNativeRunService::new(repository.clone());
     let run = native_service
         .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
             request: serde_json::from_value(json!({ "query": "First" })).unwrap(),
         })
@@ -620,6 +642,7 @@ mod tests {
         repository.configure_runnable_published_generate_route(application.id);
         let run = ApplicationNativeRunService::new(repository.clone())
             .create_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
                 bearer_token: token.clone(),
                 request: serde_json::from_value(json!({ "query": "First" }))
                     .expect("native request fixture should deserialize"),

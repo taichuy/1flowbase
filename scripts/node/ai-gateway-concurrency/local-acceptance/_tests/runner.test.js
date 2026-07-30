@@ -23,6 +23,10 @@ function fixtureManifest() {
       pluginRunner: { path: '/bin/plugin-runner', sha256: '2'.repeat(64) },
       openaiPackage: { path: '/packages/openai', sha256: '3'.repeat(64) },
       anthropicPackage: { path: '/packages/anthropic', sha256: '4'.repeat(64) },
+      openaiCompatiblePackage: {
+        path: '/packages/openai-compatible',
+        sha256: '8'.repeat(64),
+      },
       codex: { path: '/bin/codex', sha256: '5'.repeat(64) },
       claude: { path: '/bin/claude', sha256: '6'.repeat(64) },
       claudeManifest: { path: '/package.json', sha256: '7'.repeat(64) },
@@ -47,7 +51,9 @@ function fixtureReady() {
     api_key: `${provider}-key-${ordinal}`,
     model: 'fixture-model',
     gateway: {
+      base_url: 'http://127.0.0.1:4100',
       responses_url: 'http://127.0.0.1:4100/v1/responses',
+      chat_completions_url: 'http://127.0.0.1:4100/v1/chat/completions',
       anthropic_messages_url: 'http://127.0.0.1:4100/v1/messages',
     },
     durable: { query_run: {}, list_runs: {} },
@@ -57,7 +63,12 @@ function fixtureReady() {
   const anthropic = [target('anthropic', 1), target('anthropic', 2)];
   return {
     schema_version: '1flowbase.ai-gateway-fixture/v1',
-    targets: { openai: target('openai', 1), anthropic: anthropic[0] },
+    gateway_base_url: 'http://127.0.0.1:4100',
+    targets: {
+      openai: target('openai', 1),
+      openai_compatible: target('openai_compatible', 1),
+      anthropic: anthropic[0],
+    },
     pools: { anthropic },
     controlled_upstream: {
       snapshot_url: 'http://127.0.0.1:4000/__control/snapshot',
@@ -73,12 +84,14 @@ function dependencies({ failAt } = {}) {
   const cleanup = [];
   const deps = {
     loadManifest() { calls.push('manifest'); return fixtureManifest(); },
-    async preflight() { calls.push('preflight'); if (failAt === 'preflight') throw new Error('preflight failed'); },
-    createEvidenceRoot() { calls.push('evidence'); return '/evidence'; },
-    createDetachedSource(client) {
-      calls.push(`source:${client}`);
-      return { path: `/detached/${client}`, async close() { cleanup.push(`source:${client}`); } };
+    async preflight() {
+      calls.push('preflight');
+      if (failAt === 'preflight') throw new Error('preflight failed');
+      return {
+        repositories: [{ name: 'protectedMain', path: '/main', revision: 'c'.repeat(40) }],
+      };
     },
+    createEvidenceRoot() { calls.push('evidence'); return '/evidence'; },
     createDatabase() {
       calls.push('database:create');
       return {
@@ -92,11 +105,12 @@ function dependencies({ failAt } = {}) {
       return {
         async start() { calls.push('mock:start'); return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },
         snapshot() { return { active: 0, entries: [] }; },
+        releaseBarrier() { calls.push('mock:release'); return 1; },
         async stop() { cleanup.push('mock'); },
       };
     },
-    async createGatewayFixture() {
-      calls.push('fixture:create');
+    async createGatewayFixture(options) {
+      calls.push(['fixture:create', options]);
       if (failAt === 'fixture') throw new Error('fixture failed');
       return { result: fixtureReady(), async close() { cleanup.push('fixture'); } };
     },
@@ -123,7 +137,12 @@ function dependencies({ failAt } = {}) {
       };
     },
     writeProtocolEvidence() { calls.push('protocol:evidence'); },
-    async runCliSmoke(options) { calls.push(['smoke', options]); if (failAt === 'smoke') throw new Error('smoke failed'); return { status: 'pass' }; },
+    async runLocalClientAcceptance(options) {
+      calls.push(['clients', options]);
+      return failAt === 'clients'
+        ? { status: 'fail', clients: [{ name: 'codex', status: 'fail' }] }
+        : { status: 'pass', clients: [{ name: 'codex', status: 'pass' }], final_reconciliation: { runtime_targets: 2 } };
+    },
     writeSnapshot() { calls.push('snapshot:write'); },
     writeResult(_root, result) { calls.push(['result', result.status]); },
     async cleanupTmux() { cleanup.push('tmux'); },
@@ -131,37 +150,45 @@ function dependencies({ failAt } = {}) {
   return { deps, calls, cleanup };
 }
 
-test('AC-003/014/027/028: one attempt probes the exact URL then runs all clients with tmux timing', async () => {
+test('WP-14A runs the machine client matrix while the mock-backed fixture is alive', async () => {
   const { deps, calls, cleanup } = dependencies();
   const result = await runLocalAcceptance({}, deps);
   assert.equal(result.status, 'pass', JSON.stringify(result));
-  assert.equal(result.gate_role, 'non_blocking_client_diagnostic');
+  assert.equal(result.gate_role, 'mock_backed_local_client_acceptance');
   assert.equal(calls.filter((call) => call === 'database:create').length, 1);
-  assert.equal(calls.filter((call) => call === 'fixture:create').length, 1);
+  assert.equal(calls.filter((call) => Array.isArray(call) && call[0] === 'fixture:create').length, 1);
   const probe = calls.find((call) => Array.isArray(call) && call[0] === 'database:probe');
-  const smoke = calls.find((call) => Array.isArray(call) && call[0] === 'smoke')[1];
+  const clients = calls.find((call) => Array.isArray(call) && call[0] === 'clients')[1];
   assert.equal(probe[1], 'postgres://role:password@127.0.0.1:35432/database');
   assert.equal(result.protocol.characterize.verdict, 'PASS');
   assert.equal(result.protocol.characterize.blocking_requests, 29);
   assert.equal(result.protocol.characterize.performance_requests, 196);
   assert.equal(result.protocol.characterize.performance_and_observability_advisories, 2);
-  assert.equal(smoke.tmuxTiming, true);
-  assert.equal(smoke.skipWireAudit, true);
-  assert.equal(smoke.opencodeExecutable, '/bin/opencode');
-  assert.equal(smoke.codexSourceRoot, '/detached/codex');
-  assert.equal(smoke.opencodeSourceRoot, '/detached/opencode');
-  assert.ok(calls.indexOf(probe) < calls.indexOf('fixture:create'));
-  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
+  assert.equal(clients.discovery.binaries.opencode, '/bin/opencode');
+  assert.equal(clients.discovery.binaries.codex, '/bin/codex');
+  assert.equal(clients.targets.codex.gatewayBaseUrl, 'http://127.0.0.1:4100');
+  assert.equal(clients.requireCrossTargetMatrix, true);
+  assert.deepEqual(clients.targetMatrix.claude.map((target) => target.provider), [
+    'anthropic', 'openai', 'openai_compatible',
+  ]);
+  assert.equal(clients.gitRepoPath, '/main');
+  assert.equal(clients.gitRepoRevision, 'c'.repeat(40));
+  assert.equal(typeof clients.mockSnapshot, 'function');
+  const fixture = calls.find((call) => Array.isArray(call) && call[0] === 'fixture:create');
+  assert.equal(fixture[1].apiPort, 7800);
+  assert.ok(calls.indexOf(probe) < calls.indexOf(fixture));
+  assert.equal(calls.indexOf(fixture) < calls.findIndex((call) => Array.isArray(call) && call[0] === 'clients'), true);
+  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'tmux']);
 });
 
-test('AC-029: local client diagnostic failure is reported but does not fail the protocol gate', async () => {
-  const { deps, calls, cleanup } = dependencies({ failAt: 'smoke' });
+test('WP-14A local client or reconciliation failure fails local acceptance', async () => {
+  const { deps, calls, cleanup } = dependencies({ failAt: 'clients' });
   const result = await runLocalAcceptance({}, deps);
-  assert.equal(result.status, 'pass');
+  assert.equal(result.status, 'fail');
   assert.equal(result.protocol.status, 'pass');
   assert.equal(result.clients.status, 'fail');
-  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
-  assert.equal(calls.filter((call) => call === 'fixture:create').length, 1);
+  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'tmux']);
+  assert.equal(calls.filter((call) => Array.isArray(call) && call[0] === 'fixture:create').length, 1);
 });
 
 test('AC-027 controlled negative: protocol failure still executes the complete owned cleanup stack', async () => {
@@ -169,7 +196,7 @@ test('AC-027 controlled negative: protocol failure still executes the complete o
   const result = await runLocalAcceptance({}, deps);
   assert.equal(result.status, 'fail');
   assert.equal(result.clients, null);
-  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'source:opencode', 'source:codex', 'tmux']);
+  assert.deepEqual(cleanup, ['fixture', 'mock', 'database', 'tmux']);
 });
 
 test('AC-028 controlled negatives: preflight and same-URL probe fail before runtime', async () => {
@@ -177,9 +204,9 @@ test('AC-028 controlled negatives: preflight and same-URL probe fail before runt
     const { deps, calls, cleanup } = dependencies({ failAt });
     const result = await runLocalAcceptance({}, deps);
     assert.equal(result.status, 'fail');
-    assert.equal(calls.includes('fixture:create'), false);
-    assert.equal(calls.some((call) => Array.isArray(call) && call[0] === 'smoke'), false);
+    assert.equal(calls.some((call) => Array.isArray(call) && call[0] === 'fixture:create'), false);
+    assert.equal(calls.some((call) => Array.isArray(call) && call[0] === 'clients'), false);
     if (failAt === 'preflight') assert.deepEqual(cleanup, ['tmux']);
-    else assert.deepEqual(cleanup, ['database', 'source:opencode', 'source:codex', 'tmux']);
+    else assert.deepEqual(cleanup, ['database', 'tmux']);
   }
 });

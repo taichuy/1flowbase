@@ -2,10 +2,7 @@ import type { FlowNodeType } from '@1flowbase/flow-schema';
 
 import { nodeDefinitionMeta } from './meta';
 import { getRegisteredNodeDefinition } from './registry';
-import {
-  answerNodeDefinition,
-  compactResponseNodeDefinition
-} from './nodes/answer';
+import { answerNodeDefinition } from './nodes/answer';
 import { codeNodeDefinition } from './nodes/code';
 import { dataModelNodeDefinitions } from './nodes/data-model';
 import { humanInputNodeDefinition } from './nodes/human-input';
@@ -37,7 +34,6 @@ export type {
 export const nodeDefinitions: NodeDefinitionMap = {
   start: startNodeDefinition,
   answer: answerNodeDefinition,
-  compact_response: compactResponseNodeDefinition,
   llm: llmNodeDefinition,
   knowledge_retrieval: knowledgeRetrievalNodeDefinition,
   question_classifier: questionClassifierNodeDefinition,

@@ -26,11 +26,16 @@ function splitModel(value) {
   return { providerID, modelID: model.join('/') };
 }
 
-function sessionCreateBody() {
+function sessionCreateBody(prompt = '') {
+  const meaningfulGit = prompt.includes('1flowbase-client-vector=meaningful-git-workflow');
   return {
     title: '1flowbase gateway acceptance',
     permission: [
       { permission: 'read', pattern: '*', action: 'allow' },
+      ...(meaningfulGit ? [
+        { permission: 'bash', pattern: '*', action: 'allow' },
+        { permission: 'edit', pattern: '*', action: 'allow' },
+      ] : []),
       { permission: 'question', pattern: '*', action: 'deny' },
       { permission: 'plan_enter', pattern: '*', action: 'deny' },
       { permission: 'plan_exit', pattern: '*', action: 'deny' },
@@ -156,7 +161,7 @@ async function runHeadlessClient(options) {
     const eventResponse = await fetch(`${origin}/event?${query}`, { headers });
     if (!eventResponse.ok) throw new Error(`OpenCode event subscription returned HTTP ${eventResponse.status}`);
     const session = await request(`${origin}/session?${query}`, {
-      method: 'POST', headers, body: JSON.stringify(sessionCreateBody()),
+      method: 'POST', headers, body: JSON.stringify(sessionCreateBody(options.prompt)),
     }, 'OpenCode session creation');
     if (!session?.id) throw new Error('OpenCode session creation omitted an id');
     await request(`${origin}/session/${encodeURIComponent(session.id)}/prompt_async?${query}`, {

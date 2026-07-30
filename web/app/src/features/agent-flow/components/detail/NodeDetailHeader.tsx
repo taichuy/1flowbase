@@ -73,14 +73,14 @@ export function NodeDetailHeader({
           ) : null}
         </div>
         <Space className="agent-flow-node-detail__actions" size={4}>
-          {onRunNode && node?.type !== 'compact_response' ? (
+          {onRunNode ? (
             <NodeRunButton
               disabled={previewActionsDisabled}
               onRunNode={onRunNode}
               loading={runLoading}
             />
           ) : null}
-          {onDebugNode && node?.type !== 'compact_response' ? (
+          {onDebugNode ? (
             <NodeDebugButton
               disabled={previewActionsDisabled}
               onDebugNode={onDebugNode}

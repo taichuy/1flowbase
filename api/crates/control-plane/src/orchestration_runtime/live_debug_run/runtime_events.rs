@@ -13,10 +13,11 @@ pub(in crate::orchestration_runtime) async fn project_committed_terminal<R, H>(
 ) where
     R: OrchestrationRuntimeRepository,
 {
-    let Some(stream) = &service.runtime_event_stream else {
-        return;
-    };
-    runtime_event_persister::project_runtime_event_stream_terminal(stream.clone(), flow_run).await;
+    if let Some(stream) = &service.runtime_event_stream {
+        runtime_event_persister::project_runtime_event_stream_terminal(stream.clone(), flow_run)
+            .await;
+    }
+    service.clear_provider_protocol_contexts(flow_run.id).await;
 }
 
 pub(super) async fn append_runtime_event<R, H>(

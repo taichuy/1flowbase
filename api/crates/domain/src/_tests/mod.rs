@@ -1,3 +1,4 @@
+mod ai_native_operation_tests;
 mod auth_domain_tests;
 mod console_policy_tests;
 mod flow_tests;

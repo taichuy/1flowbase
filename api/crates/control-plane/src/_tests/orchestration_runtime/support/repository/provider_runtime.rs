@@ -239,12 +239,17 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
         &self,
         installation: &domain::PluginInstallationRecord,
         input: ProviderInvocationInput,
-        live_events: Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>,
+        live_events: Option<crate::ports::ProviderLiveEventSenders>,
     ) -> Result<crate::ports::ProviderRuntimeInvocationOutput> {
         if let Some(events) = &self.live_events_then_error {
             if let Some(live_events) = live_events {
                 for event in events.iter().cloned() {
-                    let _ = live_events.send(event);
+                    let sender = if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
+                        &live_events.diagnostic
+                    } else {
+                        &live_events.required
+                    };
+                    sender.send(event).await.unwrap();
                 }
             }
             anyhow::bail!("provider failed after live events");
@@ -252,7 +257,12 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
         let output = self.invoke_stream(installation, input).await?;
         if let Some(live_events) = live_events {
             for event in output.events.iter().cloned() {
-                let _ = live_events.send(event);
+                let sender = if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
+                    &live_events.diagnostic
+                } else {
+                    &live_events.required
+                };
+                sender.send(event).await.unwrap();
             }
         }
         Ok(output)

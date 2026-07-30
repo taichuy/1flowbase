@@ -239,7 +239,7 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   );
   assert.match(
     workflow,
-    /INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,[^']*container-images'/u,
+    /INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,[^']*container-images,ai-gateway-protocol-conformance'/u,
   );
   assert.match(
     jobBlock,
@@ -445,6 +445,14 @@ test("GitHub automation docs include React Doctor in full ci but not fast verify
   assert.doesNotMatch(readme, /nightly-only/u);
 });
 
+test("GitHub automation docs place reusable AI Gateway conformance in the full ci aggregate", () => {
+  const docs = readGitHubAutomationDocs();
+  assert.match(docs, /ai-gateway-concurrency\.yml/u);
+  assert.match(docs, /ai-gateway-protocol-conformance/u);
+  assert.match(docs, /required\s+`protocol-conformance` check for `dev`/u);
+  assert.match(docs, /never\nuses real Provider credentials or local client binaries/u);
+});
+
 test("GitHub automation docs describe container image CD as artifact-only reporting", () => {
   const readme = readGitHubAutomationDocs();
 
@@ -549,6 +557,10 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /container-images-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && \(inputs\.scope == 'ci' \|\| inputs\.scope == 'container-images'\)\) \}\}/u,
   );
+  assert.match(
+    workflow,
+    /ai-gateway-protocol-conformance:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}[\s\S]*?uses: \.\/\.github\/workflows\/ai-gateway-concurrency\.yml[\s\S]*?target_ref:/u,
+  );
   assert.match(workflow, /- coverage-backend-control-plane/u);
   assert.match(workflow, /- coverage-backend-orchestration-runtime/u);
   assert.match(workflow, /- coverage-backend-plugin-runner/u);
@@ -564,6 +576,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(workflow, /- state-protocols-gate/u);
   assert.match(workflow, /- container-images-gate/u);
+  assert.match(workflow, /- ai-gateway-protocol-conformance/u);
   assert.match(workflow, /scope: repo-tooling/u);
   assert.match(workflow, /scope: repo-frontend/u);
   assert.match(workflow, /scope: \$\{\{ matrix\.scope \}\}/u);
@@ -594,6 +607,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*repo-frontend-react-doctor/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*state-protocols/u);
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*container-images/u);
+  assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*ai-gateway-protocol-conformance/u);
   assert.match(
     workflow,
     /node scripts\/node\/cli\/github-quality-gate-aggregate\.js/u,

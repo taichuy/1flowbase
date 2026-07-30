@@ -10,6 +10,7 @@ const {
   FORBIDDEN_ACTION_WORDS,
   LOCAL_ACTIONS,
   loadManifest,
+  resolveArtifactInventory,
   verifyChecksums,
 } = require('../manifest');
 
@@ -55,14 +56,55 @@ test('AC-028 controlled negative: checksum mismatch fails closed', () => {
   }
 });
 
+test('AC-028: generated Provider packages resolve from one filename-bound digest', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-acceptance-package-'));
+  try {
+    const content = 'current-provider-package';
+    const digest = require('node:crypto').createHash('sha256').update(content).digest('hex');
+    fs.writeFileSync(path.join(root, `provider@${digest}.1flowbasepkg`), content);
+    const manifest = {
+      artifacts: {
+        provider: {
+          directory: root,
+          filename_pattern: '^provider@([a-f0-9]{64})\\.1flowbasepkg$',
+        },
+      },
+    };
+    const resolved = resolveArtifactInventory(manifest);
+    assert.equal(resolved.artifacts.provider.sha256, digest);
+    assert.deepEqual(verifyChecksums(resolved).map((entry) => entry.name), ['provider']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('AC-028 controlled negative: generated Provider package discovery fails on ambiguity', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-acceptance-package-'));
+  try {
+    for (const digest of ['a'.repeat(64), 'b'.repeat(64)]) {
+      fs.writeFileSync(path.join(root, `provider@${digest}.1flowbasepkg`), digest);
+    }
+    assert.throws(() => resolveArtifactInventory({
+      artifacts: { provider: {
+        directory: root,
+        filename_pattern: '^provider@([a-f0-9]{64})\\.1flowbasepkg$',
+      } },
+    }), /exactly one verified package/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('AC-028: the executable action inventory contains no network, install, or build action', () => {
   const serialized = JSON.stringify(LOCAL_ACTIONS).toLowerCase();
   for (const word of FORBIDDEN_ACTION_WORDS) assert.equal(serialized.includes(word), false, word);
+  assert.equal(serialized.includes('detached-worktree'), false);
+  assert.equal(serialized.includes('run-eight-client-attempts'), true);
 });
 
 test('AC-028: the repository default binds all three existing clients and local source repositories', () => {
   const manifest = loadManifest();
-  assert.equal(manifest.artifacts.codex.path.includes('/tmp/test-governance/'), true);
+  assert.equal(manifest.artifacts.codex.path, '/home/linuxbrew/.linuxbrew/bin/codex');
   assert.equal(manifest.artifacts.claude.path, '/home/taichuy/.nvm/versions/node/v24.18.0/bin/claude');
   assert.equal(manifest.artifacts.opencode.path, '/home/taichuy/.local/bin/opencode');
   assert.equal(manifest.sources.codex.repository, '/home/taichuy/git/codex');

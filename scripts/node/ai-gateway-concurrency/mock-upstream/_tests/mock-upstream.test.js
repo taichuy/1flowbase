@@ -9,8 +9,9 @@ const {
   assertDistinctRequestNonces,
   mockScenarioSentinel,
 } = require('../../contracts');
-const { createMockUpstream, wireAuditVectorFromBody } = require('..');
-const { DEFAULT_BARRIER_MARKERS } = require('../protocol-events');
+const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = require('..');
+const { DEFAULT_BARRIER_MARKERS, chatTextEvents } = require('../protocol-events');
+const { errorFixtureMarker, upstreamErrorFixture } = require('../../protocol-oracle/error-fidelity');
 
 async function withMockUpstream(run, options = {}) {
   const upstream = createMockUpstream({
@@ -34,6 +35,23 @@ function parseSse(text) {
     return { event, data: JSON.parse(data) };
   });
 }
+
+test('Root #1477 AC-001/005: Chat text fixture emits two nonce-bearing upstream deltas', () => {
+  const nonce = 'mock-chat-fidelity';
+  const stream = chatTextEvents(nonce);
+
+  assert.deepEqual(
+    stream.chunks.map((chunk) => chunk.choices[0].delta.content),
+    [`${nonce}:chunk-1`, `${nonce}:chunk-2`],
+  );
+  assert.equal(stream.terminal.choices[0].finish_reason, 'stop');
+
+  assert.deepEqual(
+    chatTextEvents(nonce, '1flowbase gateway sentinel ', 'ok')
+      .chunks.map((chunk) => chunk.choices[0].delta.content),
+    ['1flowbase gateway sentinel ', 'ok'],
+  );
+});
 
 test('wire audit vector is inferred from the public Responses body', () => {
   assert.equal(wireAuditVectorFromBody({
@@ -148,6 +166,7 @@ test('AC-002: Anthropic Messages SSE emits fixed content and one message_stop te
       'content_block_start',
       'content_block_delta',
       'content_block_delta',
+      'content_block_stop',
       'message_delta',
       'message_stop',
     ]);
@@ -253,8 +272,73 @@ test('AC-004: HTTP 500 is explicit and produces no success terminal', async () =
       }),
     });
     assert.equal(response.status, 500);
+    assert.equal(await response.text(), HTTP_500_ERROR_BODY);
     const evidence = await waitFor(() => upstream.snapshot().entries.find((entry) => entry.outcome === 'http-500'));
     assert.equal(evidence.successTerminalCount, 0);
+  });
+});
+
+test('Root #1477 AC-008: mock emits byte-exact JSON/text/HTML/empty upstream errors', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    for (const id of ['json', 'text', 'html', 'empty']) {
+      const fixture = upstreamErrorFixture(id);
+      const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'mock-model', input: errorFixtureMarker(id) }),
+      });
+      assert.equal(response.status, fixture.status);
+      assert.equal(response.headers.get('content-type'), fixture.contentType);
+      assert.equal(await response.text(), fixture.body);
+    }
+    const failures = upstream.snapshot().entries.filter((entry) => entry.errorFixture);
+    assert.deepEqual(failures.map((entry) => entry.errorFixture), ['json', 'text', 'html', 'empty']);
+    assert.equal(failures.every((entry) => entry.successTerminalCount === 0), true);
+  });
+});
+
+test('Root #1477 AC-008: retry fixture fails once and then succeeds for one correlation key', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const request = () => fetch(`${httpBaseUrl}${MOCK_ROUTE.CHAT_COMPLETIONS}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', fixture_retry_key: 'retry-correlation-1',
+        messages: [{ role: 'user', content: errorFixtureMarker('retry') }],
+      }),
+    });
+    const first = await request();
+    assert.equal(first.status, upstreamErrorFixture('retry').status);
+    assert.equal(await first.text(), upstreamErrorFixture('retry').body);
+    const second = await request();
+    assert.equal(second.status, 200);
+    assert.match(await second.text(), /chat\.completion\.chunk/u);
+  });
+});
+
+test('Root #1477 AC-005/006: arrival evidence stores a semantic digest without raw body or credentials', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}?fixture_query=value`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer raw-auth-canary', 'x-api-key': 'raw-key-canary',
+        'content-type': 'application/json', 'x-fixture-extension': 'safe-extension',
+      },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'high' },
+        context_management: { edits: [{ type: 'clear_tool_uses_20250919' }] },
+        messages: [{ role: 'user', content: 'raw-body-canary' }],
+      }),
+    });
+    await response.text();
+    const evidence = arrivalEntries(upstream)[0].request;
+    assert.match(evidence.semantic_sha256, /^[a-f0-9]{64}$/u);
+    assert.equal(evidence.body.thinkingAdaptive, true);
+    assert.equal(evidence.body.outputConfigEffortHigh, true);
+    assert.equal(evidence.body.contextManagementPresent, true);
+    for (const canary of ['raw-auth-canary', 'raw-key-canary', 'raw-body-canary']) {
+      assert.doesNotMatch(JSON.stringify(evidence), new RegExp(canary, 'u'));
+    }
   });
 });
 
@@ -369,6 +453,10 @@ test('controlled tool loop records live call and second request before barrier r
       body: JSON.stringify({
         model: 'mock-model', stream: true,
         input: '1flowbase-client-tool-vector TOOL_VECTOR_PATH=/tmp/tool-vector.txt',
+        tools: [{
+          type: 'function', name: 'Bash',
+          parameters: { type: 'object', properties: { command: { type: 'string' } } },
+        }],
       }),
     });
     const firstEvents = parseSse(await first.text());
@@ -376,10 +464,9 @@ test('controlled tool loop records live call and second request before barrier r
       (event) => event.event === 'response.output_item.done',
     )?.data.item;
     assert.equal(toolItem?.type, 'function_call');
-    assert.equal(toolItem?.name, 'shell_command');
+    assert.equal(toolItem?.name, 'Bash');
     assert.deepEqual(JSON.parse(toolItem?.arguments), {
       command: "cat -- '/tmp/tool-vector.txt'",
-      workdir: '/tmp',
     });
 
     const second = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
@@ -435,8 +522,199 @@ test('Responses tool fixture calls a client-declared read function', async () =>
   });
 });
 
-// Root AC-019/020/023/024: runtime counters belong to the controlled observer.
-test('controlled wire vectors count provider execution without gateway executor or server_url outbound', async () => {
+test('Root #1477 local client fixture emits parallel calls and two sequential callback rounds', async () => {
+  await withMockUpstream(async ({ httpBaseUrl, upstream }) => {
+    const request = async (input, previousResponseId = null) => {
+      const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'mock-model', stream: true, input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          tools: [{
+            type: 'function', name: 'read',
+            parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+          }],
+        }),
+      });
+      return parseSse(await response.text());
+    };
+    const toolItems = (events) => events
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item)
+      .filter((item) => item.type === 'function_call');
+    const responseId = (events) => events.find(
+      (event) => event.event === 'response.completed',
+    )?.data.response.id;
+
+    const parallel = await request(
+      '1flowbase-client-tool-vector tools-parallel-one-callback-task '
+        + 'TOOL_VECTOR_PATH=/tmp/parallel-a PARALLEL_TOOL_A_PATH=/tmp/parallel-a '
+        + 'PARALLEL_TOOL_B_PATH=/tmp/parallel-b',
+    );
+    assert.deepEqual(
+      toolItems(parallel).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/parallel-a', '/tmp/parallel-b'],
+    );
+
+    const sequentialPrompt = '1flowbase-client-tool-vector '
+      + 'tools-sequential-callback-tasks-one-turn TOOL_VECTOR_PATH=/tmp/sequential-a '
+      + 'SEQUENTIAL_TOOL_A_PATH=/tmp/sequential-a SEQUENTIAL_TOOL_B_PATH=/tmp/sequential-b';
+    const first = await request(sequentialPrompt);
+    assert.deepEqual(
+      toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/sequential-a'],
+    );
+    const second = await request([{
+      type: 'function_call_output', call_id: 'call-a',
+      output: '1flowbase-client-tool-result sequential-a',
+    }], responseId(first));
+    assert.deepEqual(
+      toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/sequential-b'],
+    );
+    const third = await request([{
+      type: 'function_call_output', call_id: 'call-b',
+      output: '1flowbase-client-tool-result sequential-b',
+    }], responseId(second));
+    assert.equal(toolItems(third).length, 0);
+    assert.equal(
+      third
+        .filter((event) => event.event === 'response.output_text.delta'
+          && event.data.type === 'response.output_text.delta')
+        .map((event) => event.data.delta)
+        .join(''),
+      '1flowbase sequential callback sentinel ok',
+    );
+
+    const followup = await request([
+      { type: 'function_call', call_id: 'call-a', name: 'read', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call-a', output: 'sequential-a' },
+      { type: 'function_call', call_id: 'call-b', name: 'read', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call-b', output: 'sequential-b' },
+      { role: 'user', content: '1flowbase-client-vector=tools-history-followup-query' },
+      { role: 'user', content: '1flowbase-client-tool-vector' },
+    ]);
+    assert.equal(
+      followup
+        .filter((event) => event.event === 'response.output_text.delta'
+          && event.data.type === 'response.output_text.delta')
+        .map((event) => event.data.delta)
+        .join(''),
+      '1flowbase tool history followup sentinel ok',
+    );
+
+    const snapshot = upstream.snapshot();
+    const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
+    assert.equal(toolCallRounds.length, 3);
+    assert.deepEqual(
+      toolCallRounds.map((event) => event.nonce),
+      [parallel, first, second].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    const callbackRequests = snapshot.entries.filter(
+      (event) => event.event === 'second_upstream_request',
+    );
+    assert.equal(callbackRequests.length, 2);
+    assert.deepEqual(
+      callbackRequests.map((event) => event.nonce),
+      [second, third].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    assert.ok(toolCallRounds[1].sequence < callbackRequests[0].sequence);
+    assert.ok(callbackRequests[0].sequence < toolCallRounds[2].sequence);
+    assert.ok(toolCallRounds[2].sequence < callbackRequests[1].sequence);
+  });
+});
+
+test('Root #1477 Responses WebSocket records parallel and sequential Provider tool-call rounds', async () => {
+  await withMockUpstream(async ({ websocketBaseUrl, upstream }) => {
+    const request = (input, previousResponseId = null) => new Promise((resolve, reject) => {
+      const received = [];
+      const socket = new WebSocket(`${websocketBaseUrl}${MOCK_ROUTE.RESPONSES}`);
+      socket.addEventListener('open', () => socket.send(JSON.stringify({
+        type: 'response.create',
+        response: {
+          model: 'mock-model', input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          tools: [{
+            type: 'function', name: 'read',
+            parameters: { type: 'object', properties: { filePath: { type: 'string' } } },
+          }],
+        },
+      })));
+      socket.addEventListener('message', (message) => received.push(JSON.parse(message.data)));
+      socket.addEventListener('close', () => resolve(received));
+      socket.addEventListener('error', reject);
+    });
+    const toolItems = (events) => events
+      .filter((event) => event.type === 'response.output_item.done')
+      .map((event) => event.item)
+      .filter((item) => item.type === 'function_call');
+    const responseId = (events) => events.find(
+      (event) => event.type === 'response.completed',
+    )?.response.id;
+
+    const parallel = await request(
+      '1flowbase-client-tool-vector tools-parallel-one-callback-task '
+        + 'TOOL_VECTOR_PATH=/tmp/ws-parallel-a PARALLEL_TOOL_A_PATH=/tmp/ws-parallel-a '
+        + 'PARALLEL_TOOL_B_PATH=/tmp/ws-parallel-b',
+    );
+    assert.deepEqual(
+      toolItems(parallel).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-parallel-a', '/tmp/ws-parallel-b'],
+    );
+
+    const sequentialPrompt = '1flowbase-client-tool-vector '
+      + 'tools-sequential-callback-tasks-one-turn TOOL_VECTOR_PATH=/tmp/ws-sequential-a '
+      + 'SEQUENTIAL_TOOL_A_PATH=/tmp/ws-sequential-a SEQUENTIAL_TOOL_B_PATH=/tmp/ws-sequential-b';
+    const first = await request(sequentialPrompt);
+    assert.deepEqual(
+      toolItems(first).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-sequential-a'],
+    );
+    const second = await request([{
+      type: 'function_call_output', call_id: 'call-ws-a',
+      output: '1flowbase-client-tool-result sequential-a',
+    }], responseId(first));
+    assert.deepEqual(
+      toolItems(second).map((item) => JSON.parse(item.arguments).filePath),
+      ['/tmp/ws-sequential-b'],
+    );
+    const third = await request([{
+      type: 'function_call_output', call_id: 'call-ws-b',
+      output: '1flowbase-client-tool-result sequential-b',
+    }], responseId(second));
+    assert.equal(toolItems(third).length, 0);
+    assert.equal(
+      third
+        .filter((event) => event.type === 'response.output_text.delta')
+        .map((event) => event.delta)
+        .join(''),
+      '1flowbase sequential callback sentinel ok',
+    );
+    assert.equal(third.filter((event) => event.type === 'response.completed').length, 1);
+
+    const snapshot = upstream.snapshot();
+    const toolCallRounds = snapshot.entries.filter((event) => event.event === 'tool_call');
+    assert.equal(toolCallRounds.length, 3);
+    assert.deepEqual(
+      toolCallRounds.map((event) => event.nonce),
+      [parallel, first, second].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    const callbackRequests = snapshot.entries.filter(
+      (event) => event.event === 'second_upstream_request',
+    );
+    assert.equal(callbackRequests.length, 2);
+    assert.deepEqual(
+      callbackRequests.map((event) => event.nonce),
+      [second, third].map((events) => responseId(events).slice('resp_'.length)),
+    );
+    assert.ok(toolCallRounds[1].sequence < callbackRequests[0].sequence);
+    assert.ok(callbackRequests[0].sequence < toolCallRounds[2].sequence);
+    assert.ok(toolCallRounds[2].sequence < callbackRequests[1].sequence);
+  });
+});
+
+// Root AC-019/020/023/024: provider output, rather than forged client input, drives MCP observations.
+test('controlled wire vectors observe honest provider MCP output without executor or server_url outbound', async () => {
   await withMockUpstream(async ({ upstream, httpBaseUrl, networkObserverUrl, gatewayExecutorObserverUrl }) => {
     const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -444,19 +722,35 @@ test('controlled wire vectors count provider execution without gateway executor 
         model: 'mock-model', stream: true,
         tools: [
           { type: 'file_search' },
-          { type: 'mcp', server_label: 'fixture', server_url: networkObserverUrl },
+          { type: 'mcp', server_label: 'fixture_mcp', server_url: networkObserverUrl },
           { type: 'custom', name: 'caller', x_gateway_executor_observer: gatewayExecutorObserverUrl },
         ],
-        input: [
-          { type: 'tool_search_call' }, { type: 'tool_search_output' }, { type: 'additional_tools' },
-          { type: 'mcp_list_tools' }, { type: 'mcp_call' }, { type: 'mcp_approval_request' },
-        ],
+        input: 'ordinary user request for an MCP lookup',
       }),
     });
-    await response.text();
+    const events = parseSse(await response.text());
+    assert.equal(events.some((event) => event.event === 'response.future_gateway_drift'), false);
+    const output = events
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item);
+    assert.deepEqual(output.map((item) => item.type), [
+      'mcp_list_tools', 'mcp_call', 'mcp_approval_request',
+    ]);
+    assert.deepEqual(output.map((item) => item.server_label), [
+      'fixture_mcp', 'fixture_mcp', 'fixture_mcp',
+    ]);
+    assert.equal(output.every((item) => typeof item.id === 'string' && item.id.length > 0), true);
+    assert.equal(output.every((item) => typeof item.status === 'string' && item.status.length > 0), true);
+    assert.equal(output[1].name, 'lookup');
+    assert.deepEqual(JSON.parse(output[1].arguments), { query: 'fixture' });
+    assert.equal(output[2].name, 'lookup');
+    assert.deepEqual(JSON.parse(output[2].arguments), { query: 'approval fixture' });
     const snapshot = upstream.snapshot();
     assert.equal(snapshot.counters.gatewayExecutorInvocations, 0);
     assert.equal(snapshot.counters.networkObserverOutbound, 0);
     assert.equal(snapshot.counters.providerExecutions, 2);
+    for (const event of ['mcp_server_definition', 'mcp_list', 'mcp_call', 'mcp_approval']) {
+      assert.equal(snapshot.entries.some((entry) => entry.event === event), true);
+    }
   });
 });

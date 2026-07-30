@@ -15,7 +15,13 @@
         "runtime": {
           "protocol": "stdio_json_worker",
           "entry": "bin/openai-provider",
-          "capabilities": []
+          "capabilities": [
+            "compact.responses_compact",
+            "compact.responses_compaction_v2",
+            "responses.native_passthrough",
+            "protocol_context.restore.openai_chat.v1",
+            "protocol_context.restore.openai_responses.v1"
+          ]
         }
       },
       "input": {
@@ -40,8 +46,7 @@
         "response_format": null,
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
-          "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
+          "source_protocol": "openai_responses",
           "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
         },
         "trace_context": {},
@@ -87,7 +92,9 @@
           "capabilities": [
             "end_user_reference",
             "system_prompt_blocks",
-            "system_prompt_cache_control"
+            "system_prompt_cache_control",
+            "count_tokens",
+            "protocol_context.restore.anthropic_messages.v1"
           ]
         }
       },
@@ -123,7 +130,6 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
           "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
         },
         "trace_context": {},
@@ -382,7 +388,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/openai_compatible-provider",
-          "capabilities": []
+          "capabilities": ["protocol_context.restore.openai_chat.v1"]
         }
       },
       "input": {
@@ -405,8 +411,7 @@
         "response_format": null,
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
-          "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
+          "source_protocol": "openai_chat",
           "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
         },
         "trace_context": {},
@@ -458,6 +463,12 @@
         "expected_error": "package digest mismatch"
       }
     ],
+    "stale_artifact_receipt": {
+      "target_provider": "openai",
+      "expected_manifest_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_status_family": 4,
+      "expected_error": "manifest_fingerprint_mismatch"
+    },
     "legacy_input": {
       "target_provider": "openai",
       "contract_version": "1flowbase.provider/v1",
@@ -467,16 +478,9 @@
     "undeclared_capability": {
       "target_provider": "openai",
       "required_capabilities": [
-        "system_prompt_blocks",
-        "system_prompt_cache_control"
+        "compact.responses_compact"
       ],
-      "system": [
-        {
-          "type": "text",
-          "text": "$SYSTEM_PROMPT_CANARY",
-          "cache_control": { "type": "ephemeral" }
-        }
-      ],
+      "system": [],
       "expected_status_family": 4,
       "expected_upstream_requests": 0
     }

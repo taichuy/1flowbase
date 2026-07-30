@@ -89,6 +89,8 @@ function parseCliArgs(argv, env = process.env) {
   const anthropicModel = values.get('--anthropic-model').trim();
   if (!openaiModel) throw new Error('--openai-model must name a published model');
   if (!anthropicModel) throw new Error('--anthropic-model must name a published model');
+  const responsesSseUrl = values.get('--responses-sse-url');
+  const openaiGatewayOrigin = new URL(responsesSseUrl).origin;
   return {
     help: false,
     mode,
@@ -96,15 +98,18 @@ function parseCliArgs(argv, env = process.env) {
     timeoutMs,
     authorizationTokenByTransport: {
       [TRANSPORT.RESPONSES_SSE]: responsesApiKey,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: responsesApiKey,
       [TRANSPORT.ANTHROPIC_SSE]: anthropicApiKey,
     },
     modelByTransport: {
       [TRANSPORT.RESPONSES_SSE]: openaiModel,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: openaiModel,
       [TRANSPORT.ANTHROPIC_SSE]: anthropicModel,
     },
     endpointSet: {
-      [TRANSPORT.RESPONSES_SSE]: values.get('--responses-sse-url'),
+      [TRANSPORT.RESPONSES_SSE]: responsesSseUrl,
       [TRANSPORT.RESPONSES_WEBSOCKET]: values.get('--mock-responses-websocket-url'),
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: `${openaiGatewayOrigin}/v1/chat/completions`,
       [TRANSPORT.ANTHROPIC_SSE]: values.get('--anthropic-sse-url'),
     },
   };

@@ -6,7 +6,6 @@ import {
 } from '@1flowbase/flow-schema';
 
 import type { AgentFlowNodeContributionEntry } from '../api/node-contributions';
-import { isApplicationFlowCompactSource } from './compact-dispatch';
 import './node-definitions/contracts';
 import type {
   NodeDefinition,
@@ -19,7 +18,6 @@ import {
   type BuiltinNodePickerOption
 } from '../../flow-editor/authoring/node-picker';
 import {
-  getNodePickerOptionNodeType,
   toPluginContributionPickerOption,
   type NodePickerOption
 } from '../../flow-editor/authoring/plugin-node-picker';
@@ -44,9 +42,6 @@ export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
     'answer',
     ...SHARED_EXECUTION_NODE_PICKER_TYPES
   ]);
-
-export const COMPACT_RESPONSE_NODE_PICKER_OPTIONS =
-  buildBuiltinNodePickerOptions(['compact_response']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -90,20 +85,6 @@ export function buildNodePickerOptions(
     ...BUILTIN_NODE_PICKER_OPTIONS,
     ...contributions.map(toPluginContributionPickerOption)
   ];
-}
-
-export function getNodePickerOptionsForSource(
-  options: NodePickerOption[],
-  sourceNode: Pick<FlowNodeDocument, 'type' | 'config'> | null | undefined,
-  sourceHandle: string | null | undefined
-) {
-  if (isApplicationFlowCompactSource(sourceNode, sourceHandle)) {
-    return COMPACT_RESPONSE_NODE_PICKER_OPTIONS;
-  }
-
-  return options.filter(
-    (option) => getNodePickerOptionNodeType(option) !== 'compact_response'
-  );
 }
 
 export function toPluginContributionRef(

@@ -360,8 +360,8 @@ pub struct AnswerSnapshotResponse {
     pub output_payload: serde_json::Value,
     pub complete: bool,
     pub materialized_from: String,
-    pub answer_node_id: String,
-    pub answer_node_run_id: String,
+    pub answer_node_id: Option<String>,
+    pub answer_node_run_id: Option<String>,
     pub waiting_node_id: Option<String>,
     pub waiting_node_run_id: Option<String>,
 }

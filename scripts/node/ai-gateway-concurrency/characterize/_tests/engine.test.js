@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { MOCK_ROUTE, SCENARIO, TRANSPORT, mockScenarioSentinel } = require('../../contracts');
-const { createMockUpstream } = require('../../mock-upstream');
+const { HTTP_500_ERROR_BODY, createMockUpstream } = require('../../mock-upstream');
 const {
   authorizationHeadersByTransport,
   countMockScenarioObservations,
@@ -61,7 +61,7 @@ test('AC-003/004/005: finite characterize fixture classifies transports, failure
         return fetch(url, options);
       },
       mockSnapshot: mock.snapshot,
-      timeoutMs: 1_000,
+      timeoutMs: 5_000,
     });
     assert.equal(result.summary.verdict, 'PASS');
     assert.equal(result.summary.performanceBudgetApplied, false);
@@ -115,6 +115,23 @@ test('AC-004: Gateway converts accepted HTTP upstream interruption to explicit f
     applicationId: 'application-1',
     providerInstanceId: 'provider-1',
   }).join('\n'), /expected outcome failed/u);
+});
+
+test('AC error fidelity: accepted HTTP failure blocks summarized public messages', () => {
+  const base = {
+    transport: TRANSPORT.ANTHROPIC_SSE,
+    scenario: SCENARIO.HTTP_500,
+    outcome: 'failed',
+    terminalCount: 0,
+    chunkTexts: [],
+    upstreamNonce: null,
+    upstreamNonceCount: 0,
+  };
+  assert.deepEqual(validateRequestResult({ ...base, publicErrorMessage: HTTP_500_ERROR_BODY }), []);
+  assert.match(
+    validateRequestResult({ ...base, publicErrorMessage: 'provider request failed' }).join('\n'),
+    /did not preserve the complete upstream HTTP body/u,
+  );
 });
 
 test('AC-011: downstream disconnect preserves an accepted Gateway run but cancels a direct mock request', () => {
@@ -206,9 +223,9 @@ test('AC-003: one execute call keeps global nonce order and transport-specific a
     assert.equal(websocketCalls[0].length, 1);
     assert.equal(String(websocketCalls[0][0]).includes('key'), false);
     assert.equal(websocketRequests.length, 1);
-    assert.equal(websocketRequests[0].response.model, 'mock-model');
-    assert.deepEqual(websocketRequests[0].response.metadata, { trace_id: 'load-000002' });
-    assert.equal(JSON.stringify(websocketRequests[0].response).includes(mockScenarioSentinel(SCENARIO.NORMAL)), true);
+    assert.equal(websocketRequests[0].model, 'mock-model');
+    assert.deepEqual(websocketRequests[0].metadata, { trace_id: 'load-000002' });
+    assert.equal(JSON.stringify(websocketRequests[0]).includes(mockScenarioSentinel(SCENARIO.NORMAL)), true);
   });
 });
 
@@ -227,11 +244,12 @@ test('AC-003 controlled negatives: WebSocket, unknown, missing, and shared autho
   );
   assert.throws(
     () => authorizationHeadersByTransport({ [TRANSPORT.RESPONSES_SSE]: 'responses-key' }),
-    /authorization token is required for transport: anthropic-sse/u,
+    /authorization token is required for transport: chat-completions-sse/u,
   );
   assert.throws(
     () => authorizationHeadersByTransport({
       [TRANSPORT.RESPONSES_SSE]: 'shared-key',
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'shared-key',
       [TRANSPORT.ANTHROPIC_SSE]: 'shared-key',
     }),
     /must use distinct Application API keys/u,
@@ -249,7 +267,7 @@ test('AC-003 controlled negatives: WebSocket, unknown, and missing published mod
   );
   assert.throws(
     () => requirePublishedModelsByTransport({ [TRANSPORT.RESPONSES_SSE]: 'published-openai-model' }),
-    /published model is required for transport: anthropic-sse/u,
+    /published model is required for transport: chat-completions-sse/u,
   );
 });
 
@@ -381,15 +399,27 @@ test('AC-003/004: characterize matrix separates blocking correctness from perfor
     row.gateRole === GATE_ROLE.BLOCKING && row.scenario !== SCENARIO.NORMAL
   )).every((row) => row.concurrency === 1), true);
   const multiRows = CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.MULTI_POOL);
-  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency, row.gateRole]), [
+  const expectedMultiRows = [
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 2, GATE_ROLE.BLOCKING],
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 16, GATE_ROLE.ADVISORY],
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, 32, GATE_ROLE.ADVISORY],
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4, GATE_ROLE.ADVISORY],
-  ]);
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.BLOCKING).reduce((total, row) => total + row.concurrency, 0), 29);
-  assert.equal(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.ADVISORY).reduce((total, row) => total + row.concurrency, 0), 196);
-  assert.equal(CHARACTERIZE_PLAN.reduce((total, row) => total + row.concurrency, 0), 225);
+  ];
+  assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency, row.gateRole]), expectedMultiRows);
+  const requestCount = (rows) => rows.reduce((total, row) => total + row.concurrency, 0);
+  const multiRequestCount = (gateRole) => expectedMultiRows
+    .filter((row) => row[3] === gateRole)
+    .reduce((total, row) => total + row[2], 0);
+  const expectedBlockingRequests = Object.values(TRANSPORT).length * (
+    Object.values(SCENARIO).length + CORRECTNESS_CONCURRENCY.filter((value) => value !== 1)
+      .reduce((total, value) => total + value, 0)
+  ) + multiRequestCount(GATE_ROLE.BLOCKING);
+  const expectedAdvisoryRequests = Object.values(TRANSPORT).length
+    * PERFORMANCE_CONCURRENCY.reduce((total, value) => total + value, 0)
+    + multiRequestCount(GATE_ROLE.ADVISORY);
+  assert.equal(requestCount(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.BLOCKING)), expectedBlockingRequests);
+  assert.equal(requestCount(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.ADVISORY)), expectedAdvisoryRequests);
+  assert.equal(requestCount(CHARACTERIZE_PLAN), expectedBlockingRequests + expectedAdvisoryRequests);
 });
 
 test('AC-029: non-blocking performance failures remain visible without changing the protocol verdict', async () => {

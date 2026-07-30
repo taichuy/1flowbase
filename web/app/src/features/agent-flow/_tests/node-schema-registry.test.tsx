@@ -20,7 +20,6 @@ import {
 } from '../lib/node-definitions/contracts';
 import {
   BUILTIN_NODE_PICKER_OPTIONS,
-  COMPACT_RESPONSE_NODE_PICKER_OPTIONS,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
 
@@ -227,20 +226,6 @@ describe('agent-flow node schema registry', () => {
           ]
         }),
         expect.objectContaining({
-          kind: 'section',
-          blocks: [
-            expect.objectContaining({
-              kind: 'field',
-              path: 'config.compact_dispatch',
-              renderer: 'static_select',
-              options: [
-                { value: 'transparent', label: '透明' },
-                { value: 'application_flow', label: '应用流程' }
-              ]
-            })
-          ]
-        }),
-        expect.objectContaining({
           kind: 'view',
           renderer: 'relations',
           title: '下一步'
@@ -269,23 +254,6 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
-  test('keeps Compact Response semantic with no configurable wire body or next-step editor', () => {
-    const schema = resolveAgentFlowNodeSchema('compact_response');
-    const contract = getBuiltinNodeRuntimeContract('compact_response');
-    const serializedConfigBlocks = JSON.stringify(
-      schema.detail.tabs.config.blocks
-    );
-
-    expect(contract?.defaults.config).toEqual({});
-    expect(contract?.defaults.bindings).toEqual({});
-    expect(contract?.defaults.outputs).toEqual([]);
-    expect(serializedConfigBlocks).not.toContain('http_request');
-    expect(serializedConfigBlocks).not.toContain('headers');
-    expect(serializedConfigBlocks).not.toContain('response_body');
-    expect(serializedConfigBlocks).not.toContain('relations');
-    expect(serializedConfigBlocks).not.toContain('policy_group');
-  });
-
   test('registers start and answer nodes for the built-in node picker', () => {
     expect(BUILTIN_NODE_PICKER_OPTIONS).toEqual(
       expect.arrayContaining([
@@ -306,20 +274,6 @@ describe('agent-flow node schema registry', () => {
         })
       ])
     );
-    expect(BUILTIN_NODE_PICKER_OPTIONS).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'builtin',
-          type: 'compact_response'
-        })
-      ])
-    );
-    expect(COMPACT_RESPONSE_NODE_PICKER_OPTIONS).toEqual([
-      expect.objectContaining({
-        kind: 'builtin',
-        type: 'compact_response'
-      })
-    ]);
     expect(BUILTIN_NODE_PICKER_OPTIONS).toEqual(
       expect.not.arrayContaining([
         expect.objectContaining({
@@ -373,6 +327,26 @@ describe('agent-flow node schema registry', () => {
       expect.objectContaining({
         renderer: 'llm_tool_registrations'
       })
+    );
+  });
+
+  test('WP-D1D exposes protocol context as one nullable selector field', () => {
+    const schema = resolveAgentFlowNodeSchema('llm');
+    const contract = getBuiltinNodeRuntimeContract('llm');
+    const protocolContextField = findFieldBlock(
+      schema.detail.tabs.config.blocks,
+      'config.protocol_context'
+    );
+
+    expect(contract?.defaults.config.protocol_context).toEqual({
+      kind: 'selector',
+      value: ['sys', 'protocol_context']
+    });
+    expect(contract?.defaults.config).not.toHaveProperty(
+      'protocol_context_enabled'
+    );
+    expect(protocolContextField).toEqual(
+      expect.objectContaining({ renderer: 'selector' })
     );
   });
 
@@ -809,7 +783,6 @@ describe('agent-flow node schema registry', () => {
       'workflow_start',
       'llm',
       'answer',
-      'compact_response',
       'workflow_end',
       'template_transform',
       'knowledge_retrieval',
@@ -879,8 +852,7 @@ describe('agent-flow node schema registry', () => {
     expect(contract?.defaults.outputs).toEqual([]);
     expect(contract?.defaults.config).toEqual({
       input_fields: [],
-      model_list: [],
-      compact_dispatch: 'transparent'
+      model_list: []
     });
     expect(contract?.defaults.bindings).toEqual({});
   });

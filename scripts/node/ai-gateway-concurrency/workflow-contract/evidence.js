@@ -18,6 +18,7 @@ function evidencePaths(repoRoot) {
 
 function prepareEvidence(repoRoot) {
   const paths = evidencePaths(repoRoot);
+  fs.rmSync(paths.root, { recursive: true, force: true });
   fs.mkdirSync(paths.root, { recursive: true });
   return paths;
 }
@@ -64,7 +65,8 @@ function appendJobSummary(summaryPath, result) {
 }
 
 function finalizeEvidence({ repoRoot, summaryPath, fallback }) {
-  const paths = prepareEvidence(repoRoot);
+  const paths = evidencePaths(repoRoot);
+  fs.mkdirSync(paths.root, { recursive: true });
   let result = fallback;
   if (fs.existsSync(paths.resultFile)) result = JSON.parse(fs.readFileSync(paths.resultFile, 'utf8'));
   else writeJson(paths.resultFile, result);

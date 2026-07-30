@@ -1,5 +1,138 @@
 use super::*;
 
+pub(super) struct SubscribedCompatibleTypedEventStream {
+    pub(super) state: Arc<ApiState>,
+    pub(super) initial_run: NativeRunResult,
+    pub(super) from_sequence: Option<i64>,
+    pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    pub(super) subscription: control_plane::ports::RuntimeEventSubscription,
+    pub(super) sender: mpsc::Sender<CompatibleProjectionInput>,
+}
+
+pub(super) async fn send_subscribed_compatible_typed_event_stream(
+    stream: SubscribedCompatibleTypedEventStream,
+) {
+    // The only synthesized typed facts are canonical answer deltas recovered
+    // from a durable terminal snapshot when the live lane did not deliver them.
+    let SubscribedCompatibleTypedEventStream {
+        state,
+        initial_run,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        mut subscription,
+        sender,
+    } = stream;
+    let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
+    let mut emitted_answer_delta = false;
+    if forward_ordered_typed_events(
+        state.as_ref(),
+        &initial_run,
+        &sender,
+        ignored_waiting_callback_task_id,
+        &mut last_forwarded_sequence,
+        &mut emitted_answer_delta,
+        subscription.replay,
+    )
+    .await
+    {
+        return;
+    }
+
+    while let Some(event) = subscription.live_events.recv().await {
+        if forward_ordered_typed_events(
+            state.as_ref(),
+            &initial_run,
+            &sender,
+            ignored_waiting_callback_task_id,
+            &mut last_forwarded_sequence,
+            &mut emitted_answer_delta,
+            vec![event],
+        )
+        .await
+        {
+            return;
+        }
+    }
+}
+
+async fn forward_ordered_typed_events(
+    state: &ApiState,
+    initial_run: &NativeRunResult,
+    sender: &mpsc::Sender<CompatibleProjectionInput>,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    last_forwarded_sequence: &mut i64,
+    emitted_answer_delta: &mut bool,
+    events: Vec<RuntimeEventEnvelope>,
+) -> bool {
+    for event in events {
+        let Some(event) = take_ordered_compatible_event(
+            event,
+            last_forwarded_sequence,
+            ignored_waiting_callback_task_id,
+        ) else {
+            continue;
+        };
+        let terminal = is_public_terminal_runtime_event(&event.event_type);
+        let run = if terminal {
+            let run =
+                match load_durable_native_run_for_terminal_projection(state, initial_run).await {
+                    Ok(run) => run,
+                    Err(error) => {
+                        warn!(
+                            flow_run_id = %initial_run.id,
+                            application_id = %initial_run.application_id,
+                            error = %error,
+                            "typed public terminal blocked because durable run reload failed"
+                        );
+                        continue;
+                    }
+                };
+            if !durable_native_run_matches_terminal(&run, &event.event_type) {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    durable_status = ?run.status,
+                    event_type = %event.event_type,
+                    "typed public terminal blocked because durable status does not match"
+                );
+                continue;
+            }
+            if !*emitted_answer_delta {
+                for answer_event in durable_canonical_partial_runtime_events_from_native_run(&run) {
+                    if sender
+                        .send(CompatibleProjectionInput {
+                            run_snapshot: run.clone(),
+                            envelope: answer_event,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        return true;
+                    }
+                    *emitted_answer_delta = true;
+                }
+            }
+            run
+        } else {
+            initial_run.clone()
+        };
+        *emitted_answer_delta |= is_answer_presentation_delta(&event);
+        if sender
+            .send(CompatibleProjectionInput {
+                run_snapshot: run,
+                envelope: event,
+            })
+            .await
+            .is_err()
+        {
+            return true;
+        }
+        if terminal {
+            return true;
+        }
+    }
+    false
+}
+
 pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
     pub(super) state: Arc<ApiState>,
     pub(super) initial_run: NativeRunResult,
@@ -385,6 +518,21 @@ enum CompatibleForwardOutcome {
     ClientDisconnected,
 }
 
+pub(super) fn take_ordered_compatible_event(
+    event: RuntimeEventEnvelope,
+    last_forwarded_sequence: &mut i64,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+) -> Option<RuntimeEventEnvelope> {
+    if event.sequence <= *last_forwarded_sequence {
+        return None;
+    }
+    *last_forwarded_sequence = event.sequence;
+    if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
+        return None;
+    }
+    Some(event)
+}
+
 async fn forward_compatible_runtime_events<F>(
     forward: CompatibleRuntimeEventsForward<'_, F>,
 ) -> CompatibleForwardOutcome
@@ -405,13 +553,13 @@ where
     let mut resume_durable_sequence_before_terminal = resume_durable_sequence_before_terminal;
 
     for event in events {
-        if event.sequence <= *last_forwarded_sequence {
+        let Some(event) = take_ordered_compatible_event(
+            event,
+            last_forwarded_sequence,
+            ignored_waiting_callback_task_id,
+        ) else {
             continue;
-        }
-        *last_forwarded_sequence = event.sequence;
-        if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
-            continue;
-        }
+        };
 
         let is_terminal = is_public_terminal_runtime_event(&event.event_type);
         if is_terminal && ignored_waiting_callback_task_id.is_some() {
@@ -482,13 +630,13 @@ where
         events,
     } = forward;
     for event in events {
-        if event.sequence <= *last_forwarded_sequence {
+        let Some(event) = take_ordered_compatible_event(
+            event,
+            last_forwarded_sequence,
+            ignored_waiting_callback_task_id,
+        ) else {
             continue;
-        }
-        *last_forwarded_sequence = event.sequence;
-        if is_ignored_waiting_callback(&event, ignored_waiting_callback_task_id) {
-            continue;
-        }
+        };
 
         match forward_single_compatible_runtime_event(
             state,
@@ -519,27 +667,53 @@ async fn forward_single_compatible_runtime_event<F>(
     sender: &mpsc::Sender<Result<Event, Infallible>>,
     mapper: &mut F,
     stats: &mut CompatibleStreamStats,
-    mut event: RuntimeEventEnvelope,
+    event: RuntimeEventEnvelope,
 ) -> CompatibleForwardOutcome
 where
     F: FnMut(&NativeRunResult, RuntimeEventEnvelope) -> Vec<Result<Event, Infallible>>,
 {
-    if !stats.claim_runtime_event(&mut event) {
+    if !stats.claim_runtime_event(&event) {
         return CompatibleForwardOutcome::Open;
     }
     let is_terminal = is_public_terminal_runtime_event(&event.event_type);
     let terminal_run;
     let run = if is_terminal {
-        terminal_run = load_latest_native_run_for_terminal_fallback(state, initial_run).await;
+        terminal_run =
+            match load_durable_native_run_for_terminal_projection(state, initial_run).await {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        application_id = %initial_run.application_id,
+                        error = %error,
+                        "compatible public terminal blocked because durable run reload failed"
+                    );
+                    return CompatibleForwardOutcome::Open;
+                }
+            };
+        if !durable_native_run_matches_terminal(&terminal_run, &event.event_type) {
+            warn!(
+                flow_run_id = %initial_run.id,
+                durable_status = ?terminal_run.status,
+                event_type = %event.event_type,
+                "compatible public terminal blocked because durable status does not match"
+            );
+            return CompatibleForwardOutcome::Open;
+        }
         &terminal_run
     } else {
         initial_run
     };
-    let event = if is_terminal {
-        enrich_terminal_runtime_event_with_durable_answer(state, run, event).await
-    } else {
-        event
-    };
+    if is_terminal && !stats.emitted_content() {
+        for answer_event in durable_canonical_partial_runtime_events_from_native_run(run) {
+            let events = mapper(run, answer_event.clone());
+            let emitted_public_event = !events.is_empty();
+            if !send_compatible_sse_events(sender, events).await {
+                return CompatibleForwardOutcome::ClientDisconnected;
+            }
+            stats.record_sent_runtime_event(run, &answer_event, emitted_public_event);
+        }
+    }
     let event_type = event.event_type.clone();
     let events = mapper(run, event.clone());
     let emitted_public_event = !events.is_empty();
@@ -762,8 +936,16 @@ where
         }
         stats.record_sent_runtime_event(&latest_run, &started_event, emitted_public_event);
     }
-    let terminal_event =
-        enrich_terminal_runtime_event_with_durable_answer(state, &latest_run, terminal_event).await;
+    if !stats.emitted_content() {
+        for answer_event in durable_canonical_partial_runtime_events_from_native_run(&latest_run) {
+            let events = mapper(&latest_run, answer_event.clone());
+            let emitted_public_event = !events.is_empty();
+            if !send_compatible_sse_events(sender, events).await {
+                return CompatibleTerminalFallbackOutcome::ClientDisconnected { event_type: None };
+            }
+            stats.record_sent_runtime_event(&latest_run, &answer_event, emitted_public_event);
+        }
+    }
     let event_type = terminal_event.event_type.clone();
     let events = mapper(&latest_run, terminal_event.clone());
     let emitted_public_event = !events.is_empty();

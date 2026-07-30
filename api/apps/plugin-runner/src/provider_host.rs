@@ -14,9 +14,10 @@ use plugin_framework::{
     provider_contract::{
         ModelDiscoveryMode, ProviderBalanceResult, ProviderCompactError, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderInvocationInput, ProviderInvocationResult, ProviderModelDescriptor,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStreamEvent, ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
+        ProviderGenerateTranslationReceipt, ProviderInvocationInput, ProviderInvocationResult,
+        ProviderModelDescriptor, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent, ProviderWireOperation,
+        CURRENT_PROVIDER_CONTRACT,
     },
     PluginRuntimeLimits,
 };
@@ -33,7 +34,7 @@ use crate::stdio_runtime::{
 
 type ProviderWorkerHandle = Arc<Mutex<ProviderWorker>>;
 type ProviderWorkerRegistry = Arc<StdMutex<HashMap<String, ProviderWorkerHandle>>>;
-type ProviderLiveEvents = Option<tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>>;
+type ProviderLiveEvents = Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedProviderSummary {
@@ -193,7 +194,8 @@ struct PreparedProviderStreamInvocation {
     invocation_id: String,
     plugin_id: String,
     input: ProviderInvocationInput,
-    live_events: ProviderLiveEvents,
+    required_live_events: ProviderLiveEvents,
+    diagnostic_live_events: ProviderLiveEvents,
 }
 
 impl Drop for ActiveProviderInvocationLease {
@@ -568,24 +570,31 @@ impl ProviderHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
-        self.invoke_stream_with_live_events_operation(plugin_id, input, None)
+        self.invoke_stream_with_live_events_operation(plugin_id, input, None, None)
     }
 
     pub async fn invoke_stream_with_live_events(
         &self,
         plugin_id: &str,
         input: ProviderInvocationInput,
-        live_events: ProviderLiveEvents,
+        required_live_events: ProviderLiveEvents,
+        diagnostic_live_events: ProviderLiveEvents,
     ) -> FrameworkResult<ProviderInvokeStreamOutput> {
-        self.invoke_stream_with_live_events_operation(plugin_id, input, live_events)?
-            .await
+        self.invoke_stream_with_live_events_operation(
+            plugin_id,
+            input,
+            required_live_events,
+            diagnostic_live_events,
+        )?
+        .await
     }
 
     pub fn invoke_stream_with_live_events_operation(
         &self,
         plugin_id: &str,
         input: ProviderInvocationInput,
-        live_events: ProviderLiveEvents,
+        required_live_events: ProviderLiveEvents,
+        diagnostic_live_events: ProviderLiveEvents,
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
@@ -607,7 +616,8 @@ impl ProviderHost {
                 invocation_id,
                 plugin_id,
                 input,
-                live_events,
+                required_live_events,
+                diagnostic_live_events,
             })
             .await
         })
@@ -746,10 +756,11 @@ impl ProviderHost {
             invocation_id,
             plugin_id,
             input,
-            live_events,
+            required_live_events,
+            diagnostic_live_events,
         } = invocation;
 
-        let wire_input = current_provider_wire_input(&loaded, &input)?;
+        let prepared_wire = current_provider_wire_input(&loaded, &input)?;
         tracing::info!(
             wire_audit = ?input.wire_audit(),
             "provider generate wire prepared"
@@ -764,7 +775,7 @@ impl ProviderHost {
         ));
         let request = ProviderStdioRequest {
             method: ProviderStdioMethod::Invoke,
-            input: wire_input,
+            input: prepared_wire.wire_value,
         };
         let invocation_limits = provider_invocation_limits(&loaded.package.manifest.runtime.limits);
         let output = match loaded.package.manifest.execution_mode {
@@ -773,7 +784,8 @@ impl ProviderHost {
                     &loaded.runtime_executable,
                     &request,
                     &invocation_limits,
-                    live_events,
+                    required_live_events,
+                    diagnostic_live_events,
                     event_observer,
                 )
                 .await
@@ -785,7 +797,8 @@ impl ProviderHost {
                     .call_streaming_with_limits(
                         &request,
                         &invocation_limits,
-                        live_events,
+                        required_live_events,
+                        diagnostic_live_events,
                         event_observer,
                     )
                     .await
@@ -796,17 +809,26 @@ impl ProviderHost {
         };
         Self::remove_active_stream(&active_streams, &invocation_id).await;
         let output = output?;
+        let mut result = output.result;
+        prepared_wire
+            .translation_receipt
+            .attach_to_provider_metadata(&mut result.provider_metadata)?;
         Ok(ProviderInvokeStreamOutput {
             events: output.events,
-            result: output.result,
+            result,
         })
     }
+}
+
+struct PreparedProviderGenerateWire {
+    wire_value: Value,
+    translation_receipt: ProviderGenerateTranslationReceipt,
 }
 
 fn current_provider_wire_input(
     loaded: &LoadedProviderPackage,
     input: &ProviderInvocationInput,
-) -> FrameworkResult<Value> {
+) -> FrameworkResult<PreparedProviderGenerateWire> {
     if loaded.package.manifest.contract_version != CURRENT_PROVIDER_CONTRACT {
         return Err(PluginFrameworkError::invalid_provider_contract(format!(
             "unsupported provider package contract: expected {CURRENT_PROVIDER_CONTRACT}, found {}",
@@ -820,7 +842,12 @@ fn current_provider_wire_input(
         ));
     }
 
-    input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
+    let (wire_value, translation_receipt) = input
+        .to_current_provider_generate_wire_value(&loaded.package.manifest.runtime.capabilities)?;
+    Ok(PreparedProviderGenerateWire {
+        wire_value,
+        translation_receipt,
+    })
 }
 
 // Provider errors intentionally preserve complete typed upstream diagnostics.
@@ -916,7 +943,11 @@ use operations::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plugin_framework::provider_contract::{NativePromptBlock, ProviderCompactProfile};
+    use plugin_framework::provider_contract::{
+        NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
+        NativePromptCacheControlType, ProtocolContextEnvelope, ProviderCompactProfile,
+        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    };
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -1095,6 +1126,33 @@ case "${payload}" in
     ;;
   *)
     printf '%s' '{"ok":true,"result":{}}'
+    ;;
+esac
+"#,
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                let path = self.path().join("bin/fixture_provider");
+                let mut permissions = fs::metadata(&path).unwrap().permissions();
+                permissions.set_mode(0o755);
+                fs::set_permissions(path, permissions).unwrap();
+            }
+        }
+
+        fn write_generate_translation_runtime(&self) {
+            self.write(
+                "bin/fixture_provider",
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+case "${payload}" in
+  *'cache_control'*|*'end_user_reference'*|*'client_protocol_envelope'*)
+    printf '%s\n' '{"type":"error","error":{"kind":"provider_invalid_response","message":"optional context was not translated"}}'
+    ;;
+  *)
+    printf '%s\n' '{"type":"result","result":{"final_content":"translated","finish_reason":"stop","provider_metadata":{"provider":"fixture"}}}'
     ;;
 esac
 "#,
@@ -1341,8 +1399,9 @@ done
         let loaded = host
             .loaded_package(&summary.plugin_id)
             .expect("current provider package should be loaded");
-        let wire_input = current_provider_wire_input(loaded, &input)
+        let prepared = current_provider_wire_input(loaded, &input)
             .expect("current provider package should receive direct typed input");
+        let wire_input = prepared.wire_value;
 
         assert_eq!(
             wire_input["contract_version"],
@@ -1357,6 +1416,54 @@ done
         assert!(
             wire_input.get("operation").is_none() && wire_input.get("profile").is_none(),
             "default Generate must retain the existing provider wire shape"
+        );
+    }
+
+    #[tokio::test]
+    async fn wp_r1_generate_attaches_translation_receipt_to_provider_metadata() {
+        let package = TempProviderPackage::new();
+        package.write_generate_translation_runtime();
+        let mut host = ProviderHost::default();
+        let plugin_id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+        let mut input = invocation_input("fixture-model");
+        input.system = vec![NativePromptBlock::Text {
+            text: "system text".to_string(),
+            cache_control: Some(NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: None,
+            }),
+        }];
+        input.request_context = NativeModelRequestContext {
+            end_user_reference: Some("external-user".to_string()),
+        };
+        input.client_protocol_envelope = Some(ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            query: BTreeMap::from([("preview".to_string(), vec!["one".to_string()])]),
+            ..ProtocolContextEnvelope::default()
+        });
+        input.synchronize_required_capabilities();
+        input
+            .required_capabilities
+            .insert(ProviderInvocationCapability::ProtocolContext);
+
+        let output = host
+            .invoke_stream(&plugin_id, input)
+            .await
+            .expect("optional Generate context should translate before provider spawn");
+
+        assert_eq!(output.result.final_content.as_deref(), Some("translated"));
+        assert_eq!(output.result.provider_metadata["provider"], "fixture");
+        assert_eq!(
+            output.result.provider_metadata[PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY]
+                ["decisions"],
+            json!([
+                "omitted_system_prompt_cache_control",
+                "omitted_end_user_reference",
+                "omitted_protocol_context_profile_mismatch"
+            ])
         );
     }
 

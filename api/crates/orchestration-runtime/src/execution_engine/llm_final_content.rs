@@ -195,7 +195,7 @@ pub(super) fn build_provider_error_payload(
         "provider_code": runtime.provider_code,
         "protocol": runtime.protocol,
         "error_code": serde_json::to_value(error.kind).unwrap_or(Value::Null),
-        "message": durable_provider_error_message(error.kind),
+        "message": error.message.clone(),
     });
     if let Some(status_code) = provider_status_code(error.provider_details.as_ref()) {
         payload["status_code"] = json!(status_code);
@@ -203,20 +203,12 @@ pub(super) fn build_provider_error_payload(
     payload
 }
 
-/// Provider responses may carry raw bodies, request headers, or a copied
-/// prompt. Those values are transport diagnostics, not durable runtime facts.
-/// The run record retains only a stable error kind and allowlisted status code.
-pub(super) fn durable_provider_error_message(kind: ProviderRuntimeErrorKind) -> &'static str {
-    match kind {
-        ProviderRuntimeErrorKind::AuthFailed => "provider authentication failed",
-        ProviderRuntimeErrorKind::EndpointUnreachable => "provider endpoint is unreachable",
-        ProviderRuntimeErrorKind::ModelNotFound => "provider model was not found",
-        ProviderRuntimeErrorKind::RateLimited => "provider rate limit exceeded",
-        ProviderRuntimeErrorKind::ProviderUpstreamError => "provider upstream request failed",
-        ProviderRuntimeErrorKind::ProviderInvalidResponse => {
-            "provider returned an invalid response"
-        }
-    }
+pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {
+    !matches!(
+        error.kind,
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch
+            | ProviderRuntimeErrorKind::ProviderTransportUnavailable
+    )
 }
 
 fn provider_status_code(details: Option<&Value>) -> Option<u16> {
@@ -233,103 +225,42 @@ pub(super) fn durable_provider_events(
     events
         .into_iter()
         .filter_map(|event| match event {
-            ProviderStreamEvent::NativeEvent { .. } => None,
+            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. } => {
+                None
+            }
             ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
-                error: ProviderRuntimeError::new(
-                    error.kind,
-                    durable_provider_error_message(error.kind),
-                ),
+                error: ProviderRuntimeError::new(error.kind, error.message.clone()),
             }),
             other => Some(other),
         })
         .collect()
 }
 
-// Visible internal tools need a user-actionable diagnostic while their branch
-// remains in memory; durable node errors continue to use the generic payload.
 pub(super) fn recoverable_provider_error_message(error: &ProviderRuntimeError) -> String {
-    sanitize_provider_diagnostic(&error.message)
-}
-
-fn sanitize_provider_diagnostic(text: &str) -> String {
-    let mut sanitized = text.to_string();
-    for marker in [
-        "bearer ",
-        "authorization:",
-        "\"authorization\":\"",
-        "api_key=",
-        "api_key:",
-        "\"api_key\":\"",
-        "token=",
-        "secret=",
-        "\"secret\":\"",
-    ] {
-        sanitized = redact_provider_diagnostic_marker(&sanitized, marker);
-    }
-    sanitized = redact_provider_diagnostic_token(&sanitized, "sk-");
-    let sanitized = sanitized.trim();
-    if sanitized.chars().count() <= 240 {
-        sanitized.to_string()
-    } else {
-        format!("{}...", sanitized.chars().take(240).collect::<String>())
-    }
-}
-
-fn redact_provider_diagnostic_marker(text: &str, marker: &str) -> String {
-    let haystack = text.to_ascii_lowercase();
-    let needle = marker.to_ascii_lowercase();
-    let mut result = String::with_capacity(text.len());
-    let mut cursor = 0;
-
-    while let Some(offset) = haystack[cursor..].find(&needle) {
-        let start = cursor + offset;
-        let value_start = start + marker.len();
-        result.push_str(&text[cursor..value_start]);
-        let mut value_end = value_start;
-        for ch in text[value_start..].chars() {
-            if ch.is_whitespace() || matches!(ch, '\"' | '\'' | ',' | '}' | ']' | '\n' | '\r') {
-                break;
-            }
-            value_end += ch.len_utf8();
-        }
-        if value_end > value_start {
-            result.push_str("[REDACTED]");
-        }
-        cursor = value_end;
-    }
-
-    result.push_str(&text[cursor..]);
-    result
-}
-
-fn redact_provider_diagnostic_token(text: &str, prefix: &str) -> String {
-    let haystack = text.to_ascii_lowercase();
-    let needle = prefix.to_ascii_lowercase();
-    let mut result = String::with_capacity(text.len());
-    let mut cursor = 0;
-
-    while let Some(offset) = haystack[cursor..].find(&needle) {
-        let start = cursor + offset;
-        result.push_str(&text[cursor..start]);
-        result.push_str(prefix);
-        result.push_str("[REDACTED]");
-        let mut token_end = start + prefix.len();
-        for ch in text[token_end..].chars() {
-            if !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')) {
-                break;
-            }
-            token_end += ch.len_utf8();
-        }
-        cursor = token_end;
-    }
-
-    result.push_str(&text[cursor..]);
-    result
+    error.message.clone()
 }
 
 pub(super) fn provider_runtime_error_from_anyhow(error: &anyhow::Error) -> ProviderRuntimeError {
+    if let Some(contract_error @ PluginFrameworkError::InvalidProviderContract { .. }) =
+        error.downcast_ref::<PluginFrameworkError>()
+    {
+        return ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            contract_error.to_string(),
+        );
+    }
     if let Some(PluginFrameworkError::RuntimeContract { error }) =
         error.downcast_ref::<PluginFrameworkError>()
+    {
+        return normalize_runtime_contract_error(error);
+    }
+    if let Some(ProviderCompactError::Runtime { error }) =
+        error.downcast_ref::<ProviderCompactError>()
+    {
+        return normalize_runtime_contract_error(error);
+    }
+    if let Some(ProviderCountTokensError::Runtime { error }) =
+        error.downcast_ref::<ProviderCountTokensError>()
     {
         return normalize_runtime_contract_error(error);
     }

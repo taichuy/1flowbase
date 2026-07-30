@@ -40,7 +40,10 @@ class OwnerHttpClient {
     }
     if (!response.ok) {
       const code = payload?.code ? ` ${payload.code}` : '';
-      throw new Error(`${method} ${pathname} failed (${response.status}${code})`);
+      const message = typeof payload?.message === 'string' && payload.message.trim()
+        ? `: ${payload.message.trim()}`
+        : '';
+      throw new Error(`${method} ${pathname} failed (${response.status}${code}${message})`);
     }
     return { response, data: payload?.data ?? payload };
   }

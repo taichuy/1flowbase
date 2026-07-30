@@ -27,10 +27,7 @@ import { useNodeInteractions } from '../../hooks/interactions/use-node-interacti
 import { useSelectionInteractions } from '../../hooks/interactions/use-selection-interactions';
 import { toCanvasEdges } from '../../lib/adapters/to-canvas-edges';
 import { toCanvasNodes } from '../../lib/adapters/to-canvas-nodes';
-import {
-  BUILTIN_NODE_PICKER_OPTIONS,
-  getNodePickerOptionsForSource
-} from '../../lib/plugin-node-definitions';
+import { BUILTIN_NODE_PICKER_OPTIONS } from '../../lib/plugin-node-definitions';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   selectActiveContainerId,
@@ -205,23 +202,6 @@ function AgentFlowCanvasInner({
   const nodeInteractions = useNodeInteractions();
   const edgeInteractions = useEdgeInteractions();
   const selectionInteractions = useSelectionInteractions();
-  const connectionNodePickerOptions = useMemo(() => {
-    const sourceNode = document.graph.nodes.find(
-      (node) => node.id === connectingPayload.sourceNodeId
-    );
-
-    return getNodePickerOptionsForSource(
-      nodePickerOptions,
-      sourceNode,
-      connectingPayload.sourceHandleId
-    );
-  }, [
-    connectingPayload.sourceHandleId,
-    connectingPayload.sourceNodeId,
-    document,
-    nodePickerOptions
-  ]);
-
   const baseNodes = useMemo(
     () =>
       toCanvasNodes(
@@ -376,7 +356,7 @@ function AgentFlowCanvasInner({
             )}
             buttonClassName="agent-flow-floating-picker-anchor__button"
             open
-            options={connectionNodePickerOptions}
+            options={nodePickerOptions}
             placement="bottom"
             onOpenChange={(open) => {
               if (!open) {

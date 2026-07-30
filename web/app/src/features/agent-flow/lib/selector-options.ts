@@ -1,4 +1,7 @@
-import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
+import {
+  DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE,
+  type FlowAuthoringDocument
+} from '@1flowbase/flow-schema';
 
 import { getNodeVariableOutputs } from './variables/start-node-variables';
 import {
@@ -298,6 +301,35 @@ export function listLlmContextSelectorOptions(
     nodeId,
     environmentVariables
   ).filter((option) => outputHasLlmContextSchema(option));
+}
+
+export function listLlmProtocolContextSelectorOptions(
+  document: FlowAuthoringDocument,
+  nodeId: string
+): FlowSelectorOption[] {
+  const startNode = document.graph.nodes.find((node) => node.type === 'start');
+  const startLabel = startNode?.alias ?? 'Start';
+  const codeNodeIds = new Set(
+    document.graph.nodes
+      .filter((node) => node.type === 'code')
+      .map((node) => node.id)
+  );
+  const codeJsonOutputs = listVisibleSelectorOptions(document, nodeId).filter(
+    (option) => codeNodeIds.has(option.nodeId) && option.valueType === 'json'
+  );
+
+  return [
+    {
+      nodeId: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value[0],
+      nodeLabel: startLabel,
+      outputKey: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value[1],
+      outputLabel: 'sys.protocol_context',
+      valueType: 'json',
+      value: [...DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value],
+      displayLabel: `${startLabel}/sys.protocol_context`
+    },
+    ...codeJsonOutputs
+  ];
 }
 
 export function toCascaderSelectorOptions(options: FlowSelectorOption[]) {

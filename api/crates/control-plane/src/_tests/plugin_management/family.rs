@@ -15,8 +15,8 @@ use crate::{
     host_extension::is_model_provider_installation,
     plugin_management::{
         AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand, InstallPluginCommand,
-        PluginCatalogFilter, PluginCompatibilityOverride, PluginManagementService,
-        SwitchPluginVersionCommand, UpgradeLatestPluginFamilyCommand,
+        InstallUploadedPluginCommand, PluginCatalogFilter, PluginCompatibilityOverride,
+        PluginManagementService, SwitchPluginVersionCommand, UpgradeLatestPluginFamilyCommand,
     },
     ports::{
         CreatePluginAssignmentInput, DownloadedOfficialPluginPackage, ModelProviderRepository,
@@ -31,8 +31,9 @@ use domain::{
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 
 use super::support::{
-    actor_with_permissions, create_provider_fixture, requested_locales, seed_test_installation,
-    MemoryOfficialPluginSource, MemoryPluginManagementRepository, MemoryProviderRuntime,
+    actor_with_permissions, build_openai_compatible_package_bytes, create_provider_fixture,
+    requested_locales, seed_test_installation, MemoryOfficialPluginSource,
+    MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
 
 #[tokio::test]
@@ -285,6 +286,90 @@ async fn plugin_management_service_upgrades_to_latest_without_redownloading_when
     assert_eq!(task.task_kind, PluginTaskKind::SwitchVersion);
     assert_eq!(task.status, PluginTaskStatus::Succeeded);
     assert_eq!(download_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn ac_001_ac_002_upgrade_latest_installs_and_loads_existing_global_target_on_current_node() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let root_with_latest =
+        std::env::temp_dir().join(format!("plugin-upgrade-global-latest-{}", Uuid::now_v7()));
+    let current_node_root =
+        std::env::temp_dir().join(format!("plugin-upgrade-current-node-{}", Uuid::now_v7()));
+    let runtime = MemoryProviderRuntime::default();
+    let global_service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &root_with_latest,
+    )
+    .with_node_id("node-with-latest");
+    let current_node_service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &current_node_root,
+    )
+    .with_node_id("current-node");
+
+    let target = global_service
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            file_name: "openai_compatible-0.1.0.1flowbasepkg".into(),
+            package_bytes: build_openai_compatible_package_bytes("0.1.0", false),
+        })
+        .await
+        .unwrap()
+        .installation;
+    let current = seed_test_installation(
+        &repository,
+        &current_node_root,
+        "openai_compatible",
+        "0.0.9",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    repository
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id: current,
+            workspace_id,
+            provider_code: "openai_compatible".into(),
+            actor_user_id: repository.actor.user_id,
+        })
+        .await
+        .unwrap();
+
+    let task = current_node_service
+        .upgrade_latest(UpgradeLatestPluginFamilyCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "openai_compatible".into(),
+            compatibility_override: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(task.status, PluginTaskStatus::Succeeded);
+    assert_eq!(
+        repository
+            .assignment_installation_id("openai_compatible")
+            .await,
+        target.id
+    );
+    assert_eq!(runtime.loaded_installations().await, vec![target.id]);
+    let artifact = repository
+        .get_artifact_instance("current-node", target.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(artifact.local_version.as_deref(), Some("0.1.0"));
+    assert_eq!(artifact.artifact_status.as_str(), "ready");
+    assert_eq!(artifact.runtime_status.as_str(), "active");
+    assert!(current_node_root
+        .join("installed/openai_compatible/0.1.0")
+        .is_dir());
 }
 
 #[tokio::test]

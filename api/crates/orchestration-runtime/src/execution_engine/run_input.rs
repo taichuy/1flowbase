@@ -1,23 +1,36 @@
 use super::*;
+use domain::AiNativeOperation;
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, NativeModelPromptContext, NativeModelRequestContext,
+    NativeModelPromptContext, NativeModelRequestContext, ProtocolContextEnvelope,
     ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
     NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
 use std::sync::Arc;
 
-use crate::execution_state::{ApplicationFlowExecutionIntent, CompactResponseIngress};
-
 #[derive(Clone, Default)]
 pub struct ExecutionRuntimeContext {
+    operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
-    pub(super) client_protocol_envelope: Option<ClientProtocolEnvelope>,
+    protocol_context: RuntimeProtocolContext,
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
-    pub(super) compact_response_ingress: Option<CompactResponseIngress>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
+}
+
+#[derive(Clone, Default)]
+enum RuntimeProtocolContext {
+    #[default]
+    Absent,
+    Available {
+        envelope: ProtocolContextEnvelope,
+        locator: Option<Value>,
+    },
+    Unavailable {
+        locator: Value,
+        reason: String,
+    },
 }
 
 impl ExecutionRuntimeContext {
@@ -26,8 +39,9 @@ impl ExecutionRuntimeContext {
         variable_pool: &Map<String, Value>,
     ) -> Result<Self> {
         Ok(Self {
+            operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools: run_level_provider_tools(plan, variable_pool),
-            client_protocol_envelope: client_protocol_envelope_from_variable_pool(variable_pool)?,
+            protocol_context: RuntimeProtocolContext::Absent,
             native_model_prompt_context: native_model_prompt_context_from_variable_pool(
                 variable_pool,
             )?,
@@ -36,9 +50,12 @@ impl ExecutionRuntimeContext {
             )?,
             llm_routing_counter_store: None,
             http_response_file_persister: None,
-            compact_response_ingress: None,
             provider_invocation_capabilities: BTreeSet::new(),
         })
+    }
+
+    pub fn operation(&self) -> AiNativeOperation {
+        self.operation
     }
 
     pub fn with_llm_routing_counter_store(
@@ -65,26 +82,54 @@ impl ExecutionRuntimeContext {
         self
     }
 
-    /// Callers use this only after the published route has explicitly chosen
-    /// application-flow dispatch and admitted one successful typed Compact
-    /// result. Transparent Compact routing bypasses this runtime entirely.
-    pub fn with_application_flow_compact_ingress(
-        mut self,
-        ingress: CompactResponseIngress,
-    ) -> Self {
-        self.compact_response_ingress = Some(ingress);
+    pub fn with_protocol_context(mut self, protocol_context: ProtocolContextEnvelope) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Available {
+            envelope: protocol_context,
+            locator: None,
+        };
         self
     }
 
-    pub fn execution_intent(&self) -> ApplicationFlowExecutionIntent {
-        self.compact_response_ingress
-            .as_ref()
-            .map(CompactResponseIngress::intent)
-            .unwrap_or(ApplicationFlowExecutionIntent::Ordinary)
+    pub fn with_ephemeral_protocol_context(
+        mut self,
+        locator: Value,
+        protocol_context: ProtocolContextEnvelope,
+    ) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Available {
+            envelope: protocol_context,
+            locator: Some(locator),
+        };
+        self
     }
 
-    pub(super) fn compact_response_ingress(&self) -> Option<&CompactResponseIngress> {
-        self.compact_response_ingress.as_ref()
+    pub fn with_unavailable_ephemeral_protocol_context(
+        mut self,
+        locator: Value,
+        reason: impl Into<String>,
+    ) -> Self {
+        self.protocol_context = RuntimeProtocolContext::Unavailable {
+            locator,
+            reason: reason.into(),
+        };
+        self
+    }
+
+    pub(super) fn resolved_protocol_context(
+        &self,
+    ) -> std::result::Result<Option<ProtocolContextEnvelope>, &str> {
+        match &self.protocol_context {
+            RuntimeProtocolContext::Absent => Ok(None),
+            RuntimeProtocolContext::Available { envelope, .. } => Ok(Some(envelope.clone())),
+            RuntimeProtocolContext::Unavailable { reason, .. } => Err(reason),
+        }
+    }
+
+    fn protocol_context_locator(&self) -> Option<&Value> {
+        match &self.protocol_context {
+            RuntimeProtocolContext::Available { locator, .. } => locator.as_ref(),
+            RuntimeProtocolContext::Unavailable { locator, .. } => Some(locator),
+            RuntimeProtocolContext::Absent => None,
+        }
     }
 
     pub(super) async fn next_llm_routing_counter(
@@ -98,6 +143,29 @@ impl ExecutionRuntimeContext {
             .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
         store.increment_counter(key, 1, ttl).await
     }
+}
+
+fn ai_native_operation_from_variable_pool(
+    plan: &CompiledPlan,
+    variable_pool: &Map<String, Value>,
+) -> Result<AiNativeOperation> {
+    let Some(start) = plan.nodes.values().find(|node| node.node_type == "start") else {
+        return Ok(AiNativeOperation::default());
+    };
+    let Some(operation) = variable_pool
+        .get(&start.node_id)
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("operation"))
+    else {
+        return Ok(AiNativeOperation::default());
+    };
+
+    serde_json::from_value(operation.clone()).map_err(|error| {
+        anyhow!(
+            "invalid AI Native operation at {}.operation: {error}",
+            start.node_id
+        )
+    })
 }
 
 fn native_model_prompt_context_from_variable_pool(
@@ -122,20 +190,16 @@ fn native_model_request_context_from_variable_pool(
         .map_err(|error| anyhow!("invalid {NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY}: {error}"))
 }
 
-fn client_protocol_envelope_from_variable_pool(
-    variable_pool: &Map<String, Value>,
-) -> Result<Option<ClientProtocolEnvelope>> {
-    variable_pool
-        .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
-        .cloned()
-        .map(|value| {
-            serde_json::from_value(value)
-                .map_err(|error| anyhow!("invalid {CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY}: {error}"))
-        })
-        .transpose()
-}
-
 pub fn normalize_plan_variable_pool(plan: &CompiledPlan, variable_pool: &mut Map<String, Value>) {
+    variable_pool.remove(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
+    let [namespace, field] = crate::compiled_plan::SYSTEM_PROTOCOL_CONTEXT_SELECTOR;
+    if let Some(sys) = variable_pool
+        .get_mut(namespace)
+        .and_then(Value::as_object_mut)
+    {
+        sys.remove(field);
+    }
+
     for (node_id, node) in &plan.nodes {
         if node.node_type != "start" {
             continue;
@@ -165,6 +229,18 @@ pub(super) fn synchronize_runtime_global_variables(
     } else {
         prior_user_turn_count(&runtime_context.native_model_prompt_context.messages)
     };
+
+    if let Some(protocol_context_locator) = runtime_context.protocol_context_locator() {
+        let sys = variable_pool
+            .entry("sys".to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(sys) = sys.as_object_mut() {
+            sys.insert(
+                "protocol_context".to_string(),
+                protocol_context_locator.clone(),
+            );
+        }
+    }
 
     let Some(sys) = variable_pool.get_mut("sys").and_then(Value::as_object_mut) else {
         return;
@@ -215,6 +291,12 @@ pub(super) fn start_node_execution_input(
 }
 
 pub(crate) fn materialize_start_builtin_defaults(start_payload: &mut Map<String, Value>) {
+    start_payload
+        .entry("operation".to_string())
+        .or_insert_with(|| {
+            serde_json::to_value(AiNativeOperation::default())
+                .expect("the canonical AI Native operation must serialize")
+        });
     start_payload
         .entry("system".to_string())
         .or_insert_with(|| Value::Array(Vec::new()));

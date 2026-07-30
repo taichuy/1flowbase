@@ -1,9 +1,9 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     body::Bytes,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,10 +13,13 @@ use control_plane::application_public_api::{
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
-        capture_client_protocol_envelope, merge_anthropic_messages_envelopes,
-        ClientProtocolIngressPolicy,
+        capture_client_protocol_envelope, capture_client_protocol_query,
+        merge_client_protocol_envelopes, ClientProtocolIngressPolicy, ANTHROPIC_BETA_HEADER_NAME,
     },
-    compat::anthropic::{translate_messages_request, AnthropicCompatError},
+    compat::anthropic::{
+        translate_messages_request_with_context_window, AnthropicCompatError,
+        AnthropicContextWindowRequest,
+    },
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
         NativeRunStatus,
@@ -25,10 +28,11 @@ use control_plane::application_public_api::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
-    run_service::{ApplicationPublishedCountTokensService, CountTokensCommand},
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
-use plugin_framework::provider_contract::ClientProtocolEnvelope;
+use domain::AiNativeOperation;
+use orchestration_runtime::execution_state::NativeOperationTerminal;
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tracing::debug;
@@ -41,12 +45,9 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
-        compat_sse,
-        llm_tool_visibility::external_llm_tool_calls,
-        native,
-        tool_callback_ids::{
-            decode_anthropic_callback_tool_use_id, encode_anthropic_callback_tool_use_id,
-        },
+        callback_adapter::correlate_anthropic_callback, compat_sse,
+        llm_tool_visibility::external_llm_tool_calls, native,
+        tool_callback_ids::encode_anthropic_callback_tool_use_id,
     },
 };
 use token_count::{anthropic_usage, to_anthropic_count_tokens_response};
@@ -145,12 +146,6 @@ pub struct AnthropicCountTokensResponse {
     pub input_tokens: u64,
 }
 
-#[derive(Debug)]
-struct AnthropicToolResumeRequest {
-    callback_task_id: Uuid,
-    tool_results: Value,
-}
-
 #[utoipa::path(
     post,
     path = "/v1/messages",
@@ -167,6 +162,7 @@ struct AnthropicToolResumeRequest {
 pub async fn create_message(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
@@ -182,7 +178,9 @@ pub async fn create_message(
         .and_then(Value::as_bool)
         .filter(|stream| *stream)
         .map(|_| "streaming".to_string());
-    if let Some(resume) = anthropic_tool_resume_request(&value)? {
+    if let Some(resume) = correlate_anthropic_callback(&value)
+        .map_err(|error| anthropic_tool_result_error(error.message))?
+    {
         let command = anthropic_resume_command(
             &bearer_token,
             resume.callback_task_id,
@@ -213,11 +211,15 @@ pub async fn create_message(
             Err(error) => return Err(error.into()),
         }
     }
-    let translated = translate_messages_request(value)?;
+    let translated = translate_messages_request_with_context_window(
+        value,
+        anthropic_context_window_request(&headers),
+    )?;
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = merge_anthropic_messages_envelopes(
-        anthropic_client_protocol_envelope_from_headers(&headers),
+    request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
+        uri.query(),
+        &headers,
         request.client_protocol_envelope,
     );
     let model = request.model.clone().unwrap_or(model);
@@ -255,36 +257,37 @@ pub async fn create_message(
 pub async fn count_message_tokens(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     merge_claude_code_session_header(&mut value, &headers);
-    let mut translation = translate_messages_request(value)?;
-    translation.request.client_protocol_envelope = merge_anthropic_messages_envelopes(
-        anthropic_client_protocol_envelope_from_headers(&headers),
+    let mut translation = translate_messages_request_with_context_window(
+        value,
+        anthropic_context_window_request(&headers),
+    )?;
+    translation.request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
+        uri.query(),
+        &headers,
         translation.request.client_protocol_envelope,
     );
+    translation
+        .request
+        .execution
+        .set_execution_operation(AiNativeOperation::CountTokens);
     debug!(
         route = "messages_count_tokens",
         translation_decision_count = translation.report.decisions.len(),
         "anthropic count tokens request translated"
     );
-    let result = ApplicationPublishedCountTokensService::new(
-        state.store.clone(),
-        native::api_provider_runtime(state.as_ref()),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_last_used_cache(state.infrastructure.cache_store())
-    .count_tokens(CountTokensCommand {
-        bearer_token,
-        request: translation.request,
-    })
-    .await
-    .map_err(token_count::anthropic_count_tokens_error)?;
-    Ok(Json(to_anthropic_count_tokens_response(
-        result.input_tokens,
-    )))
+    let run = create_native_run(state.clone(), bearer_token.clone(), translation.request).await?;
+    let run = native::execute_blocking_native_run(state, bearer_token, run).await?;
+    let input_tokens = match run.operation_terminal.as_ref() {
+        Some(NativeOperationTerminal::CountTokens(receipt)) => receipt.input_tokens(),
+        _ => return Err(native::blocking_run_projection_error(&run).into()),
+    };
+    Ok(Json(to_anthropic_count_tokens_response(input_tokens)))
 }
 
 fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError> {
@@ -346,14 +349,34 @@ fn merge_claude_code_session_header(value: &mut Value, headers: &HeaderMap) {
         .or_insert_with(|| Value::String(session_id.to_string()));
 }
 
-fn anthropic_client_protocol_envelope_from_headers(
+fn anthropic_protocol_context_from_ingress(
+    raw_query: Option<&str>,
     headers: &HeaderMap,
-) -> Option<ClientProtocolEnvelope> {
-    capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::AnthropicMessages,
+    translated: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
+    let policy = ClientProtocolIngressPolicy::AnthropicMessages;
+    let captured = merge_client_protocol_envelopes(
+        policy,
+        capture_client_protocol_envelope(
+            policy,
+            headers.iter().filter_map(|(name, value)| {
+                value.to_str().ok().map(|value| (name.as_str(), value))
+            }),
+        ),
+        capture_client_protocol_query(
+            policy,
+            form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
+        ),
+    );
+    merge_client_protocol_envelopes(policy, captured, translated)
+}
+
+fn anthropic_context_window_request(headers: &HeaderMap) -> Option<AnthropicContextWindowRequest> {
+    AnthropicContextWindowRequest::from_beta_values(
         headers
+            .get_all(ANTHROPIC_BETA_HEADER_NAME)
             .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+            .filter_map(|value| value.to_str().ok()),
     )
 }
 
@@ -362,14 +385,23 @@ async fn create_native_run(
     bearer_token: String,
     request: NativeRunRequest,
 ) -> Result<NativeRunResult, native::NativeApiError> {
-    ApplicationNativeRunService::new(state.store.clone())
+    let protocol_context = request.client_protocol_envelope.clone();
+    let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
+            protocol: TranslationProtocol::AnthropicMessages,
         })
         .await
-        .map_err(native::native_error)
+        .map_err(native::native_error)?;
+    native::stage_client_protocol_context(
+        state.infrastructure.provider_transport_store().as_ref(),
+        &run,
+        protocol_context,
+    )
+    .await?;
+    Ok(run)
 }
 
 async fn execute_anthropic_tool_resume(
@@ -389,6 +421,7 @@ async fn execute_anthropic_tool_resume(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
@@ -412,149 +445,6 @@ fn anthropic_resume_command(
         response_payload: json!({ "tool_results": tool_results }),
         response_mode,
     }
-}
-
-fn anthropic_tool_resume_request(
-    request: &Value,
-) -> Result<Option<AnthropicToolResumeRequest>, AnthropicRouteError> {
-    let Some(messages) = request.get("messages").and_then(Value::as_array) else {
-        return Ok(None);
-    };
-    let mut trailing_tool_result_messages = messages
-        .iter()
-        .rev()
-        .take_while(|message| anthropic_message_has_only_tool_results(message))
-        .collect::<Vec<_>>();
-    if trailing_tool_result_messages.is_empty() {
-        return Ok(None);
-    }
-    trailing_tool_result_messages.reverse();
-    let trailing_start = messages.len() - trailing_tool_result_messages.len();
-    let matching_tool_use_ids = anthropic_trailing_assistant_tool_use_ids(messages, trailing_start);
-    if matching_tool_use_ids.is_empty() {
-        return Ok(None);
-    }
-
-    let mut decoded_results = Vec::new();
-    for message in trailing_tool_result_messages {
-        let Some(blocks) = message.get("content").and_then(Value::as_array) else {
-            continue;
-        };
-        for block in blocks {
-            let tool_use_id = block
-                .get("tool_use_id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    anthropic_tool_result_error("tool_result tool_use_id is required")
-                })?;
-            if !matching_tool_use_ids.contains(tool_use_id) {
-                continue;
-            }
-            let Some((callback_task_id, original_tool_use_id)) =
-                decode_anthropic_callback_tool_use_id(tool_use_id)
-            else {
-                continue;
-            };
-            decoded_results.push((
-                callback_task_id,
-                original_tool_use_id,
-                anthropic_tool_result_content(block),
-                block.get("is_error").and_then(Value::as_bool),
-            ));
-        }
-    }
-
-    let Some(callback_task_id) = decoded_results
-        .last()
-        .map(|(callback_task_id, _, _, _)| *callback_task_id)
-    else {
-        return Ok(None);
-    };
-
-    let mut tool_results = decoded_results
-        .into_iter()
-        .rev()
-        .take_while(|(decoded_callback_task_id, _, _, _)| {
-            *decoded_callback_task_id == callback_task_id
-        })
-        .map(|(_, original_tool_use_id, content, is_error)| {
-            let mut result = json!({
-                "tool_call_id": original_tool_use_id,
-                "content": content,
-            });
-            if let Some(is_error) = is_error {
-                result["is_error"] = Value::Bool(is_error);
-            }
-            result
-        })
-        .collect::<Vec<_>>();
-    tool_results.reverse();
-
-    Ok(Some(AnthropicToolResumeRequest {
-        callback_task_id,
-        tool_results: Value::Array(tool_results),
-    }))
-}
-
-fn anthropic_trailing_assistant_tool_use_ids(
-    messages: &[Value],
-    trailing_start: usize,
-) -> HashSet<String> {
-    let mut tool_use_ids = HashSet::new();
-    for message in messages[..trailing_start].iter().rev() {
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            break;
-        }
-        let Some(blocks) = message.get("content").and_then(Value::as_array) else {
-            continue;
-        };
-        for block in blocks {
-            if block.get("type").and_then(Value::as_str) != Some("tool_use") {
-                continue;
-            }
-            if let Some(id) = block.get("id").and_then(Value::as_str) {
-                tool_use_ids.insert(id.to_string());
-            }
-        }
-    }
-    tool_use_ids
-}
-
-fn anthropic_message_has_only_tool_results(message: &Value) -> bool {
-    message.get("role").and_then(Value::as_str) == Some("user")
-        && message
-            .get("content")
-            .and_then(Value::as_array)
-            .is_some_and(|blocks| {
-                !blocks.is_empty()
-                    && blocks.iter().all(|block| {
-                        block.get("type").and_then(Value::as_str) == Some("tool_result")
-                    })
-            })
-}
-
-fn anthropic_tool_result_content(block: &Value) -> Value {
-    let Some(content) = block.get("content") else {
-        return Value::String(String::new());
-    };
-    if let Some(text) = content.as_str() {
-        return Value::String(text.to_string());
-    }
-    if let Some(blocks) = content.as_array() {
-        let text = blocks
-            .iter()
-            .filter_map(|entry| entry.get("text").and_then(Value::as_str))
-            .collect::<Vec<_>>()
-            .join("\n");
-        if blocks
-            .iter()
-            .all(|entry| entry.get("type").and_then(Value::as_str) == Some("text"))
-        {
-            return Value::String(text);
-        }
-        return Value::Array(blocks.clone());
-    }
-    content.clone()
 }
 
 fn anthropic_tool_result_error(message: &str) -> AnthropicRouteError {

@@ -38,12 +38,18 @@ function createSseParser(onEvent) {
 }
 
 function protocolEventType(parsed) {
-  return parsed.event ?? parsed.data?.type ?? null;
+  if (parsed.event) return parsed.event;
+  const data = parsed.data;
+  if (data?.choices?.[0]?.finish_reason) return 'chat.completion.done';
+  if (Array.isArray(data?.choices)) return 'chat.completion.chunk';
+  if (data?.error) return 'error';
+  return data?.type ?? null;
 }
 
 function isProtocolFailureTerminal(transport, eventType) {
   if (transport === 'responses-sse') return eventType === 'response.failed';
   if (transport === 'anthropic-sse') return eventType === 'error';
+  if (transport === 'chat-completions-sse') return eventType === 'error';
   return false;
 }
 
@@ -51,7 +57,14 @@ function eventText(parsed) {
   const data = parsed.data;
   if (data?.type === 'response.output_text.delta') return data.delta;
   if (data?.type === 'content_block_delta' && data.delta?.type === 'text_delta') return data.delta.text;
+  if (typeof data?.choices?.[0]?.delta?.content === 'string') return data.choices[0].delta.content;
   return null;
+}
+
+function protocolErrorMessage(parsed) {
+  const data = parsed?.data;
+  const message = data?.response?.error?.message ?? data?.error?.message;
+  return typeof message === 'string' ? message : null;
 }
 
 function nonceFromText(text) {
@@ -69,6 +82,9 @@ function protocolRunId(transport, parsed) {
     return [data?.message?.id, data?.id]
       .find((value) => typeof value === 'string' && value.startsWith('msg_')) ?? null;
   }
+  if (transport === 'chat-completions-sse') {
+    return typeof data?.id === 'string' && data.id.startsWith('chatcmpl-') ? data.id : null;
+  }
   return null;
 }
 
@@ -77,6 +93,7 @@ module.exports = {
   eventText,
   nonceFromText,
   parseSseBlock,
+  protocolErrorMessage,
   protocolEventType,
   protocolRunId,
   isProtocolFailureTerminal,

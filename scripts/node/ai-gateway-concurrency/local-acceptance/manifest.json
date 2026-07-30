@@ -2,16 +2,16 @@
   "schema_version": "1flowbase.local-ai-gateway-acceptance/v1",
   "repo": {
     "host": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream",
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly",
       "revision": "HEAD"
     },
     "officialPlugins": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-official-plugins",
-      "revision": "40b155590d1d50fbbd9ae22b26cb0a25ce2901d7"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-official-providers",
+      "revision": "ba1a692b483c15fa67616ea882a95e6acd736a08"
     },
     "protectedMain": {
       "path": "/home/taichuy/git/1flowbase",
-      "revision": "fe432c810af37376aea066e7b49ad5fdad4fdc2d",
+      "revision": "HEAD",
       "require_clean": false
     }
   },
@@ -35,50 +35,36 @@
   },
   "artifacts": {
     "apiServer": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/api/target/release/api-server",
-      "sha256": "dd55ea503268a78dc419a13857e3a2a5a377190019f29bcdac0bbdc8e7c80e18"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/api/target/release/api-server",
+      "sha256": "931334df26ef3051feb59727aea2cf88dbd73a2aa6010d03cb9139af1b858dcc"
     },
     "pluginRunner": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/api/target/release/plugin-runner",
-      "sha256": "e72bc30eae26e7ef12d118efe9f31b7e65c5e0473160e022ea7e09f226238d9c"
+      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/api/target/release/plugin-runner",
+      "sha256": "7cfee9867b496847cd0da0d998f2fb490bd842319e1934eea660de4722f5f4dd"
     },
     "openaiPackage": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/tmp/test-governance/compatible-stream-e2e/qa-cycle6-20260724-154629/candidate/packages/openai/1flowbase@openai@0.2.15@linux-amd64@4e5adce6d37135a0d542d0bd1860ea586d27516efb92bd7a3c481306cf0a1ea8.1flowbasepkg",
-      "sha256": "4e5adce6d37135a0d542d0bd1860ea586d27516efb92bd7a3c481306cf0a1ea8"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
+      "filename_pattern": "^1flowbase@openai@0\\.2\\.22@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "anthropicPackage": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/tmp/test-governance/compatible-stream-e2e/qa-cycle6-20260724-154629/candidate/packages/anthropic/1flowbase@anthropic@0.1.24@linux-amd64@1bb62b56af050e7e259afea4b58764cc408e51f2255ec48eb8341c8f9ff97e20.1flowbasepkg",
-      "sha256": "1bb62b56af050e7e259afea4b58764cc408e51f2255ec48eb8341c8f9ff97e20"
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/anthropic",
+      "filename_pattern": "^1flowbase@anthropic@0\\.1\\.30@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
+    },
+    "openaiCompatiblePackage": {
+      "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/openai_compatible",
+      "filename_pattern": "^1flowbase@openai_compatible@0\\.3\\.39@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"
     },
     "codex": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1440-compatible-stream/tmp/test-governance/compatible-stream-e2e/qa-cycle6-20260724-154629/evidence/bin/codex-56395bdd",
-      "sha256": "372fc4023bb9836af5c94b7772165640126807ad2ea584ef7725adaf231630ec"
+      "path": "/home/linuxbrew/.linuxbrew/bin/codex",
+      "sha256": "a96f944d1a596dbfb7fdd84f482be5c50e34b04bb371126840d873e4ebf26902"
     },
     "claude": {
       "path": "/home/taichuy/.nvm/versions/node/v24.18.0/bin/claude",
-      "sha256": "e12071751a9336b8af1012c103358ff04ac18f9aaff4a738cff7ba5cdfaf63f2"
-    },
-    "claudeManifest": {
-      "path": "/home/taichuy/.nvm/versions/node/v24.18.0/lib/node_modules/@anthropic-ai/claude-code/package.json",
-      "sha256": "e3ea99daaf9c111af49f7ceb367f0274745565c44762befb03656adbd62b19b0"
+      "sha256": "674f61f20ff306f3100cf9200e4c36c4b70278b5bef2884549819b942a89c863"
     },
     "opencode": {
       "path": "/home/taichuy/.local/bin/opencode",
       "sha256": "767cd0ee3d4bb6d27874a383f81e01918b76c29b7c0998a4fc0851d026852508"
-    }
-  },
-  "clients": {
-    "codex": {
-      "buildCommand": "cargo build --locked --manifest-path codex-rs/Cargo.toml --bin codex --jobs 2"
-    },
-    "claude": {
-      "packageName": "@anthropic-ai/claude-code",
-      "packageVersion": "2.1.218",
-      "packageIntegrity": "sha512-BHV951ruIa6QXaZFDF1wRhwxAOkAiafB2AOWG6wGRUJ4apaJ9mlzp1BFLAhGfG0SknwAyqBenqeT6nit6at4uQ==",
-      "installCommand": "npm install -g @anthropic-ai/claude-code@2.1.218"
-    },
-    "opencode": {
-      "buildCommand": "not-executed:user-authorized-existing-local-binary"
     }
   }
 }

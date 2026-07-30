@@ -1,20 +1,26 @@
 use std::num::NonZeroU64;
 
+use domain::{AiNativeGenerateProfile, AiNativeOperation};
 use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromptBlock};
 use serde_json::{Map, Value};
 
 use super::{
     chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
-    openai_reasoning, reject_unknown_chat_fields, response_max_output_tokens, response_stream_mode,
+    openai_reasoning, response_max_output_tokens, response_stream_mode,
     responses_input_to_native_run_input, responses_native_input_to_run_input,
-    responses_previous_history, responses_transport_requirement, system_from_parts,
-    validate_chat_message_fields, validate_native_mcp_approval_continuation,
-    validate_native_responses_input, validate_response_transport_fields, validate_responses_input,
-    OpenAiCompatError, OpenAiPreviousResponseContext, OpenAiResponsesRequestContext,
+    responses_omitted_optional_tools, responses_previous_history, responses_transport_requirement,
+    system_from_parts, validate_chat_message_fields, validate_chat_root_fields,
+    validate_native_mcp_approval_continuation, validate_native_responses_input,
+    validate_response_transport_fields, validate_responses_input, OpenAiCompatError,
+    OpenAiPreviousResponseContext, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD, OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
+};
+use crate::application_public_api::client_protocol_envelope::{
+    capture_client_protocol_body, merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
 };
 use crate::application_public_api::native::{
-    CompactionProfile, NativeExecution, NativeExecutionOperation, NativeObject,
-    NativeRequestMetadata, NativeRunRequest,
+    compaction_intent, CompactionProfile, NativeExecution, NativeObject, NativeRequestMetadata,
+    NativeRunRequest,
 };
 use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -27,7 +33,12 @@ pub fn translate_chat_completion_request(
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiChat);
     let object = openai_request_object(&request, &mut report)?;
-    reject_unknown_chat_fields(object, &mut report)?;
+    validate_chat_root_fields(object, &mut report)?;
+    let protocol_context = capture_client_protocol_body(
+        ClientProtocolIngressPolicy::OpenAiChat,
+        object,
+        OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    );
     let model = required_openai_string(object, "model", &mut report)?;
     let messages = required_openai_array(object, "messages", &mut report)?;
 
@@ -171,9 +182,7 @@ pub fn translate_chat_completion_request(
     let execution = native_execution(
         chat_max_output_tokens(object, &mut report)?,
         openai_reasoning(object, true, &mut report)?,
-        NativeExecutionOperation::Generate(
-            crate::application_public_api::run_service::GenerateExecutionProfile::Standard,
-        ),
+        AiNativeOperation::Generate(AiNativeGenerateProfile::Standard),
     );
     let request = NativeRunRequest {
         query,
@@ -197,7 +206,7 @@ pub fn translate_chat_completion_request(
         metadata,
         request_context: NativeModelRequestContext::default(),
         title: None,
-        client_protocol_envelope: None,
+        client_protocol_envelope: protocol_context,
     };
     report
         .ensure_consistent()
@@ -225,17 +234,40 @@ pub fn translate_response_request_with_context_and_previous(
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let object = openai_request_object(&request, &mut report)?;
+    let mut protocol_context = capture_client_protocol_body(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        object,
+        OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
+    );
     let transport_requirement = responses_transport_requirement(object);
+    let omitted_optional_tools = responses_omitted_optional_tools(object);
+    if transport_requirement
+        == crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible
+        && !omitted_optional_tools.is_empty()
+    {
+        let optional_tool_context = Map::from_iter([(
+            OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD.to_string(),
+            Value::Array(omitted_optional_tools),
+        )]);
+        protocol_context = merge_client_protocol_envelopes(
+            ClientProtocolIngressPolicy::OpenAiResponses,
+            protocol_context,
+            capture_client_protocol_body(
+                ClientProtocolIngressPolicy::OpenAiResponses,
+                &optional_tool_context,
+                &[],
+            ),
+        );
+    }
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
     let operation = classify_response_operation(object, &context, &mut report)?;
-    let is_v2_compaction = operation
-        .compaction_intent()
+    let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
     let uses_native_transport = transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
-        && operation.compaction_intent().is_none();
+        && compaction_intent(operation).is_none();
     let input_mapping = if uses_native_transport {
         validate_native_mcp_approval_continuation(input, previous_response.as_ref(), &mut report)?;
         validate_native_responses_input(input, &mut report)?;
@@ -349,7 +381,7 @@ pub fn translate_response_request_with_context_and_previous(
         metadata,
         request_context: NativeModelRequestContext::default(),
         title: None,
-        client_protocol_envelope: None,
+        client_protocol_envelope: protocol_context,
     };
     report
         .ensure_consistent()
@@ -584,10 +616,11 @@ fn openai_metadata(
 fn native_execution(
     max_output_tokens: Option<u64>,
     reasoning: Option<crate::application_public_api::native::NativeReasoningParameters>,
-    operation: NativeExecutionOperation,
+    operation: AiNativeOperation,
 ) -> NativeExecution {
     let mut execution = NativeExecution::with_model_parameters(
         max_output_tokens.and_then(NonZeroU64::new),
+        None,
         reasoning,
     );
     execution.set_execution_operation(operation);

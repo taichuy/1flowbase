@@ -29,27 +29,6 @@ export const startNodeDefinition: NodeDefinition = {
           key: 'config.model_list',
           label: i18nText('agentFlow', 'auto.model_list'),
           editor: 'start_model_list'
-        },
-        {
-          key: 'config.compact_dispatch',
-          label: i18nText('agentFlow', 'auto.compact_dispatch'),
-          editor: 'static_select',
-          options: [
-            {
-              value: 'transparent',
-              label: i18nText(
-                'agentFlow',
-                'auto.compact_dispatch_transparent'
-              )
-            },
-            {
-              value: 'application_flow',
-              label: i18nText(
-                'agentFlow',
-                'auto.compact_dispatch_application_flow'
-              )
-            }
-          ]
         }
       ]
     }

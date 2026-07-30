@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Bytes,
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,8 +13,10 @@ use control_plane::application_public_api::{
         ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
-    callback_tool_ids::decode_openai_callback_tool_call_id,
-    client_protocol_envelope::{capture_client_protocol_envelope, ClientProtocolIngressPolicy},
+    client_protocol_envelope::{
+        capture_client_protocol_envelope, capture_client_protocol_query,
+        merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
+    },
     compat::openai::{
         extract_model_list_from_start_node, response_id_from_run_id, run_id_from_response_id,
         translate_chat_completion_request, translate_response_request_with_context_and_previous,
@@ -23,24 +25,25 @@ use control_plane::application_public_api::{
     },
     native::{
         ApplicationNativeRunService, CreateNativeRunCommand,
-        GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeExecutionOperation,
-        NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
-        RemoteCompactionProfile,
+        GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeRunRequest,
+        NativeRunResult, NativeRunStatus, NativeRunValidationError,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
-    run_service::{
-        ApplicationPublishedCompactService, ApplicationPublishedRunControlRepository,
-        CompactCommand,
-    },
+    run_service::ApplicationPublishedRunControlRepository,
 };
 use control_plane::orchestration_runtime::OrchestrationRuntimeService;
-use control_plane::ports::ProviderTransportSlotId;
+use control_plane::ports::{
+    ProviderContinuationSlotId, ProviderTransportPayload, ProviderTransportSlotId,
+    ProviderTransportStore,
+};
+use domain::{AiNativeCompactProfile, AiNativeOperation};
+use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::{
-    ClientProtocolEnvelope, ProviderCompactProfile, ProviderCompactResult,
+    ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
 use serde_json::{json, Value};
 use tracing::{info, warn};
@@ -50,7 +53,10 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
-        compat_sse, llm_tool_visibility::external_llm_tool_calls, native,
+        callback_adapter::{correlate_openai_chat_callback, correlate_openai_responses_callback},
+        compat_sse,
+        llm_tool_visibility::external_llm_tool_calls,
+        native,
         tool_callback_ids::encode_openai_callback_tool_call_id,
     },
 };
@@ -71,14 +77,34 @@ pub use types::{
     OpenAiRouteError, OpenAiToolCall, OpenAiToolCallFunction, OpenAiUsage,
 };
 
-struct OpenAiCredential {
-    token: String,
-    source: &'static str,
+pub(super) struct OpenAiCredential {
+    pub(super) token: String,
+    pub(super) source: &'static str,
 }
 
-struct OpenAiToolResumeRequest {
-    callback_task_id: Uuid,
-    tool_results: Value,
+/// A Generate or tool-resume turn accepted by the same ingress used by HTTP
+/// Responses, before any public transport projection is selected.
+pub(crate) struct PreparedOpenAiResponseTurn {
+    model: String,
+    previous_response_id: Option<String>,
+    runtime: compat_sse::PreparedCompatibleTurn,
+}
+
+impl PreparedOpenAiResponseTurn {
+    pub(crate) fn into_parts(self) -> (String, Option<String>, compat_sse::PreparedCompatibleTurn) {
+        (self.model, self.previous_response_id, self.runtime)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum OpenAiResponseDelivery {
+    Http,
+    TypedEvents,
+}
+
+enum OpenAiResponseDispatch {
+    Http(Response),
+    TypedEvents(PreparedOpenAiResponseTurn),
 }
 
 #[utoipa::path(
@@ -97,6 +123,7 @@ struct OpenAiToolResumeRequest {
 pub async fn create_chat_completion(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
     let credential = match openai_credential(&headers) {
@@ -132,7 +159,9 @@ pub async fn create_chat_completion(
         .and_then(Value::as_bool)
         .filter(|value| *value)
         .map(|_| "streaming".to_string());
-    if let Some(resume) = openai_chat_tool_resume_request(&value)? {
+    if let Some(resume) = correlate_openai_chat_callback(&value)
+        .map_err(|error| openai_invalid_request(error.param, error.message))?
+    {
         let callback_task_id = resume.callback_task_id;
         let command = openai_resume_command(
             &credential.token,
@@ -187,10 +216,22 @@ pub async fn create_chat_completion(
     };
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
+    request.client_protocol_envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiChat,
+        uri.query(),
+        &headers,
+        request.client_protocol_envelope,
+    );
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    let run = match create_native_run(state.clone(), credential.token.clone(), request).await {
+    let run = match create_native_run(
+        state.clone(),
+        credential.token.clone(),
+        request,
+        TranslationProtocol::OpenAiChat,
+    )
+    .await
+    {
         Ok(run) => run,
         Err(error) => {
             warn!(
@@ -244,9 +285,17 @@ pub async fn create_chat_completion(
 pub async fn create_response(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
-    create_response_for_endpoint(state, headers, body, OpenAiResponsesEndpoint::Responses).await
+    create_response_for_endpoint(
+        state,
+        headers,
+        uri.query().map(ToOwned::to_owned),
+        body,
+        OpenAiResponsesEndpoint::Responses,
+    )
+    .await
 }
 
 #[utoipa::path(
@@ -267,11 +316,13 @@ pub async fn create_response(
 pub async fn create_response_compact(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
     create_response_for_endpoint(
         state,
         headers,
+        uri.query().map(ToOwned::to_owned),
         body,
         OpenAiResponsesEndpoint::ResponsesCompact,
     )
@@ -281,9 +332,65 @@ pub async fn create_response_compact(
 async fn create_response_for_endpoint(
     state: Arc<ApiState>,
     headers: HeaderMap,
+    raw_query: Option<String>,
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
 ) -> Result<Response, OpenAiRouteError> {
+    match dispatch_response_for_endpoint(
+        state,
+        headers,
+        raw_query,
+        body,
+        endpoint,
+        OpenAiResponseDelivery::Http,
+    )
+    .await?
+    {
+        OpenAiResponseDispatch::Http(response) => Ok(response),
+        OpenAiResponseDispatch::TypedEvents(_) => {
+            Err(OpenAiRouteError::Native(native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "openai_response_delivery_mismatch",
+                "OpenAI Responses HTTP delivery produced a typed turn",
+            )))
+        }
+    }
+}
+
+pub(crate) async fn prepare_typed_response_turn(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<PreparedOpenAiResponseTurn, OpenAiRouteError> {
+    match dispatch_response_for_endpoint(
+        state,
+        headers,
+        None,
+        body,
+        OpenAiResponsesEndpoint::Responses,
+        OpenAiResponseDelivery::TypedEvents,
+    )
+    .await?
+    {
+        OpenAiResponseDispatch::TypedEvents(prepared) => Ok(prepared),
+        OpenAiResponseDispatch::Http(_) => {
+            Err(OpenAiRouteError::Native(native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "openai_response_delivery_mismatch",
+                "OpenAI Responses typed delivery produced an HTTP response",
+            )))
+        }
+    }
+}
+
+async fn dispatch_response_for_endpoint(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    raw_query: Option<String>,
+    body: Bytes,
+    endpoint: OpenAiResponsesEndpoint,
+    delivery: OpenAiResponseDelivery,
+) -> Result<OpenAiResponseDispatch, OpenAiRouteError> {
     let route = match endpoint {
         OpenAiResponsesEndpoint::Responses => "responses",
         OpenAiResponsesEndpoint::ResponsesCompact => "responses_compact",
@@ -325,7 +432,7 @@ async fn create_response_for_endpoint(
             return Err(error);
         }
     };
-    let value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
+    let mut value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
         Ok(value) => value,
         Err(error) => {
             warn_openai_route_error(
@@ -336,6 +443,12 @@ async fn create_response_for_endpoint(
             return Err(error);
         }
     };
+    if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
+        value
+            .as_object_mut()
+            .ok_or_else(|| openai_invalid_request("response", "response must be an object"))?
+            .insert("stream".to_string(), Value::Bool(true));
+    }
     let previous_response_id = optional_string_field(&value, "previous_response_id")?;
     let previous_response = load_previous_response_context(
         state.clone(),
@@ -343,6 +456,10 @@ async fn create_response_for_endpoint(
         previous_response_id.as_deref(),
     )
     .await?;
+    let previous_flow_run_id = previous_response
+        .as_ref()
+        .map(|previous| previous.flow_run_id);
+    let previous_translation_context = previous_response.map(|previous| previous.translation);
     let response_mode = value
         .get("stream")
         .and_then(Value::as_bool)
@@ -354,7 +471,10 @@ async fn create_response_for_endpoint(
         .unwrap_or_default()
         .to_string();
     if endpoint == OpenAiResponsesEndpoint::Responses {
-        if let Some(resume) = openai_responses_tool_resume_request(&value)? {
+        if let Some(resume) =
+            correlate_openai_responses_callback(&value, previous_response_id.as_deref())
+                .map_err(|error| openai_invalid_request(error.param, error.message))?
+        {
             let command = openai_resume_command(
                 &credential.token,
                 resume.callback_task_id,
@@ -371,23 +491,40 @@ async fn create_response_for_endpoint(
                     )
                     .await?;
                     if response_mode.as_deref() == Some("streaming") {
-                        return compat_sse::start_openai_response_resume_stream(
-                            state,
-                            plan.initial_run,
-                            model,
-                            previous_response_id,
-                            plan.command,
-                        )
-                        .await
-                        .map_err(Into::into);
+                        return match delivery {
+                            OpenAiResponseDelivery::Http => {
+                                compat_sse::start_openai_response_resume_stream(
+                                    state,
+                                    plan.initial_run,
+                                    model,
+                                    previous_response_id,
+                                    plan.command,
+                                )
+                                .await
+                                .map(OpenAiResponseDispatch::Http)
+                                .map_err(Into::into)
+                            }
+                            OpenAiResponseDelivery::TypedEvents => Ok(
+                                OpenAiResponseDispatch::TypedEvents(PreparedOpenAiResponseTurn {
+                                    model,
+                                    previous_response_id,
+                                    runtime: compat_sse::PreparedCompatibleTurn::resume(
+                                        plan.initial_run,
+                                        plan.command,
+                                    ),
+                                }),
+                            ),
+                        };
                     }
                     let run = execute_openai_tool_resume(state, plan.command).await?;
-                    return Ok(Json(to_openai_responses_response(
-                        run,
-                        model,
-                        previous_response_id,
-                    )?)
-                    .into_response());
+                    return Ok(OpenAiResponseDispatch::Http(
+                        Json(to_openai_responses_response(
+                            run,
+                            model,
+                            previous_response_id,
+                        )?)
+                        .into_response(),
+                    ));
                 }
                 Err(error)
                     if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
@@ -398,10 +535,11 @@ async fn create_response_for_endpoint(
             }
         }
     }
+    let provider_transport_wire_body = value.clone();
     let translated = match translate_response_request_with_context_and_previous(
         value,
         request_context,
-        previous_response,
+        previous_translation_context,
     ) {
         Ok(translated) => translated,
         Err(error) => {
@@ -416,53 +554,93 @@ async fn create_response_for_endpoint(
     };
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
-    request.client_protocol_envelope = openai_client_protocol_envelope_from_headers(&headers);
-    let provider_transport_payload = request.metadata.take_provider_transport_payload();
+    request.client_protocol_envelope = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        raw_query.as_deref(),
+        &headers,
+        request.client_protocol_envelope,
+    );
+    let operation = *request.execution.execution_operation();
+    if matches!(operation, AiNativeOperation::Compact(_)) {
+        let payload = ProviderTransportPayload::openai_responses(provider_transport_wire_body)
+            .map_err(|_| {
+                OpenAiRouteError::Native(native::NativeApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "provider_transport_payload_invalid",
+                    "could not stage the provider transport payload",
+                ))
+            })?;
+        request.metadata.set_provider_transport_payload(payload);
+    }
+    let mut provider_transport_payload = request.metadata.take_provider_transport_payload();
+    if let Some(previous_flow_run_id) = previous_flow_run_id {
+        if let Some(payload) = provider_transport_payload.take() {
+            let continuation = state
+                .infrastructure
+                .provider_transport_store()
+                .get_continuation(ProviderContinuationSlotId::for_flow_run(
+                    previous_flow_run_id,
+                ))
+                .await
+                .map_err(|_| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "provider_continuation_lookup_failed",
+                        "Provider continuation storage is temporarily unavailable",
+                    ))
+                })?
+                .ok_or_else(|| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::CONFLICT,
+                        "ephemeral_continuation_missing",
+                        "the previous Provider continuation is no longer available",
+                    ))
+                })?;
+            let payload = payload
+                .bind_openai_continuation(continuation)
+                .map_err(|_| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "provider_continuation_binding_failed",
+                        "could not bind the Provider continuation",
+                    ))
+                })?;
+            request.metadata.set_provider_transport_payload(payload);
+            provider_transport_payload = request.metadata.take_provider_transport_payload();
+        }
+    }
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    match request.execution.execution_operation().clone() {
-        NativeExecutionOperation::Generate(_) => {
-            let run =
-                match create_native_run(state.clone(), credential.token.clone(), request).await {
-                    Ok(run) => run,
-                    Err(error) => {
-                        warn!(
-                            route,
-                            auth_source = credential.source,
-                            status = error.status.as_u16(),
-                            code = error.code,
-                            "openai responses compatible native run validation failed"
-                        );
-                        return Err(error.into());
-                    }
-                };
-
-            let provider_transport_slot = if matches!(
-                run.status,
-                NativeRunStatus::Created | NativeRunStatus::Queued | NativeRunStatus::Running
-            ) {
-                provider_transport_payload.map(|payload| {
-                    let slot = ProviderTransportSlotId::for_flow_run(run.id);
-                    let store = state.infrastructure.provider_transport_store();
-                    (slot, store, payload)
-                })
-            } else {
-                None
-            };
-            let provider_transport_slot = match provider_transport_slot {
-                Some((slot, store, payload)) => {
-                    if let Err(error) = store.put(slot, payload).await {
-                        warn!(
-                            route,
-                            flow_run_id = %run.id,
-                            error = %error,
-                            "openai responses provider transport staging failed"
-                        );
-                    }
-                    Some(slot)
+    match operation {
+        AiNativeOperation::Generate(_) => {
+            let run = match create_native_run(
+                state.clone(),
+                credential.token.clone(),
+                request,
+                TranslationProtocol::OpenAiResponses,
+            )
+            .await
+            {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        route,
+                        auth_source = credential.source,
+                        status = error.status.as_u16(),
+                        code = error.code,
+                        "openai responses compatible native run validation failed"
+                    );
+                    return Err(error.into());
                 }
-                None => None,
             };
+
+            let provider_transport_slot = stage_openai_provider_transport(
+                state.infrastructure.provider_transport_store().as_ref(),
+                run.id,
+                operation,
+                provider_transport_payload,
+            )
+            .await?;
 
             info!(
                 route,
@@ -476,15 +654,28 @@ async fn create_response_for_endpoint(
             );
 
             if response_mode.as_deref() == Some("streaming") {
-                return compat_sse::start_openai_response_stream(
-                    state,
-                    run,
-                    model,
-                    previous_response_id,
-                    provider_transport_slot,
-                )
-                .await
-                .map_err(Into::into);
+                return match delivery {
+                    OpenAiResponseDelivery::Http => compat_sse::start_openai_response_stream(
+                        state,
+                        run,
+                        model,
+                        previous_response_id,
+                        provider_transport_slot,
+                    )
+                    .await
+                    .map(OpenAiResponseDispatch::Http)
+                    .map_err(Into::into),
+                    OpenAiResponseDelivery::TypedEvents => Ok(OpenAiResponseDispatch::TypedEvents(
+                        PreparedOpenAiResponseTurn {
+                            model,
+                            previous_response_id,
+                            runtime: compat_sse::PreparedCompatibleTurn::start(
+                                run,
+                                provider_transport_slot,
+                            ),
+                        },
+                    )),
+                };
             }
 
             let run = native::execute_blocking_native_run_with_provider_transport(
@@ -494,45 +685,58 @@ async fn create_response_for_endpoint(
                 provider_transport_slot,
             )
             .await?;
-            Ok(Json(to_openai_responses_response(
-                run,
-                model,
-                previous_response_id,
-            )?)
-            .into_response())
+            Ok(OpenAiResponseDispatch::Http(
+                Json(to_openai_responses_response(
+                    run,
+                    model,
+                    previous_response_id,
+                )?)
+                .into_response(),
+            ))
         }
-        NativeExecutionOperation::Compact(remote_profile) => {
+        AiNativeOperation::CountTokens => Err(openai_invalid_request(
+            "operation",
+            "count_tokens is not supported by the OpenAI Responses route",
+        )),
+        AiNativeOperation::Compact(remote_profile) => {
+            if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
+                return Err(openai_invalid_request(
+                    "operation",
+                    "Compact is a unary operation and cannot open a typed event turn",
+                ));
+            }
             let profile = match remote_profile {
-                RemoteCompactionProfile::ResponsesCompact => {
+                AiNativeCompactProfile::ResponsesCompact => {
                     ProviderCompactProfile::ResponsesCompact
                 }
-                RemoteCompactionProfile::ResponsesCompactionV2 => {
+                AiNativeCompactProfile::ResponsesCompactionV2 => {
                     ProviderCompactProfile::ResponsesCompactionV2
                 }
             };
-            let result = match ApplicationPublishedCompactService::new(
-                state.store.clone(),
-                native::api_provider_runtime(state.as_ref()),
-                state.provider_secret_master_key.clone(),
-            )
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .compact(CompactCommand {
-                bearer_token: credential.token,
+            let run = create_native_run(
+                state.clone(),
+                credential.token.clone(),
                 request,
-                profile,
-            })
-            .await
-            {
-                Ok(result) => result,
-                Err(error) => {
-                    let route_error = compact::published_compact_error(error);
-                    warn_openai_route_error(
-                        route,
-                        &route_error,
-                        "openai responses Compact request failed without a flow run",
-                    );
-                    return Err(route_error);
-                }
+                TranslationProtocol::OpenAiResponses,
+            )
+            .await?;
+            let provider_transport_slot = stage_openai_provider_transport(
+                state.infrastructure.provider_transport_store().as_ref(),
+                run.id,
+                operation,
+                provider_transport_payload,
+            )
+            .await?;
+            let run = native::execute_blocking_native_run_with_provider_transport(
+                state,
+                credential.token,
+                run,
+                provider_transport_slot,
+            )
+            .await?;
+            let result = match run.operation_terminal.as_ref() {
+                Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
+                _ => return Err(native::blocking_run_projection_error(&run).into()),
             };
 
             info!(
@@ -542,10 +746,10 @@ async fn create_response_for_endpoint(
                 response_mode = response_mode.as_deref().unwrap_or("blocking"),
                 model = %model,
                 translation_decision_count,
-                "openai responses Compact request completed without a flow run"
+                "openai responses Compact request completed through a durable flow run"
             );
 
-            match (profile, result.result) {
+            match (profile, result) {
                 (
                     ProviderCompactProfile::ResponsesCompact,
                     ProviderCompactResult::ResponseItems { response_items, .. },
@@ -553,7 +757,9 @@ async fn create_response_for_endpoint(
                     // The legacy Compact contract is exactly the provider's ResponseItem[]. It
                     // is intentionally neither wrapped in a Response object nor projected as a
                     // runtime SSE flow.
-                    Ok(Json(response_items).into_response())
+                    Ok(OpenAiResponseDispatch::Http(
+                        Json(response_items).into_response(),
+                    ))
                 }
                 (
                     ProviderCompactProfile::ResponsesCompactionV2,
@@ -577,14 +783,43 @@ async fn create_response_for_endpoint(
                             ))
                         })?;
                         return compat_sse::openai_compact_sse_response(response)
+                            .map(OpenAiResponseDispatch::Http)
                             .map_err(Into::into);
                     }
-                    Ok(Json(response).into_response())
+                    Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))
                 }
                 _ => Err(compact::unexpected_compact_result_error()),
             }
         }
     }
+}
+
+async fn stage_openai_provider_transport(
+    store: &dyn ProviderTransportStore,
+    flow_run_id: Uuid,
+    operation: AiNativeOperation,
+    payload: Option<ProviderTransportPayload>,
+) -> Result<Option<ProviderTransportSlotId>, OpenAiRouteError> {
+    if matches!(operation, AiNativeOperation::CountTokens) {
+        return Ok(None);
+    }
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    store.put(slot, payload).await.map_err(|error| {
+        warn!(
+            flow_run_id = %flow_run_id,
+            error = %error,
+            "openai responses provider transport staging failed"
+        );
+        OpenAiRouteError::Native(native::NativeApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "provider_transport_staging_failed",
+            "provider transport is temporarily unavailable",
+        ))
+    })?;
+    Ok(Some(slot))
 }
 
 #[utoipa::path(
@@ -674,7 +909,9 @@ pub async fn list_models(
     .into_response())
 }
 
-fn openai_credential(headers: &HeaderMap) -> Result<OpenAiCredential, native::NativeApiError> {
+pub(super) fn openai_credential(
+    headers: &HeaderMap,
+) -> Result<OpenAiCredential, native::NativeApiError> {
     if let Ok(token) = native::bearer_token(headers) {
         return Ok(OpenAiCredential {
             token,
@@ -699,27 +936,40 @@ fn openai_credential(headers: &HeaderMap) -> Result<OpenAiCredential, native::Na
         })
 }
 
-async fn authenticate_openai_response_credential(
+pub(super) async fn authenticate_openai_response_credential(
     state: &ApiState,
     credential: &OpenAiCredential,
-) -> Result<(), native::NativeApiError> {
+) -> Result<
+    control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    native::NativeApiError,
+> {
     ApplicationApiKeyService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .authenticate_bearer_token(&credential.token)
         .await
-        .map(|_| ())
         .map_err(|_| native::native_error(NativeRunValidationError::NotAuthenticated))
 }
 
-fn openai_client_protocol_envelope_from_headers(
+fn openai_protocol_context_from_ingress(
+    policy: ClientProtocolIngressPolicy,
+    raw_query: Option<&str>,
     headers: &HeaderMap,
-) -> Option<ClientProtocolEnvelope> {
-    capture_client_protocol_envelope(
-        ClientProtocolIngressPolicy::DefaultDeny,
-        headers
-            .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
-    )
+    translated: Option<ProtocolContextEnvelope>,
+) -> Option<ProtocolContextEnvelope> {
+    let captured = merge_client_protocol_envelopes(
+        policy,
+        capture_client_protocol_envelope(
+            policy,
+            headers.iter().filter_map(|(name, value)| {
+                value.to_str().ok().map(|value| (name.as_str(), value))
+            }),
+        ),
+        capture_client_protocol_query(
+            policy,
+            form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
+        ),
+    );
+    merge_client_protocol_envelopes(policy, captured, translated)
 }
 
 fn parse_openai_json_body(
@@ -772,15 +1022,25 @@ async fn create_native_run(
     state: Arc<ApiState>,
     bearer_token: String,
     request: NativeRunRequest,
+    protocol: TranslationProtocol,
 ) -> Result<NativeRunResult, native::NativeApiError> {
-    ApplicationNativeRunService::new(state.store.clone())
+    let protocol_context = request.client_protocol_envelope.clone();
+    let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .create_native_run(CreateNativeRunCommand {
             bearer_token,
             request,
+            protocol,
         })
         .await
-        .map_err(native::native_error)
+        .map_err(native::native_error)?;
+    native::stage_client_protocol_context(
+        state.infrastructure.provider_transport_store().as_ref(),
+        &run,
+        protocol_context,
+    )
+    .await?;
+    Ok(run)
 }
 
 async fn execute_openai_tool_resume(
@@ -800,6 +1060,7 @@ async fn execute_openai_tool_resume(
     .with_file_storage_registry(state.file_storage_registry.clone())
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_provider_transport_store(state.infrastructure.provider_transport_store())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let result =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
@@ -823,90 +1084,6 @@ fn openai_resume_command(
         source,
         response_payload: json!({ "tool_results": tool_results }),
         response_mode,
-    }
-}
-
-fn openai_chat_tool_resume_request(
-    request: &Value,
-) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
-    let Some(messages) = request.get("messages").and_then(Value::as_array) else {
-        return Ok(None);
-    };
-    let mut trailing = messages
-        .iter()
-        .rev()
-        .take_while(|message| message.get("role").and_then(Value::as_str) == Some("tool"))
-        .collect::<Vec<_>>();
-    trailing.reverse();
-    decode_openai_tool_results(
-        trailing.into_iter().filter_map(|message| {
-            message
-                .get("tool_call_id")
-                .and_then(Value::as_str)
-                .map(|id| (id, openai_tool_message_content(message)))
-        }),
-        "messages",
-    )
-}
-
-fn openai_responses_tool_resume_request(
-    request: &Value,
-) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
-    let Some(items) = request.get("input").and_then(Value::as_array) else {
-        return Ok(None);
-    };
-    let trailing = items
-        .iter()
-        .rev()
-        .take_while(|item| item.get("type").and_then(Value::as_str) == Some("function_call_output"))
-        .collect::<Vec<_>>();
-    decode_openai_tool_results(
-        trailing.into_iter().rev().filter_map(|item| {
-            item.get("call_id").and_then(Value::as_str).map(|id| {
-                let output = match item.get("output") {
-                    Some(Value::String(output)) => output.clone(),
-                    Some(output) => output.to_string(),
-                    None => String::new(),
-                };
-                (id, output)
-            })
-        }),
-        "input",
-    )
-}
-
-fn decode_openai_tool_results<'a>(
-    results: impl Iterator<Item = (&'a str, String)>,
-    param: &'static str,
-) -> Result<Option<OpenAiToolResumeRequest>, OpenAiRouteError> {
-    let mut callback_task_id = None;
-    let mut tool_results = Vec::new();
-    for (external_id, content) in results {
-        let Some((task_id, original_id)) = decode_openai_callback_tool_call_id(external_id) else {
-            continue;
-        };
-        if callback_task_id.is_some_and(|existing| existing != task_id) {
-            return Err(openai_invalid_request(
-                param,
-                "tool results must belong to one callback task",
-            ));
-        }
-        callback_task_id = Some(task_id);
-        tool_results.push(json!({ "tool_call_id": original_id, "content": content }));
-    }
-    Ok(
-        callback_task_id.map(|callback_task_id| OpenAiToolResumeRequest {
-            callback_task_id,
-            tool_results: Value::Array(tool_results),
-        }),
-    )
-}
-
-fn openai_tool_message_content(message: &Value) -> String {
-    match message.get("content") {
-        Some(Value::String(content)) => content.clone(),
-        Some(Value::Null) | None => String::new(),
-        Some(content) => content.to_string(),
     }
 }
 
@@ -938,7 +1115,7 @@ async fn load_previous_response_context(
     state: Arc<ApiState>,
     bearer_token: &str,
     previous_response_id: Option<&str>,
-) -> Result<Option<OpenAiPreviousResponseContext>, OpenAiRouteError> {
+) -> Result<Option<LoadedOpenAiPreviousResponseContext>, OpenAiRouteError> {
     let Some(response_id) = previous_response_id else {
         return Ok(None);
     };
@@ -970,12 +1147,20 @@ async fn load_previous_response_context(
             .await
             .map_err(native::native_error)?,
     };
-    Ok(Some(OpenAiPreviousResponseContext {
-        response_id: response_id.to_string(),
-        external_user: string_value(&run.metadata, "external_user"),
-        external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
-        answer: run.answer,
+    Ok(Some(LoadedOpenAiPreviousResponseContext {
+        flow_run_id: run.id,
+        translation: OpenAiPreviousResponseContext {
+            response_id: response_id.to_string(),
+            external_user: string_value(&run.metadata, "external_user"),
+            external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
+            answer: run.answer,
+        },
     }))
+}
+
+struct LoadedOpenAiPreviousResponseContext {
+    flow_run_id: Uuid,
+    translation: OpenAiPreviousResponseContext,
 }
 
 fn string_value(value: &Value, field: &str) -> Option<String> {

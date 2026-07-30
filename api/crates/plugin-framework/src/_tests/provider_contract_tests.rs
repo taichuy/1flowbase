@@ -3,16 +3,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use plugin_framework::{
     installation::PluginTaskStatus,
     provider_contract::{
-        semantic_required_capabilities, ClientProtocolEnvelope, ModelDiscoveryMode,
-        NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
-        NativePromptCacheControlType, ProviderBalanceInfo, ProviderBalanceResult,
-        ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        semantic_required_capabilities, ModelDiscoveryMode, NativeModelRequestContext,
+        NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType,
+        ProtocolContextEnvelope, ProviderBalanceInfo, ProviderBalanceResult, ProviderCompactError,
+        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensError,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderGenerateTranslationDecision,
         ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderOutputItemPhase,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
+        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::json;
@@ -199,15 +199,28 @@ fn provider_invocation_input_preserves_tool_message_metadata() {
 }
 
 #[test]
-fn provider_invocation_input_serializes_client_protocol_envelope() {
+fn provider_invocation_input_serializes_protocol_context_envelope_without_flattening_values() {
     let input = ProviderInvocationInput {
-        client_protocol_envelope: Some(ClientProtocolEnvelope {
+        client_protocol_envelope: Some(ProtocolContextEnvelope {
             source_protocol: "anthropic_messages".to_string(),
-            policy: "anthropic_messages_v1".to_string(),
+            query: BTreeMap::from([(
+                "preview".to_string(),
+                vec!["one".to_string(), "two".to_string()],
+            )]),
             headers: BTreeMap::from([
-                ("anthropic-version".to_string(), "2023-06-01".to_string()),
-                ("anthropic-beta".to_string(), "prompt-caching".to_string()),
+                (
+                    "anthropic-version".to_string(),
+                    vec!["2023-06-01".to_string()],
+                ),
+                (
+                    "anthropic-beta".to_string(),
+                    vec!["prompt-caching".to_string(), "private-beta".to_string()],
+                ),
             ]),
+            body: BTreeMap::from([(
+                "context_management".to_string(),
+                json!({"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]}),
+            )]),
         }),
         ..ProviderInvocationInput::default()
     };
@@ -221,7 +234,7 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
     );
     assert_eq!(
         payload["client_protocol_envelope"]["headers"]["anthropic-version"],
-        "2023-06-01"
+        json!(["2023-06-01"])
     );
     assert_eq!(
         decoded
@@ -230,9 +243,34 @@ fn provider_invocation_input_serializes_client_protocol_envelope() {
             .unwrap()
             .headers
             .get("anthropic-beta")
-            .map(String::as_str),
-        Some("prompt-caching")
+            .cloned(),
+        Some(vec![
+            "prompt-caching".to_string(),
+            "private-beta".to_string()
+        ])
     );
+    assert_eq!(
+        payload["client_protocol_envelope"]["query"]["preview"],
+        json!(["one", "two"])
+    );
+    assert_eq!(
+        payload["client_protocol_envelope"]["body"]["context_management"]["edits"][0]["type"],
+        "clear_thinking_20251015"
+    );
+}
+
+#[test]
+fn protocol_context_envelope_rejects_unknown_top_level_fields() {
+    let error = serde_json::from_value::<ProtocolContextEnvelope>(json!({
+        "source_protocol": "anthropic_messages",
+        "query": {},
+        "headers": {},
+        "body": {},
+        "fallback": {"must_not_become_a_second_truth": true}
+    }))
+    .expect_err("the protocol context shell must stay minimal and typed");
+
+    assert!(error.to_string().contains("unknown field"));
 }
 
 #[test]
@@ -250,28 +288,222 @@ fn d4_ac_002_native_responses_passthrough_has_one_manifest_capability_name() {
 }
 
 #[test]
-fn ac_002_current_provider_fails_closed_when_required_capability_is_missing() {
+fn wp_r1_generate_omits_undeclared_optional_context_with_a_bounded_receipt() {
+    const CACHE_CANARY: &str = "cache-control-raw-canary";
+    const USER_CANARY: &str = "end-user-raw-canary";
     let input = ProviderInvocationInput {
+        protocol: "openai_compatible".to_string(),
         system: vec![NativePromptBlock::Text {
-            text: "Cache this block".to_string(),
+            text: CACHE_CANARY.to_string(),
             cache_control: Some(NativePromptCacheControl {
                 cache_type: NativePromptCacheControlType::Ephemeral,
                 ttl: None,
             }),
         }],
         request_context: NativeModelRequestContext {
-            end_user_reference: Some("external-user-123".to_string()),
+            end_user_reference: Some(USER_CANARY.to_string()),
         },
+        client_protocol_envelope: Some(ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            query: BTreeMap::from([("preview".to_string(), vec!["raw-query-canary".to_string()])]),
+            ..ProtocolContextEnvelope::default()
+        }),
         ..ProviderInvocationInput::default()
     };
 
-    let error = input
-        .to_current_provider_wire_value(&["system_prompt_blocks".to_string()])
-        .unwrap_err();
+    let (wire, receipt) = input
+        .to_current_provider_generate_wire_value(&[])
+        .expect("undeclared optional foreign context should degrade for Generate");
 
-    let message = error.to_string();
-    assert!(message.contains("system_prompt_cache_control"));
-    assert!(message.contains("end_user_reference"));
+    assert_eq!(wire["system"][0]["text"], CACHE_CANARY);
+    assert!(wire["system"][0].get("cache_control").is_none());
+    assert!(wire.get("request_context").is_none());
+    assert!(wire.get("client_protocol_envelope").is_none());
+    assert_eq!(
+        receipt.decisions,
+        BTreeSet::from([
+            ProviderGenerateTranslationDecision::OmittedSystemPromptCacheControl,
+            ProviderGenerateTranslationDecision::OmittedEndUserReference,
+            ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch,
+        ])
+    );
+    let encoded = serde_json::to_string(&receipt).unwrap();
+    assert!(encoded.len() <= 512);
+    for raw in [CACHE_CANARY, USER_CANARY, "raw-query-canary"] {
+        assert!(!encoded.contains(raw));
+    }
+
+    let mut provider_metadata = json!({"provider": "fixture"});
+    receipt
+        .attach_to_provider_metadata(&mut provider_metadata)
+        .expect("receipt should share the existing provider metadata ledger");
+    assert_eq!(
+        provider_metadata[PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY]["decisions"],
+        json!([
+            "omitted_system_prompt_cache_control",
+            "omitted_end_user_reference",
+            "omitted_protocol_context_profile_mismatch"
+        ])
+    );
+    let mut conflicting_metadata = json!({
+        (PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY): {"provider_owned": true}
+    });
+    assert!(receipt
+        .attach_to_provider_metadata(&mut conflicting_metadata)
+        .is_err());
+}
+
+#[test]
+fn wp_r14a_generate_retains_a_foreign_envelope_only_for_its_exact_profile() {
+    let foreign_source = ProviderInvocationInput {
+        protocol: "openai_chat".to_string(),
+        client_protocol_envelope: Some(ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            body: BTreeMap::from([("future_option".to_string(), json!({"enabled": true}))]),
+            ..ProtocolContextEnvelope::default()
+        }),
+        required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
+        ..ProviderInvocationInput::default()
+    };
+    let (wire, receipt) = foreign_source
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.consume.anthropic_messages.v1".to_string(),
+        ])
+        .expect("an exact foreign consume profile should retain the host envelope");
+    assert_eq!(
+        wire["client_protocol_envelope"]["source_protocol"],
+        "anthropic_messages"
+    );
+    assert!(wire.get("required_capabilities").is_none());
+    assert!(receipt.decisions.is_empty());
+
+    let (wire, receipt) = foreign_source
+        .to_current_provider_generate_wire_value(&[
+            "protocol_context.consume.openai_chat.v1".to_string()
+        ])
+        .expect("a profile mismatch must omit ordinary residual context");
+    assert!(wire.get("client_protocol_envelope").is_none());
+    assert!(wire.get("required_capabilities").is_none());
+    assert_eq!(
+        receipt.decisions,
+        BTreeSet::from([
+            ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch,
+        ])
+    );
+}
+
+#[test]
+fn wp_r14a_native_passthrough_capability_remains_fail_closed() {
+    let native_passthrough = ProviderInvocationInput {
+        required_capabilities: BTreeSet::from([
+            ProviderInvocationCapability::ResponsesNativePassthrough,
+        ]),
+        ..ProviderInvocationInput::default()
+    };
+    let error = native_passthrough
+        .to_current_provider_generate_wire_value(&[])
+        .unwrap_err();
+    assert!(error.to_string().contains("responses.native_passthrough"));
+}
+
+#[test]
+fn wp_r14a_count_tokens_and_compact_share_exact_profile_projection() {
+    let envelope = ProtocolContextEnvelope {
+        source_protocol: "anthropic_messages".to_string(),
+        query: BTreeMap::from([("preview".to_string(), vec!["one".to_string()])]),
+        ..ProtocolContextEnvelope::default()
+    };
+    let count_tokens = ProviderCountTokensInput {
+        client_protocol_envelope: Some(envelope.clone()),
+        required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
+        ..ProviderCountTokensInput::default()
+    };
+    let count_wire = count_tokens
+        .to_current_provider_wire_value(&[
+            "count_tokens".to_string(),
+            "protocol_context.restore.openai_responses.v1".to_string(),
+        ])
+        .expect("CountTokens profile mismatch should omit and continue");
+    assert!(count_wire.get("client_protocol_envelope").is_none());
+    assert!(count_wire.get("required_capabilities").is_none());
+    let count_wire = count_tokens
+        .to_current_provider_wire_value(&[
+            "count_tokens".to_string(),
+            "protocol_context.consume.anthropic_messages.v1".to_string(),
+        ])
+        .expect("CountTokens exact consume profile should retain the envelope");
+    assert_eq!(
+        count_wire["client_protocol_envelope"]["source_protocol"],
+        "anthropic_messages"
+    );
+    assert!(count_wire.get("required_capabilities").is_none());
+
+    let compact = ProviderInvocationInput {
+        operation: ProviderWireOperation::Compact,
+        profile: Some(ProviderCompactProfile::ResponsesCompact),
+        client_protocol_envelope: Some(envelope),
+        required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
+        ..ProviderInvocationInput::default()
+    };
+    let compact_wire = compact
+        .to_current_provider_compact_wire_value(&[
+            "compact.responses_compact".to_string(),
+            "protocol_context.restore.anthropic_messages.v1".to_string(),
+        ])
+        .expect("Compact exact restore profile should retain the envelope");
+    assert_eq!(
+        compact_wire["client_protocol_envelope"]["source_protocol"],
+        "anthropic_messages"
+    );
+    assert_eq!(
+        compact_wire["required_capabilities"],
+        json!(["compact.responses_compact"])
+    );
+    let compact_wire = compact
+        .to_current_provider_compact_wire_value(&[
+            "compact.responses_compact".to_string(),
+            "protocol_context.restore.openai_chat.v1".to_string(),
+        ])
+        .expect("Compact profile mismatch should omit and continue");
+    assert!(compact_wire.get("client_protocol_envelope").is_none());
+    assert_eq!(
+        compact_wire["required_capabilities"],
+        json!(["compact.responses_compact"])
+    );
+}
+
+#[test]
+fn wp_r1_generate_rejects_protocol_envelope_collisions_and_authentication_fields() {
+    for envelope in [
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            body: BTreeMap::from([("model".to_string(), json!("collision"))]),
+            ..ProtocolContextEnvelope::default()
+        },
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            headers: BTreeMap::from([(
+                "authorization".to_string(),
+                vec!["Bearer secret-canary".to_string()],
+            )]),
+            ..ProtocolContextEnvelope::default()
+        },
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".to_string(),
+            body: BTreeMap::from([(
+                "future_extension".to_string(),
+                json!({"nested": {"api_key": "secret-canary"}}),
+            )]),
+            ..ProtocolContextEnvelope::default()
+        },
+    ] {
+        let input = ProviderInvocationInput {
+            protocol: "openai_compatible".to_string(),
+            client_protocol_envelope: Some(envelope),
+            ..ProviderInvocationInput::default()
+        };
+        assert!(input.to_current_provider_generate_wire_value(&[]).is_err());
+    }
 }
 
 #[test]
@@ -422,6 +654,30 @@ fn k2_compact_wire_derives_the_selected_profile_capability_and_closed_result_sha
             profile: ProviderCompactProfile::ResponsesCompactionV2,
             capabilities,
         }) if capabilities == vec!["compact.responses_compaction_v2"]
+    ));
+}
+
+#[test]
+fn wp_r1_compact_keeps_optional_context_capabilities_strict() {
+    let input = ProviderInvocationInput {
+        operation: ProviderWireOperation::Compact,
+        profile: Some(ProviderCompactProfile::ResponsesCompact),
+        system: vec![NativePromptBlock::Text {
+            text: "Cache this compact block".to_string(),
+            cache_control: Some(NativePromptCacheControl {
+                cache_type: NativePromptCacheControlType::Ephemeral,
+                ttl: None,
+            }),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    assert!(matches!(
+        input.to_current_provider_compact_wire_value(&[
+            "compact.responses_compact".to_string()
+        ]),
+        Err(ProviderCompactError::Unsupported { capabilities, .. })
+            if capabilities.contains(&"system_prompt_cache_control")
     ));
 }
 
@@ -665,4 +921,47 @@ fn provider_runtime_line_tool_commit_preserves_arguments() {
         }
         other => panic!("expected tool call commit stream event, got {other:?}"),
     }
+}
+
+#[test]
+fn provider_runtime_line_provider_output_item_preserves_verified_item() {
+    let encoded = json!({
+        "type": "output_item",
+        "phase": "added",
+        "output_index": 2,
+        "item": {
+            "id": "tool_search_1",
+            "type": "tool_search_call",
+            "arguments": "{}"
+        }
+    });
+
+    let line: ProviderRuntimeLine = serde_json::from_value(encoded).unwrap();
+    assert_eq!(
+        line.into_stream_event(),
+        Some(ProviderStreamEvent::OutputItem {
+            phase: ProviderOutputItemPhase::Added,
+            output_index: 2,
+            item: json!({
+                "id": "tool_search_1",
+                "type": "tool_search_call",
+                "arguments": "{}"
+            }),
+        })
+    );
+}
+
+#[test]
+fn provider_runtime_line_rejects_unknown_provider_output_item_type() {
+    let error = serde_json::from_value::<ProviderRuntimeLine>(json!({
+        "type": "output_item",
+        "phase": "done",
+        "output_index": 0,
+        "item": { "id": "unknown_1", "type": "computer_call" }
+    }))
+    .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("provider output item type is not supported by the typed Responses projection"));
 }

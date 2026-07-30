@@ -5,9 +5,11 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        NativePromptBlock, ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        NativePromptBlock, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
+        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
+        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
+        ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};
@@ -21,12 +23,13 @@ use crate::{
     },
     compiled_plan::{
         CompiledEdge, CompiledLlmRuntime, CompiledNode, CompiledPlan, CompiledPluginRuntime,
-        LlmRoutingMode, StartCompactDispatch, COMPACT_SOURCE_HANDLE_ID,
+        LlmRoutingMode,
     },
     execution_state::{
-        CheckpointSnapshot, ExecutionIncompleteReason, ExecutionStopReason,
-        FlowDebugExecutionOutcome, NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask,
-        PendingHumanInput,
+        compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
+        CheckpointSnapshot, CompactOperationReceipt, CountTokensReceipt, ExecutionIncompleteReason,
+        ExecutionStopReason, FlowDebugExecutionOutcome, NativeOperationTerminal,
+        NodeExecutionFailure, NodeExecutionTrace, PendingCallbackTask, PendingHumanInput,
     },
     node_errors::build_node_type_not_implemented_error_payload,
     output_schema::value_is_llm_context_messages,
@@ -36,10 +39,11 @@ use crate::{
 };
 
 pub use crate::code_runtime::{
-    execute_code_node, CodeInvocationOutput, CodeInvoker, QuickJsCodeInvoker,
+    execute_code_node, CodeInvocationOutput, CodeInvoker, ConsoleLogEntry, QuickJsCodeInvoker,
 };
 
 pub mod branching;
+mod compact_operation;
 mod http_request;
 mod llm_callbacks;
 mod llm_context;
@@ -57,10 +61,12 @@ mod variable_assignment;
 mod visible_internal_llm_tools;
 
 use branching::*;
+use compact_operation::execute_compact_consumer;
 pub use http_request::{
     execute_http_request_node, HttpRequestNodeExecution, HttpResponseFilePersistInput,
     HttpResponseFilePersister,
 };
+pub use llm_callbacks::pending_llm_tool_callback_requires_ephemeral_provider_continuation;
 use llm_callbacks::*;
 use llm_context::*;
 use llm_error_payloads::*;
@@ -98,6 +104,29 @@ pub trait ProviderInvoker: Send + Sync {
         runtime: &CompiledLlmRuntime,
         input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput>;
+
+    async fn count_tokens(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderCountTokensInput,
+    ) -> Result<ProviderCountTokensResult> {
+        bail!("provider CountTokens is not supported by this invoker")
+    }
+
+    async fn compact(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderCompactResult> {
+        bail!("provider Compact is not supported by this invoker")
+    }
+
+    /// Resolves a durable-safe protocol-context locator immediately before Provider invocation.
+    /// Implementations return `Ok(None)` for ordinary JSON values and must never log the resolved
+    /// raw value.
+    async fn resolve_protocol_context_locator(&self, _locator: &Value) -> Result<Option<Value>> {
+        Ok(None)
+    }
 }
 
 #[async_trait]
@@ -381,6 +410,7 @@ where
                             variable_pool: checkpoint_variable_pool,
                             active_node_ids: checkpoint.active_node_ids.clone(),
                         }),
+                        operation_terminal: None,
                         node_traces: wait.node_trace.into_iter().collect(),
                     });
                 }
@@ -403,6 +433,7 @@ where
                         }),
                         variable_pool: Map::new(),
                         checkpoint_snapshot: None,
+                        operation_terminal: None,
                         node_traces: Vec::new(),
                     });
                 }
@@ -449,41 +480,6 @@ where
     .await
 }
 
-fn application_flow_compact_start_node_id(
-    plan: &CompiledPlan,
-    runtime_context: &ExecutionRuntimeContext,
-) -> Result<Option<String>> {
-    if runtime_context.compact_response_ingress().is_none() {
-        return Ok(None);
-    }
-
-    // A Compact ingress reaches this engine only after the published route
-    // explicitly selected application-flow dispatch. Revalidate the compiled
-    // shape here as a defense for old or manually constructed plan records.
-    crate::compiler::ensure_plan_execution_contract(plan)?;
-
-    let start_nodes = plan
-        .nodes
-        .values()
-        .filter(|node| node.node_type == "start")
-        .collect::<Vec<_>>();
-    if start_nodes.len() != 1 {
-        bail!("application-flow Compact execution requires exactly one start node");
-    }
-
-    let start = start_nodes[0];
-    if StartCompactDispatch::from_start_config(&start.config)?
-        != StartCompactDispatch::ApplicationFlow
-    {
-        bail!(
-            "typed Compact ingress reached a transparent Start node {}; transparent Compact routing must bypass the AgentFlow engine",
-            start.node_id
-        );
-    }
-
-    Ok(Some(start.node_id.clone()))
-}
-
 async fn execute_from<I>(
     plan: &CompiledPlan,
     next_node_index: usize,
@@ -502,7 +498,6 @@ where
     let mut pending_failure: Option<NodeExecutionFailure> = None;
     let mut active_node_ids = active_node_ids.unwrap_or_else(|| initial_active_node_ids(plan));
     let mounted_llm_target_node_ids = visible_internal_llm_tool_target_node_ids(plan);
-    let compact_start_node_id = application_flow_compact_start_node_id(plan, runtime_context)?;
 
     for (index, node_id) in plan
         .topological_order
@@ -554,6 +549,7 @@ where
                         }),
                         variable_pool,
                         checkpoint_snapshot: None,
+                        operation_terminal: None,
                         node_traces,
                     });
                 }
@@ -569,11 +565,6 @@ where
 
         match node.node_type.as_str() {
             "start" | "workflow_start" => {
-                if node.node_type == "start"
-                    && compact_start_node_id.as_deref() == Some(node.node_id.as_str())
-                {
-                    selected_source_handle = Some(COMPACT_SOURCE_HANDLE_ID.to_string());
-                }
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
@@ -598,26 +589,6 @@ where
                     output_payload,
                     error_payload: None,
                     metrics_payload: json!({ "preview_mode": true }),
-                    debug_payload: json!({}),
-                    provider_events: Vec::new(),
-                });
-            }
-            "compact_response" => {
-                let ingress = runtime_context.compact_response_ingress().ok_or_else(|| {
-                    anyhow!(
-                        "compact_response node {} cannot execute without a typed Compact ingress",
-                        node.node_id
-                    )
-                })?;
-                let output_payload = ingress.receipt().as_payload()?;
-                node_traces.push(NodeExecutionTrace {
-                    node_id: node.node_id.clone(),
-                    node_type: node.node_type.clone(),
-                    node_alias: node.alias.clone(),
-                    input_payload: Value::Object(resolved_inputs),
-                    output_payload,
-                    error_payload: None,
-                    metrics_payload: json!({ "semantic_terminal": "compact_response" }),
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
@@ -678,6 +649,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -701,6 +673,7 @@ where
                             variable_pool: wait.checkpoint_variable_pool,
                             active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                         }),
+                        operation_terminal: None,
                         node_traces,
                     });
                 }
@@ -744,6 +717,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -788,6 +762,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -809,6 +784,7 @@ where
                             variable_pool,
                             active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                         }),
+                        operation_terminal: None,
                         node_traces,
                     });
                 }
@@ -912,6 +888,7 @@ where
                         variable_pool,
                         active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                     }),
+                    operation_terminal: None,
                     node_traces,
                 });
             }
@@ -941,6 +918,7 @@ where
                         variable_pool,
                         active_node_ids: checkpoint_active_node_ids(&active_node_ids),
                     }),
+                    operation_terminal: None,
                     node_traces,
                 });
             }
@@ -980,6 +958,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -992,7 +971,7 @@ where
                 );
             }
             "code" => {
-                let execution = execute_code_node(node, &resolved_inputs, invoker).await?;
+                let execution = execute_code_node(plan, node, &resolved_inputs, invoker).await?;
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
@@ -1021,6 +1000,7 @@ where
                             stop_reason: ExecutionStopReason::Failed(failure),
                             variable_pool,
                             checkpoint_snapshot: None,
+                            operation_terminal: None,
                             node_traces,
                         });
                     }
@@ -1053,16 +1033,27 @@ where
                     }),
                     variable_pool,
                     checkpoint_snapshot: None,
+                    operation_terminal: None,
                     node_traces,
                 });
             }
         }
-        activate_downstream_nodes(
-            plan,
-            &mut active_node_ids,
-            node,
-            selected_source_handle.as_deref(),
-        );
+        // CountTokens and Compact terminate at the LLM node selected by the
+        // workflow. Generate-only downstream nodes (for example Answer) must
+        // not reinterpret their typed provider terminal as generated text.
+        if node.node_type != "llm"
+            || matches!(
+                runtime_context.operation(),
+                domain::AiNativeOperation::Generate(_)
+            )
+        {
+            activate_downstream_nodes(
+                plan,
+                &mut active_node_ids,
+                node,
+                selected_source_handle.as_deref(),
+            );
+        }
     }
 
     if let Some(failure) = pending_failure {
@@ -1070,14 +1061,26 @@ where
             stop_reason: ExecutionStopReason::Failed(failure),
             variable_pool,
             checkpoint_snapshot: None,
+            operation_terminal: None,
             node_traces,
         });
     }
+
+    let operation_terminal = match runtime_context.operation() {
+        domain::AiNativeOperation::Generate(_) => None,
+        domain::AiNativeOperation::CountTokens => Some(NativeOperationTerminal::CountTokens(
+            count_tokens_receipt_from_traces(&node_traces)?,
+        )),
+        domain::AiNativeOperation::Compact(_) => Some(NativeOperationTerminal::Compact(
+            compact_operation_receipt_from_traces(&node_traces)?,
+        )),
+    };
 
     Ok(FlowDebugExecutionOutcome {
         stop_reason: successful_flow_stop_reason(&node_traces),
         variable_pool,
         checkpoint_snapshot: None,
+        operation_terminal,
         node_traces,
     })
 }
@@ -1142,6 +1145,41 @@ where
         )
     })?;
     let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
+    if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
+        let selected_runtime = attempt_runtimes
+            .first()
+            .ok_or_else(|| anyhow!("CountTokens LLM consumer has no selected runtime"))?;
+        return execute_count_tokens_consumer(
+            plan,
+            node,
+            selected_runtime,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await;
+    }
+    if matches!(
+        runtime_context.operation(),
+        domain::AiNativeOperation::Compact(_)
+    ) {
+        let selected_runtime = attempt_runtimes
+            .first()
+            .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;
+        return execute_compact_consumer(
+            plan,
+            node,
+            selected_runtime,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await;
+    }
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -1165,7 +1203,10 @@ where
             rendered_templates,
             variable_pool,
             runtime_context,
-        ) {
+            invoker,
+        )
+        .await
+        {
             Ok(invocation) => invocation,
             Err(error_payload) => {
                 return build_failed_llm_execution(
@@ -1275,7 +1316,10 @@ where
                 });
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
-                if retry_enabled && attempt_index + 1 < attempt_runtimes.len() {
+                if retry_enabled
+                    && provider_error_allows_retry(&provider_error)
+                    && attempt_index + 1 < attempt_runtimes.len()
+                {
                     retry_reason = error_payload
                         .get("error_code")
                         .and_then(Value::as_str)
@@ -1444,6 +1488,7 @@ where
             attempt_runtime,
             &output.result,
             final_content,
+            native_responses_passthrough,
             build_llm_metrics_payload(
                 attempt_runtime,
                 usage,
@@ -1494,6 +1539,94 @@ where
             context: None,
         },
     )
+}
+
+async fn execute_count_tokens_consumer<I>(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    runtime: &CompiledLlmRuntime,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &I,
+) -> Result<LlmNodeExecution>
+where
+    I: ProviderInvoker + ?Sized,
+{
+    let invocation = match build_provider_invocation(
+        plan,
+        node,
+        runtime,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+        invoker,
+    )
+    .await
+    {
+        Ok(invocation) => invocation,
+        Err(error_payload) => {
+            return Ok(LlmNodeExecution {
+                output_payload: json!({}),
+                error_payload: Some(error_payload),
+                metrics_payload: json!({ "operation": "count_tokens" }),
+                debug_payload: json!({}),
+                provider_events: Vec::new(),
+                pending_callback: None,
+                failure_projection: LlmFailureProjection::NoNodeOutput,
+                recoverable_error_message: None,
+            });
+        }
+    };
+    let input = ProviderCountTokensInput {
+        operation: ProviderWireOperation::CountTokens,
+        contract_version: invocation.input.contract_version,
+        provider_instance_id: invocation.input.provider_instance_id,
+        provider_code: invocation.input.provider_code,
+        protocol: invocation.input.protocol,
+        model: invocation.input.model,
+        provider_config: Value::Null,
+        messages: invocation.input.messages,
+        system: invocation.input.system,
+        request_context: invocation.input.request_context,
+        required_capabilities: invocation.input.required_capabilities,
+        client_protocol_envelope: invocation.input.client_protocol_envelope,
+    };
+    match invoker.count_tokens(runtime, input).await {
+        Ok(result) => {
+            let receipt = CountTokensReceipt::new(result)?;
+            Ok(LlmNodeExecution {
+                output_payload: receipt.as_payload()?,
+                error_payload: None,
+                metrics_payload: json!({
+                    "operation": "count_tokens",
+                    "provider_instance_id": runtime.provider_instance_id,
+                    "provider_code": runtime.provider_code,
+                    "model": runtime.model,
+                }),
+                debug_payload: json!({}),
+                provider_events: Vec::new(),
+                pending_callback: None,
+                failure_projection: LlmFailureProjection::NoNodeOutput,
+                recoverable_error_message: None,
+            })
+        }
+        Err(error) => Ok(LlmNodeExecution {
+            output_payload: json!({}),
+            error_payload: Some(build_provider_error_payload(
+                runtime,
+                &provider_runtime_error_from_anyhow(&error),
+            )),
+            metrics_payload: json!({ "operation": "count_tokens", "error": true }),
+            debug_payload: json!({}),
+            provider_events: Vec::new(),
+            pending_callback: None,
+            failure_projection: LlmFailureProjection::NoNodeOutput,
+            recoverable_error_message: None,
+        }),
+    }
 }
 
 pub async fn execute_capability_plugin_node<I>(

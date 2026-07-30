@@ -1,5 +1,41 @@
 use super::*;
 
+pub(super) fn compile_variable_reference(
+    field: &str,
+    value: Option<&Value>,
+) -> Result<Option<crate::compiled_plan::VariableReference>> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("{field} must be a selector binding or null"))?;
+    if object
+        .keys()
+        .any(|key| !matches!(key.as_str(), "kind" | "value"))
+    {
+        bail!("{field} must contain only kind and value");
+    }
+    let kind = object
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("{field}.kind must be selector"))?;
+    if kind != "selector" {
+        bail!("{field}.kind must be selector");
+    }
+    let selector = extract_selector_paths(kind, object.get("value").unwrap_or(&Value::Null))?
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("{field}.value must contain one selector path"))?;
+    if selector.len() < 2 || selector.iter().any(|segment| segment.trim().is_empty()) {
+        bail!("{field}.value must contain at least two non-empty selector segments");
+    }
+
+    Ok(Some(crate::compiled_plan::VariableReference::selector(
+        selector,
+    )))
+}
+
 pub(super) fn extract_selector_paths(kind: &str, raw_value: &Value) -> Result<Vec<Vec<String>>> {
     match kind {
         "i18n_text" => Ok(Vec::new()),

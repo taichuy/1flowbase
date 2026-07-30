@@ -302,6 +302,50 @@ pub fn provider_native_event(
     }
 }
 
+pub fn provider_output_item_added(
+    node_id: &str,
+    node_run_id: Uuid,
+    output_index: usize,
+    item: Value,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "provider_output_item_added".to_string(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: false,
+        trace_visible: true,
+        payload: json!({
+            "type": "provider_output_item_added",
+            "node_id": node_id,
+            "node_run_id": node_run_id,
+            "output_index": output_index,
+            "item": item,
+        }),
+    }
+}
+
+pub fn provider_output_item_done(
+    node_id: &str,
+    node_run_id: Uuid,
+    output_index: usize,
+    item: Value,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "provider_output_item_done".to_string(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: false,
+        trace_visible: true,
+        payload: json!({
+            "type": "provider_output_item_done",
+            "node_id": node_id,
+            "node_run_id": node_run_id,
+            "output_index": output_index,
+            "item": item,
+        }),
+    }
+}
+
 pub fn answer_text_delta(
     answer_node_id: &str,
     text: String,

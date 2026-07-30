@@ -22,12 +22,6 @@ const publicApi = vi.hoisted(() => ({
     'public-api',
     'mapping'
   ]),
-  applicationOperationBindingsQueryKey: vi.fn((applicationId: string) => [
-    'applications',
-    applicationId,
-    'public-api',
-    'operation-bindings'
-  ]),
   applicationApiPublicationQueryKey: vi.fn((applicationId: string) => [
     'applications',
     applicationId,
@@ -41,7 +35,6 @@ const publicApi = vi.hoisted(() => ({
   createApplicationApiKey: vi.fn(),
   revokeApplicationApiKey: vi.fn(),
   fetchApplicationApiMapping: vi.fn(),
-  fetchApplicationOperationBindings: vi.fn(),
   saveApplicationApiMapping: vi.fn(),
   fetchApplicationApiPublication: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
@@ -66,11 +59,6 @@ import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import type { ApplicationDetail } from '../api/applications';
 import { ApplicationApiKeysPanel } from '../components/api/ApplicationApiKeysPanel';
 import { ApplicationApiPage } from '../pages/ApplicationApiPage';
-import {
-  editableOperationBindingsFixture,
-  emptyOperationBindingOptionsFixture,
-  readOnlyOperationBindingsFixture
-} from './application-api-page/operation-bindings-fixtures';
 
 const mapping = {
   input: {
@@ -157,9 +145,6 @@ describe('ApplicationApiPage', () => {
       new Error('application_not_published')
     );
     publicApi.fetchApplicationApiMapping.mockResolvedValue(mapping);
-    publicApi.fetchApplicationOperationBindings.mockResolvedValue(
-      editableOperationBindingsFixture()
-    );
     publicApi.fetchApplicationApiKeys.mockResolvedValue([]);
   });
 
@@ -388,106 +373,6 @@ describe('ApplicationApiPage', () => {
       screen.queryByRole('tab', { name: 'API 文档' })
     ).not.toBeInTheDocument();
     expect(screen.getByText('docs explorer')).toBeInTheDocument();
-  });
-
-  test('B3 renders the server-owned binding projection read-only for a viewer', async () => {
-    publicApi.fetchApplicationOperationBindings.mockResolvedValue(
-      readOnlyOperationBindingsFixture()
-    );
-
-    renderWithProviders(<ApplicationApiPage application={application} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '操作绑定' }));
-
-    const dialog = await screen.findByRole('dialog', { name: '操作绑定' });
-    const generateSelect = await within(dialog).findByRole('combobox', {
-      name: '生成'
-    });
-    expect(within(dialog).getByText('草稿操作绑定')).toBeInTheDocument();
-    expect(
-      within(dialog).getByText('你可以查看该应用的操作绑定，但没有编辑权限。')
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText('已发布操作绑定快照')).toBeInTheDocument();
-    expect(within(dialog).getByText('Frozen generate')).toBeInTheDocument();
-    expect(within(dialog).getByText('已支持')).toBeInTheDocument();
-    expect(within(dialog).getAllByText('未绑定')).toHaveLength(2);
-    expect(within(dialog).getByText('不支持')).toBeInTheDocument();
-    expect(
-      within(dialog).getByText('Provider 不支持此操作。')
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: '保存操作绑定' })
-    ).not.toBeInTheDocument();
-    expect(generateSelect).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  test('B3 saves only draft binding choices and leaves the published snapshot immutable', async () => {
-    publicApi.saveApplicationApiMapping.mockResolvedValue({
-      ...mapping,
-      operation_bindings: {
-        generate: { target_node_id: 'node-draft-generate-b' },
-        count_tokens: null,
-        compact: {
-          responses_compact: null,
-          responses_compaction_v2: null
-        }
-      }
-    });
-
-    renderWithProviders(<ApplicationApiPage application={application} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '操作绑定' }));
-
-    const dialog = await screen.findByRole('dialog', { name: '操作绑定' });
-    fireEvent.mouseDown(
-      await within(dialog).findByRole('combobox', { name: '生成' })
-    );
-    fireEvent.click(
-      await screen.findByText('Draft generate B · node-draft-generate-b')
-    );
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '保存操作绑定' })
-    );
-
-    await waitFor(() => {
-      expect(publicApi.saveApplicationApiMapping).toHaveBeenCalledWith(
-        'app-1',
-        {
-          ...mapping,
-          operation_bindings: {
-            generate: { target_node_id: 'node-draft-generate-b' },
-            count_tokens: null,
-            compact: {
-              responses_compact: null,
-              responses_compaction_v2: null
-            }
-          }
-        },
-        'csrf-123'
-      );
-    });
-    expect(within(dialog).getByText('Frozen generate')).toBeInTheDocument();
-    expect(
-      within(dialog).getByText('publication-frozen-1')
-    ).toBeInTheDocument();
-  });
-
-  test('B3 gives an empty draft options list a formal status instead of an empty editor', async () => {
-    publicApi.fetchApplicationOperationBindings.mockResolvedValue(
-      emptyOperationBindingOptionsFixture()
-    );
-
-    renderWithProviders(<ApplicationApiPage application={application} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '操作绑定' }));
-
-    const dialog = await screen.findByRole('dialog', { name: '操作绑定' });
-    expect(
-      await within(dialog).findByText('当前草稿没有可用的操作绑定。')
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: '保存操作绑定' })
-    ).not.toBeInTheDocument();
   });
 
   test('shows created token once without writing it to storage or URL', async () => {
