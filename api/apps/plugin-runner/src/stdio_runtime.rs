@@ -773,6 +773,9 @@ mod tests {
             ProviderStreamEvent::TextDelta {
                 delta: "same".to_string(),
             },
+            ProviderStreamEvent::ReasoningSignatureDelta {
+                signature: "opaque-signature-fixture".to_string(),
+            },
             ProviderStreamEvent::ToolCallDelta {
                 call_id: "call-1".to_string(),
                 delta: serde_json::json!({"arguments":"{}"}),

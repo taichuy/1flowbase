@@ -59,6 +59,8 @@ function successfulExpected({
   requestBodyKeys = [],
   requestBodyModel = null,
   requestBodyFacts = null,
+  thinkingSignatureMatched = false,
+  uniqueMessageIds = false,
 }) {
   return Object.freeze({
     exit: 'success',
@@ -83,6 +85,8 @@ function successfulExpected({
     ...(requestBodyKeys.length ? { request_body_keys: Object.freeze(requestBodyKeys) } : {}),
     ...(requestBodyModel === null ? {} : { request_body_model: requestBodyModel }),
     ...(requestBodyFacts === null ? {} : { request_body_facts: Object.freeze(requestBodyFacts) }),
+    ...(thinkingSignatureMatched ? { thinking_signature_matched: true } : {}),
+    ...(uniqueMessageIds ? { unique_message_ids: true } : {}),
   });
 }
 
@@ -225,6 +229,8 @@ const SEQUENTIAL_TOOL_VECTOR = Object.freeze({
     toolMode: 'sequential_callback_tasks_one_turn',
     toolResultMarkers: [SEQUENTIAL_RESULT_A, SEQUENTIAL_RESULT_B],
     minimumCallbackResumes: 2,
+    thinkingSignatureMatched: true,
+    uniqueMessageIds: true,
   }),
 });
 

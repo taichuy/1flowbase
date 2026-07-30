@@ -174,6 +174,10 @@ pub fn coalesce_provider_stream_events(
                 flush_text_delta(bus, &mut coalesced, &mut coalescer);
                 flush_reasoning_delta(bus, &mut coalesced, &mut coalescer);
             }
+            ProviderStreamEvent::ReasoningSignatureDelta { .. } => {
+                flush_text_delta(bus, &mut coalesced, &mut coalescer);
+                flush_reasoning_delta(bus, &mut coalesced, &mut coalescer);
+            }
             ProviderStreamEvent::TextDelta { delta } => {
                 flush_reasoning_delta(bus, &mut coalesced, &mut coalescer);
                 push_runtime_bus_delta(bus, &mut coalesced, coalescer.push_text(delta));
@@ -212,7 +216,9 @@ where
 {
     if matches!(
         event,
-        ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. }
+        ProviderStreamEvent::NativeEvent { .. }
+            | ProviderStreamEvent::ReasoningSignatureDelta { .. }
+            | ProviderStreamEvent::OutputItem { .. }
     ) {
         bail!("ephemeral provider events cannot be persisted");
     }
@@ -283,7 +289,9 @@ where
     for event in events {
         if matches!(
             event,
-            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. }
+            ProviderStreamEvent::NativeEvent { .. }
+                | ProviderStreamEvent::ReasoningSignatureDelta { .. }
+                | ProviderStreamEvent::OutputItem { .. }
         ) {
             continue;
         }
@@ -346,6 +354,7 @@ pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {
         ProviderStreamEvent::NativeEvent { .. } => "native_event",
         ProviderStreamEvent::TextDelta { .. } => "text_delta",
         ProviderStreamEvent::ReasoningDelta { .. } => "reasoning_delta",
+        ProviderStreamEvent::ReasoningSignatureDelta { .. } => "reasoning_signature_delta",
         ProviderStreamEvent::ToolCallDelta { .. } => "tool_call_delta",
         ProviderStreamEvent::ToolCallCommit { .. } => "tool_call_commit",
         ProviderStreamEvent::McpCallDelta { .. } => "mcp_call_delta",
@@ -427,6 +436,10 @@ impl LiveEventCoalescer {
                 {
                     ready.push(ProviderStreamEvent::ReasoningDelta { delta: d });
                 }
+            }
+            ProviderStreamEvent::ReasoningSignatureDelta { .. } => {
+                self.flush_text(&mut ready);
+                self.flush_reasoning(&mut ready);
             }
             other => {
                 self.flush_text(&mut ready);

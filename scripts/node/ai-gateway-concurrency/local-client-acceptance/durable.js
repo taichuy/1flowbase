@@ -247,6 +247,12 @@ function evaluateMockAttempt(before, after, rawExpectation) {
       }
     }
   }
+  const signatureChecks = events.filter((event) => event.event === 'thinking_signature_checked');
+  if (expectation.thinking_signature_matched === true
+    && (signatureChecks.length === 0
+      || signatureChecks.some((event) => event.thinkingSignatureMatched !== true))) {
+    throw new Error('Anthropic thinking signature was not preserved into every callback/follow-up request');
+  }
   const executor = expectation.gateway_executor_invocations === undefined
     ? null
     : gatewayExecutorEvidence(after, expectation.gateway_executor_invocations);
@@ -270,6 +276,9 @@ function evaluateMockAttempt(before, after, rawExpectation) {
     ...(executor || {}),
     ...(network || {}),
     ...(callback ? { callback_resume: callback } : {}),
+    ...(expectation.thinking_signature_matched === true
+      ? { thinkingSignatureMatched: true }
+      : {}),
   };
 }
 

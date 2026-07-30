@@ -34,12 +34,12 @@ function output(events, exitCode = 0) {
   };
 }
 
-function claudeTextOutput(text, sessionId = 'claude-session-fixture') {
+function claudeTextOutput(text, sessionId = 'claude-session-fixture', messageId = 'msg-fixture') {
   const split = Math.floor(text.length / 2);
   return output([
     {
       type: 'stream_event', session_id: sessionId,
-      event: { type: 'message_start', message: { id: 'msg-fixture' } },
+      event: { type: 'message_start', message: { id: messageId } },
     },
     {
       type: 'stream_event',
@@ -510,6 +510,12 @@ test('WP-D4B keeps Claude/OpenCode chronology strict while Codex reports complet
 test('Delivery #1493 keeps one Claude session across sequential callbacks and a later user turn', () => {
   const sessionId = 'claude-history-followup-session';
   const first = output([
+    { type: 'stream_event', event: { type: 'message_start', message: { id: 'msg-tool-a' } } },
+    { type: 'stream_event', event: { type: 'message_stop' } },
+    { type: 'stream_event', event: { type: 'message_start', message: { id: 'msg-tool-b' } } },
+    { type: 'stream_event', event: { type: 'message_stop' } },
+    { type: 'stream_event', event: { type: 'message_start', message: { id: 'msg-tool-final' } } },
+    { type: 'stream_event', event: { type: 'message_stop' } },
     { type: 'assistant', session_id: sessionId, message: { content: [{ type: 'tool_use', id: 'tool-a' }] } },
     { type: 'user', message: { content: [
       { type: 'tool_result', tool_use_id: 'tool-a', content: SEQUENTIAL_RESULT_A },
@@ -525,7 +531,7 @@ test('Delivery #1493 keeps one Claude session across sequential callbacks and a 
       terminal_reason: 'completed', result: SEQUENTIAL_FINAL_SENTINEL,
     },
   ]);
-  const second = claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, sessionId);
+  const second = claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, sessionId, 'msg-followup');
   const result = {
     exit_code: 0, signal: null, timed_out: false, stdout: '', stderr: '',
     turns: [{ result: first }, { result: second }],
@@ -533,11 +539,23 @@ test('Delivery #1493 keeps one Claude session across sequential callbacks and a 
   assert.equal(evaluateAttempt('claude', TOOL_HISTORY_FOLLOWUP_VECTOR, result).pass, true);
   const wrongSession = {
     ...result,
-    turns: [{ result: first }, { result: claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, 'other-session') }],
+    turns: [{ result: first }, {
+      result: claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, 'other-session', 'msg-other-followup'),
+    }],
   };
   assert.equal(
     evaluateAttempt('claude', TOOL_HISTORY_FOLLOWUP_VECTOR, wrongSession).reason,
     'complete_conversation_missing',
+  );
+  const duplicateMessageId = {
+    ...result,
+    turns: [{ result: first }, {
+      result: claudeTextOutput(TOOL_FOLLOWUP_FINAL_SENTINEL, sessionId, 'msg-tool-a'),
+    }],
+  };
+  assert.equal(
+    evaluateAttempt('claude', TOOL_HISTORY_FOLLOWUP_VECTOR, duplicateMessageId).reason,
+    'external_message_ids_not_unique',
   );
 });
 

@@ -214,6 +214,72 @@ async fn anthropic_text_stream_follows_claude_messages_event_order() {
 }
 
 #[tokio::test]
+async fn anthropic_reasoning_signature_projects_exactly_without_start_placeholder() {
+    let run = native_run();
+    let mut mapper = AnthropicStreamMapper::new("claude-opus-4-8".to_string());
+    let mut events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+    );
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::answer_reasoning_delta(
+                "node-answer",
+                "private reasoning".to_string(),
+                0,
+                Some("node-llm"),
+                None,
+                Some("text"),
+            ),
+        ),
+    ));
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            3,
+            RuntimeEventPayload {
+                event_type: "reasoning_signature_delta".to_string(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::Ephemeral,
+                persist_required: false,
+                trace_visible: false,
+                payload: json!({
+                    "type": "reasoning_signature_delta",
+                    "signature": "opaque-signature-fixture"
+                }),
+            },
+        ),
+    ));
+
+    let response = test_projected_events_response(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let decoded = decode_anthropic_sse(std::str::from_utf8(&body).unwrap());
+    let thinking_start = decoded
+        .iter()
+        .find(|event| event.name == "content_block_start")
+        .expect("thinking content block should start");
+    let signature = decoded
+        .iter()
+        .find(|event| event.data["delta"]["type"] == "signature_delta")
+        .expect("signature delta should be projected");
+
+    assert_eq!(
+        thinking_start.data["content_block"],
+        json!({"type": "thinking", "thinking": ""})
+    );
+    assert_eq!(
+        signature.data["delta"]["signature"],
+        "opaque-signature-fixture"
+    );
+}
+
+#[tokio::test]
 async fn d1_ac_001_002_anthropic_decoder_preserves_canonical_text_segments_exactly() {
     let run = native_run();
     let expected_segments = vec![
@@ -388,10 +454,9 @@ async fn d1_ac_003_anthropic_terminal_is_absorbing_and_protocol_order_is_legal()
     assert!(decoded
         .iter()
         .all(|event| event.data["type"].as_str() == Some(event.name.as_str())));
-    assert_eq!(
-        decoded[0].data["message"]["id"],
-        json!(format!("msg_{}", run.id))
-    );
+    assert!(decoded[0].data["message"]["id"]
+        .as_str()
+        .is_some_and(|id| id.starts_with("msg_")));
     assert_eq!(decoded[0].data["message"]["usage"]["input_tokens"], 7);
     assert_eq!(decoded[1].data["index"], 0);
     assert_eq!(decoded[2].data["index"], 0);
@@ -415,6 +480,36 @@ async fn d1_ac_003_anthropic_terminal_is_absorbing_and_protocol_order_is_legal()
         vec!["same", "same"]
     );
     assert!(!body.contains("late"));
+}
+
+#[tokio::test]
+async fn anthropic_stream_message_id_is_unique_per_external_response() {
+    let run = native_run();
+    let mut ids = Vec::new();
+
+    for _ in 0..2 {
+        let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+        let events = mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+        );
+        let response = test_projected_events_response(events);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("Anthropic message_start body should be readable");
+        let decoded = decode_anthropic_sse(
+            std::str::from_utf8(&body).expect("Anthropic message_start should be UTF-8"),
+        );
+        ids.push(
+            decoded[0].data["message"]["id"]
+                .as_str()
+                .expect("message_start should carry a message id")
+                .to_string(),
+        );
+    }
+
+    assert!(ids.iter().all(|id| id.starts_with("msg_")));
+    assert_ne!(ids[0], ids[1]);
 }
 
 #[tokio::test]

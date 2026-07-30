@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { TRANSPORT } = require('../../contracts');
+const { THINKING_SIGNATURE_FIXTURE } = require('../client-vector-contract');
 const {
   LOSSLESS_LONG_TEXT,
   LOSSLESS_SENTINEL_SEGMENTS,
@@ -80,6 +81,21 @@ test('Root #1477 R15 projects only fields declared by each client tool schema', 
   const chatTool = chat.chunks[0].choices[0].delta.tool_calls[0].function;
   assert.equal(chatTool.name, 'exec_command');
   assert.deepEqual(JSON.parse(chatTool.arguments), { cmd: command, workdir: repo });
+});
+
+test('Anthropic tool fixture emits thinking then an opaque signature before tool_use', () => {
+  const stream = anthropicToolEvents(
+    'signature', ['/tmp/tool'], false, 'done', null, null, THINKING_SIGNATURE_FIXTURE,
+  );
+  const blockDeltas = stream.chunks.filter((chunk) => chunk.event === 'content_block_delta');
+  const signature = blockDeltas.find((chunk) => chunk.data.delta.type === 'signature_delta');
+  const toolStart = stream.chunks.findIndex(
+    (chunk) => chunk.data?.content_block?.type === 'tool_use',
+  );
+
+  assert.equal(signature.data.delta.signature, THINKING_SIGNATURE_FIXTURE);
+  assert.ok(stream.chunks.indexOf(signature) < toolStart);
+  assert.equal(stream.chunks[toolStart].data.index, 1);
 });
 
 test('AC-001/006: every provider transport fixture has all deltas and one success terminal', () => {

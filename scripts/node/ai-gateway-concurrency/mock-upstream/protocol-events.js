@@ -154,7 +154,13 @@ function responsesObservableItemEvents(nonce, firstText, secondText) {
   };
 }
 
-function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${nonce}:chunk-2`) {
+function anthropicEvents(
+  nonce,
+  firstText = `${nonce}:chunk-1`,
+  secondText = `${nonce}:chunk-2`,
+  thinkingSignature = null,
+) {
+  const textIndex = thinkingSignature === null ? 0 : 1;
   return {
     chunks: [
       {
@@ -173,11 +179,38 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
           },
         },
       },
+      ...(thinkingSignature === null ? [] : [
+        {
+          event: 'content_block_start',
+          data: {
+            type: 'content_block_start', index: 0,
+            content_block: { type: 'thinking', thinking: '' },
+          },
+        },
+        {
+          event: 'content_block_delta',
+          data: {
+            type: 'content_block_delta', index: 0,
+            delta: { type: 'thinking_delta', thinking: 'private reasoning fixture' },
+          },
+        },
+        {
+          event: 'content_block_delta',
+          data: {
+            type: 'content_block_delta', index: 0,
+            delta: { type: 'signature_delta', signature: thinkingSignature },
+          },
+        },
+        {
+          event: 'content_block_stop',
+          data: { type: 'content_block_stop', index: 0 },
+        },
+      ]),
       {
         event: 'content_block_start',
         data: {
           type: 'content_block_start',
-          index: 0,
+          index: textIndex,
           content_block: { type: 'text', text: '' },
         },
       },
@@ -185,7 +218,7 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
         event: 'content_block_delta',
         data: {
           type: 'content_block_delta',
-          index: 0,
+          index: textIndex,
           delta: { type: 'text_delta', text: firstText },
         },
       },
@@ -193,13 +226,13 @@ function anthropicEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
         event: 'content_block_delta',
         data: {
           type: 'content_block_delta',
-          index: 0,
+          index: textIndex,
           delta: { type: 'text_delta', text: secondText },
         },
       },
       {
         event: 'content_block_stop',
-        data: { type: 'content_block_stop', index: 0 },
+        data: { type: 'content_block_stop', index: textIndex },
       },
     ],
     terminal: [
@@ -275,19 +308,22 @@ function responsesToolEvents(
 
 function anthropicToolEvents(
   nonce, toolPath, final = false, finalText = '1flowbase gateway tool sentinel ok', commands = null,
-  tool = null,
+  tool = null, thinkingSignature = null,
 ) {
   if (final && finalText !== '1flowbase gateway tool sentinel ok') {
     const split = Math.ceil(finalText.length / 2);
     return {
-      ...anthropicEvents(nonce, finalText.slice(0, split), finalText.slice(split)),
+      ...anthropicEvents(
+        nonce, finalText.slice(0, split), finalText.slice(split), thinkingSignature,
+      ),
       barrierMarker: finalText.slice(0, split),
     };
   }
   if (final) return anthropicEvents(
     nonce,
     `${DEFAULT_BARRIER_MARKERS.first} ${DEFAULT_BARRIER_MARKERS.clientFirst}`,
-    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`
+    `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`,
+    thinkingSignature,
   );
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   const descriptor = normalizedToolDescriptor(tool, {
@@ -302,8 +338,20 @@ function anthropicToolEvents(
           stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 },
         } },
       },
+      ...(thinkingSignature === null ? [] : [
+        { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: {
+          type: 'thinking', thinking: '',
+        } } },
+        { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: {
+          type: 'thinking_delta', thinking: 'private reasoning fixture',
+        } } },
+        { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: {
+          type: 'signature_delta', signature: thinkingSignature,
+        } } },
+        { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+      ]),
       ...toolPaths.flatMap((currentPath, index) => [
-        { event: 'content_block_start', data: { type: 'content_block_start', index, content_block: {
+        { event: 'content_block_start', data: { type: 'content_block_start', index: index + (thinkingSignature === null ? 0 : 1), content_block: {
           type: 'tool_use', id: `toolu_${nonce}_${index}`,
           name: descriptor.name,
           input: toolArguments(
@@ -313,7 +361,7 @@ function anthropicToolEvents(
             commands ? currentPath : path.dirname(currentPath),
           ),
         } } },
-        { event: 'content_block_stop', data: { type: 'content_block_stop', index } },
+        { event: 'content_block_stop', data: { type: 'content_block_stop', index: index + (thinkingSignature === null ? 0 : 1) } },
       ]),
     ],
     terminal: [

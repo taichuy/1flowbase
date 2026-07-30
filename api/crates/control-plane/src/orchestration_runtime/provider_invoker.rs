@@ -210,6 +210,13 @@ where
                             | ProviderStreamEvent::ReasoningDelta { .. }
                             | ProviderStreamEvent::Finish { .. }
                             | ProviderStreamEvent::Error { .. } => Vec::new(),
+                            ProviderStreamEvent::ReasoningSignatureDelta { signature } => {
+                                vec![debug_stream_events::reasoning_signature_delta(
+                                    &node_id,
+                                    node_run_id,
+                                    signature.clone(),
+                                )]
+                            }
                             ProviderStreamEvent::OutputItem {
                                 phase,
                                 output_index,
@@ -397,6 +404,7 @@ impl RuntimeCanonicalStreamWriter {
                     text: delta.clone(),
                 }])
             }
+            ProviderStreamEvent::ReasoningSignatureDelta { .. } => Ok(Vec::new()),
             ProviderStreamEvent::ToolCallDelta { call_id, delta } => {
                 if let Some(arguments) = tool_argument_delta(delta) {
                     self.state.apply(CanonicalStreamEvent::ToolArgumentsDelta {

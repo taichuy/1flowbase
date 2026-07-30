@@ -7,6 +7,7 @@ const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
 const PARALLEL_FINAL_SENTINEL = '1flowbase parallel callback sentinel ok';
 const SEQUENTIAL_FINAL_SENTINEL = '1flowbase sequential callback sentinel ok';
 const TOOL_FOLLOWUP_FINAL_SENTINEL = '1flowbase tool history followup sentinel ok';
+const THINKING_SIGNATURE_FIXTURE = '1flowbase-opaque-thinking-signature-fixture';
 const GIT_WORKFLOW_FINAL = '1flowbase meaningful git workflow verified';
 const CONTINUITY_SEED_SENTINEL = '1flowbase continuity seed 中🙂';
 const CONTINUITY_FINAL_SENTINEL = '1flowbase complete conversation continuity ok';
@@ -93,6 +94,20 @@ function hasClosedHistoricalToolPairs(body, minimumPairs = 2) {
   return paired.length >= minimumPairs && !containsGatewayCallbackWrapper;
 }
 
+function hasThinkingSignatureFixture(body) {
+  let matched = false;
+  const visit = (value) => {
+    if (matched || !value || typeof value !== 'object') return;
+    if (value.type === 'thinking' && value.signature === THINKING_SIGNATURE_FIXTURE) {
+      matched = true;
+      return;
+    }
+    for (const nested of Object.values(value)) visit(nested);
+  };
+  visit(body);
+  return matched;
+}
+
 module.exports = {
   CLAUDE_PROTOCOL_SENTINEL,
   CONTINUITY_FINAL_SENTINEL,
@@ -103,11 +118,13 @@ module.exports = {
   PARALLEL_FINAL_SENTINEL,
   SEQUENTIAL_FINAL_SENTINEL,
   TOOL_FOLLOWUP_FINAL_SENTINEL,
+  THINKING_SIGNATURE_FIXTURE,
   TEXT_SENTINEL,
   TOOL_FINAL_SENTINEL,
   containsValue,
   hasClaudeProtocolProfile,
   hasClosedHistoricalToolPairs,
+  hasThinkingSignatureFixture,
   textVectorOutput,
   toolVectorFinalOutput,
 };

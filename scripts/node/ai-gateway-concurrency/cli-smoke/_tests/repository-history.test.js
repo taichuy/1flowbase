@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  CLAUDE_REPOSITORY_FOLLOWUP_PROMPT,
   CLAUDE_REPOSITORY_HISTORY_PROMPT,
   GIT_HISTORY_COMMAND,
   claudeRepositoryHistoryInvocation,
@@ -44,12 +45,16 @@ test('repository history invocation pins native Claude Code, cwd, model, and Bas
   const invocation = claudeRepositoryHistoryInvocation('/bin/claude', {
     config,
     repository,
-  }, 'claude-opus-4-8[1M]');
+  }, 'claude-opus-4-8[1M]', { sessionId: '11111111-1111-4111-8111-111111111111' });
 
   assert.equal(invocation.cwd, repository);
   assert.equal(invocation.executable, '/bin/claude');
   assert.equal(invocation.args[invocation.args.indexOf('-p') + 1], CLAUDE_REPOSITORY_HISTORY_PROMPT);
   assert.equal(invocation.args[invocation.args.indexOf('--model') + 1], 'claude-opus-4-8[1M]');
+  assert.equal(
+    invocation.args[invocation.args.indexOf('--session-id') + 1],
+    '11111111-1111-4111-8111-111111111111',
+  );
   assert.equal(invocation.args[invocation.args.indexOf('--tools') + 1], 'Bash');
   assert.equal(
     invocation.args[invocation.args.indexOf('--allowedTools') + 1],
@@ -57,6 +62,20 @@ test('repository history invocation pins native Claude Code, cwd, model, and Bas
   );
   assert.equal(invocation.args[invocation.args.indexOf('--permission-mode') + 1], 'dontAsk');
   assert.deepEqual(JSON.parse(fs.readFileSync(invocation.settingsPath, 'utf8')), {});
+
+  const followup = claudeRepositoryHistoryInvocation('/bin/claude', {
+    config,
+    repository,
+  }, 'claude-opus-4-8[1M]', {
+    sessionId: '11111111-1111-4111-8111-111111111111',
+    turnIndex: 1,
+  });
+  assert.equal(followup.args[followup.args.indexOf('-p') + 1], CLAUDE_REPOSITORY_FOLLOWUP_PROMPT);
+  assert.equal(
+    followup.args[followup.args.indexOf('--resume') + 1],
+    '11111111-1111-4111-8111-111111111111',
+  );
+  assert.equal(followup.args.includes('--allowedTools'), false);
 });
 
 test('readRepositoryGitHistory builds a three-commit runtime oracle', () => {
@@ -247,7 +266,7 @@ test('repository history smoke isolates credentials and writes secret-free evide
   const stdout = [
     {
       type: 'stream_event',
-      event: { type: 'message_start', message: { model: 'claude-opus-4-8' } },
+      event: { type: 'message_start', message: { id: 'msg-turn-1', model: 'claude-opus-4-8' } },
     },
     {
       type: 'assistant',
@@ -264,7 +283,14 @@ test('repository history smoke isolates credentials and writes secret-free evide
     },
     { type: 'result', result: answer },
   ].map((event) => JSON.stringify(event)).join('\n');
-  let captured = null;
+  const captured = [];
+  const followupStdout = [
+    {
+      type: 'stream_event',
+      event: { type: 'message_start', message: { id: 'msg-turn-2', model: 'claude-opus-4-8' } },
+    },
+    { type: 'result', is_error: false, result: '透传协议由源协议上下文与目标 Provider 能力共同决定。' },
+  ].map((event) => JSON.stringify(event)).join('\n');
 
   const summary = await runClaudeRepositoryHistorySmoke({
     repository,
@@ -274,6 +300,7 @@ test('repository history smoke isolates credentials and writes secret-free evide
     proxyUrl: 'http://127.0.0.1:7897',
     evidenceRoot,
     claudeExecutable: '/bin/claude',
+    sessionId: '11111111-1111-4111-8111-111111111111',
   }, {
     parentEnv: { PATH: process.env.PATH },
     spawnSyncImpl: () => ({
@@ -282,26 +309,32 @@ test('repository history smoke isolates credentials and writes secret-free evide
       stderr: '',
     }),
     executeTmuxInvocation: async (invocation, environment, options) => {
-      captured = { invocation, environment, options };
+      captured.push({ invocation, environment, options });
+      const followup = invocation.args.includes('--resume');
       return {
         exit_code: 0,
         timed_out: false,
-        stdout: { text: stdout, overflow: false },
+        stdout: { text: followup ? followupStdout : stdout, overflow: false },
         stderr: { text: '', overflow: false },
-        pty: { timeline_path: '/tmp/timeline.jsonl' },
+        pty: { timeline_path: followup ? '/tmp/timeline-2.jsonl' : '/tmp/timeline-1.jsonl' },
       };
     },
   });
 
   assert.equal(summary.ok, true);
-  assert.equal(captured.invocation.cwd, repository);
-  assert.equal(captured.environment.ANTHROPIC_AUTH_TOKEN, 'secret-gateway-token');
-  assert.equal(captured.environment.ANTHROPIC_API_KEY, '');
-  assert.equal(captured.environment.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
-  assert.equal(captured.environment.HTTP_PROXY, 'http://127.0.0.1:7897');
-  assert.equal(captured.environment.HTTPS_PROXY, 'http://127.0.0.1:7897');
-  assert.equal(captured.environment.http_proxy, 'http://127.0.0.1:7897');
-  assert.equal(captured.environment.https_proxy, 'http://127.0.0.1:7897');
-  assert.deepEqual(captured.options.secrets, ['secret-gateway-token']);
+  assert.equal(summary.evidence.firstTurn.ok, true);
+  assert.equal(summary.evidence.secondTurn.ok, true);
+  assert.equal(summary.evidence.uniqueExternalMessageIds, true);
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].invocation.cwd, repository);
+  assert.equal(captured[0].environment.ANTHROPIC_AUTH_TOKEN, 'secret-gateway-token');
+  assert.equal(captured[0].environment.ANTHROPIC_API_KEY, '');
+  assert.equal(captured[0].environment.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+  assert.equal(captured[0].environment.HTTP_PROXY, 'http://127.0.0.1:7897');
+  assert.equal(captured[0].environment.HTTPS_PROXY, 'http://127.0.0.1:7897');
+  assert.equal(captured[0].environment.http_proxy, 'http://127.0.0.1:7897');
+  assert.equal(captured[0].environment.https_proxy, 'http://127.0.0.1:7897');
+  assert.deepEqual(captured[0].options.secrets, ['secret-gateway-token']);
+  assert.equal(captured[1].invocation.args.includes('--resume'), true);
   assert.doesNotMatch(fs.readFileSync(path.join(evidenceRoot, 'summary.json'), 'utf8'), /secret-gateway-token/u);
 });

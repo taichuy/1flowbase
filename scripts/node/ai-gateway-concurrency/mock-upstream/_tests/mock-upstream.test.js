@@ -178,6 +178,46 @@ test('AC-002: Anthropic Messages SSE emits fixed content and one message_stop te
   });
 });
 
+test('Anthropic history mock validates returned thinking signature without recording its value', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    const marker = [
+      '1flowbase-client-tool-vector',
+      '1flowbase-client-vector=tools-history-followup-second-turn',
+      'tools-sequential-callback-tasks-one-turn',
+      'SEQUENTIAL_TOOL_A_PATH=/tmp/a',
+      'SEQUENTIAL_TOOL_B_PATH=/tmp/b',
+    ].join(' ');
+    const first = await fetch(`${httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'mock-model', stream: true, messages: [{ role: 'user', content: marker }] }),
+    });
+    const firstEvents = parseSse(await first.text());
+    const signature = firstEvents.find(
+      (event) => event.data?.delta?.type === 'signature_delta',
+    ).data.delta.signature;
+    const second = await fetch(`${httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model',
+        stream: true,
+        messages: [
+          { role: 'user', content: marker },
+          { role: 'assistant', content: [{ type: 'thinking', thinking: 'private', signature }] },
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-a', content: '1flowbase-client-tool-result sequential-a' }] },
+        ],
+      }),
+    });
+    await second.text();
+
+    const snapshot = upstream.snapshot();
+    const checks = snapshot.entries.filter((event) => event.event === 'thinking_signature_checked');
+    assert.deepEqual(checks.map((event) => event.thinkingSignatureMatched), [true]);
+    assert.equal(JSON.stringify(checks).includes(signature), false);
+  });
+});
+
 test('Root #1440 AC-003: producer barrier releases chunk-2 only after chunk-1 is observable', async () => {
   await withMockUpstream(async ({ upstream, httpBaseUrl, barrierReleaseUrl }) => {
     const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {

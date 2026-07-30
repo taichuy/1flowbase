@@ -228,9 +228,9 @@ pub(super) fn durable_provider_events(
     events
         .into_iter()
         .filter_map(|event| match event {
-            ProviderStreamEvent::NativeEvent { .. } | ProviderStreamEvent::OutputItem { .. } => {
-                None
-            }
+            ProviderStreamEvent::NativeEvent { .. }
+            | ProviderStreamEvent::ReasoningSignatureDelta { .. }
+            | ProviderStreamEvent::OutputItem { .. } => None,
             ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
                 error: ProviderRuntimeError::new(error.kind, error.message.clone()),
             }),

@@ -94,6 +94,16 @@ function claudeAssistantTexts(events) {
   ));
 }
 
+function claudeMessageIds(events) {
+  return events.flatMap((outer) => (
+    outer.type === 'stream_event'
+      && outer.event?.type === 'message_start'
+      && typeof outer.event.message?.id === 'string'
+      ? [outer.event.message.id]
+      : []
+  ));
+}
+
 function codexAssistantTexts(events) {
   return events.flatMap((event, index) => {
     if (event.type !== 'item.completed' || event.item?.type !== 'agent_message') return [];
@@ -379,12 +389,25 @@ function evaluateToolConversationSurface(client, vector, turns) {
     && followupSurface.assistantTexts.length === 1
     && followupSurface.assistantTexts[0].text === followupText
     && followupSurface.terminal.index > followupSurface.assistantTexts[0].index;
+  const messageIds = client === 'claude'
+    ? turns.flatMap((turn) => claudeMessageIds(structuredEvents(turn.stdout || '')))
+    : [];
+  const uniqueMessageIds = vector.expected.unique_message_ids !== true
+    || (messageIds.length > 1 && new Set(messageIds).size === messageIds.length);
+  const pass = followupExact && uniqueMessageIds;
   return {
-    pass: followupExact,
-    reason: followupExact ? null : 'tool_history_followup_missing',
-    observed_events: followupExact
-      ? [...toolEvaluation.observed_events, 'same_session_followup_observed']
-      : toolEvaluation.observed_events,
+    pass,
+    reason: pass
+      ? null
+      : followupExact ? 'external_message_ids_not_unique' : 'tool_history_followup_missing',
+    observed_events: [
+      ...(followupExact
+        ? [...toolEvaluation.observed_events, 'same_session_followup_observed']
+        : toolEvaluation.observed_events),
+      ...(uniqueMessageIds && vector.expected.unique_message_ids === true
+        ? ['unique_external_message_ids_observed']
+        : []),
+    ],
   };
 }
 

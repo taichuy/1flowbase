@@ -313,6 +313,7 @@ fn is_required_delivery_event(event: &RuntimeEventEnvelope) -> bool {
             event.event_type.as_str(),
             "text_delta"
                 | "reasoning_delta"
+                | "reasoning_signature_delta"
                 | "tool_call_delta"
                 | "tool_call_commit"
                 | "mcp_call_delta"

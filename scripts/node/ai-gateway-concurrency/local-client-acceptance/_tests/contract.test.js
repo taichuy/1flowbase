@@ -202,6 +202,8 @@ test('WP-D4B pins exact long Unicode and callback grouping expectations', () => 
   assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.durable_runs, 2);
   assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.minimum_provider_requests, 4);
   assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.minimum_callback_resumes, 2);
+  assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.thinking_signature_matched, true);
+  assert.equal(TOOL_HISTORY_FOLLOWUP_VECTOR.expected.unique_message_ids, true);
   const followupPlan = buildClientPlan(
     'claude', '/machine/claude', target, paths, TOOL_HISTORY_FOLLOWUP_VECTOR, 'anthropic_sse',
     { turnIndex: 1, sessionId: 'same-claude-session' },

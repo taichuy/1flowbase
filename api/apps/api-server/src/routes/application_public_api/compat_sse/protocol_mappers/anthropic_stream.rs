@@ -1,4 +1,5 @@
 use super::*;
+use uuid::Uuid;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AnthropicContentBlockKind {
@@ -29,6 +30,7 @@ impl AnthropicMessageStopReason {
 
 pub(in crate::routes::application_public_api::compat_sse) struct AnthropicStreamMapper {
     model: String,
+    message_id: String,
     next_content_index: u32,
     active_content: Option<AnthropicContentBlockKind>,
     terminal_stop_reason: AnthropicMessageStopReason,
@@ -40,6 +42,7 @@ impl AnthropicStreamMapper {
     pub(in crate::routes::application_public_api::compat_sse) fn new(model: String) -> Self {
         Self {
             model,
+            message_id: format!("msg_{}", Uuid::now_v7()),
             next_content_index: 0,
             active_content: None,
             terminal_stop_reason: AnthropicMessageStopReason::EndTurn,
@@ -111,7 +114,7 @@ impl AnthropicStreamMapper {
                     json!({
                         "type": "message_start",
                         "message": {
-                            "id": format!("msg_{}", initial_run.id),
+                            "id": self.message_id,
                             "type": "message",
                             "role": "assistant",
                             "model": self.model,
@@ -122,6 +125,12 @@ impl AnthropicStreamMapper {
                     }),
                 )]
             }
+            "reasoning_signature_delta" => envelope
+                .payload
+                .get("signature")
+                .and_then(Value::as_str)
+                .map(|signature| self.anthropic_signature_delta_events(signature.to_string()))
+                .unwrap_or_default(),
             "text_delta" | "reasoning_delta" => Vec::new(),
             "finish" => Vec::new(),
             _ => Vec::new(),
@@ -189,6 +198,25 @@ impl AnthropicStreamMapper {
             anthropic_delta_payload(self.active_content_index(), event_type, text)
                 .expect("known Anthropic delta event type should map");
         events.push(event_json_sse(event_name, payload));
+        events
+    }
+
+    fn anthropic_signature_delta_events(
+        &mut self,
+        signature: String,
+    ) -> Vec<Result<Event, Infallible>> {
+        let mut events = self.ensure_anthropic_content_block(AnthropicContentBlockKind::Thinking);
+        events.push(event_json_sse(
+            "content_block_delta",
+            json!({
+                "type": "content_block_delta",
+                "index": self.active_content_index(),
+                "delta": {
+                    "type": "signature_delta",
+                    "signature": signature
+                }
+            }),
+        ));
         events
     }
 
@@ -297,7 +325,7 @@ impl AnthropicStreamMapper {
         let content_block = match kind {
             AnthropicContentBlockKind::Text => json!({"type": "text", "text": ""}),
             AnthropicContentBlockKind::Thinking => {
-                json!({"type": "thinking", "thinking": "", "signature": ""})
+                json!({"type": "thinking", "thinking": ""})
             }
         };
         events.push(event_json_sse(

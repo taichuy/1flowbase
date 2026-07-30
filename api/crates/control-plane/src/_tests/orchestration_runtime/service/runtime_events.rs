@@ -812,6 +812,9 @@ async fn live_provider_reasoning_delta_is_appended_to_runtime_event_stream() {
         plugin_framework::provider_contract::ProviderStreamEvent::ReasoningDelta {
             delta: "先分析".into(),
         },
+        plugin_framework::provider_contract::ProviderStreamEvent::ReasoningSignatureDelta {
+            signature: "opaque-signature-fixture".into(),
+        },
         plugin_framework::provider_contract::ProviderStreamEvent::TextDelta {
             delta: "结果".into(),
         },
@@ -862,6 +865,20 @@ async fn live_provider_reasoning_delta_is_appended_to_runtime_event_stream() {
     assert!(events
         .iter()
         .any(|event| event.event_type == "reasoning_delta" && event.payload["text"] == "先分析"));
+    let signature_event = events
+        .iter()
+        .find(|event| event.event_type == "reasoning_signature_delta")
+        .expect("reasoning signature should reach the live runtime stream");
+    assert_eq!(
+        signature_event.payload["signature"],
+        "opaque-signature-fixture"
+    );
+    assert_eq!(
+        signature_event.durability,
+        RuntimeEventDurability::Ephemeral
+    );
+    assert!(!signature_event.persist_required);
+    assert!(!signature_event.trace_visible);
     assert!(events.iter().any(|event| event.event_type == "text_delta"));
 }
 

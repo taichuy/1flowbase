@@ -502,7 +502,7 @@ fn to_anthropic_response(
         content.push(json!({"type": "text", "text": ""}));
     }
     Ok(AnthropicMessageResponse {
-        id: format!("msg_{}", run.id),
+        id: anthropic_response_message_id(),
         response_type: "message",
         role: "assistant",
         model,
@@ -514,6 +514,10 @@ fn to_anthropic_response(
         },
         usage: anthropic_usage(run.usage),
     })
+}
+
+fn anthropic_response_message_id() -> String {
+    format!("msg_{}", Uuid::now_v7())
 }
 
 fn anthropic_tool_use_blocks(

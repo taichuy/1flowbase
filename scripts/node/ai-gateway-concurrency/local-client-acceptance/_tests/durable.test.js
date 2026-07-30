@@ -141,6 +141,44 @@ test('WP-D4B mock evidence fixes terminal counts, observed Claude fields, and ex
   }, 0), /expected network observer outbound=0/u);
 });
 
+test('Anthropic multi-turn mock evidence records only matched thinking-signature booleans', () => {
+  const before = { entries: [{ sequence: 1 }] };
+  const base = [
+    ...before.entries,
+    { sequence: 2, event: 'arrival', nonce: 'callback' },
+    {
+      sequence: 3,
+      event: 'thinking_signature_checked',
+      nonce: 'callback',
+      thinkingSignatureMatched: true,
+    },
+    {
+      sequence: 4,
+      event: 'settled',
+      nonce: 'callback',
+      outcome: 'completed',
+      successTerminalCount: 1,
+    },
+  ];
+  const expectation = {
+    provider_requests: 1,
+    provider_outcomes: ['completed'],
+    success_terminal_counts: [1],
+    thinking_signature_matched: true,
+  };
+
+  assert.equal(
+    evaluateMockAttempt(before, { entries: base }, expectation).thinkingSignatureMatched,
+    true,
+  );
+  assert.equal(JSON.stringify(base).includes('opaque-signature-fixture'), false);
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: base.map((event) => event.event === 'thinking_signature_checked'
+      ? { ...event, thinkingSignatureMatched: false }
+      : event),
+  }, expectation), /thinking signature was not preserved/u);
+});
+
 test('F4-CLIENT-GATE accepts legal callback request counts but requires paired lifecycle and resume chronology', () => {
   const before = {
     entries: [{ sequence: 20 }],

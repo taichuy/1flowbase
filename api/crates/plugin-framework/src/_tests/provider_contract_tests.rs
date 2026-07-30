@@ -964,6 +964,22 @@ fn provider_runtime_line_text_maps_to_stream_event() {
 }
 
 #[test]
+fn provider_runtime_line_reasoning_signature_maps_exactly_to_stream_event() {
+    let line: ProviderRuntimeLine = serde_json::from_value(json!({
+        "type": "reasoning_signature_delta",
+        "signature": "opaque-signature-fixture"
+    }))
+    .unwrap();
+
+    assert_eq!(
+        line.into_stream_event(),
+        Some(ProviderStreamEvent::ReasoningSignatureDelta {
+            signature: "opaque-signature-fixture".into()
+        })
+    );
+}
+
+#[test]
 fn provider_runtime_line_error_preserves_upstream_details() {
     let line = ProviderRuntimeLine::Error {
         error: ProviderRuntimeError::new(

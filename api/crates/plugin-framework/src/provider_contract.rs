@@ -1456,6 +1456,9 @@ pub enum ProviderStreamEvent {
     ReasoningDelta {
         delta: String,
     },
+    ReasoningSignatureDelta {
+        signature: String,
+    },
     ToolCallDelta {
         call_id: String,
         delta: Value,
@@ -1503,6 +1506,9 @@ pub enum ProviderRuntimeLine {
     ReasoningDelta {
         delta: String,
     },
+    ReasoningSignatureDelta {
+        signature: String,
+    },
     ToolCallDelta {
         call_id: String,
         delta: Value,
@@ -1548,6 +1554,9 @@ impl ProviderRuntimeLine {
             }
             Self::TextDelta { delta } => Some(ProviderStreamEvent::TextDelta { delta }),
             Self::ReasoningDelta { delta } => Some(ProviderStreamEvent::ReasoningDelta { delta }),
+            Self::ReasoningSignatureDelta { signature } => {
+                Some(ProviderStreamEvent::ReasoningSignatureDelta { signature })
+            }
             Self::ToolCallDelta { call_id, delta } => {
                 Some(ProviderStreamEvent::ToolCallDelta { call_id, delta })
             }

@@ -2,13 +2,16 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const { narrowEnvironment } = require('./environment');
 const { executeTmuxInvocation, parseJsonLines } = require('./runner');
 
 const GIT_HISTORY_COMMAND = "git log -3 --format='%h %s'";
-const CLAUDE_REPOSITORY_HISTORY_PROMPT = '最近三次提交分别是什么。';
+const CLAUDE_REPOSITORY_HISTORY_PROMPT = '查看最近三次代码提交';
+const CLAUDE_REPOSITORY_FOLLOWUP_PROMPT =
+  '不太理解，这个逻辑？什么情况下会触发这种透传协议？这个透传协议是根据我们选中变量选的吗';
 
 function readRepositoryGitHistory(repository, spawnSyncImpl = spawnSync) {
   const result = spawnSyncImpl('git', ['log', '-3', '--format=%h%x09%s'], {
@@ -27,7 +30,13 @@ function readRepositoryGitHistory(repository, spawnSyncImpl = spawnSync) {
   return commits;
 }
 
-function claudeRepositoryHistoryInvocation(executable, paths, model) {
+function claudeRepositoryHistoryInvocation(
+  executable,
+  paths,
+  model,
+  { sessionId, turnIndex = 0 } = {},
+) {
+  if (!sessionId) throw new Error('Claude repository-history invocation requires a session id');
   fs.mkdirSync(paths.config, { recursive: true, mode: 0o700 });
   const settingsPath = path.join(paths.config, 'settings.json');
   fs.writeFileSync(settingsPath, '{}\n', { mode: 0o600 });
@@ -37,20 +46,58 @@ function claudeRepositoryHistoryInvocation(executable, paths, model) {
     settingsPath,
     args: [
       '--bare',
-      '-p', CLAUDE_REPOSITORY_HISTORY_PROMPT,
-      '--no-session-persistence',
+      '-p', turnIndex === 0
+        ? CLAUDE_REPOSITORY_HISTORY_PROMPT
+        : CLAUDE_REPOSITORY_FOLLOWUP_PROMPT,
+      turnIndex === 0 ? '--session-id' : '--resume', sessionId,
       '--settings', settingsPath,
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--verbose',
       '--model', model,
-      '--tools', 'Bash',
-      '--allowedTools', 'Bash(git log -3 --format=*)',
+      '--tools', turnIndex === 0 ? 'Bash' : '',
+      ...(turnIndex === 0 ? ['--allowedTools', 'Bash(git log -3 --format=*)'] : []),
       '--permission-mode', 'dontAsk',
       '--disable-slash-commands',
       '--no-chrome',
     ],
   };
+}
+
+function inspectClaudeFollowupResult(result) {
+  let events = [];
+  try {
+    events = parseJsonLines(result.stdout.text, 'claude');
+  } catch {
+    events = [];
+  }
+  const terminal = events.findLast((event) => event.type === 'result');
+  const answerText = typeof terminal?.result === 'string' ? terminal.result.trim() : '';
+  return {
+    ok: result.exit_code === 0
+      && !result.timed_out
+      && !result.stdout.overflow
+      && !result.stderr.overflow
+      && terminal?.is_error !== true
+      && answerText.length > 0,
+    answerPresent: answerText.length > 0,
+    exitCode: result.exit_code,
+    timedOut: result.timed_out,
+  };
+}
+
+function claudeExternalMessageIds(result) {
+  try {
+    return parseJsonLines(result.stdout.text, 'claude').flatMap((event) => (
+      event.type === 'stream_event'
+        && event.event?.type === 'message_start'
+        && typeof event.event.message?.id === 'string'
+        ? [event.event.message.id]
+        : []
+    ));
+  } catch {
+    return [];
+  }
 }
 
 function inspectClaudeRepositoryHistoryResult(result, expected, expectedWireModel = null) {
@@ -160,11 +207,8 @@ async function runClaudeRepositoryHistorySmoke(options, dependencies = {}) {
     home: path.join(outputRoot, 'home'),
   };
   fs.mkdirSync(paths.home, { recursive: true, mode: 0o700 });
-  const invocation = claudeRepositoryHistoryInvocation(
-    options.claudeExecutable || process.env.CLAUDE_CODE_EXECUTABLE || 'claude',
-    paths,
-    model
-  );
+  const executable = options.claudeExecutable || process.env.CLAUDE_CODE_EXECUTABLE || 'claude';
+  const sessionId = options.sessionId || randomUUID();
   const environment = narrowEnvironment(dependencies.parentEnv || process.env, paths.home);
   environment.CLAUDE_CONFIG_DIR = paths.config;
   environment.ANTHROPIC_BASE_URL = parsedBaseUrl.toString().replace(/\/$/u, '');
@@ -181,35 +225,67 @@ async function runClaudeRepositoryHistorySmoke(options, dependencies = {}) {
   if (!authToken && apiKey) environment.ANTHROPIC_API_KEY = apiKey;
   const secret = authToken || apiKey;
   const expected = readRepositoryGitHistory(repository, dependencies.spawnSyncImpl || spawnSync);
-  const result = await (dependencies.executeTmuxInvocation || executeTmuxInvocation)(
-    invocation,
+  const execute = dependencies.executeTmuxInvocation || executeTmuxInvocation;
+  const firstResult = await execute(
+    claudeRepositoryHistoryInvocation(executable, paths, model, { sessionId, turnIndex: 0 }),
     environment,
     {
-      artifactDirectory: path.join(outputRoot, 'tmux'),
+      artifactDirectory: path.join(outputRoot, 'tmux-turn-1'),
       timeoutMs: options.timeoutMs || 180000,
       secrets: [secret],
     }
   );
   const wireModel = model.replace(/\[1m\]$/iu, '');
-  const evidence = inspectClaudeRepositoryHistoryResult(result, expected, wireModel);
+  const firstTurn = inspectClaudeRepositoryHistoryResult(firstResult, expected, wireModel);
+  let secondResult = null;
+  let secondTurn = { ok: false, answerPresent: false, exitCode: null, timedOut: false };
+  if (firstTurn.ok) {
+    secondResult = await execute(
+      claudeRepositoryHistoryInvocation(executable, paths, model, { sessionId, turnIndex: 1 }),
+      environment,
+      {
+        artifactDirectory: path.join(outputRoot, 'tmux-turn-2'),
+        timeoutMs: options.timeoutMs || 180000,
+        secrets: [secret],
+      }
+    );
+    secondTurn = inspectClaudeFollowupResult(secondResult);
+  }
+  const messageIds = [
+    ...claudeExternalMessageIds(firstResult),
+    ...(secondResult ? claudeExternalMessageIds(secondResult) : []),
+  ];
+  const uniqueExternalMessageIds = messageIds.length > 1
+    && new Set(messageIds).size === messageIds.length;
+  const evidence = {
+    firstTurn,
+    secondTurn,
+    uniqueExternalMessageIds,
+    externalMessageIdCount: messageIds.length,
+  };
   const summary = {
-    schema_version: '1flowbase.claude-repository-history/v1',
-    ok: evidence.ok,
+    schema_version: '1flowbase.claude-repository-history/v2',
+    ok: firstTurn.ok && secondTurn.ok && uniqueExternalMessageIds,
     repository,
     model,
     expected,
     evidence,
-    timeline_path: result.pty?.timeline_path ?? null,
+    timeline_paths: [
+      firstResult.pty?.timeline_path ?? null,
+      secondResult?.pty?.timeline_path ?? null,
+    ],
   };
   fs.writeFileSync(path.join(outputRoot, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
   return summary;
 }
 
 module.exports = {
+  CLAUDE_REPOSITORY_FOLLOWUP_PROMPT,
   CLAUDE_REPOSITORY_HISTORY_PROMPT,
   GIT_HISTORY_COMMAND,
   claudeRepositoryHistoryInvocation,
   inspectClaudeRepositoryHistoryResult,
+  inspectClaudeFollowupResult,
   readRepositoryGitHistory,
   runClaudeRepositoryHistorySmoke,
 };

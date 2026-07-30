@@ -29,8 +29,10 @@ const {
   CONTINUITY_SEED_SENTINEL,
   HTTP_500_ERROR_BODY,
   TEXT_SENTINEL,
+  THINKING_SIGNATURE_FIXTURE,
   containsValue,
   hasClosedHistoricalToolPairs,
+  hasThinkingSignatureFixture,
   textVectorOutput,
   toolVectorFinalOutput,
 } = require('./client-vector-contract');
@@ -547,6 +549,18 @@ function createMockUpstream(options = {}) {
       const isToolTurn = containsValue(body, '1flowbase-client-tool-vector');
       const toolPlan = clientToolPlan(body, toolResponses.get(body?.previous_response_id));
       const isToolResult = toolPlan.hasToolResult;
+      const isHistoryFollowup = containsValue(
+        body, '1flowbase-client-vector=tools-history-followup-second-turn',
+      );
+      const thinkingSignature = path === MOCK_ROUTE.ANTHROPIC_MESSAGES && isHistoryFollowup
+        ? THINKING_SIGNATURE_FIXTURE
+        : null;
+      if (thinkingSignature !== null && (isToolResult
+        || containsValue(body, '1flowbase-client-vector=tools-history-followup-query'))) {
+        requestTimeline.record('thinking_signature_checked', {
+          thinkingSignatureMatched: hasThinkingSignatureFixture(body),
+        });
+      }
       const emitsToolCallRound = (isToolTurn || isToolResult) && !toolPlan.final;
       const clientText = textVectorOutput(body, continuityResponses);
       if (clientText === CONTINUITY_SEED_SENTINEL) {
@@ -586,11 +600,11 @@ function createMockUpstream(options = {}) {
           : (isToolTurn || isToolResult
             ? anthropicToolEvents(
               requestTimeline.nonce, toolPlan.paths, toolPlan.final, toolPlan.finalText ?? toolFinalText,
-              toolPlan.commands, requestedClientCommandTool(body),
+              toolPlan.commands, requestedClientCommandTool(body), thinkingSignature,
             )
             : clientText !== null
-              ? anthropicEvents(requestTimeline.nonce, ...textChunks)
-              : anthropicEvents(requestTimeline.nonce));
+              ? anthropicEvents(requestTimeline.nonce, ...textChunks, thinkingSignature)
+              : anthropicEvents(requestTimeline.nonce, undefined, undefined, thinkingSignature));
       const stream = containsValue(body, '1flowbase-client-vector=tools-history-followup-second-turn')
         ? { ...selectedStream, barrierMarker: '1flowbase-no-barrier-for-history-followup' }
         : selectedStream;

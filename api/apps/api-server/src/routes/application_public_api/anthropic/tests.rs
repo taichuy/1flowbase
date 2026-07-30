@@ -98,6 +98,24 @@ fn anthropic_response_projects_native_tool_calls() {
 }
 
 #[test]
+fn anthropic_response_message_id_is_unique_per_external_response() {
+    let first = to_anthropic_response(
+        blocking_run(NativeRunStatus::Succeeded),
+        "provider/model".into(),
+    )
+    .expect("first response should project");
+    let second = to_anthropic_response(
+        blocking_run(NativeRunStatus::Succeeded),
+        "provider/model".into(),
+    )
+    .expect("second response should project");
+
+    assert!(first.id.starts_with("msg_"));
+    assert!(second.id.starts_with("msg_"));
+    assert_ne!(first.id, second.id);
+}
+
+#[test]
 fn anthropic_resume_rejects_mixed_callback_groups() {
     let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
     let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
