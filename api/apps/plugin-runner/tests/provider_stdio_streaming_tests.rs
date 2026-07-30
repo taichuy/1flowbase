@@ -45,6 +45,7 @@ async fn provider_stdio_v2_reads_ndjson_stream_until_result() {
         &limits(),
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -68,6 +69,7 @@ async fn provider_stdio_default_invocation_budget_is_300_seconds() {
         &default_limits(),
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -88,6 +90,7 @@ async fn provider_stdio_v2_rejects_bad_json_line() {
         &limits(),
         None,
         None,
+        None,
     )
     .await
     .unwrap_err();
@@ -101,11 +104,11 @@ async fn provider_worker_stdio_reuses_process_across_streaming_invocations() {
     let mut worker = plugin_runner::stdio_runtime::ProviderWorker::new(script, limits());
 
     let first = worker
-        .call_streaming(&invoke_request(), None, None)
+        .call_streaming(&invoke_request(), None, None, None)
         .await
         .expect("first worker invoke should succeed");
     let second = worker
-        .call_streaming(&invoke_request(), None, None)
+        .call_streaming(&invoke_request(), None, None, None)
         .await
         .expect("second worker invoke should reuse process");
 
