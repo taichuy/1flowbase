@@ -645,8 +645,8 @@ async fn ac_006_console_policy_schema_rejects_system_all() {
     sqlx::query(
         r#"
         insert into role_console_group_policies
-          (id, role_id, group_kind, group_id, mode)
-        values ($1, $2, 'settings_feature', 'system.applications', 'custom')
+          (id, role_id, group_kind, group_id, enabled, strategy)
+        values ($1, $2, 'settings_feature', 'system.applications', true, 'custom')
         "#,
     )
     .bind(group_policy_id)
@@ -658,8 +658,8 @@ async fn ac_006_console_policy_schema_rejects_system_all() {
     let result = sqlx::query(
         r#"
         insert into role_console_operation_policies
-          (id, role_id, group_policy_id, group_mode, operation_id, policy_kind, simple_enabled, row_scope)
-        values ($1, $2, $3, 'custom', 'applications.view', 'row', null, 'system_all')
+          (id, role_id, group_policy_id, operation_id, policy_kind, simple_enabled, row_scope)
+        values ($1, $2, $3, 'applications.view', 'row', null, 'system_all')
         "#,
     )
     .bind(Uuid::now_v7())
@@ -765,8 +765,9 @@ async fn ac_010_console_policy_migration_ledger_blocks_unsafe_apply() {
 }
 
 #[tokio::test]
-async fn ac_010_applications_console_policy_sql_rehearsal_preserves_exact_and_partial_profiles() {
+async fn ac_010_applications_console_policy_rehearsal_preserves_exact_and_partial_profiles() {
     let (store, workspace_id, actor_user_id) = role_store().await;
+    simulate_legacy_cutover_state(&store).await;
     RoleRepository::create_team_role(
         &store,
         &CreateWorkspaceRoleInput {
@@ -797,12 +798,15 @@ async fn ac_010_applications_console_policy_sql_rehearsal_preserves_exact_and_pa
     grant_legacy_application_permissions(&store, workspace_id, "viewer", &["application.view.own"])
         .await;
 
-    sqlx::raw_sql(include_str!(
-        "../migrations/20260714233000_migrate_applications_console_policies.sql"
-    ))
-    .execute(store.pool())
-    .await
-    .unwrap();
+    let input = applications_migration_input(&store).await;
+    store
+        .rehearse_role_console_policy_migration(&input)
+        .await
+        .unwrap();
+    store
+        .apply_role_console_policy_migration(&input, actor_user_id)
+        .await
+        .unwrap();
 
     let exact = RoleRepository::get_role_console_policy(&store, workspace_id, "operator")
         .await
