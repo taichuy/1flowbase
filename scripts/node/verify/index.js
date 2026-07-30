@@ -174,7 +174,13 @@ function buildBackendCargoCommand({
       command: 'cargo',
       args: ['test', ...packageArgs, '--jobs', String(cargoJobs), '--', `--test-threads=${cargoTestThreads}`],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: {
+        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+        // Keep the monolithic API test harness inside the CI budget without changing test behavior.
+        ...(normalizedShard?.key === 'api-server'
+          ? { CARGO_PROFILE_TEST_DEBUG: '0' }
+          : {}),
+      },
     };
   }
 
@@ -578,7 +584,13 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism, disableIncremental: true }),
+    env: {
+      ...buildCargoCommandEnv({ cargoParallelism, disableIncremental: true }),
+      // Coverage instrumentation does not require Rust debug symbols for source mapping.
+      ...(entry.key === 'api-server'
+        ? { CARGO_PROFILE_TEST_DEBUG: '0' }
+        : {}),
+    },
   }));
 }
 
