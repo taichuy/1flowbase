@@ -131,7 +131,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.i18n-catalog",
         &[
-            "i18n_catalog.bundle.get",
             "i18n_catalog.custom_keys.delete",
             "i18n_catalog.custom_translations.upsert",
             "i18n_catalog.entries.detail",
@@ -268,7 +267,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
-    "i18n_catalog.bundle.get",
     "i18n_catalog.custom_keys.delete",
     "i18n_catalog.custom_translations.upsert",
     "i18n_catalog.entries.detail",

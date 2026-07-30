@@ -236,6 +236,7 @@ describe('I18nCatalogPage batch fixtures', () => {
     fireEvent.click(englishLocale.closest('tr')!);
 
     const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    await within(drawer).findByLabelText('覆盖翻译');
     expect(within(drawer).getAllByText('Settings').length).toBeGreaterThan(0);
     expect(
       within(drawer).getByRole('button', { name: '恢复官方翻译' })

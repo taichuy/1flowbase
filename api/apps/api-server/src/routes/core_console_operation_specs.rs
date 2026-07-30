@@ -170,7 +170,6 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "host_infrastructure.providers.view",
         "system.host-infrastructure",
     ),
-    settings("i18n_catalog.bundle.get", "system.i18n-catalog"),
     settings("i18n_catalog.custom_keys.delete", "system.i18n-catalog"),
     settings(
         "i18n_catalog.custom_translations.upsert",

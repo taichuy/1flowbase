@@ -630,7 +630,6 @@ fn ac_010_new_i18n_catalog_operations_are_default_disabled() {
     let registry = compile_core_console_operation_registry(&settings).unwrap();
     let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
     let operation_ids = [
-        "i18n_catalog.bundle.get",
         "i18n_catalog.custom_keys.delete",
         "i18n_catalog.custom_translations.upsert",
         "i18n_catalog.entries.detail",

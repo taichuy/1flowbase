@@ -20,7 +20,6 @@ const output = resolve(
 const sceneId = 'page.settings-i18n.desktop';
 const expectedRequest = {
   search: 'Settings',
-  module: '@1flowbase/common',
   locale: 'zh_Hans',
   origin: 'official_override',
   offset: '0',
@@ -54,11 +53,53 @@ try {
       .locator('[data-testid="i18n-catalog-page"][data-ready="true"]')
       .waitFor();
     await page.getByText('系统设置', { exact: true }).first().waitFor();
+    await page.getByText('en_US', { exact: true }).first().waitFor();
+    await page.getByText('zh_Hans', { exact: true }).first().waitFor();
+
+    const englishRow = page
+      .getByTestId('i18n-catalog-table')
+      .locator('tbody tr')
+      .filter({ hasText: 'en_US' })
+      .filter({ hasText: 'System settings' })
+      .first();
+    await englishRow.click();
+    const entryDrawer = page.getByTestId('i18n-catalog-entry-drawer');
+    await entryDrawer.waitFor();
+    const overrideInput = entryDrawer.getByLabel('Override translation');
+    await overrideInput.waitFor();
+    await overrideInput.fill('Settings accepted');
+    await entryDrawer.getByRole('button', { name: 'Save translation' }).click();
+    await page
+      .getByText('Settings accepted', { exact: true })
+      .first()
+      .waitFor();
+    await entryDrawer
+      .getByRole('button', { name: 'Restore official translation' })
+      .click();
+    await page.waitForFunction(() => {
+      const input = document.querySelector(
+        '[data-testid="i18n-catalog-entry-drawer"] textarea'
+      );
+      return input?.value === 'Settings';
+    });
+    await entryDrawer.getByRole('button', { name: 'Close' }).click();
+
+    await page.getByRole('button', { name: 'New' }).click();
+    const createDrawer = page.getByTestId('i18n-catalog-create-drawer');
+    await createDrawer
+      .getByRole('textbox', { name: /Key$/ })
+      .fill('Acceptance key');
+    await createDrawer
+      .getByRole('textbox', { name: /Custom key translation$/ })
+      .fill('验收翻译');
+    await createDrawer
+      .getByRole('button', { name: 'Create translation key' })
+      .click();
+    await createDrawer.waitFor({ state: 'hidden' });
+    await page.getByText('Acceptance key', { exact: true }).first().waitFor();
+    await page.getByText('验收翻译', { exact: true }).first().waitFor();
 
     await page.getByTestId('i18n-catalog-search').fill(expectedRequest.search);
-    await page
-      .getByTestId('i18n-catalog-module-filter')
-      .fill(expectedRequest.module);
     await chooseSelectOption(page, 'i18n-catalog-locale-filter', 0);
     await chooseSelectOption(page, 'i18n-catalog-origin-filter', 1);
     await page.getByTestId('i18n-catalog-apply-filters').click();
@@ -95,6 +136,8 @@ try {
       baseUrl: frontendHost.baseUrl,
       request: actualRequest,
       renderedEntry: '系统设置',
+      exercisedLocales: ['en_US', 'zh_Hans'],
+      verifiedActions: ['list', 'edit', 'restore', 'create', 'filter'],
       screenshotPath
     };
     await writeFile(

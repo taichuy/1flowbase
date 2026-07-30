@@ -62,10 +62,6 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             ("GET", "/api/console/settings/i18n/catalog"),
             ("GET", "/api/console/settings/i18n/entries"),
             ("GET", "/api/console/settings/i18n/entries/detail"),
-            (
-                "GET",
-                "/api/console/settings/i18n/modules/{module}/messages",
-            ),
             ("GET", "/api/console/settings/i18n/update-check"),
             ("POST", "/api/console/settings/i18n/activate"),
             ("POST", "/api/console/settings/i18n/restore-overrides"),

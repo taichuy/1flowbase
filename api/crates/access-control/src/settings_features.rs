@@ -124,10 +124,6 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/i18n/catalog"),
-                (
-                    "GET",
-                    "/api/console/settings/i18n/modules/{module}/messages",
-                ),
                 ("GET", "/api/console/settings/i18n/update-check"),
                 ("POST", "/api/console/settings/i18n/activate"),
                 ("GET", "/api/console/settings/i18n/entries"),

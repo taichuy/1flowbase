@@ -873,6 +873,42 @@ export function seedStyleBoundarySettingsFetch() {
       });
     }
 
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/settings/i18n/entries/detail'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: await i18nCatalogServer.getEntry({
+          key: requestUrl.searchParams.get('key') ?? '',
+          locale: requestUrl.searchParams.get('locale') ?? ''
+        }),
+        meta: null
+      });
+    }
+
+    if (
+      ['PUT', 'DELETE'].includes(method.toUpperCase()) &&
+      requestUrl.pathname === '/api/console/settings/i18n/overrides'
+    ) {
+      const request = JSON.parse(String(init?.body ?? '{}'));
+      const data =
+        method.toUpperCase() === 'PUT'
+          ? await i18nCatalogServer.saveOverride(request)
+          : await i18nCatalogServer.restoreOverride(request);
+      return createStyleBoundaryJsonResponse({ data, meta: null });
+    }
+
+    if (
+      method.toUpperCase() === 'PUT' &&
+      requestUrl.pathname === '/api/console/settings/i18n/custom-translations'
+    ) {
+      const request = JSON.parse(String(init?.body ?? '{}'));
+      return createStyleBoundaryJsonResponse({
+        data: await i18nCatalogServer.saveCustomTranslation(request),
+        meta: null
+      });
+    }
+
     if (url.includes('/api/console/docs/catalog')) {
       return new Response(
         JSON.stringify({

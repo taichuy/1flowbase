@@ -366,15 +366,15 @@ async fn localize_authenticator_response(
         }
     }
     for variable in &mut response.context_variables {
-        let msgid = match variable.member_path.as_str() {
+        let key = match variable.member_path.as_str() {
             "inputs.authenticator_id" => Some("Authenticator ID"),
             "inputs.authenticator_selection_available" => Some("Authenticator selection available"),
             "inputs.auth_event" => Some("Authentication event"),
             "api" => Some("API"),
             _ => None,
         };
-        if let Some(msgid) = msgid {
-            variable.label = crate::app_state::resolve_request_text(state, locale, msgid).await?;
+        if let Some(key) = key {
+            variable.label = crate::app_state::resolve_request_text(state, locale, key).await?;
         }
     }
     Ok(())
