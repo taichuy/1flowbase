@@ -25,7 +25,6 @@ import {
 describe('settings i18n catalog API', () => {
   test('AC-008 preserves list filter and pagination request semantics', async () => {
     const request = {
-      module: '@1flowbase/common',
       locale: 'zh_Hans',
       search: 'settings',
       origin: 'official_override' as const,
@@ -53,8 +52,7 @@ describe('settings i18n catalog API', () => {
     client.upsertI18nCatalogOverride.mockResolvedValue({ revision: 9 });
     client.restoreAllI18nCatalogOverrides.mockResolvedValue({ revision: 10 });
     const input = {
-      module: 'common',
-      msgid: 'Settings',
+      key: 'Settings',
       locale: 'zh_Hans',
       translation: '设置',
       expected_revision: 8

@@ -1,12 +1,9 @@
 {
   "auto": {
     "translation_catalog_title": "多语言",
-    "translation_catalog_module": "翻译模块",
-    "translation_catalog_msgid": "消息标识",
-    "translation_catalog_locale": "翻译语言",
+    "translation_catalog_locale": "语言",
     "translation_catalog_origin": "值来源",
     "translation_catalog_effective_value": "生效翻译",
-    "translation_catalog_status": "目录状态",
     "translation_catalog_missing": "缺失翻译",
     "translation_catalog_obsolete": "过期翻译",
     "translation_catalog_current": "当前翻译",
@@ -14,7 +11,7 @@
     "translation_catalog_origin_official_override": "官方覆盖值",
     "translation_catalog_origin_custom": "自定义值",
     "translation_catalog_origin_english": "英文源文",
-    "translation_catalog_search": "搜索消息标识或翻译",
+    "translation_catalog_search": "搜索 Key 或翻译",
     "translation_catalog_filter": "筛选",
     "translation_catalog_revision": "目录修订号",
     "translation_catalog_entry_details": "翻译详情",

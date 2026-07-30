@@ -28,7 +28,6 @@ describe('i18n catalog management client contract', () => {
   test('AC-007 uses semantic filters and the detail identity contract', async () => {
     await expect(
       listI18nCatalogEntries({
-        module: '@taichuy/platform/common',
         locale: 'zh_Hans',
         search: 'settings text',
         origin: 'official_override',
@@ -36,42 +35,43 @@ describe('i18n catalog management client contract', () => {
         limit: 10
       })
     ).resolves.toMatchObject({
-      path: '/api/console/settings/i18n/entries?module=%40taichuy%2Fplatform%2Fcommon&locale=zh_Hans&search=settings+text&origin=official_override&offset=20&limit=10'
+      path: '/api/console/settings/i18n/entries?locale=zh_Hans&search=settings+text&origin=official_override&offset=20&limit=10'
     });
 
     const detail = getI18nCatalogEntry({
-      module: '@taichuy/platform/common',
-      msgid: 'Settings',
+      key: 'Settings',
       locale: 'zh_Hans'
     });
     await expect(detail).resolves.toMatchObject({
-      path: '/api/console/settings/i18n/entries/detail?module=%40taichuy%2Fplatform%2Fcommon&msgid=Settings&locale=zh_Hans'
+      path: '/api/console/settings/i18n/entries/detail?key=Settings&locale=zh_Hans'
     });
     expectTypeOf(detail).toEqualTypeOf<Promise<I18nCatalogManagementEntry>>();
   });
 
   test('AC-008 and AC-009 preserve one action per mutation route', async () => {
     const translation = {
-      module: '@taichuy/platform/common',
-      msgid: 'Settings',
+      key: 'Settings',
       locale: 'zh_Hans',
       translation: '设置',
       expected_revision: 7
     };
     const restore = {
-      module: translation.module,
-      msgid: translation.msgid,
+      key: translation.key,
       locale: translation.locale,
       expected_revision: 8
     };
 
-    await expect(upsertI18nCatalogOverride(translation, 'csrf')).resolves.toMatchObject({
+    await expect(
+      upsertI18nCatalogOverride(translation, 'csrf')
+    ).resolves.toMatchObject({
       path: '/api/console/settings/i18n/overrides',
       method: 'PUT',
       body: translation,
       csrfToken: 'csrf'
     });
-    await expect(restoreI18nCatalogOverride(restore, 'csrf')).resolves.toMatchObject({
+    await expect(
+      restoreI18nCatalogOverride(restore, 'csrf')
+    ).resolves.toMatchObject({
       path: '/api/console/settings/i18n/overrides',
       method: 'DELETE',
       body: restore
@@ -86,15 +86,18 @@ describe('i18n catalog management client contract', () => {
     await expect(
       deleteCustomI18nCatalogKey(
         {
-          module: translation.module,
-          msgid: 'custom.key',
+          key: 'custom.key',
           expected_revision: 9
         },
         'csrf'
       )
     ).resolves.toMatchObject({
       path: '/api/console/settings/i18n/custom-keys',
-      method: 'DELETE'
+      method: 'DELETE',
+      body: {
+        key: 'custom.key',
+        expected_revision: 9
+      }
     });
     await expect(
       restoreAllI18nCatalogOverrides({ expected_revision: 10 }, 'csrf')

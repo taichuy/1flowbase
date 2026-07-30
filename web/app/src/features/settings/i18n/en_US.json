@@ -1,12 +1,9 @@
 {
   "auto": {
     "translation_catalog_title": "Languages",
-    "translation_catalog_module": "Translation module",
-    "translation_catalog_msgid": "Message ID",
-    "translation_catalog_locale": "Translation locale",
+    "translation_catalog_locale": "Language",
     "translation_catalog_origin": "Value origin",
     "translation_catalog_effective_value": "Effective translation",
-    "translation_catalog_status": "Catalog status",
     "translation_catalog_missing": "Missing translation",
     "translation_catalog_obsolete": "Obsolete translation",
     "translation_catalog_current": "Current translation",
@@ -14,7 +11,7 @@
     "translation_catalog_origin_official_override": "Official override",
     "translation_catalog_origin_custom": "Custom value",
     "translation_catalog_origin_english": "English source",
-    "translation_catalog_search": "Search message ID or translation",
+    "translation_catalog_search": "Search key or translation",
     "translation_catalog_filter": "Filter",
     "translation_catalog_revision": "Catalog revision",
     "translation_catalog_entry_details": "Translation details",

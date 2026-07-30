@@ -48,15 +48,13 @@ import './i18n-catalog-page.css';
 const PAGE_SIZE = 20;
 
 interface CatalogFilters {
-  module?: string;
   locale?: string;
   search?: string;
   origin?: SettingsI18nCatalogOrigin;
 }
 
 interface CatalogIdentity {
-  module: string;
-  msgid: string;
+  key: string;
   locale: string;
 }
 
@@ -68,7 +66,7 @@ type CatalogAction =
   | { kind: 'create'; values: CreateCustomTranslationValues; revision: number };
 
 function identityOf(entry: SettingsI18nCatalogEntry): CatalogIdentity {
-  return { module: entry.module, msgid: entry.msgid, locale: entry.locale };
+  return { key: entry.key, locale: entry.locale };
 }
 
 export function I18nCatalogPage() {
@@ -134,8 +132,7 @@ export function I18nCatalogPage() {
         case 'delete':
           return deleteSettingsCustomI18nCatalogKey(
             {
-              module: action.entry.module,
-              msgid: action.entry.msgid,
+              key: action.entry.key,
               expected_revision: action.entry.revision
             },
             csrfToken
@@ -192,17 +189,10 @@ export function I18nCatalogPage() {
   const columns = useMemo<Array<DataTableColumn<SettingsI18nCatalogEntry>>>(
     () => [
       {
-        key: 'module',
-        title: t('auto.translation_catalog_module'),
-        dataIndex: 'module',
-        width: 180,
-        ellipsis: true
-      },
-      {
-        key: 'msgid',
-        title: t('auto.translation_catalog_msgid'),
-        dataIndex: 'msgid',
-        width: 240,
+        key: 'key',
+        title: t('auto.key'),
+        dataIndex: 'key',
+        width: 320,
         ellipsis: true
       },
       {
@@ -227,7 +217,7 @@ export function I18nCatalogPage() {
       },
       {
         key: 'status',
-        title: t('auto.translation_catalog_status'),
+        title: t('auto.status'),
         width: 180,
         render: (_, entry) => (
           <Space size={4} wrap>
@@ -289,16 +279,6 @@ export function I18nCatalogPage() {
                   onSearch={() => filterForm.submit()}
                   allowClear
                   data-testid="i18n-catalog-search"
-                />
-              </Form.Item>
-              <Form.Item
-                className="i18n-catalog-page__filter-item"
-                name="module"
-              >
-                <Input
-                  placeholder={t('auto.translation_catalog_module')}
-                  allowClear
-                  data-testid="i18n-catalog-module-filter"
                 />
               </Form.Item>
               <Form.Item
@@ -390,7 +370,7 @@ export function I18nCatalogPage() {
             page={page}
             pageSize={PAGE_SIZE}
             total={listQuery.data?.total ?? 0}
-            rowKey={(entry) => `${entry.module}:${entry.msgid}:${entry.locale}`}
+            rowKey={(entry) => `${entry.key}:${entry.locale}`}
             onRow={(entry) => ({
               onClick: () => setSelectedIdentity(identityOf(entry))
             })}

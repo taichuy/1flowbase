@@ -5,8 +5,7 @@ export type I18nCatalogManagementOrigin =
   | 'english';
 
 export interface I18nCatalogManagementEntry {
-  module: string;
-  msgid: string;
+  key: string;
   locale: string;
   official_translation: string | null;
   override_translation: string | null;
@@ -25,7 +24,6 @@ export interface I18nCatalogManagementPage {
 }
 
 export interface ListI18nCatalogEntriesRequest {
-  module?: string;
   locale?: string;
   search?: string;
   origin?: I18nCatalogManagementOrigin;
@@ -34,29 +32,25 @@ export interface ListI18nCatalogEntriesRequest {
 }
 
 export interface GetI18nCatalogEntryRequest {
-  module: string;
-  msgid: string;
+  key: string;
   locale: string;
 }
 
 export interface UpsertI18nCatalogTranslationRequest {
-  module: string;
-  msgid: string;
+  key: string;
   locale: string;
   translation: string;
   expected_revision: number;
 }
 
 export interface RestoreI18nCatalogOverrideRequest {
-  module: string;
-  msgid: string;
+  key: string;
   locale: string;
   expected_revision: number;
 }
 
 export interface DeleteCustomI18nCatalogKeyRequest {
-  module: string;
-  msgid: string;
+  key: string;
   expected_revision: number;
 }
 

@@ -42,8 +42,7 @@ const INITIAL_REVISION = 8;
 
 const initialEntries: SettingsI18nCatalogEntry[] = [
   {
-    module: '@1flowbase/common',
-    msgid: 'Settings',
+    key: 'Settings',
     locale: 'zh_Hans',
     official_translation: '设置',
     override_translation: '系统设置',
@@ -55,21 +54,19 @@ const initialEntries: SettingsI18nCatalogEntry[] = [
     revision: INITIAL_REVISION
   },
   {
-    module: '@1flowbase/common',
-    msgid: 'Settings',
+    key: 'Settings',
     locale: 'en_US',
     official_translation: 'Settings',
-    override_translation: null,
+    override_translation: 'System settings',
     custom_translation: null,
-    effective_value: 'Settings',
-    origin: 'official',
+    effective_value: 'System settings',
+    origin: 'official_override',
     missing: false,
     obsolete: false,
     revision: INITIAL_REVISION
   },
   {
-    module: '@1flowbase/common',
-    msgid: 'Untranslated',
+    key: 'Untranslated',
     locale: 'zh_Hans',
     official_translation: null,
     override_translation: null,
@@ -81,8 +78,7 @@ const initialEntries: SettingsI18nCatalogEntry[] = [
     revision: INITIAL_REVISION
   },
   {
-    module: 'workspace/custom',
-    msgid: 'Greeting',
+    key: 'Greeting',
     locale: 'zh_Hans',
     official_translation: null,
     override_translation: null,
@@ -94,8 +90,7 @@ const initialEntries: SettingsI18nCatalogEntry[] = [
     revision: INITIAL_REVISION
   },
   {
-    module: 'workspace/custom',
-    msgid: 'Greeting',
+    key: 'Greeting',
     locale: 'en_US',
     official_translation: null,
     override_translation: null,
@@ -113,8 +108,7 @@ function entryMatchesIdentity(
   identity: GetI18nCatalogEntryRequest
 ) {
   return (
-    entry.module === identity.module &&
-    entry.msgid === identity.msgid &&
+    entry.key === identity.key &&
     entry.locale === identity.locale
   );
 }
@@ -152,12 +146,11 @@ export function createSettingsI18nCatalogTestServer() {
   ): Promise<I18nCatalogManagementPage> => {
     const search = request.search?.trim().toLocaleLowerCase();
     const filtered = entries.filter((entry) => {
-      if (request.module && entry.module !== request.module) return false;
       if (request.locale && entry.locale !== request.locale) return false;
       if (request.origin && entry.origin !== request.origin) return false;
       if (!search) return true;
 
-      return [entry.module, entry.msgid, entry.effective_value]
+      return [entry.key, entry.effective_value]
         .join('\n')
         .toLocaleLowerCase()
         .includes(search);
@@ -174,7 +167,6 @@ export function createSettingsI18nCatalogTestServer() {
 
   const listEntriesFromSearchParams = (searchParams: URLSearchParams) =>
     listEntries({
-      module: searchParams.get('module') ?? undefined,
       locale: searchParams.get('locale') ?? undefined,
       search: searchParams.get('search') ?? undefined,
       origin:
@@ -220,9 +212,11 @@ export function createSettingsI18nCatalogTestServer() {
     const existing = entries.find((entry) =>
       entryMatchesIdentity(entry, request)
     );
+    const hasEnglishTranslation = entries.some(
+      (entry) => entry.key === request.key && entry.locale === 'en_US'
+    );
     const updated: SettingsI18nCatalogEntry = {
-      module: request.module,
-      msgid: request.msgid,
+      key: request.key,
       locale: request.locale,
       official_translation: null,
       override_translation: null,
@@ -238,7 +232,20 @@ export function createSettingsI18nCatalogTestServer() {
         ? entries.map((entry) =>
             entryMatchesIdentity(entry, request) ? updated : entry
           )
-        : [...entries, updated]
+        : [
+            ...entries,
+            updated,
+            ...(request.locale === 'en_US' || hasEnglishTranslation
+              ? []
+              : [
+                  {
+                    ...updated,
+                    locale: 'en_US',
+                    custom_translation: request.key,
+                    effective_value: request.key
+                  }
+                ])
+          ]
     );
     return { revision, entry: await getEntry(request) };
   };
@@ -254,7 +261,7 @@ export function createSettingsI18nCatalogTestServer() {
             ? {
                 ...entry,
                 override_translation: null,
-                effective_value: entry.official_translation ?? entry.msgid,
+                effective_value: entry.official_translation ?? entry.key,
                 origin: entry.official_translation ? 'official' : 'english'
               }
             : entry
@@ -268,10 +275,7 @@ export function createSettingsI18nCatalogTestServer() {
   ): Promise<I18nCatalogRevisionResponse> => {
     requireRevision(request.expected_revision);
     commitEntries(
-      entries.filter(
-        (entry) =>
-          entry.module !== request.module || entry.msgid !== request.msgid
-      )
+      entries.filter((entry) => entry.key !== request.key)
     );
     return { revision };
   };
@@ -287,7 +291,7 @@ export function createSettingsI18nCatalogTestServer() {
             ? {
                 ...entry,
                 override_translation: null,
-                effective_value: entry.official_translation ?? entry.msgid,
+                effective_value: entry.official_translation ?? entry.key,
                 origin: entry.official_translation ? 'official' : 'english'
               }
             : entry

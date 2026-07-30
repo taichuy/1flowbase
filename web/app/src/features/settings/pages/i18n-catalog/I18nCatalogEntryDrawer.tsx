@@ -77,11 +77,8 @@ export function I18nCatalogEntryDrawer({
       {entry ? (
         <>
           <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label={t('auto.translation_catalog_module')}>
-              <Typography.Text code>{entry.module}</Typography.Text>
-            </Descriptions.Item>
-            <Descriptions.Item label={t('auto.translation_catalog_msgid')}>
-              <Typography.Text code>{entry.msgid}</Typography.Text>
+            <Descriptions.Item label={t('auto.key')}>
+              <Typography.Text code>{entry.key}</Typography.Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.translation_catalog_locale')}>
               {entry.locale}

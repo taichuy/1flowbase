@@ -73,9 +73,6 @@ export function listI18nCatalogEntries(
   baseUrl?: string
 ): Promise<I18nCatalogManagementPage> {
   const query = new URLSearchParams();
-  if (request.module !== undefined) {
-    query.set('module', request.module);
-  }
   if (request.locale !== undefined) {
     query.set('locale', request.locale);
   }
@@ -105,8 +102,7 @@ export function getI18nCatalogEntry(
   baseUrl?: string
 ): Promise<I18nCatalogManagementEntry> {
   const query = new URLSearchParams({
-    module: request.module,
-    msgid: request.msgid,
+    key: request.key,
     locale: request.locale
   });
   return apiFetch<I18nCatalogManagementEntry>({

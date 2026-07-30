@@ -158,6 +158,15 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(
       view.container.querySelector('.data-table__scroll-area')
     ).not.toBeNull();
+    const table = screen.getByTestId('i18n-catalog-table');
+    expect(within(table).getByText('Key')).toBeInTheDocument();
+    expect(within(table).getByText('语言')).toBeInTheDocument();
+    expect(within(table).getByText('生效翻译')).toBeInTheDocument();
+    expect(within(table).getByText('值来源')).toBeInTheDocument();
+    expect(within(table).getByText('状态')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('i18n-catalog-module-filter')
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId('i18n-catalog-mobile-list')
     ).not.toBeInTheDocument();
@@ -177,16 +186,76 @@ describe('I18nCatalogPage batch fixtures', () => {
 
     await waitFor(() =>
       expect(catalogApi.saveSettingsI18nCatalogOverride).toHaveBeenCalledWith(
-        expect.objectContaining({
+        {
+          key: 'Settings',
+          locale: 'zh_Hans',
           translation: '新设置',
           expected_revision: 8
-        }),
+        },
         'csrf-123'
       )
     );
     expect(
       within(drawer).queryByRole('button', { name: '删除自定义翻译键' })
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-008 creates a key-only locale translation and leaves English initialization to the backend', async () => {
+    renderPage();
+    await findLoadedDesktopEntry('系统设置');
+
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    const drawer = await screen.findByTestId('i18n-catalog-create-drawer');
+    fireEvent.change(within(drawer).getByLabelText('Key'), {
+      target: { value: 'Welcome headline' }
+    });
+    fireEvent.change(within(drawer).getByLabelText('自定义键翻译'), {
+      target: { value: '欢迎标题' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '创建翻译键' }));
+
+    await waitFor(() =>
+      expect(
+        catalogApi.saveSettingsCustomI18nCatalogTranslation
+      ).toHaveBeenCalledWith(
+        {
+          key: 'Welcome headline',
+          locale: 'zh_Hans',
+          translation: '欢迎标题',
+          expected_revision: 8
+        },
+        'csrf-123'
+      )
+    );
+  });
+
+  test('AC-008 exposes the same key-only edit and restore controls for en_US', async () => {
+    renderPage();
+    const table = screen.getByTestId('i18n-catalog-table');
+    const englishLocale = (await within(table).findAllByText('en_US'))[0];
+    fireEvent.click(englishLocale.closest('tr')!);
+
+    const drawer = await screen.findByTestId('i18n-catalog-entry-drawer');
+    expect(within(drawer).getAllByText('Settings').length).toBeGreaterThan(0);
+    expect(
+      within(drawer).getByRole('button', { name: '恢复官方翻译' })
+    ).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByLabelText('覆盖翻译'), {
+      target: { value: 'Settings EN' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存翻译' }));
+
+    await waitFor(() =>
+      expect(catalogApi.saveSettingsI18nCatalogOverride).toHaveBeenCalledWith(
+        {
+          key: 'Settings',
+          locale: 'en_US',
+          translation: 'Settings EN',
+          expected_revision: 8
+        },
+        'csrf-123'
+      )
+    );
   });
 
   test('AC-009 reports revision conflicts and refetches instead of overwriting silently', async () => {

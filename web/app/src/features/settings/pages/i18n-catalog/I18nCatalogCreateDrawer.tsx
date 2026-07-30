@@ -2,8 +2,7 @@ import { Button, Drawer, Form, Input, Select, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 export interface CreateCustomTranslationValues {
-  module: string;
-  msgid: string;
+  key: string;
   locale: string;
   translation: string;
 }
@@ -38,15 +37,8 @@ export function I18nCatalogCreateDrawer({
         onFinish={onCreate}
       >
         <Form.Item
-          label={t('auto.translation_catalog_module')}
-          name="module"
-          rules={[{ required: true, whitespace: true }]}
-        >
-          <Input />
-        </Form.Item>
-        <Form.Item
-          label={t('auto.translation_catalog_msgid')}
-          name="msgid"
+          label={t('auto.key')}
+          name="key"
           rules={[{ required: true, whitespace: true }]}
         >
           <Input />
