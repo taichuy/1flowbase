@@ -4,8 +4,7 @@ import { ApiClientError } from '../../errors';
 import type {
   DeleteCustomI18nCatalogKeyRequest,
   GetI18nCatalogEntryRequest,
-  GetRuntimeI18nBundleRequest,
-  GetRuntimeI18nManifestRequest,
+  GetRuntimeI18nCatalogRequest,
   I18nCatalogEntryMutationResponse,
   I18nCatalogManagementEntry,
   I18nCatalogManagementPage,
@@ -14,8 +13,7 @@ import type {
   ListI18nCatalogEntriesRequest,
   RestoreAllI18nCatalogOverridesRequest,
   RestoreI18nCatalogOverrideRequest,
-  RuntimeI18nBundle,
-  RuntimeI18nManifest,
+  RuntimeI18nCatalog,
   UpsertI18nCatalogTranslationRequest
 } from './types';
 
@@ -41,28 +39,13 @@ async function fetchConditionalCatalog<T>(
   return { kind: 'ok', value: (await response.json()) as T, etag };
 }
 
-export function getRuntimeI18nManifest(
-  request: GetRuntimeI18nManifestRequest,
+export function getRuntimeI18nCatalog(
+  request: GetRuntimeI18nCatalogRequest,
   baseUrl?: string
-): Promise<ConditionalI18nCatalogResponse<RuntimeI18nManifest>> {
+): Promise<ConditionalI18nCatalogResponse<RuntimeI18nCatalog>> {
   const query = new URLSearchParams({ locale: request.locale });
   return fetchConditionalCatalog(
-    `${RUNTIME_BASE_PATH}/manifest?${query.toString()}`,
-    request.ifNoneMatch,
-    baseUrl
-  );
-}
-
-export function getRuntimeI18nBundle(
-  request: GetRuntimeI18nBundleRequest,
-  baseUrl?: string
-): Promise<ConditionalI18nCatalogResponse<RuntimeI18nBundle>> {
-  const query = new URLSearchParams({
-    module: request.module,
-    locale: request.locale
-  });
-  return fetchConditionalCatalog(
-    `${RUNTIME_BASE_PATH}/bundles/${encodeURIComponent(request.digest)}?${query.toString()}`,
+    `${RUNTIME_BASE_PATH}/catalog?${query.toString()}`,
     request.ifNoneMatch,
     baseUrl
   );

@@ -9,7 +9,6 @@ use crate::compiled_plan::{CompiledBinding, CompiledI18nTextRef, CompiledNode, C
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReferencedI18nMessage {
-    pub module: String,
     pub key: String,
     pub text: String,
 }
@@ -107,7 +106,6 @@ pub fn project_referenced_i18n_messages(
                 .get(&reference)
                 .cloned()
                 .unwrap_or_else(|| reference.key.clone()),
-            module: reference.module,
             key: reference.key,
         })
         .collect()

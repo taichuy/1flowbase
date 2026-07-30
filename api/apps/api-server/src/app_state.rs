@@ -6,7 +6,7 @@ use std::{
 use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::{OfficialPluginSourcePort, RuntimeEventStream, SessionStore};
-use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId};
+use domain::{CatalogLocale, CatalogMessageIdentity};
 use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
@@ -72,14 +72,10 @@ pub(crate) fn request_catalog_locale(
 pub(crate) async fn resolve_request_text(
     state: &ApiState,
     locale: &CatalogLocale,
-    module: &str,
-    msgid: &str,
+    key: &str,
 ) -> Result<String, ApiError> {
-    let identity = CatalogMessageIdentity::new(
-        CatalogModuleId::new(module).expect("backend display catalog module must be valid"),
-        msgid,
-    )
-    .expect("backend display catalog msgid must be valid");
+    let identity =
+        CatalogMessageIdentity::new(key).expect("backend display catalog key must be valid");
     let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
     Ok(resolver
         .resolve(state.bootstrap_workspace_id, &identity, locale)
@@ -90,14 +86,13 @@ pub(crate) async fn resolve_request_text(
 pub(crate) async fn project_canonical_display(
     state: &ApiState,
     locale: &CatalogLocale,
-    module: &'static str,
-    msgid: &'static str,
+    key: &'static str,
     stored: &str,
 ) -> Result<String, ApiError> {
-    if !stored.trim().is_empty() && stored != msgid {
+    if !stored.trim().is_empty() && stored != key {
         return Ok(stored.to_owned());
     }
-    resolve_request_text(state, locale, module, msgid).await
+    resolve_request_text(state, locale, key).await
 }
 
 pub(crate) async fn resolve_official_source_label(
@@ -106,12 +101,12 @@ pub(crate) async fn resolve_official_source_label(
     source_kind: &str,
     fallback: String,
 ) -> Result<String, ApiError> {
-    let msgid = match source_kind {
+    let key = match source_kind {
         "official_registry" => "Official source",
         "mirror_registry" => "Mirror source",
         _ => return Ok(fallback),
     };
-    resolve_request_text(state, locale, "@taichuy/platform/official-sources", msgid).await
+    resolve_request_text(state, locale, key).await
 }
 
 pub fn compile_core_settings_feature_registry() -> Result<

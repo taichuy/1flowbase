@@ -22,7 +22,6 @@ export interface ConsoleFlowDraftPayload {
 }
 
 export interface ConsoleReferencedI18nMessage {
-  module: string;
   key: string;
   text: string;
 }

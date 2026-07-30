@@ -1,24 +1,20 @@
 use super::CoreConsoleDisplayText;
 
-pub(super) const SETTINGS_MODULE: &str = "@taichuy/platform/console/settings";
-pub(super) const POLICY_MODULE: &str = "@taichuy/platform/console/settings/policy";
-pub(super) const RESOURCES_MODULE: &str = "@taichuy/platform/console/settings/resources";
-
 macro_rules! settings_feature {
     ($reference:expr, $msgid:expr) => {
-        CoreConsoleDisplayText::referenced($reference, SETTINGS_MODULE, $msgid)
+        CoreConsoleDisplayText::referenced($reference, $msgid)
     };
 }
 
 macro_rules! policy {
     ($msgid:expr) => {
-        CoreConsoleDisplayText::new(POLICY_MODULE, $msgid)
+        CoreConsoleDisplayText::new($msgid)
     };
 }
 
 macro_rules! resource {
     ($msgid:expr) => {
-        CoreConsoleDisplayText::new(RESOURCES_MODULE, $msgid)
+        CoreConsoleDisplayText::new($msgid)
     };
 }
 

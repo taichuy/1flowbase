@@ -8,7 +8,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
-use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -28,11 +28,7 @@ async fn ac_012_file_table_dto_localizes_existing_title_field_server_side() {
         &UpsertCatalogTranslationInput {
             workspace_id,
             value: CatalogTranslation::new(
-                CatalogMessageIdentity::new(
-                    CatalogModuleId::new("@taichuy/platform/file-management").unwrap(),
-                    "Attachments",
-                )
-                .unwrap(),
+                CatalogMessageIdentity::new("Attachments").unwrap(),
                 CatalogLocale::new("zh_Hans").unwrap(),
                 "附件",
             )

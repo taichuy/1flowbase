@@ -8,7 +8,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
-use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use serde_json::Value;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -28,11 +28,7 @@ async fn ac_012_013_model_definition_dto_localizes_existing_title_fields_server_
         &UpsertCatalogTranslationInput {
             workspace_id,
             value: CatalogTranslation::new(
-                CatalogMessageIdentity::new(
-                    CatalogModuleId::new("@taichuy/platform/system-metadata").unwrap(),
-                    "Users",
-                )
-                .unwrap(),
+                CatalogMessageIdentity::new("Users").unwrap(),
                 CatalogLocale::new("zh_Hans").unwrap(),
                 "用户",
             )

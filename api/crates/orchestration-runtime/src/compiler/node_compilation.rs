@@ -830,15 +830,8 @@ fn compile_i18n_text_ref(binding: &Value) -> Result<CompiledI18nTextRef> {
     let value = binding_object["value"]
         .as_object()
         .ok_or_else(|| anyhow!("i18n_text value must be an object"))?;
-    if value.len() != 2 || !value.contains_key("module") || !value.contains_key("key") {
-        bail!("i18n_text value must contain only module and key");
-    }
-
-    let module = value["module"]
-        .as_str()
-        .ok_or_else(|| anyhow!("i18n_text module must be a string"))?;
-    if !is_canonical_i18n_module(module) {
-        bail!("i18n_text module must use canonical @org/group/module syntax");
+    if value.len() != 1 || !value.contains_key("key") {
+        bail!("i18n_text value must contain only key");
     }
 
     let key = value["key"]
@@ -847,35 +840,8 @@ fn compile_i18n_text_ref(binding: &Value) -> Result<CompiledI18nTextRef> {
     validate_i18n_english_key(key)?;
 
     Ok(CompiledI18nTextRef {
-        module: module.to_string(),
         key: key.to_string(),
     })
-}
-
-fn is_canonical_i18n_module(module: &str) -> bool {
-    let mut segments = module.split('/');
-    let Some(scope) = segments.next().and_then(|value| value.strip_prefix('@')) else {
-        return false;
-    };
-    if !is_canonical_i18n_module_segment(scope) {
-        return false;
-    }
-
-    let path = segments.collect::<Vec<_>>();
-    path.len() >= 2
-        && path
-            .iter()
-            .all(|segment| is_canonical_i18n_module_segment(segment))
-}
-
-fn is_canonical_i18n_module_segment(segment: &str) -> bool {
-    let mut characters = segment.chars();
-    matches!(characters.next(), Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit())
-        && characters.all(|character| {
-            character.is_ascii_lowercase()
-                || character.is_ascii_digit()
-                || matches!(character, '.' | '_' | '-')
-        })
 }
 
 fn validate_i18n_english_key(key: &str) -> Result<()> {

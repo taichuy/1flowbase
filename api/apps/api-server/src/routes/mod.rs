@@ -15,7 +15,6 @@ pub mod mcp_protocol;
 #[path = "plugins_and_models/mod.rs"]
 mod plugins_and_models_group;
 pub mod runtime_i18n_catalog;
-mod runtime_i18n_catalog_cache;
 #[path = "settings/mod.rs"]
 mod settings_group;
 

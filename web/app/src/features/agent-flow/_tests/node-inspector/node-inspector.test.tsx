@@ -63,14 +63,12 @@ describe('NodeInspector core', () => {
     answerNode.bindings.answer_template = {
       kind: 'i18n_text',
       value: {
-        module: '@org/agent-flow/messages',
         key: 'Welcome'
       }
     };
     translatedState.draft.document.graph.nodes.push(answerNode);
     translatedState.messages = [
       {
-        module: '@org/agent-flow/messages',
         key: 'Welcome',
         text: '<strong>欢迎</strong>'
       }

@@ -1137,16 +1137,8 @@ async fn project_default_tab_title(
     }
     let locale = crate::app_state::request_catalog_locale(headers, preferred_locale);
     let stored = tab.title.as_deref().unwrap_or_default();
-    tab.title = Some(
-        crate::app_state::project_canonical_display(
-            state,
-            &locale,
-            "@taichuy/platform/frontstage",
-            "Default",
-            stored,
-        )
-        .await?,
-    );
+    tab.title =
+        Some(crate::app_state::project_canonical_display(state, &locale, "Default", stored).await?);
     Ok(())
 }
 

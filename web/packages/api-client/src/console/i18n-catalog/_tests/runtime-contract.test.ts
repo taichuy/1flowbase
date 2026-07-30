@@ -1,72 +1,50 @@
 import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
 
 import {
-  getRuntimeI18nBundle,
-  getRuntimeI18nManifest,
+  getRuntimeI18nCatalog,
   type ConditionalI18nCatalogResponse,
-  type RuntimeI18nBundle,
-  type RuntimeI18nManifest
+  type RuntimeI18nCatalog
 } from '..';
-import { getRuntimeI18nManifest as manifestFromPackageEntry } from '../../../index';
+import { getRuntimeI18nCatalog as catalogFromPackageEntry } from '../../../index';
 
-describe('AC-011 runtime i18n catalog client contract', () => {
+describe('runtime i18n catalog client contract', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  test('exports the runtime surface and sends encoded paths with conditional headers', async () => {
-    expect(manifestFromPackageEntry).toBe(getRuntimeI18nManifest);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            catalog_revision: 7,
-            locale: 'zh_Hans',
-            modules: []
-          }),
-          { status: 200, headers: { etag: '"manifest"' } }
-        )
-      );
+  test('requests one global locale catalog with conditional ETag', async () => {
+    expect(catalogFromPackageEntry).toBe(getRuntimeI18nCatalog);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          catalog_revision: 7,
+          locale: 'zh_Hans',
+          digest: 'sha256:abc',
+          messages: { Save: '保存' }
+        }),
+        { status: 200, headers: { etag: '"sha256:abc"' } }
+      )
+    );
     vi.stubGlobal('fetch', fetchMock);
 
-    const manifest = getRuntimeI18nManifest(
+    const catalog = getRuntimeI18nCatalog(
       { locale: 'zh_Hans', ifNoneMatch: '"old"' },
       'https://api.example.test'
     );
-    await expect(manifest).resolves.toEqual({
+    await expect(catalog).resolves.toEqual({
       kind: 'ok',
-      value: { catalog_revision: 7, locale: 'zh_Hans', modules: [] },
-      etag: '"manifest"'
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.example.test/api/console/i18n/manifest?locale=zh_Hans',
-      { credentials: 'include', headers: { 'if-none-match': '"old"' } }
-    );
-    expectTypeOf(manifest).toEqualTypeOf<
-      Promise<ConditionalI18nCatalogResponse<RuntimeI18nManifest>>
-    >();
-
-    fetchMock.mockResolvedValueOnce(
-      new Response(null, { status: 304, headers: { etag: '"sha256:new"' } })
-    );
-    const bundle = getRuntimeI18nBundle(
-      {
-        module: '@taichuy/platform/common',
+      value: {
+        catalog_revision: 7,
         locale: 'zh_Hans',
         digest: 'sha256:abc',
-        ifNoneMatch: '"sha256:abc"'
+        messages: { Save: '保存' }
       },
-      'https://api.example.test'
-    );
-    await expect(bundle).resolves.toEqual({
-      kind: 'not_modified',
-      etag: '"sha256:new"'
+      etag: '"sha256:abc"'
     });
-    expect(fetchMock).toHaveBeenLastCalledWith(
-      'https://api.example.test/api/console/i18n/bundles/sha256%3Aabc?module=%40taichuy%2Fplatform%2Fcommon&locale=zh_Hans',
-      { credentials: 'include', headers: { 'if-none-match': '"sha256:abc"' } }
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/api/console/i18n/catalog?locale=zh_Hans',
+      { credentials: 'include', headers: { 'if-none-match': '"old"' } }
     );
-    expectTypeOf(bundle).toEqualTypeOf<
-      Promise<ConditionalI18nCatalogResponse<RuntimeI18nBundle>>
+    expectTypeOf(catalog).toEqualTypeOf<
+      Promise<ConditionalI18nCatalogResponse<RuntimeI18nCatalog>>
     >();
   });
 });

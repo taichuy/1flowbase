@@ -140,7 +140,6 @@ pub async fn list_file_storages(
             storage.title = crate::app_state::project_canonical_display(
                 &state,
                 &locale,
-                "@taichuy/platform/authentication",
                 "Local",
                 &storage.title,
             )

@@ -6,12 +6,12 @@ use axum::{
     http::{Request, StatusCode},
 };
 use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
-use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use tower::ServiceExt;
 
 async fn seed_translation(
     state: &crate::app_state::ApiState,
-    module: &str,
+    _module: &str,
     msgid: &str,
     value: &str,
 ) {
@@ -25,7 +25,7 @@ async fn seed_translation(
         &UpsertCatalogTranslationInput {
             workspace_id,
             value: CatalogTranslation::new(
-                CatalogMessageIdentity::new(CatalogModuleId::new(module).unwrap(), msgid).unwrap(),
+                CatalogMessageIdentity::new(msgid).unwrap(),
                 CatalogLocale::new("zh_Hans").unwrap(),
                 value,
             )

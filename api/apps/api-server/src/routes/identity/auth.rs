@@ -124,7 +124,6 @@ pub async fn list_providers(
         provider.title = crate::app_state::project_canonical_display(
             &state,
             &locale,
-            "@taichuy/platform/authentication",
             "Password",
             &provider.title,
         )
@@ -156,7 +155,6 @@ pub async fn list_login_instances(
         instance.title = crate::app_state::project_canonical_display(
             &state,
             &locale,
-            "@taichuy/platform/authentication",
             "Password",
             &instance.title,
         )

@@ -9,7 +9,7 @@ use axum::{
 };
 use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
 use domain::AuthenticatorRecord;
-use domain::{CatalogLocale, CatalogMessageIdentity, CatalogModuleId, CatalogTranslation};
+use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use serde_json::json;
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -30,11 +30,7 @@ async fn seed_authentication_translation(
         &UpsertCatalogTranslationInput {
             workspace_id,
             value: CatalogTranslation::new(
-                CatalogMessageIdentity::new(
-                    CatalogModuleId::new("@taichuy/platform/authentication").unwrap(),
-                    msgid,
-                )
-                .unwrap(),
+                CatalogMessageIdentity::new(msgid).unwrap(),
                 CatalogLocale::new("zh_Hans").unwrap(),
                 value,
             )

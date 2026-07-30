@@ -355,14 +355,9 @@ async fn localize_authenticator_response(
     response: &mut AuthCenterAuthenticatorResponse,
 ) -> Result<(), ApiError> {
     if response.id == domain::PASSWORD_LOCAL_AUTHENTICATOR_ID {
-        response.title = crate::app_state::project_canonical_display(
-            state,
-            locale,
-            "@taichuy/platform/authentication",
-            "Password",
-            &response.title,
-        )
-        .await?;
+        response.title =
+            crate::app_state::project_canonical_display(state, locale, "Password", &response.title)
+                .await?;
         response
             .config_values
             .insert("title".to_owned(), Value::String(response.title.clone()));
@@ -379,13 +374,7 @@ async fn localize_authenticator_response(
             _ => None,
         };
         if let Some(msgid) = msgid {
-            variable.label = crate::app_state::resolve_request_text(
-                state,
-                locale,
-                "@taichuy/platform/authentication",
-                msgid,
-            )
-            .await?;
+            variable.label = crate::app_state::resolve_request_text(state, locale, msgid).await?;
         }
     }
     Ok(())

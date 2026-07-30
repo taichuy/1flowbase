@@ -21,7 +21,7 @@ use control_plane::{
     },
     i18n_catalog::CatalogResolver,
 };
-use domain::{CatalogMessageIdentity, CatalogModuleId};
+use domain::CatalogMessageIdentity;
 use orchestration_runtime::{
     binding_runtime::referenced_i18n_text_refs,
     compiled_plan::CompiledI18nTextRef,
@@ -98,7 +98,6 @@ pub struct FlowDraftResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ReferencedI18nMessageResponse {
-    pub module: String,
     pub key: String,
     pub text: String,
 }
@@ -361,11 +360,10 @@ fn collect_referenced_i18n_text_refs(document: &serde_json::Value) -> Vec<Compil
                     return None;
                 }
                 let value = binding.get("value")?.as_object()?;
-                if value.len() != 2 || !value.contains_key("module") || !value.contains_key("key") {
+                if value.len() != 1 || !value.contains_key("key") {
                     return None;
                 }
                 Some(CompiledI18nTextRef {
-                    module: value.get("module")?.as_str()?.to_owned(),
                     key: value.get("key")?.as_str()?.to_owned(),
                 })
             })
@@ -383,15 +381,7 @@ async fn referenced_messages(
     let mut messages = Vec::new();
 
     for reference in collect_referenced_i18n_text_refs(document) {
-        let Ok(module) = CatalogModuleId::new(reference.module.clone()) else {
-            messages.push(ReferencedI18nMessageResponse {
-                module: reference.module,
-                text: reference.key.clone(),
-                key: reference.key,
-            });
-            continue;
-        };
-        let Ok(identity) = CatalogMessageIdentity::new(module, reference.key.clone()) else {
+        let Ok(identity) = CatalogMessageIdentity::new(reference.key.clone()) else {
             continue;
         };
         let text = resolver
@@ -399,7 +389,6 @@ async fn referenced_messages(
             .await?
             .value;
         messages.push(ReferencedI18nMessageResponse {
-            module: reference.module,
             key: reference.key,
             text,
         });

@@ -9,29 +9,19 @@ use crate::{app_state::ApiState, error_response::ApiError};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CoreConsoleDisplayText {
     pub(super) reference: &'static str,
-    pub(super) module: &'static str,
     pub(super) msgid: &'static str,
 }
 
 impl CoreConsoleDisplayText {
-    pub(super) const fn new(module: &'static str, msgid: &'static str) -> Self {
+    pub(super) const fn new(msgid: &'static str) -> Self {
         Self {
             reference: msgid,
-            module,
             msgid,
         }
     }
 
-    pub(super) const fn referenced(
-        reference: &'static str,
-        module: &'static str,
-        msgid: &'static str,
-    ) -> Self {
-        Self {
-            reference,
-            module,
-            msgid,
-        }
+    pub(super) const fn referenced(reference: &'static str, msgid: &'static str) -> Self {
+        Self { reference, msgid }
     }
 }
 
@@ -142,5 +132,5 @@ pub(super) async fn resolve_core_console_display(
     else {
         return Ok(reference.to_string());
     };
-    crate::app_state::resolve_request_text(state, locale, text.module, text.msgid).await
+    crate::app_state::resolve_request_text(state, locale, text.msgid).await
 }

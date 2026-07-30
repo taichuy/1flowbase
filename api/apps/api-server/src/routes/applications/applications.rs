@@ -402,20 +402,8 @@ async fn application_type_catalog(
     state: &ApiState,
     locale: &domain::CatalogLocale,
 ) -> Result<Vec<ApplicationTypeOptionResponse>, ApiError> {
-    let agent_flow = crate::app_state::resolve_request_text(
-        state,
-        locale,
-        "@taichuy/platform/applications",
-        "Agent Flow",
-    )
-    .await?;
-    let workflow = crate::app_state::resolve_request_text(
-        state,
-        locale,
-        "@taichuy/platform/applications",
-        "Workflow",
-    )
-    .await?;
+    let agent_flow = crate::app_state::resolve_request_text(state, locale, "Agent Flow").await?;
+    let workflow = crate::app_state::resolve_request_text(state, locale, "Workflow").await?;
     Ok(vec![
         ApplicationTypeOptionResponse {
             value: "agent_flow".to_string(),

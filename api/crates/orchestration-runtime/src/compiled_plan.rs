@@ -78,7 +78,6 @@ pub struct CompiledNode {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CompiledI18nTextRef {
-    pub module: String,
     pub key: String,
 }
 

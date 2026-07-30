@@ -85,15 +85,15 @@ async fn ac_006_ac_010_flow_read_projects_only_referenced_i18n_messages() {
     let nodes = document["graph"]["nodes"].as_array_mut().unwrap();
     nodes[0]["bindings"]["localized_title"] = json!({
         "kind": "i18n_text",
-        "value": { "module": "@taichuy/platform/common", "key": "Cancel" }
+        "value": { "key": "Cancel" }
     });
     nodes[1]["bindings"]["localized_title"] = json!({
         "kind": "i18n_text",
-        "value": { "module": "@taichuy/platform/common", "key": "Cancel" }
+        "value": { "key": "Cancel" }
     });
     nodes[1]["bindings"]["localized_missing"] = json!({
         "kind": "i18n_text",
-        "value": { "module": "@taichuy/platform/common", "key": "Missing English" }
+        "value": { "key": "Missing English" }
     });
 
     let save = app
@@ -126,8 +126,8 @@ async fn ac_006_ac_010_flow_read_projects_only_referenced_i18n_messages() {
     assert_eq!(
         saved["data"]["messages"],
         json!([
-            { "module": "@taichuy/platform/common", "key": "Cancel", "text": "取消" },
-            { "module": "@taichuy/platform/common", "key": "Missing English", "text": "Missing English" }
+            { "key": "Cancel", "text": "取消" },
+            { "key": "Missing English", "text": "Missing English" }
         ])
     );
 

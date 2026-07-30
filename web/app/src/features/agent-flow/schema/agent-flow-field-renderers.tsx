@@ -246,8 +246,7 @@ function renderTemplatedTextField({
   const selectorOptions = getSelectorOptions(adapter);
   const isBindingPath = block.path.startsWith('bindings.');
   if (isBindingPath && hasBindingKind(value, 'i18n_text')) {
-    const reference = value.value as { module?: unknown; key?: unknown };
-    const module = typeof reference.module === 'string' ? reference.module : '';
+    const reference = value.value as { key?: unknown };
     const key = typeof reference.key === 'string' ? reference.key : '';
     const messages =
       (adapter.getDerived('messages') as
@@ -255,16 +254,14 @@ function renderTemplatedTextField({
         | null
         | undefined) ?? [];
     const text =
-      messages.find(
-        (message) => message.module === module && message.key === key
-      )?.text ?? key;
+      messages.find((message) => message.key === key)?.text ?? key;
 
     return (
       <div data-testid="i18n-text-binding" data-ready="true">
         <Typography.Text>{text}</Typography.Text>
         <br />
         <Typography.Text type="secondary">
-          {module} · {key}
+          {key}
         </Typography.Text>
       </div>
     );

@@ -6,7 +6,6 @@ vi.mock('@1flowbase/api-client', () => ({
     draft: null,
     messages: [
       {
-        module: '@org/agent-flow/messages',
         key: 'Welcome',
         text: '欢迎'
       }
@@ -55,7 +54,6 @@ describe('agent flow orchestration api', () => {
     );
     expect(state.messages).toEqual([
       {
-        module: '@org/agent-flow/messages',
         key: 'Welcome',
         text: '欢迎'
       }

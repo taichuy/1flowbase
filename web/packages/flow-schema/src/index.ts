@@ -369,7 +369,6 @@ export interface NamedBindingEntry {
 }
 
 export interface I18nTextRef {
-  module: string;
   key: string;
 }
 
@@ -378,27 +377,12 @@ export type I18nTextRefValidationResult =
   | {
       ok: false;
       reason:
-        | 'invalid_i18n_module'
         | 'invalid_i18n_shape'
         | 'blank_i18n_key'
         | 'workflow_template_conflict'
         | 'non_plain_i18n_text'
         | 'invalid_named_placeholder';
     };
-
-function isCanonicalI18nModule(module: string): boolean {
-  const segments = module.split('/');
-
-  if (segments.length < 3 || !segments[0]?.startsWith('@')) {
-    return false;
-  }
-
-  return segments.every((segment, index) => {
-    const candidate = index === 0 ? segment.slice(1) : segment;
-
-    return candidate.length > 0 && /^[a-z0-9][a-z0-9._-]*$/.test(candidate);
-  });
-}
 
 function hasValidNamedPlaceholders(key: string): boolean {
   let cursor = 0;
@@ -433,14 +417,10 @@ export function validateI18nTextRef(
 ): I18nTextRefValidationResult {
   if (
     !isRecord(value) ||
-    Object.keys(value).length !== 2 ||
-    typeof value.module !== 'string' ||
+    Object.keys(value).length !== 1 ||
     typeof value.key !== 'string'
   ) {
     return { ok: false, reason: 'invalid_i18n_shape' };
-  }
-  if (!isCanonicalI18nModule(value.module)) {
-    return { ok: false, reason: 'invalid_i18n_module' };
   }
   if (value.key.trim().length === 0) {
     return { ok: false, reason: 'blank_i18n_key' };
