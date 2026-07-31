@@ -4,6 +4,7 @@
     "application_management_type": "应用类型",
     "application_management_trigger": "触发方式",
     "application_management_publication_status": "发布状态",
+    "application_management_publication_control": "发布控制",
     "application_management_creator": "创建者",
     "application_management_tags": "标签",
     "application_management_actions": "操作",

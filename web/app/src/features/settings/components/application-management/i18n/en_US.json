@@ -4,6 +4,7 @@
     "application_management_type": "Application type",
     "application_management_trigger": "Trigger",
     "application_management_publication_status": "Publication status",
+    "application_management_publication_control": "Publication control",
     "application_management_creator": "Creator",
     "application_management_tags": "Tags",
     "application_management_actions": "Actions",

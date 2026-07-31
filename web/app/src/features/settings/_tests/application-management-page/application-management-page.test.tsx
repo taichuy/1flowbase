@@ -521,6 +521,44 @@ describe('ApplicationManagementPanel', () => {
     });
   });
 
+  test('keeps publication control separate from the streamlined actions', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    const row = (await screen.findByText('Daily Report')).closest('tr');
+    expect(row).not.toBeNull();
+
+    const headers = screen.getAllByRole('columnheader');
+    const publicationControlIndex = headers.findIndex(
+      (header) => header.textContent === '发布控制'
+    );
+    const actionsIndex = headers.findIndex(
+      (header) => header.textContent === '操作'
+    );
+
+    expect(publicationControlIndex).toBeGreaterThanOrEqual(0);
+    expect(actionsIndex).toBeGreaterThanOrEqual(0);
+
+    const publicationControlCell = row?.children.item(publicationControlIndex);
+    const actionsCell = row?.children.item(actionsIndex);
+    expect(publicationControlCell).not.toBeNull();
+    expect(actionsCell).not.toBeNull();
+    expect(
+      within(publicationControlCell as HTMLElement).getByRole('switch')
+    ).toBeInTheDocument();
+    expect(
+      within(actionsCell as HTMLElement).queryByRole('switch')
+    ).not.toBeInTheDocument();
+
+    const editButton = within(actionsCell as HTMLElement).getByRole('button', {
+      name: /编\s*辑/
+    });
+    expect(editButton.querySelector('.anticon')).toBeNull();
+  });
+
   test('AC-001 AC-008 opens the shared edit modal and keeps extension registration read-only', async () => {
     applicationsApi.fetchApplicationDetail.mockResolvedValue({
       id: 'app-extension',

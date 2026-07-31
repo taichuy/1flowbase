@@ -44,6 +44,22 @@
   cursor: pointer;
 }
 
+.application-management-panel__table-region
+  .data-table
+  .ant-table-tbody
+  > .ant-table-row.ant-table-row-selected
+  > .ant-table-cell {
+  background: rgba(22, 119, 255, 0.08);
+}
+
+.application-management-panel__table-region
+  .data-table
+  .ant-table-tbody
+  > .ant-table-row.ant-table-row-selected:hover
+  > .ant-table-cell {
+  background: rgba(22, 119, 255, 0.12);
+}
+
 @media (max-width: 1199px) {
   .application-management-panel__filter-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -2,7 +2,6 @@ import {
   CopyOutlined,
   DeleteOutlined,
   DownOutlined,
-  EditOutlined,
   ExportOutlined,
   MoreOutlined
 } from '@ant-design/icons';
@@ -477,12 +476,48 @@ export function ApplicationManagementPanel() {
         render: (value) => formatDateTime(value as string)
       },
       {
+        key: 'publication_control',
+        title: i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_publication_control'
+        ),
+        width: 100,
+        render: (_, application) => {
+          const editAllowed = canEdit(application);
+          return (
+            <Tooltip
+              title={i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_publication_control'
+              )}
+            >
+              <Switch
+                checked={application.publication_status === 'published'}
+                disabled={!editAllowed}
+                loading={
+                  publishingApplicationId === application.id ||
+                  revertingApplicationId === application.id
+                }
+                onClick={(_, event) => event.stopPropagation()}
+                onChange={(published) => {
+                  if (published) {
+                    publishApplication(application.id);
+                  } else {
+                    confirmRevertToDraft(application);
+                  }
+                }}
+              />
+            </Tooltip>
+          );
+        }
+      },
+      {
         key: 'actions',
         title: i18nText(
           'settingsApplicationManagement',
           'auto.application_management_actions'
         ),
-        width: 210,
+        width: 140,
         render: (_, application) => {
           const editAllowed = canEdit(application);
           const deleteAllowed = canDelete(application);
@@ -522,35 +557,12 @@ export function ApplicationManagementPanel() {
               >
                 <span>
                   <Button
-                    icon={<EditOutlined />}
                     disabled={!editAllowed}
                     onClick={() => setDetailsApplication(application)}
                   >
-                    {i18nText('applications', 'auto.edit_information')}
+                    {i18nText('settings', 'auto.edit')}
                   </Button>
                 </span>
-              </Tooltip>
-              <Tooltip
-                title={i18nText(
-                  'settingsApplicationManagement',
-                  'auto.application_management_publication_status'
-                )}
-              >
-                <Switch
-                  checked={application.publication_status === 'published'}
-                  disabled={!editAllowed}
-                  loading={
-                    publishingApplicationId === application.id ||
-                    revertingApplicationId === application.id
-                  }
-                  onChange={(published) => {
-                    if (published) {
-                      publishApplication(application.id);
-                    } else {
-                      confirmRevertToDraft(application);
-                    }
-                  }}
-                />
               </Tooltip>
               <Dropdown
                 menu={{
