@@ -504,16 +504,6 @@ export function AgentFlowCanvasFrame({
   }, [selectedNodeId]);
 
   useEffect(() => {
-    if (debugConsoleOpen) {
-      return;
-    }
-
-    stopDebugConsoleResizeRef.current?.();
-    stopConversationLogResizeRef.current?.();
-    setConversationLogMessageId(null);
-  }, [debugConsoleOpen]);
-
-  useEffect(() => {
     if (conversationLogMessage) {
       return;
     }
@@ -818,9 +808,15 @@ export function AgentFlowCanvasFrame({
     setPanelState({ historyOpen: false });
   }
 
-  function openEnvironmentVariables() {
+  function closeDebugConsole() {
+    stopDebugConsoleResizeRef.current?.();
+    stopConversationLogResizeRef.current?.();
     setConversationLogMessageId(null);
     setDebugConsoleOpen(false);
+  }
+
+  function openEnvironmentVariables() {
+    closeDebugConsole();
     setPanelState({ historyOpen: false });
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
@@ -828,8 +824,7 @@ export function AgentFlowCanvasFrame({
   }
 
   function openConversationVariables() {
-    setConversationLogMessageId(null);
-    setDebugConsoleOpen(false);
+    closeDebugConsole();
     setPanelState({ historyOpen: false });
     setSystemVariablesOpen(false);
     setEnvironmentVariablesOpen(false);
@@ -837,8 +832,7 @@ export function AgentFlowCanvasFrame({
   }
 
   function openSystemVariables() {
-    setConversationLogMessageId(null);
-    setDebugConsoleOpen(false);
+    closeDebugConsole();
     setPanelState({ historyOpen: false });
     setEnvironmentVariablesOpen(false);
     setConversationVariablesOpen(false);
@@ -849,8 +843,7 @@ export function AgentFlowCanvasFrame({
     setEnvironmentVariablesOpen(false);
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
-    setConversationLogMessageId(null);
-    setDebugConsoleOpen(false);
+    closeDebugConsole();
     setPanelState({ historyOpen: true });
   }
 
@@ -1087,10 +1080,7 @@ export function AgentFlowCanvasFrame({
                 setConversationLogMessageId(null);
                 debugSession.clearSession();
               }}
-              onClose={() => {
-                setConversationLogMessageId(null);
-                setDebugConsoleOpen(false);
-              }}
+              onClose={closeDebugConsole}
               onLoadArtifact={(artifactRef) =>
                 fetchRuntimeDebugArtifact(applicationId, artifactRef)
               }

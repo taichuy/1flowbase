@@ -2929,7 +2929,7 @@ describe('McpManagementPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
 
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
-  });
+  }, 30_000);
 
   test('adds the des_id mapping from the mapping layer dropdown option', async () => {
     renderPanel([

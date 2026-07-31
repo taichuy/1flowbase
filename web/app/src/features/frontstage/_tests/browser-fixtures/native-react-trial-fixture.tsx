@@ -390,10 +390,14 @@ function NativeReactTrialFixture() {
             : 'pending'
         }
       >
-        <button onClick={() => setSourceRevision((value) => value + 1)}>
+        <button
+          type="button"
+          onClick={() => setSourceRevision((value) => value + 1)}
+        >
           source remount
         </button>
         <button
+          type="button"
           onClick={() => {
             firstThrowPending = true;
             setSourceRevision((value) => value + 1);
@@ -402,27 +406,32 @@ function NativeReactTrialFixture() {
           render failure
         </button>
         <button
+          type="button"
           onClick={() => {
             firstThrowPending = false;
           }}
         >
           allow render recovery
         </button>
-        <button onClick={() => setPreparationFailure(true)}>
+        <button type="button" onClick={() => setPreparationFailure(true)}>
           compile failure
         </button>
-        <button onClick={() => setHidden((value) => !value)}>
+        <button type="button" onClick={() => setHidden((value) => !value)}>
           hidden page
         </button>
-        <button onClick={() => setPageMounted((value) => !value)}>
+        <button type="button" onClick={() => setPageMounted((value) => !value)}>
           {pageMounted ? 'exit page' : 'enter page'}
         </button>
-        <button onClick={() => resetFrontstageRuntimeObservations()}>
+        <button
+          type="button"
+          onClick={() => resetFrontstageRuntimeObservations()}
+        >
           reset observations
         </button>
         {[0, 1, 2, 3].map((priority) => (
           <button
             key={priority}
+            type="button"
             onClick={() =>
               setDemands((current) => ({
                 ...current,

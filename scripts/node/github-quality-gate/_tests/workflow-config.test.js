@@ -279,6 +279,16 @@ test("React Doctor keeps current debt as a narrow baseline", () => {
       ],
     },
     {
+      files: [
+        "src/features/frontstage/_tests/browser-fixtures/native-react-trial-fixture.tsx",
+      ],
+      rules: [
+        "react-doctor/no-multi-comp",
+        "react-doctor/only-export-components",
+        "react-doctor/prefer-useReducer",
+      ],
+    },
+    {
       files: ["src/features/agent-flow/components/editor/AgentFlowCanvas.tsx"],
       rules: [
         "react-doctor/no-pass-data-to-parent",
