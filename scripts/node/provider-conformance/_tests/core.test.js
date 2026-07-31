@@ -69,3 +69,10 @@ test('runner diagnostics are bounded and redact every conformance canary', () =>
   assert.match(diagnostic, /\[REDACTED\]/u);
   assert.equal(diagnostic.length, 512);
 });
+
+test('Anthropic fake SSE completes with the vendor message_stop event', () => {
+  const body = _internal.fakeResponseBody('anthropic_messages_sse');
+
+  assert.match(body, /"type":"message_stop"/u);
+  assert.doesNotMatch(body, /data: \[DONE\]/u);
+});

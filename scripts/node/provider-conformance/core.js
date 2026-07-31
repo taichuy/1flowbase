@@ -633,7 +633,7 @@ function fakeResponseBody(kind) {
           delta: { stop_reason: 'end_turn' },
           usage: { output_tokens: 2 },
         },
-        '[DONE]',
+        { type: 'message_stop' },
       ]);
     case 'openai_chat_sse':
       return sse([
@@ -1093,6 +1093,7 @@ module.exports = {
   _internal: {
     assertManifest,
     boundedRunnerError,
+    fakeResponseBody,
     parseManifestFacts,
   },
   runConformance,
