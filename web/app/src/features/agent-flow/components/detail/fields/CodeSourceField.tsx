@@ -58,7 +58,7 @@ export function CodeSourceField({
   );
 
   return (
-    <div className="agent-flow-code-source-field">
+    <div className="agent-flow-code-source-field nokey">
       <Suspense fallback={<CodeSourceEditorFallback language={language} />}>
         <MonacoEditor
           defaultLanguage={language}
