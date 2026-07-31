@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: published-agent-model-capability-contract-issues
-summary: 用户确认已发布 agent 的对外模型能力应由 Start 节点 `model_list` 配置作为真源，并已挂 GitHub issue #542-#548；当前已进入实现，工作树内完成模型发现、runs reasoning 参数、LLM opt-in、Start UI 配置、`userinput.reasoning_effort`、前端 `flowbase` 预填默认与后端内置 `1flowbase`。
+summary: 用户确认已发布 agent 的对外模型能力应由 Start 节点 `model_list` 配置作为真源；模型窗口默认按最大窗口、输出按 1/16 向上归档、自动压缩按 85% 联动，用户自定义后保持。
 keywords:
   - Start model_list
   - published agent model capability
@@ -16,8 +16,8 @@ match_when:
   - 处理外部客户端自动压缩或 reasoning 参数传入
   - 接续 GitHub issue #542-#548
 created_at: 2026-05-30 00
-updated_at: 2026-05-30 16
-last_verified_at: 2026-05-30 16
+updated_at: 2026-07-31 23
+last_verified_at: 2026-07-31 23
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/542
@@ -60,7 +60,8 @@ scope:
 - 外部客户端传入的 reasoning effort 字符串属于用户输入上下文，后续节点通过 Start 输出 `userinput.reasoning_effort` / `node-start.reasoning_effort` 获取；`sys` 只保留运行时内部需要的 `model_parameters`。
 - LLM 节点默认使用自身参数；只有显式 opt-in 后才跟随外部 reasoning 参数。
 - 前端新增模型表单可预填默认值，但只有用户保存后才写入 Start `model_list`。
-- 后端无 Start `model_list` 时提供内置 `1flowbase` fallback；内置模型默认 `context_window=257000`、`max_context_window=128000`、`max_output_tokens=32000`、自动压缩阈值 85%、能力全开，并带默认 reasoning effort 列表。
+- 前后端通用默认规则：`context_window = max_context_window`；`max_output_tokens` 取 `context_window / 16` 向上归入 `4K / 8K / 16K / 32K / 64K`；`auto_compact_token_limit = round(context_window * 85%)`。内置 128K fallback 因此为 `128K / 128K / 8K / 108.8K`。
+- Start 表单只在当前值精确等于旧派生默认时继续联动；用户自定义后保持，改回精确默认后恢复联动。`context_window > max_context_window` 时表单报错并禁止保存，不静默改写用户值。
 - `allow_external_override` 不属于模型发现能力字段，已从 Start 模型表单、flow schema、后端 DTO 和公开文档中移除；客户端能否传 reasoning 由 runs 契约天然支持，应用到 LLM 节点由 `follow_external_reasoning` 控制。
 
 ## Issue 树

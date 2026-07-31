@@ -10,6 +10,7 @@ import type {
 
 import { FloatingSettingsPanel } from '../FloatingSettingsPanel';
 import { i18nText } from '../../../../../shared/i18n/text';
+import { defaultLlmMaxOutputTokens } from '../../../lib/model-options';
 
 type StartModelSettingsPanelProps = {
   mode: 'create' | 'edit';
@@ -21,6 +22,8 @@ type StartModelSettingsPanelProps = {
 };
 
 type TokenUnit = 'k' | 'm' | 'b';
+
+const DEFAULT_AUTO_COMPACT_PERCENT = 85;
 
 const TOKEN_UNITS: Array<{ value: TokenUnit; label: string; factor: number }> =
   [
@@ -133,6 +136,10 @@ function autoCompactLimitFromPercent(
   return Math.round((base * percent) / 100);
 }
 
+function defaultAutoCompactTokenLimit(contextWindow: number) {
+  return Math.round((contextWindow * DEFAULT_AUTO_COMPACT_PERCENT) / 100);
+}
+
 function TokenAmountInput({
   label,
   unitLabel,
@@ -195,7 +202,12 @@ export function StartModelSettingsPanel({
     mode === 'create'
       ? i18nText('agentFlow', 'auto.add_new_model')
       : i18nText('agentFlow', 'auto.edit_model');
-  const canSave = model.id.trim().length > 0;
+  const contextWindowExceeded = Boolean(
+    model.context_window &&
+    model.max_context_window &&
+    model.context_window > model.max_context_window
+  );
+  const canSave = model.id.trim().length > 0 && !contextWindowExceeded;
 
   function patchCapabilities(patch: Partial<FlowStartModelCapabilities>) {
     onChange({
@@ -244,30 +256,55 @@ export function StartModelSettingsPanel({
   }
 
   function updateContextWindow(context_window: number | undefined) {
-    const percent = autoCompactPercent(model);
+    const oldContextWindow = model.context_window;
+    const outputWasLinked =
+      oldContextWindow !== undefined &&
+      model.max_output_tokens === defaultLlmMaxOutputTokens(oldContextWindow);
+    const compactWasLinked =
+      oldContextWindow !== undefined &&
+      model.auto_compact_token_limit ===
+        defaultAutoCompactTokenLimit(oldContextWindow);
+
     onChange({
       context_window,
+      max_output_tokens:
+        outputWasLinked && context_window !== undefined
+          ? defaultLlmMaxOutputTokens(context_window)
+          : model.max_output_tokens,
       auto_compact_token_limit:
-        percent === null
-          ? model.auto_compact_token_limit
-          : autoCompactLimitFromPercent(percent, {
-              ...model,
-              context_window
-            })
+        compactWasLinked && context_window !== undefined
+          ? defaultAutoCompactTokenLimit(context_window)
+          : model.auto_compact_token_limit
     });
   }
 
   function updateMaxContextWindow(max_context_window: number | undefined) {
-    const percent = autoCompactPercent(model);
+    const oldContextWindow = model.context_window;
+    const contextWasLinked =
+      oldContextWindow !== undefined &&
+      oldContextWindow === model.max_context_window;
+    const context_window = contextWasLinked
+      ? max_context_window
+      : oldContextWindow;
+    const outputWasLinked =
+      oldContextWindow !== undefined &&
+      model.max_output_tokens === defaultLlmMaxOutputTokens(oldContextWindow);
+    const compactWasLinked =
+      oldContextWindow !== undefined &&
+      model.auto_compact_token_limit ===
+        defaultAutoCompactTokenLimit(oldContextWindow);
+
     onChange({
       max_context_window,
+      context_window,
+      max_output_tokens:
+        outputWasLinked && context_window !== undefined
+          ? defaultLlmMaxOutputTokens(context_window)
+          : model.max_output_tokens,
       auto_compact_token_limit:
-        percent === null
-          ? model.auto_compact_token_limit
-          : autoCompactLimitFromPercent(percent, {
-              ...model,
-              max_context_window
-            })
+        compactWasLinked && context_window !== undefined
+          ? defaultAutoCompactTokenLimit(context_window)
+          : model.auto_compact_token_limit
     });
   }
 
@@ -339,6 +376,11 @@ export function StartModelSettingsPanel({
             value={model.context_window}
             onChange={updateContextWindow}
           />
+          {contextWindowExceeded ? (
+            <Typography.Text type="danger">
+              {i18nText('agentFlow', 'auto.context_window_exceeds_max')}
+            </Typography.Text>
+          ) : null}
         </div>
         <div className="agent-flow-start-input-fields__form-row">
           <span>{i18nText('agentFlow', 'auto.max_context_window')}</span>

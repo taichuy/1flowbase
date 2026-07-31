@@ -6,6 +6,8 @@ type LocaleAwareOptions = Pick<
   'locale_meta' | 'i18n_catalog'
 >;
 
+const DEFAULT_OUTPUT_TOKEN_BUCKETS = [4_000, 8_000, 16_000, 32_000, 64_000];
+
 export interface LlmProviderOption {
   value: string;
   label: string;
@@ -81,6 +83,14 @@ export function formatLlmTokenCount(value: number | null | undefined) {
   }
 
   return String(value);
+}
+
+export function defaultLlmMaxOutputTokens(contextWindow: number) {
+  return (
+    DEFAULT_OUTPUT_TOKEN_BUCKETS.find(
+      (bucket) => contextWindow <= bucket * 16
+    ) ?? DEFAULT_OUTPUT_TOKEN_BUCKETS[DEFAULT_OUTPUT_TOKEN_BUCKETS.length - 1]
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
