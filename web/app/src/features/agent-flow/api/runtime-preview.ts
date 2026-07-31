@@ -16,9 +16,7 @@ import {
   collectIfElseBranchSelectors
 } from '../lib/if-else-branches';
 import { extractNamedBindingSelectors } from '../lib/named-binding-expressions';
-import {
-  parseTemplateSelectorTokens
-} from '../lib/template-binding';
+import { parseTemplateSelectorTokens } from '../lib/template-binding';
 import type { AgentFlowEnvironmentVariable } from '../lib/variables/application-environment-variables';
 import {
   conversationVariableNodeId,
@@ -292,48 +290,6 @@ function collectNodeReferenceSelectors(node: FlowNodeDocument) {
     ),
     ...extractConfigReferenceSelectors(node.config)
   ];
-}
-
-function collectUpstreamNodeIds(
-  document: FlowAuthoringDocument,
-  nodeId: string
-) {
-  const visited = new Set<string>();
-  const queue = [nodeId];
-
-  while (queue.length > 0) {
-    const currentNodeId = queue.shift();
-
-    if (!currentNodeId) {
-      continue;
-    }
-
-    for (const edge of document.graph.edges) {
-      if (edge.target !== currentNodeId || visited.has(edge.source)) {
-        continue;
-      }
-
-      visited.add(edge.source);
-      queue.push(edge.source);
-    }
-  }
-
-  return visited;
-}
-
-function collectDeterministicReplaySelectors(
-  document: FlowAuthoringDocument,
-  nodeId: string
-) {
-  const upstreamNodeIds = collectUpstreamNodeIds(document, nodeId);
-
-  return document.graph.nodes
-    .filter(
-      (node) =>
-        upstreamNodeIds.has(node.id) &&
-        (node.type === 'if_else' || node.type === 'variable_assigner')
-    )
-    .flatMap(collectNodeReferenceSelectors);
 }
 
 function hasPreviewVariableValue(value: unknown) {
@@ -740,10 +696,7 @@ export function buildNodeDebugPreviewPlan(
     return { input_payload: inputPayload, missing_fields: missingFields };
   }
 
-  const selectors = [
-    ...collectNodeReferenceSelectors(node),
-    ...collectDeterministicReplaySelectors(document, nodeId)
-  ];
+  const selectors = collectNodeReferenceSelectors(node);
   const visited = new Set<string>();
 
   for (const selector of selectors) {

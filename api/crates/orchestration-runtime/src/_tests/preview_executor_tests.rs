@@ -269,7 +269,7 @@ async fn preview_executor_resolves_bindings_renders_prompt_and_calls_provider() 
 }
 
 #[tokio::test]
-async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_branch() {
+async fn ac_001_preview_executor_runs_target_without_upstream_branch_replay() {
     let mut plan = sample_compiled_plan();
     plan.topological_order = vec![
         "node-start".to_string(),
@@ -298,13 +298,6 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
             source: "node-if".to_string(),
             target: "node-assign-else".to_string(),
             source_handle: Some("else".to_string()),
-            target_handle: None,
-        },
-        CompiledEdge {
-            edge_id: "edge-selected-llm".to_string(),
-            source: "node-assign-if".to_string(),
-            target: "node-llm".to_string(),
-            source_handle: None,
             target_handle: None,
         },
         CompiledEdge {
@@ -404,7 +397,7 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
         .nodes
         .get_mut("node-llm")
         .expect("target LLM should exist");
-    target.dependency_node_ids = vec!["node-assign-if".to_string(), "node-assign-else".to_string()];
+    target.dependency_node_ids = vec!["node-assign-else".to_string()];
     target.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
@@ -440,35 +433,14 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
 
     assert_eq!(
         outcome.resolved_inputs["prompt_messages"][0]["content"],
-        json!("selected-if")
+        json!("before")
     );
     let captured = captured_input
         .lock()
         .expect("captured input mutex poisoned")
         .clone()
         .expect("provider input should be captured");
-    assert_eq!(captured.messages[0].content, "selected-if");
-
-    let else_input = Arc::new(Mutex::new(None));
-    let else_invoker = StubPreviewInvoker {
-        captured_input: else_input.clone(),
-    };
-    let else_outcome = preview_executor::run_node_preview(
-        &plan,
-        "node-llm",
-        &json!({
-            "conversation": { "branch": "before" },
-            "node-start": { "query": "else" }
-        }),
-        &else_invoker,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(
-        else_outcome.resolved_inputs["prompt_messages"][0]["content"],
-        json!("selected-else")
-    );
+    assert_eq!(captured.messages[0].content, "before");
 }
 
 #[tokio::test]
