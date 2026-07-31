@@ -532,7 +532,7 @@ describe('ModelProvidersPage - layout and style', () => {
     expect(requestLogsCssSource).not.toContain('@media (max-height:');
   });
 
-  test('keeps provider modal tabs inside the fixed-height scroll shell', () => {
+  test('AC-001 constrains provider modal tab panels to the scroll shell height', () => {
     const cssSource = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -550,5 +550,8 @@ describe('ModelProvidersPage - layout and style', () => {
     );
     expect(cssSource).toContain('overflow-y: auto;');
     expect(cssSource).toContain('min-height: 0;');
+    expect(cssSource).toMatch(
+      /\.model-provider-panel__instances-tabs \.ant-tabs-tabpane\s*\{[^}]*height:\s*100%;[^}]*overflow-y:\s*auto;/s
+    );
   });
 });
