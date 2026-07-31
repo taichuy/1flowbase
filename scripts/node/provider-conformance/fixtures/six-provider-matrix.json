@@ -245,8 +245,7 @@
         "headers": {
           "accept": "text/event-stream",
           "content-type": "application/json",
-          "authorization": "Bearer $SECRET_CANARY",
-          "x-claude-code-session-id": "$HEADER_CANARY"
+          "authorization": "Bearer $SECRET_CANARY"
         },
         "body": {
           "model": "qwen-plus",
@@ -322,8 +321,7 @@
         "headers": {
           "accept": "application/json",
           "content-type": "application/json",
-          "authorization": "Bearer $SECRET_CANARY",
-          "x-claude-code-session-id": "$HEADER_CANARY"
+          "authorization": "Bearer $SECRET_CANARY"
         },
         "body": {
           "model": "deepseek-chat",
@@ -397,8 +395,7 @@
         "headers": {
           "accept": "application/json",
           "content-type": "application/json",
-          "x-goog-api-key": "$SECRET_CANARY",
-          "x-claude-code-session-id": "$HEADER_CANARY"
+          "x-goog-api-key": "$SECRET_CANARY"
         },
         "body": {
           "contents": [

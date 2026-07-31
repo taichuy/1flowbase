@@ -5,6 +5,7 @@ const path = require('node:path');
 const { _internal } = require('../core.js');
 
 const fixturesRoot = path.join(__dirname, 'fixtures');
+const sixProviderMatrix = require('../fixtures/six-provider-matrix.json');
 
 function providerFor(manifest) {
   return {
@@ -75,4 +76,26 @@ test('Anthropic fake SSE completes with the vendor message_stop event', () => {
 
   assert.match(body, /"type":"message_stop"/u);
   assert.doesNotMatch(body, /data: \[DONE\]/u);
+});
+
+test('six-provider wire only restores protocol context for declared profiles', () => {
+  const providers = new Map(
+    sixProviderMatrix.providers.map((provider) => [provider.provider_code, provider])
+  );
+
+  for (const providerCode of ['openai', 'anthropic', 'openai_compatible']) {
+    assert.equal(
+      providers.get(providerCode).expected_wire.headers['x-claude-code-session-id'],
+      '$HEADER_CANARY'
+    );
+  }
+  for (const providerCode of ['aliyun_bailian', 'deepseek', 'gemini']) {
+    assert.equal(
+      Object.hasOwn(
+        providers.get(providerCode).expected_wire.headers,
+        'x-claude-code-session-id'
+      ),
+      false
+    );
+  }
 });
