@@ -382,6 +382,7 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
                 model_id: "fixture_chat".into(),
                 distribution_rule: domain::ModelProviderDistributionRule::RetryRoundRobin,
                 provider_instance_ids: vec![instance.id],
+                excluded_provider_instance_ids: vec![instance.id],
             }]),
             updated_by: actor.id,
         },
@@ -396,6 +397,10 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
     );
     assert_eq!(
         record.model_routing_policies[0].provider_instance_ids,
+        vec![instance.id]
+    );
+    assert_eq!(
+        record.model_routing_policies[0].excluded_provider_instance_ids,
         vec![instance.id]
     );
 
@@ -461,6 +466,9 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
     assert_eq!(after_delete.revision, record.revision + 1);
     assert!(after_delete.model_routing_policies[0]
         .provider_instance_ids
+        .is_empty());
+    assert!(after_delete.model_routing_policies[0]
+        .excluded_provider_instance_ids
         .is_empty());
 }
 

@@ -80,6 +80,7 @@
             {
               "source_instance_id": "provider-openai-prod",
               "source_instance_display_name": "OpenAI Production",
+              "routing_enabled": true,
               "model": {
                 "model_id": "gpt-4o-mini",
                 "display_name": "GPT-4o Mini",
@@ -112,6 +113,7 @@
             {
               "source_instance_id": "provider-openai-backup",
               "source_instance_display_name": "OpenAI Backup",
+              "routing_enabled": true,
               "model": {
                 "model_id": "gpt-4o",
                 "display_name": "GPT-4o",
@@ -163,6 +165,7 @@
             {
               "source_instance_id": "provider-anthropic-prod",
               "source_instance_display_name": "Anthropic Production",
+              "routing_enabled": true,
               "model": {
                 "model_id": "claude-3-5-sonnet",
                 "display_name": "Claude 3.5 Sonnet",

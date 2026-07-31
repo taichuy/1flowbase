@@ -554,12 +554,14 @@ describe('ModelProvidersPage - main instance selection', () => {
               {
                 model_id: primaryContractProviderModels[0].model_id,
                 distribution_rule: 'none',
-                provider_instance_ids: ['provider-1']
+                provider_instance_ids: ['provider-1'],
+                excluded_provider_instance_ids: []
               },
               {
                 model_id: primaryContractProviderModels[1].model_id,
                 distribution_rule: 'none',
-                provider_instance_ids: ['provider-1']
+                provider_instance_ids: ['provider-1'],
+                excluded_provider_instance_ids: []
               }
             ]
           },

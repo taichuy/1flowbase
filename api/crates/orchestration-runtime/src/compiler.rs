@@ -54,6 +54,7 @@ pub struct FlowCompileContext {
 pub struct FlowCompileModelRoutingPolicy {
     pub distribution_rule: LlmDistributionRule,
     pub provider_instance_ids: Vec<String>,
+    pub excluded_provider_instance_ids: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

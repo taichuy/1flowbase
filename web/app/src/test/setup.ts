@@ -21,7 +21,9 @@ function isKnownThirdPartyTestWarning(args: unknown[]) {
     (arg) =>
       typeof arg === 'string' &&
       ((arg.includes('rc-virtual-list') && arg.includes('max limitation')) ||
-        arg.includes('An update to Decorators inside a test was not wrapped in act'))
+        arg.includes(
+          'An update to Decorators inside a test was not wrapped in act'
+        ))
   );
 }
 
@@ -168,6 +170,11 @@ Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
   value: vi.fn()
 });
 
+Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn()
+});
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
@@ -191,28 +198,37 @@ class ResizeObserverMock {
 
   observe(target: Element) {
     const rect = target.getBoundingClientRect();
-    const width = rect.width || (target instanceof HTMLElement ? target.clientWidth : 1280) || 1280;
-    const height = rect.height || (target instanceof HTMLElement ? target.clientHeight : 800) || 800;
+    const width =
+      rect.width ||
+      (target instanceof HTMLElement ? target.clientWidth : 1280) ||
+      1280;
+    const height =
+      rect.height ||
+      (target instanceof HTMLElement ? target.clientHeight : 800) ||
+      800;
 
-    this.callback([
-      {
-        target,
-        contentRect: {
-          x: 0,
-          y: 0,
-          width,
-          height,
-          top: 0,
-          left: 0,
-          right: width,
-          bottom: height,
-          toJSON: () => ({})
-        } as DOMRectReadOnly,
-        borderBoxSize: [],
-        contentBoxSize: [],
-        devicePixelContentBoxSize: []
-      } as ResizeObserverEntry
-    ], this);
+    this.callback(
+      [
+        {
+          target,
+          contentRect: {
+            x: 0,
+            y: 0,
+            width,
+            height,
+            top: 0,
+            left: 0,
+            right: width,
+            bottom: height,
+            toJSON: () => ({})
+          } as DOMRectReadOnly,
+          borderBoxSize: [],
+          contentBoxSize: [],
+          devicePixelContentBoxSize: []
+        } as ResizeObserverEntry
+      ],
+      this
+    );
   }
 
   unobserve() {}
@@ -226,7 +242,11 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
 
 const originalGetComputedStyle = window.getComputedStyle.bind(window);
 
-function createCssPixelFallback(target: Element, propertyName: string, value: string) {
+function createCssPixelFallback(
+  target: Element,
+  propertyName: string,
+  value: string
+) {
   if (value && value !== 'NaN') {
     return value;
   }
@@ -244,7 +264,8 @@ function createCssPixelFallback(target: Element, propertyName: string, value: st
   }
 
   if (propertyName === 'height') {
-    return target instanceof HTMLElement && target.classList.contains('ant-tabs-content-holder')
+    return target instanceof HTMLElement &&
+      target.classList.contains('ant-tabs-content-holder')
       ? '0px'
       : 'auto';
   }
@@ -262,7 +283,11 @@ Object.defineProperty(window, 'getComputedStyle', {
       get(target, property, receiver) {
         if (property === 'getPropertyValue') {
           return (propertyName: string) =>
-            createCssPixelFallback(element, propertyName, originalGetPropertyValue(propertyName));
+            createCssPixelFallback(
+              element,
+              propertyName,
+              originalGetPropertyValue(propertyName)
+            );
         }
 
         const value = Reflect.get(target, property, receiver);

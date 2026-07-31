@@ -406,7 +406,8 @@ describe('settings api wrappers', () => {
         {
           model_id: 'gpt-4o-mini',
           distribution_rule: 'none',
-          provider_instance_ids: ['provider-1']
+          provider_instance_ids: ['provider-1'],
+          excluded_provider_instance_ids: []
         }
       ]
     } satisfies UpdateSettingsModelProviderMainInstanceInput;
@@ -473,7 +474,8 @@ describe('settings api wrappers', () => {
         {
           model_id: 'gpt-4o-mini',
           distribution_rule: 'none',
-          provider_instance_ids: ['provider-1']
+          provider_instance_ids: ['provider-1'],
+          excluded_provider_instance_ids: []
         }
       ]
     });
@@ -578,7 +580,8 @@ describe('settings api wrappers', () => {
         {
           model_id: 'gpt-4o-mini',
           distribution_rule: 'none',
-          provider_instance_ids: ['provider-1']
+          provider_instance_ids: ['provider-1'],
+          excluded_provider_instance_ids: []
         }
       ]
     } satisfies SettingsModelProviderMainInstance);
@@ -590,7 +593,8 @@ describe('settings api wrappers', () => {
         {
           model_id: 'gpt-4o-mini',
           distribution_rule: 'none',
-          provider_instance_ids: ['provider-1']
+          provider_instance_ids: ['provider-1'],
+          excluded_provider_instance_ids: []
         }
       ]
     } satisfies SettingsModelProviderMainInstance);
@@ -632,7 +636,8 @@ describe('settings api wrappers', () => {
             targets: [
               expect.objectContaining({
                 source_instance_id: 'provider-openai-prod',
-                source_instance_display_name: 'OpenAI Production'
+                source_instance_display_name: 'OpenAI Production',
+                routing_enabled: true
               })
             ]
           })

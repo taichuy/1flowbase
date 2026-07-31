@@ -122,6 +122,7 @@ export function ModelProviderInstancesModal({
     modelId: string,
     distributionRule: DistributionRule,
     providerInstanceIds: string[],
+    excludedProviderInstanceIds: string[],
     onSuccess: () => void
   ) => void;
   onToggleIncludedInMain: (
@@ -186,17 +187,22 @@ export function ModelProviderInstancesModal({
     {
       key: 'group',
       title: i18nText('settings', 'auto.group'),
-      render: (_, group) => (
-        <div className="model-provider-panel__main-instance-targets">
-          {group.targets.length === 0 ? (
-            <Typography.Text type="secondary">
-              {i18nText('settings', 'auto.unsummarized_model')}
-            </Typography.Text>
-          ) : (
-            group.targets.map(renderModelGroupTargetTag)
-          )}
-        </div>
-      )
+      render: (_, group) => {
+        const routingTargets = group.targets.filter(
+          (target) => target.routing_enabled
+        );
+        return (
+          <div className="model-provider-panel__main-instance-targets">
+            {routingTargets.length === 0 ? (
+              <Typography.Text type="secondary">
+                {i18nText('settings', 'auto.unsummarized_model')}
+              </Typography.Text>
+            ) : (
+              routingTargets.map(renderModelGroupTargetTag)
+            )}
+          </div>
+        );
+      }
     },
     {
       key: 'distribution_rule',
@@ -398,11 +404,16 @@ export function ModelProviderInstancesModal({
           targets={editingGroup.targets}
           saving={updatingMainInstance}
           onCancel={() => setEditingGroup(null)}
-          onSave={({ distribution_rule, provider_instance_ids }) => {
+          onSave={({
+            distribution_rule,
+            provider_instance_ids,
+            excluded_provider_instance_ids
+          }) => {
             onSaveRoutingPolicy(
               editingGroup.model_id,
               distribution_rule,
               provider_instance_ids,
+              excluded_provider_instance_ids,
               () => setEditingGroup(null)
             );
           }}

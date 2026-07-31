@@ -364,7 +364,10 @@ export function SettingsModelProvidersSection({
               distribution_rule: group.distribution_rule,
               provider_instance_ids: group.targets.map(
                 (target) => target.source_instance_id
-              )
+              ),
+              excluded_provider_instance_ids: group.targets
+                .filter((target) => !target.routing_enabled)
+                .map((target) => target.source_instance_id)
             })
           )
         }
@@ -684,7 +687,12 @@ export function SettingsModelProvidersSection({
                 provider_instance_ids:
                   modalProviderOption?.model_groups
                     .find((group) => group.model_id === modelId)
-                    ?.targets.map((target) => target.source_instance_id) ?? []
+                    ?.targets.map((target) => target.source_instance_id) ?? [],
+                excluded_provider_instance_ids:
+                  modalProviderOption?.model_groups
+                    .find((group) => group.model_id === modelId)
+                    ?.targets.filter((target) => !target.routing_enabled)
+                    .map((target) => target.source_instance_id) ?? []
               };
 
           updateMainInstanceSettingsMutation.mutate({
@@ -703,6 +711,7 @@ export function SettingsModelProvidersSection({
           modelId,
           distributionRule,
           providerInstanceIds,
+          excludedProviderInstanceIds,
           onSuccess
         ) => {
           if (!instanceModalState || !modalMainInstance) {
@@ -714,7 +723,8 @@ export function SettingsModelProvidersSection({
           const nextPolicy = {
             model_id: modelId,
             distribution_rule: distributionRule,
-            provider_instance_ids: providerInstanceIds
+            provider_instance_ids: providerInstanceIds,
+            excluded_provider_instance_ids: excludedProviderInstanceIds
           };
           updateMainInstanceSettingsMutation.mutate(
             {

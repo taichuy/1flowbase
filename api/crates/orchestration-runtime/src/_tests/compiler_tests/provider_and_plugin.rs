@@ -747,7 +747,6 @@ fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
             allow_custom_models: false,
         },
     );
-
     let plan =
         FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
     let plan_json = serde_json::to_value(&plan).unwrap();
@@ -797,6 +796,7 @@ fn ac_004_compile_routes_main_model_targets_in_configured_order() {
                 "provider-selected".to_string(),
                 "provider-recreated".to_string(),
             ],
+            excluded_provider_instance_ids: BTreeSet::new(),
         },
     );
 
@@ -816,6 +816,90 @@ fn ac_004_compile_routes_main_model_targets_in_configured_order() {
             .collect::<Vec<_>>(),
         vec!["provider-selected", "provider-recreated"]
     );
+}
+
+#[test]
+fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
+    let flow_id = Uuid::now_v7();
+    let mut context = compile_context();
+    context.provider_instances.insert(
+        "provider-recreated".to_string(),
+        FlowCompileProviderInstance {
+            provider_instance_id: "provider-recreated".to_string(),
+            display_name: "Recreated".to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            is_ready: true,
+            is_runnable: true,
+            included_in_main: true,
+            available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
+            allow_custom_models: false,
+        },
+    );
+    context.provider_instances.insert(
+        "provider-third".to_string(),
+        FlowCompileProviderInstance {
+            provider_instance_id: "provider-third".to_string(),
+            display_name: "Third".to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            is_ready: true,
+            is_runnable: true,
+            included_in_main: true,
+            available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
+            allow_custom_models: false,
+        },
+    );
+    context.model_routing_policies.insert(
+        ("fixture_provider".to_string(), "gpt-5.4-mini".to_string()),
+        FlowCompileModelRoutingPolicy {
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
+            provider_instance_ids: vec![
+                "provider-selected".to_string(),
+                "provider-recreated".to_string(),
+                "provider-third".to_string(),
+            ],
+            excluded_provider_instance_ids: BTreeSet::from(["provider-selected".to_string()]),
+        },
+    );
+
+    let plan =
+        FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
+    let routing = plan.nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .and_then(|runtime| runtime.routing.as_ref())
+        .expect("enabled routing target should compile");
+
+    assert_eq!(
+        routing
+            .queue_targets
+            .iter()
+            .map(|target| target.provider_instance_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["provider-recreated", "provider-third"]
+    );
+}
+
+#[test]
+fn compile_reports_model_unavailable_when_every_group_target_is_disabled() {
+    let flow_id = Uuid::now_v7();
+    let mut context = compile_context();
+    context.model_routing_policies.insert(
+        ("fixture_provider".to_string(), "gpt-5.4-mini".to_string()),
+        FlowCompileModelRoutingPolicy {
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
+            provider_instance_ids: vec!["provider-selected".to_string()],
+            excluded_provider_instance_ids: BTreeSet::from(["provider-selected".to_string()]),
+        },
+    );
+
+    let plan =
+        FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
+
+    assert!(plan.compile_issues.iter().any(|issue| {
+        issue.node_id == "node-llm" && issue.code == CompileIssueCode::ModelNotAvailable
+    }));
 }
 
 #[test]
@@ -842,6 +926,7 @@ fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
         FlowCompileModelRoutingPolicy {
             distribution_rule: LlmDistributionRule::RetryRoundRobin,
             provider_instance_ids: Vec::new(),
+            excluded_provider_instance_ids: BTreeSet::new(),
         },
     );
 

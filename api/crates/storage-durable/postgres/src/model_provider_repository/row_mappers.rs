@@ -48,6 +48,7 @@ pub(super) fn map_main_model_routing_policy(
             model_id: row.get("model_id"),
             distribution_rule: row.get("distribution_rule"),
             provider_instance_ids: row.get("provider_instance_ids"),
+            excluded_provider_instance_ids: row.get("excluded_provider_instance_ids"),
             created_by: row.get("created_by"),
             updated_by: row.get("updated_by"),
             created_at: row.get("created_at"),

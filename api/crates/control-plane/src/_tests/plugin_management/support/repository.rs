@@ -1097,6 +1097,9 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
                             model_id: policy.model_id.clone(),
                             distribution_rule: policy.distribution_rule,
                             provider_instance_ids: policy.provider_instance_ids.clone(),
+                            excluded_provider_instance_ids: policy
+                                .excluded_provider_instance_ids
+                                .clone(),
                             created_by: input.updated_by,
                             updated_by: input.updated_by,
                             created_at: now,

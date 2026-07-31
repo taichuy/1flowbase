@@ -615,11 +615,13 @@ describe('ModelProvidersPage - instances modal', () => {
           {
             source_instance_id: 'provider-1',
             source_instance_display_name: 'OpenAI Production',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           },
           {
             source_instance_id: 'provider-2',
             source_instance_display_name: 'OpenAI Backup',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           }
         ]
@@ -805,6 +807,7 @@ describe('ModelProvidersPage - instances modal', () => {
     firstGroup.targets.push({
       source_instance_id: 'provider-2',
       source_instance_display_name: 'OpenAI Backup',
+      routing_enabled: true,
       model: firstGroup.model
     });
     const saveSpy = vi.fn(
@@ -812,6 +815,7 @@ describe('ModelProvidersPage - instances modal', () => {
         _modelId: string,
         _distributionRule: string,
         _providerInstanceIds: string[],
+        _excludedProviderInstanceIds: string[],
         onSuccess: () => void
       ) => onSuccess()
     );
@@ -858,17 +862,55 @@ describe('ModelProvidersPage - instances modal', () => {
     expect(
       within(policyDialog).getByText('编辑轮询规则与分组顺序')
     ).toBeInTheDocument();
-    const targets = policyDialog.querySelectorAll(
-      '.model-provider-panel__routing-policy-target-name'
-    );
-    expect(Array.from(targets).map((target) => target.textContent)).toEqual([
-      'OpenAI Backup',
-      'OpenAI Production'
+    const routingTable = within(policyDialog).getByRole('table');
+    const rowNames = () =>
+      Array.from(routingTable.querySelectorAll('tbody tr')).map(
+        (row) => row.textContent
+      );
+    expect(rowNames()).toEqual([
+      expect.stringContaining('OpenAI Backup'),
+      expect.stringContaining('OpenAI Production')
     ]);
-
+    expect(
+      within(routingTable).getByRole('columnheader', { name: '参与分组' })
+    ).toBeInTheDocument();
     fireEvent.click(
-      within(policyDialog).getAllByRole('button', { name: '上移' })[1]
+      within(routingTable).getByRole('switch', {
+        name: '参与分组 OpenAI Backup'
+      })
     );
+
+    Array.from(routingTable.querySelectorAll('tbody tr')).forEach(
+      (row, index) => {
+        vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+          x: 0,
+          y: index * 48,
+          top: index * 48,
+          right: 640,
+          bottom: (index + 1) * 48,
+          left: 0,
+          width: 640,
+          height: 48,
+          toJSON: () => ({})
+        });
+      }
+    );
+    const firstDragHandle = within(routingTable).getAllByRole('button', {
+      name: '拖拽排序'
+    })[0];
+    firstDragHandle.focus();
+    fireEvent.keyDown(firstDragHandle, { key: ' ', code: 'Space' });
+    await waitFor(() => {
+      expect(firstDragHandle).toHaveAttribute('aria-pressed', 'true');
+    });
+    fireEvent.keyDown(firstDragHandle, { key: 'ArrowDown', code: 'ArrowDown' });
+    fireEvent.keyDown(firstDragHandle, { key: ' ', code: 'Space' });
+    await waitFor(() => {
+      expect(rowNames()).toEqual([
+        expect.stringContaining('OpenAI Production'),
+        expect.stringContaining('OpenAI Backup')
+      ]);
+    });
     fireEvent.change(
       within(policyDialog).getByRole('combobox', { name: '分发规则' }),
       { target: { value: 'retry_round_robin' } }
@@ -881,6 +923,7 @@ describe('ModelProvidersPage - instances modal', () => {
       primaryContractProviderModels[0].model_id,
       'retry_round_robin',
       ['provider-1', 'provider-2'],
+      ['provider-2'],
       expect.any(Function)
     );
   });
@@ -993,11 +1036,13 @@ describe('ModelProvidersPage - instances modal', () => {
           {
             source_instance_id: 'provider-1',
             source_instance_display_name: 'OpenAI Production',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           },
           {
             source_instance_id: 'provider-2',
             source_instance_display_name: 'OpenAI Backup',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           }
         ]

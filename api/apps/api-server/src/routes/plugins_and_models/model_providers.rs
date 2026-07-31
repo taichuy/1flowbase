@@ -95,6 +95,8 @@ pub struct ModelProviderMainModelRoutingPolicyBody {
     pub model_id: String,
     pub distribution_rule: String,
     pub provider_instance_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub excluded_provider_instance_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -372,12 +374,14 @@ pub struct ModelProviderMainModelRoutingPolicyResponse {
     pub model_id: String,
     pub distribution_rule: String,
     pub provider_instance_ids: Vec<Uuid>,
+    pub excluded_provider_instance_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ModelProviderOptionTargetResponse {
     pub source_instance_id: String,
     pub source_instance_display_name: String,
+    pub routing_enabled: bool,
     pub model: ProviderModelDescriptorResponse,
 }
 
@@ -831,6 +835,7 @@ fn to_main_model_routing_policy_response(
         model_id: policy.model_id,
         distribution_rule: policy.distribution_rule.as_str().to_string(),
         provider_instance_ids: policy.provider_instance_ids,
+        excluded_provider_instance_ids: policy.excluded_provider_instance_ids,
     }
 }
 
@@ -841,6 +846,7 @@ fn to_main_model_routing_policy(
         model_id: policy.model_id,
         distribution_rule: parse_distribution_rule(&policy.distribution_rule)?,
         provider_instance_ids: policy.provider_instance_ids,
+        excluded_provider_instance_ids: policy.excluded_provider_instance_ids,
     })
 }
 
@@ -891,6 +897,7 @@ fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionRe
                     .map(|target| ModelProviderOptionTargetResponse {
                         source_instance_id: target.source_instance_id.to_string(),
                         source_instance_display_name: target.source_instance_display_name,
+                        routing_enabled: target.routing_enabled,
                         model: to_model_descriptor_response(target.model),
                     })
                     .collect(),
