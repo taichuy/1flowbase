@@ -50,24 +50,7 @@ pub(super) async fn llm_request_runtimes(
         return Ok(vec![runtime.clone(); request_count]);
     }
 
-    let compatible_targets = routing
-        .queue_targets
-        .iter()
-        .filter(|target| {
-            missing_routing_capabilities(&target.runtime_capabilities, required_capabilities)
-                .is_empty()
-        })
-        .collect::<Vec<_>>();
-    if compatible_targets.is_empty() {
-        let missing = routing
-            .queue_targets
-            .iter()
-            .flat_map(|target| {
-                missing_routing_capabilities(&target.runtime_capabilities, required_capabilities)
-            })
-            .collect::<BTreeSet<_>>();
-        return Err(semantic_route_error("failover_queue", &missing));
-    }
+    let compatible_targets = compatible_queue_targets(routing, required_capabilities)?;
 
     let mut request_runtimes = Vec::with_capacity(request_count);
     for attempt_index in 0..request_count {
@@ -107,6 +90,31 @@ pub(super) async fn llm_request_runtimes(
     }
 
     Ok(request_runtimes)
+}
+
+fn compatible_queue_targets<'a>(
+    routing: &'a crate::compiled_plan::CompiledLlmRouting,
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
+) -> Result<Vec<&'a crate::compiled_plan::CompiledLlmRouteTarget>> {
+    let compatible_targets = routing
+        .queue_targets
+        .iter()
+        .filter(|target| {
+            missing_routing_capabilities(&target.runtime_capabilities, required_capabilities)
+                .is_empty()
+        })
+        .collect::<Vec<_>>();
+    if compatible_targets.is_empty() {
+        let missing = routing
+            .queue_targets
+            .iter()
+            .flat_map(|target| {
+                missing_routing_capabilities(&target.runtime_capabilities, required_capabilities)
+            })
+            .collect::<BTreeSet<_>>();
+        return Err(semantic_route_error("failover_queue", &missing));
+    }
+    Ok(compatible_targets)
 }
 
 fn ensure_route_supports_required_capabilities(
@@ -259,5 +267,85 @@ pub(super) fn build_llm_route_payload(runtime: &CompiledLlmRuntime) -> Value {
             "upstream_model_id": runtime.model,
             "protocol": runtime.protocol,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(id: &str, capabilities: &[&str]) -> crate::compiled_plan::CompiledLlmRouteTarget {
+        crate::compiled_plan::CompiledLlmRouteTarget {
+            provider_instance_id: id.to_string(),
+            provider_instance_display_name: String::new(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            upstream_model_id: format!("{id}-model"),
+            runtime_capabilities: capabilities
+                .iter()
+                .map(|capability| (*capability).to_string())
+                .collect(),
+        }
+    }
+
+    fn failover_routing(
+        queue_targets: Vec<crate::compiled_plan::CompiledLlmRouteTarget>,
+    ) -> crate::compiled_plan::CompiledLlmRouting {
+        crate::compiled_plan::CompiledLlmRouting {
+            routing_mode: LlmRoutingMode::FailoverQueue,
+            fixed_model_target: None,
+            queue_template_id: Some("queue-template-1".to_string()),
+            queue_snapshot_id: Some("queue-snapshot-1".to_string()),
+            queue_targets,
+            distribution_rule: crate::compiled_plan::LlmDistributionRule::RetryRoundRobin,
+            distribution_key: None,
+            context_policy: json!({}),
+            stream_policy: json!({}),
+        }
+    }
+
+    #[test]
+    fn root_1534_filters_incompatible_primary_before_failover_selection() {
+        let routing = failover_routing(vec![
+            target("provider-incompatible", &[]),
+            target(
+                "provider-compatible",
+                &["message_blocks.reasoning_history.v1"],
+            ),
+        ]);
+
+        let compatible = compatible_queue_targets(
+            &routing,
+            &BTreeSet::from([ProviderInvocationCapability::MessageBlocksReasoningHistoryV1]),
+        )
+        .expect("the compatible backup should remain eligible");
+
+        assert_eq!(compatible.len(), 1);
+        assert_eq!(compatible[0].provider_instance_id, "provider-compatible");
+    }
+
+    #[test]
+    fn root_1534_rejects_all_incompatible_routes_with_typed_semantic_error() {
+        let routing = failover_routing(vec![target(
+            "provider-reasoning-only",
+            &["message_blocks.reasoning_history.v1"],
+        )]);
+
+        let error = compatible_queue_targets(
+            &routing,
+            &BTreeSet::from([
+                ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1,
+            ]),
+        )
+        .expect_err("redacted reasoning must not route to an incompatible Provider");
+        let framework_error = error
+            .downcast_ref::<plugin_framework::PluginFrameworkError>()
+            .expect("semantic rejection should preserve the typed framework error");
+
+        assert!(matches!(
+            framework_error,
+            plugin_framework::PluginFrameworkError::RuntimeContract { error }
+                if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
+        ));
     }
 }

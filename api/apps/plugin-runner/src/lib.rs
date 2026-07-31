@@ -367,8 +367,16 @@ async fn get_balance(
 
 async fn invoke_stream(
     State(state): State<AppState>,
-    Json(request): Json<InvokeProviderRequest>,
+    Json(payload): Json<Value>,
 ) -> Result<Json<ProviderInvokeStreamOutput>, (StatusCode, Json<ErrorResponse>)> {
+    let request: InvokeProviderRequest = serde_json::from_value(payload).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                message: "invalid provider invocation contract".to_string(),
+            }),
+        )
+    })?;
     let operation = {
         let host = state.provider_host.read().await;
         host.invoke_stream_operation(&request.plugin_id, request.input)
