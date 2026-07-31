@@ -8,7 +8,7 @@ export interface ApplicationManagementRouteState {
   sort: string;
 }
 
-const DEFAULT_SORT = 'updated_at:desc';
+export const APPLICATION_MANAGEMENT_DEFAULT_SORT = 'updated_at:desc';
 
 function optionalSearchValue(search: URLSearchParams, key: string) {
   const value = search.get(key)?.trim();
@@ -34,7 +34,8 @@ export function readApplicationManagementRouteState(): ApplicationManagementRout
     created_by: optionalSearchValue(search, 'created_by'),
     tag_id: optionalSearchValue(search, 'tag_id'),
     keyword: optionalSearchValue(search, 'keyword'),
-    sort: optionalSearchValue(search, 'sort') ?? DEFAULT_SORT
+    sort:
+      optionalSearchValue(search, 'sort') ?? APPLICATION_MANAGEMENT_DEFAULT_SORT
   };
 }
 
@@ -50,7 +51,8 @@ export function pushApplicationManagementRouteState(
   if (state.created_by) search.set('created_by', state.created_by);
   if (state.tag_id) search.set('tag_id', state.tag_id);
   if (state.keyword) search.set('keyword', state.keyword);
-  if (state.sort !== DEFAULT_SORT) search.set('sort', state.sort);
+  if (state.sort !== APPLICATION_MANAGEMENT_DEFAULT_SORT)
+    search.set('sort', state.sort);
   const query = search.toString();
   const nextPath = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
 

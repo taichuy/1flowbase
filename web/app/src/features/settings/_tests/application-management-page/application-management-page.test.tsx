@@ -312,6 +312,67 @@ describe('ApplicationManagementPanel', () => {
     });
   });
 
+  test('applies filter drafts together and resets them from the filter form', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    await screen.findByText('Daily Report');
+    const searchInput = screen.getByRole('searchbox', {
+      name: '搜索应用名称或 ID'
+    });
+    const requestCountBeforeDraftChange =
+      applicationManagementApi.fetchSettingsApplicationManagement.mock.calls
+        .length;
+    fireEvent.change(searchInput, { target: { value: 'Weekly' } });
+
+    expect(
+      applicationManagementApi.fetchSettingsApplicationManagement.mock.calls
+    ).toHaveLength(requestCountBeforeDraftChange);
+
+    fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
+
+    await waitFor(() => {
+      expect(window.location.search).toContain('keyword=Weekly');
+      expect(
+        applicationManagementApi.fetchSettingsApplicationManagement
+      ).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          filter: {
+            $and: [
+              { application_type: 'workflow' },
+              { publication_status: 'unpublished' },
+              {
+                $or: [
+                  { name: { $includes: 'Weekly' } },
+                  { id: { $includes: 'Weekly' } }
+                ]
+              }
+            ]
+          }
+        })
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /重\s*置/ }));
+
+    await waitFor(() => {
+      expect(window.location.search).toBe('');
+      expect(searchInput).toHaveValue('');
+      expect(
+        applicationManagementApi.fetchSettingsApplicationManagement
+      ).toHaveBeenLastCalledWith({
+        page: 1,
+        page_size: 20,
+        filter: undefined,
+        sort: 'updated_at:desc'
+      });
+    });
+  });
+
   test('#1286 AC-002 reverts a published application via the inline switch', async () => {
     applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
       {

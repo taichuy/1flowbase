@@ -1,7 +1,7 @@
 import { CheckOutlined } from '@ant-design/icons';
 import { Button, Pagination, Select, Table } from 'antd';
 import { useCallback, useMemo } from 'react';
-import type { Key, MouseEvent, ThHTMLAttributes } from 'react';
+import type { Key, MouseEvent, ReactNode, ThHTMLAttributes } from 'react';
 import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -139,6 +139,7 @@ export function DataTable<T extends object>({
   pageSize,
   rowClassName,
   rowKey,
+  toolbar,
   onRow,
   rowSelection,
   total,
@@ -153,6 +154,7 @@ export function DataTable<T extends object>({
   pageSize: number;
   rowClassName?: (record: T, index: number) => string;
   rowKey: keyof T | ((record: T) => Key);
+  toolbar?: ReactNode;
   onRow?: TableProps<T>['onRow'];
   rowSelection?: DataTableRowSelection<T>;
   total: number;
@@ -271,6 +273,11 @@ export function DataTable<T extends object>({
             }
           }}
           pagination={false}
+          title={
+            toolbar
+              ? () => <div className="data-table__toolbar">{toolbar}</div>
+              : undefined
+          }
           onRow={onRow}
           rowClassName={rowClassName}
           rowSelection={rowSelection}

@@ -61,6 +61,7 @@ import {
   settingsMembersQueryKey
 } from '../../api/members';
 import {
+  APPLICATION_MANAGEMENT_DEFAULT_SORT,
   pushApplicationManagementRouteState,
   readApplicationManagementRouteState,
   type ApplicationManagementRouteState
@@ -131,7 +132,7 @@ export function ApplicationManagementPanel() {
   const [routeState, setRouteState] = useState(
     readApplicationManagementRouteState
   );
-  const [keywordDraft, setKeywordDraft] = useState(routeState.keyword ?? '');
+  const [filterDraft, setFilterDraft] = useState(routeState);
   const [detailsApplication, setDetailsApplication] =
     useState<SettingsApplicationManagementItem | null>(null);
 
@@ -139,7 +140,7 @@ export function ApplicationManagementPanel() {
     const handlePopState = () => {
       const nextState = readApplicationManagementRouteState();
       setRouteState(nextState);
-      setKeywordDraft(nextState.keyword ?? '');
+      setFilterDraft(nextState);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -153,6 +154,25 @@ export function ApplicationManagementPanel() {
     },
     [routeState]
   );
+  const applyFilters = useCallback(() => {
+    const nextState = {
+      ...filterDraft,
+      page: 1,
+      keyword: filterDraft.keyword?.trim() || undefined
+    };
+    pushApplicationManagementRouteState(nextState);
+    setRouteState(nextState);
+    setFilterDraft(nextState);
+  }, [filterDraft]);
+  const resetFilters = useCallback(() => {
+    const nextState: ApplicationManagementRouteState = {
+      page: 1,
+      sort: APPLICATION_MANAGEMENT_DEFAULT_SORT
+    };
+    pushApplicationManagementRouteState(nextState);
+    setRouteState(nextState);
+    setFilterDraft(nextState);
+  }, []);
   const managementQuery = useMemo<SettingsApplicationManagementQuery>(
     () => ({
       page: routeState.page,
@@ -560,8 +580,20 @@ export function ApplicationManagementPanel() {
     <SettingsSectionSurface
       heightMode="fill"
       toolbar={
-        <Flex justify="space-between" gap={12} wrap>
-          <Flex gap={12} wrap>
+        <form
+          className="application-management-panel__filter-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyFilters();
+          }}
+        >
+          <label className="application-management-panel__filter-field">
+            <span className="application-management-panel__filter-label">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_type'
+              )}
+            </span>
             <Select
               allowClear
               aria-label={i18nText(
@@ -572,13 +604,23 @@ export function ApplicationManagementPanel() {
                 'settingsApplicationManagement',
                 'auto.application_management_all_types'
               )}
-              value={routeState.application_type}
+              value={filterDraft.application_type}
               options={catalog.types}
-              style={{ width: 150 }}
               onChange={(application_type) =>
-                updateRouteState({ page: 1, application_type })
+                setFilterDraft((current) => ({
+                  ...current,
+                  application_type
+                }))
               }
             />
+          </label>
+          <label className="application-management-panel__filter-field">
+            <span className="application-management-panel__filter-label">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_publication_status'
+              )}
+            </span>
             <Select
               allowClear
               aria-label={i18nText(
@@ -589,7 +631,7 @@ export function ApplicationManagementPanel() {
                 'settingsApplicationManagement',
                 'auto.application_management_all_publication_statuses'
               )}
-              value={routeState.publication_status}
+              value={filterDraft.publication_status}
               options={[
                 {
                   value: 'published',
@@ -600,11 +642,21 @@ export function ApplicationManagementPanel() {
                   label: i18nText('settings', 'auto.unpublished')
                 }
               ]}
-              style={{ width: 160 }}
               onChange={(publication_status) =>
-                updateRouteState({ page: 1, publication_status })
+                setFilterDraft((current) => ({
+                  ...current,
+                  publication_status
+                }))
               }
             />
+          </label>
+          <label className="application-management-panel__filter-field">
+            <span className="application-management-panel__filter-label">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_creator'
+              )}
+            </span>
             <Select
               allowClear
               showSearch
@@ -617,19 +669,23 @@ export function ApplicationManagementPanel() {
                 'settingsApplicationManagement',
                 'auto.application_management_all_creators'
               )}
-              value={routeState.created_by}
+              value={filterDraft.created_by}
               options={(membersQuery.data ?? []).map((member) => ({
                 value: member.id,
                 label: member.name || member.nickname || member.account
               }))}
-              style={{ width: 190 }}
               onChange={(created_by) =>
-                updateRouteState({
-                  page: 1,
-                  created_by
-                })
+                setFilterDraft((current) => ({ ...current, created_by }))
               }
             />
+          </label>
+          <label className="application-management-panel__filter-field">
+            <span className="application-management-panel__filter-label">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_tags'
+              )}
+            </span>
             <Select
               allowClear
               aria-label={i18nText(
@@ -640,15 +696,24 @@ export function ApplicationManagementPanel() {
                 'settingsApplicationManagement',
                 'auto.application_management_all_tags'
               )}
-              value={routeState.tag_id}
+              value={filterDraft.tag_id}
               options={catalog.tags.map((tag) => ({
                 value: tag.id,
                 label: tag.name
               }))}
-              style={{ width: 160 }}
-              onChange={(tag_id) => updateRouteState({ page: 1, tag_id })}
+              onChange={(tag_id) =>
+                setFilterDraft((current) => ({ ...current, tag_id }))
+              }
             />
-            <Input.Search
+          </label>
+          <label className="application-management-panel__filter-field">
+            <span className="application-management-panel__filter-label">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_keyword'
+              )}
+            </span>
+            <Input
               aria-label={i18nText(
                 'settingsApplicationManagement',
                 'auto.application_management_search'
@@ -657,23 +722,29 @@ export function ApplicationManagementPanel() {
                 'settingsApplicationManagement',
                 'auto.application_management_search'
               )}
-              value={keywordDraft}
-              style={{ width: 240 }}
-              onChange={(event) => setKeywordDraft(event.target.value)}
-              onSearch={(keyword) =>
-                updateRouteState({
-                  page: 1,
-                  keyword: keyword.trim() || undefined
-                })
+              type="search"
+              value={filterDraft.keyword ?? ''}
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  keyword: event.target.value
+                }))
               }
             />
+          </label>
+          <label className="application-management-panel__filter-field">
+            <span className="application-management-panel__filter-label">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_sort'
+              )}
+            </span>
             <Select
               aria-label={i18nText(
                 'settingsApplicationManagement',
                 'auto.application_management_sort'
               )}
-              value={routeState.sort}
-              style={{ width: 180 }}
+              value={filterDraft.sort}
               options={[
                 {
                   value: 'updated_at:desc',
@@ -697,29 +768,26 @@ export function ApplicationManagementPanel() {
                   )
                 }
               ]}
-              onChange={(sort) => updateRouteState({ page: 1, sort })}
+              onChange={(sort) =>
+                setFilterDraft((current) => ({ ...current, sort }))
+              }
             />
-          </Flex>
-          <Space>
-            <Button
-              icon={<ExportOutlined />}
-              loading={exportCsvMutation.isPending}
-              onClick={() => exportCsvMutation.mutate()}
-            >
+          </label>
+          <div className="application-management-panel__filter-actions">
+            <Button htmlType="button" onClick={resetFilters}>
               {i18nText(
                 'settingsApplicationManagement',
-                'auto.application_management_export_csv'
+                'auto.application_management_reset_filters'
               )}
             </Button>
-            <Button onClick={() => applicationsQuery.refetch()}>
-              {i18nText('settings', 'auto.refresh')}
+            <Button htmlType="submit" type="primary">
+              {i18nText(
+                'settingsApplicationManagement',
+                'auto.application_management_apply_filters'
+              )}
             </Button>
-            <DataTableColumnSettings
-              columns={columns}
-              configuration={tableConfiguration}
-            />
-          </Space>
-        </Flex>
+          </div>
+        </form>
       }
     >
       {messageContextHolder}
@@ -733,6 +801,27 @@ export function ApplicationManagementPanel() {
           page={routeState.page}
           pageSize={PAGE_SIZE}
           rowKey="id"
+          toolbar={
+            <Flex justify="flex-end" gap={8} wrap>
+              <Button
+                icon={<ExportOutlined />}
+                loading={exportCsvMutation.isPending}
+                onClick={() => exportCsvMutation.mutate()}
+              >
+                {i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_export_csv'
+                )}
+              </Button>
+              <Button onClick={() => applicationsQuery.refetch()}>
+                {i18nText('settings', 'auto.refresh')}
+              </Button>
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={tableConfiguration}
+              />
+            </Flex>
+          }
           total={applicationsQuery.data?.total ?? 0}
           onRow={(application) => ({
             className: 'application-management-panel__row',

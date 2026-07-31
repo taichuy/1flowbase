@@ -86,6 +86,28 @@ describe('DataTable', () => {
     );
   });
 
+  test('renders table actions in the Ant Design table title area', () => {
+    render(
+      <DataTable<SampleRow>
+        columns={columns}
+        configuration={createConfiguration()}
+        dataSource={[]}
+        page={1}
+        pageSize={20}
+        rowKey="id"
+        toolbar={<button type="button">刷新</button>}
+        total={0}
+        onPageChange={vi.fn()}
+      />
+    );
+
+    const tableTitle = document.querySelector('.ant-table-title');
+    expect(tableTitle).not.toBeNull();
+    expect(
+      within(tableTitle as HTMLElement).getByRole('button', { name: '刷新' })
+    ).toBeInTheDocument();
+  });
+
   test('renders a shared column settings select and keeps column order from the table schema', async () => {
     const configuration = createConfiguration();
 
