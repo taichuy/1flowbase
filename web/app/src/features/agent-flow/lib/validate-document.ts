@@ -73,10 +73,6 @@ function isMissingRequiredField(
   }
 
   if (fieldKey.startsWith('config.')) {
-    if (fieldKey === 'config.sql') {
-      const sql = node.config.sql;
-      return typeof sql !== 'string' || sql.length === 0;
-    }
     if (fieldKey === 'config.model_provider') {
       const modelProvider = getLlmModelProvider(node.config);
       return (

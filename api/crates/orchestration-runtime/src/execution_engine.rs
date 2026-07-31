@@ -164,9 +164,17 @@ pub trait CapabilityInvoker: Send + Sync {
     async fn invoke_native_sql_node(
         &self,
         _node: &CompiledNode,
+        _sql: &str,
     ) -> Result<NativeSqlInvocationOutput> {
         Err(anyhow!("native SQL runtime is not configured"))
     }
+}
+
+pub(crate) fn resolved_native_sql(resolved_inputs: &Map<String, Value>) -> Result<&str> {
+    resolved_inputs
+        .get("sql")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("SQL node is missing resolved bindings.sql"))
 }
 
 #[async_trait]
@@ -745,7 +753,9 @@ where
                 );
             }
             "sql" => {
-                let execution = invoker.invoke_native_sql_node(node).await?;
+                let execution = invoker
+                    .invoke_native_sql_node(node, resolved_native_sql(&resolved_inputs)?)
+                    .await?;
                 node_traces.push(NodeExecutionTrace {
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),

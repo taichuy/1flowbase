@@ -758,12 +758,23 @@ function renderCodeSourceField({ adapter, block }: SchemaFieldRendererProps) {
 }
 
 function renderSqlSourceField({ adapter, block }: SchemaFieldRendererProps) {
+  const value = adapter.getValue(block.path);
+  const sql = hasBindingKind(value, 'templated_text')
+    ? getBindingValue<string>(value, 'templated_text', '')
+    : '';
+
   return (
     <CodeSourceField
       label={block.label}
       language="sql"
-      value={adapter.getValue(block.path)}
-      onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
+      value={sql}
+      variableOptions={getSelectorOptions(adapter)}
+      onChange={(nextValue) =>
+        adapter.setValue(block.path, {
+          kind: 'templated_text',
+          value: nextValue
+        })
+      }
     />
   );
 }

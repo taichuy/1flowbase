@@ -96,6 +96,7 @@ impl CapabilityInvoker for StubPreviewInvoker {
     async fn invoke_native_sql_node(
         &self,
         _node: &CompiledNode,
+        sql: &str,
     ) -> Result<NativeSqlInvocationOutput> {
         Ok(NativeSqlInvocationOutput {
             output_payload: json!({
@@ -103,7 +104,7 @@ impl CapabilityInvoker for StubPreviewInvoker {
             }),
             error_payload: None,
             metrics_payload: json!({}),
-            debug_payload: json!({ "data_source_instance_id": "main" }),
+            debug_payload: json!({ "data_source_instance_id": "main", "sql": sql }),
         })
     }
 }
@@ -676,11 +677,18 @@ async fn ac_006_preview_executor_runs_sql_with_the_same_output_contract() {
     let mut plan = sample_compiled_plan();
     let node = plan.nodes.get_mut("node-llm").unwrap();
     node.node_type = "sql".to_string();
-    node.bindings.clear();
+    node.bindings = BTreeMap::from([(
+        "sql".to_string(),
+        CompiledBinding {
+            i18n_text_ref: None,
+            kind: "templated_text".to_string(),
+            raw_value: json!("select * from users where id = {{node-start.user_id}}"),
+            selector_paths: vec![vec!["node-start".to_string(), "user_id".to_string()]],
+        },
+    )]);
     node.llm_runtime = None;
     node.config = json!({
-        "data_source_instance_id": "main",
-        "sql": "select 1"
+        "data_source_instance_id": "main"
     });
     node.outputs = vec![CompiledOutput {
         key: "results".to_string(),
@@ -696,12 +704,20 @@ async fn ac_006_preview_executor_runs_sql_with_the_same_output_contract() {
     let outcome = preview_executor::run_node_preview(
         &plan,
         "node-llm",
-        &json!({ "node-start": { "query": "ignored" } }),
+        &json!({ "node-start": { "user_id": 42 } }),
         &invoker,
     )
     .await
     .unwrap();
 
     assert_eq!(outcome.node_output["results"][0]["affected_rows"], 1);
+    assert_eq!(
+        outcome.resolved_inputs["sql"],
+        "select * from users where id = 42"
+    );
+    assert_eq!(
+        outcome.debug_payload["sql"],
+        "select * from users where id = 42"
+    );
     assert!(outcome.error_payload.is_none());
 }

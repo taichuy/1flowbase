@@ -8,9 +8,9 @@ use crate::{
     compiled_plan::CompiledPlan,
     execution_engine::{
         execute_code_node, execute_http_request_node, execute_llm_node,
-        execute_variable_assignment_node, materialize_start_builtin_defaults, CapabilityInvoker,
-        CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister, LlmRoutingCounterStore,
-        ProviderInvoker,
+        execute_variable_assignment_node, materialize_start_builtin_defaults, resolved_native_sql,
+        CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister,
+        LlmRoutingCounterStore, ProviderInvoker,
     },
     node_errors::build_node_type_not_implemented_error_payload,
 };
@@ -250,7 +250,9 @@ where
             Vec::new(),
         )
     } else if node.node_type == "sql" {
-        let execution = invoker.invoke_native_sql_node(node).await?;
+        let execution = invoker
+            .invoke_native_sql_node(node, resolved_native_sql(&resolved_inputs)?)
+            .await?;
         (
             execution.output_payload,
             execution.error_payload,

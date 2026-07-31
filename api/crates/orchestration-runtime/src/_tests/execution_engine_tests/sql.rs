@@ -29,7 +29,15 @@ async fn ac_006_sql_node_output_enters_trace_and_variable_pool() {
             container_id: None,
             dependency_node_ids: vec!["node-start".to_string()],
             downstream_node_ids: vec![],
-            bindings: BTreeMap::new(),
+            bindings: BTreeMap::from([(
+                "sql".to_string(),
+                CompiledBinding {
+                    i18n_text_ref: None,
+                    kind: "templated_text".to_string(),
+                    raw_value: json!("select * from users where id = {{node-start.user_id}}"),
+                    selector_paths: vec![vec!["node-start".to_string(), "user_id".to_string()]],
+                },
+            )]),
             outputs: vec![CompiledOutput {
                 key: "results".to_string(),
                 title: "Results".to_string(),
@@ -38,8 +46,7 @@ async fn ac_006_sql_node_output_enters_trace_and_variable_pool() {
                 json_schema: None,
             }],
             config: json!({
-                "data_source_instance_id": "main",
-                "sql": "select 1"
+                "data_source_instance_id": "main"
             }),
             plugin_runtime: None,
             llm_runtime: None,
@@ -67,9 +74,10 @@ async fn ac_006_sql_node_output_enters_trace_and_variable_pool() {
         final_content: String::new(),
     };
 
-    let outcome = start_flow_debug_run(&plan, &json!({}), &invoker)
-        .await
-        .unwrap();
+    let outcome =
+        start_flow_debug_run(&plan, &json!({ "node-start": { "user_id": 42 } }), &invoker)
+            .await
+            .unwrap();
 
     assert_eq!(
         outcome.variable_pool["node-sql"]["results"][0]["affected_rows"],
@@ -81,5 +89,13 @@ async fn ac_006_sql_node_output_enters_trace_and_variable_pool() {
         .find(|trace| trace.node_id == "node-sql")
         .unwrap();
     assert_eq!(sql_trace.output_payload["results"][0]["kind"], "completion");
+    assert_eq!(
+        sql_trace.input_payload["sql"],
+        "select * from users where id = 42"
+    );
+    assert_eq!(
+        sql_trace.debug_payload["sql"],
+        "select * from users where id = 42"
+    );
     assert!(sql_trace.error_payload.is_none());
 }
