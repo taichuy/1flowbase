@@ -15,6 +15,8 @@
     "application_management_keyword": "关键词",
     "application_management_reset_filters": "重置",
     "application_management_apply_filters": "筛选",
+    "application_management_expand_filters": "展开",
+    "application_management_collapse_filters": "收起",
     "application_management_sort": "排序",
     "application_management_sort_updated_desc": "最近更新",
     "application_management_sort_created_desc": "最近创建",

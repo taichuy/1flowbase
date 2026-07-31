@@ -133,6 +133,7 @@ export function ApplicationManagementPanel() {
     readApplicationManagementRouteState
   );
   const [filterDraft, setFilterDraft] = useState(routeState);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<
     string[]
   >([]);
@@ -659,108 +660,6 @@ export function ApplicationManagementPanel() {
             <span className="application-management-panel__filter-label">
               {i18nText(
                 'settingsApplicationManagement',
-                'auto.application_management_publication_status'
-              )}
-            </span>
-            <Select
-              allowClear
-              aria-label={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_publication_status'
-              )}
-              placeholder={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_all_publication_statuses'
-              )}
-              value={filterDraft.publication_status}
-              options={[
-                {
-                  value: 'published',
-                  label: i18nText('settings', 'auto.published')
-                },
-                {
-                  value: 'unpublished',
-                  label: i18nText('settings', 'auto.unpublished')
-                }
-              ]}
-              onChange={(publication_status) =>
-                setFilterDraft((current) => ({
-                  ...current,
-                  publication_status
-                }))
-              }
-            />
-          </label>
-          <label className="application-management-panel__filter-field">
-            <span className="application-management-panel__filter-label">
-              {i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_creator'
-              )}
-            </span>
-            <Select
-              allowClear
-              showSearch
-              loading={membersQuery.isPending}
-              status={membersQuery.isError ? 'error' : undefined}
-              optionFilterProp="label"
-              aria-label={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_creator'
-              )}
-              placeholder={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_all_creators'
-              )}
-              notFoundContent={
-                membersQuery.isError
-                  ? i18nText(
-                      'settingsApplicationManagement',
-                      'auto.application_management_creators_load_failed'
-                    )
-                  : undefined
-              }
-              value={filterDraft.created_by}
-              options={(membersQuery.data ?? []).map((member) => ({
-                value: member.id,
-                label: member.name || member.nickname || member.account
-              }))}
-              onChange={(created_by) =>
-                setFilterDraft((current) => ({ ...current, created_by }))
-              }
-            />
-          </label>
-          <label className="application-management-panel__filter-field">
-            <span className="application-management-panel__filter-label">
-              {i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_tags'
-              )}
-            </span>
-            <Select
-              allowClear
-              aria-label={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_tags'
-              )}
-              placeholder={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_all_tags'
-              )}
-              value={filterDraft.tag_id}
-              options={catalog.tags.map((tag) => ({
-                value: tag.id,
-                label: tag.name
-              }))}
-              onChange={(tag_id) =>
-                setFilterDraft((current) => ({ ...current, tag_id }))
-              }
-            />
-          </label>
-          <label className="application-management-panel__filter-field">
-            <span className="application-management-panel__filter-label">
-              {i18nText(
-                'settingsApplicationManagement',
                 'auto.application_management_keyword'
               )}
             </span>
@@ -824,7 +723,125 @@ export function ApplicationManagementPanel() {
               }
             />
           </label>
+          {filtersExpanded ? (
+            <>
+              <label className="application-management-panel__filter-field">
+                <span className="application-management-panel__filter-label">
+                  {i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_publication_status'
+                  )}
+                </span>
+                <Select
+                  allowClear
+                  aria-label={i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_publication_status'
+                  )}
+                  placeholder={i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_all_publication_statuses'
+                  )}
+                  value={filterDraft.publication_status}
+                  options={[
+                    {
+                      value: 'published',
+                      label: i18nText('settings', 'auto.published')
+                    },
+                    {
+                      value: 'unpublished',
+                      label: i18nText('settings', 'auto.unpublished')
+                    }
+                  ]}
+                  onChange={(publication_status) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      publication_status
+                    }))
+                  }
+                />
+              </label>
+              <label className="application-management-panel__filter-field">
+                <span className="application-management-panel__filter-label">
+                  {i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_creator'
+                  )}
+                </span>
+                <Select
+                  allowClear
+                  showSearch
+                  loading={membersQuery.isPending}
+                  status={membersQuery.isError ? 'error' : undefined}
+                  optionFilterProp="label"
+                  aria-label={i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_creator'
+                  )}
+                  placeholder={i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_all_creators'
+                  )}
+                  notFoundContent={
+                    membersQuery.isError
+                      ? i18nText(
+                          'settingsApplicationManagement',
+                          'auto.application_management_creators_load_failed'
+                        )
+                      : undefined
+                  }
+                  value={filterDraft.created_by}
+                  options={(membersQuery.data ?? []).map((member) => ({
+                    value: member.id,
+                    label: member.name || member.nickname || member.account
+                  }))}
+                  onChange={(created_by) =>
+                    setFilterDraft((current) => ({ ...current, created_by }))
+                  }
+                />
+              </label>
+              <label className="application-management-panel__filter-field">
+                <span className="application-management-panel__filter-label">
+                  {i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_tags'
+                  )}
+                </span>
+                <Select
+                  allowClear
+                  aria-label={i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_tags'
+                  )}
+                  placeholder={i18nText(
+                    'settingsApplicationManagement',
+                    'auto.application_management_all_tags'
+                  )}
+                  value={filterDraft.tag_id}
+                  options={catalog.tags.map((tag) => ({
+                    value: tag.id,
+                    label: tag.name
+                  }))}
+                  onChange={(tag_id) =>
+                    setFilterDraft((current) => ({ ...current, tag_id }))
+                  }
+                />
+              </label>
+            </>
+          ) : null}
           <div className="application-management-panel__filter-actions">
+            <Button
+              aria-expanded={filtersExpanded}
+              htmlType="button"
+              onClick={() => setFiltersExpanded((expanded) => !expanded)}
+            >
+              {i18nText(
+                'settingsApplicationManagement',
+                filtersExpanded
+                  ? 'auto.application_management_collapse_filters'
+                  : 'auto.application_management_expand_filters'
+              )}
+            </Button>
             <Button htmlType="button" onClick={resetFilters}>
               {i18nText(
                 'settingsApplicationManagement',

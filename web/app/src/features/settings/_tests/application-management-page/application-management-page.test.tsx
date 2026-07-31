@@ -297,6 +297,7 @@ describe('ApplicationManagementPanel', () => {
       screen.queryByRole('heading', { name: '应用管理' })
     ).not.toBeInTheDocument();
     expect(screen.getByText('Generate a report every day')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /展\s*开/ }));
     expect(screen.getAllByText('Workflow')).toHaveLength(2);
     expect(screen.getByText('定时任务')).toBeInTheDocument();
     expect(screen.getAllByText('未发布')).toHaveLength(2);
@@ -388,6 +389,68 @@ describe('ApplicationManagementPanel', () => {
     });
   });
 
+  test('AC-001 AC-002 AC-003 collapses secondary filters behind the action-row toggle', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    await screen.findByText('Daily Report');
+    expect(
+      screen.getByRole('combobox', { name: '应用类型' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('searchbox', { name: '搜索应用名称或 ID' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: '排序' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '发布状态' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '创建者' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '标签' })
+    ).not.toBeInTheDocument();
+
+    const filterActions = document.querySelector(
+      '.application-management-panel__filter-actions'
+    ) as HTMLElement;
+    expect(
+      within(filterActions)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.replaceAll(' ', ''))
+    ).toEqual(['展开', '重置', '筛选']);
+    const expandButton = screen.getByRole('button', { name: /展\s*开/ });
+    expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(expandButton);
+
+    expect(
+      screen.getByRole('combobox', { name: '发布状态' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: '创建者' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: '标签' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /收\s*起/ })
+    ).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /收\s*起/ }));
+
+    expect(
+      screen.queryByRole('combobox', { name: '发布状态' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /展\s*开/ })
+    ).toBeInTheDocument();
+  });
+
   test('shows an explicit creator loading failure instead of an empty result', async () => {
     membersApi.fetchSettingsMembers.mockRejectedValueOnce(
       new Error('members unavailable')
@@ -400,6 +463,7 @@ describe('ApplicationManagementPanel', () => {
     );
 
     await screen.findByText('Daily Report');
+    fireEvent.click(screen.getByRole('button', { name: /展\s*开/ }));
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '创建者' }));
     expect(await screen.findByText('创建者加载失败')).toBeInTheDocument();
   });
