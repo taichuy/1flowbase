@@ -328,6 +328,32 @@ describe('ApplicationManagementPanel', () => {
     });
   });
 
+  test('AC-001 AC-002 renders application names and descriptions in separate table columns', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    const applicationName = await screen.findByText('Daily Report');
+    const applicationDescription = screen.getByText(
+      'Generate a report every day'
+    );
+
+    expect(
+      screen.getByRole('columnheader', { name: '名称' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '简介' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: '应用' })
+    ).not.toBeInTheDocument();
+    expect(applicationName.closest('td')).not.toBe(
+      applicationDescription.closest('td')
+    );
+  });
+
   test('applies filter drafts together and resets them from the filter form', async () => {
     render(
       <AppProviders>

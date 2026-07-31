@@ -377,29 +377,26 @@ export function ApplicationManagementPanel() {
   >(
     () => [
       {
-        key: 'application',
-        title: i18nText(
-          'settingsApplicationManagement',
-          'auto.application_management_application'
-        ),
-        width: 260,
+        key: 'name',
+        title: i18nText('applications', 'auto.name'),
+        width: 220,
+        render: (_, application) => (
+          <Typography.Text strong>{application.name}</Typography.Text>
+        )
+      },
+      {
+        key: 'description',
+        title: i18nText('applications', 'auto.description'),
+        width: 320,
         sizing: 'fill',
         render: (_, application) => (
-          <div className="application-management-panel__application-summary">
-            <Typography.Text
-              className="application-management-panel__application-name"
-              strong
-            >
-              {application.name}
-            </Typography.Text>
-            <Typography.Text
-              className="application-management-panel__application-description"
-              type="secondary"
-            >
-              {application.description ||
-                i18nText('applications', 'auto.application_description_empty')}
-            </Typography.Text>
-          </div>
+          <Typography.Text
+            className="application-management-panel__application-description"
+            type="secondary"
+          >
+            {application.description ||
+              i18nText('applications', 'auto.application_description_empty')}
+          </Typography.Text>
         )
       },
       {

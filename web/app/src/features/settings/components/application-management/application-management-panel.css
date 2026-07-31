@@ -31,22 +31,12 @@
   gap: 8px;
 }
 
-.application-management-panel__application-summary {
-  display: grid;
-  gap: 2px;
-  width: 100%;
-  min-width: 0;
-}
-
-.application-management-panel__application-name,
 .application-management-panel__application-description {
   display: block;
+  overflow: hidden;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-}
-
-.application-management-panel__application-description {
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
