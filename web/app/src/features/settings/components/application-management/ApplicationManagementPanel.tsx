@@ -385,13 +385,21 @@ export function ApplicationManagementPanel() {
         width: 260,
         sizing: 'fill',
         render: (_, application) => (
-          <Flex vertical gap={2}>
-            <Typography.Text strong>{application.name}</Typography.Text>
-            <Typography.Text type="secondary" ellipsis>
+          <div className="application-management-panel__application-summary">
+            <Typography.Text
+              className="application-management-panel__application-name"
+              strong
+            >
+              {application.name}
+            </Typography.Text>
+            <Typography.Text
+              className="application-management-panel__application-description"
+              type="secondary"
+            >
               {application.description ||
                 i18nText('applications', 'auto.application_description_empty')}
             </Typography.Text>
-          </Flex>
+          </div>
         )
       },
       {
