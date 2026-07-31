@@ -61,13 +61,13 @@ describe('LLM authoring outputs', () => {
     ]);
   });
 
-  it('WP-D1D seeds new public Gateway LLM protocol context as one system reference', () => {
+  it('AC-001 seeds LLM protocol context from the Start typed variable', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const llmNode = document.graph.nodes.find((node) => node.id === 'node-llm');
 
     expect(DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE).toEqual({
       kind: 'selector',
-      value: ['sys', 'protocol_context']
+      value: ['node-start', 'protocol_context']
     });
     expect(llmNode?.config.protocol_context).toEqual(
       DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE

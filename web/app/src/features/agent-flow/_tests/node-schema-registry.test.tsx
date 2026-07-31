@@ -340,7 +340,7 @@ describe('agent-flow node schema registry', () => {
 
     expect(contract?.defaults.config.protocol_context).toEqual({
       kind: 'selector',
-      value: ['sys', 'protocol_context']
+      value: ['node-start', 'protocol_context']
     });
     expect(contract?.defaults.config).not.toHaveProperty(
       'protocol_context_enabled'

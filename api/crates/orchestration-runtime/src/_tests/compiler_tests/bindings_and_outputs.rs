@@ -715,7 +715,7 @@ fn wp_fua_host_compiled_llm_protocol_context_preserves_three_state_compatibility
 }
 
 #[test]
-fn wp_d1b_protocol_context_accepts_existing_code_json_output_contract() {
+fn ac_003_protocol_context_requires_the_nominal_output_type() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);
     let nodes = document["graph"]["nodes"].as_array_mut().unwrap();
@@ -734,7 +734,7 @@ fn wp_d1b_protocol_context_accepts_existing_code_json_output_contract() {
             "outputs": [{
                 "key": "protocol_context",
                 "title": "Protocol Context",
-                "valueType": "json"
+                "valueType": "protocol_context"
             }]
         }),
     );
@@ -781,7 +781,7 @@ fn wp_d1b_protocol_context_accepts_existing_code_json_output_contract() {
         issue.node_id == "node-llm" && issue.code == CompileIssueCode::IncompatibleLlmContextSchema
     }));
 
-    document["graph"]["nodes"][1]["outputs"][0]["valueType"] = json!("string");
+    document["graph"]["nodes"][1]["outputs"][0]["valueType"] = json!("json");
     let plan = FlowCompiler::compile(flow_id, "draft-2", &document, &compile_context()).unwrap();
     assert!(plan.compile_issues.iter().any(|issue| {
         issue.node_id == "node-llm" && issue.code == CompileIssueCode::IncompatibleLlmContextSchema

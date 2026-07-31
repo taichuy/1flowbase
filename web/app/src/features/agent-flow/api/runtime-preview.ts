@@ -90,6 +90,10 @@ export function buildFlowDebugRunInput(
   };
 
   for (const output of startNode ? getNodeVariableOutputs(startNode) : []) {
+    if (output.valueType === 'protocol_context') {
+      startPayload[output.key] = null;
+      continue;
+    }
     startPayload[output.key] =
       inputValues &&
       Object.prototype.hasOwnProperty.call(inputValues, output.key)

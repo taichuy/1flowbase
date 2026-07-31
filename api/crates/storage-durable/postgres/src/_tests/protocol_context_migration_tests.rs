@@ -10,6 +10,7 @@ const MIGRATION_SQL: &str =
 const COMPATIBILITY_BACKFILL_VERSION: i64 = 20260729090000;
 const COMPATIBILITY_BACKFILL_SQL: &str =
     include_str!("../../migrations/20260729090000_backfill_responses_compatibility_mode.sql");
+const START_VARIABLE_MIGRATION_VERSION: i64 = 20260731200000;
 
 struct SeededFlow {
     application_id: Uuid,
@@ -52,6 +53,95 @@ fn before_compatibility_backfill_migrator() -> Migrator {
         migrations: Cow::Owned(migrations),
         ..Migrator::DEFAULT
     }
+}
+
+fn before_start_variable_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < START_VARIABLE_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+#[tokio::test]
+async fn protocol_context_start_variable_migrates_only_mutable_draft_and_plan() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    before_start_variable_migrator().run(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let (workspace_id, user_id) = seed_owner(&store).await;
+    let legacy_reference = serde_json::json!({
+        "kind": "selector",
+        "value": ["sys", "protocol_context"]
+    });
+    let document = snapshot(
+        serde_json::json!([
+            {"id": "custom-start", "type": "start", "config": {}},
+            {"id": "node-llm", "type": "llm", "config": {
+                "protocol_context": legacy_reference
+            }}
+        ]),
+        "start-variable-migration",
+    );
+    let plan = serde_json::json!({
+        "nodes": {
+            "custom-start": {"node_id": "custom-start", "node_type": "start", "config": {}},
+            "node-llm": {"node_id": "node-llm", "node_type": "llm", "config": {
+                "protocol_context": legacy_reference
+            }}
+        }
+    });
+    let seeded = seed_flow(&store, workspace_id, user_id, &document, &plan).await;
+    let publication_id = seed_publication(
+        &store,
+        &seeded,
+        seeded.application_id,
+        user_id,
+        1,
+        &document,
+    )
+    .await;
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let draft: serde_json::Value =
+        sqlx::query_scalar("select document from flow_drafts where id = $1")
+            .bind(seeded.draft_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        draft["graph"]["nodes"][1]["config"]["protocol_context"]["value"],
+        serde_json::json!(["custom-start", "protocol_context"])
+    );
+    let compiled: serde_json::Value =
+        sqlx::query_scalar("select plan from flow_compiled_plans where id = $1")
+            .bind(seeded.compiled_plan_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        compiled["nodes"]["node-llm"]["config"]["protocol_context"]["value"],
+        serde_json::json!(["custom-start", "protocol_context"])
+    );
+    let version: serde_json::Value =
+        sqlx::query_scalar("select document from flow_versions where id = $1")
+            .bind(seeded.version_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(version, document);
+    let publication: serde_json::Value = sqlx::query_scalar(
+        "select document_snapshot from application_publication_versions where id = $1",
+    )
+    .bind(publication_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(publication, document);
 }
 
 async fn seed_owner(store: &PgControlPlaneStore) -> (Uuid, Uuid) {

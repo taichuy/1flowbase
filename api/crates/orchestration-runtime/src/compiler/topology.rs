@@ -416,7 +416,7 @@ fn validate_protocol_context_reference(
             node_id: target.node_id.clone(),
             code: CompileIssueCode::InvalidLlmContextSelector,
             message: format!(
-                "node {} protocol_context {} must reference sys.protocol_context or an upstream Start/Code JSON output",
+                "node {} protocol_context {} must reference legacy sys.protocol_context or an upstream typed Start/Code output",
                 target.node_id,
                 selector.join(".")
             ),
@@ -438,7 +438,7 @@ fn validate_protocol_context_reference(
             node_id: target.node_id.clone(),
             code: CompileIssueCode::InvalidLlmContextSelector,
             message: format!(
-                "node {} protocol_context {} must reference sys.protocol_context or an upstream Start/Code JSON output",
+                "node {} protocol_context {} must reference legacy sys.protocol_context or an upstream typed Start/Code output",
                 target.node_id,
                 selector.join(".")
             ),
@@ -458,12 +458,12 @@ fn validate_protocol_context_reference(
         });
         return;
     };
-    if output.value_type != "json" {
+    if output.value_type != plugin_framework::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE {
         issues.push(CompileIssue {
             node_id: target.node_id.clone(),
             code: CompileIssueCode::IncompatibleLlmContextSchema,
             message: format!(
-                "node {} protocol_context {} must reference a JSON output",
+                "node {} protocol_context {} must reference a protocol_context output",
                 target.node_id,
                 selector.join(".")
             ),
@@ -1304,6 +1304,17 @@ fn output_for_selector(
             value_type: "array".to_string(),
             selector: Vec::new(),
             json_schema: Some(history_messages_schema()),
+        });
+    }
+
+    if node.node_type == "start" && output_key == "protocol_context" {
+        return Some(CompiledOutput {
+            key: "protocol_context".to_string(),
+            title: "userinput.protocol_context".to_string(),
+            value_type: plugin_framework::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE
+                .to_string(),
+            selector: Vec::new(),
+            json_schema: None,
         });
     }
 
