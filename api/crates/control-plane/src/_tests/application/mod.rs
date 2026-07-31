@@ -10,6 +10,11 @@ use control_plane::ports::{
 use domain::ApplicationType;
 use uuid::Uuid;
 
+const CREATE_APPLICATION_ROUTE_OPERATION_ID: &str = "create_application";
+const CREATE_APPLICATION_TAG_ROUTE_OPERATION_ID: &str = "create_application_tag";
+const GET_APPLICATION_CATALOG_ROUTE_OPERATION_ID: &str = "get_application_catalog";
+const LIST_APPLICATIONS_ROUTE_OPERATION_ID: &str = "list_applications";
+
 fn applications_group() -> domain::ConsolePolicyGroup {
     domain::ConsolePolicyGroup::settings_feature(
         access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID,
@@ -177,7 +182,7 @@ async fn ac_005_console_policy_create_allows_without_legacy_permission_and_stamp
     let service = ApplicationService::for_tests_with_console_policies(
         Vec::new(),
         vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
-            operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
             true,
         )])],
     );
@@ -198,11 +203,11 @@ async fn ac_005_console_policy_custom_simple_uses_allow_union_and_full_grants_gr
         Vec::new(),
         vec![
             custom_policy(vec![domain::ConsoleOperationPolicy::simple(
-                operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+                operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
                 false,
             )]),
             custom_policy(vec![domain::ConsoleOperationPolicy::simple(
-                operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+                operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
                 true,
             )]),
         ],
@@ -240,7 +245,7 @@ async fn ac_005_console_policy_own_view_hides_same_workspace_other_owner() {
     let service = ApplicationService::for_tests_with_console_policies(
         Vec::new(),
         vec![custom_policy(vec![domain::ConsoleOperationPolicy::row(
-            operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+            operation_id(LIST_APPLICATIONS_ROUTE_OPERATION_ID),
             domain::ConsoleOperationRowScope::Own,
         )])],
     );
@@ -265,11 +270,11 @@ async fn ac_005_console_policy_multi_role_union_promotes_own_to_scope_all() {
         Vec::new(),
         vec![
             custom_policy(vec![domain::ConsoleOperationPolicy::row(
-                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                operation_id(LIST_APPLICATIONS_ROUTE_OPERATION_ID),
                 domain::ConsoleOperationRowScope::Own,
             )]),
             custom_policy(vec![domain::ConsoleOperationPolicy::row(
-                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                operation_id(LIST_APPLICATIONS_ROUTE_OPERATION_ID),
                 domain::ConsoleOperationRowScope::ScopeAll,
             )]),
         ],
@@ -502,10 +507,16 @@ async fn ac_005_application_catalog_and_tags_use_create_policy_without_legacy_fa
     let actor_user_id = Uuid::nil();
     let allowed = ApplicationService::for_tests_with_console_policies(
         Vec::new(),
-        vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
-            operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
-            true,
-        )])],
+        vec![custom_policy(vec![
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(CREATE_APPLICATION_TAG_ROUTE_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(GET_APPLICATION_CATALOG_ROUTE_OPERATION_ID),
+                true,
+            ),
+        ])],
     );
 
     let tag = allowed
@@ -728,11 +739,11 @@ async fn list_applications_uses_own_scope_when_actor_lacks_all_scope() {
         Vec::new(),
         vec![custom_policy(vec![
             domain::ConsoleOperationPolicy::simple(
-                operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+                operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
                 true,
             ),
             domain::ConsoleOperationPolicy::row(
-                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                operation_id(LIST_APPLICATIONS_ROUTE_OPERATION_ID),
                 domain::ConsoleOperationRowScope::Own,
             ),
         ])],
@@ -801,7 +812,7 @@ async fn update_application_requires_console_update_operation() {
     let service = ApplicationService::for_tests_with_console_policies(
         Vec::new(),
         vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
-            operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
             true,
         )])],
     );
@@ -843,7 +854,11 @@ async fn update_application_replaces_basic_metadata_and_tags() {
         vec!["application.edit.own"],
         vec![custom_policy(vec![
             domain::ConsoleOperationPolicy::simple(
-                operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+                operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(CREATE_APPLICATION_TAG_ROUTE_OPERATION_ID),
                 true,
             ),
             domain::ConsoleOperationPolicy::row(
@@ -902,7 +917,7 @@ async fn delete_application_requires_console_delete_operation() {
     let service = ApplicationService::for_tests_with_console_policies(
         Vec::new(),
         vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
-            operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
             true,
         )])],
     );
@@ -938,11 +953,11 @@ async fn delete_application_removes_visible_record_and_writes_audit_log() {
         Vec::new(),
         vec![custom_policy(vec![
             domain::ConsoleOperationPolicy::simple(
-                operation_id(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+                operation_id(CREATE_APPLICATION_ROUTE_OPERATION_ID),
                 true,
             ),
             domain::ConsoleOperationPolicy::row(
-                operation_id(access_control::APPLICATIONS_VIEW_OPERATION_ID),
+                operation_id(LIST_APPLICATIONS_ROUTE_OPERATION_ID),
                 domain::ConsoleOperationRowScope::Own,
             ),
             domain::ConsoleOperationPolicy::row(

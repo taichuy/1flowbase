@@ -13,7 +13,6 @@ import { getContainerPathForNode } from '../../lib/document/transforms/container
 import { duplicateNodeSubgraph } from '../../lib/document/transforms/duplicate';
 import {
   removeEdge,
-  connectNodes,
   connectNodeFromSource,
   insertNodeOnEdge,
   reconnectEdge,

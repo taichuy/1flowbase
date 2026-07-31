@@ -24,7 +24,7 @@ pub async fn execute_native_sql(
             Either::Right(row) => {
                 let columns = pending_columns
                     .get_or_insert_with(|| row.columns().iter().map(column_contract).collect());
-                pending_rows.push(encode_row(&row, columns)?);
+                pending_rows.push(encode_row(&row, columns).map_err(|error| *error)?);
             }
             Either::Left(completion) => {
                 if let Some(columns) = pending_columns.take() {
@@ -86,7 +86,7 @@ fn classify_postgres_type(native_type: &str) -> (NativeSqlLogicalType, NativeSql
 fn encode_row(
     row: &PgRow,
     columns: &[NativeSqlColumn],
-) -> Result<Vec<Value>, ProviderRuntimeError> {
+) -> Result<Vec<Value>, Box<ProviderRuntimeError>> {
     columns
         .iter()
         .enumerate()
@@ -98,48 +98,56 @@ fn encode_value(
     row: &PgRow,
     index: usize,
     column: &NativeSqlColumn,
-) -> Result<Value, ProviderRuntimeError> {
-    let raw = row.try_get_raw(index).map_err(map_sqlx_error)?;
+) -> Result<Value, Box<ProviderRuntimeError>> {
+    let raw = row.try_get_raw(index).map_err(boxed_sqlx_error)?;
     if raw.is_null() {
         return Ok(Value::Null);
     }
 
     let value = match (column.logical_type, column.encoding) {
         (NativeSqlLogicalType::Boolean, NativeSqlValueEncoding::Json) => {
-            Value::Bool(row.try_get::<bool, _>(index).map_err(map_sqlx_error)?)
+            Value::Bool(row.try_get::<bool, _>(index).map_err(boxed_sqlx_error)?)
         }
         (NativeSqlLogicalType::Integer, NativeSqlValueEncoding::Json) => {
             match column.native_type.as_str() {
-                "INT2" => Value::from(row.try_get::<i16, _>(index).map_err(map_sqlx_error)?),
-                "INT4" => Value::from(row.try_get::<i32, _>(index).map_err(map_sqlx_error)?),
-                "INT8" => Value::from(row.try_get::<i64, _>(index).map_err(map_sqlx_error)?),
-                _ => return Err(unsupported_result_type(column)),
+                "INT2" => Value::from(row.try_get::<i16, _>(index).map_err(boxed_sqlx_error)?),
+                "INT4" => Value::from(row.try_get::<i32, _>(index).map_err(boxed_sqlx_error)?),
+                "INT8" => Value::from(row.try_get::<i64, _>(index).map_err(boxed_sqlx_error)?),
+                _ => return Err(boxed_unsupported_result_type(column)),
             }
         }
         (NativeSqlLogicalType::String, NativeSqlValueEncoding::Json) => {
-            Value::String(row.try_get::<String, _>(index).map_err(map_sqlx_error)?)
+            Value::String(row.try_get::<String, _>(index).map_err(boxed_sqlx_error)?)
         }
         (NativeSqlLogicalType::Json, NativeSqlValueEncoding::Json) => {
-            row.try_get::<Value, _>(index).map_err(map_sqlx_error)?
+            row.try_get::<Value, _>(index).map_err(boxed_sqlx_error)?
         }
         (NativeSqlLogicalType::Binary, NativeSqlValueEncoding::Base64) => {
-            let bytes = row.try_get::<Vec<u8>, _>(index).map_err(map_sqlx_error)?;
+            let bytes = row.try_get::<Vec<u8>, _>(index).map_err(boxed_sqlx_error)?;
             Value::String(BASE64_STANDARD.encode(bytes))
         }
         (_, NativeSqlValueEncoding::Text) => Value::String(
             raw.as_str()
-                .map_err(|_| unsupported_result_type(column))?
+                .map_err(|_| boxed_unsupported_result_type(column))?
                 .to_string(),
         ),
         (_, NativeSqlValueEncoding::Base64) => Value::String(
             BASE64_STANDARD.encode(
                 raw.as_bytes()
-                    .map_err(|_| unsupported_result_type(column))?,
+                    .map_err(|_| boxed_unsupported_result_type(column))?,
             ),
         ),
-        _ => return Err(unsupported_result_type(column)),
+        _ => return Err(boxed_unsupported_result_type(column)),
     };
     Ok(value)
+}
+
+fn boxed_sqlx_error(error: sqlx::Error) -> Box<ProviderRuntimeError> {
+    Box::new(map_sqlx_error(error))
+}
+
+fn boxed_unsupported_result_type(column: &NativeSqlColumn) -> Box<ProviderRuntimeError> {
+    Box::new(unsupported_result_type(column))
 }
 
 fn unsupported_result_type(column: &NativeSqlColumn) -> ProviderRuntimeError {

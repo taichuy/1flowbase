@@ -5,7 +5,7 @@ use crate::{
         support::{
             login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config,
         },
-        ProviderInvocationGate, PROVIDER_MARKER_LIKE_OUTPUT,
+        ProviderInvocationGate,
     },
     app_state::ApiState,
     host_infrastructure::LocalRuntimeEventStream,
@@ -651,7 +651,7 @@ pub(super) async fn test_app_with_runtime_event_stream(
     let (base_state, _) = test_api_state_with_database_url().await;
     let config = test_config();
     let state = Arc::new(ApiState {
-        test_database: base_state.test_database.clone(),
+        test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),

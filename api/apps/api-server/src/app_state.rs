@@ -284,7 +284,7 @@ fn validate_linked_host_console_route_assembly(
 #[derive(Clone)]
 pub struct ApiState {
     #[cfg(test)]
-    pub(crate) test_database: Option<Arc<postgres_test_support::PostgresTestSchema>>,
+    pub(crate) test_resources: Option<Arc<TestResources>>,
     pub store: MainDurableStore,
     pub authenticator_registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
@@ -317,4 +317,39 @@ pub struct ApiState {
     pub session_ttl_days: i64,
     pub bootstrap_workspace_id: uuid::Uuid,
     pub bootstrap_workspace_name: String,
+}
+
+#[cfg(test)]
+pub(crate) struct TestResources {
+    _database: postgres_test_support::PostgresTestSchema,
+    filesystem_roots: Vec<std::path::PathBuf>,
+}
+
+#[cfg(test)]
+impl TestResources {
+    pub(crate) fn new(
+        database: postgres_test_support::PostgresTestSchema,
+        filesystem_roots: Vec<std::path::PathBuf>,
+    ) -> Self {
+        Self {
+            _database: database,
+            filesystem_roots,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestResources {
+    fn drop(&mut self) {
+        for root in &self.filesystem_roots {
+            if let Err(error) = std::fs::remove_dir_all(root) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!(
+                        "failed to clean API test filesystem root {}: {error}",
+                        root.display()
+                    );
+                }
+            }
+        }
+    }
 }

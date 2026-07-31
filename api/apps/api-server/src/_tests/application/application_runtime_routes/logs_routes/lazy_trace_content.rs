@@ -264,7 +264,10 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         list_payload["data"]["items"][0]["principal"]["kind"].as_str(),
         Some("application_api_key")
     );
-    assert!(list_payload["data"]["items"][0]["compatibility_mode"].is_null());
+    assert_eq!(
+        list_payload["data"]["items"][0]["compatibility_mode"].as_str(),
+        Some("native-v1")
+    );
     assert!(!list_payload["data"]["items"][0]
         .as_object()
         .unwrap()
@@ -317,7 +320,10 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         trace_tree_payload["data"]["run"]["principal"]["kind"].as_str(),
         Some("application_api_key")
     );
-    assert!(trace_tree_payload["data"]["run"]["compatibility_mode"].is_null());
+    assert_eq!(
+        trace_tree_payload["data"]["run"]["compatibility_mode"].as_str(),
+        Some("native-v1")
+    );
     assert!(!trace_tree_payload["data"]["run"]
         .as_object()
         .unwrap()

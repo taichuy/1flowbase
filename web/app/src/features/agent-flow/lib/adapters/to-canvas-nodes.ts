@@ -12,7 +12,6 @@ import {
   getLlmVisibleInternalTools,
   getLlmVisibleInternalToolsEnabled
 } from '../llm-node-config';
-import { i18nText } from '../../../../shared/i18n/text';
 import { getNodeFlowRole } from '../node-definitions';
 
 const CANVAS_NODE_WIDTH = 196;

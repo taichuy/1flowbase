@@ -91,12 +91,7 @@ export class FrontstageSignalRuntimeCoordinator {
     }
   }
 
-  outputsFor(
-    blockId: string,
-    epoch: string,
-    /** @deprecated R3-P3 removes the canvas-wide signal revision bridge. */
-    _onPublish?: (revision: number) => void
-  ): BlockContextOutputs {
+  outputsFor(blockId: string, epoch: string): BlockContextOutputs {
     return {
       publish: (values) => this.commit(blockId, epoch, values)
     };

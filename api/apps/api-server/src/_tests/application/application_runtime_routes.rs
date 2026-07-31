@@ -259,6 +259,7 @@ async fn create_provider_instance(
     assert_eq!(install.status(), StatusCode::CREATED);
     let install_payload: Value =
         serde_json::from_slice(&to_bytes(install.into_body(), usize::MAX).await.unwrap()).unwrap();
+    fs::remove_dir_all(&package_root).unwrap();
     let installation_id = install_payload["data"]["installation"]["id"]
         .as_str()
         .unwrap()
@@ -834,119 +835,6 @@ async fn load_trace_node_detail_payload_for_kind(
         )
         .await,
     )
-}
-
-async fn resolve_runtime_debug_artifact_value(
-    app: &axum::Router,
-    cookie: &str,
-    application_id: &str,
-    value: &Value,
-) -> Value {
-    if value["__runtime_debug_artifact"] != true {
-        return value.clone();
-    }
-
-    let artifact_ref = value["artifact_ref"]
-        .as_str()
-        .expect("debug artifact preview should include artifact_ref");
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/orchestration/debug-artifacts/{artifact_ref}"
-                ))
-                .header("cookie", cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    serde_json::from_slice(&body).unwrap()
-}
-
-async fn wait_for_persisted_text_delta_events(
-    app: &axum::Router,
-    cookie: &str,
-    application_id: &str,
-    run_id: &str,
-) -> Vec<Value> {
-    wait_for_run_detail(
-        app,
-        cookie,
-        application_id,
-        run_id,
-        &["succeeded", "failed", "cancelled"],
-    )
-    .await;
-    let mut last_event_types = Vec::new();
-    for _ in 0..200 {
-        let detail = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(format!(
-                        "/api/console/applications/{application_id}/logs/runs/{run_id}/debug-stream"
-                    ))
-                    .header("cookie", cookie)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(detail.status(), StatusCode::OK);
-        let body = to_bytes(detail.into_body(), usize::MAX).await.unwrap();
-        let payload: Value = serde_json::from_slice(&body).unwrap();
-        let parts = payload["data"]["parts"].as_array().unwrap();
-        last_event_types = parts
-            .iter()
-            .filter_map(|part| {
-                part["payload"]["event_type"]
-                    .as_str()
-                    .map(ToString::to_string)
-            })
-            .collect();
-        let has_terminal_stream_event = parts.iter().any(|part| {
-            matches!(
-                part["payload"]["event_type"].as_str(),
-                Some(
-                    "flow_finished"
-                        | "flow_failed"
-                        | "flow_cancelled"
-                        | "finish"
-                        | "flow_run_completed"
-                        | "flow_run_failed"
-                        | "flow_run_cancelled"
-                )
-            )
-        });
-        if has_terminal_stream_event {
-            let text_delta_events = parts
-                .iter()
-                .filter(|part| part["payload"]["event_type"].as_str() == Some("text_delta"))
-                .cloned()
-                .collect::<Vec<_>>();
-            if !text_delta_events.is_empty() {
-                return text_delta_events;
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-
-    panic!(
-        "timed out waiting for persisted runtime stream terminal event, last event types: {last_event_types:?}"
-    );
-}
-
-fn sse_data_payload(frame: &str) -> Value {
-    let data = frame
-        .lines()
-        .find_map(|line| line.strip_prefix("data:"))
-        .expect("sse frame should include data")
-        .trim();
-    serde_json::from_str(data).expect("sse data should be json")
 }
 
 mod artifacts_billing_routes;

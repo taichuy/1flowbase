@@ -1,4 +1,4 @@
-import { fireEvent, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
@@ -19,14 +19,14 @@ describe('NodeInspector protocol context', () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     delete getLlmNodeConfig(state.draft.document).protocol_context;
 
-    const view = renderWithProviders(
+    renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
       </AgentFlowEditorStoreProvider>
     );
 
-    const field = await view.findByTestId(
+    const field = await screen.findByTestId(
       'inspector-field-config.protocol_context'
     );
     expect(
@@ -45,7 +45,7 @@ describe('NodeInspector protocol context', () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     let latestDocument = state.draft.document;
 
-    const view = renderWithProviders(
+    renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver
@@ -57,7 +57,7 @@ describe('NodeInspector protocol context', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    const field = await view.findByTestId(
+    const field = await screen.findByTestId(
       'inspector-field-config.protocol_context'
     );
     const protocolContextSwitch = within(field).getByRole('switch', {
@@ -93,7 +93,7 @@ describe('NodeInspector protocol context', () => {
     fireEvent.mouseDown(protocolContextSelector);
     fireEvent.keyDown(protocolContextSelector, { key: 'ArrowDown' });
     for (const title of ['Protocol Builder', 'result', 'protocol_context']) {
-      const matches = await view.findAllByTitle(title);
+      const matches = await screen.findAllByTitle(title);
       fireEvent.click(matches[matches.length - 1]);
     }
 
@@ -103,6 +103,6 @@ describe('NodeInspector protocol context', () => {
         value: ['node-code', 'result', 'protocol_context']
       });
     });
-    expect(view.queryByTitle('headers')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('headers')).not.toBeInTheDocument();
   });
 });

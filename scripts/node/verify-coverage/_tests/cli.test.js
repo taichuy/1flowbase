@@ -20,25 +20,29 @@ const {
 } = require('../../testing/coverage-thresholds.js');
 
 function expectedBackendCoverageCommand({ repoRoot, entry, cargoParallelism, cargoTestThreads }) {
+  const usesNextest = entry.key === 'api-server';
   return {
     label: `backend-coverage-${entry.key}`,
     command: 'cargo',
     args: [
       'llvm-cov',
+      ...(usesNextest ? ['nextest'] : []),
       '--package',
       entry.packageName,
+      '--no-clean',
       '--json',
       '--summary-only',
       '--output-path',
       `${repoRoot}/tmp/test-governance/coverage/backend/${entry.key}.json`,
-      '--',
-      `--test-threads=${cargoTestThreads}`,
+      ...(usesNextest
+        ? ['--test-threads', String(cargoTestThreads), '--no-fail-fast', '--no-tests=fail']
+        : ['--', `--test-threads=${cargoTestThreads}`]),
     ],
     cwd: 'api',
     env: {
       CARGO_BUILD_JOBS: String(cargoParallelism),
       CARGO_INCREMENTAL: '0',
-      ...(entry.key === 'api-server'
+      ...(usesNextest
         ? { CARGO_PROFILE_TEST_DEBUG: '0' }
         : {}),
     },
@@ -153,12 +157,12 @@ test('buildBackendCommands can restrict backend coverage to one package', () => 
   );
 });
 
-test('buildBackendCleanupCommands emits cargo llvm-cov clean for workspace artifacts', () => {
+test('buildBackendCleanupCommands removes stale profiles without deleting cached instrumentation', () => {
   assert.deepEqual(buildBackendCleanupCommands(), [
     {
       label: 'backend-coverage-clean',
       command: 'cargo',
-      args: ['llvm-cov', 'clean', '--workspace'],
+      args: ['llvm-cov', 'clean', '--profraw-only'],
       cwd: 'api',
     },
   ]);
@@ -218,14 +222,14 @@ test('main cleans llvm-cov artifacts before and after backend coverage runs', as
   assert.deepEqual(
     calls.map((call) => call.args),
     [
-      ['llvm-cov', 'clean', '--workspace'],
+      ['llvm-cov', 'clean', '--profraw-only'],
       ...backendThresholds.map((entry) => expectedBackendCoverageCommand({
         repoRoot,
         entry,
         cargoParallelism: 2,
         cargoTestThreads: 4,
       }).args),
-      ['llvm-cov', 'clean', '--workspace'],
+      ['llvm-cov', 'clean', '--profraw-only'],
     ]
   );
 });
@@ -263,7 +267,10 @@ test('main routes backend coverage through the heavy lock and uses configured ba
   assert.equal(status, 0);
   assert.equal(capturedOptions.lockMode, 'heavy');
   assert.equal(capturedOptions.runtimeConfig.backend.cargoJobs, 3);
-  assert.deepEqual(capturedOptions.commands[0].args, ['llvm-cov', 'clean', '--workspace']);
+  assert.deepEqual(
+    capturedOptions.commands[0].args,
+    ['llvm-cov', 'clean', '--profraw-only']
+  );
   assert.match(capturedOptions.commands[1].args.join(' '), /--package control-plane/u);
   assert.equal(capturedOptions.commands[1].env.CARGO_BUILD_JOBS, '3');
   assert.equal(capturedOptions.commands[1].args.at(-1), '--test-threads=1');

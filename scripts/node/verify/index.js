@@ -169,6 +169,29 @@ function buildBackendCargoCommand({
   }
 
   if (target === 'test') {
+    if (normalizedShard?.nextestPartition) {
+      return {
+        label: `cargo-nextest${labelSuffix}`,
+        command: 'cargo',
+        args: [
+          'nextest',
+          'run',
+          ...packageArgs,
+          '--partition',
+          normalizedShard.nextestPartition,
+          '--test-threads',
+          String(cargoTestThreads),
+          '--no-fail-fast',
+          '--no-tests=fail',
+        ],
+        cwd: 'api',
+        env: {
+          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+          CARGO_PROFILE_TEST_DEBUG: '0',
+        },
+      };
+    }
+
     return {
       label: `cargo-test${labelSuffix}`,
       command: 'cargo',
@@ -309,7 +332,7 @@ function parseBackendCliArgs(argv = []) {
 
 function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision|official-i18n-seed] [core-libs|runtime-storage|apps|control-plane|api-server|plugin-runner]\n'
+    'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision|official-i18n-seed] [core-libs|runtime-storage|apps|control-plane|api-server-N-of-4|plugin-runner]\n'
       + 'Runs backend Rust gates, optionally restricted to a CI shard. Package-level app shards are supported for test.\n'
   );
 }
@@ -569,29 +592,33 @@ function selectBackendCoverageEntries(backendKeys) {
 }
 
 function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThreads, backendKeys }) {
-  return selectBackendCoverageEntries(backendKeys).map((entry) => ({
-    label: `backend-coverage-${entry.key}`,
-    command: 'cargo',
-    args: [
-      'llvm-cov',
-      '--package',
-      entry.packageName,
-      '--json',
-      '--summary-only',
-      '--output-path',
-      path.join(repoRoot, COVERAGE_ROOT, 'backend', `${entry.key}.json`),
-      '--',
-      `--test-threads=${cargoTestThreads}`,
-    ],
-    cwd: 'api',
-    env: {
-      ...buildCargoCommandEnv({ cargoParallelism, disableIncremental: true }),
-      // Coverage instrumentation does not require Rust debug symbols for source mapping.
-      ...(entry.key === 'api-server'
-        ? { CARGO_PROFILE_TEST_DEBUG: '0' }
-        : {}),
-    },
-  }));
+  return selectBackendCoverageEntries(backendKeys).map((entry) => {
+    const usesNextest = entry.key === 'api-server';
+    return {
+      label: `backend-coverage-${entry.key}`,
+      command: 'cargo',
+      args: [
+        'llvm-cov',
+        ...(usesNextest ? ['nextest'] : []),
+        '--package',
+        entry.packageName,
+        '--no-clean',
+        '--json',
+        '--summary-only',
+        '--output-path',
+        path.join(repoRoot, COVERAGE_ROOT, 'backend', `${entry.key}.json`),
+        ...(usesNextest
+          ? ['--test-threads', String(cargoTestThreads), '--no-fail-fast', '--no-tests=fail']
+          : ['--', `--test-threads=${cargoTestThreads}`]),
+      ],
+      cwd: 'api',
+      env: {
+        ...buildCargoCommandEnv({ cargoParallelism, disableIncremental: true }),
+        // Coverage instrumentation does not require Rust debug symbols for source mapping.
+        ...(usesNextest ? { CARGO_PROFILE_TEST_DEBUG: '0' } : {}),
+      },
+    };
+  });
 }
 
 function buildCoverageBackendCleanupCommands() {
@@ -599,7 +626,8 @@ function buildCoverageBackendCleanupCommands() {
     {
       label: 'backend-coverage-clean',
       command: 'cargo',
-      args: ['llvm-cov', 'clean', '--workspace'],
+      // Keep cached instrumented binaries, but never reuse execution profiles.
+      args: ['llvm-cov', 'clean', '--profraw-only'],
       cwd: 'api',
     },
   ];

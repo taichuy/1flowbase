@@ -291,9 +291,15 @@ async fn application_api_key_routes_create_list_hide_token_filter_and_revoke() {
         .iter()
         .all(|key| key["name"].as_str() == Some("Server key")));
 
-    let (member_cookie, _) =
-        create_member_with_permissions(&app, &root_cookie, &root_csrf, &["application.view.all"])
-            .await;
+    // The application API key routes are owned by the compiled console operations.
+    // Legacy application permissions must fail closed at the route boundary.
+    let (legacy_member_cookie, legacy_member_csrf) = create_member_with_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &["application.view.all", "application.edit.all"],
+    )
+    .await;
     let foreign_list = app
         .clone()
         .oneshot(
@@ -301,23 +307,14 @@ async fn application_api_key_routes_create_list_hide_token_filter_and_revoke() {
                 .uri(format!(
                     "/api/console/applications/{application_id}/api-keys"
                 ))
-                .header("cookie", &member_cookie)
+                .header("cookie", &legacy_member_cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(foreign_list.status(), StatusCode::OK);
-    let foreign_payload = response_json(foreign_list).await;
-    assert_eq!(foreign_payload["data"].as_array().unwrap().len(), 0);
+    assert_eq!(foreign_list.status(), StatusCode::FORBIDDEN);
 
-    let (foreign_editor_cookie, foreign_editor_csrf) = create_member_with_permissions(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        &["application.view.all", "application.edit.all"],
-    )
-    .await;
     let foreign_revoke = app
         .clone()
         .oneshot(
@@ -326,14 +323,14 @@ async fn application_api_key_routes_create_list_hide_token_filter_and_revoke() {
                 .uri(format!(
                     "/api/console/applications/{application_id}/api-keys/{key_id}"
                 ))
-                .header("cookie", &foreign_editor_cookie)
-                .header("x-csrf-token", &foreign_editor_csrf)
+                .header("cookie", &legacy_member_cookie)
+                .header("x-csrf-token", &legacy_member_csrf)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(foreign_revoke.status(), StatusCode::NOT_FOUND);
+    assert_eq!(foreign_revoke.status(), StatusCode::FORBIDDEN);
 
     let revoke = app
         .clone()

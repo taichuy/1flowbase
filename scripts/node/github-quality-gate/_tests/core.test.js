@@ -113,9 +113,9 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     cwd: repoRoot,
   });
 
-  assert.deepEqual(buildGateCommand({ repoRoot, scope: 'repo-backend-test-api-server' }), {
+  assert.deepEqual(buildGateCommand({ repoRoot, scope: 'repo-backend-test-api-server-1-of-4' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'verify-backend.js'), 'test', 'api-server'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'verify-backend.js'), 'test', 'api-server-1-of-4'],
     cwd: repoRoot,
   });
 
@@ -918,7 +918,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
   assert.match(createdIssues[0].body, /\| `repo-tooling` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `repo-frontend` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `repo-backend-static` \| passed \| 0 \|/u);
-  assert.match(createdIssues[0].body, /\| `repo-backend-test-api-server` \| passed \| 0 \|/u);
+  assert.match(createdIssues[0].body, /\| `repo-backend-test-api-server-1-of-4` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `coverage-frontend` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `coverage-backend-api-server` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /## Security Risk/u);

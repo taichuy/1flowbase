@@ -32,7 +32,10 @@ on:
           - repo-backend-test-core-libs
           - repo-backend-test-runtime-storage
           - repo-backend-test-control-plane
-          - repo-backend-test-api-server
+          - repo-backend-test-api-server-1-of-4
+          - repo-backend-test-api-server-2-of-4
+          - repo-backend-test-api-server-3-of-4
+          - repo-backend-test-api-server-4-of-4
           - repo-backend-test-plugin-runner
           - repo-backend-check-core-libs
           - repo-backend-check-runtime-storage
@@ -81,7 +84,7 @@ jobs:
   single-scope-gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (inputs.scope == 'repo-backend-test-api-server' || inputs.scope == 'coverage-backend-api-server') && 120 || 60 }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
@@ -100,6 +103,8 @@ jobs:
       - run: pnpm --dir web install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+        if: ${{ startsWith(inputs.scope, 'repo-backend-test-api-server-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' }}
       - name: Resolve release-seeded Rust cache tag
         id: release_seed_tag
         if: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || inputs.scope == 'backend-consistency' || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
@@ -287,7 +292,7 @@ jobs:
   repo-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.scope == 'repo-backend-test-api-server' && 120 || 45 }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -302,7 +307,10 @@ jobs:
           - repo-backend-test-core-libs
           - repo-backend-test-runtime-storage
           - repo-backend-test-control-plane
-          - repo-backend-test-api-server
+          - repo-backend-test-api-server-1-of-4
+          - repo-backend-test-api-server-2-of-4
+          - repo-backend-test-api-server-3-of-4
+          - repo-backend-test-api-server-4-of-4
           - repo-backend-test-plugin-runner
           - repo-backend-check-core-libs
           - repo-backend-check-runtime-storage
@@ -314,6 +322,8 @@ jobs:
       - name: Resolve quality gate target SHA
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+        if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') }}
       - name: Resolve release-seeded Rust cache tag
         id: release_seed_tag
         if: ${{ matrix.scope != 'repo-backend-static' && matrix.scope != 'repo-backend-fmt' }}
@@ -509,7 +519,7 @@ jobs:
   coverage-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.scope == 'coverage-backend-api-server' && 120 || 45 }}
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
@@ -527,6 +537,8 @@ jobs:
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+        if: ${{ matrix.scope == 'coverage-backend-api-server' }}
       - name: Resolve release-seeded Rust cache tag
         id: release_seed_tag
         shell: bash
@@ -751,7 +763,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,coverage-backend-api-server,container-images,ai-gateway-protocol-conformance'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,coverage-backend-api-server,container-images,ai-gateway-protocol-conformance'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

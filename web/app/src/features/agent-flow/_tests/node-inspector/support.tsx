@@ -12,6 +12,7 @@ import {
 import { useEffect, type ReactNode } from 'react';
 import { vi } from 'vitest';
 
+import type { ConsoleApplicationOrchestrationState } from '@1flowbase/api-client';
 import {
   createDefaultAgentFlowDocument,
   type BuiltinFlowNodeType
@@ -82,27 +83,9 @@ export const createAgentFlowNodeSchemaAdapterSpy = vi.spyOn(
   'createAgentFlowNodeSchemaAdapter'
 );
 
-export function createInitialState() {
-  return {
-    flow_id: 'flow-1',
-    messages: [],
-    draft: {
-      id: 'draft-1',
-      flow_id: 'flow-1',
-      updated_at: '2026-04-16T10:00:00Z',
-      document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
-    },
-    autosave_interval_seconds: 30,
-    user_protection_limit: 10,
-    versions: []
-  };
-}
-
-export function createInitialStateWithCodeNode() {
-  const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
-
-  document.graph.nodes.push(createNodeDocument('code', 'node-code', 720, 240));
-
+function createInitialStateForDocument(
+  document: ReturnType<typeof createDefaultAgentFlowDocument>
+): ConsoleApplicationOrchestrationState {
   return {
     flow_id: 'flow-1',
     messages: [],
@@ -116,6 +99,20 @@ export function createInitialStateWithCodeNode() {
     user_protection_limit: 10,
     versions: []
   };
+}
+
+export function createInitialState() {
+  return createInitialStateForDocument(
+    createDefaultAgentFlowDocument({ flowId: 'flow-1' })
+  );
+}
+
+export function createInitialStateWithCodeNode() {
+  const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+
+  document.graph.nodes.push(createNodeDocument('code', 'node-code', 720, 240));
+
+  return createInitialStateForDocument(document);
 }
 
 export function createInitialStateWithProtocolContextCodeNode() {
@@ -231,19 +228,7 @@ export function createInitialStateWithLoopNode() {
 
   document.graph.nodes.push(createNodeDocument('loop', 'node-loop', 720, 240));
 
-  return {
-    flow_id: 'flow-1',
-    messages: [],
-    draft: {
-      id: 'draft-1',
-      flow_id: 'flow-1',
-      updated_at: '2026-04-16T10:00:00Z',
-      document
-    },
-    autosave_interval_seconds: 30,
-    user_protection_limit: 10,
-    versions: []
-  };
+  return createInitialStateForDocument(document);
 }
 
 export function createInitialStateWithIfElseNode() {
@@ -253,19 +238,7 @@ export function createInitialStateWithIfElseNode() {
     createNodeDocument('if_else', 'node-if-else', 720, 240)
   );
 
-  return {
-    flow_id: 'flow-1',
-    messages: [],
-    draft: {
-      id: 'draft-1',
-      flow_id: 'flow-1',
-      updated_at: '2026-04-16T10:00:00Z',
-      document
-    },
-    autosave_interval_seconds: 30,
-    user_protection_limit: 10,
-    versions: []
-  };
+  return createInitialStateForDocument(document);
 }
 
 export function createInitialStateWithDataModelNode(
@@ -286,18 +259,7 @@ export function createInitialStateWithDataModelNode(
     points: []
   });
 
-  return {
-    flow_id: 'flow-1',
-    draft: {
-      id: 'draft-1',
-      flow_id: 'flow-1',
-      updated_at: '2026-04-16T10:00:00Z',
-      document
-    },
-    autosave_interval_seconds: 30,
-    user_protection_limit: 10,
-    versions: []
-  };
+  return createInitialStateForDocument(document);
 }
 
 export function createInitialStateWithHttpRequestNode() {
@@ -316,18 +278,7 @@ export function createInitialStateWithHttpRequestNode() {
     points: []
   });
 
-  return {
-    flow_id: 'flow-1',
-    draft: {
-      id: 'draft-1',
-      flow_id: 'flow-1',
-      updated_at: '2026-04-16T10:00:00Z',
-      document
-    },
-    autosave_interval_seconds: 30,
-    user_protection_limit: 10,
-    versions: []
-  };
+  return createInitialStateForDocument(document);
 }
 
 export function SelectionSeed({ nodeId }: { nodeId: string }) {

@@ -259,7 +259,7 @@ describe('frontstage native trusted block declarative portal host', () => {
         })
       })
     ]);
-    expect(document.head.textContent).not.toContain('.native-same');
+    expect(document.head).not.toHaveTextContent(/\.native-same/);
   });
 
   test('D3R-AC-007 contains a render error to the current portal', async () => {
@@ -346,8 +346,8 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(firstRoot.shadowRoot?.textContent).not.toContain('color: blue');
     expect(secondRoot.shadowRoot?.textContent).toContain('color: blue');
     expect(secondRoot.shadowRoot?.textContent).not.toContain('color: red');
-    expect(document.head.textContent).not.toContain('color: red');
-    expect(document.head.textContent).not.toContain('color: blue');
+    expect(document.head).not.toHaveTextContent(/color: red/);
+    expect(document.head).not.toHaveTextContent(/color: blue/);
 
     view.unmount();
     expect(firstRoot.shadowRoot?.childNodes).toHaveLength(0);

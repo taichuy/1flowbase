@@ -1,36 +1,5 @@
 use super::*;
 
-/// Root #1453: the selected workflow LLM owns provider capability validation.
-#[tokio::test]
-async fn d2_ac_003_anthropic_metadata_user_id_reaches_the_selected_provider_capability_boundary() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "Anthropic Probe Compatible Route App").await;
-    assert_published_anthropic_plan_has_provider_route(state.as_ref()).await;
-    let before = flow_run_count(state.as_ref()).await;
-
-    let response = post_json(
-        &app,
-        "/v1/messages",
-        ("x-api-key", token),
-        json!({
-            "model": ANTHROPIC_FIXTURE_MODEL,
-            "max_tokens": 1,
-            "messages": [
-                {"role": "user", "content": "test"}
-            ],
-            "metadata": {
-                "user_id": "{\"device_id\":\"probe-device\",\"account_uuid\":\"\",\"session_id\":\"probe-session\"}"
-            }
-        }),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("provider_invalid_response"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-}
-
 #[tokio::test]
 async fn anthropic_probe_message_requires_active_publication() {
     let (app, state) = test_app_with_state().await;

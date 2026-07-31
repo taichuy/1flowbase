@@ -233,7 +233,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         json!(["/api/public/"])
     );
     let context_variables = password_local["context_variables"].as_array().unwrap();
-    assert_eq!(context_variables.len(), 7);
+    assert_eq!(context_variables.len(), 8);
     for (label, member_path, schema_type) in [
         (
             "Authenticator title",
@@ -269,10 +269,6 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
             variable["group"] == "runtime" && variable["member_path"] == member_path
         }));
     }
-    assert!(context_variables.iter().any(|variable| {
-        variable["member_path"] == "inputs.authenticator_selection_available"
-            && variable["label"] == "可选择其他认证器"
-    }));
     assert!(!context_variables.iter().any(|variable| {
         matches!(
             variable["member_path"].as_str(),

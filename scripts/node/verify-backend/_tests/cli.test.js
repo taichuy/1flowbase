@@ -180,10 +180,10 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
     ]
   );
 
-  assert.deepEqual(parseBackendCliArgs(['test', 'api-server']), {
+  assert.deepEqual(parseBackendCliArgs(['test', 'api-server-1-of-4']), {
     help: false,
     target: 'test',
-    shard: 'api-server',
+    shard: 'api-server-1-of-4',
   });
 
   assert.deepEqual(
@@ -193,19 +193,22 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
       repoRoot: '/repo-root',
       env: {},
       target: 'test',
-      shard: 'api-server',
+      shard: 'api-server-1-of-4',
     }).map((command) => ({ label: command.label, args: command.args, env: command.env })),
     [
       {
-        label: 'cargo-test-api-server',
+        label: 'cargo-nextest-api-server-1-of-4',
         args: [
-          'test',
+          'nextest',
+          'run',
           '--package',
           'api-server',
-          '--jobs',
-          '4',
-          '--',
-          '--test-threads=2',
+          '--partition',
+          'hash:1/4',
+          '--test-threads',
+          '2',
+          '--no-fail-fast',
+          '--no-tests=fail',
         ],
         env: {
           CARGO_BUILD_JOBS: '4',

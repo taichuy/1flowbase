@@ -474,7 +474,8 @@ async fn model_providers_settings_routes_do_not_take_over_business_consumers() {
                             {
                                 "kind": "other",
                                 "group_id": "other.model-providers",
-                                "mode": "custom",
+                                "enabled": true,
+                                "strategy": "custom",
                                 "operations": [{
                                     "kind": "simple",
                                     "operation_id": "model_providers.options.view",
@@ -484,7 +485,8 @@ async fn model_providers_settings_routes_do_not_take_over_business_consumers() {
                             {
                                 "kind": "other",
                                 "group_id": "other.plugins",
-                                "mode": "custom",
+                                "enabled": true,
+                                "strategy": "custom",
                                 "operations": [{
                                     "kind": "simple",
                                     "operation_id": "plugins.families.view",

@@ -35,6 +35,11 @@ type FixtureBlockProps = {
   label: string;
 };
 
+type FixtureComponent =
+  | ComponentType<{ props: FixtureBlockProps; ctx: BlockContext }>
+  | ComponentType<{ ctx: BlockContext }>
+  | ComponentType<{ props: FixtureBlockProps }>;
+
 let firstThrowPending = false;
 const fixtureCounters = {
   pageCanvasRenders: 0,
@@ -222,7 +227,7 @@ const components = {
   second: SecondBlock,
   publicA: PublicModulesBlock,
   publicB: PublicModulesBlock
-} satisfies Record<string, ComponentType<any>>;
+} satisfies Record<string, FixtureComponent>;
 
 const publicModuleAssets = [
   fixtureModuleStyle('@1flowbase/native-components', 'c', nativeComponentsCss),
@@ -385,10 +390,14 @@ function NativeReactTrialFixture() {
             : 'pending'
         }
       >
-        <button onClick={() => setSourceRevision((value) => value + 1)}>
+        <button
+          type="button"
+          onClick={() => setSourceRevision((value) => value + 1)}
+        >
           source remount
         </button>
         <button
+          type="button"
           onClick={() => {
             firstThrowPending = true;
             setSourceRevision((value) => value + 1);
@@ -397,27 +406,32 @@ function NativeReactTrialFixture() {
           render failure
         </button>
         <button
+          type="button"
           onClick={() => {
             firstThrowPending = false;
           }}
         >
           allow render recovery
         </button>
-        <button onClick={() => setPreparationFailure(true)}>
+        <button type="button" onClick={() => setPreparationFailure(true)}>
           compile failure
         </button>
-        <button onClick={() => setHidden((value) => !value)}>
+        <button type="button" onClick={() => setHidden((value) => !value)}>
           hidden page
         </button>
-        <button onClick={() => setPageMounted((value) => !value)}>
+        <button type="button" onClick={() => setPageMounted((value) => !value)}>
           {pageMounted ? 'exit page' : 'enter page'}
         </button>
-        <button onClick={() => resetFrontstageRuntimeObservations()}>
+        <button
+          type="button"
+          onClick={() => resetFrontstageRuntimeObservations()}
+        >
           reset observations
         </button>
         {[0, 1, 2, 3].map((priority) => (
           <button
             key={priority}
+            type="button"
             onClick={() =>
               setDemands((current) => ({
                 ...current,
@@ -481,7 +495,7 @@ function fixtureBlock(
 function preparation(
   blockId: 'first' | 'second' | 'public-a' | 'public-b',
   slotIndex: number,
-  component: ComponentType<any>,
+  component: FixtureComponent,
   priority: 0 | 1 | 2 | 3,
   sourceRevision: number,
   failed: boolean,

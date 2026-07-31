@@ -219,12 +219,6 @@ export function AgentFlowCanvasFrame({
     () => listConversationVariables(workingDocument),
     [workingDocument]
   );
-  const selectedNode = useMemo(
-    () =>
-      workingDocument.graph.nodes.find((node) => node.id === selectedNodeId) ??
-      null,
-    [selectedNodeId, workingDocument.graph.nodes]
-  );
   const [selectedVariable, setSelectedVariable] =
     useState<SelectedVariableInfo | null>(null);
   const [variableCacheHeight, setVariableCacheHeight] = useState(
@@ -508,16 +502,6 @@ export function AgentFlowCanvasFrame({
 
     stopNodeDetailResizeRef.current?.();
   }, [selectedNodeId]);
-
-  useEffect(() => {
-    if (debugConsoleOpen) {
-      return;
-    }
-
-    stopDebugConsoleResizeRef.current?.();
-    stopConversationLogResizeRef.current?.();
-    setConversationLogMessageId(null);
-  }, [debugConsoleOpen]);
 
   useEffect(() => {
     if (conversationLogMessage) {
@@ -824,9 +808,15 @@ export function AgentFlowCanvasFrame({
     setPanelState({ historyOpen: false });
   }
 
-  function openEnvironmentVariables() {
+  function closeDebugConsole() {
+    stopDebugConsoleResizeRef.current?.();
+    stopConversationLogResizeRef.current?.();
     setConversationLogMessageId(null);
     setDebugConsoleOpen(false);
+  }
+
+  function openEnvironmentVariables() {
+    closeDebugConsole();
     setPanelState({ historyOpen: false });
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
@@ -834,8 +824,7 @@ export function AgentFlowCanvasFrame({
   }
 
   function openConversationVariables() {
-    setConversationLogMessageId(null);
-    setDebugConsoleOpen(false);
+    closeDebugConsole();
     setPanelState({ historyOpen: false });
     setSystemVariablesOpen(false);
     setEnvironmentVariablesOpen(false);
@@ -843,8 +832,7 @@ export function AgentFlowCanvasFrame({
   }
 
   function openSystemVariables() {
-    setConversationLogMessageId(null);
-    setDebugConsoleOpen(false);
+    closeDebugConsole();
     setPanelState({ historyOpen: false });
     setEnvironmentVariablesOpen(false);
     setConversationVariablesOpen(false);
@@ -855,8 +843,7 @@ export function AgentFlowCanvasFrame({
     setEnvironmentVariablesOpen(false);
     setSystemVariablesOpen(false);
     setConversationVariablesOpen(false);
-    setConversationLogMessageId(null);
-    setDebugConsoleOpen(false);
+    closeDebugConsole();
     setPanelState({ historyOpen: true });
   }
 
@@ -1093,10 +1080,7 @@ export function AgentFlowCanvasFrame({
                 setConversationLogMessageId(null);
                 debugSession.clearSession();
               }}
-              onClose={() => {
-                setConversationLogMessageId(null);
-                setDebugConsoleOpen(false);
-              }}
+              onClose={closeDebugConsole}
               onLoadArtifact={(artifactRef) =>
                 fetchRuntimeDebugArtifact(applicationId, artifactRef)
               }

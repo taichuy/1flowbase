@@ -1355,11 +1355,11 @@
     "boundaryNodes": [
       {
         "id": "sign-in-container",
-        "selector": ".ant-btn-primary",
+        "selector": ".auth-sign-in-page",
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "inline-flex"
+            "expected": "flex"
           }
         ]
       }

@@ -110,7 +110,7 @@ mod tests {
         ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
         ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteBinding, ResourceAccessAction,
         ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
-        SettingsFeatureOwnerKind,
+        SettingsFeatureOwnerKind, SettingsFeatureRegistry,
     };
     use axum::{
         body::Body,
@@ -126,7 +126,7 @@ mod tests {
     use super::{authorize_compiled_console_access, compiled_console_route_access};
 
     fn test_registry() -> ConsoleOperationRegistry {
-        let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
+        let settings = SettingsFeatureRegistry::compile([]).unwrap();
         let owner = ConsoleOperationOwner {
             kind: SettingsFeatureOwnerKind::Core,
             owner_id: "middleware-tests".to_string(),
@@ -295,10 +295,9 @@ mod tests {
     #[tokio::test]
     async fn unregistered_mounted_console_route_returns_403_for_root_session() {
         let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-        let empty_registry = Arc::new(
-            ConsoleOperationRegistry::compile(&base_state.settings_feature_registry, [], [])
-                .unwrap(),
-        );
+        let empty_settings = SettingsFeatureRegistry::compile([]).unwrap();
+        let empty_registry =
+            Arc::new(ConsoleOperationRegistry::compile(&empty_settings, [], []).unwrap());
         let state = Arc::new(crate::app_state::ApiState {
             console_operation_registry: empty_registry,
             ..(*base_state).clone()

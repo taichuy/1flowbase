@@ -205,6 +205,9 @@ const buttonComponent = {
 describe('FrontstageJsxStudioDrawer', () => {
   afterEach(async () => {
     cleanup();
+    // React's scheduler may enqueue a follow-up Immediate while processing the
+    // first one. Drain both turns before Vitest removes the jsdom window.
+    await setImmediate();
     await setImmediate();
   });
 
