@@ -60,6 +60,11 @@ const ROLE_DATA_POLICIES_MIGRATION_SQL: &str =
 const MAIN_MODEL_DISTRIBUTION_RULES_MIGRATION_SQL: &str = include_str!(
     "../../../migrations/20260708100000_add_model_provider_main_model_distribution_rules.sql"
 );
+const MAIN_MODEL_ROUTING_POLICY_ORDER_MIGRATION_SQL: &str =
+    include_str!("../../../migrations/20260731170000_add_model_provider_routing_policy_order.sql");
+const MAIN_MODEL_ROUTING_POLICY_EXCLUSIONS_MIGRATION_SQL: &str = include_str!(
+    "../../../migrations/20260731180000_add_model_provider_routing_policy_exclusions.sql"
+);
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
