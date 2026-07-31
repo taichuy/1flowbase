@@ -106,8 +106,26 @@ function getFieldLabelAction(
   );
 }
 
-function shouldRenderSectionTitle(title: string) {
-  return title !== 'Inputs';
+function fieldOwnsCollectionHeader(block: SchemaBlock) {
+  if (!isSectionBlock(block) || block.blocks.length !== 1) {
+    return false;
+  }
+
+  const [field] = block.blocks;
+
+  return (
+    field !== undefined &&
+    isFieldBlock(field) &&
+    (field.renderer === 'start_input_fields' ||
+      field.renderer === 'start_model_list' ||
+      field.renderer === 'output_contract_definition')
+  );
+}
+
+function shouldRenderSectionTitle(
+  block: Extract<SchemaBlock, { kind: 'section' }>
+) {
+  return block.title !== 'Inputs' && !fieldOwnsCollectionHeader(block);
 }
 
 function resolveFocusableFieldKey(fieldKey: string) {
@@ -210,7 +228,7 @@ export function NodeInspector({
             className="agent-flow-node-detail__section agent-flow-node-detail__inspector-section"
             data-section-key={block.title}
           >
-            {shouldRenderSectionTitle(block.title) ? (
+            {shouldRenderSectionTitle(block) ? (
               <div className="agent-flow-node-detail__section-header">
                 <Typography.Title
                   level={5}
@@ -265,29 +283,33 @@ export function NodeInspector({
                       data-testid={`inspector-field-${childBlock.path}`}
                     >
                       {!hasEmbeddedLabel(childBlock.renderer) && (
-                        <Typography.Text
-                          strong
-                          className="agent-flow-editor__inspector-field-label"
+                        <div
+                          className="agent-flow-editor__inspector-field-label-header"
                         >
-                          {childBlock.label}
-                          {labelTag ? (
-                            <Tag
-                              bordered={false}
-                              className="agent-flow-editor__inspector-field-label-tag"
-                            >
-                              {labelTag}
-                            </Tag>
-                          ) : null}
-                          {labelHelp ? (
-                            <Tooltip title={labelHelp}>
-                              <QuestionCircleOutlined
-                                aria-label={labelHelp}
-                                className="agent-flow-editor__inspector-field-help"
-                              />
-                            </Tooltip>
-                          ) : null}
+                          <Typography.Text
+                            strong
+                            className="agent-flow-editor__inspector-field-label"
+                          >
+                            {childBlock.label}
+                            {labelTag ? (
+                              <Tag
+                                bordered={false}
+                                className="agent-flow-editor__inspector-field-label-tag"
+                              >
+                                {labelTag}
+                              </Tag>
+                            ) : null}
+                            {labelHelp ? (
+                              <Tooltip title={labelHelp}>
+                                <QuestionCircleOutlined
+                                  aria-label={labelHelp}
+                                  className="agent-flow-editor__inspector-field-help"
+                                />
+                              </Tooltip>
+                            ) : null}
+                          </Typography.Text>
                           {labelAction}
-                        </Typography.Text>
+                        </div>
                       )}
                       <div className="agent-flow-editor__inspector-field-control">
                         <SchemaRenderer

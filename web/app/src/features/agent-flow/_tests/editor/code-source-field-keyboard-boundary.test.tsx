@@ -19,7 +19,11 @@ test('AC-001/AC-002 scopes Space to Monaco without disabling the canvas shortcut
   render(
     <ReactFlowProvider>
       <ReactFlow edges={[]} nodes={[]}>
-        <CodeSourceField label="SQL statement" value="select" onChange={vi.fn()} />
+        <CodeSourceField
+          label="SQL statement"
+          value="select"
+          onChange={vi.fn()}
+        />
       </ReactFlow>
     </ReactFlowProvider>
   );
@@ -43,14 +47,12 @@ test('AC-001/AC-002 scopes Space to Monaco without disabling the canvas shortcut
     key: ' '
   });
 
-  act(() =>
-    screen.getByRole('application').dispatchEvent(canvasSpaceEvent)
-  );
+  act(() => screen.getByRole('application').dispatchEvent(canvasSpaceEvent));
 
   expect(canvasSpaceEvent.defaultPrevented).toBe(true);
 });
 
-test('AC-001 inserts canonical SQL variable tokens through Monaco suggestions', async () => {
+test('AC-001/AC-002 filters SQL variable queries and replaces the full trigger fragment', async () => {
   render(
     <CodeSourceField
       label="SQL statement"
@@ -65,6 +67,51 @@ test('AC-001 inserts canonical SQL variable tokens through Monaco suggestions', 
           valueType: 'number',
           value: ['node-start', 'user_id'],
           displayLabel: 'Start / User ID'
+        },
+        {
+          nodeId: 'node-start',
+          nodeLabel: 'Start',
+          outputKey: 'model',
+          outputLabel: 'model',
+          valueType: 'string',
+          value: ['node-start', 'model'],
+          displayLabel: 'Start/model'
+        },
+        {
+          nodeId: 'node-start',
+          nodeLabel: 'Start',
+          outputKey: 'system',
+          outputLabel: 'system',
+          valueType: 'string',
+          value: ['node-start', 'system'],
+          displayLabel: 'Start/system'
+        },
+        {
+          nodeId: 'sys',
+          nodeLabel: 'System variables',
+          outputKey: 'user_id',
+          outputLabel: 'sys.user_id',
+          valueType: 'string',
+          value: ['sys', 'user_id'],
+          displayLabel: 'sys.user_id'
+        },
+        {
+          nodeId: 'sys',
+          nodeLabel: 'System variables',
+          outputKey: 'model_parameters',
+          outputLabel: 'sys.model_parameters',
+          valueType: 'json',
+          value: ['sys', 'model_parameters'],
+          displayLabel: 'sys.model_parameters'
+        },
+        {
+          nodeId: 'node-start',
+          nodeLabel: 'Start',
+          outputKey: 'reasoning_effort',
+          outputLabel: 'reasoning_effort',
+          valueType: 'string',
+          value: ['node-start', 'reasoning_effort'],
+          displayLabel: 'Start/reasoning_effort'
         }
       ]}
       onChange={vi.fn()}
@@ -75,8 +122,9 @@ test('AC-001 inserts canonical SQL variable tokens through Monaco suggestions', 
 
   const registerCompletionItemProvider = vi.fn(() => ({ dispose: vi.fn() }));
   const trigger = vi.fn();
+  let modelLine = 'select {';
   const model = {
-    getLineContent: () => 'select {'
+    getLineContent: () => modelLine
   };
   const editor = {
     getModel: () => model,
@@ -102,7 +150,16 @@ test('AC-001 inserts canonical SQL variable tokens through Monaco suggestions', 
       model: unknown,
       position: { lineNumber: number; column: number }
     ) => {
-      suggestions: Array<{ insertText: string }>;
+      suggestions: Array<{
+        insertText: string;
+        label: string;
+        range: {
+          startLineNumber: number;
+          endLineNumber: number;
+          startColumn: number;
+          endColumn: number;
+        };
+      }>;
     };
   };
   expect(provider.triggerCharacters).toContain('{');
@@ -110,6 +167,23 @@ test('AC-001 inserts canonical SQL variable tokens through Monaco suggestions', 
     provider.provideCompletionItems(model, { lineNumber: 1, column: 9 })
       .suggestions[0]?.insertText
   ).toBe('{{node-start.user_id}}');
+
+  modelLine = 'select {sy}';
+  const partialSuggestions = provider.provideCompletionItems(model, {
+    lineNumber: 1,
+    column: 11
+  }).suggestions;
+  expect(partialSuggestions.map((suggestion) => suggestion.label)).toEqual([
+    'sys.user_id',
+    'sys.model_parameters',
+    'Start/system'
+  ]);
+  expect(partialSuggestions[0]?.range).toEqual({
+    startLineNumber: 1,
+    endLineNumber: 1,
+    startColumn: 8,
+    endColumn: 12
+  });
 
   act(() => screen.getByRole('button').click());
   expect(trigger).toHaveBeenCalledWith(

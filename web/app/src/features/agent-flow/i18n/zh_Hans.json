@@ -57,6 +57,7 @@
     "context_window": "上下文窗口",
     "model_context_window_input": "模型上下文窗口",
     "model_context_window_unit": "模型上下文窗口单位",
+    "context_window_exceeds_max": "上下文窗口不能超过最大上下文窗口",
     "max_context_window": "最大上下文窗口",
     "model_max_context_window_input": "最大上下文窗口输入",
     "model_max_context_window_unit": "最大上下文窗口单位",

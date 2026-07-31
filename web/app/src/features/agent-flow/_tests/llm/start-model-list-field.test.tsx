@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { StartModelListField } from '../../components/detail/fields/StartModelListField';
@@ -9,6 +9,7 @@ describe('StartModelListField', () => {
 
     const { container } = render(
       <StartModelListField
+        title="模型列表"
         value={[
           {
             id: ' qwen3.6-35b-a3b ',
@@ -48,14 +49,25 @@ describe('StartModelListField', () => {
   test('adds the default flowbase model with real defaults after confirmation', () => {
     const onChange = vi.fn();
 
-    render(<StartModelListField value={[]} onChange={onChange} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+    );
+
+    const header = screen.getByTestId('agent-flow-collection-field-header');
+
+    expect(
+      within(header).getByRole('heading', { name: '模型列表' })
+    ).toBeInTheDocument();
+    expect(
+      within(header).getByRole('button', { name: '新增模型' })
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('新增模型'));
     expect(screen.getByLabelText('模型 ID 输入')).toHaveValue('flowbase');
     expect(screen.getByLabelText('模型显示名输入')).toHaveValue('flowbase');
-    expect(screen.getByLabelText('模型上下文窗口')).toHaveValue('257');
+    expect(screen.getByLabelText('模型上下文窗口')).toHaveValue('128');
     expect(screen.getByLabelText('最大上下文窗口输入')).toHaveValue('128');
-    expect(screen.getByLabelText('最大输出 Token 输入')).toHaveValue('32');
+    expect(screen.getByLabelText('最大输出 Token 输入')).toHaveValue('8');
     expect(screen.getByLabelText('自动压缩阈值百分比输入')).toHaveValue('85');
     expect(
       screen.queryByLabelText('External reasoning override switch')
@@ -71,10 +83,10 @@ describe('StartModelListField', () => {
       {
         id: 'flowbase',
         name: 'flowbase',
-        context_window: 257000,
+        context_window: 128000,
         max_context_window: 128000,
-        max_output_tokens: 32000,
-        auto_compact_token_limit: 218450,
+        max_output_tokens: 8000,
+        auto_compact_token_limit: 108800,
         capabilities: {
           reasoning: true,
           tool_call: true,
@@ -89,8 +101,54 @@ describe('StartModelListField', () => {
     ]);
   });
 
-  test('keeps the display name linked until it is customized', () => {
+  test('links derived token defaults, preserves custom values, and rejects an oversized context', () => {
     render(<StartModelListField value={[]} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByLabelText('新增模型'));
+
+    const contextInput = screen.getByLabelText('模型上下文窗口');
+    const maxContextInput = screen.getByLabelText('最大上下文窗口输入');
+    const outputInput = screen.getByLabelText('最大输出 Token 输入');
+    const compactInput = screen.getByLabelText('自动压缩阈值百分比输入');
+    const saveButton = screen.getByLabelText('保存模型');
+
+    expect(
+      maxContextInput.compareDocumentPosition(contextInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    fireEvent.change(maxContextInput, { target: { value: '353' } });
+    expect(contextInput).toHaveValue('353');
+    expect(outputInput).toHaveValue('32');
+    expect(compactInput).toHaveValue('85');
+
+    fireEvent.change(contextInput, { target: { value: '300' } });
+    fireEvent.change(outputInput, { target: { value: '64' } });
+    fireEvent.change(compactInput, { target: { value: '80' } });
+    fireEvent.change(maxContextInput, { target: { value: '400' } });
+    expect(contextInput).toHaveValue('300');
+    expect(outputInput).toHaveValue('64');
+    expect(compactInput).toHaveValue('80');
+
+    fireEvent.change(outputInput, { target: { value: '32' } });
+    fireEvent.change(compactInput, { target: { value: '85' } });
+    fireEvent.change(contextInput, { target: { value: '353' } });
+    fireEvent.change(maxContextInput, { target: { value: '500' } });
+    expect(contextInput).toHaveValue('353');
+    expect(outputInput).toHaveValue('32');
+    expect(compactInput).toHaveValue('85');
+
+    fireEvent.change(maxContextInput, { target: { value: '300' } });
+    expect(saveButton).toBeDisabled();
+    expect(
+      screen.getByText('上下文窗口不能超过最大上下文窗口')
+    ).toBeInTheDocument();
+  });
+
+  test('keeps the display name linked until it is customized', () => {
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={vi.fn()} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
 
@@ -122,7 +180,9 @@ describe('StartModelListField', () => {
   test('saves optional model settings when configured in the form', () => {
     const onChange = vi.fn();
 
-    render(<StartModelListField value={[]} onChange={onChange} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
     fireEvent.change(screen.getByLabelText('模型 ID 输入'), {
@@ -188,7 +248,9 @@ describe('StartModelListField', () => {
   test('keeps focus when editing a newly added reasoning effort', () => {
     const onChange = vi.fn();
 
-    render(<StartModelListField value={[]} onChange={onChange} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
     fireEvent.click(screen.getByLabelText('新增支持的推理强度'));
@@ -206,7 +268,9 @@ describe('StartModelListField', () => {
   });
 
   test('does not wrap floating model form controls in native label rows', () => {
-    render(<StartModelListField value={[]} onChange={vi.fn()} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={vi.fn()} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
 

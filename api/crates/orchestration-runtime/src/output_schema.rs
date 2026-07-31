@@ -1,10 +1,27 @@
 use anyhow::{anyhow, Result};
+use plugin_framework::provider_contract::{
+    protocol_context_envelope_json_schema, validate_protocol_context_envelope,
+    ProtocolContextEnvelope, PROTOCOL_CONTEXT_VALUE_TYPE,
+};
 use serde_json::Value;
 
 use crate::compiled_plan::CompiledOutput;
 
 pub fn validate_output_value(output: &CompiledOutput, value: &Value) -> Result<()> {
     validate_output_value_type(output, value)?;
+
+    if output.value_type == PROTOCOL_CONTEXT_VALUE_TYPE {
+        validate_protocol_context_value(value).map_err(|error| {
+            if let Some(violation) = error.downcast_ref::<ProtocolContextContractViolation>() {
+                return anyhow::Error::new(ProtocolContextContractViolation {
+                    selector: output_display_path(output),
+                    instance_path: violation.instance_path.clone(),
+                    reason: violation.reason.clone(),
+                });
+            }
+            error
+        })?;
+    }
 
     if let Some(schema) = &output.json_schema {
         let validator = jsonschema::validator_for(schema).map_err(|error| {
@@ -22,6 +39,54 @@ pub fn validate_output_value(output: &CompiledOutput, value: &Value) -> Result<(
     }
 
     Ok(())
+}
+
+#[derive(Debug)]
+pub struct ProtocolContextContractViolation {
+    pub selector: String,
+    pub instance_path: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for ProtocolContextContractViolation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}{}: {}",
+            self.selector, self.instance_path, self.reason
+        )
+    }
+}
+
+impl std::error::Error for ProtocolContextContractViolation {}
+
+pub fn validate_protocol_context_value(value: &Value) -> Result<ProtocolContextEnvelope> {
+    let schema = protocol_context_envelope_json_schema();
+    let validator = jsonschema::validator_for(&schema)
+        .map_err(|error| anyhow!("canonical ProtocolContextEnvelope schema is invalid: {error}"))?;
+    validator.validate(value).map_err(|error| {
+        anyhow::Error::new(ProtocolContextContractViolation {
+            selector: String::new(),
+            instance_path: error.instance_path().to_string(),
+            reason: error.to_string(),
+        })
+    })?;
+    let envelope: ProtocolContextEnvelope =
+        serde_json::from_value(value.clone()).map_err(|error| {
+            anyhow::Error::new(ProtocolContextContractViolation {
+                selector: String::new(),
+                instance_path: String::new(),
+                reason: error.to_string(),
+            })
+        })?;
+    validate_protocol_context_envelope(&envelope).map_err(|reason| {
+        anyhow::Error::new(ProtocolContextContractViolation {
+            selector: String::new(),
+            instance_path: String::new(),
+            reason,
+        })
+    })?;
+    Ok(envelope)
 }
 
 pub fn output_schema_is_llm_context_messages(output: &CompiledOutput) -> bool {
@@ -115,6 +180,7 @@ fn validate_output_value_type(output: &CompiledOutput, value: &Value) -> Result<
         "object" => value.is_object(),
         "array" | "array[object]" => value.is_array(),
         "json" | "unknown" => true,
+        PROTOCOL_CONTEXT_VALUE_TYPE => value.is_object(),
         _ => true,
     };
 

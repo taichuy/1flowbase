@@ -1,13 +1,6 @@
-import type { editor } from 'monaco-editor';
+import type { editor, IRange } from 'monaco-editor';
 import { Button, Tooltip } from 'antd';
-import {
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef
-} from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';
 import type { FlowSelectorOption } from '../../../lib/selector-options';
 import { createTemplateSelectorToken } from '../../../lib/template-binding';
@@ -32,6 +25,95 @@ const CODE_EDITOR_OPTIONS = {
     horizontalScrollbarSize: 8
   }
 } satisfies editor.IStandaloneEditorConstructionOptions;
+
+interface SqlVariableCompletionContext {
+  query: string;
+  range: IRange;
+}
+
+function getSqlVariableCompletionContext(
+  line: string,
+  position: { lineNumber: number; column: number }
+): SqlVariableCompletionContext | null {
+  const cursorOffset = position.column - 1;
+  const linePrefix = line.slice(0, cursorOffset);
+  const latestBraceOffset = linePrefix.lastIndexOf('{');
+
+  if (latestBraceOffset < 0) {
+    return null;
+  }
+
+  const triggerOffset =
+    latestBraceOffset > 0 && linePrefix[latestBraceOffset - 1] === '{'
+      ? latestBraceOffset - 1
+      : latestBraceOffset;
+  const query = linePrefix.slice(latestBraceOffset + 1);
+
+  if (/[\s{}]/.test(query)) {
+    return null;
+  }
+
+  let closingBraceCount = 0;
+
+  while (
+    closingBraceCount < 2 &&
+    line[cursorOffset + closingBraceCount] === '}'
+  ) {
+    closingBraceCount += 1;
+  }
+
+  return {
+    query,
+    range: {
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: triggerOffset + 1,
+      endColumn: position.column + closingBraceCount
+    }
+  };
+}
+
+function getSqlVariableMatchRank(
+  option: FlowSelectorOption,
+  normalizedQuery: string
+) {
+  if (!normalizedQuery) {
+    return 0;
+  }
+
+  const primaryCandidates = [option.value.join('.'), option.displayLabel].map(
+    (candidate) => candidate.toLowerCase()
+  );
+  const secondaryCandidates = [
+    option.nodeLabel,
+    option.outputLabel,
+    option.outputKey
+  ].map((candidate) => candidate.toLowerCase());
+
+  if (
+    primaryCandidates.some((candidate) => candidate.startsWith(normalizedQuery))
+  ) {
+    return 0;
+  }
+
+  if (
+    secondaryCandidates.some((candidate) =>
+      candidate.startsWith(normalizedQuery)
+    )
+  ) {
+    return 1;
+  }
+
+  if (
+    [...primaryCandidates, ...secondaryCandidates].some((candidate) =>
+      candidate.includes(normalizedQuery)
+    )
+  ) {
+    return 2;
+  }
+
+  return null;
+}
 
 function CodeSourceEditorFallback({
   language
@@ -103,31 +185,43 @@ export function CodeSourceField({
               return { suggestions: [] };
             }
 
-            const linePrefix = model
-              .getLineContent(position.lineNumber)
-              .slice(0, position.column - 1);
-            const replaceTypedBrace = linePrefix.endsWith('{');
-            const range = {
+            const completionContext = getSqlVariableCompletionContext(
+              model.getLineContent(position.lineNumber),
+              position
+            );
+            const range = completionContext?.range ?? {
               startLineNumber: position.lineNumber,
               endLineNumber: position.lineNumber,
-              startColumn: Math.max(
-                1,
-                position.column - (replaceTypedBrace ? 1 : 0)
-              ),
+              startColumn: position.column,
               endColumn: position.column
             };
+            const normalizedQuery =
+              completionContext?.query.trim().toLowerCase() ?? '';
+            const matchedOptions = variableOptionsRef.current
+              .flatMap((option, index) => {
+                const rank = getSqlVariableMatchRank(option, normalizedQuery);
+
+                return rank === null ? [] : [{ index, option, rank }];
+              })
+              .sort(
+                (left, right) =>
+                  left.rank - right.rank || left.index - right.index
+              );
 
             return {
-              suggestions: variableOptionsRef.current.map((option, index) => {
+              incomplete: completionContext !== null,
+              suggestions: matchedOptions.map(({ option, index, rank }) => {
                 const token = createTemplateSelectorToken(option.value);
 
                 return {
                   label: option.displayLabel,
-                  detail: token,
                   kind: monaco.languages.CompletionItemKind.Variable,
                   insertText: token,
+                  filterText: completionContext
+                    ? `{${completionContext.query}`
+                    : option.displayLabel,
                   range,
-                  sortText: String(index).padStart(6, '0')
+                  sortText: `${rank}${String(index).padStart(6, '0')}`
                 };
               })
             };

@@ -7,16 +7,18 @@ import type {
   FlowStartModelDescriptor,
   FlowStartModelReasoning
 } from '@1flowbase/flow-schema';
-import { formatLlmTokenCount } from '../../../lib/model-options';
+import { CollectionFieldHeader } from '../collection/CollectionFieldHeader';
+import {
+  defaultLlmMaxOutputTokens,
+  formatLlmTokenCount
+} from '../../../lib/model-options';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { StartModelSettingsPanel } from './StartModelSettingsPanel';
 
 const DEFAULT_REASONING_EFFORT = 'medium';
 const DEFAULT_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'];
 const DEFAULT_START_MODEL_ID = 'flowbase';
-const DEFAULT_START_MODEL_CONTEXT_WINDOW = 257_000;
 const DEFAULT_START_MODEL_MAX_CONTEXT_WINDOW = 128_000;
-const DEFAULT_START_MODEL_MAX_OUTPUT_TOKENS = 32_000;
 const DEFAULT_START_MODEL_AUTO_COMPACT_PERCENT = 85;
 
 type EditingModel = {
@@ -190,11 +192,13 @@ function createNextModel(): FlowStartModelDescriptor {
   return {
     id: DEFAULT_START_MODEL_ID,
     name: DEFAULT_START_MODEL_ID,
-    context_window: DEFAULT_START_MODEL_CONTEXT_WINDOW,
+    context_window: DEFAULT_START_MODEL_MAX_CONTEXT_WINDOW,
     max_context_window: DEFAULT_START_MODEL_MAX_CONTEXT_WINDOW,
-    max_output_tokens: DEFAULT_START_MODEL_MAX_OUTPUT_TOKENS,
+    max_output_tokens: defaultLlmMaxOutputTokens(
+      DEFAULT_START_MODEL_MAX_CONTEXT_WINDOW
+    ),
     auto_compact_token_limit: Math.round(
-      (DEFAULT_START_MODEL_CONTEXT_WINDOW *
+      (DEFAULT_START_MODEL_MAX_CONTEXT_WINDOW *
         DEFAULT_START_MODEL_AUTO_COMPACT_PERCENT) /
         100
     ),
@@ -223,9 +227,11 @@ function replaceAt(
 }
 
 export function StartModelListField({
+  title,
   value,
   onChange
 }: {
+  title: string;
   value: unknown;
   onChange: (value: FlowStartModelDescriptor[]) => void;
 }) {
@@ -298,16 +304,19 @@ export function StartModelListField({
 
   return (
     <div className="agent-flow-start-model-list">
-      <div className="agent-flow-start-input-fields__header">
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.add_new_model')}
-          icon={<PlusOutlined />}
-          size="small"
-          type="text"
-          onClick={openAddPanel}
-          ref={triggerRef}
-        />
-      </div>
+      <CollectionFieldHeader
+        title={title}
+        actions={
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.add_new_model')}
+            icon={<PlusOutlined />}
+            size="small"
+            type="text"
+            onClick={openAddPanel}
+            ref={triggerRef}
+          />
+        }
+      />
       {rows.length > 0 ? (
         <div className="agent-flow-start-input-fields__list">
           {rows.map((row, index) => (

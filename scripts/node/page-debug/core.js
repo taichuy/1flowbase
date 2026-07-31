@@ -2,7 +2,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 
-const { loadRootCredentials, loginAndPersistStorageState } = require('./auth.js');
+const {
+  loadRootCredentials,
+  openTemporaryConsoleSession,
+} = require('./auth.js');
 const { createConsoleCollector, writeEvidence } = require('./evidence.js');
 const { waitForPageReady } = require('./readiness.js');
 const {
@@ -213,6 +216,7 @@ async function runPageDebug(options, deps = {}) {
   const playwright = deps.playwright || loadPlaywright(repoRoot);
   const resolveCredentials = deps.loadRootCredentials || loadRootCredentials;
   const emitStdout = deps.writeStdoutJson || writeStdoutJson;
+  const createTemporarySession = deps.openTemporaryConsoleSession || openTemporaryConsoleSession;
   const credentials = resolveCredentials({
     repoRoot,
     accountOverride: options.account,
@@ -230,14 +234,13 @@ async function runPageDebug(options, deps = {}) {
   }
 
   if (options.mode === 'login') {
-    await loginAndPersistStorageState({
+    const temporarySession = await createTemporarySession({
       playwright,
       apiBaseUrl: options.apiBaseUrl,
       account: credentials.account,
       password: credentials.password,
       storageStatePath: null,
     });
-
     const result = createSuccessResult({
       mode: 'login',
       requestedUrl: null,
@@ -247,11 +250,12 @@ async function runPageDebug(options, deps = {}) {
       artifacts,
       warnings,
     });
+    await temporarySession.dispose();
     emitStdout(result);
     return result;
   }
 
-  await loginAndPersistStorageState({
+  const temporarySession = await createTemporarySession({
     playwright,
     apiBaseUrl: options.apiBaseUrl,
     account: credentials.account,
@@ -259,12 +263,22 @@ async function runPageDebug(options, deps = {}) {
     storageStatePath: artifacts.storageStatePath,
   });
 
-  const browser = await playwright.chromium.launch(
-    buildChromiumLaunchOptions({ headless: options.headless })
-  );
+  let browser = null;
   let keepBrowserOpen = options.mode === 'open';
 
   try {
+    browser = await playwright.chromium.launch(
+      buildChromiumLaunchOptions({ headless: options.headless })
+    );
+    if (keepBrowserOpen) {
+      browser.once('disconnected', () => {
+        void temporarySession.dispose().catch((error) => {
+          process.stderr.write(
+            `[1flowbase-page-debug] 临时 console session 回收失败：${error instanceof Error ? error.message : String(error)}\n`
+          );
+        });
+      });
+    }
     const context = await browser.newContext({ storageState: artifacts.storageStatePath });
     const page = await context.newPage();
     const collector = createConsoleCollector();
@@ -394,6 +408,14 @@ async function runPageDebug(options, deps = {}) {
       warnings,
     });
 
+    if (!keepBrowserOpen) {
+      try {
+        await browser.close();
+      } finally {
+        browser = null;
+        await temporarySession.dispose();
+      }
+    }
     emitStdout(result);
     return result;
   } catch (error) {
@@ -401,7 +423,13 @@ async function runPageDebug(options, deps = {}) {
     throw error;
   } finally {
     if (!keepBrowserOpen) {
-      await browser.close();
+      try {
+        if (browser) {
+          await browser.close();
+        }
+      } finally {
+        await temporarySession.dispose();
+      }
     }
   }
 }

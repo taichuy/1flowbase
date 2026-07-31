@@ -89,7 +89,8 @@ export function useModelProviderData({
     ? {
         sourceKind: officialCatalogQuery.data.source_kind,
         sourceLabel: officialCatalogQuery.data.source_label,
-        registryUrl: officialCatalogQuery.data.registry_url
+        registryUrl: officialCatalogQuery.data.registry_url,
+        sourceFreshness: officialCatalogQuery.data.source_freshness
       }
     : null;
 

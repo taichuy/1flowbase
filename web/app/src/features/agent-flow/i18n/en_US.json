@@ -57,6 +57,7 @@
     "context_window": "Context window",
     "model_context_window_input": "Model context window",
     "model_context_window_unit": "Model context window unit",
+    "context_window_exceeds_max": "Context window cannot exceed the maximum context window",
     "max_context_window": "Maximum context window",
     "model_max_context_window_input": "Maximum context window input",
     "model_max_context_window_unit": "Maximum context window unit",

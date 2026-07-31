@@ -6,10 +6,9 @@ use super::native::{
 };
 
 const DEFAULT_AGENT_MODEL_ID: &str = "1flowbase";
-const DEFAULT_AGENT_CONTEXT_WINDOW: u64 = 257_000;
 const DEFAULT_AGENT_MAX_CONTEXT_WINDOW: u64 = 128_000;
-const DEFAULT_AGENT_MAX_OUTPUT_TOKENS: u64 = 32_000;
 const DEFAULT_AGENT_AUTO_COMPACT_PERCENT: u64 = 85;
+const DEFAULT_AGENT_OUTPUT_TOKEN_BUCKETS: [u64; 5] = [4_000, 8_000, 16_000, 32_000, 64_000];
 const DEFAULT_AGENT_REASONING_EFFORT: &str = "medium";
 const DEFAULT_AGENT_REASONING_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "xhigh"];
 
@@ -160,15 +159,14 @@ pub fn extract_agent_model_catalog_from_start_node(document: &Value) -> Vec<Agen
 }
 
 fn default_model_catalog() -> Vec<AgentModelDescriptor> {
+    let context_window = DEFAULT_AGENT_MAX_CONTEXT_WINDOW;
     vec![AgentModelDescriptor {
         id: DEFAULT_AGENT_MODEL_ID.to_string(),
         name: Some(DEFAULT_AGENT_MODEL_ID.to_string()),
-        context_window: Some(DEFAULT_AGENT_CONTEXT_WINDOW),
+        context_window: Some(context_window),
         max_context_window: Some(DEFAULT_AGENT_MAX_CONTEXT_WINDOW),
-        max_output_tokens: Some(DEFAULT_AGENT_MAX_OUTPUT_TOKENS),
-        auto_compact_token_limit: Some(
-            (DEFAULT_AGENT_CONTEXT_WINDOW * DEFAULT_AGENT_AUTO_COMPACT_PERCENT) / 100,
-        ),
+        max_output_tokens: Some(default_max_output_tokens(context_window)),
+        auto_compact_token_limit: Some(default_auto_compact_token_limit(context_window)),
         capabilities: AgentModelCapabilities {
             reasoning: true,
             tool_call: true,
@@ -183,6 +181,20 @@ fn default_model_catalog() -> Vec<AgentModelDescriptor> {
                 .collect(),
         }),
     }]
+}
+
+fn default_max_output_tokens(context_window: u64) -> u64 {
+    DEFAULT_AGENT_OUTPUT_TOKEN_BUCKETS
+        .into_iter()
+        .find(|bucket| context_window <= bucket.saturating_mul(16))
+        .unwrap_or(64_000)
+}
+
+fn default_auto_compact_token_limit(context_window: u64) -> u64 {
+    context_window
+        .saturating_mul(DEFAULT_AGENT_AUTO_COMPACT_PERCENT)
+        .saturating_add(50)
+        / 100
 }
 
 fn normalize_model_descriptor(value: &Value) -> Option<AgentModelDescriptor> {
@@ -371,6 +383,22 @@ mod tests {
             vec!["low", "medium", "high"]
         );
         assert_eq!(models[1].id, "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn derives_generic_output_default_from_context_window() {
+        assert_eq!(default_max_output_tokens(64_000), 4_000);
+        assert_eq!(default_max_output_tokens(128_000), 8_000);
+        assert_eq!(default_max_output_tokens(200_000), 16_000);
+        assert_eq!(default_max_output_tokens(272_000), 32_000);
+        assert_eq!(default_max_output_tokens(353_000), 32_000);
+        assert_eq!(default_max_output_tokens(1_000_000), 64_000);
+
+        let fallback = default_model_catalog();
+        assert_eq!(fallback[0].context_window, Some(128_000));
+        assert_eq!(fallback[0].max_context_window, Some(128_000));
+        assert_eq!(fallback[0].max_output_tokens, Some(8_000));
+        assert_eq!(fallback[0].auto_compact_token_limit, Some(108_800));
     }
 
     #[test]

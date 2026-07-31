@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const {
@@ -112,6 +114,7 @@ test('buildChromiumLaunchOptions uses configured system chrome executable', () =
 
 test('runPageDebug login mode returns structured json without launching a browser', async () => {
   const writes = [];
+  let revoked = false;
   const result = await runPageDebug(
     {
       help: false,
@@ -132,8 +135,16 @@ test('runPageDebug login mode returns structured json without launching a browse
       playwright: {
         request: {
           newContext: async () => ({
-            post: async () => ({ ok: () => true, status: () => 200, json: async () => ({ data: {} }) }),
+            post: async () => ({
+              ok: () => true,
+              status: () => 200,
+              json: async () => ({ data: { csrf_token: 'csrf-token' } }),
+            }),
             storageState: async () => {},
+            delete: async () => {
+              revoked = true;
+              return { ok: () => true, status: () => 204 };
+            },
             dispose: async () => {},
           }),
         },
@@ -151,4 +162,148 @@ test('runPageDebug login mode returns structured json without launching a browse
   assert.equal(result.mode, 'login');
   assert.equal(result.outputDir, null);
   assert.equal(writes[0].mode, 'login');
+  assert.equal(revoked, true);
 });
+
+test('AC-001 runPageDebug snapshot revokes its temporary session after evidence capture', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-page-debug-'));
+  let browserClosed = false;
+  let sessionDisposed = false;
+  const finalUrl = 'http://127.0.0.1:3100/settings';
+
+  const result = await runPageDebug(
+    pageDebugOptions({ mode: 'snapshot', target: '/settings' }),
+    {
+      repoRoot,
+      playwright: {
+        chromium: {
+          launch: async () => ({
+            newContext: async () => ({ newPage: async () => fakeReadyPage(finalUrl) }),
+            close: async () => {
+              browserClosed = true;
+            },
+          }),
+        },
+      },
+      openTemporaryConsoleSession: async () => ({
+        dispose: async () => {
+          sessionDisposed = true;
+        },
+      }),
+      loadRootCredentials: rootCredentials,
+      writeStdoutJson: () => {},
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(browserClosed, true);
+  assert.equal(sessionDisposed, true);
+});
+
+test('AC-002 runPageDebug revokes its temporary session when browser launch fails', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-page-debug-'));
+  let sessionDisposed = false;
+
+  await assert.rejects(
+    () =>
+      runPageDebug(pageDebugOptions({ mode: 'snapshot', target: '/settings' }), {
+        repoRoot,
+        playwright: {
+          chromium: {
+            launch: async () => {
+              throw new Error('browser unavailable');
+            },
+          },
+        },
+        openTemporaryConsoleSession: async () => ({
+          dispose: async () => {
+            sessionDisposed = true;
+          },
+        }),
+        loadRootCredentials: rootCredentials,
+        writeStdoutJson: () => {},
+      }),
+    /browser unavailable/u
+  );
+
+  assert.equal(sessionDisposed, true);
+});
+
+test('AC-001 runPageDebug open mode keeps the session until the browser disconnects', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-page-debug-'));
+  let disconnectBrowser = null;
+  let sessionDisposed = false;
+  const finalUrl = 'http://127.0.0.1:3100/settings';
+
+  const result = await runPageDebug(pageDebugOptions({ mode: 'open', target: '/settings' }), {
+    repoRoot,
+    playwright: {
+      chromium: {
+        launch: async () => ({
+          once: (_event, listener) => {
+            disconnectBrowser = listener;
+          },
+          newContext: async () => ({ newPage: async () => fakeReadyPage(finalUrl) }),
+          close: async () => {
+            throw new Error('open mode must not close the browser eagerly');
+          },
+        }),
+      },
+    },
+    openTemporaryConsoleSession: async () => ({
+      dispose: async () => {
+        sessionDisposed = true;
+      },
+    }),
+    loadRootCredentials: rootCredentials,
+    writeStdoutJson: () => {},
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(sessionDisposed, false);
+  assert.equal(typeof disconnectBrowser, 'function');
+  disconnectBrowser();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sessionDisposed, true);
+});
+
+function pageDebugOptions({ mode, target }) {
+  return {
+    help: false,
+    mode,
+    target,
+    webBaseUrl: 'http://127.0.0.1:3100',
+    apiBaseUrl: 'http://127.0.0.1:7800',
+    outDir: null,
+    headless: true,
+    timeout: 15000,
+    account: 'root',
+    password: 'change-me',
+    waitForSelector: null,
+    waitForUrl: null,
+  };
+}
+
+function rootCredentials() {
+  return {
+    account: 'root',
+    password: 'change-me',
+    envFilePath: '/repo/.env',
+  };
+}
+
+function fakeReadyPage(finalUrl) {
+  return {
+    on: () => {},
+    goto: async () => {},
+    waitForLoadState: async () => {},
+    waitForFunction: async () => {},
+    url: () => finalUrl,
+    screenshot: async () => {},
+    evaluate: async () => ({
+      html: '<!doctype html><html><body>ready</body></html>',
+      inlineStyles: [],
+      inlineScripts: [],
+    }),
+  };
+}

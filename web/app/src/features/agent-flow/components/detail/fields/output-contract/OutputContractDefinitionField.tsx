@@ -11,6 +11,7 @@ import { useStableListItemKeys } from '../../../../hooks/interactions/use-stable
 import { outputTypeSupportsJsonSchema } from '../../../../lib/output-contract/schema';
 import { isOutputVariableKeyAllowed } from '../../../../lib/output-contract/variable-key';
 import { i18nText } from '../../../../../../shared/i18n/text';
+import { CollectionFieldHeader } from '../../collection/CollectionFieldHeader';
 import { JsonSchemaSettingsPanel } from '../json-schema/JsonSchemaSettingsPanel';
 import {
   createDefaultJsonSchema,
@@ -24,6 +25,7 @@ const valueTypeOptions = [
   { value: 'object', label: 'Object' },
   { value: 'array', label: 'Array' },
   { value: 'json', label: 'JSON' },
+  { value: 'protocol_context', label: 'Protocol Context' },
   { value: 'unknown', label: 'Unknown' }
 ] satisfies Array<{
   value: FlowNodeDocument['outputs'][number]['valueType'];
@@ -65,11 +67,13 @@ function defaultSchemaForOutput(
 }
 
 export function OutputContractDefinitionField({
+  title,
   value,
   onChange,
   syncTitleWithKey = false,
   selectorForKey
 }: {
+  title: string;
   value: FlowNodeDocument['outputs'];
   onChange: (value: FlowNodeDocument['outputs']) => void;
   syncTitleWithKey?: boolean;
@@ -130,27 +134,28 @@ export function OutputContractDefinitionField({
 
   return (
     <div className="agent-flow-output-contract-editor">
-      <div className="agent-flow-output-contract-editor__header">
-        <Typography.Text className="agent-flow-node-detail__section-subtitle">
-          {i18nText(
-            'agentFlow',
-            'auto.variables_produced_nodes_referenced_downstream_nodes'
-          )}
-        </Typography.Text>
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.add_new_output_variable')}
-          icon={<PlusOutlined />}
-          size="small"
-          type="text"
-          onClick={() => {
-            insertItemKey(value.length);
-            emitChange([
-              ...value,
-              createNextOutput(value.length, selectorForKey)
-            ]);
-          }}
-        />
-      </div>
+      <CollectionFieldHeader
+        title={title}
+        description={i18nText(
+          'agentFlow',
+          'auto.variables_produced_nodes_referenced_downstream_nodes'
+        )}
+        actions={
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.add_new_output_variable')}
+            icon={<PlusOutlined />}
+            size="small"
+            type="text"
+            onClick={() => {
+              insertItemKey(value.length);
+              emitChange([
+                ...value,
+                createNextOutput(value.length, selectorForKey)
+              ]);
+            }}
+          />
+        }
+      />
       {value.length > 0 ? (
         <div className="agent-flow-output-contract-editor__list">
           {value.map((output, index) => {

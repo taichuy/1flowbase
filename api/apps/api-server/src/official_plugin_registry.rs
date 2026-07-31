@@ -1,26 +1,35 @@
 use std::{
     collections::BTreeMap,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
-    DownloadedOfficialPluginPackage, OfficialPluginArtifact, OfficialPluginCatalogSnapshot,
-    OfficialPluginCatalogSource, OfficialPluginI18nSummary, OfficialPluginSourceEntry,
-    OfficialPluginSourcePort,
+    DownloadedOfficialPluginPackage, OfficialPluginArtifact, OfficialPluginCatalogFreshness,
+    OfficialPluginCatalogSnapshot, OfficialPluginCatalogSource, OfficialPluginI18nSummary,
+    OfficialPluginSourceEntry, OfficialPluginSourcePort,
 };
+use futures_util::future::{BoxFuture, FutureExt, Shared};
 use plugin_framework::RuntimeTarget;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::config::ResolvedOfficialPluginSourceConfig;
 
 const GITHUB_RAW_CONTENT_BASE_URL: &str = "https://raw.githubusercontent.com/";
 const OFFICIAL_PLUGIN_REGISTRY_CACHE_TTL: Duration = Duration::from_secs(60);
+const OFFICIAL_PLUGIN_REGISTRY_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const OFFICIAL_PLUGIN_REGISTRY_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+type SharedRegistryFetch =
+    Shared<BoxFuture<'static, std::result::Result<CachedOfficialRegistryDocument, Arc<str>>>>;
 
 #[derive(Clone)]
 pub struct ApiOfficialPluginRegistry {
@@ -32,12 +41,20 @@ pub struct ApiOfficialPluginRegistry {
     trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
     client: Client,
     registry_cache: Arc<RwLock<Option<CachedOfficialRegistryDocument>>>,
+    registry_refresh: Arc<Mutex<Option<RegistryRefresh>>>,
+    next_refresh_id: Arc<AtomicU64>,
 }
 
 #[derive(Clone)]
 struct CachedOfficialRegistryDocument {
     fetched_at: Instant,
     document: OfficialRegistryDocument,
+}
+
+#[derive(Clone)]
+struct RegistryRefresh {
+    id: u64,
+    fetch: SharedRegistryFetch,
 }
 
 impl ApiOfficialPluginRegistry {
@@ -54,74 +71,121 @@ impl ApiOfficialPluginRegistry {
             github_proxy_url: source.github_proxy_url,
             trust_mode: source.trust_mode,
             trusted_public_keys,
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(OFFICIAL_PLUGIN_REGISTRY_CONNECT_TIMEOUT)
+                .build()
+                .expect("official plugin registry HTTP client configuration must be valid"),
             registry_cache: Arc::new(RwLock::new(None)),
+            registry_refresh: Arc::new(Mutex::new(None)),
+            next_refresh_id: Arc::new(AtomicU64::new(1)),
         }
     }
 
-    async fn fetch_registry(&self) -> Result<OfficialRegistryDocument> {
-        if let Some(document) = self.cached_registry().await {
-            return Ok(document);
-        }
-
-        let document = self
-            .client
-            .get(&self.registry_url)
-            .send()
-            .await
-            .context("failed to request official plugin registry")?
-            .error_for_status()
-            .context("official plugin registry returned an error status")?
-            .json::<OfficialRegistryDocument>()
-            .await
-            .context("failed to decode official plugin registry")?;
-        *self.registry_cache.write().await = Some(CachedOfficialRegistryDocument {
-            fetched_at: Instant::now(),
-            document: document.clone(),
-        });
-
-        Ok(document)
-    }
-
-    async fn cached_registry(&self) -> Option<OfficialRegistryDocument> {
+    async fn fresh_cached_registry(&self) -> Option<CachedOfficialRegistryDocument> {
         self.registry_cache
             .read()
             .await
             .as_ref()
             .filter(|cached| cached.fetched_at.elapsed() <= OFFICIAL_PLUGIN_REGISTRY_CACHE_TTL)
-            .map(|cached| cached.document.clone())
+            .cloned()
     }
 
-    async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        Ok(self
-            .client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("failed to request official plugin package from {url}"))?
-            .error_for_status()
-            .with_context(|| format!("official plugin package request failed for {url}"))?
-            .bytes()
-            .await
-            .context("failed to read official plugin package response body")?
-            .to_vec())
+    async fn cached_registry(&self) -> Option<CachedOfficialRegistryDocument> {
+        self.registry_cache.read().await.clone()
     }
-}
 
-#[async_trait]
-impl OfficialPluginSourcePort for ApiOfficialPluginRegistry {
-    async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
-        let document = self.fetch_registry().await?;
+    async fn refresh_registry(&self) -> Result<CachedOfficialRegistryDocument> {
+        if let Some(cached) = self.fresh_cached_registry().await {
+            return Ok(cached);
+        }
+
+        let refresh = {
+            let mut active_refresh = self.registry_refresh.lock().await;
+            if let Some(refresh) = active_refresh.as_ref() {
+                refresh.clone()
+            } else {
+                let id = self.next_refresh_id.fetch_add(1, Ordering::Relaxed);
+                let client = self.client.clone();
+                let registry_url = self.registry_url.clone();
+                let registry_cache = Arc::clone(&self.registry_cache);
+                let fetch = async move {
+                    let result = async {
+                        client
+                            .get(&registry_url)
+                            .timeout(OFFICIAL_PLUGIN_REGISTRY_REQUEST_TIMEOUT)
+                            .send()
+                            .await
+                            .context("failed to request official plugin registry")?
+                            .error_for_status()
+                            .context("official plugin registry returned an error status")?
+                            .json::<OfficialRegistryDocument>()
+                            .await
+                            .context("failed to decode official plugin registry")
+                    }
+                    .await;
+
+                    match result {
+                        Ok(document) => {
+                            let cached = CachedOfficialRegistryDocument {
+                                fetched_at: Instant::now(),
+                                document,
+                            };
+                            *registry_cache.write().await = Some(cached.clone());
+                            Ok(cached)
+                        }
+                        Err(error) => Err(Arc::<str>::from(error.to_string())),
+                    }
+                }
+                .boxed()
+                .shared();
+                let refresh = RegistryRefresh { id, fetch };
+                *active_refresh = Some(refresh.clone());
+                refresh
+            }
+        };
+
+        let result = refresh.fetch.await;
+        let mut active_refresh = self.registry_refresh.lock().await;
+        if active_refresh
+            .as_ref()
+            .is_some_and(|active| active.id == refresh.id)
+        {
+            *active_refresh = None;
+        }
+        drop(active_refresh);
+
+        result.map_err(|message| anyhow::anyhow!(message.to_string()))
+    }
+
+    fn refresh_stale_registry_in_background(&self) {
+        let registry = self.clone();
+        tokio::spawn(async move {
+            if let Err(error) = registry.refresh_registry().await {
+                tracing::warn!(
+                    error = %error,
+                    "official plugin registry background refresh failed; keeping stale catalog"
+                );
+            }
+        });
+    }
+
+    fn build_catalog_snapshot(
+        &self,
+        cached: CachedOfficialRegistryDocument,
+        freshness: OfficialPluginCatalogFreshness,
+    ) -> OfficialPluginCatalogSnapshot {
         let host = RuntimeTarget::current_host().unwrap_or_else(|_| {
             RuntimeTarget::from_rust_target_triple("x86_64-unknown-linux-musl").unwrap()
         });
-        Ok(OfficialPluginCatalogSnapshot {
+        OfficialPluginCatalogSnapshot {
             source: OfficialPluginCatalogSource {
                 source_kind: self.source_kind.clone(),
                 source_label: self.source_label.clone(),
                 registry_url: self.registry_url.clone(),
             },
-            entries: document
+            freshness,
+            entries: cached
+                .document
                 .plugins
                 .into_iter()
                 .filter_map(|entry| {
@@ -160,7 +224,62 @@ impl OfficialPluginSourcePort for ApiOfficialPluginRegistry {
                     })
                 })
                 .collect(),
-        })
+        }
+    }
+
+    async fn catalog_snapshot(&self) -> Result<OfficialPluginCatalogSnapshot> {
+        if let Some(cached) = self.cached_registry().await {
+            let freshness = if cached.fetched_at.elapsed() <= OFFICIAL_PLUGIN_REGISTRY_CACHE_TTL {
+                OfficialPluginCatalogFreshness::Fresh
+            } else {
+                self.refresh_stale_registry_in_background();
+                OfficialPluginCatalogFreshness::Stale
+            };
+            return Ok(self.build_catalog_snapshot(cached, freshness));
+        }
+
+        let cached = self.refresh_registry().await?;
+        Ok(self.build_catalog_snapshot(cached, OfficialPluginCatalogFreshness::Fresh))
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn expire_registry_cache_for_test(&self) {
+        if let Some(cached) = self.registry_cache.write().await.as_mut() {
+            cached.fetched_at =
+                Instant::now() - OFFICIAL_PLUGIN_REGISTRY_CACHE_TTL - Duration::from_secs(1);
+        }
+    }
+
+    async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        Ok(self
+            .client
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("failed to request official plugin package from {url}"))?
+            .error_for_status()
+            .with_context(|| format!("official plugin package request failed for {url}"))?
+            .bytes()
+            .await
+            .context("failed to read official plugin package response body")?
+            .to_vec())
+    }
+}
+
+#[async_trait]
+impl OfficialPluginSourcePort for ApiOfficialPluginRegistry {
+    async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
+        self.catalog_snapshot().await
+    }
+
+    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
+        let cached = self.cached_registry().await?;
+        let freshness = if cached.fetched_at.elapsed() <= OFFICIAL_PLUGIN_REGISTRY_CACHE_TTL {
+            OfficialPluginCatalogFreshness::Fresh
+        } else {
+            OfficialPluginCatalogFreshness::Stale
+        };
+        Some(self.build_catalog_snapshot(cached, freshness))
     }
 
     async fn download_plugin(

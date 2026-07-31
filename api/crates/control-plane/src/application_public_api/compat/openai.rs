@@ -2728,10 +2728,10 @@ mod tests {
             vec![OpenAiCompatibleModel {
                 id: "1flowbase".into(),
                 name: Some("1flowbase".into()),
-                context_window: Some(257000),
+                context_window: Some(128000),
                 max_context_window: Some(128000),
-                max_output_tokens: Some(32000),
-                auto_compact_token_limit: Some(218450),
+                max_output_tokens: Some(8000),
+                auto_compact_token_limit: Some(108800),
                 capabilities: AgentModelCapabilities {
                     reasoning: true,
                     tool_call: true,

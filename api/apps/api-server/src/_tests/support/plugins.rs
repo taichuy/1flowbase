@@ -102,6 +102,7 @@ impl OfficialPluginSourcePort for InMemoryOfficialPluginSource {
                 source_label: "镜像源".to_string(),
                 registry_url: "https://mirror.example.com/official-registry.json".to_string(),
             },
+            freshness: control_plane::ports::OfficialPluginCatalogFreshness::Fresh,
             entries: vec![OfficialPluginSourceEntry {
                 plugin_id: "1flowbase.openai_compatible".to_string(),
                 plugin_type: "model_provider".to_string(),

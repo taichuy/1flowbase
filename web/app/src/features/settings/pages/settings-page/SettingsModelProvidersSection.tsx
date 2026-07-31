@@ -347,9 +347,9 @@ export function SettingsModelProvidersSection({
       ) : null,
     [errorMessage]
   );
-  const officialCatalogErrorMessage = getErrorMessage(
-    officialCatalogQuery.error
-  );
+  const officialCatalogErrorMessage = officialCatalogQuery.error
+    ? i18nText('settings', 'auto.official_supplier_catalog_unavailable')
+    : null;
   const modalMainInstance =
     mainInstanceQuery.data ??
     (modalProviderOption
@@ -524,6 +524,9 @@ export function SettingsModelProvidersSection({
                   clearUploadState();
                 }}
                 onSearchQueryChange={setOfficialSearchQuery}
+                onRetryCatalog={() => {
+                  void officialCatalogQuery.refetch();
+                }}
                 onUpgradeLatest={(entry, compatibilityOverride) => {
                   versionMutation.mutate({
                     mode: 'upgrade',
