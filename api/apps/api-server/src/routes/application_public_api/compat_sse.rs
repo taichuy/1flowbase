@@ -69,7 +69,7 @@ pub(crate) struct CompatibleResumePlan {
 }
 
 pub(crate) enum CompatibleResumeAdmission {
-    Resume(CompatibleResumePlan),
+    Resume(Box<CompatibleResumePlan>),
     StartNewTurnFromHistory,
 }
 
@@ -279,10 +279,10 @@ pub(crate) async fn prepare_compatible_resume(
             .map_err(service_error)?;
     Ok(match prepared {
         PreparedPublishedCallbackResume::Resume { initial_run } => {
-            CompatibleResumeAdmission::Resume(CompatibleResumePlan {
+            CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
                 initial_run: *initial_run,
                 command,
-            })
+            }))
         }
         PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
             CompatibleResumeAdmission::StartNewTurnFromHistory
