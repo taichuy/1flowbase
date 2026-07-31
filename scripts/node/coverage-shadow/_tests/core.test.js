@@ -182,7 +182,7 @@ test('merge rejects shard and monolithic artifacts from a different SHA before r
   }), /same frozen SHA/u);
 });
 
-test('merge gathers all profiles and writes structural equivalence evidence', () => {
+test('enforced merge gathers all profiles and writes standalone coverage evidence', () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-shadow-merge-ok-'));
   const shardRoot = path.join(repoRoot, 'tmp/test-governance/coverage-shadow/api-server/downloaded');
   const targetDir = path.join(repoRoot, 'tmp/coverage-target');
@@ -199,16 +199,10 @@ test('merge gathers all profiles and writes structural equivalence evidence', ()
       files: [{ filename: '/repo/lib.rs', summary: { lines: { count: 1, covered: 1 } } }],
     }],
   };
-  const monolithicPath = path.join(repoRoot, 'monolithic.json');
-  const monolithicShaPath = path.join(repoRoot, 'target-sha.txt');
-  fs.writeFileSync(monolithicPath, JSON.stringify(summary));
-  fs.writeFileSync(monolithicShaPath, 'frozen-sha\n');
   let call = 0;
   mergeApiServerShadow({
     repoRoot,
     shardCount: 4,
-    monolithicPath,
-    monolithicShaPath,
     env: { QUALITY_GATE_TARGET_SHA: 'frozen-sha', CARGO_TARGET_DIR: targetDir },
     spawnSyncImpl(_command, args) {
       call += 1;
@@ -231,4 +225,6 @@ test('merge gathers all profiles and writes structural equivalence evidence', ()
   ));
   assert.equal(evidence.sha, 'frozen-sha');
   assert.equal(evidence.inventory.fullCount, 4);
+  assert.equal(evidence.coverage.lineCoveragePercent, 100);
+  assert.equal(evidence.comparison, undefined);
 });

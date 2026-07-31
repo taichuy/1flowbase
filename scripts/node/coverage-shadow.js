@@ -25,8 +25,8 @@ function main(argv = process.argv.slice(2), env = process.env) {
     mergeApiServerShadow({
       repoRoot,
       shardCount: Number(indexOrCount),
-      monolithicPath: path.resolve(repoRoot, maybeCount),
-      monolithicShaPath: path.resolve(repoRoot, monolithicShaPath),
+      monolithicPath: maybeCount ? path.resolve(repoRoot, maybeCount) : undefined,
+      monolithicShaPath: monolithicShaPath ? path.resolve(repoRoot, monolithicShaPath) : undefined,
       env,
     });
     return;

@@ -247,23 +247,26 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   );
 });
 
-test("API coverage sharding stays non-blocking shadow until structural equivalence is proven", () => {
+test("API coverage sharding is enforced after structural equivalence is proven", () => {
   const workflow = readQualityGateWorkflow();
 
-  assert.match(workflow, /coverage-backend-api-server-shadow:\n[\s\S]*?continue-on-error: true/u);
+  assert.doesNotMatch(workflow, /coverage-backend-api-server-sharded:\n[\s\S]*?continue-on-error: true/u);
   assert.match(workflow, /shard: \[1, 2, 3, 4\]/u);
-  assert.match(workflow, /coverage-backend-api-server-shadow-merge:\n[\s\S]*?continue-on-error: true/u);
+  assert.doesNotMatch(workflow, /coverage-backend-api-server-sharded-merge:\n[\s\S]*?continue-on-error: true/u);
+  const coverageMatrix = workflow.match(/coverage-backend-gate:[\s\S]*?steps:/u)?.[0] || '';
+  assert.doesNotMatch(coverageMatrix, /- coverage-backend-api-server\n/u);
+  assert.match(workflow, /options:[\s\S]*?- coverage-backend-api-server\n/u);
   assert.match(workflow, /timeout-minutes: 30/u);
   assert.match(workflow, /coverage-shadow-api-server-profraw-\$\{\{ matrix\.shard \}\}/u);
   assert.match(workflow, /node scripts\/node\/coverage-shadow\.js merge api-server 4/u);
   assert.match(workflow, /resolve-quality-gate-target:\n[\s\S]*?target_sha: \$\{\{ steps\.target\.outputs\.sha \}\}/u);
   assert.match(workflow, /coverage-backend-gate:\n[\s\S]*?needs: resolve-quality-gate-target/u);
   assert.match(workflow, /ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u);
-  assert.match(workflow, /tmp\/test-governance\/monolithic\/target-sha\.txt/u);
+  assert.doesNotMatch(workflow, /tmp\/test-governance\/monolithic/u);
   assert.match(workflow, /coverage-shadow\/api-server\/api-server-merged\.json/u);
   assert.match(workflow, /coverage-shadow\/api-server\/equivalence\.json/u);
-  assert.doesNotMatch(workflow, /name: coverage-shadow-api-server-equivalence\n\s+path: tmp\/test-governance\/coverage-shadow\/api-server\n/u);
-  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server-shadow/u);
+  assert.match(workflow, /aggregate:\n[\s\S]*?- coverage-backend-api-server-sharded-merge/u);
+  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server(?:,|')/u);
 });
 
 test("React Doctor keeps current debt as a narrow baseline", () => {

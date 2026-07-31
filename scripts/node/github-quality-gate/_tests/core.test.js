@@ -61,7 +61,7 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
 
   assert.deepEqual(buildGateCommand({
     repoRoot,
-    scope: 'coverage-backend-api-server-shadow-3-of-4',
+    scope: 'coverage-backend-api-server-sharded-3-of-4',
   }), {
     command: process.execPath,
     args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'shard', 'api-server', '3', '4'],

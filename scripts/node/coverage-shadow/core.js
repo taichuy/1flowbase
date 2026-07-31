@@ -87,10 +87,30 @@ function canonicalCoverageSummary(summary) {
   };
 }
 
+function validateCoverageSummary(summary) {
+  const coverage = canonicalCoverageSummary(summary);
+  const structuralMetrics = Object.keys(coverage.totals).sort();
+  const lines = coverage.totals.lines;
+  const lineCoveragePercent = lines.count === 0 ? 100 : (lines.covered / lines.count) * 100;
+  if (!Number.isFinite(API_SERVER_LINE_THRESHOLD)
+    || lineCoveragePercent < API_SERVER_LINE_THRESHOLD) {
+    throw new Error(
+      `merged API coverage lines ${lineCoveragePercent.toFixed(2)}% is below ${Number(API_SERVER_LINE_THRESHOLD).toFixed(2)}%`
+    );
+  }
+  return {
+    fileCount: coverage.files.length,
+    structuralMetrics,
+    lineCoveragePercent,
+    minimumLineCoveragePercent: API_SERVER_LINE_THRESHOLD,
+  };
+}
+
 function compareCoverageSummaries(monolithic, merged) {
   const expected = canonicalCoverageSummary(monolithic);
   const actual = canonicalCoverageSummary(merged);
-  const structuralMetrics = Object.keys(expected.totals).sort();
+  const validation = validateCoverageSummary(merged);
+  const { structuralMetrics } = validation;
   for (const metric of structuralMetrics) {
     if (expected.totals[metric]?.count !== actual.totals[metric]?.count) {
       throw new Error(`coverage shadow mismatch in ${metric} denominator`);
@@ -115,23 +135,10 @@ function compareCoverageSummaries(monolithic, merged) {
     metric,
     (actual.totals[metric]?.covered ?? 0) - (expected.totals[metric]?.covered ?? 0),
   ]));
-  const actualLines = actual.totals.lines;
-  const lineCoveragePercent = actualLines.count === 0
-    ? 100
-    : (actualLines.covered / actualLines.count) * 100;
-  if (!Number.isFinite(API_SERVER_LINE_THRESHOLD)
-    || lineCoveragePercent < API_SERVER_LINE_THRESHOLD) {
-    throw new Error(
-      `merged API coverage lines ${lineCoveragePercent.toFixed(2)}% is below ${Number(API_SERVER_LINE_THRESHOLD).toFixed(2)}%`
-    );
-  }
   return {
-    fileCount: expected.files.length,
-    structuralMetrics,
+    ...validation,
     nondeterministicFiles,
     coveredDeltas,
-    lineCoveragePercent,
-    minimumLineCoveragePercent: API_SERVER_LINE_THRESHOLD,
   };
 }
 
@@ -191,7 +198,9 @@ function mergeApiServerShadow({
   }
   const shas = new Set(metadata.map((item) => item.sha));
   const expectedSha = env.QUALITY_GATE_TARGET_SHA || '';
-  const monolithicSha = fs.readFileSync(monolithicShaPath, 'utf8').trim();
+  const monolithicSha = monolithicShaPath
+    ? fs.readFileSync(monolithicShaPath, 'utf8').trim()
+    : expectedSha;
   if (shas.size !== 1 || !shas.has(expectedSha) || monolithicSha !== expectedSha) {
     throw new Error('coverage shards do not belong to the same frozen SHA');
   }
@@ -220,10 +229,16 @@ function mergeApiServerShadow({
     args: ['llvm-cov', 'report', '--package', API_SERVER_PACKAGE, '--json', '--summary-only', '--output-path', mergedPath],
     cwd: apiCwd,
   }, { env: instrumentedEnv, spawnSyncImpl });
-  const comparison = compareCoverageSummaries(readJson(monolithicPath), readJson(mergedPath));
-  fs.writeFileSync(path.join(root, 'equivalence.json'), `${JSON.stringify({
-    sha: [...shas][0], inventory: inventoryResult, comparison,
-  }, null, 2)}\n`, 'utf8');
+  const mergedSummary = readJson(mergedPath);
+  const evidence = {
+    sha: [...shas][0],
+    inventory: inventoryResult,
+    coverage: validateCoverageSummary(mergedSummary),
+  };
+  if (monolithicPath) {
+    evidence.comparison = compareCoverageSummaries(readJson(monolithicPath), mergedSummary);
+  }
+  fs.writeFileSync(path.join(root, 'equivalence.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
 }
 
 module.exports = {
@@ -233,5 +248,6 @@ module.exports = {
   mergeApiServerShadow,
   parseLlvmCovEnvironment,
   runApiServerShard,
+  validateCoverageSummary,
   validateShardInventories,
 };
