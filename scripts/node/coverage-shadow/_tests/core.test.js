@@ -42,7 +42,7 @@ test('API coverage shadow shard uses the stable nextest hash partition', () => {
 
 test('llvm-cov environment parser accepts Cargo ANSI color output', () => {
   assert.deepEqual(parseLlvmCovEnvironment(
-    "\u001b[1mexport RUSTC_WRAPPER='/bin/cov'\u001b[0m\nexport CARGO_LLVM_COV='1'\n"
+    "\u001b[1mexport RUSTC_WRAPPER='/bin/cov'\u001b[0m\nexport CARGO_LLVM_COV=1\n"
   ), {
     RUSTC_WRAPPER: '/bin/cov',
     CARGO_LLVM_COV: '1',

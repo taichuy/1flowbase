@@ -33,8 +33,10 @@ function buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTe
 function parseLlvmCovEnvironment(stdout) {
   const env = {};
   for (const line of stdout.replace(ANSI_CONTROL_SEQUENCE_PATTERN, '').split(/\r?\n/u)) {
-    const match = line.match(/^export (?<key>[A-Z0-9_]+)='(?<value>.*)'$/u);
-    if (match) env[match.groups.key] = match.groups.value.replace(/'\\''/gu, "'");
+    const match = line.match(/^export (?<key>[A-Z0-9_]+)=(?:'(?<quoted>.*)'|(?<bare>[^'].*))$/u);
+    if (match) {
+      env[match.groups.key] = (match.groups.quoted ?? match.groups.bare).replace(/'\\''/gu, "'");
+    }
   }
   if (!env.RUSTC_WRAPPER || !env.CARGO_LLVM_COV) {
     throw new Error('cargo llvm-cov show-env did not return the required instrumentation environment');
