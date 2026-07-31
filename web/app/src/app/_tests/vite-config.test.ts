@@ -56,6 +56,11 @@ describe('vite config', () => {
   test('pre-optimizes dependencies used by lazy application pages', async () => {
     const source = await readFile(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
     const lazyOnlyDeps = [
+      '@ant-design/x-markdown',
+      '@dnd-kit/core',
+      '@dnd-kit/modifiers',
+      '@dnd-kit/sortable',
+      '@dnd-kit/utilities',
       '@lexical/react/LexicalComposer',
       '@lexical/react/LexicalComposerContext',
       '@lexical/react/LexicalContentEditable',
@@ -71,6 +76,7 @@ describe('vite config', () => {
       'copy-to-clipboard',
       'echarts',
       'lexical',
+      'monaco-editor',
       'react-markdown',
       'remark-breaks',
       'remark-gfm',
