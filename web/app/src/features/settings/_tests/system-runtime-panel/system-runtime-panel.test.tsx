@@ -28,11 +28,18 @@ vi.mock('echarts/core', () => ({
   use: vi.fn()
 }));
 vi.mock('echarts/charts', () => ({
+  BarChart: {},
+  FunnelChart: {},
+  GaugeChart: {},
+  PieChart: {},
+  RadarChart: {},
   LineChart: {}
 }));
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   LegendComponent: {},
+  RadarComponent: {},
+  TitleComponent: {},
   TooltipComponent: {}
 }));
 vi.mock('echarts/renderers', () => ({
@@ -417,14 +424,27 @@ describe('SystemRuntimePanel', () => {
             candidate.series[0]?.data?.length === 1
         ) as
         | {
-            yAxis?: { name?: string };
+            yAxis?: { name?: string; max?: number };
             series?: Array<{ data?: unknown[] }>;
           }
         | undefined;
 
       expect(option?.yAxis?.name).toBe('KB/s');
+      expect(option?.yAxis).not.toHaveProperty('max');
       expect(option?.series?.[0]?.data).toEqual([2]);
       expect(option?.series?.[1]?.data).toEqual([1]);
+    });
+
+    fireEvent.click(screen.getByText('CPU'));
+    await waitFor(() => {
+      const option = echartsMock.chart.setOption.mock.calls
+        .map((call) => call[0])
+        .reverse()
+        .find((candidate) => candidate?.yAxis?.name === '%') as
+        | { yAxis?: { max?: number } }
+        | undefined;
+
+      expect(option?.yAxis?.max).toBe(100);
     });
   });
 

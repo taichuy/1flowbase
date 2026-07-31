@@ -61,6 +61,41 @@ async fn issue_1474_anthropic_sse_error_preserves_native_message_exactly() {
     );
 }
 
+#[tokio::test]
+async fn anthropic_callback_retry_429_sse_uses_rate_limit_error() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Failed;
+    run.error = Some(NativeError {
+        code: "provider_upstream_error".to_string(),
+        message: PROVIDER_UPSTREAM_ERROR_BODY.to_string(),
+        details: json!({ "status_code": 429 }),
+    });
+    let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_failed(run.id, json!({})),
+        ),
+    );
+
+    let response = test_projected_events_response(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Anthropic error SSE body should be readable");
+    let body = String::from_utf8(body.to_vec()).expect("Anthropic error SSE should be UTF-8");
+    let decoded = decode_anthropic_sse(&body);
+
+    assert_eq!(decoded.len(), 1);
+    assert_eq!(decoded[0].name, "error");
+    assert_eq!(decoded[0].data["error"]["type"], "rate_limit_error");
+    assert_eq!(
+        decoded[0].data["error"]["message"],
+        PROVIDER_UPSTREAM_ERROR_BODY
+    );
+}
+
 #[test]
 fn anthropic_tool_use_wire_helper_encodes_callback_block() {
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);

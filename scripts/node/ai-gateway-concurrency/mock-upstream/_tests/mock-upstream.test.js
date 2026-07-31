@@ -10,6 +10,9 @@ const {
   mockScenarioSentinel,
 } = require('../../contracts');
 const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = require('..');
+const {
+  CALLBACK_RETRY_VECTOR_MARKER,
+} = require('../client-vector-contract');
 const { DEFAULT_BARRIER_MARKERS, chatTextEvents } = require('../protocol-events');
 const { errorFixtureMarker, upstreamErrorFixture } = require('../../protocol-oracle/error-fidelity');
 
@@ -351,6 +354,44 @@ test('Root #1477 AC-008: retry fixture fails once and then succeeds for one corr
     const second = await request();
     assert.equal(second.status, 200);
     assert.match(await second.text(), /chat\.completion\.chunk/u);
+  });
+});
+
+test('anthropic callback retry fixture rejects one tool result with 429 then recovers', async () => {
+  await withMockUpstream(async ({ upstream, httpBaseUrl }) => {
+    const request = () => fetch(`${httpBaseUrl}${MOCK_ROUTE.ANTHROPIC_MESSAGES}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model',
+        stream: true,
+        messages: [
+          { role: 'user', content: `${CALLBACK_RETRY_VECTOR_MARKER} 1flowbase-client-tool-vector` },
+          { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-a', name: 'Read', input: {} }] },
+          { role: 'user', content: [{
+            type: 'tool_result',
+            tool_use_id: 'tool-a',
+            content: '1flowbase-client-tool-result',
+          }] },
+        ],
+      }),
+    });
+
+    const first = await request();
+    assert.equal(first.status, 429);
+    assert.equal((await first.json()).error.type, 'rate_limit_error');
+    const second = await request();
+    assert.equal(second.status, 200);
+    assert.match(await second.text(), /message_stop/u);
+
+    const retryEvents = upstream.snapshot().entries.filter((entry) => (
+      entry.event === 'retryable_tool_result_rejection'
+        || entry.event === 'retryable_tool_result_recovered'
+    ));
+    assert.deepEqual(retryEvents.map((entry) => entry.event), [
+      'retryable_tool_result_rejection',
+      'retryable_tool_result_recovered',
+    ]);
   });
 });
 

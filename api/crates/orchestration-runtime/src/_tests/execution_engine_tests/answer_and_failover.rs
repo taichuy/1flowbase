@@ -636,7 +636,7 @@ async fn failed_retry_attempts_preserve_each_upstream_body_and_terminal_uses_the
 }
 
 #[tokio::test]
-async fn upstream_429_rejection_is_not_retried_by_the_gateway() {
+async fn anthropic_callback_retry_marks_upstream_429_as_pre_token_failure_without_gateway_retry() {
     let mut plan = base_plan();
     let llm = plan
         .nodes
@@ -689,6 +689,10 @@ async fn upstream_429_rejection_is_not_retried_by_the_gateway() {
     match outcome.stop_reason {
         ExecutionStopReason::Failed(failure) => {
             assert_eq!(failure.error_payload["status_code"], json!(429));
+            assert_eq!(
+                failure.error_payload["failed_after_first_token"],
+                json!(false)
+            );
         }
         other => panic!("expected terminal provider failure, got {other:?}"),
     }

@@ -78,8 +78,9 @@ pub struct ResumePublishedCallbackResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PreparedPublishedCallbackResume {
-    pub initial_run: NativeRunResult,
+pub enum PreparedPublishedCallbackResume {
+    Resume { initial_run: NativeRunResult },
+    StartNewTurnFromHistory,
 }
 
 struct PublishedCallbackResumeContext {
@@ -123,8 +124,18 @@ where
         command: &ResumePublishedCallbackCommand,
     ) -> Result<PreparedPublishedCallbackResume> {
         let context = self.resolve_resume_context(command).await?;
+        if let Some(existing) = self
+            .repository
+            .get_published_callback_resume_attempt(context.callback_task.id)
+            .await?
+        {
+            ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
+            if callback_failure_allows_new_turn(&context.flow_run) {
+                return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+            }
+        }
         let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
-        Ok(PreparedPublishedCallbackResume { initial_run })
+        Ok(PreparedPublishedCallbackResume::Resume { initial_run })
     }
 
     pub async fn resume_callback(
@@ -263,15 +274,7 @@ where
         attempt: domain::FlowRunCallbackResumeAttemptRecord,
         command: &ResumePublishedCallbackCommand,
     ) -> Result<ResumePublishedCallbackResult> {
-        if attempt.response_payload != command.response_payload {
-            return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
-        }
-        if attempt.status != domain::FlowRunCallbackResumeAttemptStatus::Succeeded {
-            return Err(ControlPlaneError::Conflict("callback_resume_not_completed").into());
-        }
-        if callback_task.status != domain::CallbackTaskStatus::Completed {
-            return Err(ControlPlaneError::Conflict("callback_task_not_completed").into());
-        }
+        ensure_existing_callback_resume_matches(callback_task, &attempt, command)?;
         let flow_run = self
             .repository
             .get_published_flow_run(attempt.flow_run_id)
@@ -374,6 +377,71 @@ where
             None => service,
         }
     }
+}
+
+fn ensure_existing_callback_resume_matches(
+    callback_task: &domain::CallbackTaskRecord,
+    attempt: &domain::FlowRunCallbackResumeAttemptRecord,
+    command: &ResumePublishedCallbackCommand,
+) -> Result<()> {
+    if attempt.response_payload != command.response_payload {
+        return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
+    }
+    if attempt.status != domain::FlowRunCallbackResumeAttemptStatus::Succeeded {
+        return Err(ControlPlaneError::Conflict("callback_resume_not_completed").into());
+    }
+    if callback_task.status != domain::CallbackTaskStatus::Completed {
+        return Err(ControlPlaneError::Conflict("callback_task_not_completed").into());
+    }
+    Ok(())
+}
+
+fn callback_failure_allows_new_turn(flow_run: &domain::FlowRunRecord) -> bool {
+    if flow_run.status != domain::FlowRunStatus::Failed {
+        return false;
+    }
+    let Some(error) = flow_run.error_payload.as_ref() else {
+        return false;
+    };
+    if error
+        .get("failed_after_first_token")
+        .and_then(Value::as_bool)
+        != Some(false)
+    {
+        return false;
+    }
+    let error_code = error
+        .get("error_code")
+        .or_else(|| error.get("code"))
+        .and_then(Value::as_str)
+        .unwrap_or("runtime_error");
+    if matches!(
+        error_code,
+        "auth_failed"
+            | "model_not_found"
+            | "provider_affinity_mismatch"
+            | "provider_transport_unavailable"
+    ) {
+        return false;
+    }
+    if matches!(error_code, "rate_limited" | "endpoint_unreachable") {
+        return true;
+    }
+    provider_failure_status(error).is_some_and(|status| status == 429 || status >= 500)
+}
+
+fn provider_failure_status(error: &Value) -> Option<u16> {
+    error
+        .get("status_code")
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            error
+                .get("provider_details")
+                .and_then(|details| details.get("status"))
+                .and_then(Value::as_u64)
+        })
+        .and_then(|status| u16::try_from(status).ok())
+        .filter(|status| (100..=599).contains(status))
 }
 
 #[async_trait]

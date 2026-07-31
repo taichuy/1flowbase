@@ -7,6 +7,7 @@ const {
   waitForBarrierWaiting,
 } = require('../durable');
 const {
+  CALLBACK_RETRY_VECTOR,
   CLAUDE_PROTOCOL_VECTOR,
   PARALLEL_TOOL_VECTOR,
   PROVIDER_ERROR_BODY,
@@ -177,6 +178,42 @@ test('Anthropic multi-turn mock evidence records only matched thinking-signature
       ? { ...event, thinkingSignatureMatched: false }
       : event),
   }, expectation), /thinking signature was not preserved/u);
+});
+
+test('Anthropic callback retry evidence requires one 429 rejection and one later recovery', () => {
+  const before = {
+    entries: [{ sequence: 20 }],
+    counters: { gatewayExecutorInvocations: 0, networkObserverOutbound: 0 },
+  };
+  const entries = [
+    ...before.entries,
+    { sequence: 21, event: 'arrival', nonce: 'initial' },
+    { sequence: 22, event: 'tool_call', nonce: 'initial' },
+    { sequence: 23, event: 'settled', nonce: 'initial', outcome: 'completed', successTerminalCount: 1 },
+    { sequence: 24, event: 'arrival', nonce: 'rejected' },
+    { sequence: 25, event: 'retryable_tool_result_rejection', nonce: 'rejected' },
+    { sequence: 26, event: 'settled', nonce: 'rejected', outcome: 'http-429', successTerminalCount: 0 },
+    { sequence: 27, event: 'arrival', nonce: 'recovered' },
+    { sequence: 28, event: 'retryable_tool_result_recovered', nonce: 'recovered' },
+    { sequence: 29, event: 'second_upstream_request', nonce: 'recovered' },
+    { sequence: 30, event: 'barrier_waiting', nonce: 'recovered' },
+    { sequence: 31, event: 'barrier_released', nonce: 'recovered' },
+    { sequence: 32, event: 'settled', nonce: 'recovered', outcome: 'completed', successTerminalCount: 1 },
+  ];
+
+  const evidence = evaluateMockAttempt(
+    before,
+    { entries, counters: before.counters },
+    CALLBACK_RETRY_VECTOR.expected,
+  );
+  assert.equal(evidence.arrivals, 3);
+  assert.equal(evidence.callback_resume.observed_resumes, 1);
+  assert.equal(evidence.retryable_tool_result_recovered.client_tool_calls, 1);
+
+  assert.throws(() => evaluateMockAttempt(before, {
+    entries: entries.filter((event) => event.event !== 'retryable_tool_result_recovered'),
+    counters: before.counters,
+  }, CALLBACK_RETRY_VECTOR.expected), /did not recover after one client tool call/u);
 });
 
 test('F4-CLIENT-GATE accepts legal callback request counts but requires paired lifecycle and resume chronology', () => {

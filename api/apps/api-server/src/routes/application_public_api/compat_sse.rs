@@ -6,8 +6,8 @@ use axum::response::{
 };
 use control_plane::application_public_api::{
     callback_resume::{
-        ApplicationPublishedCallbackResumeService, PublishedCallbackResumeTarget,
-        ResumePublishedCallbackCommand,
+        ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
+        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     native::NativeRunStatus,
 };
@@ -66,6 +66,11 @@ const ANTHROPIC_SSE_PROJECTION: &str = "anthropic";
 pub(crate) struct CompatibleResumePlan {
     pub(crate) initial_run: NativeRunResult,
     pub(crate) command: ResumePublishedCallbackCommand,
+}
+
+pub(crate) enum CompatibleResumeAdmission {
+    Resume(CompatibleResumePlan),
+    StartNewTurnFromHistory,
 }
 
 enum CompatibleTurnAction {
@@ -251,7 +256,7 @@ impl CompatibleProtocolProjection {
 pub(crate) async fn prepare_compatible_resume(
     state: Arc<ApiState>,
     command: ResumePublishedCallbackCommand,
-) -> Result<CompatibleResumePlan, NativeApiError> {
+) -> Result<CompatibleResumeAdmission, NativeApiError> {
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -272,9 +277,16 @@ pub(crate) async fn prepare_compatible_resume(
             .prepare_callback_resume(&command)
             .await
             .map_err(service_error)?;
-    Ok(CompatibleResumePlan {
-        initial_run: prepared.initial_run,
-        command,
+    Ok(match prepared {
+        PreparedPublishedCallbackResume::Resume { initial_run } => {
+            CompatibleResumeAdmission::Resume(CompatibleResumePlan {
+                initial_run,
+                command,
+            })
+        }
+        PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
+            CompatibleResumeAdmission::StartNewTurnFromHistory
+        }
     })
 }
 

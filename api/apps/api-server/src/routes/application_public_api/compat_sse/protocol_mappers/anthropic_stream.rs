@@ -158,7 +158,7 @@ impl AnthropicStreamMapper {
             json!({
                 "type": "error",
                 "error": {
-                    "type": "api_error",
+                    "type": anthropic_runtime_error_type(initial_run),
                     "message": canonical_runtime_error_message(initial_run)
                 }
             }),
@@ -353,6 +353,22 @@ impl AnthropicStreamMapper {
 
     fn active_content_index(&self) -> u32 {
         self.next_content_index.saturating_sub(1)
+    }
+}
+
+fn anthropic_runtime_error_type(run: &NativeRunResult) -> &'static str {
+    let error_code = run.error.as_ref().map(|error| error.code.as_str());
+    let status = run
+        .error
+        .as_ref()
+        .and_then(|error| error.details.get("status_code"))
+        .and_then(Value::as_u64);
+    if error_code == Some("rate_limited") || status == Some(429) {
+        "rate_limit_error"
+    } else if status == Some(529) {
+        "overloaded_error"
+    } else {
+        "api_error"
     }
 }
 

@@ -7,6 +7,8 @@ const TOOL_FINAL_SENTINEL = '1flowbase gateway tool sentinel ok';
 const PARALLEL_FINAL_SENTINEL = '1flowbase parallel callback sentinel ok';
 const SEQUENTIAL_FINAL_SENTINEL = '1flowbase sequential callback sentinel ok';
 const TOOL_FOLLOWUP_FINAL_SENTINEL = '1flowbase tool history followup sentinel ok';
+const CALLBACK_RETRY_VECTOR_MARKER = '1flowbase-client-vector=tools-callback-retry-after-429';
+const CALLBACK_RETRY_FINAL_SENTINEL = '1flowbase callback retry sentinel ok';
 const THINKING_SIGNATURE_FIXTURE = '1flowbase-opaque-thinking-signature-fixture';
 const GIT_WORKFLOW_FINAL = '1flowbase meaningful git workflow verified';
 const CONTINUITY_SEED_SENTINEL = '1flowbase continuity seed 中🙂';
@@ -51,6 +53,7 @@ function textVectorOutput(body, knownContinuityResponses = new Set()) {
 }
 
 function toolVectorFinalOutput(body) {
+  if (containsValue(body, CALLBACK_RETRY_VECTOR_MARKER)) return CALLBACK_RETRY_FINAL_SENTINEL;
   if (containsValue(body, 'tools-history-followup-query')) return TOOL_FOLLOWUP_FINAL_SENTINEL;
   if (containsValue(body, '1flowbase-client-vector=meaningful-git-workflow')) return GIT_WORKFLOW_FINAL;
   if (containsValue(body, 'tools-parallel-one-callback-task')) return PARALLEL_FINAL_SENTINEL;
@@ -109,6 +112,8 @@ function hasThinkingSignatureFixture(body) {
 }
 
 module.exports = {
+  CALLBACK_RETRY_FINAL_SENTINEL,
+  CALLBACK_RETRY_VECTOR_MARKER,
   CLAUDE_PROTOCOL_SENTINEL,
   CONTINUITY_FINAL_SENTINEL,
   CONTINUITY_SEED_SENTINEL,

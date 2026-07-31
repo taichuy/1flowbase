@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  CLAUDE_PROTOCOL_VECTOR, CLIENT_PROTOCOLS, CONTINUITY_VECTOR, LONG_TEXT_VECTOR,
+  CALLBACK_RETRY_VECTOR, CLAUDE_PROTOCOL_VECTOR, CLIENT_PROTOCOLS, CONTINUITY_VECTOR, LONG_TEXT_VECTOR,
   MEANINGFUL_GIT_VECTOR, PARALLEL_TOOL_VECTOR, PROVIDER_ERROR_VECTOR, SEQUENTIAL_TOOL_VECTOR,
   TEXT_SENTINEL, TEXT_VECTOR, TOOL_RESULT_SENTINEL, TOOL_VECTOR, VECTOR_MANIFEST,
   TOOL_HISTORY_FOLLOWUP_VECTOR,
@@ -153,6 +153,7 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
   assert.deepEqual(VECTOR_MANIFEST.vectors.map((vector) => vector.id), [
     TEXT_VECTOR.id,
     TOOL_VECTOR.id,
+    CALLBACK_RETRY_VECTOR.id,
     LONG_TEXT_VECTOR.id,
     CONTINUITY_VECTOR.id,
     PROVIDER_ERROR_VECTOR.id,
@@ -170,9 +171,19 @@ test('WP-D4B fixes a finite deterministic vector manifest for all three machine 
         || Number.isInteger(vector.expected.minimum_provider_requests),
       true,
     );
-    assert.equal(vector.expected.success_terminal_counts.length, 1);
+    assert.equal(
+      vector.expected.success_terminal_counts.length === 1
+        || vector.expected.success_terminal_counts.length === vector.expected.provider_requests,
+      true,
+    );
   }
   assert.equal(PROVIDER_ERROR_VECTOR.expected.error_body, PROVIDER_ERROR_BODY);
+  assert.deepEqual(CALLBACK_RETRY_VECTOR.clients, ['claude']);
+  assert.deepEqual(CALLBACK_RETRY_VECTOR.expected.durable_statuses, ['failed', 'succeeded']);
+  assert.deepEqual(CALLBACK_RETRY_VECTOR.expected.provider_outcomes, [
+    'completed', 'http-429', 'completed',
+  ]);
+  assert.equal(CALLBACK_RETRY_VECTOR.expected.retryable_tool_result_recovered, true);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.provider_requests, undefined);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.minimum_provider_requests, 1);
   assert.equal(PROVIDER_ERROR_VECTOR.expected.durable_runs, 'provider_requests');

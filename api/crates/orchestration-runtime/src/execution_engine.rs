@@ -1298,7 +1298,9 @@ where
             Err(error) => {
                 let attempt_finished_at = OffsetDateTime::now_utc();
                 let provider_error = provider_runtime_error_from_anyhow(&error);
-                let error_payload = build_provider_error_payload(attempt_runtime, &provider_error);
+                let mut error_payload =
+                    build_provider_error_payload(attempt_runtime, &provider_error);
+                error_payload["failed_after_first_token"] = Value::Bool(false);
                 let recoverable_error_message = recoverable_provider_error_message(&provider_error);
                 let attempt = build_attempt_metric(AttemptMetricInput {
                     attempt_index,
@@ -1419,6 +1421,9 @@ where
                 // rather than copied from an upstream provider response.
                 error_payload["message"] = Value::String(message.to_string());
             }
+        }
+        if let Some(error_payload) = &mut error_payload {
+            error_payload["failed_after_first_token"] = Value::Bool(failed_after_first_token);
         }
         let attempt_status = match error_payload
             .as_ref()

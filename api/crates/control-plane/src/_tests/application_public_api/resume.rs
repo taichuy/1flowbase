@@ -3,8 +3,9 @@ use control_plane::application_public_api::native::NativeRunRequest;
 use control_plane::application_public_api::{
     api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
     callback_resume::{
-        ApplicationPublishedCallbackConsumer, ApplicationPublishedCallbackResumeService,
-        CompletePublishedCallbackInput, PublishedCallbackResumeSource,
+        ApplicationPublishedCallbackAttemptRepository, ApplicationPublishedCallbackConsumer,
+        ApplicationPublishedCallbackResumeService, CompletePublishedCallbackInput,
+        PreparedPublishedCallbackResume, PublishedCallbackResumeSource,
         PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
     },
     mapping::{
@@ -548,6 +549,7 @@ mod tests {
 
     use anyhow::Result;
     use serde_json::{json, Value};
+    use time::OffsetDateTime;
 
     use super::*;
     use crate::application_public_api::{
@@ -566,6 +568,7 @@ mod tests {
     struct CompletingCallbackConsumer {
         repository: ApplicationPublicApiTestRepository,
         calls: Arc<Mutex<Vec<CompletePublishedCallbackInput>>>,
+        terminal_error: Option<Value>,
     }
 
     impl CompletingCallbackConsumer {
@@ -592,12 +595,28 @@ mod tests {
                 .get_published_callback_task(input.callback_task_id)
                 .await?
                 .expect("callback task fixture should exist");
+            let failed_run = match &self.terminal_error {
+                Some(error_payload) => {
+                    self.repository
+                        .fail_waiting_callback_published_run(
+                            callback_task.flow_run_id,
+                            error_payload.clone(),
+                            OffsetDateTime::now_utc(),
+                        )
+                        .await?
+                }
+                None => None,
+            };
             self.repository
                 .complete_callback_task_for_test(input.callback_task_id);
-            self.repository
-                .get_published_flow_run(callback_task.flow_run_id)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("published run fixture should exist"))
+            match failed_run {
+                Some(run) => Ok(run),
+                None => self
+                    .repository
+                    .get_published_flow_run(callback_task.flow_run_id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("published run fixture should exist")),
+            }
         }
     }
 
@@ -728,6 +747,101 @@ mod tests {
             ))
         ));
         assert_eq!(consumer.call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn anthropic_callback_retry_pre_token_429_starts_new_turn_without_reconsuming_callback() {
+        let (repository, mut consumer, token, run) = callback_fixture().await;
+        consumer.terminal_error = Some(json!({
+            "error_code": "provider_upstream_error",
+            "status_code": 429,
+            "failed_after_first_token": false,
+            "message": "upstream unavailable"
+        }));
+        let callback = repository.seed_pending_callback_task(run.id);
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+        let mut command = resume_command(&token, run.id, callback.id, json!({ "answer": "yes" }));
+        command.source = PublishedCallbackResumeSource::AnthropicMessages;
+
+        let first = service
+            .resume_callback(command.clone())
+            .await
+            .expect("callback delivery should complete even when inference fails");
+        assert_eq!(
+            first.run.status,
+            control_plane::application_public_api::native::NativeRunStatus::Failed
+        );
+        assert_eq!(
+            first.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+        );
+
+        let admission = service
+            .prepare_callback_resume(&command)
+            .await
+            .expect("retryable pre-token failure should produce an admission decision");
+        assert_eq!(
+            admission,
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory
+        );
+        assert_eq!(consumer.call_count(), 1);
+        assert_eq!(repository.callback_resume_attempts().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn anthropic_callback_retry_does_not_reissue_unsafe_or_changed_replays() {
+        for terminal_error in [
+            json!({
+                "error_code": "provider_upstream_error",
+                "status_code": 429,
+                "failed_after_first_token": true,
+                "message": "partial response failed"
+            }),
+            json!({
+                "error_code": "auth_failed",
+                "status_code": 401,
+                "failed_after_first_token": false,
+                "message": "invalid credential"
+            }),
+        ] {
+            let (repository, mut consumer, token, run) = callback_fixture().await;
+            consumer.terminal_error = Some(terminal_error);
+            let callback = repository.seed_pending_callback_task(run.id);
+            let service = ApplicationPublishedCallbackResumeService::new(
+                repository.clone(),
+                consumer.clone(),
+            );
+            let command = resume_command(&token, run.id, callback.id, json!({ "answer": "yes" }));
+            service
+                .resume_callback(command.clone())
+                .await
+                .expect("callback delivery should be durable");
+
+            let admission = service
+                .prepare_callback_resume(&command)
+                .await
+                .expect("unsafe replay should remain an idempotent callback replay");
+            assert!(matches!(
+                admission,
+                PreparedPublishedCallbackResume::Resume { .. }
+            ));
+
+            let changed =
+                resume_command(&token, run.id, callback.id, json!({ "answer": "changed" }));
+            let error = service
+                .prepare_callback_resume(&changed)
+                .await
+                .expect_err("changed callback payload must not start a new turn");
+            assert!(matches!(
+                error.downcast_ref::<ControlPlaneError>(),
+                Some(ControlPlaneError::Conflict(
+                    "callback_resume_payload_conflict"
+                ))
+            ));
+            assert_eq!(consumer.call_count(), 1);
+            assert_eq!(repository.callback_resume_attempts().len(), 1);
+        }
     }
 
     #[tokio::test]

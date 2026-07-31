@@ -171,7 +171,9 @@ pub async fn create_chat_completion(
             response_mode.clone(),
         );
         match compat_sse::prepare_compatible_resume(state.clone(), command).await {
-            Ok(plan) if response_mode.as_deref() == Some("streaming") => {
+            Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
+                if response_mode.as_deref() == Some("streaming") =>
+            {
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     plan.initial_run.id,
                     callback_task_id,
@@ -186,13 +188,16 @@ pub async fn create_chat_completion(
                 .await
                 .map_err(Into::into);
             }
-            Ok(plan) => {
+            Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
                 let run = execute_openai_tool_resume(state, plan.command).await?;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     run.id,
                     callback_task_id,
                 );
                 return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
+            }
+            Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
+                // The callback delivery is complete; re-admit its full history as a new turn.
             }
             Err(error)
                 if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
@@ -483,7 +488,7 @@ async fn dispatch_response_for_endpoint(
                 response_mode.clone(),
             );
             match compat_sse::prepare_compatible_resume(state.clone(), command).await {
-                Ok(plan) => {
+                Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
                     ensure_openai_responses_resume_matches_previous_response(
                         state.as_ref(),
                         previous_response_id.as_deref(),
@@ -525,6 +530,9 @@ async fn dispatch_response_for_endpoint(
                         )?)
                         .into_response(),
                     ));
+                }
+                Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
+                    // The callback delivery is complete; re-admit its full history as a new turn.
                 }
                 Err(error)
                     if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>

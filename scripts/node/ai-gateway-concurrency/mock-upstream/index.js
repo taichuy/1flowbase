@@ -26,6 +26,7 @@ const {
 } = require('../protocol-oracle/request-fidelity');
 const { errorFixtureFromBody } = require('../protocol-oracle/error-fidelity');
 const {
+  CALLBACK_RETRY_VECTOR_MARKER,
   CONTINUITY_SEED_SENTINEL,
   HTTP_500_ERROR_BODY,
   TEXT_SENTINEL,
@@ -466,6 +467,7 @@ function createMockUpstream(options = {}) {
   const timeline = createTimeline();
   const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
   const errorFixtureAttempts = new Map();
+  const callbackRetryAttempts = new Map();
   const continuityResponses = new Set();
   const toolResponses = new Map();
   const sockets = new Set();
@@ -522,6 +524,31 @@ function createMockUpstream(options = {}) {
         : path === MOCK_ROUTE.CHAT_COMPLETIONS ? 'chat-completions-sse' : TRANSPORT.ANTHROPIC_SSE;
       const requestTimeline = timeline.arrive(transport, scenario, safeRequestSummary(request, body));
       observeWireVectors(body, requestTimeline, counters);
+      const isCallbackRetryToolResult = path === MOCK_ROUTE.ANTHROPIC_MESSAGES
+        && containsValue(body, CALLBACK_RETRY_VECTOR_MARKER)
+        && containsValue(body, '1flowbase-client-tool-result');
+      if (isCallbackRetryToolResult) {
+        const retryKey = body?.metadata?.user_id
+          ?? body?.metadata?.session_id
+          ?? sha256(body.messages ?? body);
+        const callbackRetryAttempt = (callbackRetryAttempts.get(retryKey) ?? 0) + 1;
+        callbackRetryAttempts.set(retryKey, callbackRetryAttempt);
+        if (callbackRetryAttempt === 1) {
+          requestTimeline.record('retryable_tool_result_rejection', { callbackRetryAttempt });
+          response.writeHead(429, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({
+            type: 'error',
+            error: { type: 'rate_limit_error', message: 'mock callback retry 429' },
+          }));
+          requestTimeline.finish('http-429', {
+            status: 429,
+            callbackRetryAttempt,
+            successTerminalCount: 0,
+          });
+          return;
+        }
+        requestTimeline.record('retryable_tool_result_recovered', { callbackRetryAttempt });
+      }
       const errorFixture = errorFixtureFromBody(body);
       const errorFixtureKey = `${errorFixture?.id ?? ''}:${body.fixture_retry_key ?? ''}`;
       const errorFixtureAttempt = (errorFixtureAttempts.get(errorFixtureKey) ?? 0) + 1;

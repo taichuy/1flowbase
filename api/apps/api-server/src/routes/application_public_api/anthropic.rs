@@ -190,7 +190,9 @@ pub async fn create_message(
             response_mode.clone(),
         );
         match compat_sse::prepare_compatible_resume(state.clone(), command).await {
-            Ok(plan) if response_mode.as_deref() == Some("streaming") => {
+            Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
+                if response_mode.as_deref() == Some("streaming") =>
+            {
                 return compat_sse::start_anthropic_resume_stream(
                     state,
                     plan.initial_run,
@@ -200,9 +202,13 @@ pub async fn create_message(
                 .await
                 .map_err(Into::into);
             }
-            Ok(plan) => {
+            Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
                 let run = execute_anthropic_tool_resume(state, plan.command).await?;
                 return Ok(Json(to_anthropic_response(run, model)?).into_response());
+            }
+            Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
+                // The callback payload was already consumed, but its model continuation failed
+                // before the first token. Translate the complete history as a new inference turn.
             }
             Err(error)
                 if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>

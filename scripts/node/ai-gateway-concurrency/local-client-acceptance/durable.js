@@ -265,6 +265,22 @@ function evaluateMockAttempt(before, after, rawExpectation) {
     expectation.callback_resumes,
     expectation.tool_mode,
   );
+  let retryableToolResultRecovered = null;
+  if (expectation.retryable_tool_result_recovered === true) {
+    const rejected = events.filter((event) => event.event === 'retryable_tool_result_rejection');
+    const recovered = events.filter((event) => event.event === 'retryable_tool_result_recovered');
+    const toolCalls = events.filter((event) => event.event === 'tool_call');
+    if (rejected.length !== 1 || recovered.length !== 1 || toolCalls.length !== 1
+      || !(toolCalls[0].sequence < rejected[0].sequence
+        && rejected[0].sequence < recovered[0].sequence)) {
+      throw new Error('retryable tool-result rejection did not recover after one client tool call');
+    }
+    retryableToolResultRecovered = {
+      rejection_sequence: rejected[0].sequence,
+      recovery_sequence: recovered[0].sequence,
+      client_tool_calls: toolCalls.length,
+    };
+  }
   return {
     arrivals: arrivals.length,
     settled: settled.length,
@@ -276,6 +292,9 @@ function evaluateMockAttempt(before, after, rawExpectation) {
     ...(executor || {}),
     ...(network || {}),
     ...(callback ? { callback_resume: callback } : {}),
+    ...(retryableToolResultRecovered
+      ? { retryable_tool_result_recovered: retryableToolResultRecovered }
+      : {}),
     ...(expectation.thinking_signature_matched === true
       ? { thinkingSignatureMatched: true }
       : {}),

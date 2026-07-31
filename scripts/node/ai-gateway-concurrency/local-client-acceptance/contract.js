@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const {
+  CALLBACK_RETRY_VECTOR,
   CLAUDE_PROTOCOL_PROFILE,
   CLAUDE_PROTOCOL_VECTOR,
   CONTINUITY_VECTOR,
@@ -318,6 +319,7 @@ function buildClientPlan(client, binary, rawTarget, paths, vector, protocol, exe
 }
 
 module.exports = {
+  CALLBACK_RETRY_VECTOR,
   ARTIFACT_SCHEMA,
   CLAUDE_PROTOCOL_PROFILE,
   CLAUDE_PROTOCOL_VECTOR,
