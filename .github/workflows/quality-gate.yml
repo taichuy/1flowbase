@@ -192,9 +192,16 @@ jobs:
         if: always()
         with:
           name: test-governance-artifacts
+          path: tmp/test-governance
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-governance-summary
+          if-no-files-found: error
           path: |
-            tmp/test-governance
-            !tmp/test-governance/parallel/**
+            tmp/test-governance/quality-gate-report.json
+            tmp/test-governance/quality-gate-report.md
+            tmp/test-governance/quality-gate.latest.log
 
   repo-tooling-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
