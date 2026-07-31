@@ -2,6 +2,7 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import { ApiClientError } from '../../errors';
 import type {
+  ConsoleAnswerPresentation,
   ConsoleFlowDebugStreamCursor,
   ConsoleFlowDebugStreamEvent,
   ConsoleFlowDebugStreamHandlers
@@ -132,6 +133,7 @@ function normalizeFromEnvelope(
     : payload.error_payload === null
       ? null
       : undefined;
+  const answerPresentation = normalizeAnswerPresentation(payload.presentation);
 
   if (eventType === 'flow_accepted') {
     return {
@@ -212,7 +214,8 @@ function normalizeFromEnvelope(
         toOptionalString(raw.text) ??
         toOptionalString(payload.text) ??
         toOptionalString(payload.delta) ??
-        ''
+        '',
+      ...(answerPresentation ? { presentation: answerPresentation } : {})
     };
   }
 
@@ -227,7 +230,8 @@ function normalizeFromEnvelope(
         toOptionalString(raw.text) ??
         toOptionalString(payload.text) ??
         toOptionalString(payload.delta) ??
-        ''
+        '',
+      ...(answerPresentation ? { presentation: answerPresentation } : {})
     };
   }
 
@@ -360,6 +364,35 @@ function normalizeNullableString(value: unknown): string | null | undefined {
   }
 
   return toOptionalString(value);
+}
+
+function normalizeAnswerPresentation(
+  value: unknown
+): ConsoleAnswerPresentation | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const answerNodeId = toOptionalString(value.answer_node_id);
+  const segmentIndex = value.segment_index;
+  if (
+    value.kind !== 'answer' ||
+    !answerNodeId ||
+    typeof segmentIndex !== 'number' ||
+    !Number.isInteger(segmentIndex) ||
+    segmentIndex < 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    kind: 'answer',
+    answer_node_id: answerNodeId,
+    segment_index: segmentIndex,
+    source_node_id: toOptionalString(value.source_node_id),
+    source_node_run_id: toOptionalString(value.source_node_run_id),
+    source_output_key: toOptionalString(value.source_output_key)
+  };
 }
 
 function isNonEmptyString(value: unknown): value is string {

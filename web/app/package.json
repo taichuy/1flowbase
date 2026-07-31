@@ -17,6 +17,7 @@
     "@ant-design/cssinjs": "^1.24.0",
     "@ant-design/icons": "^5.6.1",
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@ant-design/x-markdown": "2.9.0",
     "@dagrejs/dagre": "^3.0.0",
     "@lexical/plain-text": "^0.43.0",
     "@lexical/react": "^0.43.0",
@@ -38,9 +39,6 @@
     "react-dom": "^19.0.0",
     "react-grid-layout": "^2.2.3",
     "react-i18next": "^17.0.8",
-    "react-markdown": "9.1.0",
-    "remark-breaks": "4.0.0",
-    "remark-gfm": "4.0.1",
     "vditor": "^3.11.2",
     "zustand": "^5.0.3"
   },

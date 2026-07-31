@@ -192,6 +192,7 @@ export function DebugAssistantMessage({
               <DebugMarkdownContent
                 className="agent-flow-editor__debug-reasoning-content"
                 content={parsedContent.reasoningText}
+                streaming={message.status === 'running'}
               />
             ) : null}
           </section>
@@ -202,6 +203,7 @@ export function DebugAssistantMessage({
             content={
               hasAnswer ? parsedContent.answerText : fallbackContent(message)
             }
+            streaming={message.status === 'running'}
           />
         ) : null}
       </div>
