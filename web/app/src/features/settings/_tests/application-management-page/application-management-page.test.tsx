@@ -93,6 +93,7 @@ import { ApplicationManagementPanel } from '../../components/application-managem
 describe('ApplicationManagementPanel', () => {
   beforeEach(() => {
     resetAuthStore();
+    window.localStorage.removeItem('settings.application_management');
     window.history.replaceState(
       {},
       '',
@@ -557,6 +558,45 @@ describe('ApplicationManagementPanel', () => {
       name: /编\s*辑/
     });
     expect(editButton.querySelector('.anticon')).toBeNull();
+  });
+
+  test('shows newly added publication control for an existing saved column configuration', async () => {
+    window.localStorage.setItem(
+      'settings.application_management',
+      JSON.stringify({
+        visibleColumnKeys: [
+          'application',
+          'tags',
+          'created_at',
+          'updated_at',
+          'actions'
+        ],
+        columnWidths: {
+          application: 260,
+          application_type: 120,
+          workflow_trigger_type: 120,
+          publication_status: 120,
+          created_by_display_name: 150,
+          tags: 180,
+          created_at: 180,
+          updated_at: 180,
+          actions: 140
+        }
+      })
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByRole('columnheader', { name: '发布控制' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: '应用类型' })
+    ).not.toBeInTheDocument();
   });
 
   test('AC-001 AC-008 opens the shared edit modal and keeps extension registration read-only', async () => {

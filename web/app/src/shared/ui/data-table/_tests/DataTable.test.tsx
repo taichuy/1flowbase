@@ -9,6 +9,7 @@ import {
   type DataTableColumn,
   type DataTableConfiguration
 } from '../DataTable';
+import { normalizeDataTableState } from '../data-table-state';
 
 type SampleRow = {
   id: string;
@@ -47,6 +48,33 @@ function createConfiguration(
 }
 
 describe('DataTable', () => {
+  test('adds schema columns missing from saved widths without restoring hidden existing columns', () => {
+    const state = normalizeDataTableState(
+      [
+        ...columns,
+        {
+          key: 'status',
+          title: '状态',
+          width: 120
+        }
+      ],
+      {
+        visibleColumnKeys: ['name'],
+        columnWidths: {
+          name: 180,
+          owner: 140
+        }
+      }
+    );
+
+    expect(state.visibleColumnKeys).toEqual(['name', 'status']);
+    expect(state.columnWidths).toEqual({
+      name: 180,
+      owner: 140,
+      status: 120
+    });
+  });
+
   test('renders rows with fixed scroll shell and pagination', async () => {
     render(
       <DataTable<SampleRow>

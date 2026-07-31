@@ -91,13 +91,18 @@ export function normalizeDataTableState<T extends object>(
     return fallback;
   }
 
-  const visibleColumnKeys = Array.isArray(state.visibleColumnKeys)
-    ? normalizeVisibleKeys(columns, state.visibleColumnKeys)
-    : fallback.visibleColumnKeys;
   const parsedWidths =
     state.columnWidths && typeof state.columnWidths === 'object'
       ? (state.columnWidths as Record<string, unknown>)
       : {};
+  const storedVisibleColumnKeys = Array.isArray(state.visibleColumnKeys)
+    ? normalizeVisibleKeys(columns, state.visibleColumnKeys)
+    : fallback.visibleColumnKeys;
+  const visibleColumnKeys = getDefaultVisibleKeys(columns).filter(
+    (key) =>
+      storedVisibleColumnKeys.includes(key) ||
+      !Object.prototype.hasOwnProperty.call(parsedWidths, key)
+  );
 
   return {
     visibleColumnKeys,
