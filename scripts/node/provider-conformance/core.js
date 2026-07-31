@@ -1034,7 +1034,10 @@ async function runConformance(options) {
         $UPSTREAM_BASE_URL: upstream.base_url,
       });
       const result = await invokePackage(runner, packageInfo.loaded_plugin_id, input);
-      requireCondition(result.status === 200, `actual package invocation failed for ${providerCode}`);
+      requireCondition(
+        result.status === 200,
+        `actual package invocation failed for ${providerCode} with HTTP ${result.status}`
+      );
       requireCondition(
         result.body?.result?.final_content === 'conformance-complete',
         `actual package result was not produced for ${providerCode}`
