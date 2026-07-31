@@ -3,8 +3,7 @@
 const crypto = require('node:crypto');
 
 const { SUCCESS_TERMINAL, TRANSPORT } = require('../contracts');
-const { TERMINAL_STATUSES, queryRun } = require('../local-client-acceptance/durable');
-const { runUuidFromProtocolId } = require('../characterize/durable-evidence');
+const { reconcileAttempt, snapshotRuns } = require('../local-client-acceptance/durable');
 const {
   createSseParser,
   protocolErrorMessage,
@@ -201,24 +200,7 @@ async function sendMatrixRequest(row, target, rawCanary, fetchImpl) {
   }
   const uniqueIds = [...new Set(protocolIds)];
   if (uniqueIds.length !== 1) throw new Error(`${row.id} did not expose one stable protocol id`);
-  const runId = runUuidFromProtocolId(row.transport, uniqueIds[0]);
-  if (!runId) throw new Error(`${row.id} protocol id did not contain a run UUID`);
-  return runId;
-}
-
-async function waitForSucceededRun(target, runId, fetchImpl) {
-  const deadline = Date.now() + 10_000;
-  let run = null;
-  do {
-    run = await queryRun(target, runId, fetchImpl);
-    if (TERMINAL_STATUSES.has(run.status)) break;
-    if (Date.now() >= deadline) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } while (true);
-  if (run?.id !== runId || run.status !== 'succeeded') {
-    throw new Error(`protocol context matrix durable run ${runId} remained ${run?.status || 'unknown'}`);
-  }
-  return run;
+  return uniqueIds[0];
 }
 
 function arrivalsAfter(snapshot, sequence) {
@@ -233,15 +215,22 @@ async function verifyProtocolContextProfileMatrix({ ready, mockSnapshot }, depen
   for (const row of PROTOCOL_CONTEXT_PROFILE_MATRIX) {
     const target = ready.targets[row.provider];
     const rawCanary = `profile-${crypto.randomBytes(18).toString('hex')}`;
+    const beforeRuns = await snapshotRuns(target, fetchImpl);
     const before = mockSnapshot();
     const sequence = before.entries.at(-1)?.sequence ?? 0;
-    const runId = await sendMatrixRequest(row, target, rawCanary, fetchImpl);
+    await sendMatrixRequest(row, target, rawCanary, fetchImpl);
     const arrivals = arrivalsAfter(mockSnapshot(), sequence);
     if (arrivals.length !== 1) {
       throw new Error(`${row.id} produced ${arrivals.length} upstream arrivals instead of one`);
     }
     assertProfileProjection(row, arrivals[0], rawCanary, target.upstream_model);
-    await waitForSucceededRun(target, runId, fetchImpl);
+    await reconcileAttempt({
+      target,
+      before: beforeRuns,
+      expectedRuns: 1,
+      expectedStatuses: ['succeeded'],
+      fetchImpl,
+    });
     rows.push({
       id: row.id,
       source_protocol: row.source_protocol,

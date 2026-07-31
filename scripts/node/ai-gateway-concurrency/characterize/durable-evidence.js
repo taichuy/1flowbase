@@ -16,9 +16,7 @@ function unwrapData(payload) {
 function runUuidFromProtocolId(transport, protocolId) {
   const prefix = transport === TRANSPORT.RESPONSES_SSE
     ? 'resp_'
-    : transport === TRANSPORT.ANTHROPIC_SSE
-      ? 'msg_'
-      : transport === TRANSPORT.CHAT_COMPLETIONS_SSE ? 'chatcmpl-' : null;
+    : transport === TRANSPORT.CHAT_COMPLETIONS_SSE ? 'chatcmpl-' : null;
   if (!prefix || typeof protocolId !== 'string' || !protocolId.startsWith(prefix)) return null;
   const runId = protocolId.slice(prefix.length);
   return UUID_PATTERN.test(runId) ? runId : null;
@@ -57,16 +55,12 @@ async function readJson(endpoint, fetchImpl) {
 
 function requestIdentityFailures(requests) {
   const failures = [];
-  const seen = new Map();
   for (const request of requests) {
     if (request.protocolIdCount !== 1) {
       failures.push(`${request.clientNonce}: expected one protocol run id, received ${request.protocolIdCount ?? 0}`);
     }
-    if (!request.runId) failures.push(`${request.clientNonce}: protocol id did not contain a ${request.transport} run UUID`);
-    if (request.runId) {
-      const prior = seen.get(request.runId);
-      if (prior) failures.push(`${request.clientNonce}: duplicate run UUID also used by ${prior}`);
-      else seen.set(request.runId, request.clientNonce);
+    if (!request.runId && request.transport !== TRANSPORT.ANTHROPIC_SSE) {
+      failures.push(`${request.clientNonce}: protocol id did not contain a ${request.transport} run UUID`);
     }
   }
   return failures;
@@ -74,11 +68,20 @@ function requestIdentityFailures(requests) {
 
 function evaluateSnapshot(requests, snapshot) {
   const failures = requestIdentityFailures(requests);
+  const seen = new Map();
   for (const request of requests) {
+    const resolvedRunId = snapshot.resolvedRunIds?.[request.clientNonce] ?? request.runId;
+    if (!resolvedRunId) {
+      failures.push(`${request.clientNonce}: durable run correlation missing`);
+      continue;
+    }
+    const prior = seen.get(resolvedRunId);
+    if (prior) failures.push(`${request.clientNonce}: duplicate run UUID also used by ${prior}`);
+    else seen.set(resolvedRunId, request.clientNonce);
     const queried = snapshot.queries[request.clientNonce] ?? null;
     if (!queried) failures.push(`${request.clientNonce}: query_run result missing`);
     else {
-      if (queried.id !== request.runId) failures.push(`${request.clientNonce}: protocol/query run id mismatch`);
+      if (queried.id !== resolvedRunId) failures.push(`${request.clientNonce}: correlated/query run id mismatch`);
       if (!TERMINAL_STATUSES.has(queried.status)) failures.push(`${request.clientNonce}: query status remained ${queried.status}`);
       if (request.scenario === SCENARIO.HTTP_500) {
         if (queried.status !== 'failed') failures.push(`${request.clientNonce}: upstream HTTP failure converged as ${queried.status}`);
@@ -119,7 +122,8 @@ function evaluateListObservations(requests, snapshot) {
     }
     const listed = matches[0];
     const queried = snapshot.queries[request.clientNonce] ?? null;
-    if (listed.id !== request.runId) advisories.push(`${request.clientNonce}: protocol/list run id mismatch`);
+    const resolvedRunId = snapshot.resolvedRunIds?.[request.clientNonce] ?? request.runId;
+    if (listed.id !== resolvedRunId) advisories.push(`${request.clientNonce}: correlation/list run id mismatch`);
     if (!TERMINAL_STATUSES.has(listed.status)) advisories.push(`${request.clientNonce}: list status remained ${listed.status}`);
     if (queried && queried.id !== listed.id) advisories.push(`${request.clientNonce}: list/query run id mismatch`);
     if (queried && queried.status !== listed.status) advisories.push(`${request.clientNonce}: list/query status mismatch`);
@@ -150,6 +154,7 @@ async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
   const listErrors = {};
   const runtimeActiveTotals = {};
   const pluginStreams = {};
+  const resolvedRunIds = {};
   await Promise.all(Object.entries(targetsByTransport).map(async ([transport, target]) => {
     try {
       lists[transport] = sanitizedListItems(await readJson(target.durable.list_runs, fetchImpl));
@@ -159,9 +164,18 @@ async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
     }
     runtimeActiveTotals[transport] = activeTotal(await readJson(target.runtime_activity, fetchImpl));
   }));
-  await Promise.all(requests.filter((request) => request.runId).map(async (request) => {
+  for (const request of requests) {
+    const matches = lists[request.transport]?.filter(
+      (item) => item.externalTraceId === request.clientNonce,
+    ) ?? [];
+    resolvedRunIds[request.clientNonce] = request.runId ?? (matches.length === 1 ? matches[0].id : null);
+  }
+  await Promise.all(requests.filter((request) => resolvedRunIds[request.clientNonce]).map(async (request) => {
     const template = targetsByTransport[request.transport].durable.query_run;
-    const endpoint = { ...template, url: template.url_template.replace('{run_id}', request.runId) };
+    const endpoint = {
+      ...template,
+      url: template.url_template.replace('{run_id}', resolvedRunIds[request.clientNonce]),
+    };
     queries[request.clientNonce] = sanitizedQuery(await readJson(endpoint, fetchImpl));
   }));
   const uniqueStreamEndpoints = new Map(Object.values(targetsByTransport).map((target) => [
@@ -171,7 +185,7 @@ async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
   await Promise.all([...uniqueStreamEndpoints].map(async ([url, endpoint]) => {
     pluginStreams[url] = activeStreams(await readJson(endpoint, fetchImpl));
   }));
-  return { lists, listErrors, queries, runtimeActiveTotals, pluginStreams };
+  return { lists, listErrors, queries, resolvedRunIds, runtimeActiveTotals, pluginStreams };
 }
 
 async function collectDurableConvergence({
