@@ -25,6 +25,18 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
     assert_eq!(
         routes,
         BTreeSet::from([
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/component-capabilities",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/component-capabilities/:component_id",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/component-module-assets/:sha256",
+            ),
             ("GET", "/api/console/frontstage/:workspace_id/data-capabilities"),
             (
                 "GET",
@@ -72,6 +84,10 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             (
                 "PUT",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/blocks",
             ),
             (
                 "POST",

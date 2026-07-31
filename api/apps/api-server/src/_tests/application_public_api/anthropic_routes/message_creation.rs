@@ -133,7 +133,7 @@ async fn d2_ac_001_anthropic_nested_unknown_fields_reject_before_run_or_provider
 }
 
 #[tokio::test]
-async fn root_1477_anthropic_messages_persist_trusted_compatibility_mode() {
+async fn anthropic_messages_persist_trusted_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Session History Route App").await;
     let session_id = "claude-code-session-1".to_string();

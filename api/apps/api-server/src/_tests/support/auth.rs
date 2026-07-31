@@ -228,7 +228,13 @@ async fn test_state_with_runtime_profile_state(
 
     (
         Arc::new(ApiState {
-            test_database: Some(Arc::new(database)),
+            test_resources: Some(Arc::new(crate::app_state::TestResources::new(
+                database,
+                vec![
+                    std::path::PathBuf::from(&config.business_file_local_root),
+                    std::path::PathBuf::from(&config.provider_install_root),
+                ],
+            ))),
             store: store.clone(),
             authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
             settings_feature_registry,

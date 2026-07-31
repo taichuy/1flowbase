@@ -80,7 +80,7 @@ pub(crate) fn decode_catalog_seed(
         serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
     let source: CatalogSeedSource =
         serde_json::from_slice(source_bytes).context("invalid official Seed source metadata")?;
-    if source.official_commit != "5d4c38b43de459b959248ec91d188f34d46e4629" {
+    if source.official_commit != "cf9159188bd28ba5d899edfad3d480167f56d187" {
         bail!("official Seed source commit is not pinned");
     }
     decode_validated_catalog_seed(

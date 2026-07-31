@@ -215,12 +215,6 @@
       "Get application API mapping"
     ],
     [
-      "get_application_operation_bindings",
-      "GET",
-      "/api/console/applications/:application_id/api-operation-bindings",
-      "Get application operation bindings"
-    ],
-    [
       "get_application_api_publication",
       "GET",
       "/api/console/applications/:application_id/api-publication",
@@ -387,6 +381,12 @@
       "GET",
       "/api/console/applications/:application_id/workflow-schedule-trigger",
       "Get workflow schedule trigger"
+    ],
+    [
+      "agent_flow.data_source_options.list",
+      "GET",
+      "/api/console/data-sources/agent-flow-options",
+      "List agent flow data source options"
     ],
     [
       "get_console_docs_catalog",

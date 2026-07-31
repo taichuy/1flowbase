@@ -774,15 +774,15 @@ async fn role_console_policy_catalog_returns_localized_display_and_option_object
     let catalog = &payload["data"];
     assert_eq!(catalog["locale"].as_str(), Some("zh_Hans"));
     assert_eq!(
-        catalog["group_mode_options"]
+        catalog["group_strategy_options"]
             .as_array()
             .unwrap()
             .iter()
             .map(|option| option["value"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        vec!["disabled", "full", "custom"]
+        vec!["full", "custom"]
     );
-    assert!(catalog["group_mode_options"]
+    assert!(catalog["group_strategy_options"]
         .as_array()
         .unwrap()
         .iter()
@@ -803,9 +803,12 @@ async fn role_console_policy_catalog_returns_localized_display_and_option_object
         .as_array()
         .unwrap()
         .iter()
-        .find(|operation| operation["operation_id"].as_str() == Some("applications.view"))
+        .find(|operation| operation["operation_id"].as_str() == Some("list_applications"))
         .unwrap();
-    assert_ne!(view_operation["label"].as_str(), Some("applications.view"));
+    assert_ne!(
+        view_operation["summary"].as_str(),
+        Some("list_applications")
+    );
     assert_eq!(
         view_operation["allowed_row_scopes"]
             .as_array()

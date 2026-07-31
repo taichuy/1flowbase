@@ -402,7 +402,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
 
     let state = Arc::new(ApiState {
         #[cfg(test)]
-        test_database: None,
+        test_resources: None,
         store,
         authenticator_registry,
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),

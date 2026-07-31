@@ -533,7 +533,8 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /- repo-backend-image-llm-vision/u);
   assert.match(workflow, /- repo-backend-clippy-runtime-storage/u);
   assert.match(workflow, /- repo-backend-test-control-plane/u);
-  assert.match(workflow, /- repo-backend-test-api-server/u);
+  assert.match(workflow, /- repo-backend-test-api-server-1-of-4/u);
+  assert.match(workflow, /- repo-backend-test-api-server-4-of-4/u);
   assert.match(workflow, /- repo-backend-test-plugin-runner/u);
   assert.doesNotMatch(workflow, /- repo-backend-test-apps/u);
   assert.match(workflow, /- repo-backend-check-apps/u);
@@ -615,15 +616,15 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
 
   assert.match(
     workflow,
-    /single-scope-gate:[\s\S]*?timeout-minutes: \$\{\{ \(inputs\.scope == 'repo-backend-test-api-server' \|\| inputs\.scope == 'coverage-backend-api-server'\) && 120 \|\| 60 \}\}/u,
+    /single-scope-gate:[\s\S]*?timeout-minutes: 60/u,
   );
   assert.match(
     workflow,
-    /repo-backend-gate:[\s\S]*?timeout-minutes: \$\{\{ matrix\.scope == 'repo-backend-test-api-server' && 120 \|\| 45 \}\}[\s\S]*?matrix:/u,
+    /repo-backend-gate:[\s\S]*?timeout-minutes: 45[\s\S]*?matrix:/u,
   );
   assert.match(
     workflow,
-    /coverage-backend-gate:[\s\S]*?timeout-minutes: \$\{\{ matrix\.scope == 'coverage-backend-api-server' && 120 \|\| 45 \}\}[\s\S]*?matrix:/u,
+    /coverage-backend-gate:[\s\S]*?timeout-minutes: 55[\s\S]*?matrix:/u,
   );
   assert.match(
     workflow,

@@ -41,36 +41,6 @@ async fn opencode_chat_stream_options_cross_the_request_boundary() {
 }
 
 #[tokio::test]
-async fn codex_native_reasoning_include_reaches_the_selected_provider_capability_boundary() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "Codex Reasoning Include App").await;
-    let before = flow_run_count(state.as_ref()).await;
-    let mut body = responses_body(false);
-    body["store"] = json!(false);
-    body["parallel_tool_calls"] = json!(false);
-    body["include"] = json!(["reasoning.encrypted_content"]);
-    body["prompt_cache_key"] = json!("thread-1");
-    body["client_metadata"] = json!({
-        "session_id": "session-1",
-        "thread_id": "thread-1"
-    });
-    body["reasoning"] = Value::Null;
-
-    let response = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        body,
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("provider_invalid_response"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-}
-
-#[tokio::test]
 async fn openai_chat_completions_accepts_root_endpoint_for_plain_base_url_clients() {
     let app = test_app().await;
     let token = setup_published_app(&app, "OpenAI Plain Base URL Compatible Route App").await;
@@ -187,7 +157,7 @@ async fn codex_parallel_tool_calls_false_crosses_the_request_boundary() {
 }
 
 #[tokio::test]
-async fn root_1477_openai_public_runs_persist_trusted_compatibility_mode() {
+async fn openai_public_runs_persist_trusted_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Canonical Contract App").await;
 

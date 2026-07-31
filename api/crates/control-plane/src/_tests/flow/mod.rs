@@ -10,6 +10,8 @@ use domain::{
 use serde_json::json;
 use uuid::Uuid;
 
+const CREATE_APPLICATION_ROUTE_OPERATION_ID: &str = "create_application";
+
 fn applications_group() -> ConsolePolicyGroup {
     ConsolePolicyGroup::settings_feature(access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID)
         .expect("applications settings feature id must be valid")
@@ -33,7 +35,7 @@ fn application_operation(value: &str) -> ConsoleOperationId {
 async fn get_or_create_editor_state_requires_visible_application() {
     let service = FlowService::for_tests_with_console_policies(vec![application_policy(vec![
         ConsoleOperationPolicy::simple(
-            application_operation(access_control::APPLICATIONS_CREATE_OPERATION_ID),
+            application_operation(CREATE_APPLICATION_ROUTE_OPERATION_ID),
             true,
         ),
         ConsoleOperationPolicy::row(

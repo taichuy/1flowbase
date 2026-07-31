@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.0",
+    "catalog_version": "2.0.1",
     "files": [
       {
         "keys": [
@@ -310,6 +310,8 @@
           "Install plugins in the system backend.",
           "List agent flow data model options",
           "List agent flow data model options in the system backend.",
+          "List agent flow data source options",
+          "List agent flow data source options in the system backend.",
           "List application API keys",
           "List application API keys in the system backend.",
           "List application conversation messages",
@@ -597,7 +599,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:648e403cfe85ae195fa3d15ad71ba8292ea1fabf8fa55299581e1209e65524a3"
+        "sha256": "sha256:492d55ccf7f404fbf8e3f6b831ce025f7df19cbb2c4eb10b159dd270d6d036b8"
       },
       {
         "keys": [
@@ -845,6 +847,8 @@
           "Install plugins in the system backend.",
           "List agent flow data model options",
           "List agent flow data model options in the system backend.",
+          "List agent flow data source options",
+          "List agent flow data source options in the system backend.",
           "List application API keys",
           "List application API keys in the system backend.",
           "List application conversation messages",
@@ -1132,7 +1136,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:c089f6229d6191aa65f5b88df99d69c097e19d222db475ba0c1ea353b0df031c"
+        "sha256": "sha256:285fb0786b85422602e9a4bc1ae769cbcb6724503fb3b077fb5215c7600171e4"
       },
       {
         "keys": [
@@ -1457,13 +1461,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-07-30T00:00:00.000Z",
+    "generated_at": "2026-07-31T05:49:26.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:44c9c0e5cb439ab3eccc2742b0e8c3b12723c827c53a16c16e39e9f88d9793bb",
+    "semantic_sha256": "sha256:ac2c2ed3d828f445b9aaf3f28a1d863d4c33340b151216961894589dca7e3bed",
     "source_locale": "en_US"
   },
   "messages": [
@@ -3586,6 +3590,20 @@
       "translations": {
         "en_US": "List agent flow data model options in the system backend.",
         "zh_Hans": "列出 Agent Flow 数据模型选项（系统后端）"
+      }
+    },
+    {
+      "key": "List agent flow data source options",
+      "translations": {
+        "en_US": "List agent flow data source options",
+        "zh_Hans": "List agent flow data source options"
+      }
+    },
+    {
+      "key": "List agent flow data source options in the system backend.",
+      "translations": {
+        "en_US": "List agent flow data source options in the system backend.",
+        "zh_Hans": "List agent flow data source options in the system backend."
       }
     },
     {

@@ -25,10 +25,11 @@ const BACKEND_APP_TEST_SHARDS = [
     key: 'control-plane',
     packages: ['control-plane'],
   },
-  {
-    key: 'api-server',
+  ...Array.from({ length: 4 }, (_, index) => ({
+    key: `api-server-${index + 1}-of-4`,
     packages: ['api-server'],
-  },
+    nextestPartition: `hash:${index + 1}/4`,
+  })),
   {
     key: 'plugin-runner',
     packages: ['plugin-runner'],

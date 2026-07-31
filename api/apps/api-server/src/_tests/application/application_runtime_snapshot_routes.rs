@@ -2,8 +2,8 @@ use super::application_runtime_routes::{
     create_ready_provider_instance, seed_agent_flow_application,
 };
 use crate::_tests::support::{
-    create_member, create_role, login_and_capture_cookie, replace_member_roles,
-    replace_role_permissions, test_app, test_app_with_database_url,
+    create_member, create_role, login_and_capture_cookie, replace_member_roles, test_app,
+    test_app_with_database_url,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -55,6 +55,42 @@ async fn start_preview(
         String::from_utf8_lossy(&body)
     );
     serde_json::from_slice(&body).unwrap()
+}
+
+async fn grant_full_application_console_policy(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    role_code: &str,
+) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/settings/roles/{role_code}/console-policy"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "groups": [{
+                            "kind": "settings_feature",
+                            "group_id": "system.applications",
+                            "enabled": true,
+                            "strategy": "full",
+                            "operations": []
+                        }]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 async fn start_debug_run(
@@ -238,18 +274,7 @@ async fn debug_variable_snapshot_keeps_actor_run_scope_isolated() {
     )
     .await;
     create_role(&app, &root_cookie, &root_csrf, "snapshot_admin").await;
-    replace_role_permissions(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "snapshot_admin",
-        &[
-            "application.view.all",
-            "application.edit.all",
-            "application.use.all",
-        ],
-    )
-    .await;
+    grant_full_application_console_policy(&app, &root_cookie, &root_csrf, "snapshot_admin").await;
     replace_member_roles(
         &app,
         &root_cookie,

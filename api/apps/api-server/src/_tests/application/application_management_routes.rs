@@ -90,16 +90,17 @@ async fn replace_application_console_policy(
                         "groups": [{
                             "kind": "settings_feature",
                             "group_id": "system.applications",
-                            "mode": "custom",
+                            "enabled": true,
+                            "strategy": "custom",
                             "operations": [
                                 {
                                     "kind": "simple",
-                                    "operation_id": "applications.create",
+                                    "operation_id": "create_application",
                                     "enabled": true
                                 },
                                 {
                                     "kind": "row",
-                                    "operation_id": "applications.view",
+                                    "operation_id": "list_applications",
                                     "scope": "own"
                                 }
                             ]

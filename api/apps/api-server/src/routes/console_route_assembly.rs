@@ -953,6 +953,8 @@ mod tests {
             .merge(crate::routes::file_storages::route_assembly())
             .merge(crate::routes::file_tables::route_assembly())
             .merge(crate::routes::host_infrastructure::route_assembly())
+            .merge(crate::routes::runtime_i18n_catalog::route_assembly())
+            .merge(crate::routes::i18n_catalog::route_assembly())
             .merge(crate::routes::mcp_management::route_assembly())
             .merge(crate::routes::user_api_keys::route_assembly())
             .merge(crate::routes::workspace::route_assembly())

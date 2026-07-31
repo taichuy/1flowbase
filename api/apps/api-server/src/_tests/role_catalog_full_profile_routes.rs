@@ -37,13 +37,13 @@ async fn role_console_policy_catalog_serializes_compiled_full_profiles() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|operation| operation["operation_id"].as_str() == Some("applications.create"))
+        .find(|operation| operation["operation_id"].as_str() == Some("create_application"))
         .unwrap();
     let view = applications["operations"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|operation| operation["operation_id"].as_str() == Some("applications.view"))
+        .find(|operation| operation["operation_id"].as_str() == Some("list_applications"))
         .unwrap();
 
     assert_eq!(
@@ -55,20 +55,10 @@ async fn role_console_policy_catalog_serializes_compiled_full_profiles() {
         json!({ "kind": "row", "scope": "scope_all" })
     );
     assert_eq!(
-        create["routes"],
-        json!([
-            {
-                "method": "GET",
-                "path": "/api/console/applications/catalog"
-            },
-            {
-                "method": "POST",
-                "path": "/api/console/applications"
-            },
-            {
-                "method": "POST",
-                "path": "/api/console/applications/tags"
-            }
-        ])
+        create["route"],
+        json!({
+            "method": "POST",
+            "path": "/api/console/applications"
+        })
     );
 }

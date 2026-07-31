@@ -821,7 +821,7 @@ async fn d2_f1_native_run_route_rejects_unknown_metadata_before_fingerprint_or_r
 }
 
 #[tokio::test]
-async fn root_1477_native_run_persists_trusted_compatibility_mode() {
+async fn native_run_persists_trusted_compatibility_mode() {
     let (app, state) = test_app_with_state().await;
     let token =
         setup_published_native_app(&app, state.as_ref(), "Native Route Canonical Contract App")

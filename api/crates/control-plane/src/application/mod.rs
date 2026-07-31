@@ -7,6 +7,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+const APPLICATIONS_CREATE_ROUTE_OPERATION_ID: &str = "create_application";
+const APPLICATIONS_LIST_ROUTE_OPERATION_ID: &str = "list_applications";
+const APPLICATION_TAGS_CREATE_ROUTE_OPERATION_ID: &str = "create_application_tag";
+const APPLICATION_TAGS_LIST_ROUTE_OPERATION_ID: &str = "get_application_catalog";
+
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
@@ -95,10 +100,7 @@ where
                 .repository
                 .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
                 .await?;
-            resolve_application_console_visibility(
-                &policies,
-                access_control::APPLICATIONS_VIEW_OPERATION_ID,
-            )?
+            resolve_application_console_visibility(&policies, APPLICATIONS_LIST_ROUTE_OPERATION_ID)?
         };
 
         let applications = self
@@ -164,10 +166,9 @@ where
                     actor.current_workspace_id,
                 )
                 .await?;
-            let operation_id = domain::ConsoleOperationId::try_from(
-                access_control::APPLICATIONS_CREATE_OPERATION_ID,
-            )
-            .expect("compiled applications create operation id must be valid");
+            let operation_id =
+                domain::ConsoleOperationId::try_from(APPLICATIONS_CREATE_ROUTE_OPERATION_ID)
+                    .expect("compiled applications create operation id must be valid");
             if !domain::effective_console_simple_operation(
                 &policies,
                 &applications_console_group(),
@@ -362,7 +363,7 @@ where
                 .await?;
             ensure_application_console_simple_operation(
                 &policies,
-                access_control::APPLICATIONS_CREATE_OPERATION_ID,
+                APPLICATION_TAGS_LIST_ROUTE_OPERATION_ID,
             )?;
         }
 
@@ -394,7 +395,7 @@ where
                 .await?;
             ensure_application_console_simple_operation(
                 &policies,
-                access_control::APPLICATIONS_CREATE_OPERATION_ID,
+                APPLICATION_TAGS_CREATE_ROUTE_OPERATION_ID,
             )?;
         }
 

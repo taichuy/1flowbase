@@ -45,7 +45,7 @@ pub(crate) mod support;
 
 pub(crate) use application::{
     create_gated_provider_instance, create_marker_output_provider_instance,
-    create_ready_provider_instance, ProviderInvocationGate, PROVIDER_MARKER_LIKE_OUTPUT,
+    create_ready_provider_instance, ProviderInvocationGate,
 };
 mod system_routes;
 mod workflow_schedule_worker;

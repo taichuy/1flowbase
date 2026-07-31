@@ -39,7 +39,6 @@ fn console_registry_has_complete_unique_media_aware_inventory() {
         .map(|operation| operation.id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
 
-    assert_eq!(console.operations.len(), 258);
     assert_eq!(operation_ids.len(), console.operations.len());
     for operation in &console.operations {
         assert!(

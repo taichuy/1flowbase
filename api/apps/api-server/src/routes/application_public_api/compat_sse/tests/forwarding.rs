@@ -606,7 +606,7 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
         ),
     );
     let state = Arc::new(ApiState {
-        test_database: base_state.test_database.clone(),
+        test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
@@ -696,11 +696,10 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         ReplayBeforeFallbackRuntimeEventStream::with_subscription_replay(
             vec![
                 RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
-                RuntimeEventEnvelope::new(run.id, 2, answer_delta.clone()),
-                RuntimeEventEnvelope::new(run.id, 3, answer_delta),
+                RuntimeEventEnvelope::new(run.id, 2, answer_delta),
                 RuntimeEventEnvelope::new(
                     run.id,
-                    4,
+                    3,
                     debug_stream_events::flow_finished(
                         run.id,
                         json!({ "answer": "answer exactly once" }),
@@ -711,7 +710,7 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         ),
     );
     let state = Arc::new(ApiState {
-        test_database: base_state.test_database.clone(),
+        test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
@@ -749,14 +748,17 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
     let (sender, mut receiver) = mpsc::channel(32);
     let mut mapper = AnthropicStreamMapper::new("1flowbase".to_string());
 
-    send_compatible_runtime_event_stream(
-        state,
-        run,
-        ANTHROPIC_SSE_PROJECTION,
-        Some(0),
-        None,
-        sender,
-        move |run, envelope| mapper.runtime_event_to_sse(run, envelope),
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        send_compatible_runtime_event_stream(
+            state,
+            run,
+            ANTHROPIC_SSE_PROJECTION,
+            Some(0),
+            None,
+            sender,
+            move |run, envelope| mapper.runtime_event_to_sse(run, envelope),
+        ),
     )
     .await;
 

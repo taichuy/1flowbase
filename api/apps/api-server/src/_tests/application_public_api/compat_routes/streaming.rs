@@ -555,7 +555,7 @@ async fn d2_ac_004_anthropic_streaming_cancel_projects_error_without_message_sto
 }
 
 #[tokio::test]
-async fn d2_ac_007_anthropic_blocking_preserves_marker_like_provider_output() {
+async fn anthropic_blocking_keeps_non_reasoning_markers_in_visible_output() {
     let app = test_app().await;
     let token = setup_published_app_with_marker_output_provider(
         &app,
@@ -576,8 +576,8 @@ async fn d2_ac_007_anthropic_blocking_preserves_marker_like_provider_output() {
     assert_eq!(payload["type"], json!("message"));
     assert_eq!(
         payload["content"][0]["text"],
-        json!(PROVIDER_MARKER_LIKE_OUTPUT),
-        "blocking projection must not reinterpret Provider output as a protocol control marker"
+        json!("<tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output"),
+        "blocking projection must only remove the canonical reasoning segment"
     );
 }
 
