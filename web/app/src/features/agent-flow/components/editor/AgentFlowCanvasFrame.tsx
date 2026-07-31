@@ -30,7 +30,7 @@ import { orchestrationQueryKey, updateVersion } from '../../api/orchestration';
 import {
   applicationDetailQueryKey,
   applicationEnvironmentVariablesQueryKey,
-  exportAgentFlowTemplate,
+  exportApplicationArchive,
   replaceApplicationEnvironmentVariables
 } from '../../../applications/api/applications';
 import {
@@ -80,7 +80,7 @@ import { ApplicationEnvironmentVariablesPanel } from './ApplicationEnvironmentVa
 import { ConversationVariablesPanel } from './ConversationVariablesPanel';
 import { SystemVariablesPanel } from './SystemVariablesPanel';
 import { i18nText } from '../../../../shared/i18n/text';
-import { downloadTemplateFile } from '../../../applications/lib/template-download';
+import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import {
   CONVERSATION_LOG_DEFAULT_WIDTH,
   DEBUG_CONSOLE_DEFAULT_WIDTH,
@@ -263,9 +263,9 @@ export function AgentFlowCanvasFrame({
     }
   });
   const exportTemplateMutation = useMutation({
-    mutationFn: () => exportAgentFlowTemplate(applicationId),
-    onSuccess(template) {
-      downloadTemplateFile(template);
+    mutationFn: () => exportApplicationArchive([applicationId]),
+    onSuccess(archive) {
+      downloadApplicationArchive(archive);
       message.success(i18nText('agentFlow', 'auto.template_exported'));
     },
     onError() {

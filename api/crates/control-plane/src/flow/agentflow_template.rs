@@ -236,6 +236,21 @@ pub fn preview_agent_flow_template_package(
     resources: &AgentFlowTemplateResourceSnapshot,
 ) -> Result<AgentFlowTemplatePreview> {
     ensure_agent_flow_template(&template)?;
+    preview_validated_application_template_package(template, resources)
+}
+
+pub fn preview_application_template_package(
+    template: AgentFlowTemplatePackage,
+    resources: &AgentFlowTemplateResourceSnapshot,
+) -> Result<AgentFlowTemplatePreview> {
+    ensure_application_template(&template)?;
+    preview_validated_application_template_package(template, resources)
+}
+
+fn preview_validated_application_template_package(
+    template: AgentFlowTemplatePackage,
+    resources: &AgentFlowTemplateResourceSnapshot,
+) -> Result<AgentFlowTemplatePreview> {
     let dependencies = dependency_statuses(&template.flow_document, resources);
     let (document, unresolved_nodes) =
         resolve_template_document(&template.flow_document, resources)?;
@@ -255,6 +270,23 @@ pub fn import_agent_flow_template_document(
     resources: &AgentFlowTemplateResourceSnapshot,
 ) -> Result<(Value, Vec<AgentFlowTemplateUnresolvedNode>)> {
     ensure_agent_flow_template(template)?;
+    import_validated_application_template_document(template, flow_id, resources)
+}
+
+pub fn import_application_template_document(
+    template: &AgentFlowTemplatePackage,
+    flow_id: Uuid,
+    resources: &AgentFlowTemplateResourceSnapshot,
+) -> Result<(Value, Vec<AgentFlowTemplateUnresolvedNode>)> {
+    ensure_application_template(template)?;
+    import_validated_application_template_document(template, flow_id, resources)
+}
+
+fn import_validated_application_template_document(
+    template: &AgentFlowTemplatePackage,
+    flow_id: Uuid,
+    resources: &AgentFlowTemplateResourceSnapshot,
+) -> Result<(Value, Vec<AgentFlowTemplateUnresolvedNode>)> {
     let (mut document, unresolved_nodes) =
         resolve_template_document(&template.flow_document, resources)?;
     let meta = document
@@ -266,10 +298,21 @@ pub fn import_agent_flow_template_document(
 }
 
 fn ensure_agent_flow_template(template: &AgentFlowTemplatePackage) -> Result<()> {
+    ensure_application_template(template)?;
+    if template.application.application_type != domain::ApplicationType::AgentFlow.as_str() {
+        return Err(ControlPlaneError::InvalidInput("application.application_type").into());
+    }
+    Ok(())
+}
+
+fn ensure_application_template(template: &AgentFlowTemplatePackage) -> Result<()> {
     if template.schema_version != AGENT_FLOW_TEMPLATE_SCHEMA_VERSION {
         return Err(ControlPlaneError::InvalidInput("schema_version").into());
     }
-    if template.application.application_type != domain::ApplicationType::AgentFlow.as_str() {
+    if !matches!(
+        template.application.application_type.as_str(),
+        "agent_flow" | "workflow"
+    ) {
         return Err(ControlPlaneError::InvalidInput("application.application_type").into());
     }
     if template

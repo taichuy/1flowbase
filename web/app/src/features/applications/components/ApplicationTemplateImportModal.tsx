@@ -62,7 +62,7 @@ export function ApplicationTemplateImportModal({
   return (
     <Modal
       open={open}
-      title={t('auto.import_agent_flow_template')}
+      title={t('auto.import_template_file')}
       okText={t('auto.import_template')}
       cancelText={t('auto.cancel')}
       okButtonProps={{ disabled: !preview || name.trim().length === 0 }}

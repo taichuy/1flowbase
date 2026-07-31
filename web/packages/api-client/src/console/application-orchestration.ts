@@ -1,6 +1,6 @@
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
-import { apiFetch } from '../transport';
+import { apiFetch, apiFetchBlob, type ApiBlobResponse } from '../transport';
 
 export interface ConsoleFlowVersionSummary {
   id: string;
@@ -48,7 +48,7 @@ export interface UpdateConsoleApplicationVersionInput {
 }
 
 export interface ConsoleAgentFlowTemplateApplication {
-  application_type: 'agent_flow';
+  application_type: 'agent_flow' | 'workflow';
   name: string;
   description: string;
   icon: string | null;
@@ -79,6 +79,10 @@ export interface ConsoleAgentFlowTemplatePackage {
   application: ConsoleAgentFlowTemplateApplication;
   flow_document: FlowAuthoringDocument;
   dependencies: ConsoleAgentFlowTemplateDependency[];
+}
+
+export interface ExportConsoleApplicationArchiveInput {
+  application_ids: string[];
 }
 
 export interface ConsoleOfficialAgentFlowTemplateCatalogSource {
@@ -145,9 +149,16 @@ export interface ImportConsoleAgentFlowTemplateInput {
   description?: string;
 }
 
+export interface ImportConsoleApplicationArchiveInput {
+  file: Blob;
+  filename?: string;
+  name?: string;
+  description?: string;
+}
+
 export interface ConsoleAgentFlowTemplateImportedApplication {
   id: string;
-  application_type: 'agent_flow';
+  application_type: 'agent_flow' | 'workflow';
   name: string;
   description: string;
   icon: string | null;
@@ -188,37 +199,48 @@ export function saveConsoleApplicationDraft(
   });
 }
 
-export function exportConsoleAgentFlowTemplate(
-  applicationId: string,
+export function exportConsoleApplicationArchive(
+  input: ExportConsoleApplicationArchiveInput,
   baseUrl?: string
-): Promise<ConsoleAgentFlowTemplatePackage> {
-  return apiFetch<ConsoleAgentFlowTemplatePackage>({
-    path: `/api/console/applications/${applicationId}/orchestration/template`,
-    baseUrl
-  });
-}
-
-export function previewConsoleAgentFlowTemplate(
-  input: PreviewConsoleAgentFlowTemplateInput,
-  baseUrl?: string
-): Promise<ConsoleAgentFlowTemplatePreview> {
-  return apiFetch<ConsoleAgentFlowTemplatePreview>({
-    path: '/api/console/applications/orchestration/template/preview',
+): Promise<ApiBlobResponse> {
+  return apiFetchBlob({
+    path: '/api/console/applications/archive/export',
     method: 'POST',
     body: input,
     baseUrl
   });
 }
 
-export function importConsoleAgentFlowTemplate(
-  input: ImportConsoleAgentFlowTemplateInput,
+export function previewConsoleApplicationArchive(
+  file: Blob,
+  filename = 'application.zip',
+  baseUrl?: string
+): Promise<ConsoleAgentFlowTemplatePreview> {
+  const formData = new FormData();
+  formData.append('file', file, filename);
+  return apiFetch<ConsoleAgentFlowTemplatePreview>({
+    path: '/api/console/applications/archive/preview',
+    method: 'POST',
+    rawBody: formData,
+    baseUrl
+  });
+}
+
+export function importConsoleApplicationArchive(
+  input: ImportConsoleApplicationArchiveInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ImportConsoleAgentFlowTemplateResponse> {
+  const formData = new FormData();
+  formData.append('file', input.file, input.filename ?? 'application.zip');
+  if (input.name) formData.append('name', input.name);
+  if (input.description !== undefined) {
+    formData.append('description', input.description);
+  }
   return apiFetch<ImportConsoleAgentFlowTemplateResponse>({
-    path: '/api/console/applications/orchestration/template/import',
+    path: '/api/console/applications/archive/import',
     method: 'POST',
-    body: input,
+    rawBody: formData,
     csrfToken,
     baseUrl
   });

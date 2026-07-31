@@ -8,8 +8,10 @@ vi.mock('@1flowbase/api-client', () => ({
     id: 'tag-1'
   }),
   deleteConsoleApplication: vi.fn().mockResolvedValue(undefined),
-  exportConsoleAgentFlowTemplate: vi.fn().mockResolvedValue({
-    schema_version: '1flowbase.application-template/v1'
+  exportConsoleApplicationArchive: vi.fn().mockResolvedValue({
+    blob: new Blob(['archive'], { type: 'application/zip' }),
+    filename: 'application.zip',
+    contentType: 'application/zip'
   }),
   getConsoleApplication: vi.fn().mockResolvedValue({
     id: 'app-1'
@@ -20,10 +22,10 @@ vi.mock('@1flowbase/api-client', () => ({
   }),
   listConsoleApplicationEnvironmentVariables: vi.fn().mockResolvedValue([]),
   listConsoleApplications: vi.fn().mockResolvedValue([]),
-  importConsoleAgentFlowTemplate: vi.fn().mockResolvedValue({
+  importConsoleApplicationArchive: vi.fn().mockResolvedValue({
     application: { id: 'app-imported' }
   }),
-  previewConsoleAgentFlowTemplate: vi.fn().mockResolvedValue({
+  previewConsoleApplicationArchive: vi.fn().mockResolvedValue({
     unresolved_nodes: []
   }),
   replaceConsoleApplicationEnvironmentVariables: vi.fn().mockResolvedValue([
@@ -45,14 +47,14 @@ import {
   createConsoleApplication,
   createConsoleApplicationTag,
   deleteConsoleApplication,
-  exportConsoleAgentFlowTemplate,
+  exportConsoleApplicationArchive,
   getConsoleApplication,
   getConsoleApplicationCatalog,
   getDefaultApiBaseUrl,
-  importConsoleAgentFlowTemplate,
+  importConsoleApplicationArchive,
   listConsoleApplicationEnvironmentVariables,
   listConsoleApplications,
-  previewConsoleAgentFlowTemplate,
+  previewConsoleApplicationArchive,
   replaceConsoleApplicationEnvironmentVariables,
   updateConsoleApplication
 } from '@1flowbase/api-client';
@@ -61,7 +63,7 @@ import {
   createApplication,
   createApplicationTag,
   deleteApplication,
-  exportAgentFlowTemplate,
+  exportApplicationArchive,
   fetchApplicationCatalog,
   fetchApplicationDetail,
   fetchApplicationEnvironmentVariables,
@@ -151,7 +153,7 @@ describe('applications api', () => {
       },
       dependencies: []
     };
-    await exportAgentFlowTemplate('app-1');
+    await exportApplicationArchive(['app-1']);
     await previewAgentFlowTemplate(template);
     await importAgentFlowTemplate(
       {
@@ -216,20 +218,22 @@ describe('applications api', () => {
       'csrf-123',
       'http://127.0.0.1:7800'
     );
-    expect(exportConsoleAgentFlowTemplate).toHaveBeenCalledWith(
-      'app-1',
+    expect(exportConsoleApplicationArchive).toHaveBeenCalledWith(
+      { application_ids: ['app-1'] },
       'http://127.0.0.1:7800'
     );
-    expect(previewConsoleAgentFlowTemplate).toHaveBeenCalledWith(
-      { template },
+    expect(previewConsoleApplicationArchive).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'official-template.json',
       'http://127.0.0.1:7800'
     );
-    expect(importConsoleAgentFlowTemplate).toHaveBeenCalledWith(
-      {
-        template,
+    expect(importConsoleApplicationArchive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file: expect.any(Blob),
+        filename: 'official-template.json',
         name: 'Imported Agent',
         description: ''
-      },
+      }),
       'csrf-123',
       'http://127.0.0.1:7800'
     );
