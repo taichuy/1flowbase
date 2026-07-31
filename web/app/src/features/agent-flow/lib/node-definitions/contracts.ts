@@ -2,6 +2,7 @@ import type {
   FlowBinding,
   FlowNodeOutputDocument,
   FlowNodeType,
+  NodeRuntimeSideEffectPolicy,
   NodeRuntimePortDocument,
   NodeRuntimePanelFieldDocument,
   NodeRuntimePanelSectionDocument,
@@ -229,7 +230,8 @@ export function createNodeRuntimeContract({
   outputs,
   outputPorts,
   panelSections,
-  runtimeOutputs
+  runtimeOutputs,
+  sideEffect = DEFAULT_RUNTIME_POLICY.sideEffect
 }: {
   type: BuiltinNodeRuntimeContractType;
   title: string;
@@ -242,6 +244,7 @@ export function createNodeRuntimeContract({
   outputPorts?: NodeRuntimePortDocument[];
   panelSections: NodeRuntimePanelSectionDocument[];
   runtimeOutputs?: FlowNodeOutputDocument[];
+  sideEffect?: NodeRuntimeSideEffectPolicy;
 }): NodeRuntimeUiContract {
   return {
     meta: {
@@ -271,7 +274,7 @@ export function createNodeRuntimeContract({
       inputs: COMMON_RUNTIME_INPUTS.map((item) => ({ ...item })),
       outputs: duplicateOutputs(runtimeOutputs ?? outputs)
     },
-    policies: DEFAULT_RUNTIME_POLICY
+    policies: { sideEffect }
   };
 }
 
@@ -338,9 +341,7 @@ function createLlmContract(): NodeRuntimeUiContract {
       external_model_parameter_policy: {
         follow_external_max_output_tokens: false
       },
-      protocol_context: cloneJsonValue(
-        DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE
-      ),
+      protocol_context: cloneJsonValue(DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE),
       visible_internal_llm_tools_enabled: false,
       visible_internal_llm_tools: [],
       response_format: {
@@ -611,6 +612,47 @@ function createCodeContract(): NodeRuntimeUiContract {
           valueType: 'array'
         })
       ])
+    ]
+  });
+}
+
+function createSqlContract(): NodeRuntimeUiContract {
+  const outputs = [
+    {
+      key: 'results',
+      title: i18nText('agentFlow', 'auto.sql_results'),
+      valueType: 'array'
+    }
+  ];
+
+  return createNodeRuntimeContract({
+    type: 'sql',
+    title: 'SQL',
+    description: i18nText('agentFlow', 'auto.execute_native_sql'),
+    category: 'data',
+    config: { data_source_instance_id: 'main', sql: '' },
+    outputs,
+    sideEffect: 'external_write',
+    panelSections: [
+      basicsPanelSection,
+      panelSection('inputs', 'Inputs', [
+        panelField({
+          key: 'config.data_source_instance_id',
+          title: i18nText('agentFlow', 'auto.data_source'),
+          renderer: 'data_source',
+          required: true
+        })
+      ]),
+      panelSection('advanced', 'SQL', [
+        panelField({
+          key: 'config.sql',
+          title: i18nText('agentFlow', 'auto.sql_statement'),
+          renderer: 'sql_source',
+          valueType: 'string',
+          required: true
+        })
+      ]),
+      outputsPanelSection(outputs)
     ]
   });
 }
@@ -1112,6 +1154,7 @@ export const builtinNodeRuntimeContractTypes = [
   'data_model_create',
   'data_model_update',
   'data_model_delete',
+  'sql',
   'variable_assigner',
   'parameter_extractor',
   'iteration',
@@ -1145,6 +1188,7 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
   data_model_create: createDataModelContract('data_model_create'),
   data_model_update: createDataModelContract('data_model_update'),
   data_model_delete: createDataModelContract('data_model_delete'),
+  sql: createSqlContract(),
   variable_assigner: createVariableAssignerContract(),
   parameter_extractor: createParameterExtractorContract(),
   iteration: createIterationContract(),

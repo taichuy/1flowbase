@@ -33,6 +33,7 @@ import {
 import { OutputContractDefinitionField } from '../components/detail/fields/output-contract/OutputContractDefinitionField';
 import { CodeSourceField } from '../components/detail/fields/CodeSourceField';
 import { DataModelField } from '../components/detail/fields/DataModelField';
+import { DataSourceField } from '../components/detail/fields/sql/DataSourceField';
 import { LlmModelField } from '../components/detail/fields/LlmModelField';
 import { LlmToolRegistrationsField } from '../components/detail/fields/LlmToolRegistrationsField';
 import { LlmPromptMessagesField } from '../components/detail/fields/LlmPromptMessagesField';
@@ -324,16 +325,13 @@ function renderTemplatedTextField({
         | ConsoleReferencedI18nMessage[]
         | null
         | undefined) ?? [];
-    const text =
-      messages.find((message) => message.key === key)?.text ?? key;
+    const text = messages.find((message) => message.key === key)?.text ?? key;
 
     return (
       <div data-testid="i18n-text-binding" data-ready="true">
         <Typography.Text>{text}</Typography.Text>
         <br />
-        <Typography.Text type="secondary">
-          {key}
-        </Typography.Text>
+        <Typography.Text type="secondary">{key}</Typography.Text>
       </div>
     );
   }
@@ -759,6 +757,17 @@ function renderCodeSourceField({ adapter, block }: SchemaFieldRendererProps) {
   );
 }
 
+function renderSqlSourceField({ adapter, block }: SchemaFieldRendererProps) {
+  return (
+    <CodeSourceField
+      label={block.label}
+      language="sql"
+      value={adapter.getValue(block.path)}
+      onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
+    />
+  );
+}
+
 function renderStartInputFieldsField({
   adapter,
   block
@@ -940,7 +949,9 @@ export const agentFlowFieldRenderers = {
   switch: renderSwitchField,
   data_model: DataModelField,
   data_model_query: renderDataModelQueryField,
+  data_source: DataSourceField,
   code_source: renderCodeSourceField,
+  sql_source: renderSqlSourceField,
   llm_model: LlmModelField,
   llm_context_policy: renderLlmContextPolicyField,
   llm_external_reasoning_policy: renderLlmExternalReasoningPolicyField,

@@ -10,7 +10,7 @@ declare module '@1flowbase/native-components' {
     readonly as?: ElementType;
     readonly children?: ReactNode;
   }
-  export interface ScrollableSurfaceProps extends SurfaceProps {}
+  export type ScrollableSurfaceProps = SurfaceProps;
   export const Surface: ComponentType<SurfaceProps>;
   export const ScrollableSurface: ComponentType<ScrollableSurfaceProps>;
 }

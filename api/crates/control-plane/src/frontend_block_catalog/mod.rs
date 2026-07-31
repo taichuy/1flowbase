@@ -163,7 +163,7 @@ where
                         module_source: module.source.clone(),
                         module_version: module.version.clone(),
                         exports: module.exports.clone(),
-                        binding: module.binding.clone(),
+                        binding: module.binding,
                         assets: module.assets.clone(),
                         contract,
                     });

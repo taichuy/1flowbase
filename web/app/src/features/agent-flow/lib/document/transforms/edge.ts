@@ -12,6 +12,7 @@ import {
 import { createEdgeDocument } from '../edge-factory';
 import { getEdgeById, getNodeById } from '../selectors';
 import { shiftDownstreamNodesBFS } from './layout';
+import { getNodeFlowRole } from '../../node-definitions';
 
 export interface EdgeConnection {
   source?: string | null;
@@ -36,7 +37,8 @@ export function validateConnection(
     !targetNode ||
     sourceNode.id === targetNode.id ||
     sourceNode.containerId !== targetNode.containerId ||
-    sourceNode.type === 'answer'
+    getNodeFlowRole(sourceNode.type) === 'terminal' ||
+    getNodeFlowRole(targetNode.type) === 'entry'
   ) {
     return false;
   }
@@ -206,8 +208,8 @@ export function insertNodeOnEdge(
   }
 
   if (
-    sourceNode.type === 'answer' ||
-    payload.node.type === 'answer'
+    getNodeFlowRole(sourceNode.type) === 'terminal' ||
+    getNodeFlowRole(payload.node.type) !== 'processing'
   ) {
     return document;
   }
@@ -264,7 +266,10 @@ export function connectNodeFromSource(
     return document;
   }
 
-  if (sourceNode.type === 'answer') {
+  if (
+    getNodeFlowRole(sourceNode.type) === 'terminal' ||
+    getNodeFlowRole(payload.node.type) === 'entry'
+  ) {
     return document;
   }
 

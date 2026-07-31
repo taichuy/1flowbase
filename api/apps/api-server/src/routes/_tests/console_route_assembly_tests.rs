@@ -808,6 +808,11 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
                 "settings_feature.access.system.docs",
             ),
             (
+                "GET",
+                "/api/console/data-sources/agent-flow-options",
+                "agent_flow.data_source_options.list",
+            ),
+            (
                 "POST",
                 "/api/console/data-sources/:data_source_id/secret/rotate",
                 "data_sources.secret.rotate",

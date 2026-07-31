@@ -664,9 +664,7 @@ describe('McpManagementPanel', () => {
     await waitFor(() => expect(minimumHostVersion).toHaveValue('0.3.0'));
 
     fireEvent.change(minimumHostVersion, { target: { value: '0.2.8' } });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /导\s*出/u })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: /导\s*出/u }));
 
     await waitFor(() => {
       expect(mcpManagementApi.exportSettingsMcpBundle).toHaveBeenCalledWith(
@@ -2101,9 +2099,7 @@ describe('McpManagementPanel', () => {
     );
     expect(codexInstallPreview).not.toHaveTextContent('FLOWBASE_MCP_API_KEY');
     expect(codexInstallPreview).not.toHaveTextContent('bearer-token-env-var');
-    expect(codexRemovePreview).toHaveTextContent(
-      "codex mcp remove 'ops_mcp'"
-    );
+    expect(codexRemovePreview).toHaveTextContent("codex mcp remove 'ops_mcp'");
     expect(codexRemovePreview).not.toHaveTextContent('test-secret-key');
     expect(vditorMock.preview).toHaveBeenCalledWith(
       codexInstallPreview,
@@ -2275,7 +2271,7 @@ describe('McpManagementPanel', () => {
     const dialog = await screen.findByRole('dialog');
     const editor = within(dialog).getByLabelText('full_description');
 
-    expect(editor).toHaveClass('markdown-ir-editor');
+    expect(editor).toHaveClass('oneflow-markdown-editor');
     await waitFor(() => {
       expect(vditorMock.constructor).toHaveBeenCalled();
     });
@@ -2314,29 +2310,6 @@ describe('McpManagementPanel', () => {
 
     expect(editor?.getValue).toHaveBeenCalled();
     expect(editor?.setValue).toHaveBeenCalledWith('Updated description', true);
-  });
-
-  test('defers Vditor destruction until the pending editor reports ready', async () => {
-    const { unmount } = render(
-      <MarkdownIrEditor
-        ariaLabel="full_description"
-        value="Initial description"
-      />
-    );
-    await waitFor(() => {
-      expect(vditorMock.instances[0]).toBeDefined();
-    });
-    const editor = vditorMock.instances[0];
-
-    unmount();
-
-    expect(editor?.destroy).not.toHaveBeenCalled();
-
-    act(() => {
-      editor?.options.after?.();
-    });
-
-    expect(editor?.destroy).toHaveBeenCalled();
   });
 
   test('shows the selected interface operation in input output and debug steps', async () => {

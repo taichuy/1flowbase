@@ -12,6 +12,7 @@ use plugin_framework::data_source_contract::{
     DataSourceGetRecordOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
     DataSourceRecordFilter, DataSourceRecordPage, DataSourceRecordScopeContext,
     DataSourceRecordSort, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
+    NativeSqlExecutionOutput,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -76,6 +77,18 @@ pub struct RuntimeDeleteInput {
 
 #[async_trait]
 pub trait DataSourceRuntimeRecordBackend: Send + Sync {
+    async fn execute_sql(
+        &self,
+        workspace_id: Uuid,
+        data_source_instance_id: &str,
+        sql: &str,
+    ) -> Result<NativeSqlExecutionOutput> {
+        let _ = (workspace_id, data_source_instance_id, sql);
+        Err(anyhow!(
+            "native SQL is not implemented by this data source backend"
+        ))
+    }
+
     async fn list_records(
         &self,
         workspace_id: Uuid,
@@ -330,6 +343,21 @@ impl RuntimeEngine {
 
     pub fn registry(&self) -> &RuntimeModelRegistry {
         &self.registry
+    }
+
+    pub async fn execute_native_sql(
+        &self,
+        workspace_id: Uuid,
+        data_source_instance_id: &str,
+        sql: &str,
+    ) -> Result<NativeSqlExecutionOutput> {
+        let backend = self
+            .data_source_records
+            .as_ref()
+            .ok_or_else(|| anyhow!("data source runtime is not configured"))?;
+        backend
+            .execute_sql(workspace_id, data_source_instance_id, sql)
+            .await
     }
 
     pub async fn list_records(&self, input: RuntimeListInput) -> Result<RuntimeListResult> {

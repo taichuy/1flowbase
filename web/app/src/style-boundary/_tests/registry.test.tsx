@@ -61,6 +61,8 @@ describe('style boundary registry', () => {
       'page.embedded-apps',
       'page.templates',
       'page.settings',
+      'page.settings-i18n.desktop',
+      'page.settings-i18n.mobile',
       'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
@@ -76,6 +78,8 @@ describe('style boundary registry', () => {
       'page.application-detail',
       'page.application-api',
       'page.settings',
+      'page.settings-i18n.desktop',
+      'page.settings-i18n.mobile',
       'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
@@ -97,6 +101,8 @@ describe('style boundary registry', () => {
       ])
     ).toEqual([
       'page.settings',
+      'page.settings-i18n.desktop',
+      'page.settings-i18n.mobile',
       'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
@@ -106,19 +112,13 @@ describe('style boundary registry', () => {
       getSceneIdsForFiles([
         'web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css'
       ])
-    ).toEqual([
-      'page.settings-i18n.desktop',
-      'page.settings-i18n.mobile'
-    ]);
+    ).toEqual(['page.settings-i18n.desktop', 'page.settings-i18n.mobile']);
     expect(
       getSceneIdsForFiles([
         'web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx',
         'web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx'
       ])
-    ).toEqual([
-      'page.settings-i18n.desktop',
-      'page.settings-i18n.mobile'
-    ]);
+    ).toEqual(['page.settings-i18n.desktop', 'page.settings-i18n.mobile']);
     expect(
       getSceneIdsForFiles([
         'web/app/src/features/settings/components/application-management/ApplicationManagementPanel.tsx'
@@ -321,14 +321,14 @@ describe('style boundary registry', () => {
     );
 
     expect(
-      await screen.findByText(
-        'Boundary Workflow',
-        undefined,
-        { timeout: 10_000 }
-      )
+      await screen.findByText('Boundary Workflow', undefined, {
+        timeout: 10_000
+      })
     ).toBeInTheDocument();
     expect(screen.getByText('Style boundary application')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '应用' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '应用' })
+    ).toBeInTheDocument();
   }, 30_000);
 
   test('renders the settings mcp management scene', async () => {
@@ -354,7 +354,9 @@ describe('style boundary registry', () => {
     );
 
     await waitFor(() => {
-      expect(view.container.querySelector('.api-docs-panel')).toBeInTheDocument();
+      expect(
+        view.container.querySelector('.api-docs-panel')
+      ).toBeInTheDocument();
     });
   }, 15_000);
 

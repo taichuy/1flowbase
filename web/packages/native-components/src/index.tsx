@@ -23,7 +23,7 @@ export function Surface({
   );
 }
 
-export interface ScrollableSurfaceProps extends SurfaceProps {}
+export type ScrollableSurfaceProps = SurfaceProps;
 
 export function ScrollableSurface({
   children,

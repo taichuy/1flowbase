@@ -18,6 +18,7 @@ pub mod mcp_management_repository;
 pub mod member_repository;
 pub mod model_definition_repository;
 pub mod model_provider_repository;
+pub mod native_sql;
 pub mod node_contribution_repository;
 pub mod orchestration_runtime_repository;
 pub mod physical_schema_repository;
@@ -33,6 +34,7 @@ pub mod workspace_repository;
 pub use connection::{
     connect, connect_with_max_connections, connect_with_pool_settings, PgPoolSettings,
 };
+pub use native_sql::execute_native_sql;
 pub use repositories::PgControlPlaneStore;
 
 use anyhow::Result;

@@ -14,7 +14,10 @@ pub struct AnswerPresentationPlan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnswerPresentationSegment {
     StaticText(String),
-    NodeOutput { node_id: String, output_key: String },
+    NodeOutput {
+        node_id: String,
+        output_path: Vec<String>,
+    },
 }
 
 impl AnswerPresentationPlan {
@@ -46,15 +49,15 @@ impl AnswerPresentationPlan {
         })
     }
 
-    pub fn node_output_segments(&self) -> Vec<(usize, &str, &str)> {
+    pub fn node_output_segments(&self) -> Vec<(usize, &str, &[String])> {
         self.segments
             .iter()
             .enumerate()
             .filter_map(|(index, segment)| match segment {
                 AnswerPresentationSegment::NodeOutput {
                     node_id,
-                    output_key,
-                } => Some((index, node_id.as_str(), output_key.as_str())),
+                    output_path,
+                } => Some((index, node_id.as_str(), output_path.as_slice())),
                 AnswerPresentationSegment::StaticText(_) => None,
             })
             .collect()
@@ -68,13 +71,14 @@ pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
         let outputs = presentation.node_output_segments();
         let mut seen = BTreeSet::new();
 
-        for (_, node_id, output_key) in &outputs {
-            if !seen.insert(((*node_id).to_string(), (*output_key).to_string())) {
+        for (_, node_id, output_path) in &outputs {
+            if !seen.insert(((*node_id).to_string(), (*output_path).to_vec())) {
                 issues.push(CompileIssue {
                     node_id: presentation.answer_node_id.clone(),
                     code: CompileIssueCode::DuplicateAnswerPresentationReference,
                     message: format!(
-                        "answer presentation references {node_id}.{output_key} more than once"
+                        "answer presentation references {node_id}.{} more than once",
+                        output_path.join(".")
                     ),
                 });
             }
@@ -152,7 +156,7 @@ fn selector_segment(selector: &[String]) -> Option<AnswerPresentationSegment> {
 
     Some(AnswerPresentationSegment::NodeOutput {
         node_id: selector[0].clone(),
-        output_key: selector[1].clone(),
+        output_path: selector[1..].to_vec(),
     })
 }
 

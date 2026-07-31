@@ -19,7 +19,7 @@ use crate::{
     },
     execution_engine::{
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
-        ProviderInvocationOutput, ProviderInvoker,
+        NativeSqlInvocationOutput, ProviderInvocationOutput, ProviderInvoker,
     },
     preview_executor,
 };
@@ -91,6 +91,20 @@ impl CapabilityInvoker for StubPreviewInvoker {
         _input_payload: serde_json::Value,
     ) -> Result<CapabilityInvocationOutput> {
         unreachable!("preview executor tests do not execute capability nodes")
+    }
+
+    async fn invoke_native_sql_node(
+        &self,
+        _node: &CompiledNode,
+    ) -> Result<NativeSqlInvocationOutput> {
+        Ok(NativeSqlInvocationOutput {
+            output_payload: json!({
+                "results": [{ "kind": "completion", "affected_rows": 1 }]
+            }),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({ "data_source_instance_id": "main" }),
+        })
     }
 }
 
@@ -683,4 +697,39 @@ async fn preview_executor_unsupported_node_type_not_implemented_returns_error() 
     assert_eq!(outcome.metrics_payload["preview_mode"], true);
     assert_eq!(outcome.node_output, serde_json::json!({}));
     assert!(outcome.provider_events.is_empty());
+}
+
+#[tokio::test]
+async fn ac_006_preview_executor_runs_sql_with_the_same_output_contract() {
+    let mut plan = sample_compiled_plan();
+    let node = plan.nodes.get_mut("node-llm").unwrap();
+    node.node_type = "sql".to_string();
+    node.bindings.clear();
+    node.llm_runtime = None;
+    node.config = json!({
+        "data_source_instance_id": "main",
+        "sql": "select 1"
+    });
+    node.outputs = vec![CompiledOutput {
+        key: "results".to_string(),
+        title: "Results".to_string(),
+        value_type: "array".to_string(),
+        selector: vec!["results".to_string()],
+        json_schema: None,
+    }];
+    let invoker = StubPreviewInvoker {
+        captured_input: Arc::new(Mutex::new(None)),
+    };
+
+    let outcome = preview_executor::run_node_preview(
+        &plan,
+        "node-llm",
+        &json!({ "node-start": { "query": "ignored" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.node_output["results"][0]["affected_rows"], 1);
+    assert!(outcome.error_payload.is_none());
 }

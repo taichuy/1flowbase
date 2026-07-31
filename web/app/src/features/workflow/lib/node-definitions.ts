@@ -70,12 +70,14 @@ export function createWorkflowEndContract(): NodeRuntimeUiContract {
 
 export const workflowStartNodeMeta: NodeDefinitionMeta = {
   summary: i18nText('workflow', 'auto.workflow_start_description'),
-  helpHref: '/docs/workflow/nodes/workflow-start'
+  helpHref: '/docs/workflow/nodes/workflow-start',
+  flowRole: 'entry'
 };
 
 export const workflowEndNodeMeta: NodeDefinitionMeta = {
   summary: i18nText('workflow', 'auto.workflow_end_description'),
-  helpHref: '/docs/workflow/nodes/workflow-end'
+  helpHref: '/docs/workflow/nodes/workflow-end',
+  flowRole: 'terminal'
 };
 
 export function getWorkflowStartNodeVariableOutputs(

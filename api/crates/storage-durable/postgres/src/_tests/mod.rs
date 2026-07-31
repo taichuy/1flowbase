@@ -15,6 +15,7 @@ mod migration_smoke;
 mod model_definition_repository_tests;
 mod model_mapper_tests;
 mod model_provider_repository_tests;
+mod native_sql_tests;
 mod node_contribution_repository_tests;
 mod orchestration_runtime_repository_tests;
 mod physical_schema_repository_tests;

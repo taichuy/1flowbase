@@ -25,6 +25,7 @@ export const SHARED_EXECUTION_NODE_PICKER_TYPES = [
   'data_model_create',
   'data_model_update',
   'data_model_delete',
+  'sql',
   'variable_assigner'
 ] as const satisfies readonly BuiltinFlowNodeType[];
 

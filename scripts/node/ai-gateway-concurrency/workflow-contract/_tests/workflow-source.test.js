@@ -10,13 +10,13 @@ const pairedSource = require('../paired-source.lock.json');
 const WORKFLOW_PATH = path.resolve(__dirname, '../../../../../.github/workflows/ai-gateway-concurrency.yml');
 const source = fs.readFileSync(WORKFLOW_PATH, 'utf8');
 
-test('AC-029: protocol conformance blocks relevant PRs and protected pushes', () => {
+test('AC-029: protocol conformance blocks pull requests and remains manually runnable', () => {
   const trigger = source.slice(source.indexOf('\non:'), source.indexOf('\npermissions:'));
   assert.match(trigger, /workflow_dispatch:/u);
   assert.match(trigger, /pull_request:/u);
-  assert.match(trigger, /push:[\s\S]*branches: \[dev\]/u);
+  assert.doesNotMatch(trigger, /push:/u);
   assert.doesNotMatch(trigger, /schedule:/u);
-  assert.doesNotMatch(trigger, /paths:/u, 'a required check must run for every proposed dev update');
+  assert.doesNotMatch(trigger, /paths:/u, 'the pull request check must run for every proposed update');
   assert.match(source, /name: AI Gateway Protocol Conformance Gate/u);
 });
 

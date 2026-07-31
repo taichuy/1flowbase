@@ -1,9 +1,10 @@
 use plugin_framework::data_source_contract::{
-    DataSourceCatalogEntry, DataSourceCreateRecordInput, DataSourceCrudCapabilities,
-    DataSourceDeleteRecordInput, DataSourceGetRecordInput, DataSourceListRecordsInput,
-    DataSourceRecordFilter, DataSourceRecordPage, DataSourceRecordScopeContext,
-    DataSourceRecordSort, DataSourceResourceDescriptor, DataSourceStdioMethod,
-    DataSourceUpdateRecordInput,
+    validate_native_sql_output, DataSourceCatalogEntry, DataSourceCreateRecordInput,
+    DataSourceCrudCapabilities, DataSourceDeleteRecordInput, DataSourceGetRecordInput,
+    DataSourceListRecordsInput, DataSourceRecordFilter, DataSourceRecordPage,
+    DataSourceRecordScopeContext, DataSourceRecordSort, DataSourceResourceDescriptor,
+    DataSourceStdioMethod, DataSourceUpdateRecordInput, NativeSqlColumn, NativeSqlExecutionItem,
+    NativeSqlExecutionOutput, NativeSqlLogicalType, NativeSqlValueEncoding,
 };
 use serde_json::json;
 
@@ -21,6 +22,7 @@ fn data_source_stdio_methods_are_stable() {
         (DataSourceStdioMethod::CreateRecord, "create_record"),
         (DataSourceStdioMethod::UpdateRecord, "update_record"),
         (DataSourceStdioMethod::DeleteRecord, "delete_record"),
+        (DataSourceStdioMethod::ExecuteSql, "execute_sql"),
     ];
 
     for (method, expected) in methods {
@@ -29,6 +31,25 @@ fn data_source_stdio_methods_are_stable() {
             format!("\"{expected}\"")
         );
     }
+}
+
+#[test]
+fn ac_004_native_sql_contract_rejects_row_width_and_encoding_mismatches() {
+    let output = NativeSqlExecutionOutput {
+        results: vec![NativeSqlExecutionItem::RowBatch {
+            columns: vec![NativeSqlColumn {
+                name: "payload".to_string(),
+                native_type: "CUSTOM".to_string(),
+                logical_type: NativeSqlLogicalType::Native,
+                encoding: NativeSqlValueEncoding::Base64,
+            }],
+            rows: vec![vec![json!("not base64!"), json!("extra")]],
+        }],
+    };
+
+    let error = validate_native_sql_output(&output).unwrap_err();
+    assert!(error.starts_with("invalid_native_sql_result_contract"));
+    assert!(error.contains("2 values for 1 columns"));
 }
 
 #[test]

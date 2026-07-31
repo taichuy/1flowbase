@@ -1,4 +1,5 @@
 import type { FlowNodeType } from '@1flowbase/flow-schema';
+import type { NodeFlowRole } from './types';
 
 import { nodeDefinitionMeta } from './meta';
 import { getRegisteredNodeDefinition } from './registry';
@@ -14,6 +15,7 @@ import { llmNodeDefinition } from './nodes/llm';
 import { loopNodeDefinition } from './nodes/loop';
 import { parameterExtractorNodeDefinition } from './nodes/parameter-extractor';
 import { questionClassifierNodeDefinition } from './nodes/question-classifier';
+import { sqlNodeDefinition } from './nodes/sql';
 import { startNodeDefinition } from './nodes/start';
 import { templateTransformNodeDefinition } from './nodes/template-transform';
 import { toolNodeDefinition } from './nodes/tool';
@@ -28,7 +30,8 @@ export type {
   NodeDefinitionField,
   NodeDefinitionMeta,
   NodeDefinitionSection,
-  NodeEditorKind
+  NodeEditorKind,
+  NodeFlowRole
 } from './types';
 
 export const nodeDefinitions: NodeDefinitionMap = {
@@ -44,6 +47,7 @@ export const nodeDefinitions: NodeDefinitionMap = {
   tool: toolNodeDefinition,
   tool_result: toolResultNodeDefinition,
   ...dataModelNodeDefinitions,
+  sql: sqlNodeDefinition,
   variable_assigner: variableAssignerNodeDefinition,
   parameter_extractor: parameterExtractorNodeDefinition,
   iteration: iterationNodeDefinition,
@@ -76,9 +80,11 @@ export function getNodeDefinition(nodeType: FlowNodeType) {
 }
 
 export function getSchemaConfigSections(nodeType: FlowNodeType) {
-  return getNodeDefinition(nodeType)?.sections.filter(
-    (section) => section.key !== 'basics' && section.key !== 'outputs'
-  ) ?? [];
+  return (
+    getNodeDefinition(nodeType)?.sections.filter(
+      (section) => section.key !== 'basics' && section.key !== 'outputs'
+    ) ?? []
+  );
 }
 
 export function getNodeDefinitionMeta(nodeType: FlowNodeType) {
@@ -86,6 +92,10 @@ export function getNodeDefinitionMeta(nodeType: FlowNodeType) {
     getRegisteredNodeDefinition(nodeType)?.meta ??
     nodeDefinitionMeta[nodeType as keyof typeof nodeDefinitionMeta]
   );
+}
+
+export function getNodeFlowRole(nodeType: FlowNodeType): NodeFlowRole {
+  return getNodeDefinitionMeta(nodeType)?.flowRole ?? 'processing';
 }
 
 export function getNodeDefinitionSections(nodeType: FlowNodeType) {

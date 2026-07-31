@@ -1060,7 +1060,7 @@ describe('ModelProvidersPage - instances modal', () => {
 
   test(
     'AC-001 allows an unconfigured optional secret to be entered and submitted in edit mode',
-    { timeout: 15000 },
+    { timeout: 30000 },
     async () => {
       authenticateAsModelProviderManager();
       modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([

@@ -43,6 +43,8 @@ pub const DATA_SOURCES_DISCOVER_OPERATION_ID: &str = "data_sources.discover";
 pub const DATA_SOURCES_PREVIEW_OPERATION_ID: &str = "data_sources.preview";
 pub const DATA_SOURCES_MAP_TO_MODEL_OPERATION_ID: &str = "data_sources.map_to_model";
 pub const DATA_SOURCES_SECRET_ROTATE_OPERATION_ID: &str = "data_sources.secret.rotate";
+pub const AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID: &str =
+    "agent_flow.data_source_options.list";
 pub const DATA_SOURCES_VIEW_ACTION_CODE: &str = "view";
 pub const MODEL_DEFINITIONS_LIST_OPERATION_ID: &str = "model_definitions.list";
 pub const MODEL_DEFINITIONS_CREATE_OPERATION_ID: &str = "model_definitions.create";

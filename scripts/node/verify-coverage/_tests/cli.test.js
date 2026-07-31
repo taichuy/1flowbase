@@ -35,7 +35,13 @@ function expectedBackendCoverageCommand({ repoRoot, entry, cargoParallelism, car
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: { CARGO_BUILD_JOBS: String(cargoParallelism), CARGO_INCREMENTAL: '0' },
+    env: {
+      CARGO_BUILD_JOBS: String(cargoParallelism),
+      CARGO_INCREMENTAL: '0',
+      ...(entry.key === 'api-server'
+        ? { CARGO_PROFILE_TEST_DEBUG: '0' }
+        : {}),
+    },
   };
 }
 

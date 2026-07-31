@@ -2569,6 +2569,7 @@ name = "plugin-framework"
 version = "0.3.1"
 dependencies = [
  "access-control",
+ "base64",
  "ed25519-dalek",
  "flate2",
  "serde",
@@ -3805,9 +3806,12 @@ dependencies = [
  "access-control",
  "anyhow",
  "async-trait",
+ "base64",
  "chacha20poly1305",
  "control-plane",
  "domain",
+ "futures-util",
+ "plugin-framework",
  "postgres-test-support",
  "runtime-core",
  "serde_json",

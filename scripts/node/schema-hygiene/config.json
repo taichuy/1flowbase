@@ -561,6 +561,49 @@
       "reason": "system authenticator reference table is configured globally and is not routed by workspace scope",
       "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
+    "i18n_catalog_release_files": {
+      "kind": "bounded_release_child",
+      "reason": "release files are bounded immutable children keyed by release locale and path",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_release_messages": {
+      "kind": "bounded_release_child",
+      "reason": "release messages are bounded immutable children keyed by release and catalog key",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_release_translations": {
+      "kind": "bounded_release_child",
+      "reason": "release translations are bounded immutable children keyed by release key and locale",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_releases": {
+      "kind": "system_release_ledger",
+      "reason": "catalog releases are immutable global release records outside workspace row routing",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "model_catalog_sync_runs": {
       "kind": "low_volume_operational_history",
       "reason": "catalog sync runs are bounded operational history owned through catalog_source_id and reviewed before high-frequency retention work",
@@ -759,6 +802,47 @@
       "kind": "workspace_routing_root",
       "reason": "workspace routing root uses workspaces.id as the workspace routing scope and should not duplicate scope_id",
       "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "workspace_i18n_catalog_custom_translations": {
+      "kind": "bounded_workspace_projection",
+      "reason": "custom translations are bounded workspace projections keyed by catalog key and locale",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_states": {
+      "kind": "workspace_state_root",
+      "reason": "catalog state is one bounded revision root keyed directly by workspace id",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_obsolete_messages": {
+      "kind": "bounded_workspace_projection",
+      "reason": "obsolete markers are bounded workspace projections keyed by one catalog key",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_overrides": {
+      "kind": "bounded_workspace_projection",
+      "reason": "translation overrides are bounded workspace projections keyed by catalog key and locale",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     },
     "schema_migrations": {
       "reason": "sqlx internal migration ledger, not application-managed user data",

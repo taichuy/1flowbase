@@ -23,19 +23,28 @@ const CODE_EDITOR_OPTIONS = {
   }
 } satisfies editor.IStandaloneEditorConstructionOptions;
 
-function CodeSourceEditorFallback() {
+function CodeSourceEditorFallback({
+  language
+}: {
+  language: 'javascript' | 'sql';
+}) {
   return (
     <div className="agent-flow-code-source-field__loading">
-      {i18nText("agentFlow", "auto.loading_javascript_editor")}</div>
+      {language === 'sql'
+        ? i18nText('agentFlow', 'auto.loading_sql_editor')
+        : i18nText('agentFlow', 'auto.loading_javascript_editor')}
+    </div>
   );
 }
 
 export function CodeSourceField({
   label,
+  language = 'javascript',
   value,
   onChange
 }: {
   label: string;
+  language?: 'javascript' | 'sql';
   value: unknown;
   onChange: (value: string) => void;
 }) {
@@ -50,11 +59,11 @@ export function CodeSourceField({
 
   return (
     <div className="agent-flow-code-source-field">
-      <Suspense fallback={<CodeSourceEditorFallback />}>
+      <Suspense fallback={<CodeSourceEditorFallback language={language} />}>
         <MonacoEditor
-          defaultLanguage="javascript"
+          defaultLanguage={language}
           height="260px"
-          language="javascript"
+          language={language}
           options={options}
           theme="vs"
           value={source}

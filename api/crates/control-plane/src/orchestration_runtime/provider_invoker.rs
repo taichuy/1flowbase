@@ -1117,6 +1117,118 @@ where
             },
         )
     }
+
+    async fn invoke_native_sql_node(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+    ) -> Result<orchestration_runtime::execution_engine::NativeSqlInvocationOutput> {
+        let context = self
+            .flow_execution_context
+            .as_ref()
+            .ok_or_else(|| anyhow!("native SQL flow execution context is not configured"))?;
+        let data_source_instance_id = node
+            .config
+            .get("data_source_instance_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("SQL node is missing data_source_instance_id"))?;
+        let sql = node
+            .config
+            .get("sql")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("SQL node is missing sql"))?;
+
+        match context
+            .data_model
+            .runtime_engine
+            .execute_native_sql(self.workspace_id, data_source_instance_id, sql)
+            .await
+        {
+            Ok(output) => Ok(
+                orchestration_runtime::execution_engine::NativeSqlInvocationOutput {
+                    output_payload: serde_json::to_value(output)?,
+                    error_payload: None,
+                    metrics_payload: json!({}),
+                    debug_payload: json!({
+                        "data_source_instance_id": data_source_instance_id,
+                    }),
+                },
+            ),
+            Err(error) => Ok(
+                orchestration_runtime::execution_engine::NativeSqlInvocationOutput {
+                    output_payload: json!({ "results": [] }),
+                    error_payload: Some(native_sql_error_payload(&error)),
+                    metrics_payload: json!({}),
+                    debug_payload: json!({
+                        "data_source_instance_id": data_source_instance_id,
+                    }),
+                },
+            ),
+        }
+    }
+}
+
+fn native_sql_error_payload(error: &anyhow::Error) -> Value {
+    if let Some(runtime_error) = error.downcast_ref::<plugin_framework::ProviderRuntimeError>() {
+        return native_sql_provider_error_payload(runtime_error);
+    }
+    if let Some(framework_error) = error.downcast_ref::<plugin_framework::PluginFrameworkError>() {
+        return match framework_error {
+            plugin_framework::PluginFrameworkError::RuntimeContract { error } => {
+                native_sql_provider_error_payload(error)
+            }
+            plugin_framework::PluginFrameworkError::InvalidProviderContract { message } => {
+                let code = if message.starts_with("data_source_capability_not_supported") {
+                    "data_source_capability_not_supported"
+                } else {
+                    "invalid_native_sql_result_contract"
+                };
+                json!({
+                    "kind": "contract_error",
+                    "code": code,
+                    "message": message,
+                })
+            }
+            _ => json!({
+                "kind": "transport_error",
+                "code": "data_source_transport_error",
+                "message": framework_error.to_string(),
+            }),
+        };
+    }
+    json!({
+        "kind": "transport_error",
+        "code": "data_source_transport_error",
+        "message": error.to_string(),
+    })
+}
+
+fn native_sql_provider_error_payload(error: &plugin_framework::ProviderRuntimeError) -> Value {
+    let code = error
+        .provider_details
+        .as_ref()
+        .and_then(|details| details.get("code"))
+        .and_then(Value::as_str)
+        .or(error.provider_summary.as_deref())
+        .unwrap_or("data_source_error");
+    let kind = if code == "outcome_unknown" {
+        "outcome_unknown"
+    } else if error.kind == plugin_framework::ProviderRuntimeErrorKind::ProviderUpstreamError {
+        "source_error"
+    } else {
+        "transport_error"
+    };
+    let detail = error
+        .provider_details
+        .as_ref()
+        .and_then(|details| details.get("detail"))
+        .cloned()
+        .or_else(|| error.provider_details.clone());
+    json!({
+        "kind": kind,
+        "code": code,
+        "message": error.message,
+        "detail": detail,
+    })
 }
 
 #[async_trait]

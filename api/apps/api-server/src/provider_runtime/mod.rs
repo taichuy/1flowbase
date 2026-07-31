@@ -19,9 +19,10 @@ use plugin_framework::{
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
-        DataSourceGetRecordInput, DataSourceGetRecordOutput, DataSourceListRecordsInput,
-        DataSourceListRecordsOutput, DataSourcePreviewReadInput, DataSourcePreviewReadOutput,
-        DataSourceResourceDescriptor, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
+        DataSourceExecuteSqlInput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
+        DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourcePreviewReadInput,
+        DataSourcePreviewReadOutput, DataSourceResourceDescriptor, DataSourceUpdateRecordInput,
+        DataSourceUpdateRecordOutput, NativeSqlExecutionOutput,
     },
     error::PluginFrameworkError,
     provider_contract::{
@@ -473,6 +474,20 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
             .await
             .map_err(|error| map_framework_error(error, "data_source_runtime"))
     }
+
+    async fn execute_sql(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        input: DataSourceExecuteSqlInput,
+    ) -> anyhow::Result<NativeSqlExecutionOutput> {
+        self.ensure_data_source_loaded(installation).await?;
+        let operation = {
+            let host = self.services.data_source_host.read().await;
+            host.execute_sql_operation(&installation.plugin_id, input)
+                .map_err(map_provider_framework_error)?
+        };
+        operation.await.map_err(map_provider_framework_error)
+    }
 }
 
 #[async_trait]
@@ -560,6 +575,33 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
 
 #[async_trait]
 impl DataSourceRuntimeRecordBackend for ApiDataSourceRuntimeRecordBackend {
+    async fn execute_sql(
+        &self,
+        workspace_id: Uuid,
+        data_source_instance_id: &str,
+        sql: &str,
+    ) -> anyhow::Result<NativeSqlExecutionOutput> {
+        if data_source_instance_id == "main" {
+            return storage_durable::execute_native_sql(self.repository.pool(), sql)
+                .await
+                .map_err(|error| anyhow::Error::new(PluginFrameworkError::runtime(error)));
+        }
+
+        let instance_id = Uuid::parse_str(data_source_instance_id)
+            .map_err(|_| ControlPlaneError::InvalidInput("data_source_instance_id"))?;
+        let target = self.load_target(workspace_id, instance_id).await?;
+        let output = DataSourceRuntimePort::execute_sql(
+            &self.runtime,
+            &target.installation,
+            DataSourceExecuteSqlInput {
+                connection: target.connection,
+                sql: sql.to_string(),
+            },
+        )
+        .await?;
+        redact_data_source_output(output, &target.secret_values)
+    }
+
     async fn list_records(
         &self,
         workspace_id: Uuid,

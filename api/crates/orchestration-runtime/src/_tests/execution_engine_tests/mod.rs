@@ -28,7 +28,8 @@ use crate::{
     execution_engine::{
         resume_flow_debug_run, start_flow_debug_run, start_flow_debug_run_with_runtime_context,
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
-        ExecutionRuntimeContext, LlmRoutingCounterStore, ProviderInvocationOutput, ProviderInvoker,
+        ExecutionRuntimeContext, LlmRoutingCounterStore, NativeSqlInvocationOutput,
+        ProviderInvocationOutput, ProviderInvoker,
     },
     execution_state::{
         compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
@@ -119,6 +120,20 @@ impl CapabilityInvoker for StubProviderInvoker {
             output_payload: json!({
                 "answer": input_payload["query"].clone(),
             }),
+        })
+    }
+
+    async fn invoke_native_sql_node(
+        &self,
+        _node: &CompiledNode,
+    ) -> Result<NativeSqlInvocationOutput> {
+        Ok(NativeSqlInvocationOutput {
+            output_payload: json!({
+                "results": [{ "kind": "completion", "affected_rows": 1 }]
+            }),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({ "data_source_instance_id": "main" }),
         })
     }
 }
@@ -1160,5 +1175,6 @@ mod human_and_tool_resume;
 mod llm_context;
 mod llm_output;
 mod plugin_nodes;
+mod sql;
 mod variable_updates;
 mod workflow;

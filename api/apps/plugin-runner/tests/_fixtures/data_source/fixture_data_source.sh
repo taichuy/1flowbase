@@ -36,6 +36,9 @@ case "${payload}" in
   *'"method":"delete_record"'*)
     printf '%s' '{"ok":true,"result":{"deleted":true,"metadata":{"method":"delete_record"}}}'
     ;;
+  *'"method":"execute_sql"'*'-- 原样传输'*"select ';'::text as value;"*)
+    printf '%s' '{"ok":true,"result":{"results":[{"kind":"row_batch","columns":[{"name":"value","native_type":"INT4","logical_type":"integer","encoding":"json"}],"rows":[[1]]},{"kind":"completion","affected_rows":1}]}}'
+    ;;
   *)
     printf '%s' '{"ok":false,"error":{"message":"unknown method","provider_summary":null}}'
     exit 1

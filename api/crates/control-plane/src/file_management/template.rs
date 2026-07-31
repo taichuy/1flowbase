@@ -100,8 +100,8 @@ pub fn file_metadata_title_references() -> Vec<FileMetadataTitleReference> {
                 |(code, title, historical_title, _, _)| FileMetadataTitleReference {
                     resource_code: "attachments",
                     field_code: Some(*code),
-                    key: *title,
-                    historical_default: *historical_title,
+                    key: title,
+                    historical_default: historical_title,
                 },
             ),
     )

@@ -275,7 +275,7 @@ pub enum ProviderTransportProtocol {
 ///
 /// This value is derived from an actual LLM invocation. It is deliberately not serializable
 /// because workflow variables and durable request bodies must not become a second routing owner.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderTransportAffinity {
     provider_instance_id: String,
     provider_code: String,
@@ -283,7 +283,7 @@ pub struct ProviderTransportAffinity {
     model: String,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderContinuation {
     response_id: String,
     affinity: ProviderTransportAffinity,

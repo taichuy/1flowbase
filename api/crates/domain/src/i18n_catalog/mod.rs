@@ -55,7 +55,7 @@ impl CatalogDigest {
     pub fn new(value: impl Into<String>) -> Result<Self, I18nCatalogInvariantError> {
         let value = value.into();
         let hexadecimal = value.strip_prefix("sha256:");
-        if hexadecimal.map_or(true, |digest| {
+        if hexadecimal.is_none_or(|digest| {
             digest.len() != 64
                 || !digest
                     .bytes()
@@ -82,7 +82,7 @@ impl CatalogLocale {
         let suffix = parts.next();
         let language_is_valid = (2..=3).contains(&language.len())
             && language.bytes().all(|byte| byte.is_ascii_lowercase());
-        let suffix_is_valid = suffix.map_or(true, |suffix| {
+        let suffix_is_valid = suffix.is_none_or(|suffix| {
             let mut bytes = suffix.bytes();
             bytes.next().is_some_and(|byte| byte.is_ascii_uppercase())
                 && (1..=7).contains(&bytes.len())

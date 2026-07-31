@@ -73,6 +73,10 @@ function isMissingRequiredField(
   }
 
   if (fieldKey.startsWith('config.')) {
+    if (fieldKey === 'config.sql') {
+      const sql = node.config.sql;
+      return typeof sql !== 'string' || sql.length === 0;
+    }
     if (fieldKey === 'config.model_provider') {
       const modelProvider = getLlmModelProvider(node.config);
       return (
@@ -666,9 +670,7 @@ function validateTerminalTopology(
   for (const node of document.graph.nodes.filter(
     (candidate) => candidate.type === 'answer'
   )) {
-    if (
-      document.graph.edges.some((edge) => edge.source === node.id)
-    ) {
+    if (document.graph.edges.some((edge) => edge.source === node.id)) {
       issues.push({
         id: `${node.id}-terminal-outgoing-edge`,
         scope: 'node',

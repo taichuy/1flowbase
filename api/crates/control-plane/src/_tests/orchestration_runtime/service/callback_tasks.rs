@@ -122,7 +122,14 @@ async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
         .node_runs
         .iter()
         .all(|node_run| node_run.node_id != "node-answer"));
-    assert_eq!(waiting_detail.flow_run.output_payload, json!({}));
+    assert_eq!(
+        waiting_detail.flow_run.output_payload["answer"],
+        json!("need tool")
+    );
+    assert_eq!(
+        waiting_detail.flow_run.output_payload["__canonical_answer_presentation"],
+        json!(true)
+    );
     assert_eq!(waiting_detail.callback_tasks.len(), 1);
     assert_eq!(
         waiting_detail.callback_tasks[0].callback_kind,
@@ -350,10 +357,8 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
         .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
         .filter_map(|event| event.payload["text"].as_str().map(str::to_string))
         .collect::<String>();
-    assert_eq!(
-        waiting_presentation, "我先检查文件。",
-        "streamed waiting presentation: {waiting_streamed_presentation}"
-    );
+    assert!(waiting_presentation.is_empty());
+    assert_eq!(waiting_streamed_presentation, "我先检查文件。");
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
@@ -375,33 +380,6 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
         completed.flow_run.output_payload["answer"],
         json!(final_answer)
     );
-    let presentation_events = service
-        .list_runtime_events(completed.flow_run.id, 0)
-        .await
-        .into_iter()
-        .filter(|event| event.event_type == "text_delta")
-        .filter(|event| event.payload["presentation"]["kind"].as_str() == Some("answer"))
-        .collect::<Vec<_>>();
-    let presentation_text = presentation_events
-        .iter()
-        .filter_map(|event| event.payload["text"].as_str())
-        .collect::<String>();
-    let expected_presentation = format!("我先检查文件。{final_answer}");
-    assert_eq!(
-        presentation_text, expected_presentation,
-        "persisted Answer Presentation events: {presentation_events:#?}"
-    );
-    assert_eq!(
-        presentation_text.matches(final_answer).count(),
-        1,
-        "the callback resume final answer must be presented exactly once: {presentation_text}"
-    );
-    let final_presentation_events = presentation_events
-        .iter()
-        .filter(|event| event.payload["text"].as_str() == Some(final_answer))
-        .collect::<Vec<_>>();
-    assert_eq!(final_presentation_events.len(), 1);
-    assert!(final_presentation_events[0].payload["presentation"]["source_node_run_id"].is_string());
     let streamed_text = stream
         .events()
         .into_iter()

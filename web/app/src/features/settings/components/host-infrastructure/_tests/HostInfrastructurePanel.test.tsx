@@ -140,6 +140,7 @@ vi.mock('echarts/charts', () => ({
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   LegendComponent: {},
+  RadarComponent: {},
   TooltipComponent: {},
   TitleComponent: {}
 }));

@@ -785,7 +785,7 @@ async fn success_persistence_failure_never_projects_a_success_terminal() {
         })
         .await
         .expect("run should start");
-    service.fail_next_runtime_event_append().await;
+    service.fail_next_terminal_runtime_event_append().await;
 
     let _ = service
         .continue_flow_debug_run(ContinueFlowDebugRunCommand {
@@ -977,7 +977,7 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
     let seeded = service.seed_application_with_flow("Support Agent").await;
     let stream =
         std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
-    let service = service.with_runtime_event_stream(stream);
+    let service = service.with_runtime_event_stream(stream.clone());
 
     let detail = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
@@ -1113,7 +1113,7 @@ async fn provider_error_after_live_delta_does_not_project_failure_as_answer() {
     let seeded = service.seed_application_with_flow("Support Agent").await;
     let stream =
         std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
-    let service = service.with_runtime_event_stream(stream);
+    let service = service.with_runtime_event_stream(stream.clone());
 
     let detail = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
@@ -1170,7 +1170,8 @@ async fn provider_error_after_live_delta_does_not_project_failure_as_answer() {
     assert!(durable_events
         .iter()
         .all(|event| event.event_type != "flow_finished"));
-    let presented_answer = durable_events
+    let live_events = stream.events();
+    let presented_answer = live_events
         .iter()
         .filter(|event| event.event_type == "text_delta")
         .filter(|event| event.payload["presentation"]["kind"] == json!("answer"))

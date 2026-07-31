@@ -63,20 +63,20 @@ describe('@1flowbase/rich-text (AC-PUB-006)', () => {
   });
 
   it('owns two independent instances and releases shared support markers after the last unmount', async () => {
-    const first = render(
+    const { unmount: unmountFirst } = render(
       <MarkdownEditor value="first" onChange={vi.fn()} ariaLabel="first" />
     );
-    const second = render(
+    const { unmount: unmountSecond } = render(
       <MarkdownEditor value="second" onChange={vi.fn()} ariaLabel="second" />
     );
     await act(async () => undefined);
 
     expect(options).toHaveLength(2);
     expect(document.getElementById('vditorLuteScript')).not.toBeNull();
-    first.unmount();
+    unmountFirst();
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(document.getElementById('vditorLuteScript')).not.toBeNull();
-    second.unmount();
+    unmountSecond();
     expect(destroy).toHaveBeenCalledTimes(2);
     expect(document.getElementById('vditorLuteScript')).toBeNull();
     expect(document.getElementById('vditorIconScript')).toBeNull();

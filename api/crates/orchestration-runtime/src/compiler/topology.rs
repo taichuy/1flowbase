@@ -43,6 +43,7 @@ const EXECUTABLE_NODE_TYPES: &[&str] = &[
     "data_model_create",
     "data_model_update",
     "data_model_delete",
+    "sql",
     "variable_assigner",
     "human_input",
     "plugin_node",

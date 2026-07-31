@@ -526,10 +526,9 @@ async fn live_debug_run_persists_start_context_and_answer_final_variables() {
         answer_node.output_payload["conversation"]["Locale"],
         json!("zh-CN")
     );
-    assert_eq!(
-        completed.flow_run.output_payload,
-        answer_node.output_payload
-    );
+    let mut expected_flow_output = answer_node.output_payload.clone();
+    expected_flow_output["__canonical_answer_presentation"] = json!(true);
+    assert_eq!(completed.flow_run.output_payload, expected_flow_output);
 
     service
         .replace_application_environment_variables_for_tests(

@@ -209,18 +209,19 @@ pub(crate) async fn run_connection(
     );
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));
     let mut actor = ResponsesConnectionActor::new();
-    let mut active: Option<(
+    type ActiveTurn = (
         TurnId,
         JoinHandle<Result<(), super::turn_bridge::ResponsesTurnBridgeError>>,
         mpsc::Receiver<String>,
-    )> = None;
+    );
+    let mut active: Option<ActiveTurn> = None;
 
     'connection: loop {
         if let Some((turn, mut task, mut frames)) = active.take() {
             tokio::select! {
                 biased;
                 Some(frame) = frames.recv() => {
-                    if sender.send(Message::Text(frame.into())).await.is_err() {
+                    if sender.send(Message::Text(frame)).await.is_err() {
                         task.abort();
                         break;
                     }
@@ -338,7 +339,7 @@ pub(crate) async fn run_connection(
                     match actor.accept_response(response) {
                         Ok(ConnectionAction::Prewarmed { response_id }) => {
                             for frame in prewarm_completion_frames(&response_id) {
-                                if sender.send(Message::Text(frame.into())).await.is_err() {
+                                if sender.send(Message::Text(frame)).await.is_err() {
                                     actor.begin_close();
                                     break 'connection;
                                 }

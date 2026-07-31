@@ -3,6 +3,7 @@ export * from './console/applications';
 export * from './console/api-docs';
 export * from './console/application-orchestration';
 export * from './console/application-runtime';
+export * from './console/data-source-options';
 export * from './console/personal-access-tokens';
 export {
   getConsoleApplicationConversationMessages,

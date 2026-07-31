@@ -526,6 +526,10 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         self.repository.fail_next_runtime_event_append();
     }
 
+    pub async fn fail_next_terminal_runtime_event_append(&self) {
+        self.repository.fail_next_terminal_runtime_event_append();
+    }
+
     pub async fn fail_next_published_stream_terminal_projection(&self) {
         self.repository
             .fail_next_published_stream_terminal_projection();

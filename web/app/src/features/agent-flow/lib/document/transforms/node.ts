@@ -20,6 +20,7 @@ import {
   isLlmToolSourceHandle,
   type LlmVisibleInternalTool
 } from '../../llm-node-config';
+import { getNodeFlowRole } from '../../node-definitions';
 
 const NODE_GAP_X = 280;
 const NODE_HEIGHT = 96;
@@ -387,11 +388,16 @@ export function insertNodeAfter(
     (edge) => edge.sourceHandle === resolvedSourceHandle
   );
 
-  if (anchorNode.type === 'answer') {
+  if (getNodeFlowRole(anchorNode.type) === 'terminal') {
     return document;
   }
 
-  if (node.type === 'answer' && outgoingEdges.length > 0) {
+  const insertedNodeFlowRole = getNodeFlowRole(node.type);
+
+  if (
+    insertedNodeFlowRole === 'entry' ||
+    (insertedNodeFlowRole === 'terminal' && outgoingEdges.length > 0)
+  ) {
     return document;
   }
   const nextPositionX = anchorNode.position.x + NODE_GAP_X;

@@ -10,7 +10,7 @@ use crate::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::{parse_plugin_manifest, PluginManifestV1},
     provider_contract::PluginFormFieldSchema,
-    PluginExecutionMode,
+    PluginExecutionMode, DATA_SOURCE_NATIVE_SQL_CAPABILITY,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +88,13 @@ impl DataSourcePackage {
 
     pub fn runtime_entry(&self) -> PathBuf {
         self.root.join(&self.manifest.runtime.entry)
+    }
+
+    pub fn supports_native_sql(&self) -> bool {
+        self.definition
+            .capabilities
+            .iter()
+            .any(|capability| capability == DATA_SOURCE_NATIVE_SQL_CAPABILITY)
     }
 }
 

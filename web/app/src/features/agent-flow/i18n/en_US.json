@@ -706,6 +706,11 @@
     "unresolved_node_reason": "Reason: {{value1}}",
     "original_node_type": "Original type: {{value1}}",
     "max_retries": "Maximum retries",
-    "retry_interval_ms": "Retry interval"
+    "retry_interval_ms": "Retry interval",
+    "execute_native_sql": "Execute SQL unchanged on the selected data source and return its results",
+    "data_source": "Data source",
+    "sql_statement": "SQL statement",
+    "sql_results": "SQL results",
+    "loading_sql_editor": "Loading SQL editor"
   }
 }

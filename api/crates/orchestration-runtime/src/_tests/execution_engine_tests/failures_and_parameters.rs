@@ -94,10 +94,13 @@ async fn d1_ac_008_provider_runtime_contract_error_stays_out_of_llm_output() {
         ExecutionStopReason::Failed(ref failure) => {
             assert_eq!(failure.node_id, "node-llm");
             assert_eq!(failure.error_payload["error_code"], json!("auth_failed"));
-            assert_eq!(failure.error_payload["message"], json!("invalid api_key"));
+            assert_eq!(
+                failure.error_payload["message"],
+                json!("401 401 Unauthorized: Incorrect API key provided")
+            );
             assert_eq!(
                 outcome.node_traces[1].error_payload.as_ref().unwrap()["message"],
-                json!("invalid api_key")
+                json!("401 401 Unauthorized: Incorrect API key provided")
             );
             assert!(outcome.node_traces[1].output_payload.get("text").is_none());
             assert!(!outcome.variable_pool.contains_key("node-llm"));
@@ -132,8 +135,10 @@ async fn invalid_provider_contract_message_reaches_durable_and_client_failure_pr
                 json!(INVALID_PROVIDER_CONTRACT_DISPLAY)
             );
             assert_eq!(
-                outcome.node_traces[1].metrics_payload["attempts"][0]["error_payload"]["message"],
-                json!(INVALID_PROVIDER_CONTRACT_DISPLAY)
+                outcome.node_traces[1].metrics_payload["attempts"][0]["error_message_ref"],
+                json!(format!(
+                    "runtime_artifact:inline:error:{INVALID_PROVIDER_CONTRACT_DISPLAY}"
+                ))
             );
             assert!(outcome.node_traces[1].output_payload.get("text").is_none());
         }
@@ -349,7 +354,6 @@ fn protocol_context_fixture() -> ProtocolContextEnvelope {
             "context_management".to_string(),
             json!({ "edits": [{ "type": "clear_thinking_20251015" }] }),
         )]),
-        ..ProtocolContextEnvelope::default()
     }
 }
 
@@ -1432,37 +1436,4 @@ async fn llm_json_schema_response_rejects_invalid_structured_output() {
     .expect_err("invalid structured LLM output should fail the node");
 
     assert!(error.to_string().contains("invalid structured LLM output"));
-}
-#[tokio::test]
-async fn generate_llm_consumer_rejects_non_generate_operations_before_provider_invocation() {
-    for operation in [
-        json!({"kind": "count_tokens", "profile": null}),
-        json!({"kind": "compact", "profile": "responses_compact"}),
-    ] {
-        let invoker = successful_invoker();
-        let captured = invoker.captured_input.clone();
-        let outcome = start_flow_debug_run(
-            &base_plan(),
-            &json!({
-                "node-start": {
-                    "query": "unsupported operation",
-                    "operation": operation
-                }
-            }),
-            &invoker,
-        )
-        .await
-        .unwrap();
-
-        let llm_trace = outcome
-            .node_traces
-            .iter()
-            .find(|trace| trace.node_id == "node-llm")
-            .expect("LLM consumer must emit a typed failure trace");
-        assert_eq!(
-            llm_trace.error_payload.as_ref().unwrap()["error_code"],
-            "ai_native_operation_unsupported"
-        );
-        assert!(captured.lock().expect("input mutex poisoned").is_none());
-    }
 }

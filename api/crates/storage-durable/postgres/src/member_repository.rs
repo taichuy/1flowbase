@@ -123,7 +123,7 @@ impl SelfRegistrationRepository for PgControlPlaneStore {
                     ControlPlaneError::Conflict("self_registration_identity_exists").into(),
                 );
             }
-            return Err(error.into());
+            return Err(error);
         }
         tx.commit().await?;
 

@@ -138,6 +138,42 @@ impl InMemoryProviderRuntime {
     }
 }
 
+fn events_for_result(result: &ProviderInvocationResult) -> Vec<ProviderStreamEvent> {
+    let mut events = Vec::new();
+    if let Some(content) = result
+        .final_content
+        .as_ref()
+        .filter(|content| !content.is_empty())
+    {
+        events.push(ProviderStreamEvent::TextDelta {
+            delta: content.clone(),
+        });
+    }
+    events.extend(
+        result
+            .tool_calls
+            .iter()
+            .cloned()
+            .map(|call| ProviderStreamEvent::ToolCallCommit { call }),
+    );
+    events.extend(
+        result
+            .mcp_calls
+            .iter()
+            .cloned()
+            .map(|call| ProviderStreamEvent::McpCallCommit { call }),
+    );
+    events.push(ProviderStreamEvent::UsageSnapshot {
+        usage: result.usage.clone(),
+    });
+    if let Some(reason) = &result.finish_reason {
+        events.push(ProviderStreamEvent::Finish {
+            reason: reason.clone(),
+        });
+    }
+    events
+}
+
 #[async_trait]
 impl ProviderRuntimePort for InMemoryProviderRuntime {
     async fn ensure_loaded(&self, _installation: &domain::PluginInstallationRecord) -> Result<()> {
@@ -195,22 +231,6 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
             .first()
             .map(|message| message.content.clone())
             .unwrap_or_default();
-        let default_events = vec![
-            ProviderStreamEvent::TextDelta {
-                delta: format!("echo:{}:{}", input.model, prompt),
-            },
-            ProviderStreamEvent::UsageSnapshot {
-                usage: plugin_framework::provider_contract::ProviderUsage {
-                    input_tokens: Some(5),
-                    output_tokens: Some(7),
-                    total_tokens: Some(12),
-                    ..plugin_framework::provider_contract::ProviderUsage::default()
-                },
-            },
-            ProviderStreamEvent::Finish {
-                reason: plugin_framework::provider_contract::ProviderFinishReason::Stop,
-            },
-        ];
         let default_result = plugin_framework::provider_contract::ProviderInvocationResult {
             final_content: Some(format!("echo:{}:{}", input.model, prompt)),
             usage: plugin_framework::provider_contract::ProviderUsage {
@@ -227,12 +247,15 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
             .as_ref()
             .and_then(|provider_results| provider_results.lock().ok()?.pop_front());
 
-        Ok(crate::ports::ProviderRuntimeInvocationOutput {
-            events: self.provider_events.clone().unwrap_or(default_events),
-            result: queued_result
-                .or_else(|| self.provider_result.clone())
-                .unwrap_or(default_result),
-        })
+        let result = queued_result
+            .or_else(|| self.provider_result.clone())
+            .unwrap_or(default_result);
+        let events = self
+            .provider_events
+            .clone()
+            .unwrap_or_else(|| events_for_result(&result));
+
+        Ok(crate::ports::ProviderRuntimeInvocationOutput { events, result })
     }
 
     async fn invoke_stream_with_live_events(

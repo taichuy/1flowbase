@@ -8,14 +8,16 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
       'agentFlow',
       'auto.define_workflow_entries_generate_initial_user_input'
     ),
-    helpHref: '/docs/agentflow/nodes/start'
+    helpHref: '/docs/agentflow/nodes/start',
+    flowRole: 'entry'
   },
   answer: {
     summary: i18nText(
       'agentFlow',
       'auto.output_response_results_round_workflow_end_user'
     ),
-    helpHref: '/docs/agentflow/nodes/answer'
+    helpHref: '/docs/agentflow/nodes/answer',
+    flowRole: 'terminal'
   },
   llm: {
     summary: i18nText(
@@ -75,6 +77,10 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     helpHref: '/docs/agentflow/nodes/tool-result'
   },
   ...dataModelNodeMeta,
+  sql: {
+    summary: i18nText('agentFlow', 'auto.execute_native_sql'),
+    helpHref: '/docs/agentflow/nodes/sql'
+  },
   variable_assigner: {
     summary: i18nText(
       'agentFlow',

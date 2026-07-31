@@ -175,7 +175,10 @@ fn completed_flow_output_uses_terminal_node_payload() {
 
     assert_eq!(
         canonical_terminal_output_payload(None, &outcome).unwrap(),
-        json!({ "answer": "final answer" })
+        json!({
+            "answer": "final answer",
+            "__canonical_answer_presentation": true
+        })
     );
 }
 
@@ -374,7 +377,11 @@ fn failed_flow_output_uses_terminal_answer_payload_even_when_answer_has_error() 
 
     assert_eq!(
         canonical_terminal_output_payload(None, &outcome).unwrap(),
-        answer_output
+        json!({
+            "answer": "partial final answer",
+            "error": answer_output["error"].clone(),
+            "__canonical_answer_presentation": true
+        })
     );
 }
 

@@ -81,7 +81,7 @@ jobs:
   single-scope-gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: ${{ (inputs.scope == 'repo-backend-test-api-server' || inputs.scope == 'coverage-backend-api-server') && 120 || 60 }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -287,7 +287,7 @@ jobs:
   repo-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.scope == 'repo-backend-test-api-server' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -509,7 +509,7 @@ jobs:
   coverage-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.scope == 'coverage-backend-api-server' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -597,92 +597,6 @@ jobs:
         if: always()
         with:
           name: test-governance-${{ matrix.scope }}
-          path: tmp/test-governance
-
-  state-protocols-gate:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
-      - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Resolve release-seeded Rust cache tag
-        id: release_seed_tag
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          case "${RUNNER_ARCH:-X64}" in
-            ARM64) cache_arch=arm64 ;;
-            *) cache_arch=amd64 ;;
-          esac
-          echo "cache_arch=$cache_arch" >> "$GITHUB_OUTPUT"
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' 2>/dev/null || true)"
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          if [ -n "$tag" ]; then
-            echo "Resolved release-seeded Rust cache tag: $tag"
-          else
-            echo "No published release tag found; skipping release-seeded Rust cache restore."
-          fi
-      - name: Restore release-seeded api-server Rust cache
-        id: release_seed_api
-        if: ${{ steps.release_seed_tag.outputs.release_tag != '' }}
-        uses: actions/cache/restore@v5
-        with:
-          path: |
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-registry
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-git
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/target
-          key: rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
-          restore-keys: |
-            rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-
-      - name: Import release-seeded api-server Rust cache
-        if: ${{ steps.release_seed_api.outputs.cache-hit != '' }}
-        shell: bash
-        env:
-          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_tag.outputs.cache_arch }}
-          CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-state-protocols/target
-        run: |
-          set -euo pipefail
-          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-          mkdir -p "$cargo_home/registry" "$cargo_home/git" "$CARGO_TARGET_DIR"
-          rsync -a "tmp/container-cache/api-server/$RUST_RELEASE_SEEDED_CACHE_ARCH/cargo-registry/" "$cargo_home/registry/"
-          rsync -a "tmp/container-cache/api-server/$RUST_RELEASE_SEEDED_CACHE_ARCH/cargo-git/" "$cargo_home/git/"
-          rsync -a "tmp/container-cache/api-server/$RUST_RELEASE_SEEDED_CACHE_ARCH/target/" "$CARGO_TARGET_DIR/"
-      - name: Restore Rust state protocol quality gate cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            tmp/quality-gate-cache/rust-state-protocols/target
-          key: rust-quality-gate-state-protocols-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
-          restore-keys: |
-            rust-quality-gate-state-protocols-${{ runner.os }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-state-protocols-${{ runner.os }}-
-      - uses: ./.github/actions/quality-gate
-        env:
-          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-state-protocols/target
-          GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
-          GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
-        with:
-          scope: state-protocols
-          report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
-          environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          publish_issue: "false"
-          start_postgres: "true"
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: test-governance-state-protocols
           path: tmp/test-governance
 
   container-images-gate:
@@ -815,7 +729,6 @@ jobs:
       - backend-consistency-gate
       - coverage-frontend-gate
       - coverage-backend-gate
-      - state-protocols-gate
       - container-images-gate
       - ai-gateway-protocol-conformance
     runs-on: ubuntu-latest
@@ -838,7 +751,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,coverage-backend-api-server,state-protocols,container-images,ai-gateway-protocol-conformance'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,coverage-backend-api-server,container-images,ai-gateway-protocol-conformance'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

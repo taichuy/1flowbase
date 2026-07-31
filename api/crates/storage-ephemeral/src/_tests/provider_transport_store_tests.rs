@@ -249,8 +249,7 @@ async fn wp12_sealed_request_and_continuation_are_consumed_once() {
         store
             .consume_continuation(continuation_slot)
             .await
-            .err()
-            .expect("consumed continuation must be unavailable")
+            .expect_err("consumed continuation must be unavailable")
             .to_string(),
         "ephemeral_continuation_missing"
     );
@@ -409,8 +408,7 @@ async fn wp12_early_loss_is_an_explicit_failure() {
         store
             .consume_continuation(continuation_slot)
             .await
-            .err()
-            .expect("cleared continuation must be unavailable")
+            .expect_err("cleared continuation must be unavailable")
             .to_string(),
         "ephemeral_continuation_missing"
     );
@@ -427,8 +425,7 @@ async fn wp12_sealed_body_and_token_do_not_enter_debug_or_error_text() {
     let continuation_error = store
         .consume_continuation(continuation_slot)
         .await
-        .err()
-        .expect("missing continuation must fail explicitly")
+        .expect_err("missing continuation must fail explicitly")
         .to_string();
 
     for safe_text in [request_debug, request_error, continuation_error] {

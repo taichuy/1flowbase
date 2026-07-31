@@ -97,6 +97,7 @@ display_name: Fixture Data Source
 auth_modes:
   - api_key
 capabilities:
+  - native_sql/v1
   - validate_config
   - test_connection
   - discover_catalog
@@ -293,6 +294,33 @@ async fn data_source_create_rejects_missing_required_package_config_field() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn ac_001_agent_flow_data_source_options_include_core_main() {
+    let (state, _database_url) = test_api_state_with_database_url().await;
+    let config = test_config();
+    let app = crate::app_with_state_and_config(state, &config);
+    let (cookie, _csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/data-sources/agent-flow-options")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload["data"][0]["data_source_instance_id"], "main");
+    assert_eq!(payload["data"][0]["capability"], "native_sql/v1");
+    assert!(payload["data"][0].get("source_code").is_none());
 }
 
 #[tokio::test]

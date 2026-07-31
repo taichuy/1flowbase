@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import '@testing-library/jest-dom/vitest';
+
 import { describe, expect, test } from 'vitest';
 
 import { attachNativeTrustedBlockPortalSurface } from '../index';
@@ -41,23 +43,15 @@ describe('native trusted block portal surface', () => {
     });
     const shadowRoot = first.shadowRoot;
 
-    expect(root.getAttribute('data-flowbase-native-trusted-block-root')).toBe(
-      ''
-    );
-    expect(root.getAttribute('data-flowbase-native-trusted-block-id')).toBe(
-      'epoch-1'
-    );
+    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-root', '');
+    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-id', 'epoch-1');
 
     first.dispose();
     first.dispose();
 
     expect(shadowRoot.childNodes).toHaveLength(0);
-    expect(root.hasAttribute('data-flowbase-native-trusted-block-root')).toBe(
-      false
-    );
-    expect(root.getAttribute('data-flowbase-native-trusted-block-id')).toBe(
-      'host-value'
-    );
+    expect(root).not.toHaveAttribute('data-flowbase-native-trusted-block-root');
+    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-id', 'host-value');
 
     const second = attachNativeTrustedBlockPortalSurface({
       root,

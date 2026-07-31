@@ -71,6 +71,9 @@ pub(super) fn compile_node(
             message: unresolved_node_message(&node_id, &config),
         });
     }
+    if node_type == "sql" {
+        validate_native_sql_config(&node_id, &config, compile_issues);
+    }
     let llm_runtime = (node_type == "llm")
         .then(|| compile_llm_runtime(&node_id, &config, context, compile_issues))
         .flatten();
@@ -96,6 +99,38 @@ pub(super) fn compile_node(
         llm_runtime,
         code_runtime,
     })
+}
+
+fn validate_native_sql_config(
+    node_id: &str,
+    config: &Value,
+    compile_issues: &mut Vec<CompileIssue>,
+) {
+    let data_source_instance_id = config
+        .get("data_source_instance_id")
+        .and_then(Value::as_str);
+    match data_source_instance_id {
+        None | Some("") => compile_issues.push(CompileIssue {
+            node_id: node_id.to_string(),
+            code: CompileIssueCode::MissingDataSourceInstance,
+            message: format!("node {node_id} is missing config.data_source_instance_id"),
+        }),
+        Some("main") => {}
+        Some(value) if uuid::Uuid::parse_str(value).is_ok() => {}
+        Some(_) => compile_issues.push(CompileIssue {
+            node_id: node_id.to_string(),
+            code: CompileIssueCode::InvalidDataSourceInstance,
+            message: format!("node {node_id} has an invalid config.data_source_instance_id"),
+        }),
+    }
+
+    if !config.get("sql").is_some_and(Value::is_string) {
+        compile_issues.push(CompileIssue {
+            node_id: node_id.to_string(),
+            code: CompileIssueCode::MissingNativeSql,
+            message: format!("node {node_id} is missing config.sql"),
+        });
+    }
 }
 
 fn unresolved_node_message(node_id: &str, config: &Value) -> String {

@@ -16,6 +16,7 @@ export type NodeEditorKind =
   | 'static_select'
   | 'data_model'
   | 'data_model_query'
+  | 'data_source'
   | 'llm_model'
   | 'llm_context_policy'
   | 'llm_external_reasoning_policy'
@@ -23,6 +24,7 @@ export type NodeEditorKind =
   | 'llm_prompt_messages'
   | 'llm_response_format'
   | 'code_source'
+  | 'sql_source'
   | 'number'
   | 'selector'
   | 'selector_list'
@@ -60,10 +62,13 @@ export interface NodeDefinition {
   sections: NodeDefinitionSection[];
 }
 
+export type NodeFlowRole = 'entry' | 'processing' | 'terminal';
+
 export interface NodeDefinitionMeta {
   summary: string;
   helpHref: string | null;
   canEnterContainer?: boolean;
+  flowRole?: NodeFlowRole;
 }
 
 export type NodeDefinitionMap = Partial<Record<FlowNodeType, NodeDefinition>>;

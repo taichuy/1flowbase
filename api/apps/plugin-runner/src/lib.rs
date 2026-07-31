@@ -16,10 +16,11 @@ use plugin_framework::{
     },
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
-        DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceGetRecordInput,
-        DataSourceGetRecordOutput, DataSourceImportSnapshotInput, DataSourceImportSnapshotOutput,
-        DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourcePreviewReadInput,
-        DataSourcePreviewReadOutput, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
+        DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceExecuteSqlInput,
+        DataSourceGetRecordInput, DataSourceGetRecordOutput, DataSourceImportSnapshotInput,
+        DataSourceImportSnapshotOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
+        DataSourcePreviewReadInput, DataSourcePreviewReadOutput, DataSourceUpdateRecordInput,
+        DataSourceUpdateRecordOutput, NativeSqlExecutionOutput,
     },
     error::{PluginFrameworkError, PluginFrameworkErrorKind},
     provider_contract::ProviderInvocationInput,
@@ -230,6 +231,12 @@ struct UpdateDataSourceRecordRequest {
 struct DeleteDataSourceRecordRequest {
     plugin_id: String,
     input: DataSourceDeleteRecordInput,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecuteDataSourceSqlRequest {
+    plugin_id: String,
+    input: DataSourceExecuteSqlInput,
 }
 
 #[derive(Debug, Deserialize)]
@@ -545,6 +552,18 @@ async fn delete_data_source_record(
     operation.await.map(Json).map_err(map_framework_error)
 }
 
+async fn execute_data_source_sql(
+    State(state): State<AppState>,
+    Json(request): Json<ExecuteDataSourceSqlRequest>,
+) -> Result<Json<NativeSqlExecutionOutput>, (StatusCode, Json<ErrorResponse>)> {
+    let operation = {
+        let host = state.data_source_host.read().await;
+        host.execute_sql_operation(&request.plugin_id, request.input)
+            .map_err(map_framework_error)?
+    };
+    operation.await.map(Json).map_err(map_framework_error)
+}
+
 async fn resolve_capability_dynamic_options(
     State(state): State<AppState>,
     Json(request): Json<ValidateCapabilityRequest>,
@@ -652,6 +671,7 @@ pub fn app_with_state(state: AppState) -> Router {
             "/data-sources/delete-record",
             post(delete_data_source_record),
         )
+        .route("/data-sources/execute-sql", post(execute_data_source_sql))
         .route(
             "/capabilities/validate-config",
             post(validate_capability_config),

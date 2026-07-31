@@ -79,6 +79,7 @@ display_name: Acme HubSpot Source
 auth_modes:
   - oauth2
 capabilities:
+  - native_sql/v1
   - validate_config
   - test_connection
   - discover_catalog
@@ -100,4 +101,5 @@ config_schema:
     let package = DataSourcePackage::load_from_dir(fixture.path()).unwrap();
     assert_eq!(package.identifier(), "acme_hubspot_source@0.1.0");
     assert_eq!(package.definition.source_code, "acme_hubspot_source");
+    assert!(package.supports_native_sql());
 }

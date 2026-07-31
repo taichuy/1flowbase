@@ -546,6 +546,13 @@ async fn count_tokens_fails_when_multiple_llm_consumers_are_reached() {
         .downstream_node_ids
         .push(second.node_id.clone());
     plan.edges.push(CompiledEdge {
+        edge_id: "edge-start-llm".to_string(),
+        source: "node-start".to_string(),
+        target: "node-llm".to_string(),
+        source_handle: None,
+        target_handle: None,
+    });
+    plan.edges.push(CompiledEdge {
         edge_id: "edge-start-llm-second".to_string(),
         source: "node-start".to_string(),
         target: second.node_id.clone(),
@@ -692,6 +699,13 @@ async fn compact_fails_when_multiple_llm_consumers_are_reached() {
         .unwrap()
         .downstream_node_ids
         .push(second.node_id.clone());
+    plan.edges.push(CompiledEdge {
+        edge_id: "edge-start-llm".to_string(),
+        source: "node-start".to_string(),
+        target: "node-llm".to_string(),
+        source_handle: None,
+        target_handle: None,
+    });
     plan.edges.push(CompiledEdge {
         edge_id: "edge-start-llm-second".to_string(),
         source: "node-start".to_string(),

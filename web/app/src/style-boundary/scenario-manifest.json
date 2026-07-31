@@ -805,12 +805,14 @@
       "height": 800
     },
     "impactFiles": [
+      "web/app/src/app-shell/app-shell.css",
       "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx",
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
       "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
       "web/app/src/shared/ui/data-table/DataTable.tsx",
       "web/app/src/shared/ui/data-table/data-table.css",
       "web/app/src/features/settings/i18n/zh_Hans.json",
@@ -897,12 +899,14 @@
       "height": 844
     },
     "impactFiles": [
+      "web/app/src/app-shell/app-shell.css",
       "web/app/src/features/settings/pages/i18n-catalog/i18n-catalog-page.css",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogPage.tsx",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogCreateDrawer.tsx",
       "web/app/src/features/settings/pages/i18n-catalog/I18nCatalogEntryDrawer.tsx",
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
       "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
       "web/app/src/shared/ui/data-table/DataTable.tsx",
       "web/app/src/shared/ui/data-table/data-table.css",
       "web/app/src/features/settings/i18n/zh_Hans.json",

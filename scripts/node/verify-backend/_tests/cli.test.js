@@ -194,7 +194,7 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
       env: {},
       target: 'test',
       shard: 'api-server',
-    }).map((command) => ({ label: command.label, args: command.args })),
+    }).map((command) => ({ label: command.label, args: command.args, env: command.env })),
     [
       {
         label: 'cargo-test-api-server',
@@ -207,6 +207,11 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
           '--',
           '--test-threads=2',
         ],
+        env: {
+          CARGO_BUILD_JOBS: '4',
+          CARGO_INCREMENTAL: '0',
+          CARGO_PROFILE_TEST_DEBUG: '0',
+        },
       },
     ]
   );

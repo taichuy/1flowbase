@@ -108,6 +108,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "view",
     ),
     other("agent_flow.data_model_options.list", "other.agent-flow"),
+    other("agent_flow.data_source_options.list", "other.agent-flow"),
     settings("auth_center.authenticators.copy", "system.auth-center"),
     settings("auth_center.authenticators.create", "system.auth-center"),
     settings("auth_center.authenticators.delete", "system.auth-center"),

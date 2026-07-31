@@ -45,12 +45,17 @@ vi.mock('echarts/core', () => ({
 }));
 vi.mock('echarts/charts', () => ({
   BarChart: {},
+  FunnelChart: {},
+  GaugeChart: {},
   LineChart: {},
-  PieChart: {}
+  PieChart: {},
+  RadarChart: {}
 }));
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   LegendComponent: {},
+  RadarComponent: {},
+  TitleComponent: {},
   TooltipComponent: {}
 }));
 vi.mock('echarts/renderers', () => ({
@@ -413,9 +418,9 @@ describe('ApplicationMonitoringPage', () => {
       .compareDocumentPosition(
         screen.getByRole('radio', { name: 'past 7 days' })
       );
-    expect(
-      runtimeActivityPosition & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(runtimeActivityPosition & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
     expect(
       screen.getByRole('button', { name: 'Runtime activity' })
     ).toBeInTheDocument();
@@ -479,7 +484,9 @@ describe('ApplicationMonitoringPage', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByText('Total amount of tokens')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Total amount of tokens')
+    ).toBeInTheDocument();
     expect(screen.getAllByText('11.7M')).toHaveLength(2);
     expect(screen.getByText('Input tokens')).toBeInTheDocument();
     expect(screen.getByText('11.3M')).toBeInTheDocument();
