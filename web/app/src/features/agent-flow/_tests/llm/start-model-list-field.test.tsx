@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { StartModelListField } from '../../components/detail/fields/StartModelListField';
@@ -9,6 +9,7 @@ describe('StartModelListField', () => {
 
     const { container } = render(
       <StartModelListField
+        title="模型列表"
         value={[
           {
             id: ' qwen3.6-35b-a3b ',
@@ -48,7 +49,18 @@ describe('StartModelListField', () => {
   test('adds the default flowbase model with real defaults after confirmation', () => {
     const onChange = vi.fn();
 
-    render(<StartModelListField value={[]} onChange={onChange} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+    );
+
+    const header = screen.getByTestId('agent-flow-collection-field-header');
+
+    expect(
+      within(header).getByRole('heading', { name: '模型列表' })
+    ).toBeInTheDocument();
+    expect(
+      within(header).getByRole('button', { name: '新增模型' })
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('新增模型'));
     expect(screen.getByLabelText('模型 ID 输入')).toHaveValue('flowbase');
@@ -90,7 +102,9 @@ describe('StartModelListField', () => {
   });
 
   test('keeps the display name linked until it is customized', () => {
-    render(<StartModelListField value={[]} onChange={vi.fn()} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={vi.fn()} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
 
@@ -122,7 +136,9 @@ describe('StartModelListField', () => {
   test('saves optional model settings when configured in the form', () => {
     const onChange = vi.fn();
 
-    render(<StartModelListField value={[]} onChange={onChange} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
     fireEvent.change(screen.getByLabelText('模型 ID 输入'), {
@@ -188,7 +204,9 @@ describe('StartModelListField', () => {
   test('keeps focus when editing a newly added reasoning effort', () => {
     const onChange = vi.fn();
 
-    render(<StartModelListField value={[]} onChange={onChange} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
     fireEvent.click(screen.getByLabelText('新增支持的推理强度'));
@@ -206,7 +224,9 @@ describe('StartModelListField', () => {
   });
 
   test('does not wrap floating model form controls in native label rows', () => {
-    render(<StartModelListField value={[]} onChange={vi.fn()} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={vi.fn()} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
 

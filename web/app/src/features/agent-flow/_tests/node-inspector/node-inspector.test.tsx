@@ -356,6 +356,13 @@ describe('NodeInspector core', () => {
     const mountToolsSwitch = within(mountToolsToolbar).getByRole('switch', {
       name: '挂载 LLM'
     });
+    const mountToolsActions = mountToolsToolbar.querySelector(
+      '.agent-flow-llm-tool-registrations__actions'
+    );
+
+    expect(mountToolsActions).not.toBeNull();
+    expect(mountToolsActions).toContainElement(addToolButton);
+    expect(mountToolsActions).toContainElement(mountToolsSwitch);
 
     expect(within(mountToolsToolbar).getByText('挂载 LLM')).toBeInTheDocument();
     expect(
@@ -375,7 +382,7 @@ describe('NodeInspector core', () => {
         'utf8'
       )
     ).toMatch(
-      /\.agent-flow-llm-tool-registrations__switch\.ant-switch\s*\{[^}]*margin-left:\s*auto;/s
+      /\.agent-flow-llm-tool-registrations__actions\s*\{[^}]*margin-left:\s*auto;/s
     );
     expect(within(mountToolsField).getAllByText('挂载 LLM')).toHaveLength(1);
     expect(

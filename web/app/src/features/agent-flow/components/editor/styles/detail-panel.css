@@ -156,6 +156,28 @@
   font-weight: 600;
 }
 
+.agent-flow-collection-field-header {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.agent-flow-collection-field-header__top {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-flow-collection-field-header__actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .agent-flow-node-detail__section-toggle.ant-btn {
   width: 24px;
   height: 24px;
@@ -499,13 +521,6 @@
   width: 100%;
 }
 
-.agent-flow-output-contract-editor__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 .agent-flow-output-contract-editor__list {
   display: flex;
   flex-direction: column;
@@ -589,14 +604,6 @@
   flex-direction: column;
   gap: 12px;
   width: 100%;
-}
-
-.agent-flow-start-input-fields__header,
-.agent-flow-start-input-fields__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .agent-flow-start-input-fields__list,

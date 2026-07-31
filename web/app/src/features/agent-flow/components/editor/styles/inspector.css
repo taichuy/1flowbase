@@ -165,6 +165,14 @@
   line-height: 1.45;
 }
 
+.agent-flow-editor__inspector-field-label-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .agent-flow-editor__inspector-field-label-action.ant-btn {
   width: 22px;
   height: 22px;
@@ -321,9 +329,16 @@
   flex: none;
 }
 
+.agent-flow-llm-tool-registrations__actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .agent-flow-llm-tool-registrations__switch.ant-switch {
   flex: none;
-  margin-left: auto;
 }
 
 .agent-flow-llm-tool-registration-panel .agent-flow-model-settings__panel-body {

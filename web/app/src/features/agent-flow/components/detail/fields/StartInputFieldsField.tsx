@@ -19,6 +19,7 @@ import {
   normalizeStartInputField,
   startSystemVariables
 } from '../../../lib/variables/start-node-variables';
+import { CollectionFieldHeader } from '../collection/CollectionFieldHeader';
 import { StartInputFieldSettingsPanel } from './StartInputFieldSettingsPanel';
 import { i18nText } from '../../../../../shared/i18n/text';
 
@@ -143,11 +144,13 @@ type EditingInputField = {
 
 export function StartInputFieldsField({
   contractKind,
+  title,
   value,
   sourceOptions = [],
   onChange
 }: {
   contractKind: StartInputContractKind;
+  title: string;
   value: unknown;
   sourceOptions?: StartInputSourceOption[];
   onChange: (value: FlowStartInputField[]) => void;
@@ -258,16 +261,19 @@ export function StartInputFieldsField({
 
   return (
     <div className="agent-flow-start-input-fields">
-      <div className="agent-flow-start-input-fields__header">
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.add_new_input_field')}
-          icon={<PlusOutlined />}
-          size="small"
-          type="text"
-          onClick={openAddPanel}
-          ref={triggerRef}
-        />
-      </div>
+      <CollectionFieldHeader
+        title={title}
+        actions={
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.add_new_input_field')}
+            icon={<PlusOutlined />}
+            size="small"
+            type="text"
+            onClick={openAddPanel}
+            ref={triggerRef}
+          />
+        }
+      />
 
       {fields.length > 0 ? (
         <div className="agent-flow-start-input-fields__list">
