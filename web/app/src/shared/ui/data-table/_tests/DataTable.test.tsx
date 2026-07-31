@@ -48,6 +48,41 @@ function createConfiguration(
 }
 
 describe('DataTable', () => {
+  test('lets a fill column absorb remaining width without a resize handle', () => {
+    const fillColumns = [
+      {
+        ...columns[0],
+        sizing: 'fill' as const
+      },
+      columns[1]
+    ] satisfies Array<DataTableColumn<SampleRow>>;
+
+    render(
+      <DataTable<SampleRow>
+        columns={fillColumns}
+        configuration={createConfiguration()}
+        dataSource={[]}
+        page={1}
+        pageSize={20}
+        rowKey="id"
+        total={0}
+        onPageChange={vi.fn()}
+      />
+    );
+
+    const nameHeader = screen.getByRole('columnheader', { name: '名称' });
+    const ownerHeader = screen.getByRole('columnheader', { name: '负责人' });
+    const columnElements = document.querySelectorAll('colgroup col');
+
+    expect(columnElements[0]).not.toHaveStyle({ width: '180px' });
+    expect(
+      nameHeader.querySelector('.data-table__header-resize-handle')
+    ).toBeNull();
+    expect(
+      ownerHeader.querySelector('.data-table__header-resize-handle')
+    ).not.toBeNull();
+  });
+
   test('adds schema columns missing from saved widths without restoring hidden existing columns', () => {
     const state = normalizeDataTableState(
       [

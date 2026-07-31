@@ -9,6 +9,7 @@ export type DataTableColumn<T extends object> = {
   width: number;
   minWidth?: number;
   align?: 'left' | 'center' | 'right';
+  sizing?: 'fixed' | 'fill';
   dataIndex?: keyof T;
   render?: (value: unknown, record: T, index: number) => ReactNode;
   ellipsis?: boolean;

@@ -6,7 +6,6 @@ import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import {
-  DEFAULT_MIN_COLUMN_WIDTH,
   getColumnMinWidth,
   getDefaultColumnWidths,
   getDefaultVisibleKeys,
@@ -34,11 +33,13 @@ function ResizeHeaderCell({
   return (
     <th {...rest} className={`data-table__header-cell ${className ?? ''}`}>
       <span className="data-table__header-title">{children}</span>
-      <span
-        aria-hidden="true"
-        className="data-table__header-resize-handle"
-        onMouseDown={onResizeMouseDown}
-      />
+      {onResizeMouseDown ? (
+        <span
+          aria-hidden="true"
+          className="data-table__header-resize-handle"
+          onMouseDown={onResizeMouseDown}
+        />
+      ) : null}
     </th>
   );
 }
@@ -223,12 +224,13 @@ export function DataTable<T extends object>({
         columnWidths[column.key] && columnWidths[column.key] >= minWidth
           ? columnWidths[column.key]
           : column.width;
+      const fillsRemainingWidth = column.sizing === 'fill';
 
       return {
         key: column.key,
         title: column.title,
         dataIndex: column.dataIndex as string | undefined,
-        width,
+        width: fillsRemainingWidth ? undefined : width,
         align: column.align,
         ellipsis: column.ellipsis,
         render: (value: unknown, record: T, index: number) => {
@@ -239,25 +241,31 @@ export function DataTable<T extends object>({
           return (value as string | null | number) ?? '-';
         },
         onHeaderCell: () =>
-          ({
-            onResizeMouseDown: (event: MouseEvent<HTMLElement>) =>
-              startResize(column.key, minWidth, width, event),
-            width
-          }) as ResizeHeaderCellProps
+          (fillsRemainingWidth
+            ? {}
+            : {
+                onResizeMouseDown: (event: MouseEvent<HTMLElement>) =>
+                  startResize(column.key, minWidth, width, event),
+                width
+              }) as ResizeHeaderCellProps
       };
     });
   }, [appliedVisibleColumnKeys, columnWidths, columns, startResize]);
 
   const fixedTableWidth = useMemo(() => {
-    return tableColumns.reduce((sum, column) => {
-      const fixedWidth =
-        typeof column.width === 'number'
-          ? column.width
-          : DEFAULT_MIN_COLUMN_WIDTH;
+    return columns
+      .filter((column) => appliedVisibleColumnKeys.includes(column.key))
+      .reduce((sum, column) => {
+        const minWidth = getColumnMinWidth(column);
+        const configuredWidth = columnWidths[column.key];
+        const fixedWidth =
+          configuredWidth && configuredWidth >= minWidth
+            ? configuredWidth
+            : column.width;
 
-      return sum + fixedWidth;
-    }, 0);
-  }, [tableColumns]);
+        return sum + fixedWidth;
+      }, 0);
+  }, [appliedVisibleColumnKeys, columnWidths, columns]);
 
   return (
     <section className={['data-table', className].filter(Boolean).join(' ')}>

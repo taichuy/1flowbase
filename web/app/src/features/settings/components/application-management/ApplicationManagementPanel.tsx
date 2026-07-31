@@ -382,6 +382,7 @@ export function ApplicationManagementPanel() {
           'auto.application_management_application'
         ),
         width: 260,
+        sizing: 'fill',
         render: (_, application) => (
           <Flex vertical gap={2}>
             <Typography.Text strong>{application.name}</Typography.Text>
@@ -517,8 +518,9 @@ export function ApplicationManagementPanel() {
           'settingsApplicationManagement',
           'auto.application_management_actions'
         ),
-        width: 140,
-        align: 'right',
+        width: 220,
+        minWidth: 220,
+        align: 'center',
         render: (_, application) => {
           const editAllowed = canEdit(application);
           const deleteAllowed = canDelete(application);
@@ -545,7 +547,12 @@ export function ApplicationManagementPanel() {
             }
           ];
           return (
-            <Space size={8} onClick={(event) => event.stopPropagation()}>
+            <Space size={8}>
+              <Button
+                href={`/applications/${application.id}/orchestration`}
+              >
+                {i18nText('settings', 'auto.view')}
+              </Button>
               <Tooltip
                 title={
                   editAllowed
@@ -890,16 +897,6 @@ export function ApplicationManagementPanel() {
             </Flex>
           }
           total={applicationsQuery.data?.total ?? 0}
-          onRow={(application) => ({
-            className: 'application-management-panel__row',
-            onClick: (event) => {
-              const target = event.target as HTMLElement;
-              if (target.closest('button, a, input, [role="switch"]')) {
-                return;
-              }
-              setDetailsApplication(application);
-            }
-          })}
           onPageChange={(page) => {
             setSelectedApplicationIds([]);
             updateRouteState({ page });

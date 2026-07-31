@@ -558,6 +558,35 @@ describe('ApplicationManagementPanel', () => {
       name: /编\s*辑/
     });
     expect(editButton.querySelector('.anticon')).toBeNull();
+
+    expect(
+      within(actionsCell as HTMLElement).getByRole('link', {
+        name: /查\s*看/
+      })
+    ).toHaveAttribute(
+      'href',
+      '/applications/app-workflow/orchestration'
+    );
+  });
+
+  test('keeps blank row clicks inert while edit remains an explicit action', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    const row = (await screen.findByText('Daily Report')).closest('tr');
+    expect(row).not.toBeNull();
+    fireEvent.click(row as HTMLElement);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(row as HTMLElement).getByRole('button', { name: /编\s*辑/ })
+    );
+    expect(
+      await screen.findByRole('dialog', { name: '编辑应用信息' })
+    ).toBeInTheDocument();
   });
 
   test('shows newly added publication control for an existing saved column configuration', async () => {
@@ -667,8 +696,10 @@ describe('ApplicationManagementPanel', () => {
       </AppProviders>
     );
 
-    const name = await screen.findByText('Order Extension');
-    fireEvent.click(name.closest('tr') as HTMLElement);
+    const row = (await screen.findByText('Order Extension')).closest('tr');
+    fireEvent.click(
+      within(row as HTMLElement).getByRole('button', { name: /编\s*辑/ })
+    );
 
     const drawer = await screen.findByRole('dialog', {
       name: '编辑应用信息'
@@ -710,8 +741,10 @@ describe('ApplicationManagementPanel', () => {
       </AppProviders>
     );
 
-    const name = await screen.findByText('Daily Report');
-    fireEvent.click(name.closest('tr') as HTMLElement);
+    const row = (await screen.findByText('Daily Report')).closest('tr');
+    fireEvent.click(
+      within(row as HTMLElement).getByRole('button', { name: /编\s*辑/ })
+    );
     const drawer = await screen.findByRole('dialog', {
       name: '编辑应用信息'
     });
