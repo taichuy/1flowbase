@@ -31,7 +31,7 @@ where
         .ok_or_else(|| anyhow!("flow run detail not found"))
 }
 
-pub(super) async fn fail_flow_run<R, H>(
+pub(in crate::orchestration_runtime) async fn fail_flow_run<R, H>(
     service: &OrchestrationRuntimeService<R, H>,
     application_id: Uuid,
     flow_run_id: Uuid,

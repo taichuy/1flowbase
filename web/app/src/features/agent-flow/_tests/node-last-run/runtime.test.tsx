@@ -73,7 +73,7 @@ function createInitialStateWithCodeNode() {
   return state;
 }
 
-function sampleNodeLastRun() {
+function sampleNodeLastRun(): runtimeApi.NodeLastRun {
   return {
     flow_run: {
       id: 'run-1',
@@ -351,6 +351,50 @@ describe('node last run runtime', () => {
       within(variableSidebar).getByText('Start/query')
     ).toBeInTheDocument();
     expect(within(variableSidebar).getByText('LLM/text')).toBeInTheDocument();
+  }, 30_000);
+
+  test('switches to Last Run and shows persisted node errors', async () => {
+    vi.spyOn(runtimeApi, 'fetchDebugVariableSnapshot').mockResolvedValue({
+      variable_cache: {
+        'node-start': {
+          query: '总结退款政策'
+        }
+      }
+    });
+    const failedLastRun = sampleNodeLastRun();
+    failedLastRun.flow_run.status = 'failed';
+    failedLastRun.flow_run.error_payload = {
+      error_code: 'native_sql_execution_failed',
+      message: 'syntax error at or near user'
+    };
+    failedLastRun.node_run.status = 'failed';
+    failedLastRun.node_run.error_payload = {
+      error_code: 'native_sql_execution_failed',
+      message: 'syntax error at or near user'
+    };
+    failedLastRun.events[1].event_type = 'node_preview_failed';
+    vi.spyOn(runtimeApi, 'startNodeDebugPreview').mockResolvedValueOnce(
+      failedLastRun
+    );
+
+    renderReactFlowScene(
+      <AgentFlowEditorShell
+        applicationId="app-1"
+        applicationName="Support Agent"
+        initialState={createInitialState()}
+      />
+    );
+
+    await selectLlmNode();
+    fireEvent.click(
+      await screen.findByRole('button', { name: '运行当前节点' })
+    );
+
+    const lastRunTab = await screen.findByRole('tab', { name: '上次运行' });
+    await waitFor(() => expect(lastRunTab).toHaveAttribute('aria-selected', 'true'));
+    expect(await screen.findByLabelText('错误 JSON')).toHaveTextContent(
+      'syntax error at or near user'
+    );
   }, 30_000);
 
   test('opens all referenced variables before running node debug preview', async () => {

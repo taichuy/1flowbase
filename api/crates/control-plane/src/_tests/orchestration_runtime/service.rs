@@ -80,6 +80,7 @@ mod data_model_nodes;
 mod debug_lifecycle;
 mod http_request_nodes;
 mod runtime_events;
+mod sql_nodes;
 
 async fn run_data_model_flow(
     service: &OrchestrationRuntimeService<impl RuntimeRepositoryBounds, impl RuntimeHostBounds>,
