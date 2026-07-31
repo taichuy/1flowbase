@@ -615,6 +615,10 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
 
   assert.match(
     workflow,
+    /single-scope-gate:[\s\S]*?timeout-minutes: \$\{\{ \(inputs\.scope == 'repo-backend-test-api-server' \|\| inputs\.scope == 'coverage-backend-api-server'\) && 120 \|\| 60 \}\}/u,
+  );
+  assert.match(
+    workflow,
     /repo-backend-gate:[\s\S]*?timeout-minutes: \$\{\{ matrix\.scope == 'repo-backend-test-api-server' && 120 \|\| 45 \}\}[\s\S]*?matrix:/u,
   );
   assert.match(
