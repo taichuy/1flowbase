@@ -777,6 +777,15 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function boundedRunnerError(result, tokens) {
+  let message =
+    typeof result.body?.message === 'string' ? result.body.message : 'no JSON error message';
+  for (const value of Object.values(tokens)) {
+    message = message.replaceAll(value, '[REDACTED]');
+  }
+  return message.slice(0, 512);
+}
+
 async function loadPackage(runner, packageInfo) {
   const expectedPackageSha256 = `sha256:${packageInfo.sha256}`;
   const loaded = await requestJson(`${runner.base_url}/providers/load`, 'POST', {
@@ -1036,7 +1045,7 @@ async function runConformance(options) {
       const result = await invokePackage(runner, packageInfo.loaded_plugin_id, input);
       requireCondition(
         result.status === 200,
-        `actual package invocation failed for ${providerCode} with HTTP ${result.status}`
+        `actual package invocation failed for ${providerCode} with HTTP ${result.status}: ${boundedRunnerError(result, canaries)}`
       );
       requireCondition(
         result.body?.result?.final_content === 'conformance-complete',
@@ -1083,6 +1092,7 @@ module.exports = {
   REQUIRED_PROVIDER_CODES,
   _internal: {
     assertManifest,
+    boundedRunnerError,
     parseManifestFacts,
   },
   runConformance,

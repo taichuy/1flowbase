@@ -58,3 +58,14 @@ test(
     );
   }
 );
+
+test('runner diagnostics are bounded and redact every conformance canary', () => {
+  const diagnostic = _internal.boundedRunnerError(
+    { body: { message: `failed secret-value ${'x'.repeat(700)}` } },
+    { secret: 'secret-value' }
+  );
+
+  assert.equal(diagnostic.includes('secret-value'), false);
+  assert.match(diagnostic, /\[REDACTED\]/u);
+  assert.equal(diagnostic.length, 512);
+});
