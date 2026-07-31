@@ -368,6 +368,19 @@ export function StartModelSettingsPanel({
           />
         </div>
         <div className="agent-flow-start-input-fields__form-row">
+          <span>{i18nText('agentFlow', 'auto.max_context_window')}</span>
+          <TokenAmountInput
+            label={i18nText('agentFlow', 'auto.model_max_context_window_input')}
+            unitLabel={i18nText(
+              'agentFlow',
+              'auto.model_max_context_window_unit'
+            )}
+            placeholder="128"
+            value={model.max_context_window}
+            onChange={updateMaxContextWindow}
+          />
+        </div>
+        <div className="agent-flow-start-input-fields__form-row">
           <span>{i18nText('agentFlow', 'auto.context_window')}</span>
           <TokenAmountInput
             label={i18nText('agentFlow', 'auto.model_context_window_input')}
@@ -381,19 +394,6 @@ export function StartModelSettingsPanel({
               {i18nText('agentFlow', 'auto.context_window_exceeds_max')}
             </Typography.Text>
           ) : null}
-        </div>
-        <div className="agent-flow-start-input-fields__form-row">
-          <span>{i18nText('agentFlow', 'auto.max_context_window')}</span>
-          <TokenAmountInput
-            label={i18nText('agentFlow', 'auto.model_max_context_window_input')}
-            unitLabel={i18nText(
-              'agentFlow',
-              'auto.model_max_context_window_unit'
-            )}
-            placeholder="128"
-            value={model.max_context_window}
-            onChange={updateMaxContextWindow}
-          />
         </div>
         <div className="agent-flow-start-input-fields__form-row">
           <span>{i18nText('agentFlow', 'auto.max_output_tokens')}</span>

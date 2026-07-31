@@ -112,6 +112,11 @@ describe('StartModelListField', () => {
     const compactInput = screen.getByLabelText('自动压缩阈值百分比输入');
     const saveButton = screen.getByLabelText('保存模型');
 
+    expect(
+      maxContextInput.compareDocumentPosition(contextInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
     fireEvent.change(maxContextInput, { target: { value: '353' } });
     expect(contextInput).toHaveValue('353');
     expect(outputInput).toHaveValue('32');
