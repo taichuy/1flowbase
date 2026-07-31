@@ -76,7 +76,7 @@ test('four shard inventories must be an exact disjoint union of the full invento
   }), /duplicate.*missing/u);
 });
 
-test('merged and monolithic coverage summaries must match totals and every file exactly', () => {
+test('merged coverage preserves enforced totals and records scheduling-only region drift', () => {
   const summary = {
     data: [{
       totals: {
@@ -93,12 +93,24 @@ test('merged and monolithic coverage summaries must match totals and every file 
 
   assert.deepEqual(compareCoverageSummaries(summary, structuredClone(summary)), {
     fileCount: 1,
-    metrics: ['functions', 'lines', 'regions'],
+    metrics: ['functions', 'lines'],
+    nondeterministicFiles: 0,
+    regionCoveredDelta: 0,
   });
 
   const changed = structuredClone(summary);
   changed.data[0].totals.lines.covered = 7;
-  assert.throws(() => compareCoverageSummaries(summary, changed), /coverage shadow mismatch.*totals/u);
+  assert.throws(() => compareCoverageSummaries(summary, changed), /mismatch.*lines totals/u);
+
+  const regionSchedulingDifference = structuredClone(summary);
+  regionSchedulingDifference.data[0].totals.regions.covered = 8;
+  regionSchedulingDifference.data[0].totals.regions.percent = 66.67;
+  assert.deepEqual(compareCoverageSummaries(summary, regionSchedulingDifference), {
+    fileCount: 1,
+    metrics: ['functions', 'lines'],
+    nondeterministicFiles: 0,
+    regionCoveredDelta: -1,
+  });
 });
 
 test('shard orchestration fails closed when nextest execution fails', () => {

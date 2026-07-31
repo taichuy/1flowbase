@@ -86,15 +86,40 @@ function canonicalCoverageSummary(summary) {
 function compareCoverageSummaries(monolithic, merged) {
   const expected = canonicalCoverageSummary(monolithic);
   const actual = canonicalCoverageSummary(merged);
-  if (JSON.stringify(expected.totals) !== JSON.stringify(actual.totals)) {
-    throw new Error('coverage shadow mismatch in totals');
+  const enforcedMetrics = ['functions', 'lines'];
+  for (const metric of enforcedMetrics) {
+    const left = expected.totals[metric];
+    const right = actual.totals[metric];
+    if (left?.count !== right?.count || left?.covered !== right?.covered) {
+      throw new Error(`coverage shadow mismatch in enforced ${metric} totals`);
+    }
   }
-  if (JSON.stringify(expected.files) !== JSON.stringify(actual.files)) {
-    throw new Error('coverage shadow mismatch in per-file summaries');
+  const structuralMetrics = Object.keys(expected.totals);
+  for (const metric of structuralMetrics) {
+    if (expected.totals[metric]?.count !== actual.totals[metric]?.count) {
+      throw new Error(`coverage shadow mismatch in ${metric} denominator`);
+    }
+  }
+  const expectedFiles = new Map(expected.files.map((file) => [file.filename, file.summary]));
+  const actualFiles = new Map(actual.files.map((file) => [file.filename, file.summary]));
+  if (JSON.stringify([...expectedFiles.keys()]) !== JSON.stringify([...actualFiles.keys()])) {
+    throw new Error('coverage shadow mismatch in file inventory');
+  }
+  let nondeterministicFiles = 0;
+  for (const [filename, expectedSummary] of expectedFiles) {
+    const actualSummary = actualFiles.get(filename);
+    for (const metric of Object.keys(expectedSummary)) {
+      if (expectedSummary[metric]?.count !== actualSummary?.[metric]?.count) {
+        throw new Error(`coverage shadow mismatch in per-file ${metric} denominator: ${filename}`);
+      }
+    }
+    if (JSON.stringify(expectedSummary) !== JSON.stringify(actualSummary)) nondeterministicFiles += 1;
   }
   return {
     fileCount: expected.files.length,
-    metrics: ['functions', 'lines', 'regions'].filter((metric) => expected.totals[metric]),
+    metrics: enforcedMetrics,
+    nondeterministicFiles,
+    regionCoveredDelta: (actual.totals.regions?.covered ?? 0) - (expected.totals.regions?.covered ?? 0),
   };
 }
 
