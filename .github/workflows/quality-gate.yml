@@ -81,6 +81,19 @@ env:
   QUALITY_GATE_SCHEDULED_ENVIRONMENT: nightly-latest
 
 jobs:
+  resolve-quality-gate-target:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      target_sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+      - id: target
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   single-scope-gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' }}
     runs-on: ubuntu-latest
@@ -518,6 +531,7 @@ jobs:
 
   coverage-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
@@ -532,9 +546,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
@@ -605,11 +619,107 @@ jobs:
           report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
+      - name: Record immutable coverage target SHA
+        if: always()
+        run: echo "$QUALITY_GATE_TARGET_SHA" > tmp/test-governance/target-sha.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: test-governance-${{ matrix.scope }}
           path: tmp/test-governance
+
+  coverage-backend-api-server-shadow:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
+      - name: Resolve quality gate target SHA
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          key: rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-
+      - uses: ./.github/actions/quality-gate
+        env:
+          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          QUALITY_GATE_TARGET_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
+        with:
+          scope: coverage-backend-api-server-shadow-${{ matrix.shard }}-of-4
+          report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
+          environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
+          publish_issue: "false"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: coverage-shadow-api-server-profraw-${{ matrix.shard }}
+          path: tmp/test-governance/coverage-shadow/api-server/shard-${{ matrix.shard }}
+
+  coverage-backend-api-server-shadow-merge:
+    if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci')) }}
+    needs:
+      - resolve-quality-gate-target
+      - coverage-backend-gate
+      - coverage-backend-api-server-shadow
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
+      - name: Resolve quality gate target SHA
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          key: rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: coverage-shadow-api-server-profraw-*
+          path: tmp/test-governance/coverage-shadow/api-server/downloaded
+          merge-multiple: true
+      - uses: actions/download-artifact@v6
+        with:
+          name: test-governance-coverage-backend-api-server
+          path: tmp/test-governance/monolithic
+      - name: Merge and compare API coverage shadow
+        env:
+          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          QUALITY_GATE_TARGET_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
+        run: node scripts/node/coverage-shadow.js merge api-server 4 tmp/test-governance/monolithic/coverage/backend/api-server.json tmp/test-governance/monolithic/target-sha.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: coverage-shadow-api-server-equivalence
+          path: tmp/test-governance/coverage-shadow/api-server
 
   container-images-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.scope == 'ci' || inputs.scope == 'container-images')) }}

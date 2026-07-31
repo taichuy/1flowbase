@@ -22,6 +22,10 @@ const REPO_BACKEND_COMPONENT_SCOPES = [
   ),
 ];
 const COVERAGE_BACKEND_COMPONENT_SCOPES = backendThresholds.map((entry) => `coverage-backend-${entry.key}`);
+const COVERAGE_API_SERVER_SHADOW_SCOPES = Array.from(
+  { length: 4 },
+  (_, index) => `coverage-backend-api-server-shadow-${index + 1}-of-4`
+);
 const DEFAULT_AGGREGATE_SCOPES = [
   'repo-tooling',
   'repo-frontend',
@@ -48,6 +52,7 @@ const VALID_SCOPES = new Set([
   'release-rollback',
   ...REPO_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
+  ...COVERAGE_API_SERVER_SHADOW_SCOPES,
 ]);
 const PACKED_CLI_ENTRIES = new Set(['container-image-security', 'verify-backend-consistency']);
 
@@ -90,6 +95,14 @@ function buildGateCommand({ repoRoot, scope }) {
   }
 
   if (scope.startsWith('coverage-backend-')) {
+    const shadowMatch = scope.match(/^coverage-backend-api-server-shadow-(?<index>[1-4])-of-4$/u);
+    if (shadowMatch) {
+      return {
+        command,
+        args: [resolveCliEntry(repoRoot, 'coverage-shadow'), 'shard', 'api-server', shadowMatch.groups.index, '4'],
+        cwd: repoRoot,
+      };
+    }
     return {
       command,
       args: [

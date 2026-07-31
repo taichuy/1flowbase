@@ -59,6 +59,15 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     cwd: repoRoot,
   });
 
+  assert.deepEqual(buildGateCommand({
+    repoRoot,
+    scope: 'coverage-backend-api-server-shadow-3-of-4',
+  }), {
+    command: process.execPath,
+    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'shard', 'api-server', '3', '4'],
+    cwd: repoRoot,
+  });
+
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'repo-tooling' }), {
     command: process.execPath,
     args: [path.join(repoRoot, 'scripts', 'node', 'verify-repo.js'), 'tooling'],
