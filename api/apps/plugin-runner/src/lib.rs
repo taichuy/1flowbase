@@ -734,7 +734,7 @@ fn map_internal_error(error: impl std::fmt::Display) -> (StatusCode, Json<ErrorR
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bind_addr, DEFAULT_PLUGIN_RUNNER_ADDR};
+    use super::{parse_bind_addr, ProviderInvocationInput, DEFAULT_PLUGIN_RUNNER_ADDR};
 
     #[test]
     fn parse_bind_addr_uses_runner_default_port() {
@@ -748,5 +748,24 @@ mod tests {
         let addr = parse_bind_addr(Some("127.0.0.1:8899"), DEFAULT_PLUGIN_RUNNER_ADDR);
 
         assert_eq!(addr.to_string(), "127.0.0.1:8899");
+    }
+
+    #[test]
+    fn root_1534_six_provider_fixture_matches_the_host_invocation_contract() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../scripts/node/provider-conformance/fixtures/six-provider-matrix.json"
+        ))
+        .expect("six-provider fixture should be valid JSON");
+
+        for provider in fixture["providers"]
+            .as_array()
+            .expect("fixture should contain providers")
+        {
+            let provider_code = provider["provider_code"].as_str().unwrap_or("unknown");
+            serde_json::from_value::<ProviderInvocationInput>(provider["input"].clone())
+                .unwrap_or_else(|error| {
+                    panic!("{provider_code} fixture must match the host DTO: {error}")
+                });
+        }
     }
 }

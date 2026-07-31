@@ -47,7 +47,7 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "openai_responses",
-          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+          "headers": { "x-claude-code-session-id": ["$HEADER_CANARY"] }
         },
         "trace_context": {},
         "run_context": {}
@@ -60,7 +60,7 @@
           "content-type": "application/json",
           "authorization": "Bearer $SECRET_CANARY",
           "openai-organization": "$HEADER_CANARY",
-          "x-claude-code-session-id": ["$HEADER_CANARY"]
+          "x-claude-code-session-id": "$HEADER_CANARY"
         },
         "body": {
           "model": "gpt-5.5",
@@ -145,7 +145,7 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "anthropic_messages",
-          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+          "headers": { "x-claude-code-session-id": ["$HEADER_CANARY"] }
         },
         "trace_context": {},
         "run_context": {}
@@ -158,7 +158,7 @@
           "content-type": "application/json",
           "x-api-key": "$SECRET_CANARY",
           "anthropic-version": "2023-06-01",
-          "x-claude-code-session-id": ["$HEADER_CANARY"]
+          "x-claude-code-session-id": "$HEADER_CANARY"
         },
         "body": {
           "model": "claude-sonnet-4-20250514",
@@ -234,8 +234,7 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
-          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+          "headers": { "x-claude-code-session-id": ["$HEADER_CANARY"] }
         },
         "trace_context": {},
         "run_context": {}
@@ -247,7 +246,7 @@
           "accept": "text/event-stream",
           "content-type": "application/json",
           "authorization": "Bearer $SECRET_CANARY",
-          "x-claude-code-session-id": ["$HEADER_CANARY"]
+          "x-claude-code-session-id": "$HEADER_CANARY"
         },
         "body": {
           "model": "qwen-plus",
@@ -312,8 +311,7 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
-          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+          "headers": { "x-claude-code-session-id": ["$HEADER_CANARY"] }
         },
         "trace_context": {},
         "run_context": {}
@@ -325,7 +323,7 @@
           "accept": "application/json",
           "content-type": "application/json",
           "authorization": "Bearer $SECRET_CANARY",
-          "x-claude-code-session-id": ["$HEADER_CANARY"]
+          "x-claude-code-session-id": "$HEADER_CANARY"
         },
         "body": {
           "model": "deepseek-chat",
@@ -388,8 +386,7 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "anthropic_messages",
-          "policy": "anthropic_messages_v1",
-          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+          "headers": { "x-claude-code-session-id": ["$HEADER_CANARY"] }
         },
         "trace_context": {},
         "run_context": {}
@@ -401,7 +398,7 @@
           "accept": "application/json",
           "content-type": "application/json",
           "x-goog-api-key": "$SECRET_CANARY",
-          "x-claude-code-session-id": ["$HEADER_CANARY"]
+          "x-claude-code-session-id": "$HEADER_CANARY"
         },
         "body": {
           "contents": [
@@ -454,7 +451,7 @@
         "model_parameters": { "temperature": 0.25 },
         "client_protocol_envelope": {
           "source_protocol": "openai_chat",
-          "headers": { "x-claude-code-session-id": "$HEADER_CANARY" }
+          "headers": { "x-claude-code-session-id": ["$HEADER_CANARY"] }
         },
         "trace_context": {},
         "run_context": {}
@@ -466,7 +463,7 @@
           "accept": "application/json",
           "content-type": "application/json",
           "authorization": "Bearer $SECRET_CANARY",
-          "x-claude-code-session-id": ["$HEADER_CANARY"]
+          "x-claude-code-session-id": "$HEADER_CANARY"
         },
         "body": {
           "model": "compatible-model",
