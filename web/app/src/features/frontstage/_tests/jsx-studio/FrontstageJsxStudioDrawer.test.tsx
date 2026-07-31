@@ -66,10 +66,10 @@ vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
     extra?: ReactNode;
     title: ReactNode;
   }) => (
-    <section aria-label={String(title)} role="dialog">
+    <dialog aria-label={String(title)} open>
       {extra}
       {children}
-    </section>
+    </dialog>
   )
 }));
 vi.mock('@monaco-editor/react', () => ({
