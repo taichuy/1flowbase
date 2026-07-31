@@ -638,6 +638,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.doesNotMatch(workflow, /name: test-governance-state-protocols/u);
   assert.match(workflow, /name: test-governance-container-images/u);
   assert.match(workflow, /name: test-governance-artifacts/u);
+  assert.match(workflow, /!tmp\/test-governance\/parallel\/\*\*/u);
 });
 
 test("quality gate workflow caches Rust profiles without adding warm build jobs", () => {

@@ -192,7 +192,9 @@ jobs:
         if: always()
         with:
           name: test-governance-artifacts
-          path: tmp/test-governance
+          path: |
+            tmp/test-governance
+            !tmp/test-governance/parallel/**
 
   repo-tooling-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
