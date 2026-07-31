@@ -227,6 +227,7 @@ pub struct OfficialPluginCatalogResponse {
     pub source_kind: String,
     pub source_label: String,
     pub registry_url: String,
+    pub source_freshness: String,
     pub locale_meta: LocaleMetaResponse,
     pub page: OfficialPluginCatalogPageResponse,
     pub entries: Vec<OfficialPluginCatalogEntryResponse>,
@@ -774,6 +775,7 @@ async fn to_official_catalog_response(
         source_kind: catalog.source_kind,
         source_label,
         registry_url: catalog.registry_url,
+        source_freshness: catalog.source_freshness,
         locale_meta,
         page: OfficialPluginCatalogPageResponse {
             limit: catalog.page.limit,

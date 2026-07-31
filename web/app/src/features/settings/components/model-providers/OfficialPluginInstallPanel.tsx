@@ -484,12 +484,14 @@ export function OfficialPluginInstallPanel({
   onInstall,
   onOpenUpload,
   onSearchQueryChange,
+  onRetryCatalog,
   onUpgradeLatest
 }: {
   sourceMeta: {
     sourceKind: string;
     sourceLabel: string;
     registryUrl: string;
+    sourceFreshness: 'fresh' | 'stale';
   } | null;
   entries: SettingsOfficialPluginCatalogEntry[];
   catalogErrorMessage?: string | null;
@@ -506,6 +508,7 @@ export function OfficialPluginInstallPanel({
   ) => void;
   onOpenUpload: () => void;
   onSearchQueryChange: (query: string) => void;
+  onRetryCatalog: () => void;
   onUpgradeLatest: (
     entry: SettingsOfficialPluginCatalogEntry,
     compatibilityOverride?: SettingsPluginCompatibilityOverride
@@ -603,8 +606,25 @@ export function OfficialPluginInstallPanel({
         }))}
       />
 
+      {sourceMeta?.sourceFreshness === 'stale' ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={i18nText('settings', 'auto.official_supplier_catalog_stale')}
+        />
+      ) : null}
+
       {catalogErrorMessage ? (
-        <Alert type="error" showIcon message={catalogErrorMessage} />
+        <Alert
+          type="error"
+          showIcon
+          message={catalogErrorMessage}
+          action={
+            <Button size="small" onClick={onRetryCatalog}>
+              {i18nText('settings', 'auto.reload_official_supplier_catalog')}
+            </Button>
+          }
+        />
       ) : null}
 
       {normalizedEntries.length === 0 ? (

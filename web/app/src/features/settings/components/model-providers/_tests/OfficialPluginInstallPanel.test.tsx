@@ -39,16 +39,18 @@ function renderPanel(
   entry: SettingsOfficialPluginCatalogEntry,
   handlers: Partial<
     Pick<OfficialPluginInstallPanelProps, 'onInstall' | 'onUpgradeLatest'>
-  > = {}
+  > = {},
+  sourceMeta: OfficialPluginInstallPanelProps['sourceMeta'] = null
 ) {
-  const onInstall = handlers.onInstall ?? vi.fn<OfficialPluginInstallPanelProps['onInstall']>();
+  const onInstall =
+    handlers.onInstall ?? vi.fn<OfficialPluginInstallPanelProps['onInstall']>();
   const onUpgradeLatest =
     handlers.onUpgradeLatest ??
     vi.fn<OfficialPluginInstallPanelProps['onUpgradeLatest']>();
 
   render(
     <OfficialPluginInstallPanel
-      sourceMeta={null}
+      sourceMeta={sourceMeta}
       entries={[entry]}
       familiesByProviderCode={{}}
       canManage
@@ -59,6 +61,7 @@ function renderPanel(
       onInstall={onInstall}
       onOpenUpload={vi.fn()}
       onSearchQueryChange={vi.fn()}
+      onRetryCatalog={vi.fn()}
       onUpgradeLatest={onUpgradeLatest}
     />
   );
@@ -88,6 +91,23 @@ describe('OfficialPluginInstallPanel', () => {
     });
 
     expect(screen.getByAltText('')).toHaveAttribute('src', '/icon.svg');
+  });
+
+  test('AC-002 marks a stale official catalog while the backend refreshes it', () => {
+    renderPanel(
+      baseEntry,
+      {},
+      {
+        sourceKind: 'official_registry',
+        sourceLabel: '官方源',
+        registryUrl: 'https://example.com/official-registry.json',
+        sourceFreshness: 'stale'
+      }
+    );
+
+    expect(
+      screen.getByText('正在显示上次成功获取的官方目录，后台正在刷新。')
+    ).toBeInTheDocument();
   });
 
   test('asks for explicit host version risk acknowledgement before installing a below-minimum plugin', async () => {

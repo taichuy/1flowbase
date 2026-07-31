@@ -8,14 +8,12 @@ describe('apiFetch', () => {
   });
 
   test('apiFetch sends credentials and propagates x-csrf-token', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ data: { ok: true }, meta: null }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' }
-        })
-      );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: { ok: true }, meta: null }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
 
     const payload = await apiFetch<{ ok: boolean }>({
       path: '/api/console/session',
@@ -65,6 +63,31 @@ describe('apiFetch', () => {
           code: 'not_authenticated',
           message: 'not authenticated'
         }
+      })
+    );
+  });
+
+  test('AC-003 does not expose a non-JSON gateway response as the user-facing error message', async () => {
+    const gatewayBody =
+      '<html><head><title>504 Gateway Time-out</title></head><body>nginx</body></html>';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(gatewayBody, {
+        status: 504,
+        headers: { 'content-type': 'text/html' }
+      })
+    );
+
+    await expect(
+      apiFetch({
+        path: '/api/console/plugins/official-catalog',
+        baseUrl: 'http://127.0.0.1:7800'
+      })
+    ).rejects.toEqual(
+      expect.objectContaining({
+        name: 'ApiClientError',
+        status: 504,
+        message: 'request failed: 504',
+        body: gatewayBody
       })
     );
   });

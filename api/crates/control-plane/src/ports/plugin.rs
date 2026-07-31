@@ -136,6 +136,21 @@ pub struct OfficialPluginCatalogSource {
     pub registry_url: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OfficialPluginCatalogFreshness {
+    Fresh,
+    Stale,
+}
+
+impl OfficialPluginCatalogFreshness {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fresh => "fresh",
+            Self::Stale => "stale",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OfficialPluginArtifact {
     pub os: String,
@@ -176,6 +191,7 @@ pub struct OfficialPluginSourceEntry {
 #[derive(Debug, Clone)]
 pub struct OfficialPluginCatalogSnapshot {
     pub source: OfficialPluginCatalogSource,
+    pub freshness: OfficialPluginCatalogFreshness,
     pub entries: Vec<OfficialPluginSourceEntry>,
 }
 
@@ -188,6 +204,9 @@ pub struct DownloadedOfficialPluginPackage {
 #[async_trait]
 pub trait OfficialPluginSourcePort: Send + Sync {
     async fn list_official_catalog(&self) -> anyhow::Result<OfficialPluginCatalogSnapshot>;
+    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
+        None
+    }
     async fn download_plugin(
         &self,
         entry: &OfficialPluginSourceEntry,

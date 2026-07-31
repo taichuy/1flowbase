@@ -191,6 +191,7 @@ async fn plugin_management_service_upgrades_to_latest_without_redownloading_when
                     source_label: "官方源".into(),
                     registry_url: "https://example.com/official-registry.json".into(),
                 },
+                freshness: crate::ports::OfficialPluginCatalogFreshness::Fresh,
                 entries: vec![OfficialPluginSourceEntry {
                     plugin_id: "1flowbase.fixture_provider".into(),
                     plugin_type: "model_provider".into(),
@@ -386,6 +387,7 @@ async fn plugin_management_service_requires_override_when_upgrading_to_below_min
                     source_label: "官方源".into(),
                     registry_url: "https://example.com/official-registry.json".into(),
                 },
+                freshness: crate::ports::OfficialPluginCatalogFreshness::Fresh,
                 entries: vec![OfficialPluginSourceEntry {
                     plugin_id: "1flowbase.fixture_provider".into(),
                     plugin_type: "model_provider".into(),
