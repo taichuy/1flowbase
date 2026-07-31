@@ -241,6 +241,10 @@ export function applyDebugStreamEventToTrace(
   }
 
   if (event.type === 'text_delta' || event.type === 'reasoning_delta') {
+    if (event.presentation?.kind === 'answer') {
+      return items;
+    }
+
     return appendProcessEventToTrace(items, event, {
       type: event.type,
       text: event.text
@@ -286,11 +290,17 @@ export function applyDebugStreamEventToAssistantMessage(
         traceSummary: traceItems
       };
     case 'text_delta':
+      if (event.presentation?.kind !== 'answer') {
+        return message;
+      }
       return {
         ...message,
         content: appendTextDeltaToAssistantContent(message.content, event.text)
       };
     case 'reasoning_delta':
+      if (event.presentation?.kind !== 'answer') {
+        return message;
+      }
       return {
         ...message,
         content: appendReasoningDeltaToAssistantContent(
@@ -349,7 +359,7 @@ export function applyDebugStreamEventToAssistantMessage(
       return {
         ...message,
         status: 'failed',
-        content: i18nText("agentFlow", "auto.debug_stream_replay_expired")
+        content: i18nText('agentFlow', 'auto.debug_stream_replay_expired')
       };
     default:
       return message;

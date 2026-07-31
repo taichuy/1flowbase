@@ -7,6 +7,10 @@ import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 
 import * as runtimeApi from '../../api/runtime';
 import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugSession';
+import {
+  applyDebugStreamEventToAssistantMessage,
+  applyDebugStreamEventToTrace
+} from '../../lib/debug-console/stream-events';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
 function createQueryClient() {
@@ -97,6 +101,34 @@ function createStreamRunDetail(runId: string, answer = '退款政策摘要') {
   };
 }
 
+function answerTextDelta(
+  text: string
+): Extract<runtimeApi.FlowDebugRunStreamEvent, { type: 'text_delta' }> {
+  return {
+    type: 'text_delta',
+    node_run_id: null,
+    node_id: 'node-answer',
+    text,
+    presentation: {
+      kind: 'answer',
+      answer_node_id: 'node-answer',
+      segment_index: 0,
+      source_node_id: 'node-llm',
+      source_node_run_id: 'node-run-llm',
+      source_output_key: 'text'
+    }
+  };
+}
+
+function answerReasoningDelta(
+  text: string
+): Extract<runtimeApi.FlowDebugRunStreamEvent, { type: 'reasoning_delta' }> {
+  return {
+    ...answerTextDelta(text),
+    type: 'reasoning_delta'
+  };
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   resetAuthStore();
@@ -128,6 +160,104 @@ afterEach(() => {
 });
 
 describe('useAgentFlowDebugSession streaming', () => {
+  test('AC-002 projects only canonical Answer deltas into assistant content', () => {
+    const runningMessage = {
+      id: 'assistant-running',
+      role: 'assistant' as const,
+      status: 'running' as const,
+      runId: 'run-1',
+      content: '',
+      rawOutput: null,
+      traceSummary: []
+    };
+    const providerProjected = applyDebugStreamEventToAssistantMessage(
+      runningMessage,
+      {
+        type: 'text_delta',
+        event_id: 'run-1:7',
+        run_id: 'run-1',
+        sequence: 7,
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        text: '退款'
+      },
+      []
+    );
+    const answerProjected = applyDebugStreamEventToAssistantMessage(
+      providerProjected,
+      {
+        type: 'text_delta',
+        event_id: 'run-1:8',
+        run_id: 'run-1',
+        sequence: 8,
+        node_run_id: null,
+        node_id: 'node-answer',
+        text: '退款',
+        presentation: {
+          kind: 'answer',
+          answer_node_id: 'node-answer',
+          segment_index: 0,
+          source_node_id: 'node-llm',
+          source_node_run_id: 'node-run-llm',
+          source_output_key: 'text'
+        }
+      },
+      []
+    );
+    const runningTrace = applyDebugStreamEventToTrace(
+      [
+        {
+          nodeRunId: 'node-run-llm',
+          nodeId: 'node-llm',
+          nodeAlias: 'LLM',
+          nodeType: 'llm',
+          status: 'running',
+          startedAt: '2026-07-31T00:00:00Z',
+          finishedAt: null,
+          durationMs: null,
+          inputPayload: {},
+          outputPayload: {},
+          errorPayload: null,
+          metricsPayload: {},
+          debugPayload: {}
+        }
+      ],
+      {
+        type: 'text_delta',
+        event_id: 'run-1:7',
+        run_id: 'run-1',
+        sequence: 7,
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        text: '退款'
+      }
+    );
+    const traceAfterPresentation = applyDebugStreamEventToTrace(runningTrace, {
+      type: 'text_delta',
+      event_id: 'run-1:8',
+      run_id: 'run-1',
+      sequence: 8,
+      node_run_id: null,
+      node_id: 'node-answer',
+      text: '退款',
+      presentation: {
+        kind: 'answer',
+        answer_node_id: 'node-answer',
+        segment_index: 0,
+        source_node_id: 'node-llm',
+        source_node_run_id: 'node-run-llm',
+        source_output_key: 'text'
+      }
+    });
+
+    expect(providerProjected.content).toBe('');
+    expect(answerProjected.content).toBe('退款');
+    expect(runningTrace[0]?.debugPayload).toEqual({
+      provider_events: [{ type: 'text_delta', text: '退款' }]
+    });
+    expect(traceAfterPresentation).toEqual(runningTrace);
+  });
+
   test('handles flow accepted and batches text deltas without rebuilding variable cache per token', async () => {
     vi.useFakeTimers();
 
@@ -151,16 +281,8 @@ describe('useAgentFlowDebugSession streaming', () => {
               run_id: 'run-1',
               status: 'running'
             });
-            handlers.onEvent({
-              type: 'text_delta',
-              node_id: 'node-llm',
-              text: '退'
-            });
-            handlers.onEvent({
-              type: 'text_delta',
-              node_id: 'node-llm',
-              text: '款'
-            });
+            handlers.onEvent(answerTextDelta('退'));
+            handlers.onEvent(answerTextDelta('款'));
             handlers.onEvent({
               type: 'flow_finished',
               run_id: 'run-1',
@@ -220,16 +342,8 @@ describe('useAgentFlowDebugSession streaming', () => {
             run_id: 'run-reasoning',
             status: 'running'
           });
-          handlers.onEvent({
-            type: 'reasoning_delta',
-            node_id: 'node-llm',
-            text: '先分析'
-          });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: '结果'
-          });
+          handlers.onEvent(answerReasoningDelta('先分析'));
+          handlers.onEvent(answerTextDelta('结果'));
         }
       );
       const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
@@ -277,29 +391,20 @@ describe('useAgentFlowDebugSession streaming', () => {
             event_id: 'evt-run'
           });
           handlers.onEvent({
-            type: 'text_delta',
+            ...answerTextDelta('退款'),
             run_id: 'run-envelope',
-            sequence: 1,
-            node_run_id: 'node-run-llm',
-            node_id: 'node-llm',
-            text: '退款'
+            sequence: 1
           });
           handlers.onEvent({
-            type: 'text_delta',
+            ...answerTextDelta('退款'),
             run_id: 'run-envelope',
             sequence: 1,
-            node_run_id: 'node-run-llm',
-            node_id: 'node-llm',
-            text: '退款',
             event_id: 'event-same-id'
           });
           handlers.onEvent({
-            type: 'text_delta',
+            ...answerTextDelta('政策'),
             run_id: 'run-envelope',
             sequence: 2,
-            node_run_id: 'node-run-llm',
-            node_id: 'node-llm',
-            text: '政策',
             event_id: 'event-same-id'
           });
           handlers.onEvent({
@@ -336,7 +441,7 @@ describe('useAgentFlowDebugSession streaming', () => {
     }
   });
 
-  test('does not dedupe legacy events without envelope metadata', async () => {
+  test('ignores provider deltas that are not canonical Answer presentation', async () => {
     vi.useFakeTimers();
 
     try {
@@ -351,12 +456,7 @@ describe('useAgentFlowDebugSession streaming', () => {
           handlers.onEvent({
             type: 'text_delta',
             node_id: 'node-llm',
-            text: '复'
-          });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: '复'
+            text: '只进入 trace'
           });
         }
       );
@@ -378,7 +478,7 @@ describe('useAgentFlowDebugSession streaming', () => {
 
       expect(result.current.messages.at(-1)).toEqual(
         expect.objectContaining({
-          content: '复复'
+          content: ''
         })
       );
     } finally {
@@ -486,11 +586,7 @@ describe('useAgentFlowDebugSession streaming', () => {
             run_id: 'flow-run-stream',
             status: 'running'
           });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: 'partial answer'
-          });
+          handlers.onEvent(answerTextDelta('partial answer'));
           throw new Error('stream down');
         }
       );
@@ -536,11 +632,7 @@ describe('useAgentFlowDebugSession streaming', () => {
             run_id: 'flow-run-stream',
             status: 'running'
           });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: 'partial answer'
-          });
+          handlers.onEvent(answerTextDelta('partial answer'));
           handlers.onEvent({
             type: 'node_started',
             node_run_id: 'node-run-llm',
@@ -596,11 +688,7 @@ describe('useAgentFlowDebugSession streaming', () => {
             run_id: 'flow-run-stream',
             status: 'running'
           });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: 'partial answer'
-          });
+          handlers.onEvent(answerTextDelta('partial answer'));
         }
       );
       const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
@@ -693,11 +781,7 @@ describe('useAgentFlowDebugSession streaming', () => {
             run_id: 'flow-run-stream',
             status: 'running'
           });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: 'partial answer'
-          });
+          handlers.onEvent(answerTextDelta('partial answer'));
         }
       );
       const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
@@ -890,14 +974,18 @@ describe('useAgentFlowDebugSession streaming', () => {
           });
           handlers.onEvent({
             type: 'text_delta',
+            node_run_id: 'node-run-llm',
             node_id: 'node-llm',
             text: '退款'
           });
+          handlers.onEvent(answerTextDelta('退款'));
           handlers.onEvent({
             type: 'text_delta',
+            node_run_id: 'node-run-llm',
             node_id: 'node-llm',
             text: '政策摘要'
           });
+          handlers.onEvent(answerTextDelta('政策摘要'));
           handlers.onEvent({
             type: 'node_finished',
             node_run_id: 'node-run-llm',
@@ -1101,11 +1189,7 @@ describe('useAgentFlowDebugSession streaming', () => {
             run_id: 'flow-run-stream',
             status: 'running'
           });
-          handlers.onEvent({
-            type: 'text_delta',
-            node_id: 'node-llm',
-            text: 'partial answer'
-          });
+          handlers.onEvent(answerTextDelta('partial answer'));
           handlers.onEvent({
             type: 'flow_cancelled',
             run_id: 'flow-run-stream',

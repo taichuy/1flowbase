@@ -143,6 +143,35 @@ describe('DebugAssistantMessage', () => {
     expect(inputToggle).toHaveAttribute('aria-expanded', 'false');
   });
 
+  test('AC-003 keeps incomplete streamed Markdown control markers out of the preview', async () => {
+    const baseMessage: AgentFlowDebugMessage = {
+      id: 'assistant-streaming-markdown',
+      role: 'assistant',
+      status: 'running',
+      runId: 'run-1',
+      content: '**处理中',
+      rawOutput: null,
+      traceSummary: []
+    };
+    const { container, rerender } = render(
+      <DebugAssistantMessage message={baseMessage} />
+    );
+
+    await waitFor(() => {
+      expect(container).not.toHaveTextContent('**处理中');
+    });
+
+    rerender(
+      <DebugAssistantMessage
+        message={{ ...baseMessage, content: '**处理中**' }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('处理中').tagName).toBe('STRONG');
+    });
+  });
+
   test('loads truncated trace artifact values on explicit action', async () => {
     const onLoadArtifact = vi
       .fn()
@@ -223,9 +252,7 @@ describe('DebugAssistantMessage', () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole('button', { name: '查看 Resume 时间线' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '查看 Resume 时间线' }));
 
     expect(onOpenResumeTimeline).toHaveBeenCalledWith(message);
   });

@@ -951,6 +951,15 @@ export interface ConsoleFlowDebugStreamCursor {
   last_event_id?: string;
 }
 
+export interface ConsoleAnswerPresentation {
+  kind: 'answer';
+  answer_node_id: string;
+  segment_index: number;
+  source_node_id?: string;
+  source_node_run_id?: string;
+  source_output_key?: string;
+}
+
 export type ConsoleFlowDebugStreamEvent =
   | {
       type: 'flow_accepted';
@@ -1016,6 +1025,7 @@ export type ConsoleFlowDebugStreamEvent =
       created_at?: string;
       delta_index?: number | null;
       content_type?: 'text' | 'reasoning' | null;
+      presentation?: ConsoleAnswerPresentation;
     }
   | {
       type: 'reasoning_delta';
@@ -1028,6 +1038,7 @@ export type ConsoleFlowDebugStreamEvent =
       created_at?: string;
       delta_index?: number | null;
       content_type?: 'text' | 'reasoning' | null;
+      presentation?: ConsoleAnswerPresentation;
     }
   | {
       type: 'usage_snapshot';
