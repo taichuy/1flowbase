@@ -79,7 +79,7 @@ pub struct ResumePublishedCallbackResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreparedPublishedCallbackResume {
-    Resume { initial_run: NativeRunResult },
+    Resume { initial_run: Box<NativeRunResult> },
     StartNewTurnFromHistory,
 }
 
@@ -135,7 +135,9 @@ where
             }
         }
         let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
-        Ok(PreparedPublishedCallbackResume::Resume { initial_run })
+        Ok(PreparedPublishedCallbackResume::Resume {
+            initial_run: Box::new(initial_run),
+        })
     }
 
     pub async fn resume_callback(

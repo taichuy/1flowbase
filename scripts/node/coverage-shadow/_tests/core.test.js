@@ -9,6 +9,7 @@ const {
   collectNextestTestIds,
   compareCoverageSummaries,
   mergeApiServerShadow,
+  parseLlvmCovEnvironment,
   runApiServerShard,
   validateShardInventories,
 } = require('../core.js');
@@ -37,6 +38,15 @@ test('API coverage shadow shard uses the stable nextest hash partition', () => {
     ['nextest', 'run', '--package', 'api-server', '--partition', 'hash:2/4', '--test-threads', '4', '--no-fail-fast', '--no-tests=fail'],
   ]);
   assert.match(commands[2].profilePattern, /coverage-shadow\/api-server\/shard-2\/shard-2-%p-%m\.profraw$/u);
+});
+
+test('llvm-cov environment parser accepts Cargo ANSI color output', () => {
+  assert.deepEqual(parseLlvmCovEnvironment(
+    "\u001b[1mexport RUSTC_WRAPPER='/bin/cov'\u001b[0m\nexport CARGO_LLVM_COV='1'\n"
+  ), {
+    RUSTC_WRAPPER: '/bin/cov',
+    CARGO_LLVM_COV: '1',
+  });
 });
 
 test('nextest inventory extraction creates stable binary-qualified test ids', () => {

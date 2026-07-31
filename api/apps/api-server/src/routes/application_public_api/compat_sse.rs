@@ -280,7 +280,7 @@ pub(crate) async fn prepare_compatible_resume(
     Ok(match prepared {
         PreparedPublishedCallbackResume::Resume { initial_run } => {
             CompatibleResumeAdmission::Resume(CompatibleResumePlan {
-                initial_run,
+                initial_run: *initial_run,
                 command,
             })
         }

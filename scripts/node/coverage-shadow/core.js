@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const API_SERVER_PACKAGE = 'api-server';
+const ANSI_CONTROL_SEQUENCE_PATTERN = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/gu;
 
 function assertShard(shardIndex, shardCount) {
   if (!Number.isInteger(shardIndex) || !Number.isInteger(shardCount)
@@ -31,7 +32,7 @@ function buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTe
 
 function parseLlvmCovEnvironment(stdout) {
   const env = {};
-  for (const line of stdout.split(/\r?\n/u)) {
+  for (const line of stdout.replace(ANSI_CONTROL_SEQUENCE_PATTERN, '').split(/\r?\n/u)) {
     const match = line.match(/^export (?<key>[A-Z0-9_]+)='(?<value>.*)'$/u);
     if (match) env[match.groups.key] = match.groups.value.replace(/'\\''/gu, "'");
   }
