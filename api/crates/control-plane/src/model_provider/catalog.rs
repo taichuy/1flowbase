@@ -211,9 +211,13 @@ where
             );
             for model in models {
                 let model_id = model.descriptor.model_id.clone();
+                let routing_enabled = !routing_policies.get(&model_id).is_some_and(|policy| {
+                    policy.excluded_provider_instance_ids.contains(&instance.id)
+                });
                 let target = ModelProviderOptionTarget {
                     source_instance_id: instance.id,
                     source_instance_display_name: instance.display_name.clone(),
+                    routing_enabled,
                     model: model.clone(),
                 };
                 if let Some(index) = model_group_indexes.get(&model_id).copied() {
@@ -302,6 +306,9 @@ fn model_routing_policies_by_id(
                             model_id: policy.model_id.clone(),
                             distribution_rule: policy.distribution_rule,
                             provider_instance_ids: policy.provider_instance_ids.clone(),
+                            excluded_provider_instance_ids: policy
+                                .excluded_provider_instance_ids
+                                .clone(),
                         },
                     )
                 })

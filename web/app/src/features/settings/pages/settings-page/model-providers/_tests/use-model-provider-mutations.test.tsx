@@ -193,7 +193,8 @@ describe('useModelProviderMutations', () => {
           {
             model_id: 'gpt-4o-mini',
             distribution_rule: 'retry_round_robin',
-            provider_instance_ids: ['provider-2', 'provider-1']
+            provider_instance_ids: ['provider-2', 'provider-1'],
+            excluded_provider_instance_ids: ['provider-2']
           }
         ]
       }
@@ -208,7 +209,8 @@ describe('useModelProviderMutations', () => {
           {
             model_id: 'gpt-4o-mini',
             distribution_rule: 'retry_round_robin',
-            provider_instance_ids: ['provider-2', 'provider-1']
+            provider_instance_ids: ['provider-2', 'provider-1'],
+            excluded_provider_instance_ids: ['provider-2']
           }
         ]
       });
@@ -225,7 +227,8 @@ describe('useModelProviderMutations', () => {
           {
             model_id: 'gpt-4o-mini',
             distribution_rule: 'retry_round_robin',
-            provider_instance_ids: ['provider-2', 'provider-1']
+            provider_instance_ids: ['provider-2', 'provider-1'],
+            excluded_provider_instance_ids: ['provider-2']
           }
         ]
       },

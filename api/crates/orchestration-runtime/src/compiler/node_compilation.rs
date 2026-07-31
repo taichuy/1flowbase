@@ -335,9 +335,16 @@ fn resolve_fixed_model_provider_instances<'a>(
         return None;
     }
 
+    let excluded_provider_instance_ids = routing_policy
+        .map(|policy| &policy.excluded_provider_instance_ids)
+        .cloned()
+        .unwrap_or_default();
     let model_candidates = candidates
         .into_iter()
-        .filter(|instance| provider_instance_supports_model(instance, model))
+        .filter(|instance| {
+            provider_instance_supports_model(instance, model)
+                && !excluded_provider_instance_ids.contains(&instance.provider_instance_id)
+        })
         .collect::<Vec<_>>();
 
     if model_candidates.is_empty() {

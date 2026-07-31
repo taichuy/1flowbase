@@ -296,13 +296,24 @@ async fn model_provider_service_updates_provider_main_instance_settings_without_
             provider_code: "fixture_provider".to_string(),
             auto_include_new_instances: false,
             expected_revision: 0,
-            model_routing_policies: None,
+            model_routing_policies: Some(vec![domain::ModelProviderMainModelRoutingPolicy {
+                model_id: "fixture_chat".to_string(),
+                distribution_rule: domain::ModelProviderDistributionRule::RetryRoundRobin,
+                provider_instance_ids: vec![created.instance.id],
+                excluded_provider_instance_ids: vec![created.instance.id],
+            }]),
         })
         .await
         .unwrap();
 
     assert_eq!(updated.provider_code, "fixture_provider");
     assert!(!updated.auto_include_new_instances);
+    assert_eq!(updated.revision, 1);
+    assert_eq!(updated.model_routing_policies.len(), 1);
+    assert_eq!(
+        updated.model_routing_policies[0].excluded_provider_instance_ids,
+        vec![created.instance.id]
+    );
     assert_eq!(
         repository.secret_json(created.instance.id).await,
         secret_before
@@ -324,4 +335,71 @@ async fn model_provider_service_updates_provider_main_instance_settings_without_
             .unwrap()
             .included_in_main
     );
+}
+
+#[tokio::test]
+async fn model_provider_service_rejects_excluded_instance_outside_the_ordered_group() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let package_root = std::env::temp_dir().join(format!("provider-model-{}", Uuid::now_v7()));
+    create_provider_fixture(&package_root);
+    let installation_id = repository
+        .seed_installation(
+            &package_root.display().to_string(),
+            PluginDesiredState::ActiveRequested,
+            true,
+        )
+        .await;
+    let service = ModelProviderService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        "test-master-key",
+    );
+    let created = service
+        .create_instance(CreateModelProviderInstanceCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id,
+            display_name: "Fixture Stable".to_string(),
+            config_json: json!({
+                "base_url": "https://api.example.com",
+                "api_key": "super-secret"
+            }),
+            configured_models: Vec::new(),
+            enabled_model_ids: vec!["fixture_chat".to_string()],
+            included_in_main: Some(true),
+            preview_token: None,
+        })
+        .await
+        .unwrap();
+
+    let error = service
+        .update_main_instance(UpdateModelProviderMainInstanceCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "fixture_provider".to_string(),
+            auto_include_new_instances: true,
+            expected_revision: 0,
+            model_routing_policies: Some(vec![domain::ModelProviderMainModelRoutingPolicy {
+                model_id: "fixture_chat".to_string(),
+                distribution_rule: domain::ModelProviderDistributionRule::RoundRobin,
+                provider_instance_ids: vec![created.instance.id],
+                excluded_provider_instance_ids: vec![Uuid::now_v7()],
+            }]),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::InvalidInput(
+            "excluded_provider_instance_ids"
+        ))
+    ));
+    assert!(repository
+        .get_main_instance(workspace_id, "fixture_provider")
+        .await
+        .unwrap()
+        .is_none());
 }

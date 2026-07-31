@@ -101,6 +101,7 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
               {
                 source_instance_id: 'provider-1',
                 source_instance_display_name: 'OpenAI Production',
+                routing_enabled: true,
                 model: primaryContractProviderModels[0]
               }
             ]
@@ -113,6 +114,7 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
               {
                 source_instance_id: 'provider-1',
                 source_instance_display_name: 'OpenAI Production',
+                routing_enabled: true,
                 model: primaryContractProviderModels[1]
               }
             ]
@@ -134,7 +136,8 @@ export function buildMainInstanceSettings(
     model_routing_policies: primaryContractProviderModels.map((model) => ({
       model_id: model.model_id,
       distribution_rule: distributionRule,
-      provider_instance_ids: ['provider-1']
+      provider_instance_ids: ['provider-1'],
+      excluded_provider_instance_ids: []
     }))
   };
 }

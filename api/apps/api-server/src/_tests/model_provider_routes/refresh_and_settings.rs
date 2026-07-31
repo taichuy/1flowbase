@@ -414,7 +414,8 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
                             {
                                 "model_id": "fixture_chat",
                                 "distribution_rule": "retry_round_robin",
-                                "provider_instance_ids": []
+                                "provider_instance_ids": [alpha_id.clone()],
+                                "excluded_provider_instance_ids": [alpha_id.clone()]
                             }
                         ]
                     })
@@ -439,6 +440,18 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         update_distribution_rule_payload["data"]["model_routing_policies"][0]["distribution_rule"]
             .as_str(),
         Some("retry_round_robin")
+    );
+    assert_eq!(
+        update_distribution_rule_payload["data"]["model_routing_policies"][0]
+            ["provider_instance_ids"][0]
+            .as_str(),
+        Some(alpha_id.as_str())
+    );
+    assert_eq!(
+        update_distribution_rule_payload["data"]["model_routing_policies"][0]
+            ["excluded_provider_instance_ids"][0]
+            .as_str(),
+        Some(alpha_id.as_str())
     );
 
     let stale_update = app
@@ -535,6 +548,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         alpha_target["source_instance_display_name"].as_str(),
         Some("Alpha")
     );
+    assert_eq!(alpha_target["routing_enabled"].as_bool(), Some(false));
     assert_eq!(
         alpha_group["model"]["model_id"].as_str(),
         Some("fixture_chat")
@@ -555,6 +569,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .iter()
         .find(|target| target["source_instance_id"].as_str() == Some(beta_id.as_str()))
         .expect("beta target");
+    assert_eq!(beta_target["routing_enabled"].as_bool(), Some(true));
     assert_eq!(
         beta_target["source_instance_display_name"].as_str(),
         Some("Beta")

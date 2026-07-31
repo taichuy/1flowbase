@@ -48,6 +48,7 @@ async fn list_main_model_routing_policies(
             model_id,
             distribution_rule,
             provider_instance_ids,
+            excluded_provider_instance_ids,
             created_by,
             updated_by,
             created_at,
@@ -571,9 +572,10 @@ impl ModelProviderRepository for PgControlPlaneStore {
                         model_id,
                         distribution_rule,
                         provider_instance_ids,
+                        excluded_provider_instance_ids,
                         created_by,
                         updated_by
-                    ) values ($1, $2, $3, $4, $5, $6, $7, $7)
+                    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
                     "#,
                 )
                 .bind(Uuid::now_v7())
@@ -582,6 +584,7 @@ impl ModelProviderRepository for PgControlPlaneStore {
                 .bind(&policy.model_id)
                 .bind(policy.distribution_rule.as_str())
                 .bind(&policy.provider_instance_ids)
+                .bind(&policy.excluded_provider_instance_ids)
                 .bind(input.updated_by)
                 .execute(&mut *tx)
                 .await?;
@@ -781,10 +784,12 @@ impl ModelProviderRepository for PgControlPlaneStore {
             r#"
             update model_provider_main_model_distribution_rules
             set provider_instance_ids = array_remove(provider_instance_ids, $3),
+                excluded_provider_instance_ids = array_remove(excluded_provider_instance_ids, $3),
                 updated_at = now()
             where scope_id = $1
               and provider_code = $2
-              and $3 = any(provider_instance_ids)
+              and ($3 = any(provider_instance_ids)
+                   or $3 = any(excluded_provider_instance_ids))
             "#,
         )
         .bind(workspace_id)

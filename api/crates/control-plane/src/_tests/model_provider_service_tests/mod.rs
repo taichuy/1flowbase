@@ -897,6 +897,9 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
                             model_id: policy.model_id.clone(),
                             distribution_rule: policy.distribution_rule,
                             provider_instance_ids: policy.provider_instance_ids.clone(),
+                            excluded_provider_instance_ids: policy
+                                .excluded_provider_instance_ids
+                                .clone(),
                             created_by: existing_policy
                                 .map(|record| record.created_by)
                                 .unwrap_or(input.updated_by),

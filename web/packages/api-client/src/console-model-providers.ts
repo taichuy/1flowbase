@@ -237,6 +237,7 @@ export interface ConsoleModelProviderMainModelRoutingPolicy {
   model_id: string;
   distribution_rule: ConsoleModelProviderDistributionRule;
   provider_instance_ids: string[];
+  excluded_provider_instance_ids: string[];
 }
 
 export interface ConsoleValidateModelProviderResult {
@@ -275,6 +276,7 @@ export interface ConsoleModelProviderOptionGroup {
 export interface ConsoleModelProviderOptionTarget {
   source_instance_id: string;
   source_instance_display_name: string;
+  routing_enabled: boolean;
   model: ConsoleProviderModelDescriptor;
 }
 

@@ -413,6 +413,7 @@ pub struct ModelProviderMainModelRoutingPolicy {
     pub model_id: String,
     pub distribution_rule: ModelProviderDistributionRule,
     pub provider_instance_ids: Vec<Uuid>,
+    pub excluded_provider_instance_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -422,6 +423,7 @@ pub struct ModelProviderMainModelRoutingPolicyRecord {
     pub model_id: String,
     pub distribution_rule: ModelProviderDistributionRule,
     pub provider_instance_ids: Vec<Uuid>,
+    pub excluded_provider_instance_ids: Vec<Uuid>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,

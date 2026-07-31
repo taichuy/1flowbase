@@ -260,6 +260,11 @@ where
                             .into_iter()
                             .map(|id| id.to_string())
                             .collect(),
+                        excluded_provider_instance_ids: policy
+                            .excluded_provider_instance_ids
+                            .into_iter()
+                            .map(|id| id.to_string())
+                            .collect(),
                     },
                 );
         }

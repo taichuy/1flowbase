@@ -94,6 +94,7 @@ fn model_routing_policies(
             model_id: policy.model_id.clone(),
             distribution_rule: policy.distribution_rule,
             provider_instance_ids: policy.provider_instance_ids.clone(),
+            excluded_provider_instance_ids: policy.excluded_provider_instance_ids.clone(),
         })
         .collect()
 }
@@ -128,6 +129,19 @@ where
             return Err(
                 crate::errors::ControlPlaneError::InvalidInput("provider_instance_ids").into(),
             );
+        }
+        let mut excluded_ids = HashSet::new();
+        if policy
+            .excluded_provider_instance_ids
+            .iter()
+            .any(|instance_id| {
+                !ordered_ids.contains(instance_id) || !excluded_ids.insert(*instance_id)
+            })
+        {
+            return Err(crate::errors::ControlPlaneError::InvalidInput(
+                "excluded_provider_instance_ids",
+            )
+            .into());
         }
     }
     Ok(())

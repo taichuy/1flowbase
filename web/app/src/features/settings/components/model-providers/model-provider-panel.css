@@ -517,33 +517,16 @@
   gap: 20px;
 }
 
-.model-provider-panel__routing-policy-targets {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.model-provider-panel__routing-policy-target {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 6px 8px 6px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 8px;
-  background: #ffffff;
+.model-provider-panel__routing-policy-drag-handle {
   cursor: grab;
 }
 
-.model-provider-panel__routing-policy-target:active {
+.model-provider-panel__routing-policy-drag-handle:active {
   cursor: grabbing;
 }
 
-.model-provider-panel__routing-policy-target-name {
-  flex: 1 1 auto;
-  min-width: 0;
+.model-provider-panel__routing-policy-row--excluded {
+  opacity: 0.55;
 }
 
 .model-provider-panel__main-instance-targets {

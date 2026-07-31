@@ -232,6 +232,7 @@ pub struct ModelProviderOptionGroup {
 pub struct ModelProviderOptionTarget {
     pub source_instance_id: Uuid,
     pub source_instance_display_name: String,
+    pub routing_enabled: bool,
     pub model: LocalizedProviderModelDescriptor,
 }
 

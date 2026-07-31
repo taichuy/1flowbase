@@ -801,6 +801,7 @@ describe('LlmModelField', () => {
           {
             source_instance_id: 'provider-openai-prod',
             source_instance_display_name: 'OpenAI Production',
+            routing_enabled: true,
             model: {
               ...primaryProviderFirstModel,
               model_id: 'gpt-4o-mini',
@@ -810,6 +811,7 @@ describe('LlmModelField', () => {
           {
             source_instance_id: 'provider-openai-backup',
             source_instance_display_name: 'OpenAI Backup',
+            routing_enabled: true,
             model: {
               ...primaryProviderFirstModel,
               model_id: 'gpt-4o-mini',
