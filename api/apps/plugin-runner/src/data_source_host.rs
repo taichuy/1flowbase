@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use plugin_framework::{
     data_source_contract::{
-        DataSourceCatalogEntry, DataSourceConfigInput, DataSourceCreateRecordInput,
-        DataSourceCreateRecordOutput, DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput,
-        DataSourceDescribeResourceInput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
-        DataSourceImportSnapshotInput, DataSourceImportSnapshotOutput, DataSourceListRecordsInput,
-        DataSourceListRecordsOutput, DataSourcePreviewReadInput, DataSourcePreviewReadOutput,
-        DataSourceResourceDescriptor, DataSourceStdioMethod, DataSourceStdioRequest,
-        DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
+        validate_native_sql_output, DataSourceCatalogEntry, DataSourceConfigInput,
+        DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
+        DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput, DataSourceExecuteSqlInput,
+        DataSourceGetRecordInput, DataSourceGetRecordOutput, DataSourceImportSnapshotInput,
+        DataSourceImportSnapshotOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
+        DataSourcePreviewReadInput, DataSourcePreviewReadOutput, DataSourceResourceDescriptor,
+        DataSourceStdioMethod, DataSourceStdioRequest, DataSourceUpdateRecordInput,
+        DataSourceUpdateRecordOutput, NativeSqlExecutionOutput, DATA_SOURCE_NATIVE_SQL_CAPABILITY,
     },
     error::{FrameworkResult, PluginFrameworkError},
 };
@@ -365,6 +366,35 @@ impl DataSourceHost {
         Ok(async move { normalize_delete_record(operation.await?) })
     }
 
+    pub async fn execute_sql(
+        &self,
+        plugin_id: &str,
+        input: DataSourceExecuteSqlInput,
+    ) -> FrameworkResult<NativeSqlExecutionOutput> {
+        self.execute_sql_operation(plugin_id, input)?.await
+    }
+
+    pub fn execute_sql_operation(
+        &self,
+        plugin_id: &str,
+        input: DataSourceExecuteSqlInput,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<NativeSqlExecutionOutput>> + Send + 'static,
+    > {
+        let loaded = self.loaded_package(plugin_id)?;
+        if !loaded.package.supports_native_sql() {
+            return Err(PluginFrameworkError::invalid_provider_contract(format!(
+                "data_source_capability_not_supported: {DATA_SOURCE_NATIVE_SQL_CAPABILITY}"
+            )));
+        }
+        let operation = self.call_runtime_operation(
+            plugin_id,
+            DataSourceStdioMethod::ExecuteSql,
+            serde_json::to_value(input).unwrap(),
+        )?;
+        Ok(async move { normalize_native_sql_output(operation.await?) })
+    }
+
     fn loaded_package(&self, plugin_id: &str) -> FrameworkResult<&LoadedDataSourcePackage> {
         self.loaded_packages.get(plugin_id).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package(format!(
@@ -427,6 +457,16 @@ fn normalize_list_records(raw: Value) -> FrameworkResult<DataSourceListRecordsOu
 fn normalize_get_record(raw: Value) -> FrameworkResult<DataSourceGetRecordOutput> {
     serde_json::from_value(raw)
         .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
+}
+
+fn normalize_native_sql_output(raw: Value) -> FrameworkResult<NativeSqlExecutionOutput> {
+    let output = serde_json::from_value(raw).map_err(|error| {
+        PluginFrameworkError::invalid_provider_contract(format!(
+            "invalid_native_sql_result_contract: {error}"
+        ))
+    })?;
+    validate_native_sql_output(&output).map_err(PluginFrameworkError::invalid_provider_contract)?;
+    Ok(output)
 }
 
 fn normalize_create_record(raw: Value) -> FrameworkResult<DataSourceCreateRecordOutput> {

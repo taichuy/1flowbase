@@ -182,6 +182,25 @@ fn write_fixture_runtime(package: &TempDataSourcePackage) {
         }
     })
     .to_string();
+    let execute_sql_output = json!({
+        "ok": true,
+        "result": {
+            "results": [
+                {
+                    "kind": "row_batch",
+                    "columns": [{
+                        "name": "value",
+                        "native_type": "INT4",
+                        "logical_type": "integer",
+                        "encoding": "json"
+                    }],
+                    "rows": [[1]]
+                },
+                { "kind": "completion", "affected_rows": 1 }
+            ]
+        }
+    })
+    .to_string();
     let error_output = json!({
         "ok": false,
         "error": {
@@ -231,6 +250,9 @@ case "${{payload}}" in
     ;;
   *'"method":"delete_record"'*)
     printf '%s' '{delete_record_output}'
+    ;;
+  *'"method":"execute_sql"'*'-- 原样传输'*"select ';'::text as value;"*)
+    printf '%s' '{execute_sql_output}'
     ;;
   *)
     printf '%s' '{error_output}'
@@ -295,6 +317,7 @@ display_name: Fixture Data Source
 auth_modes:
   - api_key
 capabilities:
+  - native_sql/v1
   - validate_config
   - test_connection
   - discover_catalog
@@ -477,6 +500,41 @@ async fn validates_and_discovers_catalog_through_data_source_routes() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(import_payload["schema_version"], "v1");
+}
+
+#[tokio::test]
+async fn ac_003_execute_sql_preserves_opaque_text_and_validates_result_contract() {
+    let package = make_fixture_package();
+    let app = app();
+    let (status, load_payload) = request_json(
+        &app,
+        Method::POST,
+        "/data-sources/load",
+        json!({ "package_root": package.path() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let sql = "\n-- 原样传输\nselect ';'::text as value;\n";
+    let (status, payload) = request_json(
+        &app,
+        Method::POST,
+        "/data-sources/execute-sql",
+        json!({
+            "plugin_id": load_payload["plugin_id"],
+            "input": {
+                "config_json": { "client_id": "abc" },
+                "secret_json": { "client_secret": "secret" },
+                "sql": sql
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(payload["results"][0]["kind"], "row_batch");
+    assert_eq!(payload["results"][0]["rows"], json!([[1]]));
+    assert_eq!(payload["results"][1]["affected_rows"], 1);
 }
 
 #[tokio::test]

@@ -1055,6 +1055,59 @@ fn compile_data_model_query_extracts_selector_dependencies() {
 }
 
 #[test]
+fn ac_006_compile_accepts_sql_node_and_preserves_opaque_sql_config() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    let sql = "\n-- keep whitespace\nselect ';'::text;\n";
+    document["graph"]["nodes"][1] = json!({
+        "id": "node-sql",
+        "type": "sql",
+        "alias": "SQL",
+        "description": "",
+        "containerId": null,
+        "position": { "x": 240, "y": 0 },
+        "configVersion": 1,
+        "config": {
+            "data_source_instance_id": "main",
+            "sql": sql
+        },
+        "bindings": {},
+        "outputs": [
+            { "key": "results", "title": "Results", "valueType": "array" }
+        ]
+    });
+    document["graph"]["edges"][0]["target"] = json!("node-sql");
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+
+    assert!(plan.compile_issues.is_empty());
+    assert_eq!(plan.nodes["node-sql"].config["sql"], sql);
+    ensure_plan_execution_contract(&plan).unwrap();
+}
+
+#[test]
+fn ac_003_compile_rejects_invalid_sql_data_source_binding() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"][1]["type"] = json!("sql");
+    document["graph"]["nodes"][1]["config"] = json!({
+        "data_source_instance_id": "postgres-by-name",
+        "sql": "select 1"
+    });
+    document["graph"]["nodes"][1]["bindings"] = json!({});
+    document["graph"]["nodes"][1]["outputs"] = json!([
+        { "key": "results", "title": "Results", "valueType": "array" }
+    ]);
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+
+    assert!(plan
+        .compile_issues
+        .iter()
+        .any(|issue| { issue.code == CompileIssueCode::InvalidDataSourceInstance }));
+}
+
+#[test]
 fn compile_data_model_filters_inactive_bindings_by_node_type() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);

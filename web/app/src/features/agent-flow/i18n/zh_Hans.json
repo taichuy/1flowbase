@@ -706,6 +706,11 @@
     "unresolved_node_reason": "原因：{{value1}}",
     "original_node_type": "原节点类型：{{value1}}",
     "max_retries": "最大重试次数",
-    "retry_interval_ms": "重试间隔"
+    "retry_interval_ms": "重试间隔",
+    "execute_native_sql": "在所选数据源上原样执行 SQL 并返回结果",
+    "data_source": "数据源",
+    "sql_statement": "SQL 语句",
+    "sql_results": "SQL 结果",
+    "loading_sql_editor": "正在加载 SQL 编辑器"
   }
 }

@@ -316,6 +316,15 @@ where
             execution.debug_payload,
             Vec::new(),
         )
+    } else if node.node_type == "sql" {
+        let execution = invoker.invoke_native_sql_node(node).await?;
+        (
+            execution.output_payload,
+            execution.error_payload,
+            execution.metrics_payload,
+            execution.debug_payload,
+            Vec::new(),
+        )
     } else {
         let error_payload = Some(build_node_type_not_implemented_error_payload(
             &node.node_type,

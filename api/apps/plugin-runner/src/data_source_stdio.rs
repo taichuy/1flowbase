@@ -29,10 +29,9 @@ pub async fn call_executable(
     if let Some(mut stdin) = child.stdin.take() {
         let payload = serde_json::to_vec(request)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
-        stdin
-            .write_all(&payload)
-            .await
-            .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
+        stdin.write_all(&payload).await.map_err(|error| {
+            map_dispatched_transport_error(request, executable_path, error.to_string())
+        })?;
     }
 
     let output = tokio::time::timeout(
@@ -41,13 +40,13 @@ pub async fn call_executable(
     )
     .await
     .map_err(|_| {
-        PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
-            "data_source_runtime",
-            "data source runtime timed out",
-            None,
-        ))
+        map_dispatched_transport_error(
+            request,
+            executable_path,
+            "data source runtime timed out".to_string(),
+        )
     })?
-    .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
+    .map_err(|error| map_dispatched_transport_error(request, executable_path, error.to_string()))?;
 
     parse_stdio_response(executable_path, &output.stdout, &output.stderr)
 }
@@ -82,21 +81,43 @@ fn parse_stdio_response(
     }
 
     let error = envelope.error.unwrap_or_else(|| DataSourceStdioError {
+        code: None,
         message: if stderr.is_empty() {
             "data source runtime execution failed".to_string()
         } else {
             stderr.clone()
         },
+        detail: None,
         provider_summary: None,
     });
+    let code = error.code.as_deref().unwrap_or("data_source_runtime");
+    let mut runtime_error =
+        ProviderRuntimeError::normalize(code, error.message, error.provider_summary.as_deref());
+    if error.code.is_some() || error.detail.is_some() {
+        runtime_error = runtime_error.with_provider_details(serde_json::json!({
+            "code": error.code,
+            "detail": error.detail,
+        }));
+    }
+    Err(PluginFrameworkError::runtime(runtime_error))
+}
 
-    Err(PluginFrameworkError::runtime(
-        ProviderRuntimeError::normalize(
-            "data_source_runtime",
-            error.message,
-            error.provider_summary.as_deref(),
-        ),
-    ))
+fn map_dispatched_transport_error(
+    request: &DataSourceStdioRequest,
+    executable_path: &Path,
+    message: String,
+) -> PluginFrameworkError {
+    if request.method != plugin_framework::data_source_contract::DataSourceStdioMethod::ExecuteSql {
+        return PluginFrameworkError::io(Some(executable_path), message);
+    }
+    PluginFrameworkError::runtime(
+        ProviderRuntimeError::new(
+            plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+            message,
+        )
+        .with_provider_summary("outcome_unknown")
+        .with_provider_details(serde_json::json!({ "code": "outcome_unknown" })),
+    )
 }
 
 fn apply_memory_limit(command: &mut Command, memory_bytes: Option<u64>) -> FrameworkResult<()> {

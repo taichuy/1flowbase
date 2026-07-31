@@ -1,7 +1,7 @@
 use super::*;
 use plugin_framework::data_source_contract::{
-    DataSourceDescribeResourceInput, DataSourcePreviewReadInput, DataSourcePreviewReadOutput,
-    DataSourceResourceDescriptor,
+    DataSourceDescribeResourceInput, DataSourceExecuteSqlInput, DataSourcePreviewReadInput,
+    DataSourcePreviewReadOutput, DataSourceResourceDescriptor, NativeSqlExecutionOutput,
 };
 
 mod monitoring;
@@ -1515,4 +1515,12 @@ pub trait DataSourceRuntimePort: Send + Sync {
         installation: &domain::PluginInstallationRecord,
         input: DataSourcePreviewReadInput,
     ) -> anyhow::Result<DataSourcePreviewReadOutput>;
+    async fn execute_sql(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        input: DataSourceExecuteSqlInput,
+    ) -> anyhow::Result<NativeSqlExecutionOutput> {
+        let _ = (installation, input);
+        anyhow::bail!("native SQL is not implemented by this data source runtime")
+    }
 }

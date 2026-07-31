@@ -7,7 +7,13 @@ use super::{
 // registry operation must be added here with its historic proof or default-disabled reason.
 pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_authenticated_other("core.authenticated", &["core.authenticated"]),
-    core_simple_other("other.agent-flow", &["agent_flow.data_model_options.list"]),
+    core_simple_other(
+        "other.agent-flow",
+        &[
+            "agent_flow.data_model_options.list",
+            "agent_flow.data_source_options.list",
+        ],
+    ),
     core_simple_other("other.data-sources", &["data_sources.secret.rotate"]),
     core_simple_other("other.frontend-blocks", &["frontend_blocks.view"]),
     core_simple_other("other.js-dependencies", &["js_dependencies.view"]),

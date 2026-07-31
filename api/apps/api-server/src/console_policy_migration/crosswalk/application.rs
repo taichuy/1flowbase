@@ -109,13 +109,13 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     ),
     legacy_mapping(
         "external_data_source.view.all",
-        &["data_sources.list"],
+        &["agent_flow.data_source_options.list", "data_sources.list"],
         &[],
         &["data_sources.view"],
     ),
     legacy_mapping(
         "external_data_source.view.own",
-        &[],
+        &["agent_flow.data_source_options.list"],
         &["data_sources.view"],
         &[],
     ),

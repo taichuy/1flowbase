@@ -70,6 +70,7 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
     for route in [
         "/api/console/settings/data-models/model-definitions/{id}",
         "/api/console/models/agent-flow-options",
+        "/api/console/data-sources/agent-flow-options",
         "/api/console/settings/data-models/model-definitions/{id}/fields",
         "/api/console/settings/data-models/model-definitions/{id}/advisor-findings",
         "/api/console/settings/data-models/model-definitions/{id}/scope-grants",

@@ -469,6 +469,20 @@ where
                 VisibleInternalLlmToolNodeOutput::from_output_payload(execution.output_payload),
             )))
         }
+        "sql" => {
+            let execution = invoker.invoke_native_sql_node(node).await?;
+            if let Some(error_payload) = execution.error_payload {
+                return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
+            }
+            Ok(VisibleInternalLlmToolNodeExecution::Completed(Box::new(
+                VisibleInternalLlmToolNodeOutput {
+                    input_payload: Value::Object(resolved_inputs.clone()),
+                    output_payload: execution.output_payload,
+                    metrics_payload: Some(execution.metrics_payload),
+                    debug_payload: Some(execution.debug_payload),
+                },
+            )))
+        }
         "plugin_node" => {
             let execution =
                 execute_capability_plugin_node(node, resolved_inputs, rendered_templates, invoker)

@@ -20,6 +20,7 @@ describe('flow authoring kernel', () => {
       'data_model_create',
       'data_model_update',
       'data_model_delete',
+      'sql',
       'variable_assigner'
     ]);
     expect(new Set(SHARED_EXECUTION_NODE_PICKER_TYPES).size).toBe(

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 access-control = { path = "../access-control" }
+base64.workspace = true
 ed25519-dalek = { version = "2", features = ["pem"] }
 flate2.workspace = true
 serde.workspace = true

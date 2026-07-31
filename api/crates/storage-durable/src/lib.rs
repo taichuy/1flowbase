@@ -8,7 +8,7 @@ pub use runtime::{
     build_main_durable_postgres, build_main_durable_postgres_with_max_connections,
     build_main_durable_postgres_with_pool_settings, MainDurableRuntime, MainDurableStore,
 };
-pub use storage_postgres::PgPoolSettings;
+pub use storage_postgres::{execute_native_sql, PgPoolSettings};
 
 pub fn crate_name() -> &'static str {
     "storage-durable"

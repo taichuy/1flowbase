@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+
 use crate::provider_contract::PluginFormFieldSchema;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,6 +19,7 @@ pub enum DataSourceStdioMethod {
     CreateRecord,
     UpdateRecord,
     DeleteRecord,
+    ExecuteSql,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,7 +31,11 @@ pub struct DataSourceStdioRequest {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DataSourceStdioError {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<Value>,
     #[serde(default)]
     pub provider_summary: Option<String>,
 }
@@ -48,6 +55,134 @@ pub struct DataSourceConfigInput {
     pub config_json: Value,
     #[serde(default)]
     pub secret_json: Value,
+}
+
+pub const DATA_SOURCE_NATIVE_SQL_CAPABILITY: &str = "native_sql/v1";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DataSourceExecuteSqlInput {
+    #[serde(flatten)]
+    pub connection: DataSourceConfigInput,
+    pub sql: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeSqlLogicalType {
+    Boolean,
+    Integer,
+    Number,
+    Decimal,
+    String,
+    Json,
+    Date,
+    Time,
+    DateTime,
+    Uuid,
+    Binary,
+    Native,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeSqlValueEncoding {
+    Json,
+    Text,
+    Base64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeSqlColumn {
+    pub name: String,
+    pub native_type: String,
+    pub logical_type: NativeSqlLogicalType,
+    pub encoding: NativeSqlValueEncoding,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NativeSqlExecutionItem {
+    RowBatch {
+        columns: Vec<NativeSqlColumn>,
+        rows: Vec<Vec<Value>>,
+    },
+    Completion {
+        affected_rows: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        native_status: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NativeSqlExecutionOutput {
+    #[serde(default)]
+    pub results: Vec<NativeSqlExecutionItem>,
+}
+
+pub fn validate_native_sql_output(output: &NativeSqlExecutionOutput) -> Result<(), String> {
+    for (result_index, item) in output.results.iter().enumerate() {
+        let NativeSqlExecutionItem::RowBatch { columns, rows } = item else {
+            continue;
+        };
+        for (column_index, column) in columns.iter().enumerate() {
+            if column.name.is_empty() || column.native_type.is_empty() {
+                return Err(format!(
+                    "invalid_native_sql_result_contract: results[{result_index}].columns[{column_index}] must declare name and native_type"
+                ));
+            }
+            if column.logical_type == NativeSqlLogicalType::Native
+                && column.encoding == NativeSqlValueEncoding::Json
+            {
+                return Err(format!(
+                    "invalid_native_sql_result_contract: results[{result_index}].columns[{column_index}] native values must use text or Base64"
+                ));
+            }
+            if column.logical_type == NativeSqlLogicalType::Binary
+                && column.encoding != NativeSqlValueEncoding::Base64
+            {
+                return Err(format!(
+                    "invalid_native_sql_result_contract: results[{result_index}].columns[{column_index}] binary values must use Base64"
+                ));
+            }
+        }
+        for (row_index, row) in rows.iter().enumerate() {
+            if row.len() != columns.len() {
+                return Err(format!(
+                    "invalid_native_sql_result_contract: results[{result_index}].rows[{row_index}] has {} values for {} columns",
+                    row.len(),
+                    columns.len()
+                ));
+            }
+            for (column_index, (column, value)) in columns.iter().zip(row).enumerate() {
+                if value.is_null() {
+                    continue;
+                }
+                match column.encoding {
+                    NativeSqlValueEncoding::Json => {}
+                    NativeSqlValueEncoding::Text => {
+                        if !value.is_string() {
+                            return Err(format!(
+                                "invalid_native_sql_result_contract: results[{result_index}].rows[{row_index}][{column_index}] must be a text string"
+                            ));
+                        }
+                    }
+                    NativeSqlValueEncoding::Base64 => {
+                        let Some(encoded) = value.as_str() else {
+                            return Err(format!(
+                                "invalid_native_sql_result_contract: results[{result_index}].rows[{row_index}][{column_index}] must be a Base64 string"
+                            ));
+                        };
+                        BASE64_STANDARD.decode(encoded).map_err(|_| {
+                            format!(
+                                "invalid_native_sql_result_contract: results[{result_index}].rows[{row_index}][{column_index}] is not valid Base64"
+                            )
+                        })?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

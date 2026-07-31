@@ -195,6 +195,13 @@ pub struct MapDataSourceResourceToModelResult {
     pub fields: Vec<domain::ModelFieldRecord>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeSqlDataSourceOption {
+    pub data_source_instance_id: String,
+    pub display_name: String,
+    pub capability: String,
+}
+
 pub struct DataSourceService<R, H> {
     repository: R,
     runtime: H,
@@ -411,6 +418,70 @@ where
             }),
         }));
         Ok(data_sources)
+    }
+
+    pub async fn list_native_sql_options(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Vec<NativeSqlDataSourceOption>> {
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_workspace_matches(&actor, workspace_id)?;
+        self.ensure_console_simple_operation(
+            &actor,
+            &domain::ConsolePolicyGroup::other("other.agent-flow")
+                .expect("compiled agent-flow policy group must be valid"),
+            access_control::AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID,
+        )
+        .await?;
+        let visibility = self.data_source_view_visibility(&actor).await?;
+        let assigned_installation_ids = self
+            .repository
+            .list_assignments(workspace_id)
+            .await?
+            .into_iter()
+            .map(|assignment| assignment.installation_id)
+            .collect::<HashSet<_>>();
+        let instances = self
+            .repository
+            .list_instances(workspace_id, actor.user_id, visibility)
+            .await?;
+
+        let mut options = vec![NativeSqlDataSourceOption {
+            data_source_instance_id: "main".to_string(),
+            display_name: "主数据源".to_string(),
+            capability: plugin_framework::DATA_SOURCE_NATIVE_SQL_CAPABILITY.to_string(),
+        }];
+        for instance in instances {
+            if instance.status != domain::DataSourceInstanceStatus::Ready
+                || !assigned_installation_ids.contains(&instance.installation_id)
+            {
+                continue;
+            }
+            let installation = self.ready_installation(instance.installation_id).await?;
+            if installation.desired_state == domain::PluginDesiredState::Disabled
+                || installation.availability_status != domain::PluginAvailabilityStatus::Available
+                || installation.contract_version != "1flowbase.data_source/v1"
+                || installation.provider_code != instance.source_code
+            {
+                continue;
+            }
+            let installed_path = installation.installed_path.clone();
+            let package = tokio::task::spawn_blocking(move || {
+                plugin_framework::DataSourcePackage::load_from_dir(installed_path)
+            })
+            .await??;
+            if !package.supports_native_sql() {
+                continue;
+            }
+            options.push(NativeSqlDataSourceOption {
+                data_source_instance_id: instance.id.to_string(),
+                display_name: instance.display_name,
+                capability: plugin_framework::DATA_SOURCE_NATIVE_SQL_CAPABILITY.to_string(),
+            });
+        }
+        options[1..].sort_by(|left, right| left.display_name.cmp(&right.display_name));
+        Ok(options)
     }
 
     pub async fn create_instance(

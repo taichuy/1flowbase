@@ -77,6 +77,10 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     helpHref: '/docs/agentflow/nodes/tool-result'
   },
   ...dataModelNodeMeta,
+  sql: {
+    summary: i18nText('agentFlow', 'auto.execute_native_sql'),
+    helpHref: '/docs/agentflow/nodes/sql'
+  },
   variable_assigner: {
     summary: i18nText(
       'agentFlow',

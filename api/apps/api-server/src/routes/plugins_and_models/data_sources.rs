@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use access_control::{
-    ConsoleRouteOwnership::ConsoleOperation, DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
+    ConsoleRouteOwnership::ConsoleOperation, AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID,
+    DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
 };
 use axum::{
     extract::{Path, State},
@@ -12,9 +13,10 @@ use control_plane::data_source::{
     CreateDataSourceInstanceCommand, DataSourceBackendView, DataSourceCatalogEntryView,
     DataSourceInstanceView, DataSourceResourcesView, DataSourceService, DataSourceView,
     DiscoverDataSourceResourcesCommand, MapDataSourceResourceToModelCommand,
-    PreviewDataSourceReadCommand, PreviewDataSourceReadResult, RotateDataSourceSecretCommand,
-    UpdateDataSourceDefaultsCommand, UpdateMainDataSourceDefaultsCommand,
-    ValidateDataSourceInstanceCommand, ValidateDataSourceInstanceResult,
+    NativeSqlDataSourceOption, PreviewDataSourceReadCommand, PreviewDataSourceReadResult,
+    RotateDataSourceSecretCommand, UpdateDataSourceDefaultsCommand,
+    UpdateMainDataSourceDefaultsCommand, ValidateDataSourceInstanceCommand,
+    ValidateDataSourceInstanceResult,
 };
 use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
@@ -28,7 +30,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
@@ -205,18 +207,64 @@ pub struct PreviewDataSourceReadResponse {
     pub output: DataSourcePreviewOutputResponse,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AgentFlowDataSourceOptionResponse {
+    pub data_source_instance_id: String,
+    pub display_name: String,
+    pub capability: String,
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    ConsoleRouteAssembly::new().route(
-        "/data-sources/:data_source_id/secret/rotate",
-        console_post(
-            rotate_secret,
-            ConsoleOperation(DATA_SOURCES_SECRET_ROTATE_OPERATION_ID.to_string()),
-        ),
-    )
+    ConsoleRouteAssembly::new()
+        .route(
+            "/data-sources/agent-flow-options",
+            console_get(
+                list_agent_flow_data_source_options,
+                ConsoleOperation(AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/data-sources/:data_source_id/secret/rotate",
+            console_post(
+                rotate_secret,
+                ConsoleOperation(DATA_SOURCES_SECRET_ROTATE_OPERATION_ID.to_string()),
+            ),
+        )
+}
+
+fn to_agent_flow_option_response(
+    option: NativeSqlDataSourceOption,
+) -> AgentFlowDataSourceOptionResponse {
+    AgentFlowDataSourceOptionResponse {
+        data_source_instance_id: option.data_source_instance_id,
+        display_name: option.display_name,
+        capability: option.capability,
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/data-sources/agent-flow-options",
+    responses((status = 200, body = [AgentFlowDataSourceOptionResponse]), (status = 401, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_agent_flow_data_source_options(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<AgentFlowDataSourceOptionResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let options = business_service(&state)
+        .list_native_sql_options(context.user.id, context.actor.current_workspace_id)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        options
+            .into_iter()
+            .map(to_agent_flow_option_response)
+            .collect(),
+    )))
 }
 
 fn service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {

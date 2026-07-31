@@ -15,6 +15,7 @@ import { llmNodeDefinition } from './nodes/llm';
 import { loopNodeDefinition } from './nodes/loop';
 import { parameterExtractorNodeDefinition } from './nodes/parameter-extractor';
 import { questionClassifierNodeDefinition } from './nodes/question-classifier';
+import { sqlNodeDefinition } from './nodes/sql';
 import { startNodeDefinition } from './nodes/start';
 import { templateTransformNodeDefinition } from './nodes/template-transform';
 import { toolNodeDefinition } from './nodes/tool';
@@ -46,6 +47,7 @@ export const nodeDefinitions: NodeDefinitionMap = {
   tool: toolNodeDefinition,
   tool_result: toolResultNodeDefinition,
   ...dataModelNodeDefinitions,
+  sql: sqlNodeDefinition,
   variable_assigner: variableAssignerNodeDefinition,
   parameter_extractor: parameterExtractorNodeDefinition,
   iteration: iterationNodeDefinition,
@@ -78,9 +80,11 @@ export function getNodeDefinition(nodeType: FlowNodeType) {
 }
 
 export function getSchemaConfigSections(nodeType: FlowNodeType) {
-  return getNodeDefinition(nodeType)?.sections.filter(
-    (section) => section.key !== 'basics' && section.key !== 'outputs'
-  ) ?? [];
+  return (
+    getNodeDefinition(nodeType)?.sections.filter(
+      (section) => section.key !== 'basics' && section.key !== 'outputs'
+    ) ?? []
+  );
 }
 
 export function getNodeDefinitionMeta(nodeType: FlowNodeType) {

@@ -242,6 +242,11 @@ fn collect_target_node_dependency_scope(
 
 fn compile_issue_field(issue: &orchestration_runtime::compiled_plan::CompileIssue) -> &'static str {
     match issue.code {
+        orchestration_runtime::compiled_plan::CompileIssueCode::MissingDataSourceInstance
+        | orchestration_runtime::compiled_plan::CompileIssueCode::InvalidDataSourceInstance => {
+            "data_source_instance_id"
+        }
+        orchestration_runtime::compiled_plan::CompileIssueCode::MissingNativeSql => "sql",
         orchestration_runtime::compiled_plan::CompileIssueCode::MissingProviderInstance => {
             missing_provider_field(issue.message.as_str())
         }
