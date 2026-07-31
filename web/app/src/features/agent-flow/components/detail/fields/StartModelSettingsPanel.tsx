@@ -313,7 +313,10 @@ export function StartModelSettingsPanel({
             autoFocus
             placeholder="model-id"
             value={model.id}
-            onChange={(event) => onChange({ id: event.target.value })}
+            onChange={(event) => {
+              const id = event.target.value;
+              onChange(model.name === model.id ? { id, name: id } : { id });
+            }}
           />
         </div>
         <div className="agent-flow-start-input-fields__form-row">

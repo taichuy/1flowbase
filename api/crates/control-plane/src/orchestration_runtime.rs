@@ -685,20 +685,7 @@ where
         )?;
         freeze_failover_queue_routes(&self.repository, &mut compiled_plan).await?;
         ensure_compiled_plan_runnable_for_node(&compiled_plan, &command.node_id)?;
-        let invoker = self.runtime_invoker(application.workspace_id);
         let started_at = OffsetDateTime::now_utc();
-        let http_file_persister = self.http_response_file_persister(actor);
-        let preview = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store(
-            &compiled_plan,
-            &command.node_id,
-            &command.input_payload,
-            &invoker,
-            http_file_persister.as_ref().map(|persister| {
-                persister as &dyn orchestration_runtime::execution_engine::HttpResponseFilePersister
-            }),
-            self.llm_routing_counter_store.clone(),
-        )
-        .await?;
         let compiled_record = self
             .repository
             .upsert_compiled_plan(&build_compiled_plan_input(
@@ -720,6 +707,37 @@ where
                 started_at,
             ))
             .await?;
+        let flow_execution_context = self.runtime_flow_execution_context(
+            actor.clone(),
+            application.id,
+            editor_state.draft.id,
+            flow_run.id,
+            None,
+        );
+        let invoker = self
+            .runtime_invoker(application.workspace_id)
+            .for_flow_run(flow_run.id)
+            .with_flow_execution_context(flow_execution_context);
+        let http_file_persister = self.http_response_file_persister(actor);
+        let preview_result = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store(
+            &compiled_plan,
+            &command.node_id,
+            &command.input_payload,
+            &invoker,
+            http_file_persister.as_ref().map(|persister| {
+                persister as &dyn orchestration_runtime::execution_engine::HttpResponseFilePersister
+            }),
+            self.llm_routing_counter_store.clone(),
+        )
+        .await;
+        let preview = match preview_result {
+            Ok(preview) => preview,
+            Err(error) => {
+                live_debug_run::fail_flow_run(self, command.application_id, flow_run.id, &error)
+                    .await?;
+                return Err(error);
+            }
+        };
         let node_run = self
             .repository
             .create_node_run(&build_node_run_input(
