@@ -1,4 +1,5 @@
 import type { FlowNodeType } from '@1flowbase/flow-schema';
+import type { NodeFlowRole } from './types';
 
 import { nodeDefinitionMeta } from './meta';
 import { getRegisteredNodeDefinition } from './registry';
@@ -28,7 +29,8 @@ export type {
   NodeDefinitionField,
   NodeDefinitionMeta,
   NodeDefinitionSection,
-  NodeEditorKind
+  NodeEditorKind,
+  NodeFlowRole
 } from './types';
 
 export const nodeDefinitions: NodeDefinitionMap = {
@@ -86,6 +88,10 @@ export function getNodeDefinitionMeta(nodeType: FlowNodeType) {
     getRegisteredNodeDefinition(nodeType)?.meta ??
     nodeDefinitionMeta[nodeType as keyof typeof nodeDefinitionMeta]
   );
+}
+
+export function getNodeFlowRole(nodeType: FlowNodeType): NodeFlowRole {
+  return getNodeDefinitionMeta(nodeType)?.flowRole ?? 'processing';
 }
 
 export function getNodeDefinitionSections(nodeType: FlowNodeType) {

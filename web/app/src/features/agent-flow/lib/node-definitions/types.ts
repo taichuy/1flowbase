@@ -6,5 +6,6 @@ export type {
   NodeDefinitionMeta,
   NodeDefinitionMetaMap,
   NodeDefinitionSection,
-  NodeEditorKind
+  NodeEditorKind,
+  NodeFlowRole
 } from '../../../flow-editor/authoring/node-definition-types';

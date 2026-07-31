@@ -29,6 +29,39 @@ const workflowTriggerContext = {
 };
 
 describe('WorkflowEditor assembly', () => {
+  test('AC-001/002 renders workflow entry and terminal nodes with directional connectors', () => {
+    renderReactFlowScene(
+      <WorkflowEditorAssembly
+        applicationId="app-1"
+        applicationName="Ticket Workflow"
+        workflowTriggerContext={workflowTriggerContext}
+        initialState={createWorkflowInitialState()}
+      />
+    );
+
+    const startNode = screen
+      .getByText('Workflow Start', { selector: '.agent-flow-node-card__title' })
+      .closest('.react-flow__node');
+    const endNode = screen
+      .getByText('Workflow End', { selector: '.agent-flow-node-card__title' })
+      .closest('.react-flow__node');
+
+    expect(startNode).not.toBeNull();
+    expect(endNode).not.toBeNull();
+    expect(
+      startNode?.querySelector('.agent-flow-node-handle--target')
+    ).not.toBeInTheDocument();
+    expect(
+      startNode?.querySelector('.agent-flow-node-handle--source')
+    ).toBeInTheDocument();
+    expect(
+      endNode?.querySelector('.agent-flow-node-handle--target')
+    ).toBeInTheDocument();
+    expect(
+      endNode?.querySelector('.agent-flow-node-handle--source')
+    ).not.toBeInTheDocument();
+  });
+
   test('keeps the workflow canvas as the layout root', () => {
     renderReactFlowScene(
       <WorkflowEditorAssembly

@@ -60,10 +60,13 @@ export interface NodeDefinition {
   sections: NodeDefinitionSection[];
 }
 
+export type NodeFlowRole = 'entry' | 'processing' | 'terminal';
+
 export interface NodeDefinitionMeta {
   summary: string;
   helpHref: string | null;
   canEnterContainer?: boolean;
+  flowRole?: NodeFlowRole;
 }
 
 export type NodeDefinitionMap = Partial<Record<FlowNodeType, NodeDefinition>>;

@@ -13,6 +13,7 @@ import {
   getLlmVisibleInternalToolsEnabled
 } from '../llm-node-config';
 import { i18nText } from '../../../../shared/i18n/text';
+import { getNodeFlowRole } from '../node-definitions';
 
 const CANVAS_NODE_WIDTH = 196;
 const CANVAS_NODE_HEIGHT = 96;
@@ -68,6 +69,7 @@ export function toCanvasNodes(
   return document.graph.nodes
     .filter((node) => node.containerId === activeContainerId)
     .map((node) => {
+      const flowRole = getNodeFlowRole(node.type);
       const branchSourceHandles =
         node.type === 'if_else'
           ? (getIfElseBranchesFromBindings(node.bindings) ?? []).map(
@@ -102,8 +104,8 @@ export function toCanvasNodes(
           canEnterContainer: node.type === 'iteration' || node.type === 'loop',
           pickerOpen: pickerNodeId === node.id,
           pickerSourceHandleId,
-          showTargetHandle: node.type !== 'start',
-          showSourceHandle: node.type !== 'answer',
+          showTargetHandle: flowRole !== 'entry',
+          showSourceHandle: flowRole !== 'terminal',
           branchSourceHandles,
           toolSourceHandles,
           isContainer: node.type === 'iteration' || node.type === 'loop',

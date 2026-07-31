@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import {
+  createDefaultAgentFlowDocument,
+  createDefaultWorkflowDocument
+} from '@1flowbase/flow-schema';
+
+import '../../../workflow/register';
 
 import { classifyDocumentChange } from '../../lib/document/change-kind';
 import { createEdgeDocument } from '../../lib/document/edge-factory';
@@ -51,6 +56,53 @@ function createNestedContainerDocument() {
 }
 
 describe('agent flow document transforms', () => {
+  test('AC-001/002 rejects connections against workflow entry and terminal topology', () => {
+    const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
+    const processingNode = createNodeDocument('code', 'node-code');
+    document.graph.nodes.push(processingNode);
+
+    expect(
+      validateConnection(document, {
+        source: processingNode.id,
+        target: 'node-workflow-start'
+      })
+    ).toBe(false);
+    expect(
+      validateConnection(document, {
+        source: 'node-workflow-end',
+        target: processingNode.id
+      })
+    ).toBe(false);
+
+    const reconnected = reconnectEdge(document, {
+      edgeId: 'edge-workflow-start-end',
+      connection: {
+        source: 'node-workflow-end',
+        target: 'node-workflow-start'
+      }
+    });
+    expect(reconnected).toBe(document);
+
+    const inserted = insertNodeOnEdge(document, {
+      edgeId: 'edge-workflow-start-end',
+      node: createNodeDocument('workflow_end', 'node-workflow-end-2')
+    });
+    expect(inserted).toBe(document);
+
+    const appendedAfterTerminal = connectNodeFromSource(document, {
+      sourceNodeId: 'node-workflow-end',
+      node: createNodeDocument('code', 'node-code-after-end')
+    });
+    expect(appendedAfterTerminal).toBe(document);
+
+    const insertedEntryAfterStart = insertNodeAfter(
+      document,
+      'node-workflow-start',
+      createNodeDocument('workflow_start', 'node-workflow-start-2')
+    );
+    expect(insertedEntryAfterStart).toBe(document);
+  });
+
   test('inserts a node in the middle of an existing edge', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const inserted = createNodeDocument(
