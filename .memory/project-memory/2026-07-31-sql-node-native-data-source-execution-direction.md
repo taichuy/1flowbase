@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: SQL 节点原生数据源执行方向
-summary: 单一 SQL 节点已在 beta 落地：SQL 作为不透明文本原样执行，复用 SQLx/PgPool 与 Monaco，结果使用有序 RowBatch/Completion，插件通过 native_sql/v1 接入。
+summary: 单一 SQL 节点已落地：SQL 作为不透明文本原样执行，复用 SQLx/PgPool 与 Monaco；模板变量补全必须按部分输入过滤、排序并整段替换为 canonical token。
 keywords:
   - sql-node
   - data-source
@@ -13,8 +13,8 @@ match_when:
   - 扩展 data_source RuntimeExtension 查询协议
   - 判断 SQL 是否应由平台解析、转换或限制
 created_at: 2026-07-31 10
-updated_at: 2026-07-31 12
-last_verified_at: 2026-07-31 12
+updated_at: 2026-07-31 22
+last_verified_at: 2026-07-31 22
 decision_policy: verify_before_decision
 scope:
   - api/crates/plugin-framework
@@ -71,6 +71,12 @@ scope:
 `2026-07-31 12` 已通过独立 worktree 分支 `codex/issue-1512-sql-node` 完成，并以 commit `b5170a197` fast-forward 合并回 `beta`。协议、PostgreSQL adapter、RuntimeExtension、编译/preview/full runtime、options API、OpenAPI/operation inventory、SQL 节点 schema/Inspector/Monaco 均已落地；主工作树原有未提交修改未被覆盖。
 
 集中验证已覆盖 native SQL contract、SQLx 多语句顺序与类型 fallback、源端错误、plugin-runner opaque SQL、compiler/preview/full runtime、options route、route assembly、OpenAPI、前端 contract/validation/API client；合并后再次通过 PostgreSQL native SQL 2 tests 与前端 4 files / 86 tests。i18n hygiene 为 0 error，既有 211 warnings。运行态页面启动受开发数据库既有 migration checksum 不一致阻断，页面交互由用户在合并后人工验证。
+
+## SQL 模板变量补全追加决策
+
+`2026-07-31 22` 用户确认 SQL Monaco 的变量补全必须与模板文本编辑器保持同一查询语义：输入 `{sy` 时解析 `sy` 为部分查询，只展示真实匹配项并让 canonical selector path 前缀优先；选择后必须把触发符、查询文本和 Monaco 自动补出的右括号整段替换为 `{{source.path}}`，不得残留原查询或多余括号。单个 `{`、`{x}` 和 `Ctrl/Cmd + Space` 继续提供全量变量入口，候选标签保持完整的 `节点名/变量名` 或 `sys.variable`。
+
+本轮实现将该规则收敛在 SQL `CodeSourceField` completion provider 内，不改变变量可见性、后端 contract、SQL 保存文本或运行时渲染。定向测试已覆盖无关候选过滤、`sys.*` 排序、完整标签和自动右括号替换范围；真实 Monaco 浏览器 smoke 受当前 `dev` Vite 8 依赖预优化长期 pending 阻断，未据此下浏览器通过结论。
 
 ## 结果转换声明与 fallback
 
