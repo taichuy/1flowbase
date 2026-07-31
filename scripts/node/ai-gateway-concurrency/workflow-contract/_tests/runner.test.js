@@ -109,6 +109,12 @@ test('Root #1477 AC-001/004/005/006/008/009: workflow invokes the complete deter
   assert.deepEqual(inventory.canonical_stream_regression.partitions, ['whole', 'bytewise', 'uneven']);
   assert.equal(inventory.canonical_stream_regression.successTerminalCount, 1);
   assert.equal(inventory.canonical_stream_regression.durableParity.preservesRepeatedContent, true);
+  assert.deepEqual(inventory.anthropic_callback_retry, {
+    vector_id: 'tools-callback-retry-after-429',
+    provider_outcomes: ['completed', 'http-429', 'completed'],
+    durable_statuses: ['failed', 'succeeded'],
+    client_tool_results: 1,
+  });
   assert.deepEqual(inventory.provenance.providers, [
     'openai', 'anthropic', 'openai_compatible',
   ]);
@@ -155,6 +161,10 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       calls.push('protocol-context-profiles');
       return { verdict: 'PASS', rows: [] };
     },
+    async verifyAnthropicCallbackRetry() {
+      calls.push('anthropic-callback-retry');
+      return { verdict: 'PASS', vector_id: 'tools-callback-retry-after-429' };
+    },
     async runWireAudit(options) {
       calls.push(['wire-audit', options.manifest.gatewayBaseUrl]);
       return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } };
@@ -191,7 +201,9 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   assert.equal(result.characterize.performance_requests, 196);
   assert.equal(result.characterize.performance_and_observability_advisories, 2);
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
-    'mock:create', 'mock:start', 'fixture:create', 'runtime-provenance', 'request-fidelity', 'protocol-context-profiles', 'wire-audit', 'responses-websocket', 'characterize', 'fixture:close', 'mock:stop',
+    'mock:create', 'mock:start', 'fixture:create', 'runtime-provenance', 'request-fidelity',
+    'protocol-context-profiles', 'anthropic-callback-retry', 'wire-audit',
+    'responses-websocket', 'characterize', 'fixture:close', 'mock:stop',
   ]);
   const characterize = calls.find((call) => Array.isArray(call) && call[0] === 'characterize')[1];
   assert.deepEqual(characterize.authorizationTokenByTransport, {
@@ -239,6 +251,7 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
     async verifyRuntimeProvenance() { return { verdict: 'PASS', providers: {} }; },
     async verifyGatewayRequestFidelity() { return { verdict: 'PASS', rows: [] }; },
     async verifyProtocolContextProfileMatrix() { return { verdict: 'PASS', rows: [] }; },
+    async verifyAnthropicCallbackRetry() { return { verdict: 'PASS' }; },
     async runWireAudit() { throw new Error('wire audit failed with anthropic-application-key-2'); },
     async runGatewayWebSocketAcceptance() { return { wire_audit: { verdict: 'PASS' } }; },
     async runGatewayCharacterize() { throw new Error('characterize also failed'); },
@@ -270,6 +283,7 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
     async verifyRuntimeProvenance() { return { verdict: 'PASS', providers: {} }; },
     async verifyGatewayRequestFidelity() { return { verdict: 'PASS', rows: [] }; },
     async verifyProtocolContextProfileMatrix() { return { verdict: 'PASS', rows: [] }; },
+    async verifyAnthropicCallbackRetry() { return { verdict: 'PASS' }; },
     async runWireAudit() { return { counters: { gateway_executor_invocations: 0, network_observer_outbound: 0 } }; },
     async runGatewayWebSocketAcceptance() { return { wire_audit: { verdict: 'PASS' } }; },
     async runGatewayCharacterize() {

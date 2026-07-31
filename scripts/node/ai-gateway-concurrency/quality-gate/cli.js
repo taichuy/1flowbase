@@ -229,6 +229,11 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",
     ),
     invocation(
+      "orchestration-runtime-anthropic-callback-retry-tests",
+      "orchestration-runtime",
+      "anthropic_callback_retry",
+    ),
+    invocation(
       "control-plane-answer-node-truth-tests",
       "control-plane",
       "ac_004_answer_node_truth",

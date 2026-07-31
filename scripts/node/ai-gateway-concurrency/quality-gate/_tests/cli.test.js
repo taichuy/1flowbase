@@ -116,6 +116,10 @@ test("quality gate limits conversation Cargo probes to one owned database and de
         "control-plane-live-provider-error-tests",
         "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",
       ],
+      [
+        "orchestration-runtime-anthropic-callback-retry-tests",
+        "anthropic_callback_retry",
+      ],
       ["control-plane-answer-node-truth-tests", "ac_004_answer_node_truth"],
       ["api-server-answer-node-truth-tests", "ac_004_answer_node_truth"],
       [

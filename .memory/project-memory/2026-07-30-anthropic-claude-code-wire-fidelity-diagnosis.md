@@ -121,3 +121,11 @@ Root agent 使用本机 Claude Code 2.1.220、tmux、同一“最近三次提交
 - Claude-only 隔离 mock vector `tools-callback-retry-after-429` 真实使用本地 Claude Code 2.1.220：Provider outcome 为 `completed -> http-429 -> completed`，durable run 为一个 failed 与一个 succeeded，客户端 Read 只执行一次；证明失败 resume 后的客户端 retry 会重新到达 Provider，而不会再次消费 tool result。
 - 固定当前 Gateway 与香港代理的真实会话 `1f4b39e7-f81a-4ca6-8fb8-b9464a60c260`：第一问“查看最近三次代码提交”成功，并在同一 FlowRun 完成 Bash callback；第二问的父 FlowRun 两次 Provider 调用均成功，随后 Claude Code 自行启动 `Agent/Explore` 子会话。该子会话在供应商并发限制下连续 8 个独立 FlowRun 返回首 token 前 429；每次 retry 都产生新 FlowRun 并重新到达 Provider，证明旧的 retry absorption 已消失。按上游停止条件中止，未取得第二问最终文本。
 - 当前结论：本轮确定的 Gateway callback retry 缺陷已修复；真实第二问未完成的直接原因是 Claude Code 自行并发的 Explore 子会话遭上游容量/并发限制，不是映射协议、代理缺失或 callback 幂等吸收。中止后的父 FlowRun 保留为 `waiting_callback`，公开 cancel endpoint 返回 409，未直接改库清理。
+
+## 2026-07-31 11 Callback retry 纳入 blocking AI Gateway quality gate
+
+- `workflow-contract` 新增 blocking check `anthropic-callback-retry`，不依赖本地 Claude Code：通过真实 Gateway 公共 Anthropic endpoint 向受控 mock 执行 `tool_use -> tool_result 429 -> 同 payload retry -> success`。
+- gate 同时断言 Provider outcome 为 `completed -> http-429 -> completed`、durable FlowRun 为 `failed + succeeded`、tool-result 只有一次；缺少 recovery、重复 tool-result、错误 SSE 类型或 retry 未再次到达 Provider 都会阻断。
+- `quality-gate/cli.js` 增加 orchestration runtime 的 `anthropic_callback_retry` 定向 Cargo invocation，覆盖 durable `failed_after_first_token` 事实；workflow artifact 新增 `anthropic-callback-retry.json`。
+- `.github/workflows/ai-gateway-concurrency.yml` 恢复 `push: branches: [dev]`，与既有 AC-029 保持一致；PR、dev protected push、手动与全局定时 quality gate 都能覆盖该检查。
+- TDD 证据：新增断言先产生 3 条预期红灯；实现后定向 17/17、AI Gateway 相关 Node 回归 100/100、隔离真实 blocking check PASS。隔离 check 使用临时 PostgreSQL 并已清理，不访问真实供应商。

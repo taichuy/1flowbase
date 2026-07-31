@@ -3,6 +3,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { TRANSPORT } = require('../contracts');
+const {
+  ANTHROPIC_CALLBACK_RETRY_ORACLE,
+  verifyAnthropicCallbackRetry,
+} = require('./anthropic-callback-retry');
 const { runGatewayCharacterize } = require('../characterize/engine');
 const { createGatewayFixture } = require('../gateway-fixture');
 const { createMockUpstream } = require('../mock-upstream');
@@ -61,6 +65,7 @@ function protocolOracleInventory() {
     request_fidelity: requestFidelity,
     error_fidelity: errorFidelity,
     canonical_stream_regression: CANONICAL_STREAM_REGRESSION_ORACLE,
+    anthropic_callback_retry: ANTHROPIC_CALLBACK_RETRY_ORACLE,
     provenance: PROVENANCE_FIDELITY_ORACLE,
     protocol_context_profiles: {
       rows: PROTOCOL_CONTEXT_PROFILE_MATRIX.length,
@@ -244,6 +249,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   let runtimeProvenance = null;
   let requestFidelity = null;
   let protocolContextProfiles = null;
+  let anthropicCallbackRetry = null;
   let executionError = null;
   const blockingFailures = [];
   const cleanupErrors = [];
@@ -301,6 +307,18 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         writeJson(
           path.join(paths.root, 'protocol-context-profile-matrix.json'),
           protocolContextProfiles,
+        );
+      }],
+      ['anthropic-callback-retry', async () => {
+        anthropicCallbackRetry = await (
+          dependencies.verifyAnthropicCallbackRetry || verifyAnthropicCallbackRetry
+        )({
+          ready,
+          mockSnapshot: mock.snapshot,
+        });
+        writeJson(
+          path.join(paths.root, 'anthropic-callback-retry.json'),
+          anthropicCallbackRetry,
         );
       }],
       ['wire-audit', async () => {
@@ -370,6 +388,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       runtime_provenance: runtimeProvenance,
       request_fidelity: requestFidelity,
       protocol_context_profiles: protocolContextProfiles,
+      anthropic_callback_retry: anthropicCallbackRetry,
       failures: blockingFailures.map((failure) => ({
         name: failure.name,
         ...publicError(failure.error, secrets),
