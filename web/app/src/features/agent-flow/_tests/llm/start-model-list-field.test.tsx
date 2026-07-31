@@ -86,6 +86,36 @@ describe('StartModelListField', () => {
     ]);
   });
 
+  test('keeps the display name linked until it is customized', () => {
+    render(<StartModelListField value={[]} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByLabelText('新增模型'));
+
+    const modelIdInput = screen.getByLabelText('模型 ID 输入');
+    const modelNameInput = screen.getByLabelText('模型显示名输入');
+
+    fireEvent.change(modelIdInput, {
+      target: { value: 'gpt-5.5' }
+    });
+    expect(modelNameInput).toHaveValue('gpt-5.5');
+
+    fireEvent.change(modelNameInput, {
+      target: { value: 'GPT 5.5' }
+    });
+    fireEvent.change(modelIdInput, {
+      target: { value: 'gpt-5.5-pro' }
+    });
+    expect(modelNameInput).toHaveValue('GPT 5.5');
+
+    fireEvent.change(modelNameInput, {
+      target: { value: 'gpt-5.5-pro' }
+    });
+    fireEvent.change(modelIdInput, {
+      target: { value: 'gpt-5.5-latest' }
+    });
+    expect(modelNameInput).toHaveValue('gpt-5.5-latest');
+  });
+
   test('saves optional model settings when configured in the form', () => {
     const onChange = vi.fn();
 
