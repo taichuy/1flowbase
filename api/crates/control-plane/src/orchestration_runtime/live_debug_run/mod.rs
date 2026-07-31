@@ -19,7 +19,8 @@ use super::{
     LiveProviderStreamEventSender, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
     StartFlowDebugRunCommand,
 };
-use run_detail::{fail_flow_run, load_run_detail};
+pub(in crate::orchestration_runtime) use run_detail::fail_flow_run;
+use run_detail::load_run_detail;
 use runtime_events::append_runtime_event;
 pub(super) use runtime_events::project_committed_terminal;
 

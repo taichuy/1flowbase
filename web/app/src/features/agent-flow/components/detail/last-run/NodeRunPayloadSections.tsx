@@ -105,6 +105,7 @@ export function NodeRunPayloadSections({
   inputPayload,
   debugPayload,
   outputPayload,
+  errorPayload,
   includeDebugPayload = true,
   hideEmptyPayloads = false,
   onLoadArtifact,
@@ -113,6 +114,7 @@ export function NodeRunPayloadSections({
   inputPayload: unknown;
   debugPayload: unknown;
   outputPayload: unknown;
+  errorPayload?: unknown;
   includeDebugPayload?: boolean;
   hideEmptyPayloads?: boolean;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
@@ -126,6 +128,7 @@ export function NodeRunPayloadSections({
     (!hideEmptyPayloads || runtimePayloadHasValue(processPayload));
   const showOutputPayload =
     !hideEmptyPayloads || runtimePayloadHasValue(outputPayload);
+  const showErrorPayload = runtimePayloadHasValue(errorPayload);
 
   return (
     <>
@@ -149,6 +152,14 @@ export function NodeRunPayloadSections({
         <RuntimeDebugPayloadBlock
           payload={outputPayload}
           title={i18nText('agentFlow', 'auto.outputs')}
+          onLoadArtifact={onLoadArtifact}
+          onLoadArtifacts={onLoadArtifacts}
+        />
+      ) : null}
+      {showErrorPayload ? (
+        <RuntimeDebugPayloadBlock
+          payload={errorPayload}
+          title={i18nText('agentFlow', 'auto.error')}
           onLoadArtifact={onLoadArtifact}
           onLoadArtifacts={onLoadArtifacts}
         />
