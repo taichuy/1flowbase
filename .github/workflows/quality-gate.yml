@@ -719,7 +719,9 @@ jobs:
         if: always()
         with:
           name: coverage-shadow-api-server-equivalence
-          path: tmp/test-governance/coverage-shadow/api-server
+          path: |
+            tmp/test-governance/coverage-shadow/api-server/api-server-merged.json
+            tmp/test-governance/coverage-shadow/api-server/equivalence.json
 
   container-images-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.scope == 'ci' || inputs.scope == 'container-images')) }}

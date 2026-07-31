@@ -260,6 +260,9 @@ test("API coverage sharding stays non-blocking shadow until exact equivalence is
   assert.match(workflow, /coverage-backend-gate:\n[\s\S]*?needs: resolve-quality-gate-target/u);
   assert.match(workflow, /ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u);
   assert.match(workflow, /tmp\/test-governance\/monolithic\/target-sha\.txt/u);
+  assert.match(workflow, /coverage-shadow\/api-server\/api-server-merged\.json/u);
+  assert.match(workflow, /coverage-shadow\/api-server\/equivalence\.json/u);
+  assert.doesNotMatch(workflow, /name: coverage-shadow-api-server-equivalence\n\s+path: tmp\/test-governance\/coverage-shadow\/api-server\n/u);
   assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server-shadow/u);
 });
 
