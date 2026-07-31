@@ -45,6 +45,14 @@ describe('style boundary registry', () => {
     );
   });
 
+  test('anchors the sign-in boundary to the product layout root', () => {
+    expect(getRuntimeScene('page.sign-in').boundaryNodes).toContainEqual({
+      id: 'sign-in-container',
+      selector: '.auth-sign-in-page',
+      propertyAssertions: [{ property: 'display', expected: 'flex' }]
+    });
+  });
+
   test('maps changed files to explicitly declared scenes', () => {
     expect(
       getSceneIdsForFiles(['web/app/src/features/home/pages/HomePage.tsx'])
