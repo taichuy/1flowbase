@@ -45,7 +45,16 @@ pub(super) fn compile_node(
         .get("bindings")
         .and_then(Value::as_object)
         .ok_or_else(|| anyhow!("node {node_id} missing bindings"))?;
-    let active_bindings = active_binding_values(&node_type, raw_bindings);
+    let mut active_bindings = active_binding_values(&node_type, raw_bindings);
+    // @field-contract-compat source=config.sql alias=bindings.sql remove_by=2026-09-30
+    if node_type == "sql" && !active_bindings.contains_key("sql") {
+        if let Some(sql) = config.get("sql").and_then(Value::as_str) {
+            active_bindings.insert(
+                "sql".to_string(),
+                serde_json::json!({ "kind": "templated_text", "value": sql }),
+            );
+        }
+    }
     let bindings = compile_bindings(&active_bindings)
         .with_context(|| format!("failed to compile bindings for node {node_id}"))?;
     let mut outputs = compile_outputs(

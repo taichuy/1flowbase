@@ -1087,6 +1087,38 @@ fn ac_006_compile_accepts_sql_node_and_preserves_templated_sql_binding() {
 }
 
 #[test]
+fn compile_normalizes_legacy_sql_config_into_templated_binding() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"][1] = json!({
+        "id": "node-sql",
+        "type": "sql",
+        "alias": "SQL",
+        "description": "",
+        "containerId": null,
+        "position": { "x": 240, "y": 0 },
+        "configVersion": 1,
+        "config": {
+            "data_source_instance_id": "main",
+            "sql": "select {{node-start.query}}"
+        },
+        "bindings": {},
+        "outputs": [
+            { "key": "results", "title": "Results", "valueType": "array" }
+        ]
+    });
+    document["graph"]["edges"][0]["target"] = json!("node-sql");
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
+
+    assert!(plan.compile_issues.is_empty());
+    assert_eq!(
+        plan.nodes["node-sql"].bindings["sql"].raw_value,
+        "select {{node-start.query}}"
+    );
+}
+
+#[test]
 fn ac_003_compile_rejects_invalid_sql_data_source_binding() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);

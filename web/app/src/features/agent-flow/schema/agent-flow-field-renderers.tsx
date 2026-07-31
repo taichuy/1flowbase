@@ -759,9 +759,13 @@ function renderCodeSourceField({ adapter, block }: SchemaFieldRendererProps) {
 
 function renderSqlSourceField({ adapter, block }: SchemaFieldRendererProps) {
   const value = adapter.getValue(block.path);
+  const legacySql = adapter.getValue('config.sql');
+  // @field-contract-compat source=config.sql alias=bindings.sql remove_by=2026-09-30
   const sql = hasBindingKind(value, 'templated_text')
     ? getBindingValue<string>(value, 'templated_text', '')
-    : '';
+    : typeof legacySql === 'string'
+      ? legacySql
+      : '';
 
   return (
     <CodeSourceField
