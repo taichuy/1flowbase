@@ -10,8 +10,6 @@ on:
         default: ''
   workflow_dispatch:
   pull_request:
-  push:
-    branches: [dev]
 
 permissions:
   contents: read
@@ -64,7 +62,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: taichuy/1flowbase-official-plugins
-          ref: 30e28bd0adcc53d48c044b62d8de6e11246de14e
+          ref: 8beaeac52c6c255a209ea5aee4748dff02f0661b
           path: tmp/ai-gateway-concurrency/official-source
           fetch-depth: 1
 

@@ -1,5 +1,8 @@
 use super::*;
+use crate::execution_engine::llm_metrics::llm_request_runtimes;
 use crate::node_error_policy::ERROR_BRANCH_SOURCE_HANDLE;
+use plugin_framework::provider_contract::ProviderInvocationCapability;
+use std::collections::BTreeSet;
 
 #[tokio::test]
 async fn failed_llm_does_not_expose_error_text_to_downstream_answer_contract() {
@@ -643,6 +646,19 @@ async fn root_1534_ac_004_route_selection_skips_semantically_incompatible_provid
 
     assert_eq!(routes.len(), 1);
     assert_eq!(routes[0].provider_instance_id, "provider-compatible");
+
+    let error = llm_request_runtimes(
+        &llm_node,
+        runtime,
+        &runtime_context,
+        &BTreeSet::from([ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1]),
+    )
+    .await
+    .expect_err("all-incompatible routes must fail before Provider invocation");
+    assert_eq!(
+        provider_runtime_error_from_anyhow(&error).kind,
+        ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
+    );
 }
 
 #[tokio::test]

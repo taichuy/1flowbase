@@ -331,7 +331,11 @@
           "model": "deepseek-chat",
           "messages": [
             { "role": "user", "content": "first turn" },
-            { "role": "assistant", "content": "visible first answer" },
+            {
+              "role": "assistant",
+              "content": "visible first answer",
+              "reasoning_content": "private reasoning must not cross"
+            },
             { "role": "user", "content": "$PROMPT_CANARY" }
           ],
           "stream": true,

@@ -497,7 +497,11 @@ function requestJson(url, method, payload) {
           try {
             parsed = body ? JSON.parse(body) : null;
           } catch {
-            reject(new ConformanceError('plugin runner returned invalid JSON'));
+            reject(
+              new ConformanceError(
+                `plugin runner returned invalid JSON for ${method} ${new URL(url).pathname} with status ${response.statusCode || 0}`
+              )
+            );
             return;
           }
           resolve({ status: response.statusCode || 0, body: parsed });

@@ -169,8 +169,13 @@ test("quality gate limits conversation Cargo probes to one owned database and de
     assert.equal(options.env.BOOTSTRAP_ROOT_ACCOUNT, "root");
     assert.equal(options.env.BOOTSTRAP_ROOT_PASSWORD, "change-me");
   }
-  assert.equal(invocations[1].args.at(-1), "application_public_api");
-  for (const { args } of invocations.filter((_, index) => index !== 1)) {
+  const applicationPublicApi = invocations.find(
+    ({ name }) => name === "control-plane-conversation-tests",
+  );
+  assert.equal(applicationPublicApi.args.at(-1), "application_public_api");
+  for (const { args } of invocations.filter(
+    ({ name }) => name !== "control-plane-conversation-tests",
+  )) {
     assert.notEqual(args.at(-1), "application_public_api");
   }
 });
