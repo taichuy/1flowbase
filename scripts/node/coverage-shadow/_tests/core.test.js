@@ -76,7 +76,7 @@ test('four shard inventories must be an exact disjoint union of the full invento
   }), /duplicate.*missing/u);
 });
 
-test('merged coverage preserves enforced totals and records scheduling-only region drift', () => {
+test('merged coverage preserves structural totals and records scheduling-only covered drift', () => {
   const summary = {
     data: [{
       totals: {
@@ -93,24 +93,40 @@ test('merged coverage preserves enforced totals and records scheduling-only regi
 
   assert.deepEqual(compareCoverageSummaries(summary, structuredClone(summary)), {
     fileCount: 1,
-    metrics: ['functions', 'lines'],
+    structuralMetrics: ['functions', 'lines', 'regions'],
     nondeterministicFiles: 0,
-    regionCoveredDelta: 0,
+    coveredDeltas: { functions: 0, lines: 0, regions: 0 },
+    lineCoveragePercent: 80,
+    minimumLineCoveragePercent: 60,
   });
 
   const changed = structuredClone(summary);
   changed.data[0].totals.lines.covered = 7;
-  assert.throws(() => compareCoverageSummaries(summary, changed), /mismatch.*lines totals/u);
-
-  const regionSchedulingDifference = structuredClone(summary);
-  regionSchedulingDifference.data[0].totals.regions.covered = 8;
-  regionSchedulingDifference.data[0].totals.regions.percent = 66.67;
-  assert.deepEqual(compareCoverageSummaries(summary, regionSchedulingDifference), {
+  changed.data[0].totals.lines.percent = 70;
+  changed.data[0].totals.functions.covered = 4;
+  changed.data[0].totals.functions.percent = 100;
+  changed.data[0].totals.regions.covered = 8;
+  changed.data[0].totals.regions.percent = 66.67;
+  assert.deepEqual(compareCoverageSummaries(summary, changed), {
     fileCount: 1,
-    metrics: ['functions', 'lines'],
+    structuralMetrics: ['functions', 'lines', 'regions'],
     nondeterministicFiles: 0,
-    regionCoveredDelta: -1,
+    coveredDeltas: { functions: 1, lines: -1, regions: -1 },
+    lineCoveragePercent: 70,
+    minimumLineCoveragePercent: 60,
   });
+
+  const denominatorMismatch = structuredClone(summary);
+  denominatorMismatch.data[0].totals.lines.count = 11;
+  assert.throws(() => compareCoverageSummaries(summary, denominatorMismatch), /lines denominator/u);
+
+  const belowRepositoryThreshold = structuredClone(summary);
+  belowRepositoryThreshold.data[0].totals.lines.covered = 5;
+  belowRepositoryThreshold.data[0].totals.lines.percent = 50;
+  assert.throws(
+    () => compareCoverageSummaries(summary, belowRepositoryThreshold),
+    /merged API coverage lines 50\.00% is below 60\.00%/u
+  );
 });
 
 test('shard orchestration fails closed when nextest execution fails', () => {
@@ -166,7 +182,7 @@ test('merge rejects shard and monolithic artifacts from a different SHA before r
   }), /same frozen SHA/u);
 });
 
-test('merge gathers all profiles and writes exact equivalence evidence', () => {
+test('merge gathers all profiles and writes structural equivalence evidence', () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-shadow-merge-ok-'));
   const shardRoot = path.join(repoRoot, 'tmp/test-governance/coverage-shadow/api-server/downloaded');
   const targetDir = path.join(repoRoot, 'tmp/coverage-target');

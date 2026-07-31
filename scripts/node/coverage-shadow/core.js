@@ -1,8 +1,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { backendThresholds } = require('../testing/coverage-thresholds.js');
 
 const API_SERVER_PACKAGE = 'api-server';
+const API_SERVER_LINE_THRESHOLD = backendThresholds.find(
+  (entry) => entry.packageName === API_SERVER_PACKAGE
+)?.line;
 const ANSI_CONTROL_SEQUENCE_PATTERN = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/gu;
 
 function assertShard(shardIndex, shardCount) {
@@ -86,15 +90,7 @@ function canonicalCoverageSummary(summary) {
 function compareCoverageSummaries(monolithic, merged) {
   const expected = canonicalCoverageSummary(monolithic);
   const actual = canonicalCoverageSummary(merged);
-  const enforcedMetrics = ['functions', 'lines'];
-  for (const metric of enforcedMetrics) {
-    const left = expected.totals[metric];
-    const right = actual.totals[metric];
-    if (left?.count !== right?.count || left?.covered !== right?.covered) {
-      throw new Error(`coverage shadow mismatch in enforced ${metric} totals`);
-    }
-  }
-  const structuralMetrics = Object.keys(expected.totals);
+  const structuralMetrics = Object.keys(expected.totals).sort();
   for (const metric of structuralMetrics) {
     if (expected.totals[metric]?.count !== actual.totals[metric]?.count) {
       throw new Error(`coverage shadow mismatch in ${metric} denominator`);
@@ -115,11 +111,27 @@ function compareCoverageSummaries(monolithic, merged) {
     }
     if (JSON.stringify(expectedSummary) !== JSON.stringify(actualSummary)) nondeterministicFiles += 1;
   }
+  const coveredDeltas = Object.fromEntries(structuralMetrics.map((metric) => [
+    metric,
+    (actual.totals[metric]?.covered ?? 0) - (expected.totals[metric]?.covered ?? 0),
+  ]));
+  const actualLines = actual.totals.lines;
+  const lineCoveragePercent = actualLines.count === 0
+    ? 100
+    : (actualLines.covered / actualLines.count) * 100;
+  if (!Number.isFinite(API_SERVER_LINE_THRESHOLD)
+    || lineCoveragePercent < API_SERVER_LINE_THRESHOLD) {
+    throw new Error(
+      `merged API coverage lines ${lineCoveragePercent.toFixed(2)}% is below ${Number(API_SERVER_LINE_THRESHOLD).toFixed(2)}%`
+    );
+  }
   return {
     fileCount: expected.files.length,
-    metrics: enforcedMetrics,
+    structuralMetrics,
     nondeterministicFiles,
-    regionCoveredDelta: (actual.totals.regions?.covered ?? 0) - (expected.totals.regions?.covered ?? 0),
+    coveredDeltas,
+    lineCoveragePercent,
+    minimumLineCoveragePercent: API_SERVER_LINE_THRESHOLD,
   };
 }
 

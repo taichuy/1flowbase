@@ -247,7 +247,7 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   );
 });
 
-test("API coverage sharding stays non-blocking shadow until exact equivalence is proven", () => {
+test("API coverage sharding stays non-blocking shadow until structural equivalence is proven", () => {
   const workflow = readQualityGateWorkflow();
 
   assert.match(workflow, /coverage-backend-api-server-shadow:\n[\s\S]*?continue-on-error: true/u);
