@@ -229,6 +229,7 @@ export function DataTable<T extends object>({
         title: column.title,
         dataIndex: column.dataIndex as string | undefined,
         width,
+        align: column.align,
         ellipsis: column.ellipsis,
         render: (value: unknown, record: T, index: number) => {
           if (column.render) {

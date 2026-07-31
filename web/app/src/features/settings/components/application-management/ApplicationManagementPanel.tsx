@@ -518,6 +518,7 @@ export function ApplicationManagementPanel() {
           'auto.application_management_actions'
         ),
         width: 140,
+        align: 'right',
         render: (_, application) => {
           const editAllowed = canEdit(application);
           const deleteAllowed = canDelete(application);
