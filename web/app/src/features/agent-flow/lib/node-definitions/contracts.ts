@@ -630,7 +630,10 @@ function createSqlContract(): NodeRuntimeUiContract {
     title: 'SQL',
     description: i18nText('agentFlow', 'auto.execute_native_sql'),
     category: 'data',
-    config: { data_source_instance_id: 'main', sql: '' },
+    config: { data_source_instance_id: 'main' },
+    bindings: {
+      sql: { kind: 'templated_text', value: '' }
+    },
     outputs,
     sideEffect: 'external_write',
     panelSections: [
@@ -645,7 +648,7 @@ function createSqlContract(): NodeRuntimeUiContract {
       ]),
       panelSection('advanced', 'SQL', [
         panelField({
-          key: 'config.sql',
+          key: 'bindings.sql',
           title: i18nText('agentFlow', 'auto.sql_statement'),
           renderer: 'sql_source',
           valueType: 'string',

@@ -72,7 +72,7 @@ pub(super) fn compile_node(
         });
     }
     if node_type == "sql" {
-        validate_native_sql_config(&node_id, &config, compile_issues);
+        validate_native_sql_config(&node_id, &config, &bindings, compile_issues);
     }
     let llm_runtime = (node_type == "llm")
         .then(|| compile_llm_runtime(&node_id, &config, context, compile_issues))
@@ -104,6 +104,7 @@ pub(super) fn compile_node(
 fn validate_native_sql_config(
     node_id: &str,
     config: &Value,
+    bindings: &BTreeMap<String, CompiledBinding>,
     compile_issues: &mut Vec<CompileIssue>,
 ) {
     let data_source_instance_id = config
@@ -124,11 +125,14 @@ fn validate_native_sql_config(
         }),
     }
 
-    if !config.get("sql").is_some_and(Value::is_string) {
+    if !bindings
+        .get("sql")
+        .is_some_and(|binding| binding.kind == "templated_text" && binding.raw_value.is_string())
+    {
         compile_issues.push(CompileIssue {
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingNativeSql,
-            message: format!("node {node_id} is missing config.sql"),
+            message: format!("node {node_id} is missing bindings.sql templated_text"),
         });
     }
 }

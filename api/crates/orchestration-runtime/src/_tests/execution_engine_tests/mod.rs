@@ -126,6 +126,7 @@ impl CapabilityInvoker for StubProviderInvoker {
     async fn invoke_native_sql_node(
         &self,
         _node: &CompiledNode,
+        sql: &str,
     ) -> Result<NativeSqlInvocationOutput> {
         Ok(NativeSqlInvocationOutput {
             output_payload: json!({
@@ -133,7 +134,7 @@ impl CapabilityInvoker for StubProviderInvoker {
             }),
             error_payload: None,
             metrics_payload: json!({}),
-            debug_payload: json!({ "data_source_instance_id": "main" }),
+            debug_payload: json!({ "data_source_instance_id": "main", "sql": sql }),
         })
     }
 }

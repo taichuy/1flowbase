@@ -1055,7 +1055,7 @@ fn compile_data_model_query_extracts_selector_dependencies() {
 }
 
 #[test]
-fn ac_006_compile_accepts_sql_node_and_preserves_opaque_sql_config() {
+fn ac_006_compile_accepts_sql_node_and_preserves_templated_sql_binding() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);
     let sql = "\n-- keep whitespace\nselect ';'::text;\n";
@@ -1068,10 +1068,11 @@ fn ac_006_compile_accepts_sql_node_and_preserves_opaque_sql_config() {
         "position": { "x": 240, "y": 0 },
         "configVersion": 1,
         "config": {
-            "data_source_instance_id": "main",
-            "sql": sql
+            "data_source_instance_id": "main"
         },
-        "bindings": {},
+        "bindings": {
+            "sql": { "kind": "templated_text", "value": sql }
+        },
         "outputs": [
             { "key": "results", "title": "Results", "valueType": "array" }
         ]
@@ -1081,7 +1082,7 @@ fn ac_006_compile_accepts_sql_node_and_preserves_opaque_sql_config() {
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
 
     assert!(plan.compile_issues.is_empty());
-    assert_eq!(plan.nodes["node-sql"].config["sql"], sql);
+    assert_eq!(plan.nodes["node-sql"].bindings["sql"].raw_value, sql);
     ensure_plan_execution_contract(&plan).unwrap();
 }
 
@@ -1091,10 +1092,11 @@ fn ac_003_compile_rejects_invalid_sql_data_source_binding() {
     let mut document = sample_document(flow_id);
     document["graph"]["nodes"][1]["type"] = json!("sql");
     document["graph"]["nodes"][1]["config"] = json!({
-        "data_source_instance_id": "postgres-by-name",
-        "sql": "select 1"
+        "data_source_instance_id": "postgres-by-name"
     });
-    document["graph"]["nodes"][1]["bindings"] = json!({});
+    document["graph"]["nodes"][1]["bindings"] = json!({
+        "sql": { "kind": "templated_text", "value": "select 1" }
+    });
     document["graph"]["nodes"][1]["outputs"] = json!([
         { "key": "results", "title": "Results", "valueType": "array" }
     ]);

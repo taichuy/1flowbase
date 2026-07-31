@@ -470,7 +470,9 @@ where
             )))
         }
         "sql" => {
-            let execution = invoker.invoke_native_sql_node(node).await?;
+            let execution = invoker
+                .invoke_native_sql_node(node, resolved_native_sql(resolved_inputs)?)
+                .await?;
             if let Some(error_payload) = execution.error_payload {
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }

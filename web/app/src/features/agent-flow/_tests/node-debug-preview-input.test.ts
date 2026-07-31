@@ -86,6 +86,30 @@ describe('node debug preview input', () => {
     });
   });
 
+  test('AC-003 asks only for variables referenced directly by SQL templates', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const sqlNode = createNodeDocument('sql', 'node-sql');
+    sqlNode.bindings = {
+      sql: {
+        kind: 'templated_text',
+        value: 'select * from users where id = {{node-start.query}}'
+      }
+    };
+    document.graph.nodes.push(sqlNode);
+
+    expect(buildNodeDebugPreviewPlan(document, 'node-sql')).toEqual({
+      input_payload: {},
+      missing_fields: [
+        expect.objectContaining({
+          nodeId: 'node-start',
+          key: 'query',
+          title: 'userinput.query',
+          valueType: 'string'
+        })
+      ]
+    });
+  });
+
   test('AC-002 ignores variables referenced only by upstream branch nodes', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const ifElseNode = createNodeDocument('if_else', 'node-if-else');
