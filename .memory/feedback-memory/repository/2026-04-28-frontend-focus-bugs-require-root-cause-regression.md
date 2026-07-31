@@ -2,6 +2,7 @@
 feedback_category: repository
 decision_policy: direct_reference
 created_at: 2026-04-28 17
+updated_at: 2026-07-31 22
 scope:
   - frontend
   - debugging
@@ -27,3 +28,5 @@ scope:
 ## 执行要求
 
 先补能失败的回归用例，再用 Playwright 或项目 style-boundary 场景跑真实浏览器交互。验证至少覆盖：点击普通编辑区、点击内嵌 chip/tag、切回目标字段后直接输入。
+
+Monaco completion provider 还必须按入口状态建立有限矩阵：触发字符查询、工具栏 / `Ctrl/Cmd + Space`、普通单词输入、候选选择替换和取消。只直接调用一次 provider 并覆盖其中一种上下文，不能结算真实编辑器补全；浏览器运行态未验证时不得把候选过滤、标签显示或 replacement range 宣称为已通过。

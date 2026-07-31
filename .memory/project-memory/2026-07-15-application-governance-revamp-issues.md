@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 应用治理改造五个 issue 已拍板并挂上 GitHub
-summary: 用户确认 /settings/applications 治理改造方向；#1286 生命周期闭环已合入，#1289 已完成 extension 后端不可变校验和 Settings 详情 Drawer 第一版，当前等待页面视觉确认。
+summary: 用户确认 /settings/applications 治理改造方向；2026-07-31 已拍板删除全部 CSV 导出，把通用“导出”统一为按目标应用生成后端压缩包，AgentFlow 与 Workflow 都需支持。
 keywords:
   - application
   - settings
@@ -14,8 +14,8 @@ match_when:
   - 讨论应用发布、下线、复制、模板导出或设置页改版
   - 需要回忆用户对生命周期语义的拍板结论
 created_at: 2026-07-15 15
-updated_at: 2026-07-18 17
-last_verified_at: 2026-07-18 17
+updated_at: 2026-07-31 23
+last_verified_at: 2026-07-31 23
 decision_policy: verify_before_decision
 scope:
   - api/crates/control-plane/src/application_public_api
@@ -63,3 +63,9 @@ scope:
 ## 截止与状态
 
 - 无硬截止；2026-07-18 用户确认并启动 #1289。已完成 extension 创建后冻结字段在 mapping 保存与 publish 入口的后端校验，以及 Settings 详情 Drawer、schedule 编辑、extension 只读摘要、成员选择器、行内发布开关和筛选结果 CSV 导出；定向测试、TypeScript、Rust static、style-boundary 与 i18n error 门禁通过。按前端视觉确认偏好，当前不提交、不推送，等待用户查看页面效果。#1287/#1288/#1290 尚未动工。
+
+## 2026-07-31 导出语义拍板
+
+- 用户指出 `/settings/applications` 的通用“导出”不应表达列表 CSV，而应把当前目标应用按各自模板导出为压缩包；随后明确拍板“CSV 没有用”，全部删除，不作为二级治理能力保留。
+- 当前代码确认：工具栏“导出选中 / 导出筛选结果”都调用前端 CSV builder；每行 `… -> 导出模板` 是另一套能力，只支持 `agent_flow`，下载 `.1flowbase-template.json`；后端 `export_agent_flow_template` 会拒绝 `workflow`。
+- 根因判断：表格治理数据导出与应用可移植制品导出复用了同一“导出”心智，但没有共享领域 owner。已确认方向是：工具栏只导出勾选应用的后端 ZIP；单行入口导出该行 ZIP；删除 CSV builder、入口、文案与测试；AgentFlow 与 Workflow 由后端各自 exporter 装配统一 archive contract。

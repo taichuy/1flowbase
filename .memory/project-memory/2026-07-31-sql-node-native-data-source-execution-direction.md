@@ -78,6 +78,8 @@ scope:
 
 本轮实现将该规则收敛在 SQL `CodeSourceField` completion provider 内，不改变变量可见性、后端 contract、SQL 保存文本或运行时渲染。定向测试已覆盖无关候选过滤、`sys.*` 排序、完整标签和自动右括号替换范围；真实 Monaco 浏览器 smoke 受当前 `dev` Vite 8 依赖预优化长期 pending 阻断，未据此下浏览器通过结论。
 
+`2026-07-31 22` 用户用真实页面再次证明上述实现尚未完成：SQL 中输入纯单词 `mode` 时，候选仍显示 `Start/files`、`Start/tools`、`Start/tool_choice` 的尾部。当前 provider 在找不到 `{...}` 时把 completion context 置空，随后用空 query、零长度 range 返回全部变量；此前测试只构造了 brace context，没有覆盖普通单词、工具栏或 `Ctrl/Cmd + Space` 会话。该补全问题重新进入 discussion，在完整入口矩阵与真实 Monaco 证据通过前不得标记完成。
+
 ## 结果转换声明与 fallback
 
 - 数据源插件 / Adapter 声明并实现 `native_sql/v1`；Host 将有效能力投影到 ready 实例，实例不自行定义 native type 转换语义。
