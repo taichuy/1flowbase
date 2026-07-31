@@ -343,15 +343,16 @@ describe('JsxStudioRunPanel Native React run revision', () => {
         )?.shadowRoot
       ).not.toBeNull()
     );
-    const queries = trialQueries(view.container);
-    const local = await queries.findByRole('button', { name: 'Local' });
-    fireEvent.click(queries.getByRole('button', { name: 'Register' }));
+    const shadowRoot = trialShadowRoot(view.container);
+    const utils = within(shadowRoot as unknown as HTMLElement);
+    const local = await utils.findByRole('button', { name: 'Local' });
+    fireEvent.click(utils.getByRole('button', { name: 'Register' }));
     fireEvent.click(local);
 
     await waitFor(() =>
       expect(apiPost).toHaveBeenCalledWith('/api/public/auth/sign-up')
     );
-    expect(queries.getByTestId('studio-count')).toHaveTextContent('1');
+    expect(utils.getByTestId('studio-count')).toHaveTextContent('1');
     expect(compiler).toHaveBeenCalledOnce();
 
     view.rerender(
@@ -377,9 +378,8 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       expect.stringMatching(/^draft:block-1:/u)
     );
     expect(
-      (await trialQueries(view.container).findByTestId('studio-count'))
-        .textContent
-    ).toBe('0');
+      await trialQueries(view.container).findByTestId('studio-count')
+    ).toHaveTextContent('0');
 
     view.unmount();
     expect(revokeDraftRun).toHaveBeenCalledTimes(2);
@@ -498,9 +498,9 @@ describe('JsxStudioRunPanel Native React run revision', () => {
 
     const panes = await screen.findAllByTestId('js-block-console-pane');
     expect(await within(panes[0]!).findByText('first only')).toBeVisible();
-    expect(within(panes[0]!).queryByText('second only')).toBeNull();
+    expect(within(panes[0]!).queryByText('second only')).not.toBeInTheDocument();
     expect(await within(panes[1]!).findByText('second only')).toBeVisible();
-    expect(within(panes[1]!).queryByText('first only')).toBeNull();
+    expect(within(panes[1]!).queryByText('first only')).not.toBeInTheDocument();
     expect(browserInfo).toHaveBeenCalledTimes(2);
   });
 

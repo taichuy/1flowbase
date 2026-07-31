@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -17,14 +18,19 @@ struct TempDataSourcePackage {
     root: PathBuf,
 }
 
+static NEXT_TEMP_PACKAGE_ID: AtomicU64 = AtomicU64::new(0);
+
 impl TempDataSourcePackage {
     fn new() -> Self {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-            .join(format!("plugin-runner-data-source-tests-{nonce}"));
+        let sequence = NEXT_TEMP_PACKAGE_ID.fetch_add(1, Ordering::Relaxed);
+        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
+            "plugin-runner-data-source-tests-{}-{nonce}-{sequence}",
+            std::process::id()
+        ));
         fs::create_dir_all(&root).unwrap();
         Self { root }
     }

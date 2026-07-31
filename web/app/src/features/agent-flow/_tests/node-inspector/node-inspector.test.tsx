@@ -85,7 +85,7 @@ describe('NodeInspector core', () => {
     expect(translated).toHaveAttribute('data-ready', 'true');
     expect(translated).toHaveTextContent('<strong>欢迎</strong>');
     expect(translated.querySelector('strong')).toBeNull();
-    expect(screen.queryByRole('textbox', { name: '回答内容' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '回答内容' })).not.toBeInTheDocument();
     unmount();
 
     const fallbackState = createInitialState();

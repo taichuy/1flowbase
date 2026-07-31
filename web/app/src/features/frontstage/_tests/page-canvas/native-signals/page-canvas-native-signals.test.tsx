@@ -85,8 +85,10 @@ describe('PageCanvas Native Signal context', () => {
       theme: { mode: 'light' },
       ui: { locale: 'en_US' }
     });
-    const consumerRendersBeforePublish = consumerRenders;
-    const unrelatedRendersBeforePublish = unrelatedRenders;
+    const countsBeforePublish = {
+      consumer: consumerRenders,
+      unrelated: unrelatedRenders
+    };
 
     const oldPublish = producerContexts.at(-1)!.outputs.publish;
     let firstPublish!: BlockContextOutputPublishResult;
@@ -97,8 +99,8 @@ describe('PageCanvas Native Signal context', () => {
     });
     expect(firstPublish).toMatchObject({ ok: true, stale: false });
     await waitFor(() => expect(consumerButton).toHaveTextContent('1:1'));
-    expect(consumerRenders).toBe(consumerRendersBeforePublish + 1);
-    expect(unrelatedRenders).toBe(unrelatedRendersBeforePublish);
+    expect(consumerRenders).toBe(countsBeforePublish.consumer + 1);
+    expect(unrelatedRenders).toBe(countsBeforePublish.unrelated);
     act(() => {
       expect(oldPublish({ total: 2 })).toMatchObject({
         ok: true,
@@ -203,7 +205,7 @@ describe('PageCanvas Native Signal context', () => {
     const localState = await within(producerRoot.shadow).findByTestId(
       'native-local-state'
     );
-    const initialRenderCount = renderCount;
+    const countsBeforeActions = { initial: renderCount };
     fireEvent.click(
       within(producerRoot.shadow).getByTestId('native-api-first')
     );
@@ -213,7 +215,7 @@ describe('PageCanvas Native Signal context', () => {
     fireEvent.click(localState);
 
     expect(localState).toHaveTextContent('1');
-    expect(renderCount).toBeGreaterThanOrEqual(initialRenderCount);
+    expect(renderCount).toBeGreaterThanOrEqual(countsBeforeActions.initial);
     expect(producerRoot.host.shadowRoot).not.toBeNull();
     await waitFor(() => expect(diagnostics).toEqual(['record query failed']));
     expect(observations.filter((status) => status === 'pending')).toHaveLength(

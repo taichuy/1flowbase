@@ -35,6 +35,11 @@ type FixtureBlockProps = {
   label: string;
 };
 
+type FixtureComponent =
+  | ComponentType<{ props: FixtureBlockProps; ctx: BlockContext }>
+  | ComponentType<{ ctx: BlockContext }>
+  | ComponentType<{ props: FixtureBlockProps }>;
+
 let firstThrowPending = false;
 const fixtureCounters = {
   pageCanvasRenders: 0,
@@ -222,7 +227,7 @@ const components = {
   second: SecondBlock,
   publicA: PublicModulesBlock,
   publicB: PublicModulesBlock
-} satisfies Record<string, ComponentType<any>>;
+} satisfies Record<string, FixtureComponent>;
 
 const publicModuleAssets = [
   fixtureModuleStyle('@1flowbase/native-components', 'c', nativeComponentsCss),
@@ -481,7 +486,7 @@ function fixtureBlock(
 function preparation(
   blockId: 'first' | 'second' | 'public-a' | 'public-b',
   slotIndex: number,
-  component: ComponentType<any>,
+  component: FixtureComponent,
   priority: 0 | 1 | 2 | 3,
   sourceRevision: number,
   failed: boolean,

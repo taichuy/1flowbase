@@ -219,12 +219,6 @@ export function AgentFlowCanvasFrame({
     () => listConversationVariables(workingDocument),
     [workingDocument]
   );
-  const selectedNode = useMemo(
-    () =>
-      workingDocument.graph.nodes.find((node) => node.id === selectedNodeId) ??
-      null,
-    [selectedNodeId, workingDocument.graph.nodes]
-  );
   const [selectedVariable, setSelectedVariable] =
     useState<SelectedVariableInfo | null>(null);
   const [variableCacheHeight, setVariableCacheHeight] = useState(

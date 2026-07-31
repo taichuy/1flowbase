@@ -37,8 +37,10 @@ test('backend coverage uses the current storage-postgres crate name', () => {
 
   assert.ok(storageCommand);
   assert.equal(storageCommand.args[2], 'storage-postgres');
+  const outputPathIndex = storageCommand.args.indexOf('--output-path');
+  assert.notEqual(outputPathIndex, -1);
   assert.match(
-    storageCommand.args[6],
+    storageCommand.args[outputPathIndex + 1],
     /tmp\/test-governance\/coverage\/backend\/storage-postgres\.json$/u
   );
 });
