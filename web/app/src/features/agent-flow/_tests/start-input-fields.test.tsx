@@ -113,8 +113,18 @@ describe('start input fields', () => {
       </AgentFlowEditorStoreProvider>
     );
 
+    const inputFieldsInspector = await screen.findByTestId(
+      'inspector-field-config.input_fields'
+    );
+    const inputFieldsHeader = within(inputFieldsInspector).getByTestId(
+      'agent-flow-collection-field-header'
+    );
+
     expect(
-      await screen.findByTestId('inspector-field-config.input_fields')
+      within(inputFieldsHeader).getByRole('heading', { name: '输入字段' })
+    ).toBeInTheDocument();
+    expect(
+      within(inputFieldsHeader).getByRole('button', { name: '新增输入字段' })
     ).toBeInTheDocument();
     expect(screen.getByText('userinput.query')).toBeInTheDocument();
     expect(screen.getByText('userinput.system')).toBeInTheDocument();
@@ -385,6 +395,7 @@ describe('start input fields', () => {
     const { rerender } = renderWithProviders(
       <StartInputFieldsField
         contractKind="workflow_http"
+        title="输入字段"
         value={[]}
         sourceOptions={[
           { value: 'path', label: 'path' },
@@ -410,6 +421,7 @@ describe('start input fields', () => {
       <AppProviders>
         <StartInputFieldsField
           contractKind="agent"
+          title="输入字段"
           value={[]}
           onChange={vi.fn()}
         />

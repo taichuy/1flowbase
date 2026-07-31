@@ -739,6 +739,7 @@ function renderOutputContractDefinitionField({
 
   return (
     <OutputContractDefinitionField
+      title={block.label}
       selectorForKey={node?.type === 'code' ? codeOutputSelector : undefined}
       syncTitleWithKey={node?.type === 'code'}
       value={outputs}
@@ -810,6 +811,7 @@ function renderStartInputFieldsField({
   return (
     <StartInputFieldsField
       contractKind={contractKind}
+      title={block.label}
       value={adapter.getValue(block.path)}
       sourceOptions={sourceOptions}
       onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
@@ -823,6 +825,7 @@ function renderStartModelListField({
 }: SchemaFieldRendererProps) {
   return (
     <StartModelListField
+      title={block.label}
       value={adapter.getValue(block.path)}
       onChange={(nextValue) => adapter.setValue(block.path, nextValue)}
     />

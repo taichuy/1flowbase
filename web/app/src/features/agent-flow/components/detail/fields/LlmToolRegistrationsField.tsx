@@ -1063,31 +1063,33 @@ export function LlmToolRegistrationsField({
         >
           {block.label}
         </Typography.Text>
-        <Button
-          aria-label={addToolLabel}
-          className="agent-flow-llm-tool-registrations__add"
-          disabled={!enabled}
-          icon={
-            <PlusOutlined data-testid="agent-flow-llm-tool-registration-add-icon" />
-          }
-          shape="circle"
-          size="small"
-          type="text"
-          onClick={(event) =>
-            openToolEditor(null, buildNextTool(tools), event.currentTarget)
-          }
-        />
-        <Switch
-          aria-label={block.label}
-          checked={enabled}
-          className="agent-flow-llm-tool-registrations__switch"
-          onChange={(checked) =>
-            adapter.setValue(
-              'config.visible_internal_llm_tools_enabled',
-              checked
-            )
-          }
-        />
+        <div className="agent-flow-llm-tool-registrations__actions">
+          <Button
+            aria-label={addToolLabel}
+            className="agent-flow-llm-tool-registrations__add"
+            disabled={!enabled}
+            icon={
+              <PlusOutlined data-testid="agent-flow-llm-tool-registration-add-icon" />
+            }
+            shape="circle"
+            size="small"
+            type="text"
+            onClick={(event) =>
+              openToolEditor(null, buildNextTool(tools), event.currentTarget)
+            }
+          />
+          <Switch
+            aria-label={block.label}
+            checked={enabled}
+            className="agent-flow-llm-tool-registrations__switch"
+            onChange={(checked) =>
+              adapter.setValue(
+                'config.visible_internal_llm_tools_enabled',
+                checked
+              )
+            }
+          />
+        </div>
       </div>
       {enabled ? (
         <List

@@ -60,6 +60,9 @@ describe('NodeInspector code schema', () => {
     const outputField = screen.getByTestId(
       'inspector-field-config.output_contract'
     );
+    const outputHeader = within(outputField).getByTestId(
+      'agent-flow-collection-field-header'
+    );
 
     expect(inputField.compareDocumentPosition(sourceField)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
@@ -67,6 +70,12 @@ describe('NodeInspector code schema', () => {
     expect(sourceField.compareDocumentPosition(outputField)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
+    expect(
+      within(outputHeader).getByRole('heading', { name: '输出变量' })
+    ).toBeInTheDocument();
+    expect(
+      within(outputHeader).getByRole('button', { name: '新增输出变量' })
+    ).toBeInTheDocument();
     expect(
       screen.getByLabelText(/输入变量-0-name|input variables-0-name/)
     ).toHaveValue('arg1');

@@ -7,6 +7,7 @@ import type {
   FlowStartModelDescriptor,
   FlowStartModelReasoning
 } from '@1flowbase/flow-schema';
+import { CollectionFieldHeader } from '../collection/CollectionFieldHeader';
 import { formatLlmTokenCount } from '../../../lib/model-options';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { StartModelSettingsPanel } from './StartModelSettingsPanel';
@@ -223,9 +224,11 @@ function replaceAt(
 }
 
 export function StartModelListField({
+  title,
   value,
   onChange
 }: {
+  title: string;
   value: unknown;
   onChange: (value: FlowStartModelDescriptor[]) => void;
 }) {
@@ -298,16 +301,19 @@ export function StartModelListField({
 
   return (
     <div className="agent-flow-start-model-list">
-      <div className="agent-flow-start-input-fields__header">
-        <Button
-          aria-label={i18nText('agentFlow', 'auto.add_new_model')}
-          icon={<PlusOutlined />}
-          size="small"
-          type="text"
-          onClick={openAddPanel}
-          ref={triggerRef}
-        />
-      </div>
+      <CollectionFieldHeader
+        title={title}
+        actions={
+          <Button
+            aria-label={i18nText('agentFlow', 'auto.add_new_model')}
+            icon={<PlusOutlined />}
+            size="small"
+            type="text"
+            onClick={openAddPanel}
+            ref={triggerRef}
+          />
+        }
+      />
       {rows.length > 0 ? (
         <div className="agent-flow-start-input-fields__list">
           {rows.map((row, index) => (
