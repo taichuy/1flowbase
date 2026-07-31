@@ -1,6 +1,7 @@
 import {
   CopyOutlined,
   DeleteOutlined,
+  DownOutlined,
   EditOutlined,
   ExportOutlined,
   MoreOutlined
@@ -133,6 +134,9 @@ export function ApplicationManagementPanel() {
     readApplicationManagementRouteState
   );
   const [filterDraft, setFilterDraft] = useState(routeState);
+  const [selectedApplicationIds, setSelectedApplicationIds] = useState<
+    string[]
+  >([]);
   const [detailsApplication, setDetailsApplication] =
     useState<SettingsApplicationManagementItem | null>(null);
 
@@ -141,6 +145,7 @@ export function ApplicationManagementPanel() {
       const nextState = readApplicationManagementRouteState();
       setRouteState(nextState);
       setFilterDraft(nextState);
+      setSelectedApplicationIds([]);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -163,6 +168,7 @@ export function ApplicationManagementPanel() {
     pushApplicationManagementRouteState(nextState);
     setRouteState(nextState);
     setFilterDraft(nextState);
+    setSelectedApplicationIds([]);
   }, [filterDraft]);
   const resetFilters = useCallback(() => {
     const nextState: ApplicationManagementRouteState = {
@@ -172,6 +178,7 @@ export function ApplicationManagementPanel() {
     pushApplicationManagementRouteState(nextState);
     setRouteState(nextState);
     setFilterDraft(nextState);
+    setSelectedApplicationIds([]);
   }, []);
   const managementQuery = useMemo<SettingsApplicationManagementQuery>(
     () => ({
@@ -272,7 +279,7 @@ export function ApplicationManagementPanel() {
     onError: () =>
       messageApi.error(i18nText('agentFlow', 'auto.publishing_failed'))
   });
-  const exportCsvMutation = useMutation({
+  const exportFilteredCsvMutation = useMutation({
     mutationFn: () =>
       fetchAllSettingsApplicationManagement({
         filter: managementQuery.filter,
@@ -291,6 +298,20 @@ export function ApplicationManagementPanel() {
         )
       )
   });
+  const selectedApplications = useMemo(() => {
+    const selectedIds = new Set(selectedApplicationIds);
+    return (applicationsQuery.data?.items ?? []).filter((application) =>
+      selectedIds.has(application.id)
+    );
+  }, [applicationsQuery.data?.items, selectedApplicationIds]);
+  const exportSelectedApplications = useCallback(() => {
+    if (selectedApplications.length === 0) {
+      return;
+    }
+    downloadApplicationManagementCsv(
+      buildApplicationManagementCsv(selectedApplications)
+    );
+  }, [selectedApplications]);
   const copyApplication = copyMutation.mutate;
   const exportApplication = exportMutation.mutate;
   const deleteApplicationById = deleteMutation.mutateAsync;
@@ -801,18 +822,51 @@ export function ApplicationManagementPanel() {
           page={routeState.page}
           pageSize={PAGE_SIZE}
           rowKey="id"
+          rowSelection={{
+            selectedRowKeys: selectedApplicationIds,
+            onChange: (keys) =>
+              setSelectedApplicationIds(keys.map((key) => String(key)))
+          }}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
-              <Button
-                icon={<ExportOutlined />}
-                loading={exportCsvMutation.isPending}
-                onClick={() => exportCsvMutation.mutate()}
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    {
+                      key: 'selected',
+                      disabled: selectedApplications.length === 0,
+                      label: i18nText(
+                        'settingsApplicationManagement',
+                        'auto.application_management_export_selected',
+                        { value1: selectedApplications.length }
+                      ),
+                      onClick: exportSelectedApplications
+                    },
+                    {
+                      key: 'filtered',
+                      label: i18nText(
+                        'settingsApplicationManagement',
+                        'auto.application_management_export_filtered'
+                      ),
+                      onClick: () => exportFilteredCsvMutation.mutate()
+                    }
+                  ]
+                }}
               >
-                {i18nText(
-                  'settingsApplicationManagement',
-                  'auto.application_management_export_csv'
-                )}
-              </Button>
+                <Button
+                  icon={<ExportOutlined />}
+                  loading={exportFilteredCsvMutation.isPending}
+                >
+                  <Space size={4}>
+                    {i18nText(
+                      'settingsApplicationManagement',
+                      'auto.application_management_export_csv'
+                    )}
+                    <DownOutlined aria-hidden="true" />
+                  </Space>
+                </Button>
+              </Dropdown>
               <Button onClick={() => applicationsQuery.refetch()}>
                 {i18nText('settings', 'auto.refresh')}
               </Button>
@@ -833,7 +887,10 @@ export function ApplicationManagementPanel() {
               setDetailsApplication(application);
             }
           })}
-          onPageChange={(page) => updateRouteState({ page })}
+          onPageChange={(page) => {
+            setSelectedApplicationIds([]);
+            updateRouteState({ page });
+          }}
         />
       </div>
 
