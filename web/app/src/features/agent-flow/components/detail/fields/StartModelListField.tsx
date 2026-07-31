@@ -323,9 +323,6 @@ export function StartModelListField({
                 onClick={() => openEditPanel(row, index)}
               >
                 <span className="agent-flow-node-detail__list-item-left">
-                  <span className="agent-flow-node-detail__list-item-icon">
-                    M
-                  </span>
                   <span className="agent-flow-node-detail__list-item-name">
                     {row.id.trim() || 'model-id'}
                   </span>

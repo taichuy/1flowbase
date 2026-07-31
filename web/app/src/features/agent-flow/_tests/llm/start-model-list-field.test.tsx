@@ -7,7 +7,7 @@ describe('StartModelListField', () => {
   test('shows only model id and context in the list', () => {
     const onChange = vi.fn();
 
-    render(
+    const { container } = render(
       <StartModelListField
         value={[
           {
@@ -36,6 +36,9 @@ describe('StartModelListField', () => {
     expect(screen.getByText('qwen3.6-35b-a3b')).toBeInTheDocument();
     expect(screen.getByText('128K')).toBeInTheDocument();
     expect(screen.getByText('deepseek-v4-flash')).toBeInTheDocument();
+    expect(
+      container.querySelector('.agent-flow-node-detail__list-item-icon')
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('支持的推理强度 1')).not.toBeInTheDocument();
     expect(
       screen.queryByPlaceholderText('display name')
