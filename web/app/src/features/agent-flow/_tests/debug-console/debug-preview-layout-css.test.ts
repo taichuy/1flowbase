@@ -48,9 +48,7 @@ describe('debug preview responsive layout CSS', () => {
       '.agent-flow-editor__debug-message--user .agent-flow-editor__debug-message-content.ant-typography',
       '.agent-flow-editor__debug-composer',
       '.agent-flow-editor__debug-composer-box',
-      '.agent-flow-editor__debug-composer-submit',
-      '.agent-flow-editor__debug-feature-bar',
-      '.agent-flow-editor__debug-feature-icon'
+      '.agent-flow-editor__debug-composer-submit'
     ].forEach((selector) => {
       expect(cssBlock(shellCss, selector), selector).not.toMatch(
         layoutPropertiesWithPixelValues
@@ -106,9 +104,6 @@ describe('debug preview responsive layout CSS', () => {
     expect(
       cssBlock(shellCss, '.agent-flow-editor__debug-composer-box')
     ).not.toMatch(/grid-template-columns:[^;]*\d+px/);
-    expect(
-      cssBlock(shellCss, '.agent-flow-editor__debug-feature-bar')
-    ).not.toMatch(/grid-template-columns:[^;]*\d+px/);
   });
 
   test('keeps workflow node title and metric on one row', () => {
@@ -129,8 +124,5 @@ describe('debug preview responsive layout CSS', () => {
     expect(
       cssBlock(shellCss, '.agent-flow-editor__debug-composer-submit')
     ).not.toMatch(/(?:width|height|min-width):\s*\d+px/);
-    expect(
-      cssBlock(shellCss, '.agent-flow-editor__debug-feature-icon')
-    ).not.toMatch(/(?:width|height):\s*\d+px/);
   });
 });

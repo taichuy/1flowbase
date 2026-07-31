@@ -21,7 +21,7 @@ function createInitialState() {
     },
     versions: [],
     autosave_interval_seconds: 30,
-    user_protection_limit: 10,
+    user_protection_limit: 10
   };
 }
 
@@ -182,10 +182,10 @@ describe('debug console shell', () => {
       screen.getByRole('complementary', { name: '预览' })
     ).toBeInTheDocument();
     expect(screen.getByPlaceholderText('和 Bot 聊天')).toBeInTheDocument();
-    expect(screen.getByText('功能已开启')).toBeInTheDocument();
+    expect(screen.queryByText('功能已开启')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '管理功能' })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: '管理功能' })
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('tab', { name: 'Input' })
     ).not.toBeInTheDocument();

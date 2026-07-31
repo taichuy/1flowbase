@@ -21,7 +21,10 @@ describe('DebugComposer', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: '发送调试消息' }));
-    expect(screen.getByText('功能已开启')).toBeInTheDocument();
+    expect(screen.queryByText('功能已开启')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '管理功能' })
+    ).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByPlaceholderText('和 Bot 聊天'), {
       key: 'Enter',
       code: 'Enter'
@@ -55,9 +58,9 @@ describe('DebugComposer', () => {
       code: 'Enter'
     });
 
-    expect(
-      screen.getByRole('button', { name: '终止调试运行' })
-    ).toHaveClass('agent-flow-editor__debug-composer-stop');
+    expect(screen.getByRole('button', { name: '终止调试运行' })).toHaveClass(
+      'agent-flow-editor__debug-composer-stop'
+    );
     expect(handleStop).toHaveBeenCalledTimes(1);
     expect(handleSubmit).not.toHaveBeenCalled();
   });

@@ -310,7 +310,6 @@ export function DebugConversationPane({
       {showComposer ? (
         <DebugComposer
           disabled={composerUiOnly ? false : composerDisabled}
-          showFeatureBar={!composerUiOnly}
           submitting={composerUiOnly ? false : stopAvailable}
           stopping={composerUiOnly ? false : stopping}
           value={

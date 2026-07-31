@@ -168,13 +168,11 @@
   border: 0;
 }
 
-.application-run-detail__conversation-pane
-  .agent-flow-editor__debug-console {
+.application-run-detail__conversation-pane .agent-flow-editor__debug-console {
   border: 0;
 }
 
-.application-run-detail__conversation-pane
-  .agent-flow-editor__dock-panel-body {
+.application-run-detail__conversation-pane .agent-flow-editor__dock-panel-body {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -248,8 +246,7 @@
   background: #f8fafd;
 }
 
-.application-run-detail__conversation-pane
-  .agent-flow-editor__debug-messages {
+.application-run-detail__conversation-pane .agent-flow-editor__debug-messages {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -438,40 +435,6 @@
   block-size: 38px;
   min-inline-size: 38px;
   border-radius: 11px;
-}
-
-.application-run-detail__conversation-pane
-  .agent-flow-editor__debug-feature-bar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  margin-top: 8px;
-  border: 1px solid #cddcf4;
-  border-radius: 12px;
-  background: #eef5ff;
-  padding: 8px 10px;
-}
-
-.application-run-detail__conversation-pane
-  .agent-flow-editor__debug-feature-icon {
-  display: inline-flex;
-  inline-size: 28px;
-  block-size: 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: #f59e0b;
-  color: #ffffff;
-}
-
-.application-run-detail__conversation-pane
-  .agent-flow-editor__debug-feature-manage {
-  justify-content: flex-end;
-  padding-inline: 0;
-  color: #0f766e;
-  font-weight: 600;
 }
 
 @media (max-width: 720px) {
