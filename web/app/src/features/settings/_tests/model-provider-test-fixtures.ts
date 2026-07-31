@@ -130,9 +130,11 @@ export function buildMainInstanceSettings(
   return {
     provider_code: modelProviderCatalogEntries[0].provider_code,
     auto_include_new_instances: autoIncludeNewInstances,
-    model_distribution_rules: primaryContractProviderModels.map((model) => ({
+    revision: 1,
+    model_routing_policies: primaryContractProviderModels.map((model) => ({
       model_id: model.model_id,
-      distribution_rule: distributionRule
+      distribution_rule: distributionRule,
+      provider_instance_ids: ['provider-1']
     }))
   };
 }

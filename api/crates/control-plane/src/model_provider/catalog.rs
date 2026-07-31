@@ -195,7 +195,7 @@ where
         let main_instance = repository
             .get_main_instance(actor.current_workspace_id, &provider_code)
             .await?;
-        let distribution_rules = model_distribution_rules_by_id(main_instance.as_ref());
+        let routing_policies = model_routing_policies_by_id(main_instance.as_ref());
         let mut model_groups: Vec<ModelProviderOptionGroup> = Vec::new();
         let mut model_group_indexes: HashMap<String, usize> = HashMap::new();
         for instance in instances {
@@ -223,15 +223,41 @@ where
 
                 model_group_indexes.insert(model_id.clone(), model_groups.len());
                 model_groups.push(ModelProviderOptionGroup {
-                    distribution_rule: distribution_rules
+                    distribution_rule: routing_policies
                         .get(&model_id)
-                        .copied()
+                        .map(|policy| policy.distribution_rule)
                         .unwrap_or_default(),
                     model_id,
                     model,
                     targets: vec![target],
                 });
             }
+        }
+        for group in &mut model_groups {
+            let configured_positions = routing_policies
+                .get(&group.model_id)
+                .map(|policy| {
+                    policy
+                        .provider_instance_ids
+                        .iter()
+                        .enumerate()
+                        .map(|(position, id)| (*id, position))
+                        .collect::<HashMap<_, _>>()
+                })
+                .unwrap_or_default();
+            group.targets.sort_by(|left, right| {
+                configured_positions
+                    .get(&left.source_instance_id)
+                    .copied()
+                    .unwrap_or(usize::MAX)
+                    .cmp(
+                        &configured_positions
+                            .get(&right.source_instance_id)
+                            .copied()
+                            .unwrap_or(usize::MAX),
+                    )
+                    .then(left.source_instance_id.cmp(&right.source_instance_id))
+            });
         }
         let model_count = model_groups.len();
         options.push(ModelProviderOptionEntry {
@@ -261,15 +287,24 @@ where
     })
 }
 
-fn model_distribution_rules_by_id(
+fn model_routing_policies_by_id(
     main_instance: Option<&domain::ModelProviderMainInstanceRecord>,
-) -> HashMap<String, domain::ModelProviderDistributionRule> {
+) -> HashMap<String, domain::ModelProviderMainModelRoutingPolicy> {
     main_instance
         .map(|record| {
             record
-                .model_distribution_rules
+                .model_routing_policies
                 .iter()
-                .map(|rule| (rule.model_id.clone(), rule.distribution_rule))
+                .map(|policy| {
+                    (
+                        policy.model_id.clone(),
+                        domain::ModelProviderMainModelRoutingPolicy {
+                            model_id: policy.model_id.clone(),
+                            distribution_rule: policy.distribution_rule,
+                            provider_instance_ids: policy.provider_instance_ids.clone(),
+                        },
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default()

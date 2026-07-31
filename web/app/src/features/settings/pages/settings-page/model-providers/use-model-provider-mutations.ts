@@ -203,7 +203,8 @@ export function useModelProviderMutations({
     mutationFn: async (input: {
       providerCode: string;
       auto_include_new_instances: boolean;
-      model_distribution_rules: SettingsModelProviderMainInstance['model_distribution_rules'];
+      expected_revision: number;
+      model_routing_policies: SettingsModelProviderMainInstance['model_routing_policies'];
     }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
@@ -213,7 +214,8 @@ export function useModelProviderMutations({
         input.providerCode,
         {
           auto_include_new_instances: input.auto_include_new_instances,
-          model_distribution_rules: input.model_distribution_rules
+          expected_revision: input.expected_revision,
+          model_routing_policies: input.model_routing_policies
         },
         csrfToken
       );

@@ -772,6 +772,53 @@ fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
 }
 
 #[test]
+fn ac_004_compile_routes_main_model_targets_in_configured_order() {
+    let flow_id = Uuid::now_v7();
+    let mut context = compile_context();
+    context.provider_instances.insert(
+        "provider-recreated".to_string(),
+        FlowCompileProviderInstance {
+            provider_instance_id: "provider-recreated".to_string(),
+            display_name: "Recreated".to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            is_ready: true,
+            is_runnable: true,
+            included_in_main: true,
+            available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
+            allow_custom_models: false,
+        },
+    );
+    context.model_routing_policies.insert(
+        ("fixture_provider".to_string(), "gpt-5.4-mini".to_string()),
+        FlowCompileModelRoutingPolicy {
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
+            provider_instance_ids: vec![
+                "provider-selected".to_string(),
+                "provider-recreated".to_string(),
+            ],
+        },
+    );
+
+    let plan =
+        FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
+    let routing = plan.nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .and_then(|runtime| runtime.routing.as_ref())
+        .expect("configured main-model routing should compile");
+
+    assert_eq!(
+        routing
+            .queue_targets
+            .iter()
+            .map(|target| target.provider_instance_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["provider-selected", "provider-recreated"]
+    );
+}
+
+#[test]
 fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
     // AC-003/AC-004: the compiled contract keeps request-local retry routing explicit.
     let flow_id = Uuid::now_v7();
@@ -790,9 +837,12 @@ fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
             allow_custom_models: false,
         },
     );
-    context.model_distribution_rules.insert(
+    context.model_routing_policies.insert(
         ("fixture_provider".to_string(), "gpt-5.4-mini".to_string()),
-        orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin,
+        FlowCompileModelRoutingPolicy {
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
+            provider_instance_ids: Vec::new(),
+        },
     );
 
     let plan =

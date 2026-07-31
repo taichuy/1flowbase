@@ -39,14 +39,15 @@ use crate::{
     },
     plugin_lifecycle::derive_availability_status,
     ports::{
-        AuthRepository, CommitPluginInstallationProjectionInput, CreatePluginAssignmentInput,
-        CreatePluginTaskInput, FrontendBlockCatalogRegistryInput, FrontendBlockCatalogRepository,
-        JsDependencyRegistryInput, JsDependencyRepository, ModelProviderRepository,
-        NodeContributionRegistryInput, NodeContributionRepository, OfficialPluginArtifact,
-        OfficialPluginSourceEntry, OfficialPluginSourcePort, PluginRepository, ProviderRuntimePort,
-        ReassignModelProviderInstancesInput, ReplaceInstallationFrontendBlocksInput,
-        ReplaceInstallationJsDependenciesInput, ReplaceInstallationNodeContributionsInput,
-        RoleConsolePolicyReader, UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
+        AuthRepository, CacheStore, CommitPluginInstallationProjectionInput,
+        CreatePluginAssignmentInput, CreatePluginTaskInput, FrontendBlockCatalogRegistryInput,
+        FrontendBlockCatalogRepository, JsDependencyRegistryInput, JsDependencyRepository,
+        ModelProviderRepository, NodeContributionRegistryInput, NodeContributionRepository,
+        OfficialPluginArtifact, OfficialPluginSourceEntry, OfficialPluginSourcePort,
+        PluginRepository, ProviderRuntimePort, ReassignModelProviderInstancesInput,
+        ReplaceInstallationFrontendBlocksInput, ReplaceInstallationJsDependenciesInput,
+        ReplaceInstallationNodeContributionsInput, RoleConsolePolicyReader,
+        UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
         UpdatePluginTaskStatusInput, UpsertModelProviderCatalogCacheInput,
         UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
         UpsertPluginPackageCatalogProjectionInput,
@@ -70,6 +71,7 @@ pub struct PluginManagementService<R, H> {
     host_version: String,
     allow_uploaded_host_extensions: bool,
     use_case: PluginManagementUseCase,
+    model_routing_cache_store: Option<Arc<dyn CacheStore>>,
 }
 
 #[derive(Clone)]
@@ -123,6 +125,7 @@ impl<R, H> PluginManagementService<R, H> {
             host_version: default_current_host_version(),
             allow_uploaded_host_extensions: true,
             use_case: PluginManagementUseCase::BusinessActions,
+            model_routing_cache_store: None,
         }
         .with_default_node_id()
     }
@@ -130,6 +133,21 @@ impl<R, H> PluginManagementService<R, H> {
     pub fn with_allow_uploaded_host_extensions(mut self, allow: bool) -> Self {
         self.allow_uploaded_host_extensions = allow;
         self
+    }
+
+    pub fn with_model_routing_cache_store(mut self, cache_store: Arc<dyn CacheStore>) -> Self {
+        self.model_routing_cache_store = Some(cache_store);
+        self
+    }
+
+    async fn invalidate_model_routing_catalog(&self, workspace_id: Uuid) {
+        if let Some(cache_store) = self.model_routing_cache_store.as_deref() {
+            crate::orchestration_runtime::compile_context::invalidate_model_provider_routing_catalog(
+                cache_store,
+                workspace_id,
+            )
+            .await;
+        }
     }
 
     fn with_default_node_id(mut self) -> Self {

@@ -94,7 +94,7 @@ impl ApplicationCompileContextRepository for ApplicationPublicApiTestRepository 
             workspace_id: Some(workspace_id),
             provider_families: Default::default(),
             provider_instances: Default::default(),
-            model_distribution_rules: Default::default(),
+            model_routing_policies: Default::default(),
             node_contributions: Default::default(),
             js_dependencies,
         })

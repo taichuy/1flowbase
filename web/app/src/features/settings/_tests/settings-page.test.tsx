@@ -581,7 +581,8 @@ describe('SettingsPage', () => {
     modelProvidersApi.fetchSettingsModelProviderMainInstance.mockResolvedValue({
       provider_code: 'openai_compatible',
       auto_include_new_instances: true,
-      model_distribution_rules: []
+      revision: 0,
+      model_routing_policies: []
     });
     pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
     pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use orchestration_runtime::compiler::FlowCompiler;
 use serde::{Deserialize, Serialize};
@@ -24,7 +26,7 @@ use crate::{
     ports::{
         ApplicationApiMappingRepository, ApplicationCompileContextRepository,
         ApplicationCompiledPlanRepository, ApplicationJsDependencySelectionRepository,
-        ApplicationPublicationRepository, ApplicationRepository,
+        ApplicationPublicationRepository, ApplicationRepository, CacheStore,
         CreateApplicationPublicationVersionInput, DeactivateApplicationPublicationsInput,
         FlowRepository, SetApplicationApiEnabledInput,
     },
@@ -116,6 +118,7 @@ pub struct ApplicationPublicationVersionRecord {
 
 pub struct ApplicationPublicationService<R> {
     repository: R,
+    model_routing_cache_store: Option<Arc<dyn CacheStore>>,
 }
 
 impl<R> ApplicationPublicationService<R>
@@ -123,7 +126,15 @@ where
     R: ApplicationRepository,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            model_routing_cache_store: None,
+        }
+    }
+
+    pub fn with_model_routing_cache_store(mut self, cache_store: Arc<dyn CacheStore>) -> Self {
+        self.model_routing_cache_store = Some(cache_store);
+        self
     }
 
     pub async fn publish_active_version(
@@ -229,7 +240,11 @@ where
         }
         let compile_context = self
             .repository
-            .build_application_compile_context(application.workspace_id, application.id)
+            .build_application_compile_context_with_cache(
+                application.workspace_id,
+                application.id,
+                self.model_routing_cache_store.as_deref(),
+            )
             .await?;
         let compiled_plan = match application.application_type {
             domain::ApplicationType::AgentFlow => FlowCompiler::compile(

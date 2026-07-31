@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{anyhow, bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::answer_presentation::validate_answer_presentation;
@@ -44,9 +45,15 @@ pub struct FlowCompileContext {
     pub workspace_id: Option<uuid::Uuid>,
     pub provider_families: BTreeMap<String, FlowCompileProviderFamily>,
     pub provider_instances: BTreeMap<String, FlowCompileProviderInstance>,
-    pub model_distribution_rules: BTreeMap<(String, String), LlmDistributionRule>,
+    pub model_routing_policies: BTreeMap<(String, String), FlowCompileModelRoutingPolicy>,
     pub node_contributions: BTreeMap<String, FlowCompileNodeContribution>,
     pub js_dependencies: BTreeMap<String, FlowCompileJsDependency>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowCompileModelRoutingPolicy {
+    pub distribution_rule: LlmDistributionRule,
+    pub provider_instance_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +65,7 @@ pub struct FlowCompileJsDependency {
     pub integrity: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowCompileProviderFamily {
     pub provider_code: String,
     pub protocol: String,
@@ -67,7 +74,7 @@ pub struct FlowCompileProviderFamily {
     pub allow_custom_models: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowCompileProviderInstance {
     pub provider_instance_id: String,
     pub display_name: String,

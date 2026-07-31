@@ -327,6 +327,7 @@ pub struct OrchestrationRuntimeService<R, H> {
     file_storage_registry: Option<Arc<storage_object::FileStorageDriverRegistry>>,
     llm_routing_counter_store:
         Option<Arc<dyn orchestration_runtime::execution_engine::LlmRoutingCounterStore>>,
+    model_routing_cache_store: Option<Arc<dyn CacheStore>>,
     provider_secret_master_key: String,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
@@ -367,6 +368,7 @@ where
             runtime_engine,
             file_storage_registry: None,
             llm_routing_counter_store: None,
+            model_routing_cache_store: None,
             provider_secret_master_key: provider_secret_master_key.into(),
             runtime_event_stream: None,
             provider_request_log_queue: None,
@@ -395,6 +397,7 @@ where
     }
 
     pub fn with_llm_routing_counter_store(mut self, cache_store: Arc<dyn CacheStore>) -> Self {
+        self.model_routing_cache_store = Some(cache_store.clone());
         self.llm_routing_counter_store =
             Some(Arc::new(CacheStoreLlmRoutingCounterStore { cache_store }));
         self
@@ -608,10 +611,11 @@ where
     where
         R: ApplicationJsDependencySelectionRepository,
     {
-        compile_context::build_application_compile_context(
+        compile_context::build_application_compile_context_with_cache(
             &self.repository,
             workspace_id,
             application_id,
+            self.model_routing_cache_store.as_deref(),
         )
         .await
     }
