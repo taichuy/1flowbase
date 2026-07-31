@@ -84,6 +84,7 @@ impl OfficialPluginSourcePort for NoopOfficialPluginSource {
                 source_label: "官方源".to_string(),
                 registry_url: "https://official.example.com/official-registry.json".to_string(),
             },
+            freshness: control_plane::ports::OfficialPluginCatalogFreshness::Fresh,
             entries: Vec::new(),
         })
     }

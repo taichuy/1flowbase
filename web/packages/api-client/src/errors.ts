@@ -42,7 +42,6 @@ export class ApiClientError extends Error {
         const text = await response.text();
         if (text) {
           body = text;
-          message = text;
         }
       }
     } catch {

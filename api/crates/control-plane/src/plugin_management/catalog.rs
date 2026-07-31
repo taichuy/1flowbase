@@ -132,6 +132,7 @@ pub struct OfficialPluginCatalogView {
     pub source_kind: String,
     pub source_label: String,
     pub registry_url: String,
+    pub source_freshness: String,
     pub page: OfficialPluginCatalogPage,
     pub entries: Vec<OfficialPluginCatalogEntry>,
 }
@@ -520,6 +521,7 @@ where
             source_kind: official_snapshot.source.source_kind,
             source_label: official_snapshot.source.source_label,
             registry_url: official_snapshot.source.registry_url,
+            source_freshness: official_snapshot.freshness.as_str().to_string(),
             page: OfficialPluginCatalogPage {
                 limit: filter.limit,
                 next_cursor,
@@ -575,20 +577,18 @@ where
                     .then_with(|| right.id.cmp(&left.id))
             });
         }
-        let official_by_provider = match self.official_source.list_official_catalog().await {
-            Ok(snapshot) => normalize_official_entries(snapshot.entries)
-                .into_iter()
-                .filter(|entry| entry.plugin_type == "model_provider")
-                .map(|entry| (entry.provider_code.clone(), entry))
-                .collect::<HashMap<_, _>>(),
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "official plugin catalog unavailable while listing provider families; using installed versions"
-                );
-                HashMap::new()
-            }
-        };
+        let official_by_provider = self
+            .official_source
+            .cached_official_catalog()
+            .await
+            .map(|snapshot| {
+                normalize_official_entries(snapshot.entries)
+                    .into_iter()
+                    .filter(|entry| entry.plugin_type == "model_provider")
+                    .map(|entry| (entry.provider_code.clone(), entry))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
         let mut families = Vec::with_capacity(assignments.len());
         let mut i18n_catalog = BTreeMap::new();
         for assignment in assignments {
