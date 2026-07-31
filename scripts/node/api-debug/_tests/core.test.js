@@ -91,6 +91,10 @@ test('runApiDebug logs in with env credentials and sends authenticated mutating 
           });
         }
 
+        if (String(url).endsWith('/api/console/session') && init.method === 'DELETE') {
+          return createJsonResponse({ status: 204, headers: {}, body: null });
+        }
+
         return createJsonResponse({
           status: 201,
           headers: { 'content-type': 'application/json' },
@@ -113,6 +117,10 @@ test('runApiDebug logs in with env credentials and sends authenticated mutating 
   assert.equal(calls[1].init.headers['x-csrf-token'], 'csrf-token');
   assert.equal(calls[1].init.headers['content-type'], 'application/json');
   assert.equal(calls[1].init.body, '{"name":"demo"}');
+  assert.equal(String(calls[2].url), 'http://127.0.0.1:7800/api/console/session');
+  assert.equal(calls[2].init.method, 'DELETE');
+  assert.equal(calls[2].init.headers.cookie, 'oneflowbase_session=session-secret');
+  assert.equal(calls[2].init.headers['x-csrf-token'], 'csrf-token');
 
   const evidence = JSON.parse(fs.readFileSync(result.evidencePath, 'utf8'));
   assert.equal(evidence.auth.account, 'root');
@@ -150,13 +158,17 @@ test('runApiDebug marks expected status mismatch without throwing away evidence'
         password: 'change-me',
         envFilePath: '/repo/api/apps/api-server/.env',
       }),
-      fetchImpl: async (url) => {
+      fetchImpl: async (url, init = {}) => {
         if (String(url).endsWith('/api/public/auth/sign-in')) {
           return createJsonResponse({
             status: 200,
             headers: { 'set-cookie': 'oneflowbase_session=session-secret; Path=/' },
             body: { data: { csrf_token: 'csrf-token' } },
           });
+        }
+
+        if (String(url).endsWith('/api/console/session') && init.method === 'DELETE') {
+          return createJsonResponse({ status: 204, headers: {}, body: null });
         }
 
         return createJsonResponse({
@@ -173,6 +185,109 @@ test('runApiDebug marks expected status mismatch without throwing away evidence'
   assert.match(result.error, /expected status 200/u);
   assert.equal(fs.existsSync(result.evidencePath), true);
 });
+
+test('AC-002 runApiDebug revokes its temporary session when the target request throws', async () => {
+  const calls = [];
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-api-debug-'));
+
+  await assert.rejects(
+    () =>
+      runApiDebug(
+        {
+          method: 'GET',
+          target: '/api/console/me',
+          apiBaseUrl: 'http://127.0.0.1:7800',
+          account: 'root',
+          password: 'change-me',
+          body: null,
+          bodyFile: null,
+          headers: [],
+          outDir: outputDir,
+          expectStatus: 200,
+          printBody: false,
+          help: false,
+        },
+        {
+          repoRoot: '/repo',
+          loadRootCredentials: () => ({
+            account: 'root',
+            password: 'change-me',
+            envFilePath: '/repo/api/apps/api-server/.env',
+          }),
+          fetchImpl: async (url, init = {}) => {
+            calls.push({ url, init });
+            if (String(url).endsWith('/api/public/auth/sign-in')) {
+              return createJsonResponse({
+                status: 200,
+                headers: { 'set-cookie': 'oneflowbase_session=session-secret; Path=/' },
+                body: { data: { csrf_token: 'csrf-token' } },
+              });
+            }
+            if (String(url).endsWith('/api/console/session') && init.method === 'DELETE') {
+              return createJsonResponse({ status: 204, headers: {}, body: null });
+            }
+            throw new Error('target unavailable');
+          },
+        }
+      ),
+    /target unavailable/u
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(String(calls[2].url), 'http://127.0.0.1:7800/api/console/session');
+  assert.equal(calls[2].init.headers.cookie, 'oneflowbase_session=session-secret');
+});
+
+test('AC-001 runApiDebug cleanup never revokes a caller-supplied human session', async () => {
+  const calls = [];
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-api-debug-'));
+
+  await runApiDebug(
+    {
+      method: 'GET',
+      target: '/api/console/me',
+      apiBaseUrl: 'http://127.0.0.1:7800',
+      account: 'root',
+      password: 'change-me',
+      body: null,
+      bodyFile: null,
+      headers: [{ name: 'cookie', value: 'flowbase_console_session=human-session' }],
+      outDir: outputDir,
+      expectStatus: 200,
+      printBody: false,
+      help: false,
+    },
+    {
+      repoRoot: '/repo',
+      loadRootCredentials: rootCredentials,
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url, init });
+        if (String(url).endsWith('/api/public/auth/sign-in')) {
+          return createJsonResponse({
+            status: 200,
+            headers: { 'set-cookie': 'flowbase_console_session=temporary-session; Path=/' },
+            body: { data: { csrf_token: 'temporary-csrf' } },
+          });
+        }
+        if (String(url).endsWith('/api/console/session') && init.method === 'DELETE') {
+          return createJsonResponse({ status: 204, headers: {}, body: null });
+        }
+        return createJsonResponse({ status: 200, headers: {}, body: { data: { id: 'root' } } });
+      },
+    }
+  );
+
+  assert.equal(calls[1].init.headers.cookie, 'flowbase_console_session=human-session');
+  assert.equal(calls[2].init.headers.cookie, 'flowbase_console_session=temporary-session');
+});
+
+function rootCredentials() {
+  return {
+    account: 'root',
+    password: 'change-me',
+    envFilePath: '/repo/api/apps/api-server/.env',
+  };
+}
 
 function createJsonResponse({ status, headers, body }) {
   const normalizedHeaders = new Map(

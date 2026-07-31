@@ -25,6 +25,7 @@
 6.后端是唯一数据来源，前端不应该作代码处理输出兼容，应该是后端提供职责单一的接口
 7.前后端接口字段名必须与后端 DTO / 领域语义保持一致；UI 展示名可以本地化，但不得为展示文案另起接口字段别名。确需兼容旧字段时，必须在兼容代码最近行标记 `@field-contract-compat source=... alias=... remove_by=yyyy-mm-dd`，带废弃计划和测试，并让 `repo-hygiene` 以 warning 暴露。
 8.前端多语言资源必须让 `i18n-hygiene` 暴露无静态引用 key；`unused-i18n-key` 是 warning，保留时必须说明动态 key、路由配置或外部渲染入口原因。
+9.受保护页面和认证 API 的本地运行态取证使用 `page-debug` / `api-debug`；临时脚本不得直接调用 `/api/public/auth/sign-in`。确需自定义 Playwright 流程时，复用 `scripts/node/page-debug/auth.js` 的临时 session owner，并在 `finally` 回收。
 
 # 开发流程控制
 1.需求类请求，以及会导向产品决策的功能差异、缺失能力、不可编辑状态或入口归属诊断，默认先使用 `problem-framing`；方向确认前不修改产品代码。
