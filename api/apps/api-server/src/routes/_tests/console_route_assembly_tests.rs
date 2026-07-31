@@ -405,18 +405,18 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.update",
             ),
             (
-                "GET",
-                "/api/console/applications/:id/orchestration/template",
+                "POST",
+                "/api/console/applications/archive/export",
                 "applications.orchestration.template.export",
             ),
             (
                 "POST",
-                "/api/console/applications/orchestration/template/preview",
+                "/api/console/applications/archive/preview",
                 "authenticated",
             ),
             (
                 "POST",
-                "/api/console/applications/orchestration/template/import",
+                "/api/console/applications/archive/import",
                 "applications.orchestration.template.import",
             ),
             (

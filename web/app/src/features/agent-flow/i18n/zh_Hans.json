@@ -696,7 +696,7 @@
     "branch_connection_invalid": "分支连线无效",
     "branch_connection_invalid_message": "该连线没有指向当前 If / Else 节点中存在的分支出口。",
     "delete_node": "删除节点",
-    "export_template": "导出模板",
+    "export_template": "导出应用",
     "template_export_failed": "模板导出失败",
     "template_exported": "模板已导出",
     "unresolved_node": "未知节点",

@@ -1,7 +1,6 @@
 import {
   CopyOutlined,
   DeleteOutlined,
-  DownOutlined,
   ExportOutlined,
   MoreOutlined
 } from '@ant-design/icons';
@@ -37,7 +36,7 @@ import {
   applicationsQueryKey,
   createApplication,
   deleteApplication,
-  exportAgentFlowTemplate,
+  exportApplicationArchive,
   fetchApplicationCatalog
 } from '../../../applications/api/applications';
 import {
@@ -46,11 +45,10 @@ import {
   unpublishApplicationApiVersion
 } from '../../../applications/api/public-api';
 import { ApplicationFormModal } from '../../../applications/components/ApplicationFormModal';
-import { downloadTemplateFile } from '../../../applications/lib/template-download';
+import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import {
   fetchSettingsApplicationManagement,
-  fetchAllSettingsApplicationManagement,
   settingsApplicationManagementQueryKey,
   settingsApplicationManagementQueryPrefix,
   type SettingsApplicationManagementItem,
@@ -66,10 +64,6 @@ import {
   readApplicationManagementRouteState,
   type ApplicationManagementRouteState
 } from './application-management-route-state';
-import {
-  buildApplicationManagementCsv,
-  downloadApplicationManagementCsv
-} from './application-management-export';
 import './application-management-panel.css';
 
 const PAGE_SIZE = 20;
@@ -247,9 +241,9 @@ export function ApplicationManagementPanel() {
       messageApi.error(i18nText('applications', 'auto.copy_application_failed'))
   });
   const exportMutation = useMutation({
-    mutationFn: exportAgentFlowTemplate,
-    onSuccess: (template) => {
-      downloadTemplateFile(template);
+    mutationFn: exportApplicationArchive,
+    onSuccess: (archive) => {
+      downloadApplicationArchive(archive);
       messageApi.success(i18nText('applications', 'auto.template_exported'));
     },
     onError: () =>
@@ -279,41 +273,8 @@ export function ApplicationManagementPanel() {
     onError: () =>
       messageApi.error(i18nText('agentFlow', 'auto.publishing_failed'))
   });
-  const exportFilteredCsvMutation = useMutation({
-    mutationFn: () =>
-      fetchAllSettingsApplicationManagement({
-        filter: managementQuery.filter,
-        sort: managementQuery.sort
-      }),
-    onSuccess: (applications) => {
-      downloadApplicationManagementCsv(
-        buildApplicationManagementCsv(applications)
-      );
-    },
-    onError: () =>
-      messageApi.error(
-        i18nText(
-          'settingsApplicationManagement',
-          'auto.application_management_export_failed'
-        )
-      )
-  });
-  const selectedApplications = useMemo(() => {
-    const selectedIds = new Set(selectedApplicationIds);
-    return (applicationsQuery.data?.items ?? []).filter((application) =>
-      selectedIds.has(application.id)
-    );
-  }, [applicationsQuery.data?.items, selectedApplicationIds]);
-  const exportSelectedApplications = useCallback(() => {
-    if (selectedApplications.length === 0) {
-      return;
-    }
-    downloadApplicationManagementCsv(
-      buildApplicationManagementCsv(selectedApplications)
-    );
-  }, [selectedApplications]);
   const copyApplication = copyMutation.mutate;
-  const exportApplication = exportMutation.mutate;
+  const exportApplications = exportMutation.mutate;
   const deleteApplicationById = deleteMutation.mutateAsync;
   const revertToDraft = revertToDraftMutation.mutateAsync;
   const publishApplication = publishMutation.mutate;
@@ -541,7 +502,7 @@ export function ApplicationManagementPanel() {
               key: 'export',
               icon: <ExportOutlined />,
               label: i18nText('applications', 'auto.export_template'),
-              disabled: application.application_type !== 'agent_flow'
+              disabled: exportMutation.isPending
             },
             { type: 'divider' },
             {
@@ -587,7 +548,7 @@ export function ApplicationManagementPanel() {
                   items,
                   onClick: ({ key }) => {
                     if (key === 'copy') copyApplication(application);
-                    if (key === 'export') exportApplication(application.id);
+                    if (key === 'export') exportApplications([application.id]);
                     if (key === 'delete') confirmDelete(application);
                   }
                 }}
@@ -616,7 +577,8 @@ export function ApplicationManagementPanel() {
       confirmDelete,
       confirmRevertToDraft,
       copyApplication,
-      exportApplication,
+      exportApplications,
+      exportMutation.isPending,
       publishApplication,
       publishingApplicationId,
       revertingApplicationId
@@ -886,44 +848,18 @@ export function ApplicationManagementPanel() {
           }}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
-              <Dropdown
-                trigger={['click']}
-                menu={{
-                  items: [
-                    {
-                      key: 'selected',
-                      disabled: selectedApplications.length === 0,
-                      label: i18nText(
-                        'settingsApplicationManagement',
-                        'auto.application_management_export_selected',
-                        { value1: selectedApplications.length }
-                      ),
-                      onClick: exportSelectedApplications
-                    },
-                    {
-                      key: 'filtered',
-                      label: i18nText(
-                        'settingsApplicationManagement',
-                        'auto.application_management_export_filtered'
-                      ),
-                      onClick: () => exportFilteredCsvMutation.mutate()
-                    }
-                  ]
-                }}
+              <Button
+                icon={<ExportOutlined />}
+                disabled={selectedApplicationIds.length === 0}
+                loading={exportMutation.isPending}
+                onClick={() => exportApplications(selectedApplicationIds)}
               >
-                <Button
-                  icon={<ExportOutlined />}
-                  loading={exportFilteredCsvMutation.isPending}
-                >
-                  <Space size={4}>
-                    {i18nText(
-                      'settingsApplicationManagement',
-                      'auto.application_management_export_csv'
-                    )}
-                    <DownOutlined aria-hidden="true" />
-                  </Space>
-                </Button>
-              </Dropdown>
+                {i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_export_applications',
+                  { value1: selectedApplicationIds.length }
+                )}
+              </Button>
               <Button onClick={() => applicationsQuery.refetch()}>
                 {i18nText('settings', 'auto.refresh')}
               </Button>

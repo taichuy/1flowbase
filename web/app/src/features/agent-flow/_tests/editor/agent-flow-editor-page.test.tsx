@@ -229,9 +229,11 @@ beforeEach(() => {
     applicationsApi,
     'fetchApplicationEnvironmentVariables'
   ).mockResolvedValue([]);
-  vi.spyOn(applicationsApi, 'exportAgentFlowTemplate').mockResolvedValue(
-    createTemplatePackage()
-  );
+  vi.spyOn(applicationsApi, 'exportApplicationArchive').mockResolvedValue({
+    blob: new Blob(['archive'], { type: 'application/zip' }),
+    filename: 'agent-flow.zip',
+    contentType: 'application/zip'
+  });
   vi.spyOn(publicApi, 'fetchApplicationApiMapping').mockResolvedValue(
     apiMapping
   );
@@ -394,7 +396,7 @@ describe('AgentFlowEditorShell', () => {
     ).toEqual([
       '预览',
       'Issues',
-      '导出模板',
+      '导出应用',
       '系统变量',
       '环境变量',
       '会话变量',
@@ -425,12 +427,12 @@ describe('AgentFlowEditorShell', () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '导出模板' }));
+    fireEvent.click(await screen.findByRole('button', { name: '导出应用' }));
 
     await waitFor(() => {
-      expect(applicationsApi.exportAgentFlowTemplate).toHaveBeenCalledWith(
+      expect(applicationsApi.exportApplicationArchive).toHaveBeenCalledWith([
         'app-1'
-      );
+      ]);
     });
     expect(createObjectUrl).toHaveBeenCalled();
     expect(clickSpy).toHaveBeenCalled();

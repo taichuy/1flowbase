@@ -172,8 +172,8 @@ describe('TemplatesPage', () => {
     );
 
     const dialog = await screen.findByRole('dialog', undefined, { timeout: 10_000 });
-    expect(within(dialog).getByText('导入 AgentFlow 模板')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: '导入模板' }));
+    expect(within(dialog).getByText('导入应用压缩包')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
 
     await waitFor(
       () => {

@@ -1,22 +1,10 @@
-import type { AgentFlowTemplatePackage } from '../api/applications';
+import type { ApiBlobResponse } from '@1flowbase/api-client';
 
-export function buildTemplateFileName(name: string) {
-  const normalized = name
-    .trim()
-    .replace(/[^\p{Letter}\p{Number}._-]+/gu, '-')
-    .replace(/^-+|-+$/g, '');
-
-  return `${normalized || 'agent-flow-template'}.1flowbase-template.json`;
-}
-
-export function downloadTemplateFile(template: AgentFlowTemplatePackage) {
-  const blob = new Blob([JSON.stringify(template, null, 2)], {
-    type: 'application/json'
-  });
-  const url = window.URL.createObjectURL(blob);
+export function downloadApplicationArchive(response: ApiBlobResponse) {
+  const url = window.URL.createObjectURL(response.blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = buildTemplateFileName(template.application.name);
+  anchor.download = response.filename ?? 'applications.zip';
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

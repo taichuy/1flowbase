@@ -25,8 +25,16 @@ use crate::{
     },
 };
 
+mod archive;
 pub mod console_policy_migration;
 mod non_crud_console_access;
+
+pub use archive::{
+    ApplicationArchiveApplication, ApplicationArchiveEntry, ApplicationArchivePackage,
+    ApplicationArchiveService, ExportApplicationArchiveCommand, ImportApplicationArchiveCommand,
+    PreviewApplicationArchiveCommand, WorkflowTriggerTemplateConfig,
+    APPLICATION_ARCHIVE_SCHEMA_VERSION,
+};
 
 pub use non_crud_console_access::ApplicationNonCrudConsoleOperation;
 pub(crate) use non_crud_console_access::{

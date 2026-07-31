@@ -696,7 +696,7 @@
     "branch_connection_invalid": "Invalid branch connection",
     "branch_connection_invalid_message": "This edge does not target an existing branch outlet on the current If / Else node.",
     "delete_node": "Delete node",
-    "export_template": "Export template",
+    "export_template": "Export application",
     "template_export_failed": "Template export failed",
     "template_exported": "Template exported",
     "unresolved_node": "Unresolved node",
