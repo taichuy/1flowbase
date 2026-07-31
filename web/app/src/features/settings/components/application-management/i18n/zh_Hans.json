@@ -34,6 +34,7 @@
     "application_management_response_fields": "响应字段",
     "application_management_no_response_fields": "当前未定义响应字段",
     "application_management_all_creators": "全部创建者",
+    "application_management_creators_load_failed": "创建者加载失败",
     "application_management_export_csv": "导出 CSV",
     "application_management_export_selected": "导出选中（{{value1}}）",
     "application_management_export_filtered": "导出筛选结果",

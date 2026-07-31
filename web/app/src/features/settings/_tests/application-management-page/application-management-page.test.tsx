@@ -388,6 +388,22 @@ describe('ApplicationManagementPanel', () => {
     });
   });
 
+  test('shows an explicit creator loading failure instead of an empty result', async () => {
+    membersApi.fetchSettingsMembers.mockRejectedValueOnce(
+      new Error('members unavailable')
+    );
+
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    await screen.findByText('Daily Report');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '创建者' }));
+    expect(await screen.findByText('创建者加载失败')).toBeInTheDocument();
+  });
+
   test('AC-001 AC-002 AC-003 AC-004 exports the selected current-page rows or all filtered rows', async () => {
     applicationManagementApi.fetchAllSettingsApplicationManagement.mockResolvedValue(
       [

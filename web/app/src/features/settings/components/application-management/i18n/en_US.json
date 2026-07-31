@@ -34,6 +34,7 @@
     "application_management_response_fields": "Response fields",
     "application_management_no_response_fields": "No response fields are defined",
     "application_management_all_creators": "All creators",
+    "application_management_creators_load_failed": "Failed to load creators",
     "application_management_export_csv": "Export CSV",
     "application_management_export_selected": "Export selected ({{value1}})",
     "application_management_export_filtered": "Export filtered results",

@@ -45,7 +45,7 @@ export interface ReplaceConsoleMemberRolesInput {
 
 export function listConsoleMembers(baseUrl?: string): Promise<ConsoleMember[]> {
   return apiFetch<ConsoleMember[]>({
-    path: '/api/console/members',
+    path: '/api/console/settings/members',
     baseUrl
   });
 }
@@ -56,7 +56,7 @@ export function createConsoleMember(
   baseUrl?: string
 ): Promise<ConsoleMember> {
   return apiFetch<ConsoleMember>({
-    path: '/api/console/members',
+    path: '/api/console/settings/members',
     method: 'POST',
     body: input,
     csrfToken,
@@ -71,7 +71,7 @@ export function updateConsoleMember(
   baseUrl?: string
 ): Promise<ConsoleMember> {
   return apiFetch<ConsoleMember>({
-    path: `/api/console/members/${memberId}`,
+    path: `/api/console/settings/members/${memberId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -85,7 +85,7 @@ export function disableConsoleMember(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/members/${memberId}/actions/disable`,
+    path: `/api/console/settings/members/${memberId}/disable`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -98,7 +98,7 @@ export function enableConsoleMember(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/members/${memberId}/actions/enable`,
+    path: `/api/console/settings/members/${memberId}/enable`,
     method: 'POST',
     csrfToken,
     baseUrl
@@ -111,7 +111,7 @@ export function deleteConsoleMember(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/members/${memberId}`,
+    path: `/api/console/settings/members/${memberId}`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -125,7 +125,7 @@ export function resetConsoleMemberPassword(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/members/${memberId}/actions/reset-password`,
+    path: `/api/console/settings/members/${memberId}/reset-password`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -140,7 +140,7 @@ export function replaceConsoleMemberRoles(
   baseUrl?: string
 ): Promise<void> {
   return apiFetchVoid({
-    path: `/api/console/members/${memberId}/roles`,
+    path: `/api/console/settings/members/${memberId}/roles`,
     method: 'PUT',
     body: input,
     csrfToken,

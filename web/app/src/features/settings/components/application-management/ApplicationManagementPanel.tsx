@@ -701,6 +701,8 @@ export function ApplicationManagementPanel() {
             <Select
               allowClear
               showSearch
+              loading={membersQuery.isPending}
+              status={membersQuery.isError ? 'error' : undefined}
               optionFilterProp="label"
               aria-label={i18nText(
                 'settingsApplicationManagement',
@@ -710,6 +712,14 @@ export function ApplicationManagementPanel() {
                 'settingsApplicationManagement',
                 'auto.application_management_all_creators'
               )}
+              notFoundContent={
+                membersQuery.isError
+                  ? i18nText(
+                      'settingsApplicationManagement',
+                      'auto.application_management_creators_load_failed'
+                    )
+                  : undefined
+              }
               value={filterDraft.created_by}
               options={(membersQuery.data ?? []).map((member) => ({
                 value: member.id,
