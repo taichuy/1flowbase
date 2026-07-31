@@ -498,7 +498,8 @@ describe('ModelProvidersPage - main instance selection', () => {
           mainInstanceState = {
             provider_code: providerCode,
             auto_include_new_instances: input.auto_include_new_instances,
-            model_distribution_rules: input.model_distribution_rules ?? []
+            revision: mainInstanceState.revision + 1,
+            model_routing_policies: input.model_routing_policies ?? []
           };
 
           return mainInstanceState;
@@ -538,6 +539,7 @@ describe('ModelProvidersPage - main instance selection', () => {
         name: '新实例自动注入主实例'
       });
       expect(autoIncludeSwitch).toBeChecked();
+      await waitFor(() => expect(autoIncludeSwitch).toBeEnabled());
       fireEvent.click(autoIncludeSwitch);
 
       await waitFor(() => {
@@ -547,14 +549,17 @@ describe('ModelProvidersPage - main instance selection', () => {
           'openai_compatible',
           {
             auto_include_new_instances: false,
-            model_distribution_rules: [
+            expected_revision: 1,
+            model_routing_policies: [
               {
                 model_id: primaryContractProviderModels[0].model_id,
-                distribution_rule: 'none'
+                distribution_rule: 'none',
+                provider_instance_ids: ['provider-1']
               },
               {
                 model_id: primaryContractProviderModels[1].model_id,
-                distribution_rule: 'none'
+                distribution_rule: 'none',
+                provider_instance_ids: ['provider-1']
               }
             ]
           },

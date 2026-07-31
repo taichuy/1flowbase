@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use orchestration_runtime::compiled_plan::{
     CodeIsolationProfile, CompileIssueCode, CompiledCodeDependency, CompiledLlmRouting,
-    VariableReference,
+    LlmDistributionRule, VariableReference,
 };
 use orchestration_runtime::compiler::{
     ensure_plan_execution_contract, FlowCompileContext, FlowCompileJsDependency,
-    FlowCompileNodeContribution, FlowCompileProviderFamily, FlowCompileProviderInstance,
-    FlowCompiler,
+    FlowCompileModelRoutingPolicy, FlowCompileNodeContribution, FlowCompileProviderFamily,
+    FlowCompileProviderInstance, FlowCompiler,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -39,7 +39,7 @@ fn compile_context() -> FlowCompileContext {
                 allow_custom_models: false,
             },
         )]),
-        model_distribution_rules: BTreeMap::new(),
+        model_routing_policies: BTreeMap::new(),
         node_contributions: BTreeMap::new(),
         js_dependencies: BTreeMap::new(),
     }

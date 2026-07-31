@@ -19,10 +19,10 @@ use crate::{
     i18n::{I18nCatalog, RequestedLocales},
     plugin_management::mark_current_node_plugin_runtime_status,
     ports::{
-        AuthRepository, CreateModelProviderInstanceInput, CreateModelProviderPreviewSessionInput,
-        ModelProviderRepository, PluginRepository, ProviderRuntimePort, RoleConsolePolicyReader,
-        UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
-        UpsertModelProviderSecretInput,
+        AuthRepository, CacheStore, CreateModelProviderInstanceInput,
+        CreateModelProviderPreviewSessionInput, ModelProviderRepository, PluginRepository,
+        ProviderRuntimePort, RoleConsolePolicyReader, UpdateModelProviderInstanceInput,
+        UpsertModelProviderCatalogCacheInput, UpsertModelProviderSecretInput,
     },
     state_transition::ensure_model_provider_instance_transition,
 };
@@ -81,7 +81,8 @@ pub struct UpdateModelProviderMainInstanceCommand {
     pub actor_user_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Option<Vec<domain::ModelProviderMainModelDistributionRule>>,
+    pub expected_revision: i64,
+    pub model_routing_policies: Option<Vec<domain::ModelProviderMainModelRoutingPolicy>>,
 }
 
 pub type ModelProviderConfiguredModelInput = domain::ModelProviderConfiguredModel;
@@ -155,7 +156,8 @@ pub struct ModelProviderInstanceView {
 pub struct ModelProviderMainInstanceView {
     pub provider_code: String,
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Vec<domain::ModelProviderMainModelDistributionRule>,
+    pub revision: i64,
+    pub model_routing_policies: Vec<domain::ModelProviderMainModelRoutingPolicy>,
 }
 
 #[derive(Debug, Clone)]
@@ -255,6 +257,7 @@ pub struct ModelProviderService<R, H> {
     provider_secret_master_key: String,
     node_id: Option<String>,
     install_root: Option<PathBuf>,
+    routing_cache_store: Option<Arc<dyn CacheStore>>,
     use_case: ModelProviderUseCase,
 }
 
@@ -270,6 +273,7 @@ where
             provider_secret_master_key: provider_secret_master_key.into(),
             node_id: None,
             install_root: None,
+            routing_cache_store: None,
             use_case: ModelProviderUseCase::BusinessActions,
         }
     }
@@ -291,6 +295,7 @@ where
             provider_secret_master_key: provider_secret_master_key.into(),
             node_id: None,
             install_root: None,
+            routing_cache_store: None,
             use_case: ModelProviderUseCase::ConsoleOperation {
                 policy_reader,
                 group,
@@ -308,6 +313,32 @@ where
         self.node_id = Some(node_id.into());
         self.install_root = Some(install_root.into());
         self
+    }
+
+    pub fn with_routing_cache_store(mut self, cache_store: Arc<dyn CacheStore>) -> Self {
+        self.routing_cache_store = Some(cache_store);
+        self
+    }
+
+    async fn invalidate_routing_catalog(&self, workspace_id: Uuid) {
+        if let Some(cache_store) = self.routing_cache_store.as_deref() {
+            crate::orchestration_runtime::compile_context::invalidate_model_provider_routing_catalog(
+                cache_store,
+                workspace_id,
+            )
+            .await;
+        }
+    }
+
+    async fn refresh_routing_catalog(&self, workspace_id: Uuid) {
+        if let Some(cache_store) = self.routing_cache_store.as_deref() {
+            crate::orchestration_runtime::compile_context::refresh_model_provider_routing_catalog(
+                &self.repository,
+                cache_store,
+                workspace_id,
+            )
+            .await;
+        }
     }
 
     fn node_artifact_context(&self) -> Option<ModelProviderNodeArtifactContext<'_>> {
@@ -551,6 +582,9 @@ where
             ))
             .await?;
 
+        self.invalidate_routing_catalog(actor.current_workspace_id)
+            .await;
+
         self.hydrate_instance_view(
             instance.clone(),
             self.repository.get_catalog_cache(instance.id).await?,
@@ -676,6 +710,9 @@ where
                 }),
             ))
             .await?;
+
+        self.invalidate_routing_catalog(actor.current_workspace_id)
+            .await;
 
         self.hydrate_instance_view(
             updated,
@@ -825,7 +862,7 @@ where
         }
         .await;
 
-        match validation_result {
+        let result = match validation_result {
             Ok(result) => Ok(result),
             Err(error) => {
                 let existing_cache = self.repository.get_catalog_cache(instance.id).await?;
@@ -883,7 +920,10 @@ where
                     .await;
                 Err(error)
             }
-        }
+        };
+        self.invalidate_routing_catalog(actor.current_workspace_id)
+            .await;
+        result
     }
 
     pub async fn preview_models(
@@ -1035,7 +1075,8 @@ where
         actor_user_id: Uuid,
         instance_id: Uuid,
     ) -> Result<ModelProviderModelCatalog> {
-        options::refresh_models(
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        let result = options::refresh_models(
             &self.repository,
             &self.runtime,
             &self.provider_secret_master_key,
@@ -1044,7 +1085,12 @@ where
             self.node_artifact_context(),
             self.use_case.clone(),
         )
-        .await
+        .await;
+        if result.is_ok() {
+            self.invalidate_routing_catalog(actor.current_workspace_id)
+                .await;
+        }
+        result
     }
 
     pub async fn get_balance(
@@ -1108,6 +1154,8 @@ where
                 }),
             ))
             .await?;
+        self.invalidate_routing_catalog(actor.current_workspace_id)
+            .await;
         Ok(())
     }
 
@@ -1137,6 +1185,9 @@ where
                 }),
             ))
             .await?;
+
+        self.refresh_routing_catalog(actor.current_workspace_id)
+            .await;
 
         Ok(updated)
     }

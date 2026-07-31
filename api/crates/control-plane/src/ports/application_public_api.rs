@@ -110,6 +110,16 @@ pub trait ApplicationCompileContextRepository: Send + Sync {
         workspace_id: Uuid,
         application_id: Uuid,
     ) -> anyhow::Result<orchestration_runtime::compiler::FlowCompileContext>;
+
+    async fn build_application_compile_context_with_cache(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        _cache_store: Option<&dyn CacheStore>,
+    ) -> anyhow::Result<orchestration_runtime::compiler::FlowCompileContext> {
+        self.build_application_compile_context(workspace_id, application_id)
+            .await
+    }
 }
 
 #[async_trait]
@@ -131,6 +141,21 @@ where
             self,
             workspace_id,
             application_id,
+        )
+        .await
+    }
+
+    async fn build_application_compile_context_with_cache(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        cache_store: Option<&dyn CacheStore>,
+    ) -> anyhow::Result<orchestration_runtime::compiler::FlowCompileContext> {
+        crate::orchestration_runtime::compile_context::build_application_compile_context_with_cache(
+            self,
+            workspace_id,
+            application_id,
+            cache_store,
         )
         .await
     }

@@ -146,7 +146,8 @@ pub struct UpsertModelProviderMainInstanceInput {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Option<Vec<domain::ModelProviderMainModelDistributionRule>>,
+    pub expected_revision: i64,
+    pub model_routing_policies: Option<Vec<domain::ModelProviderMainModelRoutingPolicy>>,
     pub updated_by: Uuid,
 }
 

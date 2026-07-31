@@ -869,29 +869,39 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
         let mut main_instances = self.main_instances.write().await;
         let key = Self::main_instance_key(input.workspace_id, &input.provider_code);
         let existing = main_instances.get(&key).cloned();
-        let model_distribution_rules = input
-            .model_distribution_rules
+        if existing
             .as_ref()
-            .map(|rules| {
-                rules
+            .is_some_and(|record| record.revision != input.expected_revision)
+        {
+            return Err(crate::errors::ControlPlaneError::Conflict(
+                "model_provider_main_instance_revision",
+            )
+            .into());
+        }
+        let model_routing_policies = input
+            .model_routing_policies
+            .as_ref()
+            .map(|policies| {
+                policies
                     .iter()
-                    .map(|rule| {
-                        let existing_rule = existing.as_ref().and_then(|record| {
+                    .map(|policy| {
+                        let existing_policy = existing.as_ref().and_then(|record| {
                             record
-                                .model_distribution_rules
+                                .model_routing_policies
                                 .iter()
-                                .find(|existing_rule| existing_rule.model_id == rule.model_id)
+                                .find(|existing_policy| existing_policy.model_id == policy.model_id)
                         });
-                        domain::ModelProviderMainModelDistributionRuleRecord {
+                        domain::ModelProviderMainModelRoutingPolicyRecord {
                             workspace_id: input.workspace_id,
                             provider_code: input.provider_code.clone(),
-                            model_id: rule.model_id.clone(),
-                            distribution_rule: rule.distribution_rule,
-                            created_by: existing_rule
+                            model_id: policy.model_id.clone(),
+                            distribution_rule: policy.distribution_rule,
+                            provider_instance_ids: policy.provider_instance_ids.clone(),
+                            created_by: existing_policy
                                 .map(|record| record.created_by)
                                 .unwrap_or(input.updated_by),
                             updated_by: input.updated_by,
-                            created_at: existing_rule
+                            created_at: existing_policy
                                 .map(|record| record.created_at)
                                 .unwrap_or(now),
                             updated_at: now,
@@ -902,14 +912,15 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
             .unwrap_or_else(|| {
                 existing
                     .as_ref()
-                    .map(|record| record.model_distribution_rules.clone())
+                    .map(|record| record.model_routing_policies.clone())
                     .unwrap_or_default()
             });
         let record = ModelProviderMainInstanceRecord {
             workspace_id: input.workspace_id,
             provider_code: input.provider_code.clone(),
             auto_include_new_instances: input.auto_include_new_instances,
-            model_distribution_rules,
+            revision: existing.as_ref().map_or(1, |record| record.revision + 1),
+            model_routing_policies,
             created_by: existing
                 .as_ref()
                 .map(|record| record.created_by)

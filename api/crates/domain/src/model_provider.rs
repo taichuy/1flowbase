@@ -409,17 +409,19 @@ pub struct ModelProviderConfiguredModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModelProviderMainModelDistributionRule {
+pub struct ModelProviderMainModelRoutingPolicy {
     pub model_id: String,
     pub distribution_rule: ModelProviderDistributionRule,
+    pub provider_instance_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModelProviderMainModelDistributionRuleRecord {
+pub struct ModelProviderMainModelRoutingPolicyRecord {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub model_id: String,
     pub distribution_rule: ModelProviderDistributionRule,
+    pub provider_instance_ids: Vec<Uuid>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -431,7 +433,8 @@ pub struct ModelProviderMainInstanceRecord {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Vec<ModelProviderMainModelDistributionRuleRecord>,
+    pub revision: i64,
+    pub model_routing_policies: Vec<ModelProviderMainModelRoutingPolicyRecord>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,

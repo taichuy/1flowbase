@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::{
     mappers::model_provider_mapper::{
         PgModelProviderMapper, StoredModelProviderCatalogCacheRow, StoredModelProviderInstanceRow,
-        StoredModelProviderMainInstanceRow, StoredModelProviderMainModelDistributionRuleRow,
+        StoredModelProviderMainInstanceRow, StoredModelProviderMainModelRoutingPolicyRow,
         StoredModelProviderPreviewSessionRow, StoredModelProviderSecretRow,
     },
     repositories::PgControlPlaneStore,
@@ -31,15 +31,15 @@ use crate::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 use row_mappers::{
     map_catalog_cache, map_catalog_entry, map_catalog_source, map_catalog_sync_run,
     map_failover_queue_item, map_failover_queue_snapshot, map_failover_queue_template,
-    map_instance, map_main_instance, map_main_model_distribution_rule, map_preview_session,
+    map_instance, map_main_instance, map_main_model_routing_policy, map_preview_session,
     map_secret,
 };
 
-async fn list_main_model_distribution_rules(
+async fn list_main_model_routing_policies(
     pool: &sqlx::PgPool,
     workspace_id: Uuid,
     provider_code: &str,
-) -> Result<Vec<domain::ModelProviderMainModelDistributionRuleRecord>> {
+) -> Result<Vec<domain::ModelProviderMainModelRoutingPolicyRecord>> {
     let rows = sqlx::query(
         r#"
         select
@@ -47,6 +47,7 @@ async fn list_main_model_distribution_rules(
             provider_code,
             model_id,
             distribution_rule,
+            provider_instance_ids,
             created_by,
             updated_by,
             created_at,
@@ -63,7 +64,7 @@ async fn list_main_model_distribution_rules(
     .await?;
 
     rows.into_iter()
-        .map(map_main_model_distribution_rule)
+        .map(map_main_model_routing_policy)
         .collect()
 }
 
@@ -496,25 +497,37 @@ impl ModelProviderRepository for PgControlPlaneStore {
         input: &UpsertModelProviderMainInstanceInput,
     ) -> Result<domain::ModelProviderMainInstanceRecord> {
         let mut tx = self.pool().begin().await?;
-        sqlx::query(
+        let main_instance = sqlx::query(
             r#"
             insert into model_provider_main_instances (
                 id,
                 workspace_id,
                 provider_code,
                 auto_include_new_instances,
+                revision,
                 created_by,
                 updated_by
-            ) values ($1, $2, $3, $4, $5, $5)
+            )
+            select $1, $2, $3, $4, 1, $5, $5
+            where $6 = 0
+               or exists (
+                    select 1
+                    from model_provider_main_instances existing
+                    where existing.workspace_id = $2
+                      and existing.provider_code = $3
+               )
             on conflict (workspace_id, provider_code) do update
             set
                 auto_include_new_instances = excluded.auto_include_new_instances,
+                revision = model_provider_main_instances.revision + 1,
                 updated_by = excluded.updated_by,
                 updated_at = now()
+            where model_provider_main_instances.revision = $6
             returning
                 workspace_id,
                 provider_code,
                 auto_include_new_instances,
+                revision,
                 created_by,
                 updated_by,
                 created_at,
@@ -526,10 +539,16 @@ impl ModelProviderRepository for PgControlPlaneStore {
         .bind(&input.provider_code)
         .bind(input.auto_include_new_instances)
         .bind(input.updated_by)
-        .fetch_one(&mut *tx)
+        .bind(input.expected_revision)
+        .fetch_optional(&mut *tx)
         .await?;
+        if main_instance.is_none() {
+            return Err(
+                ControlPlaneError::Conflict("model_provider_main_instance_revision").into(),
+            );
+        }
 
-        if let Some(model_distribution_rules) = input.model_distribution_rules.as_ref() {
+        if let Some(model_routing_policies) = input.model_routing_policies.as_ref() {
             sqlx::query(
                 r#"
                 delete from model_provider_main_model_distribution_rules
@@ -542,7 +561,7 @@ impl ModelProviderRepository for PgControlPlaneStore {
             .execute(&mut *tx)
             .await?;
 
-            for rule in model_distribution_rules {
+            for policy in model_routing_policies {
                 sqlx::query(
                     r#"
                     insert into model_provider_main_model_distribution_rules (
@@ -551,16 +570,18 @@ impl ModelProviderRepository for PgControlPlaneStore {
                         provider_code,
                         model_id,
                         distribution_rule,
+                        provider_instance_ids,
                         created_by,
                         updated_by
-                    ) values ($1, $2, $3, $4, $5, $6, $6)
+                    ) values ($1, $2, $3, $4, $5, $6, $7, $7)
                     "#,
                 )
                 .bind(Uuid::now_v7())
                 .bind(input.workspace_id)
                 .bind(&input.provider_code)
-                .bind(&rule.model_id)
-                .bind(rule.distribution_rule.as_str())
+                .bind(&policy.model_id)
+                .bind(policy.distribution_rule.as_str())
+                .bind(&policy.provider_instance_ids)
                 .bind(input.updated_by)
                 .execute(&mut *tx)
                 .await?;
@@ -585,6 +606,7 @@ impl ModelProviderRepository for PgControlPlaneStore {
                 workspace_id,
                 provider_code,
                 auto_include_new_instances,
+                revision,
                 created_by,
                 updated_by,
                 created_at,
@@ -603,8 +625,8 @@ impl ModelProviderRepository for PgControlPlaneStore {
             return Ok(None);
         };
         let mut record = map_main_instance(row)?;
-        record.model_distribution_rules =
-            list_main_model_distribution_rules(self.pool(), workspace_id, provider_code).await?;
+        record.model_routing_policies =
+            list_main_model_routing_policies(self.pool(), workspace_id, provider_code).await?;
         Ok(Some(record))
     }
 
@@ -737,24 +759,58 @@ impl ModelProviderRepository for PgControlPlaneStore {
     }
 
     async fn delete_instance(&self, workspace_id: Uuid, instance_id: Uuid) -> Result<()> {
-        let deleted = sqlx::query_scalar::<_, Uuid>(
+        let mut tx = self.pool().begin().await?;
+        let deleted = sqlx::query_scalar::<_, String>(
             r#"
             delete from model_provider_instances
             where workspace_id = $1
               and id = $2
-            returning id
+            returning provider_code
             "#,
         )
         .bind(workspace_id)
         .bind(instance_id)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
 
-        if deleted.is_some() {
-            Ok(())
-        } else {
+        let Some(provider_code) = deleted else {
             bail!(ControlPlaneError::NotFound("model_provider_instance"));
+        };
+
+        let removed = sqlx::query(
+            r#"
+            update model_provider_main_model_distribution_rules
+            set provider_instance_ids = array_remove(provider_instance_ids, $3),
+                updated_at = now()
+            where scope_id = $1
+              and provider_code = $2
+              and $3 = any(provider_instance_ids)
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(&provider_code)
+        .bind(instance_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if removed.rows_affected() > 0 {
+            sqlx::query(
+                r#"
+                update model_provider_main_instances
+                set revision = revision + 1,
+                    updated_at = now()
+                where workspace_id = $1
+                  and provider_code = $2
+                "#,
+            )
+            .bind(workspace_id)
+            .bind(&provider_code)
+            .execute(&mut *tx)
+            .await?;
         }
+
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn count_instance_references(

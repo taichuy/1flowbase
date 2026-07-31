@@ -958,7 +958,8 @@ impl ModelProviderRepository for InMemoryOrchestrationRuntimeRepository {
         &self,
         workspace_id: Uuid,
     ) -> Result<Vec<domain::ModelProviderInstanceRecord>> {
-        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        inner.model_routing_catalog_read_count += 1;
         Ok(inner
             .instances_by_id
             .values()
@@ -1036,6 +1037,7 @@ impl ModelProviderRepository for InMemoryOrchestrationRuntimeRepository {
             workspace_id: input.workspace_id,
             provider_code: input.provider_code.clone(),
             auto_include_new_instances: input.auto_include_new_instances,
+            revision: existing.as_ref().map_or(1, |record| record.revision + 1),
             created_by: existing
                 .as_ref()
                 .map(|record| record.created_by)
@@ -1046,7 +1048,10 @@ impl ModelProviderRepository for InMemoryOrchestrationRuntimeRepository {
                 .map(|record| record.created_at)
                 .unwrap_or(now),
             updated_at: now,
-            model_distribution_rules: Vec::new(),
+            model_routing_policies: existing
+                .as_ref()
+                .map(|record| record.model_routing_policies.clone())
+                .unwrap_or_default(),
         };
         inner.main_instances_by_provider.insert(key, record.clone());
         Ok(record)

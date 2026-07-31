@@ -178,6 +178,8 @@ where
 
         match enable_result {
             Ok(updated) => {
+                self.invalidate_model_routing_catalog(actor.current_workspace_id)
+                    .await;
                 self.transition_task(
                     &running_task,
                     domain::PluginTaskStatus::Succeeded,
@@ -282,6 +284,8 @@ where
 
         match assign_result {
             Ok(()) => {
+                self.invalidate_model_routing_catalog(actor.current_workspace_id)
+                    .await;
                 self.transition_task(
                     &running_task,
                     domain::PluginTaskStatus::Succeeded,
@@ -472,6 +476,8 @@ where
 
         match delete_result {
             Ok((deleted_instance_count, deleted_installation_count, referenced_flow_count)) => {
+                self.invalidate_model_routing_catalog(actor.current_workspace_id)
+                    .await;
                 self.transition_task(
                     &running_task,
                     domain::PluginTaskStatus::Succeeded,
@@ -696,6 +702,8 @@ where
                     }),
                 ))
                 .await?;
+            self.invalidate_model_routing_catalog(actor.current_workspace_id)
+                .await;
             Ok::<usize, anyhow::Error>(migrated_instances.len())
         }
         .await;

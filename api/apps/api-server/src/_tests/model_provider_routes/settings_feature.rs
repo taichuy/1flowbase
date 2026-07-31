@@ -281,9 +281,11 @@ async fn model_providers_feature_only_lists_catalog_and_redacted_instances() {
                 .body(Body::from(
                     json!({
                         "auto_include_new_instances": true,
-                        "model_distribution_rules": [{
+                        "expected_revision": 0,
+                        "model_routing_policies": [{
                             "model_id": "fixture_chat",
-                            "distribution_rule": "none"
+                            "distribution_rule": "none",
+                            "provider_instance_ids": []
                         }]
                     })
                     .to_string(),
@@ -323,9 +325,11 @@ async fn model_providers_feature_only_lists_catalog_and_redacted_instances() {
                 .body(Body::from(
                     json!({
                         "auto_include_new_instances": true,
-                        "model_distribution_rules": [{
+                        "expected_revision": 1,
+                        "model_routing_policies": [{
                             "model_id": "fixture_chat",
-                            "distribution_rule": "illegal"
+                            "distribution_rule": "illegal",
+                            "provider_instance_ids": []
                         }]
                     })
                     .to_string(),

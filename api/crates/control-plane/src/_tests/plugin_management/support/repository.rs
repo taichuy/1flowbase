@@ -1074,6 +1074,7 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
             workspace_id: input.workspace_id,
             provider_code: input.provider_code.clone(),
             auto_include_new_instances: input.auto_include_new_instances,
+            revision: existing.as_ref().map_or(1, |record| record.revision + 1),
             created_by: existing
                 .as_ref()
                 .map(|record| record.created_by)
@@ -1084,7 +1085,31 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
                 .map(|record| record.created_at)
                 .unwrap_or(now),
             updated_at: now,
-            model_distribution_rules: Vec::new(),
+            model_routing_policies: input
+                .model_routing_policies
+                .as_ref()
+                .map(|policies| {
+                    policies
+                        .iter()
+                        .map(|policy| domain::ModelProviderMainModelRoutingPolicyRecord {
+                            workspace_id: input.workspace_id,
+                            provider_code: input.provider_code.clone(),
+                            model_id: policy.model_id.clone(),
+                            distribution_rule: policy.distribution_rule,
+                            provider_instance_ids: policy.provider_instance_ids.clone(),
+                            created_by: input.updated_by,
+                            updated_by: input.updated_by,
+                            created_at: now,
+                            updated_at: now,
+                        })
+                        .collect()
+                })
+                .or_else(|| {
+                    existing
+                        .as_ref()
+                        .map(|record| record.model_routing_policies.clone())
+                })
+                .unwrap_or_default(),
         };
         main_instances.insert(key, record.clone());
         Ok(record)

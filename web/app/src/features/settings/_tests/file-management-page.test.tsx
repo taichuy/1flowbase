@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { Grid, message } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -259,7 +265,8 @@ describe('File management settings page', () => {
     modelProvidersApi.fetchSettingsModelProviderMainInstance.mockResolvedValue({
       provider_code: 'openai_compatible',
       auto_include_new_instances: true,
-      model_distribution_rules: []
+      revision: 0,
+      model_routing_policies: []
     });
     pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
     pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
@@ -303,9 +310,7 @@ describe('File management settings page', () => {
   });
 
   test('create-only workspace mode hides file table tab and keeps create entry visible', async () => {
-    authenticateWithPermissions([
-      'file_table.create.all'
-    ]);
+    authenticateWithPermissions(['file_table.create.all']);
     fileManagementApi.fetchSettingsFileTables.mockClear();
 
     renderApp('/settings/files');

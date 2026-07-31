@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use sha2::{Digest, Sha256};
 
@@ -247,20 +247,22 @@ fn compile_llm_runtime(
         return None;
     };
 
+    let routing_policy = context
+        .model_routing_policies
+        .get(&(provider_code.clone(), model.clone()));
     let provider_instances = resolve_fixed_model_provider_instances(
         node_id,
         &provider_code,
         &model,
+        routing_policy,
         context,
         compile_issues,
     )?;
     let provider_instance = provider_instances.first().copied()?;
 
     let context_policy = compile_llm_context_policy(config);
-    let distribution_rule = context
-        .model_distribution_rules
-        .get(&(provider_code.clone(), model.clone()))
-        .copied()
+    let distribution_rule = routing_policy
+        .map(|policy| policy.distribution_rule)
         .unwrap_or_default();
 
     Some(CompiledLlmRuntime {
@@ -292,6 +294,7 @@ fn resolve_fixed_model_provider_instances<'a>(
     node_id: &str,
     provider_code: &str,
     model: &str,
+    routing_policy: Option<&FlowCompileModelRoutingPolicy>,
     context: &'a FlowCompileContext,
     compile_issues: &mut Vec<CompileIssue>,
 ) -> Option<Vec<&'a FlowCompileProviderInstance>> {
@@ -333,13 +336,36 @@ fn resolve_fixed_model_provider_instances<'a>(
         return None;
     }
 
-    let runnable_candidates = model_candidates
+    let mut runnable_candidates = model_candidates
         .iter()
         .copied()
         .filter(|instance| instance.is_ready && instance.is_runnable)
         .collect::<Vec<_>>();
 
     if !runnable_candidates.is_empty() {
+        let configured_positions = routing_policy
+            .map(|policy| {
+                policy
+                    .provider_instance_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(position, id)| (id.as_str(), position))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        runnable_candidates.sort_by(|left, right| {
+            configured_positions
+                .get(left.provider_instance_id.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &configured_positions
+                        .get(right.provider_instance_id.as_str())
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                )
+                .then(left.provider_instance_id.cmp(&right.provider_instance_id))
+        });
         return Some(runnable_candidates);
     }
 
