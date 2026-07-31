@@ -524,8 +524,8 @@ export function ApplicationManagementPanel() {
           'settingsApplicationManagement',
           'auto.application_management_actions'
         ),
-        width: 220,
-        minWidth: 220,
+        width: 160,
+        minWidth: 160,
         align: 'center',
         render: (_, application) => {
           const editAllowed = canEdit(application);
@@ -553,9 +553,11 @@ export function ApplicationManagementPanel() {
             }
           ];
           return (
-            <Space size={8}>
+            <Space size={2}>
               <Button
                 href={`/applications/${application.id}/orchestration`}
+                size="small"
+                type="link"
               >
                 {i18nText('settings', 'auto.view')}
               </Button>
@@ -573,6 +575,8 @@ export function ApplicationManagementPanel() {
                   <Button
                     disabled={!editAllowed}
                     onClick={() => setDetailsApplication(application)}
+                    size="small"
+                    type="link"
                   >
                     {i18nText('settings', 'auto.edit')}
                   </Button>
@@ -591,6 +595,7 @@ export function ApplicationManagementPanel() {
               >
                 <Button
                   type="text"
+                  size="small"
                   icon={<MoreOutlined />}
                   aria-label={i18nText(
                     'applications',
