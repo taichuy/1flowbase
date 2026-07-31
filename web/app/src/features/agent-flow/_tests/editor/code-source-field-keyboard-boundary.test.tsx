@@ -73,9 +73,7 @@ test('AC-001 inserts canonical SQL variable tokens through Monaco suggestions', 
 
   await screen.findByTestId('monaco-surface');
 
-  const registerCompletionItemProvider = vi.fn(
-    (_language: string, _provider: unknown) => ({ dispose: vi.fn() })
-  );
+  const registerCompletionItemProvider = vi.fn(() => ({ dispose: vi.fn() }));
   const trigger = vi.fn();
   const model = {
     getLineContent: () => 'select {'
