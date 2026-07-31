@@ -17,7 +17,7 @@ describe('LLM node defaults', () => {
 
     expect(node.config.protocol_context).toEqual({
       kind: 'selector',
-      value: ['sys', 'protocol_context']
+      value: ['node-start', 'protocol_context']
     });
     expect(node.config.context_policy).toEqual({
       integration_context: 'enabled',

@@ -230,6 +230,27 @@ pub(super) fn synchronize_runtime_global_variables(
         prior_user_turn_count(&runtime_context.native_model_prompt_context.messages)
     };
 
+    let start_protocol_context = runtime_context
+        .resolved_protocol_context()
+        .ok()
+        .flatten()
+        .map(|envelope| {
+            serde_json::to_value(envelope)
+                .expect("the canonical ProtocolContextEnvelope must serialize")
+        })
+        .unwrap_or(Value::Null);
+    for node in plan.nodes.values().filter(|node| node.node_type == "start") {
+        if let Some(start_payload) = variable_pool
+            .get_mut(&node.node_id)
+            .and_then(Value::as_object_mut)
+        {
+            start_payload.insert(
+                "protocol_context".to_string(),
+                start_protocol_context.clone(),
+            );
+        }
+    }
+
     if let Some(protocol_context_locator) = runtime_context.protocol_context_locator() {
         let sys = variable_pool
             .entry("sys".to_string())
@@ -321,4 +342,7 @@ pub(crate) fn materialize_start_builtin_defaults(start_payload: &mut Map<String,
     start_payload
         .entry("tool_choice".to_string())
         .or_insert_with(|| Value::Object(Map::new()));
+    start_payload
+        .entry("protocol_context".to_string())
+        .or_insert(Value::Null);
 }

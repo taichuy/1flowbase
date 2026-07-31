@@ -129,14 +129,7 @@ export function createInitialStateWithProtocolContextCodeNode() {
     {
       key: 'protocol_context',
       title: 'Protocol Context',
-      valueType: 'json',
-      jsonSchema: {
-        type: 'object',
-        properties: {
-          source_protocol: { type: 'string' },
-          headers: { type: 'object' }
-        }
-      }
+      valueType: 'protocol_context'
     },
     {
       key: 'summary',

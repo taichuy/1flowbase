@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     code_executor_capability::select_code_executor,
     compiled_plan::{CompiledCodeDependency, CompiledCodeRuntime, CompiledNode, CompiledPlan},
-    output_schema::validate_output_value,
+    output_schema::{validate_output_value, ProtocolContextContractViolation},
     payload_builder::{
         is_reserved_payload_key, BuiltNodePayloads, PublicOutputContract, RawNodeExecutionResult,
     },
@@ -753,19 +753,27 @@ where
             let debug_facts = code_runtime_debug_facts(&output.console_logs)?;
             let executor_output = object_from_value(output.output_payload)?;
             if let Some(error) = output_contract_error {
-                let runtime_message = if protocol_context_output_paths.is_empty() {
-                    error.to_string()
+                let contract_violation = error.downcast_ref::<ProtocolContextContractViolation>();
+                let error_facts = if let Some(violation) = contract_violation {
+                    object_from_value(json!({
+                        "error_code": "protocol_context_contract_violation",
+                        "message": "protocol context output contract validation failed",
+                        "node_id": node.node_id,
+                        "selector": format!("{}.{}", node.node_id, violation.selector),
+                        "instance_path": violation.instance_path,
+                        "reason": violation.reason,
+                    }))?
                 } else {
-                    "selected Code output does not satisfy its declared JSON contract".to_string()
+                    object_from_value(json!({
+                        "error_code": "code_output_contract_error",
+                        "message": "code output contract validation failed",
+                        "runtime_message": error.to_string(),
+                    }))?
                 };
                 let raw = RawNodeExecutionResult {
                     executor_output: Map::new(),
                     metrics_facts: code_runtime_metrics(runtime, true)?,
-                    error_facts: object_from_value(json!({
-                        "error_code": "code_output_contract_error",
-                        "message": "code output contract validation failed",
-                        "runtime_message": runtime_message,
-                    }))?,
+                    error_facts,
                     debug_facts,
                     provider_events: Vec::new(),
                 };
@@ -870,6 +878,22 @@ fn protocol_context_output_paths(
             output_path
         };
         let output_path = output_path.to_vec();
+        let selected_output = plan.nodes.get(code_node_id).and_then(|source| {
+            source.outputs.iter().find(|output| {
+                let declared_path = output
+                    .selector
+                    .strip_prefix(&["result".to_string()])
+                    .unwrap_or(&output.selector);
+                declared_path == output_path
+                    || (declared_path.is_empty()
+                        && output_path.last().is_some_and(|key| key == &output.key))
+            })
+        });
+        if selected_output.is_some_and(|output| {
+            output.value_type == plugin_framework::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE
+        }) {
+            continue;
+        }
         paths.push(output_path);
     }
     paths.sort();

@@ -111,7 +111,11 @@ describe('start node variables', () => {
         { value: ['node-start', 'history'], label: 'Start/history' },
         { value: ['node-start', 'files'], label: 'Start/files' },
         { value: ['node-start', 'tools'], label: 'Start/tools' },
-        { value: ['node-start', 'tool_choice'], label: 'Start/tool_choice' }
+        { value: ['node-start', 'tool_choice'], label: 'Start/tool_choice' },
+        {
+          value: ['node-start', 'protocol_context'],
+          label: 'Start/protocol_context'
+        }
       ])
     );
   });
@@ -231,7 +235,7 @@ describe('start node variables', () => {
     ).not.toContainEqual(['node-code', 'result', 'raw_payload']);
   });
 
-  test('WP-D1D lists only whole protocol context sources without enumerating JSON fields', () => {
+  test('AC-002 lists only typed protocol context sources', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const codeNode = createNodeDocument('code', 'node-code');
 
@@ -239,19 +243,12 @@ describe('start node variables', () => {
       {
         key: 'protocol_context',
         title: 'Protocol Context',
-        valueType: 'json',
-        jsonSchema: {
-          type: 'object',
-          properties: {
-            source_protocol: { type: 'string' },
-            headers: { type: 'object' }
-          }
-        }
+        valueType: 'protocol_context'
       },
       {
-        key: 'summary',
-        title: 'Summary',
-        valueType: 'string'
+        key: 'generic_json',
+        title: 'Generic JSON',
+        valueType: 'json'
       }
     ];
     document.graph.nodes.push(codeNode);
@@ -265,25 +262,28 @@ describe('start node variables', () => {
       points: []
     });
 
-    expect(listLlmProtocolContextSelectorOptions(document, 'node-llm')).toEqual([
-      expect.objectContaining({
-        nodeId: 'sys',
-        nodeLabel: 'Start',
-        outputLabel: 'sys.protocol_context',
-        value: ['sys', 'protocol_context']
-      }),
-      expect.objectContaining({
-        nodeId: 'node-code',
-        nodeLabel: 'Code',
-        outputLabel: 'protocol_context',
-        value: ['node-code', 'result', 'protocol_context']
-      })
-    ]);
+    expect(listLlmProtocolContextSelectorOptions(document, 'node-llm')).toEqual(
+      [
+        expect.objectContaining({
+          nodeId: 'node-start',
+          nodeLabel: 'Start',
+          outputLabel: 'protocol_context',
+          valueType: 'protocol_context',
+          value: ['node-start', 'protocol_context']
+        }),
+        expect.objectContaining({
+          nodeId: 'node-code',
+          nodeLabel: 'Code',
+          outputLabel: 'protocol_context',
+          value: ['node-code', 'result', 'protocol_context']
+        })
+      ]
+    );
     expect(
-      listLlmProtocolContextSelectorOptions(document, 'node-llm').flatMap(
+      listLlmProtocolContextSelectorOptions(document, 'node-llm').map(
         (option) => option.value
       )
-    ).not.toContain('headers');
+    ).not.toContainEqual(['node-code', 'result', 'generic_json']);
   });
 
   test('builds nested cascader paths for code result output selectors', () => {
@@ -753,6 +753,7 @@ describe('start node variables', () => {
           files: [],
           tools: [],
           tool_choice: {},
+          protocol_context: null,
           system: '',
           model: '',
           reasoning_effort: '',
@@ -807,6 +808,7 @@ describe('start node variables', () => {
           files: [],
           tools: [],
           tool_choice: {},
+          protocol_context: null,
           query: ''
         }
       }
