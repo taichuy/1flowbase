@@ -605,6 +605,7 @@ fn compile_uses_selected_instance_models_instead_of_provider_family_aggregate() 
             included_in_main: true,
             available_models: BTreeSet::from(["other-model".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
 
@@ -633,6 +634,7 @@ fn compile_failover_queue_routes_with_frozen_targets() {
             included_in_main: true,
             available_models: BTreeSet::from(["backup-model".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
     let mut document = sample_document(flow_id);
@@ -745,6 +747,7 @@ fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
     let plan =
@@ -786,6 +789,7 @@ fn ac_004_compile_routes_main_model_targets_in_configured_order() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.model_routing_policies.insert(
@@ -834,6 +838,7 @@ fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.provider_instances.insert(
@@ -848,6 +853,7 @@ fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.model_routing_policies.insert(
@@ -919,6 +925,7 @@ fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
+            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.model_routing_policies.insert(

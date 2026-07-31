@@ -23,6 +23,7 @@ fn compile_context() -> FlowCompileContext {
                 is_ready: true,
                 available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
                 allow_custom_models: false,
+                runtime_capabilities: BTreeSet::new(),
             },
         )]),
         provider_instances: BTreeMap::from([(
@@ -37,6 +38,7 @@ fn compile_context() -> FlowCompileContext {
                 included_in_main: true,
                 available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
                 allow_custom_models: false,
+                runtime_capabilities: BTreeSet::new(),
             },
         )]),
         model_routing_policies: BTreeMap::new(),

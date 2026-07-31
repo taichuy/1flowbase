@@ -17,6 +17,10 @@ pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.respons
 pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
     "compact.responses_compaction_v2";
 pub const PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY: &str = "responses.native_passthrough";
+pub const PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY: &str =
+    "message_blocks.reasoning_history.v1";
+pub const PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY: &str =
+    "message_blocks.redacted_reasoning_history.v1";
 pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY: &str =
     "protocol_context.consume.anthropic_messages.v1";
 pub const PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY: &str =
@@ -419,6 +423,10 @@ pub enum ProviderInvocationCapability {
     SystemPromptBlocks,
     SystemPromptCacheControl,
     EndUserReference,
+    #[serde(rename = "message_blocks.reasoning_history.v1")]
+    MessageBlocksReasoningHistoryV1,
+    #[serde(rename = "message_blocks.redacted_reasoning_history.v1")]
+    MessageBlocksRedactedReasoningHistoryV1,
     ProtocolContext,
 }
 
@@ -435,6 +443,12 @@ impl ProviderInvocationCapability {
             Self::SystemPromptBlocks => "system_prompt_blocks",
             Self::SystemPromptCacheControl => "system_prompt_cache_control",
             Self::EndUserReference => "end_user_reference",
+            Self::MessageBlocksReasoningHistoryV1 => {
+                PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY
+            }
+            Self::MessageBlocksRedactedReasoningHistoryV1 => {
+                PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY
+            }
             // Kept as an input compatibility marker for host call sites. It is stripped before
             // provider projection and is not a package manifest capability.
             Self::ProtocolContext => "protocol_context",
@@ -448,6 +462,8 @@ pub enum ProviderGenerateTranslationDecision {
     OmittedSystemPromptCacheControl,
     OmittedEndUserReference,
     OmittedProtocolContextProfileMismatch,
+    DelegatedReasoningHistoryToProvider,
+    DelegatedRedactedReasoningHistoryToProvider,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -831,9 +847,10 @@ impl ProviderInvocationInput {
         })
     }
 
-    pub fn synchronize_required_capabilities(&mut self) {
+    pub fn synchronize_required_capabilities(&mut self) -> Result<(), String> {
         self.required_capabilities
-            .extend(self.derived_required_capabilities());
+            .extend(self.derived_required_capabilities()?);
+        Ok(())
     }
 
     pub fn semantic_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
@@ -936,7 +953,7 @@ impl ProviderInvocationInput {
             self.run_context.len(),
         ];
         let mut required_capabilities = self.required_capabilities.clone();
-        required_capabilities.extend(self.derived_required_capabilities());
+        required_capabilities.extend(self.derived_required_capabilities().unwrap_or_default());
 
         ProviderWireAudit {
             operation: self.operation,
@@ -962,7 +979,7 @@ impl ProviderInvocationInput {
     fn prepared_current_provider_invocation(&self) -> Result<Self, String> {
         self.validate_current_provider_operation()?;
         let mut invocation = self.clone();
-        invocation.synchronize_required_capabilities();
+        invocation.synchronize_required_capabilities()?;
         Ok(invocation)
     }
 
@@ -980,6 +997,22 @@ impl ProviderInvocationInput {
             .collect::<BTreeSet<_>>();
         let mut invocation = self.clone();
         let mut receipt = ProviderGenerateTranslationReceipt::default();
+
+        let message_capabilities = message_block_required_capabilities(&invocation.messages)?;
+        if message_capabilities
+            .contains(&ProviderInvocationCapability::MessageBlocksReasoningHistoryV1)
+        {
+            receipt
+                .decisions
+                .insert(ProviderGenerateTranslationDecision::DelegatedReasoningHistoryToProvider);
+        }
+        if message_capabilities
+            .contains(&ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1)
+        {
+            receipt.decisions.insert(
+                ProviderGenerateTranslationDecision::DelegatedRedactedReasoningHistoryToProvider,
+            );
+        }
 
         if invocation
             .system
@@ -1033,18 +1066,21 @@ impl ProviderInvocationInput {
                 .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
         }
 
-        invocation.synchronize_required_capabilities();
+        invocation.synchronize_required_capabilities()?;
         Ok((invocation, receipt))
     }
 
-    fn derived_required_capabilities(&self) -> BTreeSet<ProviderInvocationCapability> {
+    fn derived_required_capabilities(
+        &self,
+    ) -> Result<BTreeSet<ProviderInvocationCapability>, String> {
         let mut capabilities = self.semantic_required_capabilities();
+        capabilities.extend(message_block_required_capabilities(&self.messages)?);
         if self.operation == ProviderWireOperation::Compact {
             if let Some(profile) = self.profile {
                 capabilities.insert(profile.required_capability());
             }
         }
-        capabilities
+        Ok(capabilities)
     }
 
     fn validate_current_provider_operation(&self) -> Result<(), String> {
@@ -1251,6 +1287,49 @@ pub fn semantic_required_capabilities(
     capabilities
 }
 
+pub fn message_block_required_capabilities(
+    messages: &[ProviderMessage],
+) -> Result<BTreeSet<ProviderInvocationCapability>, String> {
+    let mut capabilities = BTreeSet::new();
+    for (message_index, message) in messages.iter().enumerate() {
+        let Some(content_blocks) = message.content_blocks.as_ref() else {
+            continue;
+        };
+        let blocks = content_blocks
+            .as_array()
+            .ok_or_else(|| format!("messages[{message_index}].content_blocks must be an array"))?;
+        for (block_index, block) in blocks.iter().enumerate() {
+            let block_type = block
+                .as_object()
+                .and_then(|object| object.get("type"))
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    format!(
+                        "messages[{message_index}].content_blocks[{block_index}].type must be a string"
+                    )
+                })?;
+            match block_type {
+                "text" | "image" | "image_url" | "document" | "tool_use" | "tool_result" => {}
+                "reasoning" => {
+                    capabilities
+                        .insert(ProviderInvocationCapability::MessageBlocksReasoningHistoryV1);
+                }
+                "reasoning_redacted" => {
+                    capabilities.insert(
+                        ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1,
+                    );
+                }
+                unknown => {
+                    return Err(format!(
+                        "messages[{message_index}].content_blocks[{block_index}] has unsupported canonical block type: {unknown}"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(capabilities)
+}
+
 fn undeclared_provider_capabilities(
     required_capabilities: &BTreeSet<ProviderInvocationCapability>,
     declared_capabilities: &[String],
@@ -1292,6 +1371,7 @@ pub enum ProviderRuntimeErrorKind {
     ModelNotFound,
     ProviderAffinityMismatch,
     ProviderTransportUnavailable,
+    SemanticCapabilityUnsupported,
     RateLimited,
     ProviderUpstreamError,
     ProviderInvalidResponse,

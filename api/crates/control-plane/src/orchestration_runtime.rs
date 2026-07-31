@@ -683,7 +683,12 @@ where
             preview_document,
             &compile_context,
         )?;
-        freeze_failover_queue_routes(&self.repository, &mut compiled_plan).await?;
+        freeze_failover_queue_routes(
+            &self.repository,
+            application.workspace_id,
+            &mut compiled_plan,
+        )
+        .await?;
         ensure_compiled_plan_runnable_for_node(&compiled_plan, &command.node_id)?;
         let started_at = OffsetDateTime::now_utc();
         let compiled_record = self

@@ -515,6 +515,7 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "primary-model".to_string(),
+                    runtime_capabilities: BTreeSet::new(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-backup".to_string(),
@@ -522,6 +523,7 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "backup-model".to_string(),
+                    runtime_capabilities: BTreeSet::new(),
                 },
             ],
             distribution_rule: LlmDistributionRule::RoundRobin,
@@ -575,6 +577,72 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
         llm_trace.metrics_payload["queue_snapshot_id"],
         json!("queue-snapshot-1")
     );
+}
+
+#[tokio::test]
+async fn root_1534_ac_004_route_selection_skips_semantically_incompatible_provider() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(false);
+    llm.llm_runtime = Some(CompiledLlmRuntime {
+        provider_instance_id: "provider-incompatible".to_string(),
+        provider_instance_display_name: String::new(),
+        provider_code: "fixture_provider".to_string(),
+        protocol: "openai_compatible".to_string(),
+        model: "primary-model".to_string(),
+        routing: Some(CompiledLlmRouting {
+            routing_mode: LlmRoutingMode::FailoverQueue,
+            fixed_model_target: None,
+            queue_template_id: Some("queue-template-1".to_string()),
+            queue_snapshot_id: Some("queue-snapshot-1".to_string()),
+            queue_targets: vec![
+                CompiledLlmRouteTarget {
+                    provider_instance_id: "provider-incompatible".to_string(),
+                    provider_instance_display_name: String::new(),
+                    provider_code: "fixture_provider".to_string(),
+                    protocol: "openai_compatible".to_string(),
+                    upstream_model_id: "primary-model".to_string(),
+                    runtime_capabilities: BTreeSet::new(),
+                },
+                CompiledLlmRouteTarget {
+                    provider_instance_id: "provider-compatible".to_string(),
+                    provider_instance_display_name: String::new(),
+                    provider_code: "fixture_provider".to_string(),
+                    protocol: "openai_compatible".to_string(),
+                    upstream_model_id: "backup-model".to_string(),
+                    runtime_capabilities: BTreeSet::from([
+                        "message_blocks.reasoning_history.v1".to_string()
+                    ]),
+                },
+            ],
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
+            distribution_key: None,
+            context_policy: json!({}),
+            stream_policy: json!({}),
+        }),
+    });
+    let llm_node = llm.clone();
+    let runtime = llm_node.llm_runtime.as_ref().unwrap();
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(
+        &plan,
+        &serde_json::Map::from_iter([("node-start".to_string(), json!({"query": "hello"}))]),
+    )
+    .expect("runtime context should parse");
+
+    let routes = llm_request_runtimes(
+        &llm_node,
+        runtime,
+        &runtime_context,
+        &BTreeSet::from([ProviderInvocationCapability::MessageBlocksReasoningHistoryV1]),
+    )
+    .await
+    .expect("a compatible route should be selected before Provider invocation");
+
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].provider_instance_id, "provider-compatible");
 }
 
 #[tokio::test]
@@ -1153,6 +1221,7 @@ fn model_group_llm_runtime(
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "gpt-5.4-mini".to_string(),
+                    runtime_capabilities: BTreeSet::new(),
                 })
                 .collect(),
             distribution_rule,
@@ -1194,6 +1263,7 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "primary-model".to_string(),
+                    runtime_capabilities: BTreeSet::new(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-backup".to_string(),
@@ -1201,6 +1271,7 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "backup-model".to_string(),
+                    runtime_capabilities: BTreeSet::new(),
                 },
             ],
             distribution_rule: LlmDistributionRule::RetryRoundRobin,

@@ -218,7 +218,14 @@ where
         trace_context,
         run_context,
     };
-    input.synchronize_required_capabilities();
+    input
+        .synchronize_required_capabilities()
+        .map_err(|message| {
+            json!({
+                "error_code": "invalid_canonical_message_block",
+                "message": message,
+            })
+        })?;
 
     Ok(BuiltProviderInvocation {
         input,

@@ -277,7 +277,12 @@ where
                 )?
             }
         };
-        freeze_failover_queue_routes(&service.repository, &mut compiled_plan).await?;
+        freeze_failover_queue_routes(
+            &service.repository,
+            application.workspace_id,
+            &mut compiled_plan,
+        )
+        .await?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
         let compiled_record = service
             .repository

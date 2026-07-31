@@ -94,7 +94,9 @@
             "system_prompt_blocks",
             "system_prompt_cache_control",
             "count_tokens",
-            "protocol_context.restore.anthropic_messages.v1"
+            "message_blocks.reasoning_history.v1",
+            "message_blocks.redacted_reasoning_history.v1",
+            "protocol_context.restore.anthropic_messages.v2"
           ]
         }
       },
@@ -110,7 +112,18 @@
           "anthropic_version": "2023-06-01",
           "validate_model": false
         },
-        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "visible answer",
+            "content_blocks": [
+              { "type": "reasoning", "text": "private reasoning", "signature": "sig" },
+              { "type": "reasoning_redacted", "data": "opaque" },
+              { "type": "text", "text": "visible answer" }
+            ]
+          },
+          { "role": "user", "content": "$PROMPT_CANARY" }
+        ],
         "system": [
           {
             "type": "text",
@@ -122,7 +135,9 @@
         "required_capabilities": [
           "system_prompt_blocks",
           "system_prompt_cache_control",
-          "end_user_reference"
+          "end_user_reference",
+          "message_blocks.reasoning_history.v1",
+          "message_blocks.redacted_reasoning_history.v1"
         ],
         "tools": [],
         "mcp_bindings": [],
@@ -149,6 +164,14 @@
           "model": "claude-sonnet-4-20250514",
           "messages": [
             {
+              "role": "assistant",
+              "content": [
+                { "type": "thinking", "thinking": "private reasoning", "signature": "sig" },
+                { "type": "redacted_thinking", "data": "opaque" },
+                { "type": "text", "text": "visible answer" }
+              ]
+            },
+            {
               "role": "user",
               "content": [{ "type": "text", "text": "$PROMPT_CANARY" }]
             }
@@ -166,7 +189,7 @@
           "temperature": 0.25
         },
         "wire_audit": {
-          "message_count": 1,
+          "message_count": 2,
           "system_block_count": 1,
           "model_parameter_count": 1,
           "counts_capped": false
@@ -254,7 +277,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/deepseek-provider",
-          "capabilities": []
+          "capabilities": ["message_blocks.reasoning_history.v1"]
         }
       },
       "input": {
@@ -268,10 +291,21 @@
           "api_key": "$SECRET_CANARY",
           "validate_model": false
         },
-        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "messages": [
+          { "role": "user", "content": "first turn" },
+          {
+            "role": "assistant",
+            "content": "visible first answer",
+            "content_blocks": [
+              { "type": "reasoning", "text": "private reasoning must not cross" },
+              { "type": "text", "text": "visible first answer" }
+            ]
+          },
+          { "role": "user", "content": "$PROMPT_CANARY" }
+        ],
         "system": [],
         "request_context": {},
-        "required_capabilities": [],
+        "required_capabilities": ["message_blocks.reasoning_history.v1"],
         "tools": [],
         "mcp_bindings": [],
         "response_format": null,
@@ -295,13 +329,17 @@
         },
         "body": {
           "model": "deepseek-chat",
-          "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+          "messages": [
+            { "role": "user", "content": "first turn" },
+            { "role": "assistant", "content": "visible first answer" },
+            { "role": "user", "content": "$PROMPT_CANARY" }
+          ],
           "stream": true,
           "stream_options": { "include_usage": true },
           "temperature": 0.25
         },
         "wire_audit": {
-          "message_count": 1,
+          "message_count": 3,
           "system_block_count": 0,
           "model_parameter_count": 1,
           "counts_capped": false

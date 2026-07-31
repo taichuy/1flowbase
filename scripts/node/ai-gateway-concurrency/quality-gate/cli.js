@@ -14,6 +14,7 @@ const { createDatabase } = require("../local-acceptance/system");
 const OFFICIAL_PROVIDER_CODES = Object.freeze([
   "openai",
   "anthropic",
+  "deepseek",
   "openai_compatible",
 ]);
 const MAX_COMMAND_LOG_BYTES = 2 * 1024 * 1024;
@@ -213,6 +214,16 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     ],
   });
   return [
+    invocation(
+      "plugin-framework-message-block-contract-tests",
+      "plugin-framework",
+      "root_1534",
+    ),
+    invocation(
+      "orchestration-runtime-semantic-route-tests",
+      "orchestration-runtime",
+      "root_1534",
+    ),
     invocation(
       "orchestration-runtime-upstream-error-tests",
       "orchestration-runtime",

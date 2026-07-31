@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::*;
 use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
 
@@ -1274,7 +1276,7 @@ async fn build_provider_runtime_config<R>(
     instance: &domain::ModelProviderInstanceRecord,
 ) -> Result<Value>
 where
-    R: ModelProviderRepository,
+    R: ModelProviderRepository + PluginRepository,
 {
     let secret_json = repository
         .get_secret_json(instance.id, master_key)
@@ -1594,10 +1596,11 @@ where
 
 pub(super) async fn freeze_failover_queue_routes<R>(
     repository: &R,
+    workspace_id: Uuid,
     compiled_plan: &mut orchestration_runtime::compiled_plan::CompiledPlan,
 ) -> Result<()>
 where
-    R: ModelProviderRepository,
+    R: ModelProviderRepository + PluginRepository,
 {
     for node in compiled_plan.nodes.values_mut() {
         let Some(runtime) = node.llm_runtime.as_mut() else {
@@ -1652,6 +1655,34 @@ where
                 )
             })
             .collect::<std::collections::HashMap<_, _>>();
+        let mut provider_runtime_capabilities = std::collections::HashMap::new();
+        for item in snapshot_items.iter().filter(|item| item.enabled) {
+            let capabilities = match repository
+                .get_instance(workspace_id, item.provider_instance_id)
+                .await?
+            {
+                Some(instance) => repository
+                    .get_installation(instance.installation_id)
+                    .await?
+                    .and_then(|installation| {
+                        installation
+                            .metadata_json
+                            .get("runtime_capabilities")
+                            .and_then(Value::as_array)
+                            .map(|values| {
+                                values
+                                    .iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect::<BTreeSet<_>>()
+                            })
+                    })
+                    .unwrap_or_default(),
+                None => BTreeSet::new(),
+            };
+            provider_runtime_capabilities
+                .insert(item.provider_instance_id.to_string(), capabilities);
+        }
         routing.queue_targets = snapshot_items
             .into_iter()
             .filter(|item| item.enabled)
@@ -1665,6 +1696,10 @@ where
                     provider_code: item.provider_code,
                     protocol: item.protocol,
                     upstream_model_id: item.upstream_model_id,
+                    runtime_capabilities: provider_runtime_capabilities
+                        .get(&item.provider_instance_id.to_string())
+                        .cloned()
+                        .unwrap_or_default(),
                 },
             )
             .collect();

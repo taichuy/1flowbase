@@ -1444,7 +1444,9 @@ done
             query: BTreeMap::from([("preview".to_string(), vec!["one".to_string()])]),
             ..ProtocolContextEnvelope::default()
         });
-        input.synchronize_required_capabilities();
+        input
+            .synchronize_required_capabilities()
+            .expect("fixture input must use valid canonical message blocks");
         input
             .required_capabilities
             .insert(ProviderInvocationCapability::ProtocolContext);

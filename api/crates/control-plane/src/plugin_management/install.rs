@@ -971,6 +971,7 @@ where
                         "model_discovery_mode": format!("{:?}", installed_package.provider.model_discovery_mode).to_ascii_lowercase(),
                         "icon": installed_package.manifest.icon,
                         "supported_model_types": ["llm"],
+                        "runtime_capabilities": installed_package.manifest.runtime.capabilities,
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
                     let installation = self

@@ -6,6 +6,7 @@ pub(super) async fn llm_request_runtimes(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
     runtime_context: &ExecutionRuntimeContext,
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
 ) -> Result<Vec<CompiledLlmRuntime>> {
     let request_count = if node
         .config
@@ -23,17 +24,56 @@ pub(super) async fn llm_request_runtimes(
     };
 
     let Some(routing) = runtime.routing.as_ref() else {
+        ensure_route_supports_required_capabilities(
+            &runtime.provider_instance_id,
+            &BTreeSet::new(),
+            required_capabilities,
+        )?;
         return Ok(vec![runtime.clone(); request_count]);
     };
     if routing.routing_mode != LlmRoutingMode::FailoverQueue || routing.queue_targets.is_empty() {
+        let declared_capabilities = routing
+            .fixed_model_target
+            .as_ref()
+            .and_then(|target| target.get("runtime_capabilities"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        ensure_route_supports_required_capabilities(
+            &runtime.provider_instance_id,
+            &declared_capabilities,
+            required_capabilities,
+        )?;
         return Ok(vec![runtime.clone(); request_count]);
+    }
+
+    let compatible_targets = routing
+        .queue_targets
+        .iter()
+        .filter(|target| {
+            missing_routing_capabilities(&target.runtime_capabilities, required_capabilities)
+                .is_empty()
+        })
+        .collect::<Vec<_>>();
+    if compatible_targets.is_empty() {
+        let missing = routing
+            .queue_targets
+            .iter()
+            .flat_map(|target| {
+                missing_routing_capabilities(&target.runtime_capabilities, required_capabilities)
+            })
+            .collect::<BTreeSet<_>>();
+        return Err(semantic_route_error("failover_queue", &missing));
     }
 
     let mut request_runtimes = Vec::with_capacity(request_count);
     for attempt_index in 0..request_count {
         let target_index = match routing.distribution_rule {
             crate::compiled_plan::LlmDistributionRule::RoundRobin
-                if routing.queue_targets.len() > 1 =>
+                if compatible_targets.len() > 1 =>
             {
                 let distribution_key = routing
                     .distribution_key
@@ -45,17 +85,17 @@ pub(super) async fn llm_request_runtimes(
                 let counter = runtime_context
                     .next_llm_routing_counter(distribution_key, Some(LLM_ROUTING_COUNTER_TTL))
                     .await?;
-                (counter - 1).rem_euclid(routing.queue_targets.len() as i64) as usize
+                (counter - 1).rem_euclid(compatible_targets.len() as i64) as usize
             }
             crate::compiled_plan::LlmDistributionRule::RetryRoundRobin
             | crate::compiled_plan::LlmDistributionRule::None
-                if routing.queue_targets.len() > 1 =>
+                if compatible_targets.len() > 1 =>
             {
-                attempt_index % routing.queue_targets.len()
+                attempt_index % compatible_targets.len()
             }
             _ => 0,
         };
-        let target = &routing.queue_targets[target_index];
+        let target = compatible_targets[target_index];
         let mut request_runtime = runtime.clone();
         request_runtime.provider_instance_id = target.provider_instance_id.clone();
         request_runtime.provider_instance_display_name =
@@ -67,6 +107,50 @@ pub(super) async fn llm_request_runtimes(
     }
 
     Ok(request_runtimes)
+}
+
+fn ensure_route_supports_required_capabilities(
+    route_id: &str,
+    declared_capabilities: &BTreeSet<String>,
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
+) -> Result<()> {
+    let missing = missing_routing_capabilities(declared_capabilities, required_capabilities);
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(semantic_route_error(route_id, &missing))
+}
+
+fn missing_routing_capabilities(
+    declared_capabilities: &BTreeSet<String>,
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
+) -> BTreeSet<String> {
+    required_capabilities
+        .iter()
+        .filter(|capability| {
+            matches!(
+                capability,
+                ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
+                    | ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+            )
+        })
+        .map(|capability| capability.manifest_capability_name().to_string())
+        .filter(|capability| !declared_capabilities.contains(capability))
+        .collect()
+}
+
+fn semantic_route_error(route_id: &str, missing: &BTreeSet<String>) -> anyhow::Error {
+    plugin_framework::PluginFrameworkError::runtime(
+        ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::SemanticCapabilityUnsupported,
+            "no LLM route accepts the request's canonical message-block semantics",
+        )
+        .with_provider_details(json!({
+            "route_id": route_id,
+            "missing_capabilities": missing,
+        })),
+    )
+    .into()
 }
 
 pub(super) struct AttemptMetricInput<'a> {

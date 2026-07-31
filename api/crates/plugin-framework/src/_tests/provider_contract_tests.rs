@@ -3,16 +3,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use plugin_framework::{
     installation::PluginTaskStatus,
     provider_contract::{
-        semantic_required_capabilities, ModelDiscoveryMode, NativeModelRequestContext,
-        NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType,
-        ProtocolContextEnvelope, ProviderBalanceInfo, ProviderBalanceResult, ProviderCompactError,
-        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensError,
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderGenerateTranslationDecision,
-        ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderOutputItemPhase,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        message_block_required_capabilities, semantic_required_capabilities, ModelDiscoveryMode,
+        NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
+        NativePromptCacheControlType, ProtocolContextEnvelope, ProviderBalanceInfo,
+        ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
+        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
+        ProviderOutputItemPhase, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::json;
@@ -637,6 +638,117 @@ fn ac_003_semantic_requirements_expose_canonical_manifest_capability_names() {
             "end_user_reference",
         ]
     );
+}
+
+#[test]
+fn root_1534_ac_001_message_blocks_derive_reasoning_capabilities_and_bounded_receipt() {
+    let messages = vec![ProviderMessage {
+        role: ProviderMessageRole::Assistant,
+        content: "visible answer".to_string(),
+        name: None,
+        tool_call_id: None,
+        is_error: None,
+        tool_calls: None,
+        content_blocks: Some(json!([
+            {"type": "reasoning", "text": "private reasoning", "signature": "sig"},
+            {"type": "text", "text": "visible answer"},
+            {"type": "reasoning_redacted", "data": "opaque"}
+        ])),
+    }];
+
+    assert_eq!(
+        message_block_required_capabilities(&messages).unwrap(),
+        BTreeSet::from([
+            ProviderInvocationCapability::MessageBlocksReasoningHistoryV1,
+            ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1,
+        ])
+    );
+
+    let input = ProviderInvocationInput {
+        messages,
+        ..ProviderInvocationInput::default()
+    };
+    let (wire, receipt) = input
+        .to_current_provider_generate_wire_value(&[
+            "message_blocks.reasoning_history.v1".to_string(),
+            "message_blocks.redacted_reasoning_history.v1".to_string(),
+        ])
+        .expect("a conforming Provider owns canonical message-block lowering");
+
+    assert_eq!(
+        wire["required_capabilities"],
+        json!([
+            "message_blocks.reasoning_history.v1",
+            "message_blocks.redacted_reasoning_history.v1"
+        ])
+    );
+    assert_eq!(receipt.decisions.len(), 2);
+    assert!(receipt
+        .decisions
+        .contains(&ProviderGenerateTranslationDecision::DelegatedReasoningHistoryToProvider));
+    assert!(receipt.decisions.contains(
+        &ProviderGenerateTranslationDecision::DelegatedRedactedReasoningHistoryToProvider
+    ));
+}
+
+#[test]
+fn root_1534_ac_002_unknown_or_untyped_canonical_message_blocks_fail_closed() {
+    for content_blocks in [
+        json!({"type": "reasoning"}),
+        json!([{"text": "missing type"}]),
+        json!([{"type": "future_vendor_block", "payload": "must-not-cross"}]),
+    ] {
+        let input = ProviderInvocationInput {
+            messages: vec![ProviderMessage {
+                role: ProviderMessageRole::Assistant,
+                content: "visible answer".to_string(),
+                name: None,
+                tool_call_id: None,
+                is_error: None,
+                tool_calls: None,
+                content_blocks: Some(content_blocks),
+            }],
+            ..ProviderInvocationInput::default()
+        };
+
+        let error = input
+            .to_current_provider_generate_wire_value(&[
+                "message_blocks.reasoning_history.v1".to_string()
+            ])
+            .expect_err("unknown canonical blocks must not reach a Provider wire");
+        assert!(
+            error.to_string().contains("canonical block")
+                || error.to_string().contains("content_blocks")
+        );
+    }
+}
+
+#[test]
+fn root_1534_ac_003_explicit_anthropic_capabilities_accept_reasoning_block_semantics() {
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: "visible answer".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type": "reasoning", "text": "reasoning", "signature": "sig"},
+                {"type": "reasoning_redacted", "data": "opaque"},
+                {"type": "text", "text": "visible answer"}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    input
+        .to_current_provider_generate_wire_value(&[
+            "message_blocks.reasoning_history.v1".to_string(),
+            "message_blocks.redacted_reasoning_history.v1".to_string(),
+            "protocol_context.restore.anthropic_messages.v2".to_string(),
+        ])
+        .expect("Anthropic declares both canonical block semantics explicitly");
 }
 
 #[test]

@@ -463,6 +463,8 @@ runtime:
     - system_prompt_blocks
     - system_prompt_cache_control
     - end_user_reference
+    - message_blocks.reasoning_history.v1
+    - message_blocks.redacted_reasoning_history.v1
     - count_tokens
     - protocol_context.consume.anthropic_messages.v1
     - protocol_context.restore.openai_chat.v1
@@ -478,6 +480,8 @@ runtime:
             "system_prompt_blocks",
             "system_prompt_cache_control",
             "end_user_reference",
+            "message_blocks.reasoning_history.v1",
+            "message_blocks.redacted_reasoning_history.v1",
             "count_tokens",
             "protocol_context.consume.anthropic_messages.v1",
             "protocol_context.restore.openai_chat.v1",

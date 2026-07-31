@@ -7,9 +7,10 @@ use plugin_framework::{
     provider_contract::{
         NativePromptBlock, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMessage,
-        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};
@@ -1209,8 +1210,9 @@ where
             node.node_id
         )
     })?;
-    let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
     if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
+        let attempt_runtimes =
+            llm_request_runtimes(node, runtime, runtime_context, &BTreeSet::new()).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("CountTokens LLM consumer has no selected runtime"))?;
@@ -1230,6 +1232,8 @@ where
         runtime_context.operation(),
         domain::AiNativeOperation::Compact(_)
     ) {
+        let attempt_runtimes =
+            llm_request_runtimes(node, runtime, runtime_context, &BTreeSet::new()).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;
@@ -1245,6 +1249,76 @@ where
         )
         .await;
     }
+    let mut routing_probe = match build_provider_invocation(
+        plan,
+        node,
+        runtime,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+        invoker,
+    )
+    .await
+    {
+        Ok(invocation) => Some(invocation),
+        Err(error_payload) => {
+            return build_failed_llm_execution(
+                node,
+                runtime,
+                error_payload,
+                LlmFailureProjection::NoNodeOutput,
+                None,
+                build_llm_metrics_payload(
+                    runtime,
+                    ProviderUsage::default(),
+                    Some(ProviderFinishReason::Error),
+                    0,
+                    Vec::new(),
+                    None,
+                    None,
+                ),
+                Vec::new(),
+                LlmDebugInvocation {
+                    messages: &[],
+                    context: None,
+                },
+            );
+        }
+    };
+    let required_capabilities = routing_probe
+        .as_ref()
+        .map(|invocation| invocation.input.required_capabilities.clone())
+        .unwrap_or_default();
+    let attempt_runtimes =
+        match llm_request_runtimes(node, runtime, runtime_context, &required_capabilities).await {
+            Ok(runtimes) => runtimes,
+            Err(error) => {
+                let provider_error = provider_runtime_error_from_anyhow(&error);
+                let error_payload = build_provider_error_payload(runtime, &provider_error);
+                return build_failed_llm_execution(
+                    node,
+                    runtime,
+                    error_payload,
+                    LlmFailureProjection::NoNodeOutput,
+                    None,
+                    build_llm_metrics_payload(
+                        runtime,
+                        ProviderUsage::default(),
+                        Some(ProviderFinishReason::Error),
+                        0,
+                        Vec::new(),
+                        None,
+                        None,
+                    ),
+                    Vec::new(),
+                    LlmDebugInvocation {
+                        messages: &[],
+                        context: None,
+                    },
+                );
+            }
+        };
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -1260,41 +1334,52 @@ where
     let mut retry_reason: Option<String> = None;
 
     for (attempt_index, attempt_runtime) in attempt_runtimes.iter().enumerate() {
-        let mut invocation = match build_provider_invocation(
-            plan,
-            node,
-            attempt_runtime,
-            resolved_inputs,
-            rendered_templates,
-            variable_pool,
-            runtime_context,
-            invoker,
-        )
-        .await
-        {
-            Ok(invocation) => invocation,
-            Err(error_payload) => {
-                return build_failed_llm_execution(
-                    node,
-                    attempt_runtime,
-                    error_payload,
-                    LlmFailureProjection::NoNodeOutput,
-                    None,
-                    build_llm_metrics_payload(
+        let route_matches_probe = routing_probe.is_some()
+            && attempt_runtime.provider_instance_id == runtime.provider_instance_id
+            && attempt_runtime.provider_code == runtime.provider_code
+            && attempt_runtime.protocol == runtime.protocol
+            && attempt_runtime.model == runtime.model;
+        let mut invocation = if route_matches_probe {
+            routing_probe
+                .take()
+                .expect("the routing probe is consumed by at most one matching route")
+        } else {
+            match build_provider_invocation(
+                plan,
+                node,
+                attempt_runtime,
+                resolved_inputs,
+                rendered_templates,
+                variable_pool,
+                runtime_context,
+                invoker,
+            )
+            .await
+            {
+                Ok(invocation) => invocation,
+                Err(error_payload) => {
+                    return build_failed_llm_execution(
+                        node,
                         attempt_runtime,
-                        ProviderUsage::default(),
-                        Some(ProviderFinishReason::Error),
-                        0,
-                        attempt_metrics,
+                        error_payload,
+                        LlmFailureProjection::NoNodeOutput,
                         None,
-                        None,
-                    ),
-                    Vec::new(),
-                    LlmDebugInvocation {
-                        messages: &[],
-                        context: None,
-                    },
-                );
+                        build_llm_metrics_payload(
+                            attempt_runtime,
+                            ProviderUsage::default(),
+                            Some(ProviderFinishReason::Error),
+                            0,
+                            attempt_metrics,
+                            None,
+                            None,
+                        ),
+                        Vec::new(),
+                        LlmDebugInvocation {
+                            messages: &[],
+                            context: None,
+                        },
+                    );
+                }
             }
         };
         inject_visible_internal_llm_tool_media_content_blocks(&mut invocation.input, variable_pool)

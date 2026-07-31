@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
@@ -197,6 +198,8 @@ where
             assigned_installation_ids.contains(&instance.installation_id),
         )
         .await?;
+        let runtime_capabilities =
+            provider_runtime_capabilities(repository, instance.installation_id).await?;
         provider_instances.insert(
             instance.id.to_string(),
             orchestration_runtime::compiler::FlowCompileProviderInstance {
@@ -209,6 +212,7 @@ where
                 included_in_main: instance.included_in_main,
                 available_models: available_models.clone(),
                 allow_custom_models,
+                runtime_capabilities,
             },
         );
 
@@ -579,6 +583,27 @@ where
         installation.desired_state,
         domain::PluginDesiredState::Disabled
     ) && installation.availability_status == domain::PluginAvailabilityStatus::Available)
+}
+
+async fn provider_runtime_capabilities<R>(
+    repository: &R,
+    installation_id: Uuid,
+) -> Result<BTreeSet<String>>
+where
+    R: PluginRepository,
+{
+    let Some(installation) = repository.get_installation(installation_id).await? else {
+        return Ok(BTreeSet::new());
+    };
+    Ok(installation
+        .metadata_json
+        .get("runtime_capabilities")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect())
 }
 
 fn missing_provider_field(message: &str) -> &'static str {

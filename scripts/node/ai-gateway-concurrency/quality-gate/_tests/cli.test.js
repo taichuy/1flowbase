@@ -61,13 +61,13 @@ test("quality gate exposes one explicit command with local source and database i
   assert.throws(() => parseArgs(["run"]), /required/u);
 });
 
-test("quality gate runs all three official provider library suites from the paired source", () => {
+test("quality gate runs the blocking official provider library suites from the paired source", () => {
   assert.deepEqual(
     officialProviderTestInvocations("/official").map(({ name, args }) => [
       name,
       args,
     ]),
-    ["openai", "anthropic", "openai_compatible"].map((provider) => [
+    ["openai", "anthropic", "deepseek", "openai_compatible"].map((provider) => [
       `${provider}-provider-tests`,
       [
         "test",
@@ -110,6 +110,8 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   assert.deepEqual(
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
+      ["plugin-framework-message-block-contract-tests", "root_1534"],
+      ["orchestration-runtime-semantic-route-tests", "root_1534"],
       ["orchestration-runtime-upstream-error-tests", "upstream"],
       ["control-plane-conversation-tests", "application_public_api"],
       [
