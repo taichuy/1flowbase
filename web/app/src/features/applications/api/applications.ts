@@ -2,14 +2,14 @@ import {
   createConsoleApplication,
   createConsoleApplicationTag,
   deleteConsoleApplication,
-  exportConsoleAgentFlowTemplate,
+  exportConsoleApplicationArchive,
   getConsoleApplication,
   getConsoleApplicationCatalog,
   getDefaultApiBaseUrl,
-  importConsoleAgentFlowTemplate,
+  importConsoleApplicationArchive,
   listConsoleApplicationEnvironmentVariables,
   listConsoleApplications,
-  previewConsoleAgentFlowTemplate,
+  previewConsoleApplicationArchive,
   replaceConsoleApplicationEnvironmentVariables,
   updateConsoleApplication,
   type ApiBaseUrlLocation,
@@ -153,16 +153,17 @@ export function createApplicationTag(
   );
 }
 
-export function exportAgentFlowTemplate(applicationId: string) {
-  return exportConsoleAgentFlowTemplate(
-    applicationId,
+export function exportApplicationArchive(applicationIds: string[]) {
+  return exportConsoleApplicationArchive(
+    { application_ids: applicationIds },
     getApplicationsApiBaseUrl()
   );
 }
 
 export function previewAgentFlowTemplate(template: AgentFlowTemplatePackage) {
-  return previewConsoleAgentFlowTemplate(
-    { template },
+  return previewConsoleApplicationArchive(
+    new Blob([JSON.stringify(template)], { type: 'application/json' }),
+    'official-template.json',
     getApplicationsApiBaseUrl()
   );
 }
@@ -171,8 +172,40 @@ export function importAgentFlowTemplate(
   input: ImportAgentFlowTemplateInput,
   csrfToken: string
 ) {
-  return importConsoleAgentFlowTemplate(
-    input,
+  return importConsoleApplicationArchive(
+    {
+      file: new Blob([JSON.stringify(input.template)], {
+        type: 'application/json'
+      }),
+      filename: 'official-template.json',
+      name: input.name,
+      description: input.description
+    },
+    csrfToken,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function previewApplicationArchive(file: File) {
+  return previewConsoleApplicationArchive(
+    file,
+    file.name,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function importApplicationArchive(
+  file: File,
+  input: { name?: string; description?: string },
+  csrfToken: string
+) {
+  return importConsoleApplicationArchive(
+    {
+      file,
+      filename: file.name,
+      name: input.name,
+      description: input.description
+    },
     csrfToken,
     getApplicationsApiBaseUrl()
   );

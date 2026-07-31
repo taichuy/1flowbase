@@ -81,6 +81,19 @@ env:
   QUALITY_GATE_SCHEDULED_ENVIRONMENT: nightly-latest
 
 jobs:
+  resolve-quality-gate-target:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      target_sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+      - id: target
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   single-scope-gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' }}
     runs-on: ubuntu-latest
@@ -180,6 +193,15 @@ jobs:
         with:
           name: test-governance-artifacts
           path: tmp/test-governance
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-governance-summary
+          if-no-files-found: error
+          path: |
+            tmp/test-governance/quality-gate-report.json
+            tmp/test-governance/quality-gate-report.md
+            tmp/test-governance/quality-gate.latest.log
 
   repo-tooling-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
@@ -518,6 +540,7 @@ jobs:
 
   coverage-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
@@ -528,17 +551,14 @@ jobs:
           - coverage-backend-orchestration-runtime
           - coverage-backend-plugin-runner
           - coverage-backend-storage-postgres
-          - coverage-backend-api-server
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
-        if: ${{ matrix.scope == 'coverage-backend-api-server' }}
       - name: Resolve release-seeded Rust cache tag
         id: release_seed_tag
         shell: bash
@@ -605,11 +625,102 @@ jobs:
           report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
+      - name: Record immutable coverage target SHA
+        if: always()
+        run: echo "$QUALITY_GATE_TARGET_SHA" > tmp/test-governance/target-sha.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: test-governance-${{ matrix.scope }}
           path: tmp/test-governance
+
+  coverage-backend-api-server-sharded:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
+      - name: Resolve quality gate target SHA
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          key: rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-
+      - uses: ./.github/actions/quality-gate
+        env:
+          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          QUALITY_GATE_TARGET_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
+        with:
+          scope: coverage-backend-api-server-sharded-${{ matrix.shard }}-of-4
+          report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
+          environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
+          publish_issue: "false"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: coverage-shadow-api-server-profraw-${{ matrix.shard }}
+          path: tmp/test-governance/coverage-shadow/api-server/shard-${{ matrix.shard }}
+
+  coverage-backend-api-server-sharded-merge:
+    if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci')) }}
+    needs:
+      - resolve-quality-gate-target
+      - coverage-backend-api-server-sharded
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
+      - name: Resolve quality gate target SHA
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          key: rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: coverage-shadow-api-server-profraw-*
+          path: tmp/test-governance/coverage-shadow/api-server/downloaded
+          merge-multiple: true
+      - name: Merge and enforce sharded API coverage
+        env:
+          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          QUALITY_GATE_TARGET_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
+        run: node scripts/node/coverage-shadow.js merge api-server 4
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: coverage-shadow-api-server-equivalence
+          path: |
+            tmp/test-governance/coverage-shadow/api-server/api-server-merged.json
+            tmp/test-governance/coverage-shadow/api-server/equivalence.json
 
   container-images-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.scope == 'ci' || inputs.scope == 'container-images')) }}
@@ -741,6 +852,7 @@ jobs:
       - backend-consistency-gate
       - coverage-frontend-gate
       - coverage-backend-gate
+      - coverage-backend-api-server-sharded-merge
       - container-images-gate
       - ai-gateway-protocol-conformance
     runs-on: ubuntu-latest
@@ -763,7 +875,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,coverage-backend-api-server,container-images,ai-gateway-protocol-conformance'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

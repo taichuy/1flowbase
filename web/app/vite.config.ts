@@ -78,6 +78,11 @@ export default defineConfig(({ mode }) => {
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
       include: [
+        '@ant-design/x-markdown',
+        '@dnd-kit/core',
+        '@dnd-kit/modifiers',
+        '@dnd-kit/sortable',
+        '@dnd-kit/utilities',
         '@lexical/react/LexicalComposer',
         '@lexical/react/LexicalComposerContext',
         '@lexical/react/LexicalContentEditable',
@@ -93,6 +98,7 @@ export default defineConfig(({ mode }) => {
         'copy-to-clipboard',
         'echarts',
         'lexical',
+        'monaco-editor',
         'react-markdown',
         'remark-breaks',
         'remark-gfm',

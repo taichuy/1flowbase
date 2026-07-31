@@ -15,7 +15,7 @@ import {
 beforeEach(setupNodeInspectorTest);
 
 describe('NodeInspector protocol context', () => {
-  test('FUA-WEB enables system protocol context for a legacy document without the field', async () => {
+  test('AC-001 enables Start protocol context for a document without the field', async () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     delete getLlmNodeConfig(state.draft.document).protocol_context;
 
@@ -35,7 +35,7 @@ describe('NodeInspector protocol context', () => {
     expect(
       within(field).getByRole('combobox', { name: '协议上下文变量' })
     ).toBeEnabled();
-    expect(field).toHaveTextContent('sys.protocol_context');
+    expect(field).toHaveTextContent('protocol_context');
     expect(getLlmNodeConfig(state.draft.document)).not.toHaveProperty(
       'protocol_context'
     );
@@ -69,7 +69,7 @@ describe('NodeInspector protocol context', () => {
 
     expect(protocolContextSwitch).toBeChecked();
     expect(protocolContextSelector).toBeEnabled();
-    expect(field).toHaveTextContent('sys.protocol_context');
+    expect(field).toHaveTextContent('protocol_context');
     expect(getLlmNodeConfig(latestDocument)).not.toHaveProperty(
       'protocol_context_enabled'
     );
@@ -86,7 +86,7 @@ describe('NodeInspector protocol context', () => {
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument).protocol_context).toEqual({
         kind: 'selector',
-        value: ['sys', 'protocol_context']
+        value: ['node-start', 'protocol_context']
       });
     });
 

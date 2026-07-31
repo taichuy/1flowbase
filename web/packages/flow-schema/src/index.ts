@@ -98,7 +98,7 @@ export interface FlowVariableReference {
 
 export const DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE: FlowVariableReference = {
   kind: 'selector',
-  value: ['sys', 'protocol_context']
+  value: ['node-start', 'protocol_context']
 };
 
 export type PublicOutputKeyValidationResult =

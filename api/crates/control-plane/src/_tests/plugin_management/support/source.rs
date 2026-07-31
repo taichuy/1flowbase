@@ -104,6 +104,7 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
                 source_label: self.source_label.clone(),
                 registry_url: "https://example.com/official-registry.json".to_string(),
             },
+            freshness: crate::ports::OfficialPluginCatalogFreshness::Fresh,
             entries: vec![OfficialPluginSourceEntry {
                 plugin_id: "1flowbase.openai_compatible".to_string(),
                 plugin_type: "model_provider".to_string(),
@@ -127,6 +128,10 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
                 model_discovery_mode: "hybrid".to_string(),
             }],
         })
+    }
+
+    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
+        self.list_official_catalog().await.ok()
     }
 
     async fn download_plugin(

@@ -575,6 +575,48 @@ pub struct ProtocolContextEnvelope {
     pub body: BTreeMap<String, Value>,
 }
 
+pub const PROTOCOL_CONTEXT_VALUE_TYPE: &str = "protocol_context";
+
+pub fn protocol_context_envelope_json_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_protocol"],
+        "properties": {
+            "source_protocol": { "type": "string", "minLength": 1 },
+            "source_request": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "authentication": {
+                        "type": "string",
+                        "enum": ["authorization_bearer", "x_api_key"]
+                    },
+                    "body": { "type": "object" }
+                }
+            },
+            "query": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            },
+            "headers": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            },
+            "body": {
+                "type": "object",
+                "additionalProperties": true
+            }
+        }
+    })
+}
+
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProviderNativeTransport {
     pub protocol: String,
@@ -1185,7 +1227,9 @@ fn protocol_context_profile_is_declared(
         .any(|profile| declared_capabilities.contains(profile))
 }
 
-fn validate_protocol_context_envelope(envelope: &ProtocolContextEnvelope) -> Result<(), String> {
+pub fn validate_protocol_context_envelope(
+    envelope: &ProtocolContextEnvelope,
+) -> Result<(), String> {
     if envelope.source_protocol.trim().is_empty() {
         return Err("protocol context source_protocol must not be empty".to_string());
     }

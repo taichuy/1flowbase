@@ -335,7 +335,7 @@ describe('style boundary registry', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Style boundary application')).toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '应用' })
+      screen.getByRole('columnheader', { name: '名称' })
     ).toBeInTheDocument();
   }, 30_000);
 

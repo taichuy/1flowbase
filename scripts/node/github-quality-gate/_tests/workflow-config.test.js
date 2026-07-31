@@ -247,6 +247,28 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   );
 });
 
+test("API coverage sharding is enforced after structural equivalence is proven", () => {
+  const workflow = readQualityGateWorkflow();
+
+  assert.doesNotMatch(workflow, /coverage-backend-api-server-sharded:\n[\s\S]*?continue-on-error: true/u);
+  assert.match(workflow, /shard: \[1, 2, 3, 4\]/u);
+  assert.doesNotMatch(workflow, /coverage-backend-api-server-sharded-merge:\n[\s\S]*?continue-on-error: true/u);
+  const coverageMatrix = workflow.match(/coverage-backend-gate:[\s\S]*?steps:/u)?.[0] || '';
+  assert.doesNotMatch(coverageMatrix, /- coverage-backend-api-server\n/u);
+  assert.match(workflow, /options:[\s\S]*?- coverage-backend-api-server\n/u);
+  assert.match(workflow, /timeout-minutes: 30/u);
+  assert.match(workflow, /coverage-shadow-api-server-profraw-\$\{\{ matrix\.shard \}\}/u);
+  assert.match(workflow, /node scripts\/node\/coverage-shadow\.js merge api-server 4/u);
+  assert.match(workflow, /resolve-quality-gate-target:\n[\s\S]*?target_sha: \$\{\{ steps\.target\.outputs\.sha \}\}/u);
+  assert.match(workflow, /coverage-backend-gate:\n[\s\S]*?needs: resolve-quality-gate-target/u);
+  assert.match(workflow, /ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u);
+  assert.doesNotMatch(workflow, /tmp\/test-governance\/monolithic/u);
+  assert.match(workflow, /coverage-shadow\/api-server\/api-server-merged\.json/u);
+  assert.match(workflow, /coverage-shadow\/api-server\/equivalence\.json/u);
+  assert.match(workflow, /aggregate:\n[\s\S]*?- coverage-backend-api-server-sharded-merge/u);
+  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server(?:,|')/u);
+});
+
 test("React Doctor keeps current debt as a narrow baseline", () => {
   const config = readReactDoctorConfig();
 
@@ -619,6 +641,10 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.doesNotMatch(workflow, /name: test-governance-state-protocols/u);
   assert.match(workflow, /name: test-governance-container-images/u);
   assert.match(workflow, /name: test-governance-artifacts/u);
+  assert.match(workflow, /name: test-governance-summary/u);
+  assert.match(workflow, /tmp\/test-governance\/quality-gate-report\.json/u);
+  assert.match(workflow, /tmp\/test-governance\/quality-gate-report\.md/u);
+  assert.match(workflow, /tmp\/test-governance\/quality-gate\.latest\.log/u);
 });
 
 test("quality gate workflow caches Rust profiles without adding warm build jobs", () => {

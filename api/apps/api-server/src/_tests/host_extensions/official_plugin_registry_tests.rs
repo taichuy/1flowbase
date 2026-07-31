@@ -1,4 +1,5 @@
 use axum::{
+    extract::State,
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
     Json, Router,
@@ -6,6 +7,13 @@ use axum::{
 use control_plane::ports::OfficialPluginSourcePort;
 use plugin_framework::RuntimeTarget;
 use serde_json::json;
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use crate::config::ResolvedOfficialPluginSourceConfig;
 use crate::official_plugin_registry::{
@@ -207,6 +215,122 @@ async fn api_official_plugin_registry_uses_proxy_for_catalog_urls_and_package_do
     assert_eq!(downloaded.package_bytes, b"package-via-proxy");
 
     server.abort();
+}
+
+#[tokio::test]
+async fn ac_002_api_official_plugin_registry_coalesces_concurrent_catalog_refreshes() {
+    let request_count = Arc::new(AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let registry_url = format!(
+        "http://{}/official-registry.json",
+        listener.local_addr().unwrap()
+    );
+    let server_request_count = Arc::clone(&request_count);
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(delayed_registry_response)
+                .with_state(server_request_count),
+        )
+        .await
+        .unwrap();
+    });
+    let registry = ApiOfficialPluginRegistry::new(
+        ResolvedOfficialPluginSourceConfig {
+            source_kind: "official_registry".to_string(),
+            source_label: "官方源".to_string(),
+            registry_url,
+            github_proxy_url: None,
+            trust_mode: "allow_unsigned".to_string(),
+        },
+        Vec::new(),
+    );
+
+    let (first, second, third, fourth) = tokio::join!(
+        registry.list_official_catalog(),
+        registry.list_official_catalog(),
+        registry.list_official_catalog(),
+        registry.list_official_catalog()
+    );
+
+    assert!(first.is_ok());
+    assert!(second.is_ok());
+    assert!(third.is_ok());
+    assert!(fourth.is_ok());
+    assert_eq!(request_count.load(Ordering::SeqCst), 1);
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn ac_002_api_official_plugin_registry_returns_stale_catalog_without_waiting_for_refresh() {
+    let request_count = Arc::new(AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let registry_url = format!(
+        "http://{}/official-registry.json",
+        listener.local_addr().unwrap()
+    );
+    let server_request_count = Arc::clone(&request_count);
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(stalling_refresh_response)
+                .with_state(server_request_count),
+        )
+        .await
+        .unwrap();
+    });
+    let registry = ApiOfficialPluginRegistry::new(
+        ResolvedOfficialPluginSourceConfig {
+            source_kind: "official_registry".to_string(),
+            source_label: "官方源".to_string(),
+            registry_url,
+            github_proxy_url: None,
+            trust_mode: "allow_unsigned".to_string(),
+        },
+        Vec::new(),
+    );
+
+    let fresh = registry.list_official_catalog().await.unwrap();
+    assert_eq!(
+        fresh.freshness,
+        control_plane::ports::OfficialPluginCatalogFreshness::Fresh
+    );
+    registry.expire_registry_cache_for_test().await;
+
+    let stale = tokio::time::timeout(Duration::from_millis(250), registry.list_official_catalog())
+        .await
+        .expect("stale catalog reads must not wait for a background refresh")
+        .unwrap();
+
+    assert_eq!(
+        stale.freshness,
+        control_plane::ports::OfficialPluginCatalogFreshness::Stale
+    );
+    assert_eq!(stale.entries.len(), fresh.entries.len());
+
+    server.abort();
+}
+
+async fn delayed_registry_response(
+    State(request_count): State<Arc<AtomicUsize>>,
+    uri: Uri,
+) -> Response {
+    request_count.fetch_add(1, Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    proxy_response(uri).await
+}
+
+async fn stalling_refresh_response(
+    State(request_count): State<Arc<AtomicUsize>>,
+    uri: Uri,
+) -> Response {
+    if request_count.fetch_add(1, Ordering::SeqCst) > 0 {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+    proxy_response(uri).await
 }
 
 async fn proxy_response(uri: Uri) -> Response {

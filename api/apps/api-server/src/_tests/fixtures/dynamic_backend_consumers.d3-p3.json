@@ -371,12 +371,6 @@
       "Subscribe flow debug run stream"
     ],
     [
-      "applications.orchestration.template.export",
-      "GET",
-      "/api/console/applications/:id/orchestration/template",
-      "Export applications orchestration template"
-    ],
-    [
       "get_workflow_schedule_trigger",
       "GET",
       "/api/console/applications/:application_id/workflow-schedule-trigger",
@@ -911,9 +905,15 @@
       "Create application"
     ],
     [
+      "applications.orchestration.template.export",
+      "POST",
+      "/api/console/applications/archive/export",
+      "Export applications orchestration template"
+    ],
+    [
       "applications.orchestration.template.import",
       "POST",
-      "/api/console/applications/orchestration/template/import",
+      "/api/console/applications/archive/import",
       "Import applications orchestration template"
     ],
     [

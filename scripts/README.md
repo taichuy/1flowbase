@@ -193,6 +193,8 @@ node scripts/node/page-debug/cli.js login --account <account> --password <passwo
 
 默认产物写入 `tmp/page-debug/<timestamp>/`，包括截图、控制台日志、元数据和 DOM snapshot。
 
+`page-debug` 与 `tooling.js api-debug` 使用各自隔离的临时 console session：快照、请求和失败路径结束时自动注销，`open` 模式在浏览器断开时注销。不要在临时 Playwright / Node 脚本中直接调用 `/api/public/auth/sign-in`；确需自定义浏览器流程时，复用 `scripts/node/page-debug/auth.js` 暴露的临时 session owner，并在 `finally` 调用 `dispose()`。
+
 常用选项：
 
 - `--web-base-url <url>`: 默认 `http://127.0.0.1:3100`

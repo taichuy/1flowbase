@@ -160,66 +160,73 @@ async function runApiDebug(options, deps = {}) {
     account: credentials.account,
     password: credentials.password,
   });
+  try {
+    const requestHeaders = buildHeaderObject(options.headers);
+    if (!hasHeader(requestHeaders, 'cookie')) {
+      setHeader(requestHeaders, 'cookie', auth.cookieHeader);
+    }
+    if (MUTATING_METHODS.has(options.method) && auth.csrfToken && !hasHeader(requestHeaders, 'x-csrf-token')) {
+      setHeader(requestHeaders, 'x-csrf-token', auth.csrfToken);
+    }
+    if (requestBody !== null && !hasHeader(requestHeaders, 'content-type')) {
+      setHeader(requestHeaders, 'content-type', 'application/json');
+    }
 
-  const requestHeaders = buildHeaderObject(options.headers);
-  if (!hasHeader(requestHeaders, 'cookie')) {
-    setHeader(requestHeaders, 'cookie', auth.cookieHeader);
+    const targetUrl = resolveTargetUrl(options.apiBaseUrl, options.target);
+    const startedAt = new Date().toISOString();
+    const response = await fetchImpl(targetUrl, {
+      method: options.method,
+      headers: requestHeaders,
+      body: requestBody === null ? undefined : requestBody,
+    });
+    const finishedAt = new Date().toISOString();
+    const responseText = await response.text();
+    const responseJson = parseJsonMaybe(responseText);
+    const responseHeaders = headersToObject(response.headers);
+    const responseBodyPath = writeResponseBody({
+      artifacts,
+      responseText,
+      responseJson,
+    });
+
+    const expectedMismatch = options.expectStatus !== null && response.status !== options.expectStatus;
+    const evidencePath = writeEvidence({
+      artifacts,
+      options,
+      credentials,
+      auth,
+      targetUrl,
+      requestHeaders,
+      requestBody,
+      response,
+      responseHeaders,
+      responseBodyPath,
+      responseJson,
+      startedAt,
+      finishedAt,
+      expectedMismatch,
+    });
+
+    return {
+      ok: !expectedMismatch,
+      httpOk: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      expectedStatus: options.expectStatus,
+      error: expectedMismatch ? `expected status ${options.expectStatus}, got ${response.status}` : null,
+      outputDir: artifacts.runDir,
+      evidencePath,
+      responseBodyPath,
+      bodyPreview: responseText.slice(0, 2000),
+      printedBody: options.printBody ? responseText : null,
+    };
+  } finally {
+    await revokeApiDebugSession({
+      fetchImpl,
+      apiBaseUrl: options.apiBaseUrl,
+      auth,
+    });
   }
-  if (MUTATING_METHODS.has(options.method) && auth.csrfToken && !hasHeader(requestHeaders, 'x-csrf-token')) {
-    setHeader(requestHeaders, 'x-csrf-token', auth.csrfToken);
-  }
-  if (requestBody !== null && !hasHeader(requestHeaders, 'content-type')) {
-    setHeader(requestHeaders, 'content-type', 'application/json');
-  }
-
-  const targetUrl = resolveTargetUrl(options.apiBaseUrl, options.target);
-  const startedAt = new Date().toISOString();
-  const response = await fetchImpl(targetUrl, {
-    method: options.method,
-    headers: requestHeaders,
-    body: requestBody === null ? undefined : requestBody,
-  });
-  const finishedAt = new Date().toISOString();
-  const responseText = await response.text();
-  const responseJson = parseJsonMaybe(responseText);
-  const responseHeaders = headersToObject(response.headers);
-  const responseBodyPath = writeResponseBody({
-    artifacts,
-    responseText,
-    responseJson,
-  });
-
-  const expectedMismatch = options.expectStatus !== null && response.status !== options.expectStatus;
-  const evidencePath = writeEvidence({
-    artifacts,
-    options,
-    credentials,
-    auth,
-    targetUrl,
-    requestHeaders,
-    requestBody,
-    response,
-    responseHeaders,
-    responseBodyPath,
-    responseJson,
-    startedAt,
-    finishedAt,
-    expectedMismatch,
-  });
-
-  return {
-    ok: !expectedMismatch,
-    httpOk: response.ok,
-    status: response.status,
-    statusText: response.statusText,
-    expectedStatus: options.expectStatus,
-    error: expectedMismatch ? `expected status ${options.expectStatus}, got ${response.status}` : null,
-    outputDir: artifacts.runDir,
-    evidencePath,
-    responseBodyPath,
-    bodyPreview: responseText.slice(0, 2000),
-    printedBody: options.printBody ? responseText : null,
-  };
 }
 
 function loadRequestBody(options) {
@@ -267,6 +274,25 @@ async function loginForApiDebug({ fetchImpl, apiBaseUrl, account, password }) {
     csrfToken: responseJson.json?.data?.csrf_token ?? null,
     currentWorkspaceId: responseJson.json?.data?.current_workspace_id ?? null,
   };
+}
+
+async function revokeApiDebugSession({ fetchImpl, apiBaseUrl, auth }) {
+  if (!auth.csrfToken) {
+    throw new Error('登录成功但响应缺少 csrf_token，无法安全回收临时 console session');
+  }
+
+  const response = await fetchImpl(resolveTargetUrl(apiBaseUrl, '/api/console/session'), {
+    method: 'DELETE',
+    headers: {
+      cookie: auth.cookieHeader,
+      'x-csrf-token': auth.csrfToken,
+    },
+  });
+
+  if (!response.ok && response.status !== 401) {
+    const body = await response.text();
+    throw new Error(`临时 console session 回收失败：${response.status} ${body.slice(0, 500)}`.trim());
+  }
 }
 
 function extractSetCookieHeaders(headers) {

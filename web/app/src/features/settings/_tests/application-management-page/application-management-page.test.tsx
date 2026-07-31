@@ -9,12 +9,7 @@ const applicationManagementApi = vi.hoisted(() => ({
     'applications',
     query
   ]),
-  fetchSettingsApplicationManagement: vi.fn(),
-  fetchAllSettingsApplicationManagement: vi.fn()
-}));
-
-const applicationManagementExport = vi.hoisted(() => ({
-  downloadApplicationManagementCsv: vi.fn()
+  fetchSettingsApplicationManagement: vi.fn()
 }));
 
 const applicationsApi = vi.hoisted(() => ({
@@ -30,7 +25,11 @@ const applicationsApi = vi.hoisted(() => ({
   deleteApplication: vi.fn(),
   createApplication: vi.fn(),
   createApplicationTag: vi.fn(),
-  exportAgentFlowTemplate: vi.fn()
+  exportApplicationArchive: vi.fn()
+}));
+
+const applicationArchiveDownload = vi.hoisted(() => ({
+  downloadApplicationArchive: vi.fn()
 }));
 
 const applicationsPublicApi = vi.hoisted(() => ({
@@ -76,14 +75,8 @@ vi.mock('../../../applications/api/applications', async (importOriginal) => ({
 vi.mock('../../../applications/api/public-api', () => applicationsPublicApi);
 vi.mock('../../api/members', () => membersApi);
 vi.mock('../../../agent-flow/api/orchestration', () => orchestrationApi);
-vi.mock(
-  '../../components/application-management/application-management-export',
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import('../../components/application-management/application-management-export')
-    >()),
-    ...applicationManagementExport
-  })
+vi.mock('../../../applications/lib/template-download', () =>
+  applicationArchiveDownload
 );
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -167,6 +160,11 @@ describe('ApplicationManagementPanel', () => {
       tags: [{ id: 'tag-report', name: '报表' }]
     });
     applicationsApi.updateApplication.mockResolvedValue({ id: 'app-workflow' });
+    applicationsApi.exportApplicationArchive.mockResolvedValue({
+      blob: new Blob(['archive'], { type: 'application/zip' }),
+      filename: 'applications-2026-07-31.zip',
+      contentType: 'application/zip'
+    });
     applicationsPublicApi.unpublishApplicationApiVersion.mockResolvedValue(
       undefined
     );
@@ -494,28 +492,7 @@ describe('ApplicationManagementPanel', () => {
     expect(await screen.findByText('创建者加载失败')).toBeInTheDocument();
   });
 
-  test('AC-001 AC-002 AC-003 AC-004 exports the selected current-page rows or all filtered rows', async () => {
-    applicationManagementApi.fetchAllSettingsApplicationManagement.mockResolvedValue(
-      [
-        {
-          id: 'app-filtered',
-          application_type: 'agent_flow',
-          workflow_trigger_type: null,
-          name: 'Filtered Application',
-          description: '',
-          icon: null,
-          icon_type: null,
-          icon_background: null,
-          created_by: 'root-user',
-          created_by_display_name: 'Root',
-          created_at: '2026-07-12T08:00:00Z',
-          updated_at: '2026-07-13T08:00:00Z',
-          tags: [],
-          publication_status: 'published'
-        }
-      ]
-    );
-
+  test('AC-001 AC-002 exports only selected applications as a ZIP archive', async () => {
     render(
       <AppProviders>
         <ApplicationManagementPanel />
@@ -523,64 +500,55 @@ describe('ApplicationManagementPanel', () => {
     );
 
     await screen.findByText('Daily Report');
-    const exportButton = screen.getByRole('button', { name: /导出 CSV/ });
-    fireEvent.click(exportButton);
-    expect(
-      (await screen.findByText('导出选中（0）')).closest('li')
-    ).toHaveClass('ant-dropdown-menu-item-disabled');
+    const exportButton = screen.getByRole('button', { name: /导出应用（0）/ });
+    expect(exportButton).toBeDisabled();
+    expect(screen.queryByText('导出筛选结果')).not.toBeInTheDocument();
+    expect(screen.queryByText(/CSV/)).not.toBeInTheDocument();
 
     const rowCheckboxes = screen.getAllByRole('checkbox');
     fireEvent.click(rowCheckboxes[1]);
-    fireEvent.click(exportButton);
-    fireEvent.click(await screen.findByText('导出选中（1）'));
-
-    expect(
-      applicationManagementExport.downloadApplicationManagementCsv
-    ).toHaveBeenCalledWith(expect.stringContaining('"app-workflow"'));
-    expect(
-      applicationManagementApi.fetchAllSettingsApplicationManagement
-    ).not.toHaveBeenCalled();
-
-    fireEvent.click(exportButton);
-    fireEvent.click(await screen.findByText('导出筛选结果'));
-
-    await waitFor(() => {
-      expect(
-        applicationManagementApi.fetchAllSettingsApplicationManagement
-      ).toHaveBeenCalledTimes(1);
-      expect(
-        applicationManagementExport.downloadApplicationManagementCsv
-      ).toHaveBeenLastCalledWith(expect.stringContaining('"app-filtered"'));
+    const selectedExportButton = screen.getByRole('button', {
+      name: /导出应用（1）/
     });
+    fireEvent.click(selectedExportButton);
+
+    await waitFor(() =>
+      expect(applicationsApi.exportApplicationArchive).toHaveBeenCalledWith(
+        ['app-workflow'],
+        expect.any(Object)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        applicationArchiveDownload.downloadApplicationArchive
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ contentType: 'application/zip' })
+      )
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
-    fireEvent.click(exportButton);
     expect(
-      (await screen.findByText('导出选中（0）')).closest('li')
-    ).toHaveClass('ant-dropdown-menu-item-disabled');
+      screen.getByRole('button', { name: /导出应用（0）/ })
+    ).toBeDisabled();
 
-    fireEvent.click(exportButton);
     await waitFor(() =>
       expect(screen.getAllByRole('checkbox')).toHaveLength(2)
     );
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
     fireEvent.click(screen.getByTitle('2'));
     await waitFor(() => expect(window.location.search).toContain('page=2'));
-    fireEvent.click(exportButton);
     expect(
-      (await screen.findByText('导出选中（0）')).closest('li')
-    ).toHaveClass('ant-dropdown-menu-item-disabled');
+      screen.getByRole('button', { name: /导出应用（0）/ })
+    ).toBeDisabled();
 
-    fireEvent.click(exportButton);
     await waitFor(() =>
       expect(screen.getAllByRole('checkbox')).toHaveLength(2)
     );
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
     fireEvent.click(screen.getByRole('button', { name: /重\s*置/ }));
-    fireEvent.click(exportButton);
     expect(
-      (await screen.findByText('导出选中（0）')).closest('li')
-    ).toHaveClass('ant-dropdown-menu-item-disabled');
+      screen.getByRole('button', { name: /导出应用（0）/ })
+    ).toBeDisabled();
   });
 
   test('#1286 AC-002 reverts a published application via the inline switch', async () => {

@@ -39,13 +39,42 @@ function snapshot(overrides = {}) {
 test('AC durable controlled negatives fail direct query, duplicate UUID, running, activity, and streams', () => {
   assert.match(evaluateSnapshot([request(), request({ clientNonce: 'load-000002' })], snapshot()).join('\n'), /duplicate run UUID/u);
   assert.match(evaluateSnapshot([request()], snapshot({ queries: {} })).join('\n'), /query_run result missing/u);
-  assert.match(evaluateSnapshot([request()], snapshot({ queries: { 'load-000001': { id: '118f7af7-3694-7ba0-90bf-83b5ec689705', status: 'succeeded' } } })).join('\n'), /protocol\/query run id mismatch/u);
+  assert.match(evaluateSnapshot([request()], snapshot({ queries: { 'load-000001': { id: '118f7af7-3694-7ba0-90bf-83b5ec689705', status: 'succeeded' } } })).join('\n'), /correlated\/query run id mismatch/u);
   assert.match(evaluateSnapshot([request()], snapshot({ queries: { 'load-000001': { id: RUN_ID, status: 'running' } } })).join('\n'), /remained running/u);
   assert.match(evaluateSnapshot([request()], snapshot({ runtimeActiveTotals: { [TRANSPORT.RESPONSES_SSE]: 1 } })).join('\n'), /active\.total was 1/u);
   assert.match(evaluateSnapshot([request()], snapshot({ pluginStreams: { streams: [{ invocation_id: 'secret-free-id' }] } })).join('\n'), /contained 1 active stream/u);
-  assert.equal(runUuidFromProtocolId(TRANSPORT.ANTHROPIC_SSE, `msg_${RUN_ID}`), RUN_ID);
+  assert.equal(runUuidFromProtocolId(TRANSPORT.ANTHROPIC_SSE, `msg_${RUN_ID}`), null);
   assert.equal(runUuidFromProtocolId(TRANSPORT.CHAT_COMPLETIONS_SSE, `chatcmpl-${RUN_ID}`), RUN_ID);
   assert.equal(runUuidFromProtocolId(TRANSPORT.RESPONSES_SSE, `msg_${RUN_ID}`), null);
+});
+
+test('AC Anthropic protocol IDs remain opaque while durable truth correlates by external trace id', async () => {
+  const anthropicRequest = request({
+    transport: TRANSPORT.ANTHROPIC_SSE,
+    protocolId: `msg_${RUN_ID}`,
+    runId: null,
+  });
+  const target = {
+    durable: {
+      list_runs: { url: 'http://fixture/list' },
+      query_run: { url_template: 'http://fixture/query/{run_id}' },
+    },
+    runtime_activity: { url: 'http://fixture/activity' },
+    plugin_runner_active_streams: { url: 'http://fixture/streams' },
+  };
+  const response = (data) => ({ ok: true, status: 200, async json() { return data; } });
+  const ledger = await collectDurableConvergence({
+    requestEvents: [anthropicRequest],
+    targetsByTransport: { [TRANSPORT.ANTHROPIC_SSE]: target },
+    async fetchImpl(url) {
+      if (url.endsWith('/list')) return response({ data: { items: [{ id: RUN_ID, status: 'succeeded', correlation: { external_trace_id: 'load-000001' } }] } });
+      if (url.includes('/query/')) return response({ data: { id: RUN_ID, status: 'succeeded' } });
+      if (url.endsWith('/activity')) return response({ data: { active: { total: 0 } } });
+      return response({ streams: [] });
+    },
+  });
+  assert.equal(ledger.verdict, 'PASS');
+  assert.equal(ledger.polls[0].resolvedRunIds['load-000001'], RUN_ID);
 });
 
 test('AC durable list visibility is advisory while direct query remains authoritative', () => {

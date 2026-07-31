@@ -90,6 +90,11 @@ export const startSystemVariables = [
     key: 'tool_choice',
     title: 'userinput.tool_choice',
     valueType: 'json'
+  },
+  {
+    key: 'protocol_context',
+    title: 'userinput.protocol_context',
+    valueType: 'protocol_context'
   }
 ] satisfies FlowNodeOutputDocument[];
 

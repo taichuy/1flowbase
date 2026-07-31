@@ -26,10 +26,11 @@ use crate::{
 mod agentflow_template;
 
 pub use agentflow_template::{
-    load_agent_flow_template_resources, AgentFlowTemplateApplication, AgentFlowTemplateDependency,
-    AgentFlowTemplateDependencyStatus, AgentFlowTemplatePackage, AgentFlowTemplatePreview,
-    AgentFlowTemplateResourceSnapshot, AgentFlowTemplateUnresolvedNode,
-    AGENT_FLOW_TEMPLATE_SCHEMA_VERSION, UNRESOLVED_NODE_TYPE,
+    build_agent_flow_template_package, import_application_template_document,
+    load_agent_flow_template_resources, preview_application_template_package,
+    AgentFlowTemplateApplication, AgentFlowTemplateDependency, AgentFlowTemplateDependencyStatus,
+    AgentFlowTemplatePackage, AgentFlowTemplatePreview, AgentFlowTemplateResourceSnapshot,
+    AgentFlowTemplateUnresolvedNode, AGENT_FLOW_TEMPLATE_SCHEMA_VERSION, UNRESOLVED_NODE_TYPE,
 };
 
 pub struct SaveFlowDraftCommand {
@@ -397,7 +398,7 @@ where
     }
 }
 
-fn validate_flow_draft_document(document: &Value) -> Result<()> {
+pub(crate) fn validate_flow_draft_document(document: &Value) -> Result<()> {
     let Some(nodes) = document
         .get("graph")
         .and_then(|graph| graph.get("nodes"))

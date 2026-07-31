@@ -54,7 +54,7 @@ describe('console model provider settings route contract', () => {
       getConsoleModelProviderMainInstance('provider-1'),
       updateConsoleModelProviderMainInstance(
         'provider-1',
-        { auto_include_new_instances: true },
+        { auto_include_new_instances: true, expected_revision: 1 },
         csrfToken
       ),
       validateConsoleModelProviderInstance('instance-1', csrfToken),

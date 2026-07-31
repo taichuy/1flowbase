@@ -314,8 +314,9 @@ export function listLlmProtocolContextSelectorOptions(
       .filter((node) => node.type === 'code')
       .map((node) => node.id)
   );
-  const codeJsonOutputs = listVisibleSelectorOptions(document, nodeId).filter(
-    (option) => codeNodeIds.has(option.nodeId) && option.valueType === 'json'
+  const typedCodeOutputs = listVisibleSelectorOptions(document, nodeId).filter(
+    (option) =>
+      codeNodeIds.has(option.nodeId) && option.valueType === 'protocol_context'
   );
 
   return [
@@ -323,12 +324,12 @@ export function listLlmProtocolContextSelectorOptions(
       nodeId: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value[0],
       nodeLabel: startLabel,
       outputKey: DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value[1],
-      outputLabel: 'sys.protocol_context',
-      valueType: 'json',
+      outputLabel: 'protocol_context',
+      valueType: 'protocol_context',
       value: [...DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE.value],
-      displayLabel: `${startLabel}/sys.protocol_context`
+      displayLabel: `${startLabel}/protocol_context`
     },
-    ...codeJsonOutputs
+    ...typedCodeOutputs
   ];
 }
 

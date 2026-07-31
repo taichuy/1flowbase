@@ -494,8 +494,12 @@ describe('ModelProvidersPage - catalog and family version', () => {
       within(catalogRow).queryByRole('button', { name: '版本管理' })
     ).not.toBeInTheDocument();
     expect(within(catalogRow).getByText('可用')).toBeInTheDocument();
-    expect(within(catalogRow).queryByText('当前节点可用')).not.toBeInTheDocument();
-    expect(within(catalogRow).queryByText(/^期望版本：/)).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText('当前节点可用')
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText(/^期望版本：/)
+    ).not.toBeInTheDocument();
     expect(
       within(catalogRow).queryByText(/^当前节点版本：/)
     ).not.toBeInTheDocument();
@@ -511,10 +515,12 @@ describe('ModelProvidersPage - catalog and family version', () => {
     });
   }, 20000);
 
-  test('keeps official catalog registry errors out of the installed provider status area', async () => {
+  test('AC-003 keeps official catalog failures local, friendly, and retryable', async () => {
     authenticateAsModelProviderManager();
-    pluginsApi.fetchSettingsOfficialPluginCatalog.mockRejectedValue(
-      new Error('official plugin registry returned an error status')
+    const gatewayBody =
+      '<html><head><title>504 Gateway Time-out</title></head><body>nginx</body></html>';
+    pluginsApi.fetchSettingsOfficialPluginCatalog.mockRejectedValueOnce(
+      new Error(gatewayBody)
     );
 
     const view = renderApp('/settings/model-providers');
@@ -534,10 +540,24 @@ describe('ModelProvidersPage - catalog and family version', () => {
     expect(
       view.container.querySelector('.settings-section-surface__status')
         ?.textContent ?? ''
-    ).not.toContain('official plugin registry returned an error status');
-    expect(
-      view.container.querySelector('.model-provider-panel__official')
-    ).toHaveTextContent('official plugin registry returned an error status');
+    ).not.toContain(gatewayBody);
+    const officialPanel = view.container.querySelector(
+      '.model-provider-panel__official'
+    );
+    expect(officialPanel).toHaveTextContent(
+      '官方供应商目录暂时不可用，请重试。'
+    );
+    expect(officialPanel).not.toHaveTextContent(gatewayBody);
+
+    const callsBeforeRetry =
+      pluginsApi.fetchSettingsOfficialPluginCatalog.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+
+    await waitFor(() => {
+      expect(
+        pluginsApi.fetchSettingsOfficialPluginCatalog.mock.calls.length
+      ).toBeGreaterThan(callsBeforeRetry);
+    });
   });
 
   test('does not keep the installed provider table loading while only the local model-provider catalog is pending', async () => {
@@ -609,8 +629,12 @@ describe('ModelProvidersPage - catalog and family version', () => {
     ).toBeDisabled();
     expect(within(catalogRow).getByText('不可用')).toBeInTheDocument();
     expect(within(catalogRow).queryByText('可用')).not.toBeInTheDocument();
-    expect(within(catalogRow).queryByText('当前节点缺失')).not.toBeInTheDocument();
-    expect(within(catalogRow).queryByText(/^期望版本：/)).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText('当前节点缺失')
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText(/^期望版本：/)
+    ).not.toBeInTheDocument();
     expect(
       within(catalogRow).getByText('当前节点版本：0.0.9')
     ).toBeInTheDocument();
@@ -729,9 +753,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
   }, 20000);
 
   test('renders catalog and instance metadata for view-only users without manage actions', async () => {
-    authenticateWithPermissions([
-      'state_model.view.all'
-    ]);
+    authenticateWithPermissions(['state_model.view.all']);
 
     renderApp('/settings/model-providers');
 

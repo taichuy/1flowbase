@@ -268,16 +268,22 @@ where
         return Ok(None);
     }
 
-    match serde_json::from_value(value.clone()) {
+    match crate::output_schema::validate_protocol_context_value(&value) {
         Ok(protocol_context) => Ok(Some(protocol_context)),
         Err(_) => match invoker.resolve_protocol_context_locator(&value).await {
-            Ok(Some(raw_value)) => serde_json::from_value(raw_value).map(Some).map_err(|_| {
-                protocol_context_resolution_error(
-                    node,
-                    Some(selector),
-                    "selected ephemeral value does not match ProtocolContextEnvelope".to_string(),
-                )
-            }),
+            Ok(Some(raw_value)) => {
+                crate::output_schema::validate_protocol_context_value(&raw_value)
+                    .map(Some)
+                    .map_err(|error| {
+                        protocol_context_resolution_error(
+                            node,
+                            Some(selector),
+                            format!(
+                        "selected ephemeral value does not match ProtocolContextEnvelope: {error}"
+                    ),
+                        )
+                    })
+            }
             Ok(None) => Err(protocol_context_resolution_error(
                 node,
                 Some(selector),

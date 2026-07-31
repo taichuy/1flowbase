@@ -25,6 +25,7 @@ const valueTypeOptions = [
   { value: 'object', label: 'Object' },
   { value: 'array', label: 'Array' },
   { value: 'json', label: 'JSON' },
+  { value: 'protocol_context', label: 'Protocol Context' },
   { value: 'unknown', label: 'Unknown' }
 ] satisfies Array<{
   value: FlowNodeDocument['outputs'][number]['valueType'];

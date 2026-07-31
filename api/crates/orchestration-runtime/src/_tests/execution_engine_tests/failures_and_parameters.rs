@@ -1,7 +1,5 @@
 use super::*;
 
-use anyhow::anyhow;
-
 #[tokio::test]
 async fn provider_failure_preserves_the_runtime_error_message() {
     let outcome = start_flow_debug_run(
@@ -358,14 +356,14 @@ fn protocol_context_fixture() -> ProtocolContextEnvelope {
 }
 
 #[tokio::test]
-async fn wp_d1b_start_protocol_context_reference_reaches_only_the_provider_invocation() {
+async fn ac_001_start_protocol_context_is_normal_downstream_workflow_data() {
     let mut plan = base_plan();
     plan.nodes
         .get_mut("node-llm")
         .expect("llm node should exist")
         .config["protocol_context"] = json!({
         "kind": "selector",
-        "value": ["sys", "protocol_context"]
+        "value": ["node-start", "protocol_context"]
     });
     let invoker = StubProviderInvoker {
         fail: false,
@@ -414,9 +412,10 @@ async fn wp_d1b_start_protocol_context_reference_reaches_only_the_provider_invoc
         .get("resolved_inputs")
         .and_then(|value| value.get("__client_protocol_envelope"))
         .is_none());
-    assert!(outcome.node_traces[0].input_payload["sys"]
-        .get("protocol_context")
-        .is_none());
+    assert_eq!(
+        outcome.node_traces[0].input_payload["protocol_context"],
+        serde_json::to_value(&protocol_context).unwrap()
+    );
     assert!(outcome
         .variable_pool
         .get("__client_protocol_envelope")
@@ -424,10 +423,14 @@ async fn wp_d1b_start_protocol_context_reference_reaches_only_the_provider_invoc
     assert!(outcome.variable_pool["sys"]
         .get("protocol_context")
         .is_none());
+    assert_eq!(
+        outcome.variable_pool["node-start"]["protocol_context"],
+        serde_json::to_value(&protocol_context).unwrap()
+    );
 }
 
 #[tokio::test]
-async fn wp_d1c_start_exposes_only_the_safe_locator_while_llm_receives_the_raw_context() {
+async fn ac_001_legacy_locator_and_normal_start_variable_can_coexist() {
     let mut plan = base_plan();
     plan.nodes
         .get_mut("node-llm")
@@ -469,25 +472,22 @@ async fn wp_d1c_start_exposes_only_the_safe_locator_while_llm_receives_the_raw_c
         .expect("captured input mutex poisoned")
         .clone()
         .expect("provider input should be captured");
-    assert_eq!(captured.client_protocol_envelope, Some(protocol_context));
+    assert_eq!(
+        captured.client_protocol_envelope,
+        Some(protocol_context.clone())
+    );
     assert_eq!(
         outcome.node_traces[0].input_payload["sys"]["protocol_context"],
         locator
     );
-    assert!(!outcome.node_traces[0]
-        .input_payload
-        .to_string()
-        .contains("private-beta"));
-    assert!(!outcome.node_traces[0]
-        .input_payload
-        .to_string()
-        .contains("SOURCE-BODY-EPHEMERAL-CANARY"));
-    assert!(!Value::Object(outcome.variable_pool.clone())
-        .to_string()
-        .contains("private-beta"));
-    assert!(!Value::Object(outcome.variable_pool)
-        .to_string()
-        .contains("SOURCE-BODY-EPHEMERAL-CANARY"));
+    assert_eq!(
+        outcome.node_traces[0].input_payload["protocol_context"],
+        serde_json::to_value(&protocol_context).unwrap()
+    );
+    assert_eq!(
+        outcome.variable_pool["node-start"]["protocol_context"],
+        serde_json::to_value(&protocol_context).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -579,7 +579,7 @@ async fn wp_d1b_null_protocol_context_reference_disables_forwarding() {
 }
 
 #[tokio::test]
-async fn wp_d1b_code_json_variable_becomes_the_invocation_protocol_context() {
+async fn ac_004_typed_code_variable_remains_normal_data_and_reaches_the_provider() {
     let protocol_context = protocol_context_fixture();
     let captured_input = Arc::new(Mutex::new(None));
     let invoker = ProtocolContextCodeInvoker {
@@ -591,8 +591,7 @@ async fn wp_d1b_code_json_variable_becomes_the_invocation_protocol_context() {
         code_output: json!({
             "protocol_context": serde_json::to_value(&protocol_context).unwrap()
         }),
-        protected_protocol_context: Arc::new(Mutex::new(None)),
-        protocol_context_missing: false,
+        resolved_protocol_context: None,
     };
 
     let outcome = start_flow_debug_run(
@@ -615,10 +614,10 @@ async fn wp_d1b_code_json_variable_becomes_the_invocation_protocol_context() {
     assert!(captured_input.required_capabilities.contains(
         &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
     ));
-    assert!(outcome.node_traces[0]
-        .input_payload
-        .get("protocol_context")
-        .is_none());
+    assert_eq!(
+        outcome.node_traces[0].input_payload["protocol_context"],
+        Value::Null
+    );
     let durable_outcome = json!({
         "variable_pool": outcome.variable_pool.clone(),
         "node_payloads": outcome.node_traces.iter().map(|trace| json!({
@@ -628,12 +627,12 @@ async fn wp_d1b_code_json_variable_becomes_the_invocation_protocol_context() {
         })).collect::<Vec<_>>()
     })
     .to_string();
-    assert!(durable_outcome.contains("__test_ephemeral_protocol_context"));
-    assert!(!durable_outcome.contains("private-beta"));
+    assert!(!durable_outcome.contains("__test_ephemeral_protocol_context"));
+    assert!(durable_outcome.contains("private-beta"));
 }
 
 #[tokio::test]
-async fn wp_d1b_invalid_code_json_fails_before_provider_invocation() {
+async fn ac_004_invalid_typed_code_value_fails_at_the_producer() {
     let captured_input = Arc::new(Mutex::new(None));
     let invoker = ProtocolContextCodeInvoker {
         provider: StubProviderInvoker {
@@ -647,8 +646,7 @@ async fn wp_d1b_invalid_code_json_fails_before_provider_invocation() {
                 "headers": { "anthropic-beta": "must be an array" }
             }
         }),
-        protected_protocol_context: Arc::new(Mutex::new(None)),
-        protocol_context_missing: false,
+        resolved_protocol_context: None,
     };
 
     let outcome = start_flow_debug_run(
@@ -664,10 +662,21 @@ async fn wp_d1b_invalid_code_json_fails_before_provider_invocation() {
         .expect("captured input mutex poisoned")
         .is_none());
     match outcome.stop_reason {
-        ExecutionStopReason::Failed(ref failure) => assert_eq!(
-            failure.error_payload["error_code"],
-            json!("protocol_context_resolution_failed")
-        ),
+        ExecutionStopReason::Failed(ref failure) => {
+            assert_eq!(failure.node_id, "node-code");
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("protocol_context_contract_violation")
+            );
+            assert_eq!(
+                failure.error_payload["selector"],
+                json!("node-code.result.protocol_context")
+            );
+            assert_eq!(
+                failure.error_payload["instance_path"],
+                json!("/headers/anthropic-beta")
+            );
+        }
         other => panic!("invalid protocol context must fail before invocation, got {other:?}"),
     }
     let durable_payloads = outcome
@@ -681,13 +690,19 @@ async fn wp_d1b_invalid_code_json_fails_before_provider_invocation() {
             })
         })
         .collect::<Vec<_>>();
-    assert!(!Value::Array(durable_payloads)
+    assert!(Value::Array(durable_payloads)
         .to_string()
         .contains("must be an array"));
 }
 
 #[tokio::test]
-async fn wp_d1c_missing_selected_code_protocol_context_slot_fails_explicitly() {
+async fn ac_005_llm_final_protocol_context_defense_skips_provider_invocation() {
+    let mut plan = code_protocol_context_plan();
+    plan.nodes
+        .get_mut("node-code")
+        .expect("code node should exist")
+        .outputs[0]
+        .value_type = "json".to_string();
     let captured_input = Arc::new(Mutex::new(None));
     let invoker = ProtocolContextCodeInvoker {
         provider: StubProviderInvoker {
@@ -696,15 +711,16 @@ async fn wp_d1c_missing_selected_code_protocol_context_slot_fails_explicitly() {
             final_content: "must not be invoked".to_string(),
         },
         code_output: json!({
-            "protocol_context": serde_json::to_value(protocol_context_fixture()).unwrap()
+            "protocol_context": {"legacy": "raw value is sealed by the invoker"}
         }),
-        protected_protocol_context: Arc::new(Mutex::new(None)),
-        protocol_context_missing: true,
+        resolved_protocol_context: Some(json!({
+            "source_protocol": "anthropic_messages",
+            "headers": {"anthropic-beta": "must be an array"}
+        })),
     };
-
     let outcome = start_flow_debug_run(
-        &code_protocol_context_plan(),
-        &json!({ "node-start": { "query": "退款政策" } }),
+        &plan,
+        &json!({"node-start": {"query": "退款政策"}}),
         &invoker,
     )
     .await
@@ -715,33 +731,24 @@ async fn wp_d1c_missing_selected_code_protocol_context_slot_fails_explicitly() {
         .expect("captured input mutex poisoned")
         .is_none());
     match outcome.stop_reason {
-        ExecutionStopReason::Failed(ref failure) => assert_eq!(
-            failure.error_payload["runtime_message"],
-            json!("ephemeral_protocol_context_missing")
-        ),
-        other => panic!("missing protocol context slot must fail explicitly, got {other:?}"),
+        ExecutionStopReason::Failed(ref failure) => {
+            assert_eq!(failure.node_id, "node-llm");
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("protocol_context_resolution_failed")
+            );
+            assert!(failure.error_payload["runtime_message"]
+                .as_str()
+                .is_some_and(|message| message.contains("/headers/anthropic-beta")));
+        }
+        other => panic!("invalid protocol context must fail at the LLM defense, got {other:?}"),
     }
-    let durable_payloads = outcome
-        .node_traces
-        .iter()
-        .map(|trace| {
-            json!({
-                "input": trace.input_payload,
-                "output": trace.output_payload,
-                "debug": trace.debug_payload,
-            })
-        })
-        .collect::<Vec<_>>();
-    assert!(!Value::Array(durable_payloads)
-        .to_string()
-        .contains("private-beta"));
 }
 
 struct ProtocolContextCodeInvoker {
     provider: StubProviderInvoker,
     code_output: Value,
-    protected_protocol_context: Arc<Mutex<Option<Value>>>,
-    protocol_context_missing: bool,
+    resolved_protocol_context: Option<Value>,
 }
 
 #[async_trait]
@@ -754,22 +761,8 @@ impl ProviderInvoker for ProtocolContextCodeInvoker {
         self.provider.invoke_llm(runtime, input).await
     }
 
-    async fn resolve_protocol_context_locator(&self, locator: &Value) -> Result<Option<Value>> {
-        if locator
-            .get("__test_ephemeral_protocol_context")
-            .and_then(Value::as_bool)
-            != Some(true)
-        {
-            return Ok(None);
-        }
-        if self.protocol_context_missing {
-            return Err(anyhow!("ephemeral_protocol_context_missing"));
-        }
-        Ok(self
-            .protected_protocol_context
-            .lock()
-            .expect("protected protocol context mutex poisoned")
-            .clone())
+    async fn resolve_protocol_context_locator(&self, _locator: &Value) -> Result<Option<Value>> {
+        Ok(self.resolved_protocol_context.clone())
     }
 }
 
@@ -806,21 +799,10 @@ impl CodeInvoker for ProtocolContextCodeInvoker {
         output: &mut CodeInvocationOutput,
         selected_output_paths: &[Vec<String>],
     ) -> Result<()> {
-        assert_eq!(
-            selected_output_paths,
-            &[vec!["protocol_context".to_string()]]
-        );
-        let raw = output
-            .output_payload
-            .get_mut("protocol_context")
-            .map(std::mem::take)
-            .expect("selected Code protocol context should exist");
-        *self
-            .protected_protocol_context
-            .lock()
-            .expect("protected protocol context mutex poisoned") = Some(raw);
-        output.output_payload["protocol_context"] =
-            json!({"__test_ephemeral_protocol_context": true});
+        if !selected_output_paths.is_empty() {
+            output.output_payload["protocol_context"] =
+                json!({"__test_ephemeral_protocol_context": true});
+        }
         Ok(())
     }
 }
@@ -854,7 +836,7 @@ fn code_protocol_context_plan() -> CompiledPlan {
             outputs: vec![CompiledOutput {
                 key: "protocol_context".to_string(),
                 title: "Protocol Context".to_string(),
-                value_type: "json".to_string(),
+                value_type: "protocol_context".to_string(),
                 selector: vec!["result".to_string(), "protocol_context".to_string()],
                 json_schema: None,
             }],

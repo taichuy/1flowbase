@@ -820,6 +820,7 @@ describe('settings api wrappers', () => {
       source_kind: 'official_registry',
       source_label: '官方源',
       registry_url: 'https://official.example.com/official-registry.json',
+      source_freshness: 'fresh',
       locale_meta: {
         requested_locale: null,
         resolved_locale: 'zh_Hans',

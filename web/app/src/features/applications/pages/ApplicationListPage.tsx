@@ -44,20 +44,19 @@ import {
   createApplication,
   createApplicationTag,
   deleteApplication,
-  exportAgentFlowTemplate,
+  exportApplicationArchive,
   fetchApplicationCatalog,
   fetchApplications,
-  importAgentFlowTemplate,
-  previewAgentFlowTemplate,
+  importApplicationArchive,
+  previewApplicationArchive,
   type Application,
-  type AgentFlowTemplatePackage,
   type ApplicationTagCatalogEntry,
   updateApplication
 } from '../api/applications';
 import { ApplicationFormModal } from '../components/ApplicationFormModal';
 import { ApplicationTagManagerModal } from '../components/ApplicationTagManagerModal';
 import { ApplicationTemplateImportModal } from '../components/ApplicationTemplateImportModal';
-import { downloadTemplateFile } from '../lib/template-download';
+import { downloadApplicationArchive } from '../lib/template-download';
 
 type ApplicationTypeFilter = 'all' | Application['application_type'];
 
@@ -142,11 +141,10 @@ export function ApplicationListPage() {
   const [optimisticTags, setOptimisticTags] = useState<
     ApplicationTagCatalogEntry[]
   >([]);
-  const [importTemplate, setImportTemplate] =
-    useState<AgentFlowTemplatePackage | null>(null);
+  const [importArchive, setImportArchive] = useState<File | null>(null);
   const [importName, setImportName] = useState('');
   const [importPreview, setImportPreview] = useState<Awaited<
-    ReturnType<typeof previewAgentFlowTemplate>
+    ReturnType<typeof previewApplicationArchive>
   > | null>(null);
 
   const applicationsQuery = useQuery({
@@ -182,9 +180,9 @@ export function ApplicationListPage() {
 
   const exportTemplateMutation = useMutation({
     mutationFn: (applicationId: string) =>
-      exportAgentFlowTemplate(applicationId),
-    onSuccess: (template) => {
-      downloadTemplateFile(template);
+      exportApplicationArchive([applicationId]),
+    onSuccess: (archive) => {
+      downloadApplicationArchive(archive);
       messageApi.success(t('auto.template_exported'));
     },
     onError: () => {
@@ -193,14 +191,13 @@ export function ApplicationListPage() {
   });
 
   const previewTemplateMutation = useMutation({
-    mutationFn: (template: AgentFlowTemplatePackage) =>
-      previewAgentFlowTemplate(template),
+    mutationFn: (archive: File) => previewApplicationArchive(archive),
     onSuccess: (preview) => {
       setImportPreview(preview);
       setImportName(preview.application.name);
     },
     onError: () => {
-      setImportTemplate(null);
+      setImportArchive(null);
       setImportPreview(null);
       messageApi.error(t('auto.template_preview_failed'));
     }
@@ -208,17 +205,15 @@ export function ApplicationListPage() {
 
   const importTemplateMutation = useMutation({
     mutationFn: () => {
-      if (!importTemplate) {
-        throw new Error('missing template');
+      if (!importArchive) {
+        throw new Error('missing application archive');
       }
 
-      return importAgentFlowTemplate(
+      return importApplicationArchive(
+        importArchive,
         {
-          template: importTemplate,
           name: importName.trim(),
-          description:
-            importPreview?.application.description ??
-            importTemplate.application.description
+          description: importPreview?.application.description
         },
         csrfToken ?? ''
       );
@@ -351,9 +346,7 @@ export function ApplicationListPage() {
     });
   };
 
-  const handleImportTemplateFile = async (
-    event: ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleImportTemplateFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
@@ -361,17 +354,8 @@ export function ApplicationListPage() {
       return;
     }
 
-    try {
-      const template = JSON.parse(
-        await file.text()
-      ) as AgentFlowTemplatePackage;
-      setImportTemplate(template);
-      previewTemplateMutation.mutate(template);
-    } catch {
-      setImportTemplate(null);
-      setImportPreview(null);
-      messageApi.error(t('auto.template_file_invalid'));
-    }
+    setImportArchive(file);
+    previewTemplateMutation.mutate(file);
   };
 
   const handleUpdateApplication = async (
@@ -398,10 +382,10 @@ export function ApplicationListPage() {
       <input
         ref={importFileInputRef}
         type="file"
-        accept="application/json,.json"
+        accept="application/zip,.zip"
         aria-label={t('auto.import_template_file')}
         style={{ display: 'none' }}
-        onChange={(event) => void handleImportTemplateFile(event)}
+        onChange={handleImportTemplateFile}
       />
       <Flex
         justify="space-between"
@@ -516,9 +500,7 @@ export function ApplicationListPage() {
               key: 'export_template',
               icon: <ExportOutlined />,
               label: t('auto.export_template'),
-              disabled:
-                application.application_type !== 'agent_flow' ||
-                exportTemplateMutation.isPending
+              disabled: exportTemplateMutation.isPending
             },
             {
               key: 'copy',
@@ -787,7 +769,7 @@ export function ApplicationListPage() {
         importing={importTemplateMutation.isPending}
         onNameChange={setImportName}
         onCancel={() => {
-          setImportTemplate(null);
+          setImportArchive(null);
           setImportPreview(null);
         }}
         onImport={() => importTemplateMutation.mutate()}

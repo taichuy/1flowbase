@@ -124,6 +124,7 @@ export interface ConsoleOfficialPluginCatalogResponse {
   source_kind: string;
   source_label: string;
   registry_url: string;
+  source_freshness: 'fresh' | 'stale';
   locale_meta: Record<string, unknown>;
   page: ConsoleOfficialPluginCatalogPage;
   entries: ConsoleOfficialPluginCatalogEntry[];
@@ -605,8 +606,7 @@ export function upgradeConsolePluginFamilyLatest(
   inputOrBaseUrl?: UpgradeConsolePluginFamilyLatestInput | string,
   baseUrl?: string
 ) {
-  const input =
-    typeof inputOrBaseUrl === 'string' ? undefined : inputOrBaseUrl;
+  const input = typeof inputOrBaseUrl === 'string' ? undefined : inputOrBaseUrl;
   const resolvedBaseUrl =
     typeof inputOrBaseUrl === 'string' ? inputOrBaseUrl : baseUrl;
 

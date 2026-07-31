@@ -71,6 +71,7 @@ impl OfficialPluginSourcePort for NoopPluginSource {
                 source_label: "official".into(),
                 registry_url: "https://official.example.com/plugins.json".into(),
             },
+            freshness: control_plane::ports::OfficialPluginCatalogFreshness::Fresh,
             entries: Vec::new(),
         })
     }

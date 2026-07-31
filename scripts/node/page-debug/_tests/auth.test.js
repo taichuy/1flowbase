@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { loadRootCredentials, loginAndPersistStorageState } = require('../auth.js');
+const { loadRootCredentials, openTemporaryConsoleSession } = require('../auth.js');
 
 test('loadRootCredentials falls back to api-server bootstrap env values', () => {
   const credentials = loadRootCredentials({
@@ -24,7 +24,7 @@ test('loadRootCredentials falls back to api-server bootstrap env values', () => 
   });
 });
 
-test('loginAndPersistStorageState posts password login and writes storageState', async () => {
+test('AC-001 openTemporaryConsoleSession persists auth state and revokes only its own session on dispose', async () => {
   const calls = [];
   const fakeRequestContext = {
     post: async (path, options) => {
@@ -38,12 +38,19 @@ test('loginAndPersistStorageState posts password login and writes storageState',
     storageState: async ({ path }) => {
       calls.push({ storageStatePath: path });
     },
+    delete: async (path, options) => {
+      calls.push({ deletePath: path, options });
+      return {
+        ok: () => true,
+        status: () => 204,
+      };
+    },
     dispose: async () => {
       calls.push({ dispose: true });
     },
   };
 
-  const result = await loginAndPersistStorageState({
+  const result = await openTemporaryConsoleSession({
     playwright: {
       request: {
         newContext: async () => fakeRequestContext,
@@ -57,6 +64,7 @@ test('loginAndPersistStorageState posts password login and writes storageState',
 
   assert.equal(result.authenticated, true);
   assert.equal(result.storageStatePath, '/tmp/page-debug/storage-state.json');
+  assert.equal(calls.some((call) => call.deletePath), false);
   assert.deepEqual(calls[0], {
     path: '/api/public/auth/sign-in',
     options: {
@@ -67,12 +75,22 @@ test('loginAndPersistStorageState posts password login and writes storageState',
       },
     },
   });
+  await result.dispose();
+  assert.deepEqual(calls.at(-2), {
+    deletePath: '/api/console/session',
+    options: {
+      headers: {
+        'x-csrf-token': 'csrf-token',
+      },
+    },
+  });
+  assert.deepEqual(calls.at(-1), { dispose: true });
 });
 
-test('loginAndPersistStorageState surfaces not_authenticated guidance on 401', async () => {
+test('openTemporaryConsoleSession surfaces not_authenticated guidance on 401', async () => {
   await assert.rejects(
     () =>
-      loginAndPersistStorageState({
+      openTemporaryConsoleSession({
         playwright: {
           request: {
             newContext: async () => ({
@@ -94,20 +112,65 @@ test('loginAndPersistStorageState surfaces not_authenticated guidance on 401', a
   );
 });
 
-test('loginAndPersistStorageState skips storage export when storageStatePath is null', async () => {
-  let storageStateCalled = false;
+test('AC-002 openTemporaryConsoleSession revokes the issued session when storage export fails', async () => {
+  let deleteCalled = false;
+  let requestContextDisposed = false;
 
-  const result = await loginAndPersistStorageState({
+  await assert.rejects(
+    () =>
+      openTemporaryConsoleSession({
+        playwright: {
+          request: {
+            newContext: async () => ({
+              post: async () => ({
+                ok: () => true,
+                status: () => 200,
+                json: async () => ({ data: { csrf_token: 'csrf-token' } }),
+              }),
+              storageState: async () => {
+                throw new Error('storage export failed');
+              },
+              delete: async () => {
+                deleteCalled = true;
+                return { ok: () => true, status: () => 204 };
+              },
+              dispose: async () => {
+                requestContextDisposed = true;
+              },
+            }),
+          },
+        },
+        apiBaseUrl: 'http://127.0.0.1:7800',
+        account: 'root',
+        password: 'change-me',
+        storageStatePath: '/tmp/page-debug/storage-state.json',
+      }),
+    /storage export failed/u
+  );
+
+  assert.equal(deleteCalled, true);
+  assert.equal(requestContextDisposed, true);
+});
+
+test('AC-003 openTemporaryConsoleSession skips storage export for credentials-only mode and still revokes', async () => {
+  let storageStateCalled = false;
+  let deleteCalled = false;
+
+  const result = await openTemporaryConsoleSession({
     playwright: {
       request: {
         newContext: async () => ({
           post: async () => ({
             ok: () => true,
             status: () => 200,
-            json: async () => ({ data: {} }),
+            json: async () => ({ data: { csrf_token: 'csrf-token' } }),
           }),
           storageState: async () => {
             storageStateCalled = true;
+          },
+          delete: async () => {
+            deleteCalled = true;
+            return { ok: () => true, status: () => 204 };
           },
           dispose: async () => {},
         }),
@@ -122,4 +185,49 @@ test('loginAndPersistStorageState skips storage export when storageStatePath is 
   assert.equal(result.authenticated, true);
   assert.equal(result.storageStatePath, null);
   assert.equal(storageStateCalled, false);
+  await result.dispose();
+  assert.equal(deleteCalled, true);
+});
+
+test('AC-004 independently disposes concurrent temporary console sessions', async () => {
+  const deleted = [];
+  let nextContext = 0;
+  const contexts = ['session-a', 'session-b'].map((sessionId) => ({
+    post: async () => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => ({ data: { csrf_token: `csrf-${sessionId}` } }),
+    }),
+    storageState: async () => {},
+    delete: async (_path, options) => {
+      deleted.push({ sessionId, csrfToken: options.headers['x-csrf-token'] });
+      return { ok: () => true, status: () => 204 };
+    },
+    dispose: async () => {},
+  }));
+
+  const playwright = {
+    request: {
+      newContext: async () => contexts[nextContext++],
+    },
+  };
+  const input = {
+    playwright,
+    apiBaseUrl: 'http://127.0.0.1:7800',
+    account: 'root',
+    password: 'change-me',
+    storageStatePath: null,
+  };
+  const [first, second] = await Promise.all([
+    openTemporaryConsoleSession(input),
+    openTemporaryConsoleSession(input),
+  ]);
+
+  await first.dispose();
+  assert.deepEqual(deleted, [{ sessionId: 'session-a', csrfToken: 'csrf-session-a' }]);
+  await second.dispose();
+  assert.deepEqual(deleted, [
+    { sessionId: 'session-a', csrfToken: 'csrf-session-a' },
+    { sessionId: 'session-b', csrfToken: 'csrf-session-b' },
+  ]);
 });

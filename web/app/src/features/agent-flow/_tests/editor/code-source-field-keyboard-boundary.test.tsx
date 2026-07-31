@@ -120,9 +120,7 @@ test('AC-001/AC-002 filters SQL variable queries and replaces the full trigger f
 
   await screen.findByTestId('monaco-surface');
 
-  const registerCompletionItemProvider = vi.fn(
-    (_language: string, _provider: unknown) => ({ dispose: vi.fn() })
-  );
+  const registerCompletionItemProvider = vi.fn(() => ({ dispose: vi.fn() }));
   const trigger = vi.fn();
   let modelLine = 'select {';
   const model = {

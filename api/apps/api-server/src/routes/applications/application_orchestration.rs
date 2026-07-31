@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    io::{Cursor, Read, Write},
+    sync::Arc,
+};
 
 use access_control::{
     APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID,
@@ -7,17 +11,24 @@ use access_control::{
     APPLICATIONS_VIEW_OPERATION_ID,
 };
 use axum::{
-    extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    body::Body,
+    extract::{Multipart, Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::Response,
     Json, Router,
 };
 use control_plane::{
+    application::{
+        ApplicationArchiveApplication, ApplicationArchiveEntry, ApplicationArchivePackage,
+        ApplicationArchiveService, ExportApplicationArchiveCommand,
+        ImportApplicationArchiveCommand, PreviewApplicationArchiveCommand,
+        APPLICATION_ARCHIVE_SCHEMA_VERSION,
+    },
     errors::ControlPlaneError,
     flow::{
         AgentFlowTemplateDependency, AgentFlowTemplateDependencyStatus, AgentFlowTemplatePackage,
         AgentFlowTemplatePreview, AgentFlowTemplateUnresolvedNode, FlowService,
-        ImportAgentFlowTemplateCommand, ImportAgentFlowTemplateResult,
-        PreviewAgentFlowTemplateCommand, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand,
+        ImportAgentFlowTemplateResult, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand,
     },
     i18n_catalog::CatalogResolver,
 };
@@ -57,15 +68,14 @@ pub struct UpdateVersionBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct AgentFlowTemplatePreviewBody {
-    #[schema(value_type = Object)]
-    pub template: serde_json::Value,
+pub struct ExportApplicationArchiveBody {
+    pub application_ids: Vec<Uuid>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ImportAgentFlowTemplateBody {
-    #[schema(value_type = Object)]
-    pub template: serde_json::Value,
+#[derive(Debug, ToSchema)]
+pub struct ApplicationArchiveUploadBody {
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
     pub name: Option<String>,
     pub description: Option<String>,
 }
@@ -252,22 +262,22 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/applications/:id/orchestration/template",
-            console_get(
-                export_agent_flow_template,
+            "/applications/archive/export",
+            console_post(
+                export_application_archive,
                 ConsoleOperation(
                     APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID.to_string(),
                 ),
             ),
         )
         .route(
-            "/applications/orchestration/template/preview",
-            console_post(preview_agent_flow_template, Authenticated),
+            "/applications/archive/preview",
+            console_post(preview_application_archive, Authenticated),
         )
         .route(
-            "/applications/orchestration/template/import",
+            "/applications/archive/import",
             console_post(
-                import_agent_flow_template,
+                import_application_archive,
                 ConsoleOperation(
                     APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID.to_string(),
                 ),
@@ -297,6 +307,285 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
             ),
         )
+}
+
+struct ApplicationArchiveUpload {
+    bytes: Vec<u8>,
+    name: Option<String>,
+    description: Option<String>,
+}
+
+async fn read_application_archive_upload(
+    multipart: &mut Multipart,
+) -> Result<ApplicationArchiveUpload, ApiError> {
+    const MAX_APPLICATION_ARCHIVE_BYTES: usize = 16 * 1024 * 1024;
+    let mut bytes = None;
+    let mut name = None;
+    let mut description = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))?
+    {
+        match field.name() {
+            Some("file") => {
+                let value = field
+                    .bytes()
+                    .await
+                    .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))?;
+                if value.is_empty() || value.len() > MAX_APPLICATION_ARCHIVE_BYTES {
+                    return Err(ControlPlaneError::InvalidInput("application_archive").into());
+                }
+                bytes = Some(value.to_vec());
+            }
+            Some("name") => {
+                name = field
+                    .text()
+                    .await
+                    .ok()
+                    .filter(|value| !value.trim().is_empty());
+            }
+            Some("description") => {
+                description = field.text().await.ok();
+            }
+            _ => {}
+        }
+    }
+    Ok(ApplicationArchiveUpload {
+        bytes: bytes.ok_or(ControlPlaneError::InvalidInput("application_archive"))?,
+        name,
+        description,
+    })
+}
+
+fn parse_application_archive(bytes: &[u8]) -> Result<ApplicationArchivePackage, ApiError> {
+    const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+    if bytes.starts_with(b"PK") {
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
+            .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))?;
+        let mut manifest = archive
+            .by_name("manifest.json")
+            .map_err(|_| ControlPlaneError::InvalidInput("application_archive_manifest"))?;
+        if manifest.size() > MAX_MANIFEST_BYTES {
+            return Err(ControlPlaneError::InvalidInput("application_archive_manifest").into());
+        }
+        let mut manifest_json = Vec::with_capacity(manifest.size() as usize);
+        manifest
+            .read_to_end(&mut manifest_json)
+            .map_err(|_| ControlPlaneError::InvalidInput("application_archive_manifest"))?;
+        let package: ApplicationArchivePackage = serde_json::from_slice(&manifest_json)
+            .map_err(|_| ControlPlaneError::InvalidInput("application_archive_manifest"))?;
+        if package.schema_version != APPLICATION_ARCHIVE_SCHEMA_VERSION {
+            return Err(
+                ControlPlaneError::InvalidInput("application_archive_schema_version").into(),
+            );
+        }
+        return Ok(package);
+    }
+
+    let template: AgentFlowTemplatePackage = serde_json::from_slice(bytes)
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))?;
+    Ok(ApplicationArchivePackage {
+        schema_version: APPLICATION_ARCHIVE_SCHEMA_VERSION.to_string(),
+        applications: vec![ApplicationArchiveEntry {
+            application: ApplicationArchiveApplication {
+                application_type: template.application.application_type,
+                workflow_trigger_type: None,
+                name: template.application.name,
+                description: template.application.description,
+                icon: template.application.icon,
+                icon_type: template.application.icon_type,
+                icon_background: template.application.icon_background,
+            },
+            flow_document: template.flow_document,
+            dependencies: template.dependencies,
+            workflow_trigger_config: None,
+        }],
+    })
+}
+
+fn single_application_entry(
+    package: ApplicationArchivePackage,
+) -> Result<ApplicationArchiveEntry, ApiError> {
+    let [entry] = <[ApplicationArchiveEntry; 1]>::try_from(package.applications)
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive_application_count"))?;
+    Ok(entry)
+}
+
+async fn uploaded_application_archive_entry(
+    multipart: &mut Multipart,
+) -> Result<(ApplicationArchiveEntry, Option<String>, Option<String>), ApiError> {
+    let upload = read_application_archive_upload(multipart).await?;
+    let name = upload.name;
+    let description = upload.description;
+    let package = tokio::task::spawn_blocking(move || parse_application_archive(&upload.bytes))
+        .await
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
+    Ok((single_application_entry(package)?, name, description))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/archive/preview",
+    request_body(content = inline(ApplicationArchiveUploadBody), content_type = "multipart/form-data"),
+    responses(
+        (status = 200, body = AgentFlowTemplatePreviewResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn preview_application_archive(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<Json<ApiSuccess<AgentFlowTemplatePreviewResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let (entry, _, _) = uploaded_application_archive_entry(&mut multipart).await?;
+    let resources = FlowService::new(state.store.clone())
+        .load_agent_flow_template_resources(context.user.id)
+        .await?;
+    let preview = ApplicationArchiveService::new(state.store.clone())
+        .preview_archive(PreviewApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            entry,
+            resources,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(to_template_preview_response(preview))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/archive/import",
+    request_body(content = inline(ApplicationArchiveUploadBody), content_type = "multipart/form-data"),
+    responses(
+        (status = 201, body = ImportAgentFlowTemplateResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn import_application_archive(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiSuccess<ImportAgentFlowTemplateResponse>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
+    require_csrf(&headers, &context)?;
+    let (entry, name, description) = uploaded_application_archive_entry(&mut multipart).await?;
+    let resources = FlowService::new(state.store.clone())
+        .load_agent_flow_template_resources(context.user.id)
+        .await?;
+    let imported = ApplicationArchiveService::new(state.store.clone())
+        .import_archive(ImportApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            entry,
+            name,
+            description,
+            resources,
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(
+            to_import_response(&state, &locale, imported).await?,
+        )),
+    ))
+}
+
+fn safe_archive_name(value: &str) -> String {
+    let normalized = value
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if normalized.is_empty() {
+        "application".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn build_application_archive_zip(package: &ApplicationArchivePackage) -> Result<Vec<u8>, ApiError> {
+    let cursor = std::io::Cursor::new(Vec::new());
+    let mut archive = zip::ZipWriter::new(cursor);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    archive.start_file("manifest.json", options)?;
+    archive.write_all(&serde_json::to_vec_pretty(package)?)?;
+    for (index, application) in package.applications.iter().enumerate() {
+        let filename = format!(
+            "applications/{:03}-{}.json",
+            index + 1,
+            safe_archive_name(&application.application.name)
+        );
+        archive.start_file(filename, options)?;
+        archive.write_all(&serde_json::to_vec_pretty(application)?)?;
+    }
+    Ok(archive.finish()?.into_inner())
+}
+
+fn application_archive_filename(package: &ApplicationArchivePackage) -> String {
+    match package.applications.as_slice() {
+        [application] => format!("{}.zip", safe_archive_name(&application.application.name)),
+        applications => format!("applications-{}-items.zip", applications.len()),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/archive/export",
+    request_body = ExportApplicationArchiveBody,
+    responses(
+        (status = 200, description = "Application template archive", body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/zip"),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn export_application_archive(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<ExportApplicationArchiveBody>,
+) -> Result<Response, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let package = ApplicationArchiveService::new(state.store.clone())
+        .export_archive(ExportApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            application_ids: body.application_ids,
+        })
+        .await?;
+    let filename = application_archive_filename(&package);
+    let archive = tokio::task::spawn_blocking(move || build_application_archive_zip(&package))
+        .await
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
+    let mut response = Response::new(Body::from(archive));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+            .map_err(|_| ControlPlaneError::InvalidInput("application_archive_filename"))?,
+    );
+    Ok(response)
 }
 
 fn to_official_agent_flow_template_catalog_response(
@@ -551,10 +840,6 @@ async fn to_import_response(
     })
 }
 
-fn parse_template(value: serde_json::Value) -> Result<AgentFlowTemplatePackage, ApiError> {
-    serde_json::from_value(value).map_err(|_| ControlPlaneError::InvalidInput("template").into())
-}
-
 fn parse_change_kind(value: &str) -> Result<domain::FlowChangeKind, ApiError> {
     match value {
         "layout" => Ok(domain::FlowChangeKind::Layout),
@@ -631,115 +916,6 @@ pub async fn save_draft(
     Ok(Json(ApiSuccess::new(
         to_response(&state, &locale, flow_state).await?,
     )))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/applications/{id}/orchestration/template",
-    params(
-        ("id" = String, Path, description = "Application id")
-    ),
-    responses(
-        (status = 200, body = AgentFlowTemplatePackageResponse),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn export_agent_flow_template(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path(id): Path<Uuid>,
-) -> Result<Json<ApiSuccess<AgentFlowTemplatePackageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let template = FlowService::new(state.store.clone())
-        .export_agent_flow_template(context.user.id, id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_template_package_response(
-        template,
-    ))))
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/console/applications/orchestration/template/preview",
-    request_body = AgentFlowTemplatePreviewBody,
-    responses(
-        (status = 200, body = AgentFlowTemplatePreviewResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn preview_agent_flow_template(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Json(body): Json<AgentFlowTemplatePreviewBody>,
-) -> Result<Json<ApiSuccess<AgentFlowTemplatePreviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let service = FlowService::new(state.store.clone());
-    let resources = service
-        .load_agent_flow_template_resources(context.user.id)
-        .await?;
-    let preview = service
-        .preview_agent_flow_template(PreviewAgentFlowTemplateCommand {
-            actor_user_id: context.user.id,
-            template: parse_template(body.template)?,
-            resources,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_template_preview_response(preview))))
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/console/applications/orchestration/template/import",
-    request_body = ImportAgentFlowTemplateBody,
-    responses(
-        (status = 201, body = ImportAgentFlowTemplateResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn import_agent_flow_template(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Json(body): Json<ImportAgentFlowTemplateBody>,
-) -> Result<
-    (
-        StatusCode,
-        Json<ApiSuccess<ImportAgentFlowTemplateResponse>>,
-    ),
-    ApiError,
-> {
-    let context = require_session(&state, &headers).await?;
-    let locale =
-        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
-    require_csrf(&headers, &context)?;
-
-    let service = FlowService::new(state.store.clone());
-    let resources = service
-        .load_agent_flow_template_resources(context.user.id)
-        .await?;
-    let imported = service
-        .import_agent_flow_template(ImportAgentFlowTemplateCommand {
-            actor_user_id: context.user.id,
-            template: parse_template(body.template)?,
-            name: body.name,
-            description: body.description,
-            resources,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(
-            to_import_response(&state, &locale, imported).await?,
-        )),
-    ))
 }
 
 #[utoipa::path(
