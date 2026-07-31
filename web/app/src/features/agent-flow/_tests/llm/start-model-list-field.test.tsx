@@ -7,7 +7,7 @@ describe('StartModelListField', () => {
   test('shows only model id and context in the list', () => {
     const onChange = vi.fn();
 
-    render(
+    const { container } = render(
       <StartModelListField
         value={[
           {
@@ -36,6 +36,9 @@ describe('StartModelListField', () => {
     expect(screen.getByText('qwen3.6-35b-a3b')).toBeInTheDocument();
     expect(screen.getByText('128K')).toBeInTheDocument();
     expect(screen.getByText('deepseek-v4-flash')).toBeInTheDocument();
+    expect(
+      container.querySelector('.agent-flow-node-detail__list-item-icon')
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('支持的推理强度 1')).not.toBeInTheDocument();
     expect(
       screen.queryByPlaceholderText('display name')
@@ -84,6 +87,36 @@ describe('StartModelListField', () => {
         }
       }
     ]);
+  });
+
+  test('keeps the display name linked until it is customized', () => {
+    render(<StartModelListField value={[]} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByLabelText('新增模型'));
+
+    const modelIdInput = screen.getByLabelText('模型 ID 输入');
+    const modelNameInput = screen.getByLabelText('模型显示名输入');
+
+    fireEvent.change(modelIdInput, {
+      target: { value: 'gpt-5.5' }
+    });
+    expect(modelNameInput).toHaveValue('gpt-5.5');
+
+    fireEvent.change(modelNameInput, {
+      target: { value: 'GPT 5.5' }
+    });
+    fireEvent.change(modelIdInput, {
+      target: { value: 'gpt-5.5-pro' }
+    });
+    expect(modelNameInput).toHaveValue('GPT 5.5');
+
+    fireEvent.change(modelNameInput, {
+      target: { value: 'gpt-5.5-pro' }
+    });
+    fireEvent.change(modelIdInput, {
+      target: { value: 'gpt-5.5-latest' }
+    });
+    expect(modelNameInput).toHaveValue('gpt-5.5-latest');
   });
 
   test('saves optional model settings when configured in the form', () => {

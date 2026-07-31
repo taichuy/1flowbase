@@ -377,21 +377,26 @@ export function ApplicationManagementPanel() {
   >(
     () => [
       {
-        key: 'application',
-        title: i18nText(
-          'settingsApplicationManagement',
-          'auto.application_management_application'
-        ),
-        width: 260,
+        key: 'name',
+        title: i18nText('applications', 'auto.name'),
+        width: 220,
+        render: (_, application) => (
+          <Typography.Text strong>{application.name}</Typography.Text>
+        )
+      },
+      {
+        key: 'description',
+        title: i18nText('applications', 'auto.description'),
+        width: 320,
         sizing: 'fill',
         render: (_, application) => (
-          <Flex vertical gap={2}>
-            <Typography.Text strong>{application.name}</Typography.Text>
-            <Typography.Text type="secondary" ellipsis>
-              {application.description ||
-                i18nText('applications', 'auto.application_description_empty')}
-            </Typography.Text>
-          </Flex>
+          <Typography.Text
+            className="application-management-panel__application-description"
+            type="secondary"
+          >
+            {application.description ||
+              i18nText('applications', 'auto.application_description_empty')}
+          </Typography.Text>
         )
       },
       {
@@ -519,8 +524,8 @@ export function ApplicationManagementPanel() {
           'settingsApplicationManagement',
           'auto.application_management_actions'
         ),
-        width: 220,
-        minWidth: 220,
+        width: 160,
+        minWidth: 160,
         align: 'center',
         render: (_, application) => {
           const editAllowed = canEdit(application);
@@ -548,9 +553,11 @@ export function ApplicationManagementPanel() {
             }
           ];
           return (
-            <Space size={8}>
+            <Space size={2}>
               <Button
                 href={`/applications/${application.id}/orchestration`}
+                size="small"
+                type="link"
               >
                 {i18nText('settings', 'auto.view')}
               </Button>
@@ -568,6 +575,8 @@ export function ApplicationManagementPanel() {
                   <Button
                     disabled={!editAllowed}
                     onClick={() => setDetailsApplication(application)}
+                    size="small"
+                    type="link"
                   >
                     {i18nText('settings', 'auto.edit')}
                   </Button>
@@ -586,6 +595,7 @@ export function ApplicationManagementPanel() {
               >
                 <Button
                   type="text"
+                  size="small"
                   icon={<MoreOutlined />}
                   aria-label={i18nText(
                     'applications',

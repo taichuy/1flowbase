@@ -96,6 +96,7 @@ impl CapabilityInvoker for StubPreviewInvoker {
     async fn invoke_native_sql_node(
         &self,
         _node: &CompiledNode,
+        sql: &str,
     ) -> Result<NativeSqlInvocationOutput> {
         Ok(NativeSqlInvocationOutput {
             output_payload: json!({
@@ -103,7 +104,7 @@ impl CapabilityInvoker for StubPreviewInvoker {
             }),
             error_payload: None,
             metrics_payload: json!({}),
-            debug_payload: json!({ "data_source_instance_id": "main" }),
+            debug_payload: json!({ "data_source_instance_id": "main", "sql": sql }),
         })
     }
 }
@@ -269,7 +270,7 @@ async fn preview_executor_resolves_bindings_renders_prompt_and_calls_provider() 
 }
 
 #[tokio::test]
-async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_branch() {
+async fn ac_001_preview_executor_runs_target_without_upstream_branch_replay() {
     let mut plan = sample_compiled_plan();
     plan.topological_order = vec![
         "node-start".to_string(),
@@ -298,13 +299,6 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
             source: "node-if".to_string(),
             target: "node-assign-else".to_string(),
             source_handle: Some("else".to_string()),
-            target_handle: None,
-        },
-        CompiledEdge {
-            edge_id: "edge-selected-llm".to_string(),
-            source: "node-assign-if".to_string(),
-            target: "node-llm".to_string(),
-            source_handle: None,
             target_handle: None,
         },
         CompiledEdge {
@@ -404,7 +398,7 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
         .nodes
         .get_mut("node-llm")
         .expect("target LLM should exist");
-    target.dependency_node_ids = vec!["node-assign-if".to_string(), "node-assign-else".to_string()];
+    target.dependency_node_ids = vec!["node-assign-else".to_string()];
     target.bindings = BTreeMap::from([(
         "prompt_messages".to_string(),
         CompiledBinding {
@@ -440,35 +434,14 @@ async fn preview_executor_replays_only_the_selected_if_else_variable_assignment_
 
     assert_eq!(
         outcome.resolved_inputs["prompt_messages"][0]["content"],
-        json!("selected-if")
+        json!("before")
     );
     let captured = captured_input
         .lock()
         .expect("captured input mutex poisoned")
         .clone()
         .expect("provider input should be captured");
-    assert_eq!(captured.messages[0].content, "selected-if");
-
-    let else_input = Arc::new(Mutex::new(None));
-    let else_invoker = StubPreviewInvoker {
-        captured_input: else_input.clone(),
-    };
-    let else_outcome = preview_executor::run_node_preview(
-        &plan,
-        "node-llm",
-        &json!({
-            "conversation": { "branch": "before" },
-            "node-start": { "query": "else" }
-        }),
-        &else_invoker,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(
-        else_outcome.resolved_inputs["prompt_messages"][0]["content"],
-        json!("selected-else")
-    );
+    assert_eq!(captured.messages[0].content, "before");
 }
 
 #[tokio::test]
@@ -704,11 +677,18 @@ async fn ac_006_preview_executor_runs_sql_with_the_same_output_contract() {
     let mut plan = sample_compiled_plan();
     let node = plan.nodes.get_mut("node-llm").unwrap();
     node.node_type = "sql".to_string();
-    node.bindings.clear();
+    node.bindings = BTreeMap::from([(
+        "sql".to_string(),
+        CompiledBinding {
+            i18n_text_ref: None,
+            kind: "templated_text".to_string(),
+            raw_value: json!("select * from users where id = {{node-start.user_id}}"),
+            selector_paths: vec![vec!["node-start".to_string(), "user_id".to_string()]],
+        },
+    )]);
     node.llm_runtime = None;
     node.config = json!({
-        "data_source_instance_id": "main",
-        "sql": "select 1"
+        "data_source_instance_id": "main"
     });
     node.outputs = vec![CompiledOutput {
         key: "results".to_string(),
@@ -724,12 +704,20 @@ async fn ac_006_preview_executor_runs_sql_with_the_same_output_contract() {
     let outcome = preview_executor::run_node_preview(
         &plan,
         "node-llm",
-        &json!({ "node-start": { "query": "ignored" } }),
+        &json!({ "node-start": { "user_id": 42 } }),
         &invoker,
     )
     .await
     .unwrap();
 
     assert_eq!(outcome.node_output["results"][0]["affected_rows"], 1);
+    assert_eq!(
+        outcome.resolved_inputs["sql"],
+        "select * from users where id = 42"
+    );
+    assert_eq!(
+        outcome.debug_payload["sql"],
+        "select * from users where id = 42"
+    );
     assert!(outcome.error_payload.is_none());
 }

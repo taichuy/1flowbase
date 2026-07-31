@@ -507,6 +507,28 @@
   cursor: not-allowed;
 }
 
+.model-provider-panel__routing-policy-form,
+.model-provider-panel__routing-policy-field {
+  display: grid;
+  gap: 10px;
+}
+
+.model-provider-panel__routing-policy-form {
+  gap: 20px;
+}
+
+.model-provider-panel__routing-policy-drag-handle {
+  cursor: grab;
+}
+
+.model-provider-panel__routing-policy-drag-handle:active {
+  cursor: grabbing;
+}
+
+.model-provider-panel__routing-policy-row--excluded {
+  opacity: 0.55;
+}
+
 .model-provider-panel__main-instance-targets {
   display: flex;
   flex-wrap: wrap;

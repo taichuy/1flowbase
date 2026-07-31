@@ -358,7 +358,10 @@ export function useAgentFlowDebugSession({
 
   async function pollRunDetail(runId: string) {
     try {
-      const detail = await fetchApplicationRunDebugSnapshot(applicationId, runId);
+      const detail = await fetchApplicationRunDebugSnapshot(
+        applicationId,
+        runId
+      );
 
       if (activeRunIdRef.current !== runId) {
         return;
@@ -531,11 +534,18 @@ export function useAgentFlowDebugSession({
             setStreamTraceItems(streamTraceItemsSnapshot);
           }
 
-          if (event.type === 'text_delta' || event.type === 'reasoning_delta') {
+          if (
+            (event.type === 'text_delta' || event.type === 'reasoning_delta') &&
+            event.presentation?.kind === 'answer'
+          ) {
             scheduleAssistantMessageFlush(
               runningMessage.id,
               streamAssistantMessage
             );
+            return;
+          }
+
+          if (event.type === 'text_delta' || event.type === 'reasoning_delta') {
             return;
           }
 

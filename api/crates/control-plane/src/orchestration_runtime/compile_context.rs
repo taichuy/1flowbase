@@ -1,16 +1,62 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        ApplicationJsDependencySelectionRepository, ModelProviderRepository,
+        ApplicationJsDependencySelectionRepository, CacheStore, ModelProviderRepository,
         NodeContributionRepository, PluginRepository,
     },
 };
 
+const MODEL_ROUTING_CATALOG_TTL: time::Duration = time::Duration::hours(1);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModelProviderRoutingCatalogSnapshot {
+    provider_families: BTreeMap<String, orchestration_runtime::compiler::FlowCompileProviderFamily>,
+    provider_instances:
+        BTreeMap<String, orchestration_runtime::compiler::FlowCompileProviderInstance>,
+    model_routing_policies: BTreeMap<
+        String,
+        BTreeMap<String, orchestration_runtime::compiler::FlowCompileModelRoutingPolicy>,
+    >,
+}
+
+fn model_routing_catalog_cache_key(workspace_id: Uuid) -> String {
+    format!("model-provider-routing:workspace:{workspace_id}")
+}
+
+pub async fn invalidate_model_provider_routing_catalog(
+    cache_store: &dyn CacheStore,
+    workspace_id: Uuid,
+) {
+    if let Err(error) = cache_store
+        .delete(&model_routing_catalog_cache_key(workspace_id))
+        .await
+    {
+        tracing::warn!(%workspace_id, %error, "failed to invalidate model provider routing catalog");
+    }
+}
+
+pub async fn refresh_model_provider_routing_catalog<R>(
+    repository: &R,
+    cache_store: &dyn CacheStore,
+    workspace_id: Uuid,
+) where
+    R: ModelProviderRepository + PluginRepository,
+{
+    invalidate_model_provider_routing_catalog(cache_store, workspace_id).await;
+    if let Err(error) =
+        load_model_provider_routing_catalog(repository, workspace_id, Some(cache_store)).await
+    {
+        tracing::warn!(%workspace_id, %error, "failed to refresh model provider routing catalog");
+    }
+}
+
+#[cfg(test)]
 pub(crate) async fn build_compile_context<R>(
     repository: &R,
     workspace_id: Uuid,
@@ -18,8 +64,119 @@ pub(crate) async fn build_compile_context<R>(
 where
     R: ModelProviderRepository + NodeContributionRepository + PluginRepository,
 {
-    let instances = repository.list_instances(workspace_id).await?;
+    build_compile_context_with_cache(repository, workspace_id, None).await
+}
+
+pub(crate) async fn build_compile_context_with_cache<R>(
+    repository: &R,
+    workspace_id: Uuid,
+    cache_store: Option<&dyn CacheStore>,
+) -> Result<orchestration_runtime::compiler::FlowCompileContext>
+where
+    R: ModelProviderRepository + NodeContributionRepository + PluginRepository,
+{
+    let routing_catalog =
+        load_model_provider_routing_catalog(repository, workspace_id, cache_store).await?;
     let contributions = repository.list_node_contributions(workspace_id).await?;
+    let mut node_contributions = BTreeMap::new();
+    for entry in contributions {
+        let key = node_contribution_lookup_key(
+            &entry.plugin_id,
+            &entry.plugin_version,
+            &entry.contribution_code,
+            &entry.node_shell,
+            &entry.schema_version,
+        );
+        node_contributions.insert(
+            key,
+            orchestration_runtime::compiler::FlowCompileNodeContribution {
+                installation_id: entry.installation_id,
+                plugin_unique_identifier: entry.plugin_unique_identifier,
+                package_id: entry.package_id,
+                plugin_id: entry.plugin_id,
+                plugin_version: entry.plugin_version,
+                contribution_code: entry.contribution_code,
+                node_shell: entry.node_shell,
+                schema_version: entry.schema_version,
+                contribution_checksum: entry.contribution_checksum,
+                compiled_contribution_hash: entry.compiled_contribution_hash,
+                output_schema_snapshot: compile_contribution_outputs(
+                    &entry.output_schema_snapshot,
+                )?,
+                side_effect_policy: entry.side_effect_policy,
+                dependency_status: entry.dependency_status.as_str().to_string(),
+            },
+        );
+    }
+    Ok(orchestration_runtime::compiler::FlowCompileContext {
+        workspace_id: Some(workspace_id),
+        provider_families: routing_catalog.provider_families,
+        provider_instances: routing_catalog.provider_instances,
+        model_routing_policies: routing_catalog
+            .model_routing_policies
+            .into_iter()
+            .flat_map(|(provider_code, policies)| {
+                policies
+                    .into_iter()
+                    .map(move |(model_id, policy)| ((provider_code.clone(), model_id), policy))
+            })
+            .collect(),
+        node_contributions,
+        js_dependencies: BTreeMap::new(),
+    })
+}
+
+async fn load_model_provider_routing_catalog<R>(
+    repository: &R,
+    workspace_id: Uuid,
+    cache_store: Option<&dyn CacheStore>,
+) -> Result<ModelProviderRoutingCatalogSnapshot>
+where
+    R: ModelProviderRepository + PluginRepository,
+{
+    let cache_key = model_routing_catalog_cache_key(workspace_id);
+    if let Some(cache_store) = cache_store {
+        match cache_store.get_json(&cache_key).await {
+            Ok(Some(value)) => match serde_json::from_value(value) {
+                Ok(snapshot) => return Ok(snapshot),
+                Err(error) => {
+                    tracing::warn!(%workspace_id, %error, "invalid cached model provider routing catalog");
+                    invalidate_model_provider_routing_catalog(cache_store, workspace_id).await;
+                }
+            },
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(%workspace_id, %error, "failed to read model provider routing catalog cache");
+            }
+        }
+    }
+    let snapshot = build_model_provider_routing_catalog(repository, workspace_id).await?;
+    if let Some(cache_store) = cache_store {
+        match serde_json::to_value(&snapshot) {
+            Ok(value) => {
+                if let Err(error) = cache_store
+                    .set_json(&cache_key, value, Some(MODEL_ROUTING_CATALOG_TTL))
+                    .await
+                {
+                    tracing::warn!(%workspace_id, %error, "failed to cache model provider routing catalog");
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%workspace_id, %error, "failed to serialize model provider routing catalog");
+            }
+        }
+    }
+    Ok(snapshot)
+}
+
+async fn build_model_provider_routing_catalog<R>(
+    repository: &R,
+    workspace_id: Uuid,
+) -> Result<ModelProviderRoutingCatalogSnapshot>
+where
+    R: ModelProviderRepository + PluginRepository,
+{
+    let instances = repository.list_instances(workspace_id).await?;
     let assigned_installation_ids = repository
         .list_assignments(workspace_id)
         .await?
@@ -29,7 +186,6 @@ where
     let mut provider_families = BTreeMap::new();
     let mut provider_instances = BTreeMap::new();
     let mut provider_codes = BTreeSet::new();
-    let mut node_contributions = BTreeMap::new();
 
     for instance in instances {
         provider_codes.insert(instance.provider_code.clone());
@@ -83,7 +239,7 @@ where
             );
     }
 
-    let mut model_distribution_rules = BTreeMap::new();
+    let mut model_routing_policies = BTreeMap::new();
     for provider_code in provider_codes {
         let Some(main_instance) = repository
             .get_main_instance(workspace_id, &provider_code)
@@ -91,51 +247,33 @@ where
         else {
             continue;
         };
-        for rule in main_instance.model_distribution_rules {
-            model_distribution_rules.insert(
-                (provider_code.clone(), rule.model_id),
-                map_llm_distribution_rule(rule.distribution_rule),
-            );
+        for policy in main_instance.model_routing_policies {
+            model_routing_policies
+                .entry(provider_code.clone())
+                .or_insert_with(BTreeMap::new)
+                .insert(
+                    policy.model_id,
+                    orchestration_runtime::compiler::FlowCompileModelRoutingPolicy {
+                        distribution_rule: map_llm_distribution_rule(policy.distribution_rule),
+                        provider_instance_ids: policy
+                            .provider_instance_ids
+                            .into_iter()
+                            .map(|id| id.to_string())
+                            .collect(),
+                        excluded_provider_instance_ids: policy
+                            .excluded_provider_instance_ids
+                            .into_iter()
+                            .map(|id| id.to_string())
+                            .collect(),
+                    },
+                );
         }
     }
 
-    for entry in contributions {
-        let key = node_contribution_lookup_key(
-            &entry.plugin_id,
-            &entry.plugin_version,
-            &entry.contribution_code,
-            &entry.node_shell,
-            &entry.schema_version,
-        );
-        node_contributions.insert(
-            key,
-            orchestration_runtime::compiler::FlowCompileNodeContribution {
-                installation_id: entry.installation_id,
-                plugin_unique_identifier: entry.plugin_unique_identifier,
-                package_id: entry.package_id,
-                plugin_id: entry.plugin_id,
-                plugin_version: entry.plugin_version,
-                contribution_code: entry.contribution_code,
-                node_shell: entry.node_shell,
-                schema_version: entry.schema_version,
-                contribution_checksum: entry.contribution_checksum,
-                compiled_contribution_hash: entry.compiled_contribution_hash,
-                output_schema_snapshot: compile_contribution_outputs(
-                    &entry.output_schema_snapshot,
-                )?,
-                side_effect_policy: entry.side_effect_policy,
-                dependency_status: entry.dependency_status.as_str().to_string(),
-            },
-        );
-    }
-
-    Ok(orchestration_runtime::compiler::FlowCompileContext {
-        workspace_id: Some(workspace_id),
+    Ok(ModelProviderRoutingCatalogSnapshot {
         provider_families,
         provider_instances,
-        model_distribution_rules,
-        node_contributions,
-        js_dependencies: BTreeMap::new(),
+        model_routing_policies,
     })
 }
 
@@ -166,7 +304,24 @@ where
         + PluginRepository
         + ApplicationJsDependencySelectionRepository,
 {
-    let mut context = build_compile_context(repository, workspace_id).await?;
+    build_application_compile_context_with_cache(repository, workspace_id, application_id, None)
+        .await
+}
+
+pub(crate) async fn build_application_compile_context_with_cache<R>(
+    repository: &R,
+    workspace_id: Uuid,
+    application_id: Uuid,
+    cache_store: Option<&dyn CacheStore>,
+) -> Result<orchestration_runtime::compiler::FlowCompileContext>
+where
+    R: ModelProviderRepository
+        + NodeContributionRepository
+        + PluginRepository
+        + ApplicationJsDependencySelectionRepository,
+{
+    let mut context =
+        build_compile_context_with_cache(repository, workspace_id, cache_store).await?;
     context.js_dependencies = repository
         .list_application_js_dependency_selections(workspace_id, application_id)
         .await?
@@ -436,6 +591,12 @@ fn missing_provider_field(message: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    };
+
+    use async_trait::async_trait;
     use serde_json::{json, Value};
 
     use super::*;
@@ -446,6 +607,76 @@ mod tests {
             ReplaceApplicationJsDependencySelectionInput,
         },
     };
+
+    #[derive(Clone, Default)]
+    struct TestRoutingCache {
+        entries: Arc<Mutex<HashMap<String, Value>>>,
+    }
+
+    impl TestRoutingCache {
+        fn value(&self, key: &str) -> Option<Value> {
+            self.entries
+                .lock()
+                .expect("routing cache mutex poisoned")
+                .get(key)
+                .cloned()
+        }
+    }
+
+    #[async_trait]
+    impl CacheStore for TestRoutingCache {
+        async fn get_json(&self, key: &str) -> Result<Option<Value>> {
+            Ok(self.value(key))
+        }
+
+        async fn set_json(
+            &self,
+            key: &str,
+            value: Value,
+            _ttl: Option<time::Duration>,
+        ) -> Result<()> {
+            self.entries
+                .lock()
+                .expect("routing cache mutex poisoned")
+                .insert(key.to_string(), value);
+            Ok(())
+        }
+
+        async fn set_if_absent_json(
+            &self,
+            key: &str,
+            value: Value,
+            _ttl: Option<time::Duration>,
+        ) -> Result<bool> {
+            let mut entries = self.entries.lock().expect("routing cache mutex poisoned");
+            if entries.contains_key(key) {
+                return Ok(false);
+            }
+            entries.insert(key.to_string(), value);
+            Ok(true)
+        }
+
+        async fn increment_counter(
+            &self,
+            _key: &str,
+            _amount: i64,
+            _ttl: Option<time::Duration>,
+        ) -> Result<i64> {
+            Ok(0)
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            self.entries
+                .lock()
+                .expect("routing cache mutex poisoned")
+                .remove(key);
+            Ok(())
+        }
+
+        async fn touch(&self, key: &str, _ttl: time::Duration) -> Result<bool> {
+            Ok(self.value(key).is_some())
+        }
+    }
 
     fn llm_document(flow_id: Uuid, provider_code: &str, model_id: &str) -> Value {
         let model_provider = json!({
@@ -511,6 +742,33 @@ mod tests {
                 "activeContainerPath": []
             }
         })
+    }
+
+    #[tokio::test]
+    async fn ac_007_routing_catalog_cache_hit_skips_durable_routing_reads_and_has_no_secrets() {
+        let repository =
+            super::super::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(
+                vec![],
+            );
+        let cache = TestRoutingCache::default();
+
+        build_compile_context_with_cache(&repository, Uuid::nil(), Some(&cache))
+            .await
+            .expect("cache miss should rebuild routing catalog");
+        assert_eq!(repository.model_routing_catalog_read_count(), 1);
+
+        build_compile_context_with_cache(&repository, Uuid::nil(), Some(&cache))
+            .await
+            .expect("cache hit should build compile context");
+        assert_eq!(repository.model_routing_catalog_read_count(), 1);
+
+        let cached = cache
+            .value(&model_routing_catalog_cache_key(Uuid::nil()))
+            .expect("routing projection should be observable in ephemeral cache");
+        let serialized = cached.to_string();
+        assert!(!serialized.contains("config_json"));
+        assert!(!serialized.contains("api_key"));
+        assert!(!serialized.contains("base_url"));
     }
 
     fn code_js_dependency_document(flow_id: Uuid, imports: Value) -> Value {

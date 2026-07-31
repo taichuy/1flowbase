@@ -126,6 +126,7 @@ pub(super) fn settings_service(
         state.api_node_id.clone(),
         state.provider_install_root.clone(),
     )
+    .with_routing_cache_store(state.infrastructure.cache_store())
 }
 
 #[utoipa::path(

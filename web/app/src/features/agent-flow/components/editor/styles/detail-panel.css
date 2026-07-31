@@ -565,6 +565,16 @@
   box-shadow: 0 0 0 2px rgba(75, 139, 255, 0.12);
 }
 
+.agent-flow-code-source-field__toolbar {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2px 6px;
+  border-bottom: 1px solid #edf1ee;
+  background: #fafcfb;
+}
+
 .agent-flow-code-source-field__loading {
   display: flex;
   min-height: 260px;

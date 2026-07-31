@@ -650,8 +650,7 @@
   border: 1px solid #dbe4ef;
   border-radius: 0.75rem;
   background: #f1f5f9;
-  padding: clamp(0.5rem, 2.5cqw, 0.625rem)
-    clamp(0.75rem, 3cqw, 0.875rem);
+  padding: clamp(0.5rem, 2.5cqw, 0.625rem) clamp(0.75rem, 3cqw, 0.875rem);
 }
 
 .agent-flow-editor__debug-message-header {
@@ -757,36 +756,6 @@
   border-color: #9ca3af;
   background: #e5e7eb;
   color: #4b5563;
-}
-
-.agent-flow-editor__debug-feature-bar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  width: 100%;
-  min-height: 2.75rem;
-  margin-top: 0.5rem;
-  gap: clamp(0.45rem, 1.8cqw, 0.625rem);
-  padding: clamp(0.4rem, 1.8cqw, 0.5rem) clamp(0.5rem, 2.2cqw, 0.625rem);
-  border: 1px solid #cddcf4;
-  border-radius: 0.75rem;
-  background: #eef5ff;
-}
-
-.agent-flow-editor__debug-feature-icon {
-  display: inline-flex;
-  inline-size: clamp(1.5rem, 6cqw, 1.75rem);
-  block-size: clamp(1.5rem, 6cqw, 1.75rem);
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.625rem;
-  background: #f59e0b;
-  color: #ffffff;
-}
-
-.agent-flow-editor__debug-feature-manage {
-  justify-self: end;
-  padding-inline: 0.25rem;
 }
 
 .agent-flow-editor__debug-message-action-row {

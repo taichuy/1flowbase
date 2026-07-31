@@ -1121,6 +1121,7 @@ where
     async fn invoke_native_sql_node(
         &self,
         node: &orchestration_runtime::compiled_plan::CompiledNode,
+        sql: &str,
     ) -> Result<orchestration_runtime::execution_engine::NativeSqlInvocationOutput> {
         let context = self
             .flow_execution_context
@@ -1131,12 +1132,6 @@ where
             .get("data_source_instance_id")
             .and_then(Value::as_str)
             .ok_or_else(|| anyhow!("SQL node is missing data_source_instance_id"))?;
-        let sql = node
-            .config
-            .get("sql")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("SQL node is missing sql"))?;
-
         match context
             .data_model
             .runtime_engine
@@ -1150,6 +1145,7 @@ where
                     metrics_payload: json!({}),
                     debug_payload: json!({
                         "data_source_instance_id": data_source_instance_id,
+                        "sql": sql,
                     }),
                 },
             ),
@@ -1160,6 +1156,7 @@ where
                     metrics_payload: json!({}),
                     debug_payload: json!({
                         "data_source_instance_id": data_source_instance_id,
+                        "sql": sql,
                     }),
                 },
             ),

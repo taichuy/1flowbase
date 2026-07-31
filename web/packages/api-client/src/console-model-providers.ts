@@ -104,7 +104,10 @@ export interface ConsoleModelProviderCatalogEntry {
 }
 
 export type ConsoleModelProviderRequestLogStatus =
-  'succeeded' | 'failed' | 'empty_response' | 'failed_after_first_token';
+  | 'succeeded'
+  | 'failed'
+  | 'empty_response'
+  | 'failed_after_first_token';
 
 export interface ConsoleModelProviderRequestLog {
   attempt_id: string;
@@ -226,12 +229,15 @@ export interface UpdateConsoleModelProviderInput {
 export interface ConsoleModelProviderMainInstance {
   provider_code: string;
   auto_include_new_instances: boolean;
-  model_distribution_rules: ConsoleModelProviderMainModelDistributionRule[];
+  revision: number;
+  model_routing_policies: ConsoleModelProviderMainModelRoutingPolicy[];
 }
 
-export interface ConsoleModelProviderMainModelDistributionRule {
+export interface ConsoleModelProviderMainModelRoutingPolicy {
   model_id: string;
   distribution_rule: ConsoleModelProviderDistributionRule;
+  provider_instance_ids: string[];
+  excluded_provider_instance_ids: string[];
 }
 
 export interface ConsoleValidateModelProviderResult {
@@ -270,6 +276,7 @@ export interface ConsoleModelProviderOptionGroup {
 export interface ConsoleModelProviderOptionTarget {
   source_instance_id: string;
   source_instance_display_name: string;
+  routing_enabled: boolean;
   model: ConsoleProviderModelDescriptor;
 }
 
@@ -303,7 +310,8 @@ export interface ConsoleModelProviderCatalogFilter {
 
 export interface UpdateConsoleModelProviderMainInstanceInput {
   auto_include_new_instances: boolean;
-  model_distribution_rules?: ConsoleModelProviderMainModelDistributionRule[];
+  expected_revision: number;
+  model_routing_policies?: ConsoleModelProviderMainModelRoutingPolicy[];
 }
 
 function buildModelProviderCatalogPath(

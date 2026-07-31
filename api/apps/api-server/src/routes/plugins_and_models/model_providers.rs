@@ -86,13 +86,17 @@ pub struct UpdateModelProviderBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModelProviderMainInstanceBody {
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Option<Vec<ModelProviderMainModelDistributionRuleBody>>,
+    pub expected_revision: i64,
+    pub model_routing_policies: Option<Vec<ModelProviderMainModelRoutingPolicyBody>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct ModelProviderMainModelDistributionRuleBody {
+pub struct ModelProviderMainModelRoutingPolicyBody {
     pub model_id: String,
     pub distribution_rule: String,
+    pub provider_instance_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub excluded_provider_instance_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -345,7 +349,8 @@ pub struct DeletedResponse {
 pub struct ModelProviderMainInstanceResponse {
     pub provider_code: String,
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Vec<ModelProviderMainModelDistributionRuleResponse>,
+    pub revision: i64,
+    pub model_routing_policies: Vec<ModelProviderMainModelRoutingPolicyResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -365,15 +370,18 @@ pub struct ModelProviderOptionGroupResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct ModelProviderMainModelDistributionRuleResponse {
+pub struct ModelProviderMainModelRoutingPolicyResponse {
     pub model_id: String,
     pub distribution_rule: String,
+    pub provider_instance_ids: Vec<Uuid>,
+    pub excluded_provider_instance_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ModelProviderOptionTargetResponse {
     pub source_instance_id: String,
     pub source_instance_display_name: String,
+    pub routing_enabled: bool,
     pub model: ProviderModelDescriptorResponse,
 }
 
@@ -811,29 +819,34 @@ fn to_main_instance_response(
     ModelProviderMainInstanceResponse {
         provider_code: view.provider_code,
         auto_include_new_instances: view.auto_include_new_instances,
-        model_distribution_rules: view
-            .model_distribution_rules
+        revision: view.revision,
+        model_routing_policies: view
+            .model_routing_policies
             .into_iter()
-            .map(to_main_model_distribution_rule_response)
+            .map(to_main_model_routing_policy_response)
             .collect(),
     }
 }
 
-fn to_main_model_distribution_rule_response(
-    rule: domain::ModelProviderMainModelDistributionRule,
-) -> ModelProviderMainModelDistributionRuleResponse {
-    ModelProviderMainModelDistributionRuleResponse {
-        model_id: rule.model_id,
-        distribution_rule: rule.distribution_rule.as_str().to_string(),
+fn to_main_model_routing_policy_response(
+    policy: domain::ModelProviderMainModelRoutingPolicy,
+) -> ModelProviderMainModelRoutingPolicyResponse {
+    ModelProviderMainModelRoutingPolicyResponse {
+        model_id: policy.model_id,
+        distribution_rule: policy.distribution_rule.as_str().to_string(),
+        provider_instance_ids: policy.provider_instance_ids,
+        excluded_provider_instance_ids: policy.excluded_provider_instance_ids,
     }
 }
 
-fn to_main_model_distribution_rule(
-    rule: ModelProviderMainModelDistributionRuleBody,
-) -> Result<domain::ModelProviderMainModelDistributionRule, ApiError> {
-    Ok(domain::ModelProviderMainModelDistributionRule {
-        model_id: rule.model_id,
-        distribution_rule: parse_distribution_rule(&rule.distribution_rule)?,
+fn to_main_model_routing_policy(
+    policy: ModelProviderMainModelRoutingPolicyBody,
+) -> Result<domain::ModelProviderMainModelRoutingPolicy, ApiError> {
+    Ok(domain::ModelProviderMainModelRoutingPolicy {
+        model_id: policy.model_id,
+        distribution_rule: parse_distribution_rule(&policy.distribution_rule)?,
+        provider_instance_ids: policy.provider_instance_ids,
+        excluded_provider_instance_ids: policy.excluded_provider_instance_ids,
     })
 }
 
@@ -884,6 +897,7 @@ fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionRe
                     .map(|target| ModelProviderOptionTargetResponse {
                         source_instance_id: target.source_instance_id.to_string(),
                         source_instance_display_name: target.source_instance_display_name,
+                        routing_enabled: target.routing_enabled,
                         model: to_model_descriptor_response(target.model),
                     })
                     .collect(),
@@ -1309,7 +1323,8 @@ pub async fn get_main_instance(
     responses(
         (status = 200, body = ModelProviderMainInstanceResponse),
         (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
+        (status = 404, body = crate::error_response::ErrorBody),
+        (status = 409, body = crate::error_response::ErrorBody)
     )
 )]
 pub async fn update_main_instance(
@@ -1320,12 +1335,12 @@ pub async fn update_main_instance(
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let model_distribution_rules = body
-        .model_distribution_rules
-        .map(|rules| {
-            rules
+    let model_routing_policies = body
+        .model_routing_policies
+        .map(|policies| {
+            policies
                 .into_iter()
-                .map(to_main_model_distribution_rule)
+                .map(to_main_model_routing_policy)
                 .collect::<Result<Vec<_>, ApiError>>()
         })
         .transpose()?;
@@ -1334,7 +1349,8 @@ pub async fn update_main_instance(
             actor_user_id: context.user.id,
             provider_code,
             auto_include_new_instances: body.auto_include_new_instances,
-            model_distribution_rules,
+            expected_revision: body.expected_revision,
+            model_routing_policies,
         })
         .await?;
 

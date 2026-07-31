@@ -9,8 +9,10 @@ describe('SQL node contract', () => {
     const definition = getNodeDefinition('sql');
 
     expect(contract?.defaults.config).toEqual({
-      data_source_instance_id: 'main',
-      sql: ''
+      data_source_instance_id: 'main'
+    });
+    expect(contract?.defaults.bindings).toEqual({
+      sql: { kind: 'templated_text', value: '' }
     });
     expect(contract?.defaults.outputs).toEqual([
       expect.objectContaining({ key: 'results', valueType: 'array' })
@@ -29,7 +31,7 @@ describe('SQL node contract', () => {
         expect.objectContaining({
           fields: expect.arrayContaining([
             expect.objectContaining({
-              key: 'config.sql',
+              key: 'bindings.sql',
               editor: 'sql_source'
             })
           ])

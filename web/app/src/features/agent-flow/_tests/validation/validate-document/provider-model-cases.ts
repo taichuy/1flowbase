@@ -171,11 +171,13 @@ describe('validateDocument model providers', () => {
           {
             source_instance_id: 'provider-openai-prod',
             source_instance_display_name: 'OpenAI Production',
+            routing_enabled: true,
             model: { ...primaryModel }
           },
           {
             source_instance_id: 'provider-openai-backup',
             source_instance_display_name: 'OpenAI Backup',
+            routing_enabled: true,
             model: { ...primaryModel }
           }
         ]

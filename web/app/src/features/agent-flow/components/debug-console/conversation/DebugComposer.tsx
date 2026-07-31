@@ -1,17 +1,11 @@
-import {
-  ArrowRightOutlined,
-  ArrowUpOutlined,
-  CloseCircleOutlined,
-  MessageOutlined,
-} from '@ant-design/icons';
-import { Button, Input, Typography } from 'antd';
+import { ArrowUpOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Button, Input } from 'antd';
 import { useState } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export function DebugComposer({
   value,
   disabled,
-  showFeatureBar = true,
   submitting,
   stopping,
   onChange,
@@ -20,7 +14,6 @@ export function DebugComposer({
 }: {
   value: string;
   disabled: boolean;
-  showFeatureBar?: boolean;
   submitting: boolean;
   stopping: boolean;
   onChange: (value: string) => void;
@@ -45,7 +38,7 @@ export function DebugComposer({
         <Input.TextArea
           autoSize={{ minRows: 1, maxRows: 4 }}
           variant="borderless"
-          placeholder={i18nText("agentFlow", "auto.chat_with_bots")}
+          placeholder={i18nText('agentFlow', 'auto.chat_with_bots')}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onCompositionStart={() => setIsComposing(true)}
@@ -69,7 +62,11 @@ export function DebugComposer({
         <div className="agent-flow-editor__debug-composer-actions">
           {showStop ? (
             <Button
-              aria-label={stopping ? i18nText("agentFlow", "auto.terminating_debug_run") : i18nText("agentFlow", "auto.terminate_debugging_run")}
+              aria-label={
+                stopping
+                  ? i18nText('agentFlow', 'auto.terminating_debug_run')
+                  : i18nText('agentFlow', 'auto.terminate_debugging_run')
+              }
               className="agent-flow-editor__debug-composer-submit agent-flow-editor__debug-composer-stop"
               disabled={stopping}
               icon={<CloseCircleOutlined />}
@@ -79,7 +76,7 @@ export function DebugComposer({
             />
           ) : (
             <Button
-              aria-label={i18nText("agentFlow", "auto.send_debug_message")}
+              aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
               className="agent-flow-editor__debug-composer-submit"
               disabled={disabled}
               icon={<ArrowUpOutlined />}
@@ -90,23 +87,6 @@ export function DebugComposer({
           )}
         </div>
       </div>
-      {showFeatureBar ? (
-        <div className="agent-flow-editor__debug-feature-bar">
-          <span className="agent-flow-editor__debug-feature-icon">
-            <MessageOutlined />
-          </span>
-          <Typography.Text>{i18nText("agentFlow", "auto.function_is_enabled")}</Typography.Text>
-          <Button
-            aria-label={i18nText("agentFlow", "auto.management_functions")}
-            className="agent-flow-editor__debug-feature-manage"
-            icon={<ArrowRightOutlined />}
-            iconPosition="end"
-            size="small"
-            type="link"
-          >
-            {i18nText("agentFlow", "auto.management")}</Button>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -507,6 +507,7 @@ pub(super) fn base_service(
     )
     .with_node_id(state.api_node_id.clone())
     .with_allow_uploaded_host_extensions(state.allow_uploaded_host_extensions)
+    .with_model_routing_cache_store(state.infrastructure.cache_store())
 }
 
 fn service(

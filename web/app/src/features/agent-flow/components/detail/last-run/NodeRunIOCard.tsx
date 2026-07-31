@@ -15,6 +15,7 @@ export function NodeRunIOCard({ lastRun }: { lastRun: NodeLastRun }) {
           inputPayload={lastRun.node_run.input_payload}
           debugPayload={lastRun.node_run.debug_payload}
           outputPayload={lastRun.node_run.output_payload}
+          errorPayload={lastRun.node_run.error_payload}
           onLoadArtifacts={(artifactRefs) =>
             fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
           }

@@ -857,6 +857,7 @@ pub async fn publish_application_api(
     require_csrf(&headers, &context)?;
     let mapping = to_mapping_config(body.mapping);
     let publication = ApplicationPublicationService::new(state.store.clone())
+        .with_model_routing_cache_store(state.infrastructure.cache_store())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: context.user.id,
             application_id,

@@ -27,7 +27,7 @@ export const sqlNodeDefinition: NodeDefinition = {
       title: 'SQL',
       fields: [
         {
-          key: 'config.sql',
+          key: 'bindings.sql',
           label: i18nText('agentFlow', 'auto.sql_statement'),
           editor: 'sql_source',
           required: true

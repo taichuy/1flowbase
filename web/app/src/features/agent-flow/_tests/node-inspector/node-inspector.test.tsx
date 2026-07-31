@@ -52,6 +52,44 @@ function NamedBindingsFocusHarness() {
 }
 
 describe('NodeInspector core', () => {
+  test('preserves legacy SQL text and writes the templated binding on edit', async () => {
+    const state = createInitialState();
+    const sqlNode = createNodeDocument('sql', 'node-sql', 720, 240);
+    delete sqlNode.bindings.sql;
+    sqlNode.config.sql = 'select {{node-start.query}}';
+    state.draft.document.graph.nodes.push(sqlNode);
+    let latestDocument = state.draft.document;
+
+    renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state}>
+        <SelectionSeed nodeId="node-sql" />
+        <DocumentObserver
+          onChange={(document) => {
+            latestDocument = document;
+          }}
+        />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    const editor = await screen.findByDisplayValue(
+      'select {{node-start.query}}'
+    );
+    fireEvent.change(editor, {
+      target: { value: 'select * from users where id = {{node-start.query}}' }
+    });
+
+    await waitFor(() => {
+      const updatedSqlNode = latestDocument.graph.nodes.find(
+        (node) => node.id === 'node-sql'
+      );
+      expect(updatedSqlNode?.bindings.sql).toEqual({
+        kind: 'templated_text',
+        value: 'select * from users where id = {{node-start.query}}'
+      });
+    });
+  });
+
   test('AC-012/013 renders backend-projected i18n_text as inert text and falls back to the typed English key', () => {
     const translatedState = createInitialState();
     const answerNode = createNodeDocument(

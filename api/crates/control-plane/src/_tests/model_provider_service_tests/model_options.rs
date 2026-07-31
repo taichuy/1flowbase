@@ -70,9 +70,12 @@ async fn model_provider_service_options_group_models_by_model_id_with_ordered_in
             actor_user_id: repository.actor.user_id,
             provider_code: "fixture_provider".to_string(),
             auto_include_new_instances: true,
-            model_distribution_rules: Some(vec![domain::ModelProviderMainModelDistributionRule {
+            expected_revision: 0,
+            model_routing_policies: Some(vec![domain::ModelProviderMainModelRoutingPolicy {
                 model_id: "fixture_chat".to_string(),
                 distribution_rule: domain::ModelProviderDistributionRule::RoundRobin,
+                provider_instance_ids: vec![alpha.id, beta.id],
+                excluded_provider_instance_ids: vec![beta.id],
             }]),
         })
         .await
@@ -193,12 +196,13 @@ async fn model_provider_service_options_group_models_by_model_id_with_ordered_in
             .map(|target| (
                 target.source_instance_id,
                 target.source_instance_display_name.as_str(),
-                target.model.descriptor.display_name.as_str()
+                target.model.descriptor.display_name.as_str(),
+                target.routing_enabled
             ))
             .collect::<Vec<_>>(),
         vec![
-            (alpha.id, "Alpha", "Fixture Chat"),
-            (beta.id, "Beta", "Fixture Chat Backup")
+            (alpha.id, "Alpha", "Fixture Chat", true),
+            (beta.id, "Beta", "Fixture Chat Backup", false)
         ]
     );
     assert_eq!(

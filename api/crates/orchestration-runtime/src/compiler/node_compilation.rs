@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use sha2::{Digest, Sha256};
 
@@ -45,7 +45,16 @@ pub(super) fn compile_node(
         .get("bindings")
         .and_then(Value::as_object)
         .ok_or_else(|| anyhow!("node {node_id} missing bindings"))?;
-    let active_bindings = active_binding_values(&node_type, raw_bindings);
+    let mut active_bindings = active_binding_values(&node_type, raw_bindings);
+    // @field-contract-compat source=config.sql alias=bindings.sql remove_by=2026-09-30
+    if node_type == "sql" && !active_bindings.contains_key("sql") {
+        if let Some(sql) = config.get("sql").and_then(Value::as_str) {
+            active_bindings.insert(
+                "sql".to_string(),
+                serde_json::json!({ "kind": "templated_text", "value": sql }),
+            );
+        }
+    }
     let bindings = compile_bindings(&active_bindings)
         .with_context(|| format!("failed to compile bindings for node {node_id}"))?;
     let mut outputs = compile_outputs(
@@ -72,7 +81,7 @@ pub(super) fn compile_node(
         });
     }
     if node_type == "sql" {
-        validate_native_sql_config(&node_id, &config, compile_issues);
+        validate_native_sql_config(&node_id, &config, &bindings, compile_issues);
     }
     let llm_runtime = (node_type == "llm")
         .then(|| compile_llm_runtime(&node_id, &config, context, compile_issues))
@@ -104,6 +113,7 @@ pub(super) fn compile_node(
 fn validate_native_sql_config(
     node_id: &str,
     config: &Value,
+    bindings: &BTreeMap<String, CompiledBinding>,
     compile_issues: &mut Vec<CompileIssue>,
 ) {
     let data_source_instance_id = config
@@ -124,11 +134,14 @@ fn validate_native_sql_config(
         }),
     }
 
-    if !config.get("sql").is_some_and(Value::is_string) {
+    if !bindings
+        .get("sql")
+        .is_some_and(|binding| binding.kind == "templated_text" && binding.raw_value.is_string())
+    {
         compile_issues.push(CompileIssue {
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingNativeSql,
-            message: format!("node {node_id} is missing config.sql"),
+            message: format!("node {node_id} is missing bindings.sql templated_text"),
         });
     }
 }
@@ -247,20 +260,22 @@ fn compile_llm_runtime(
         return None;
     };
 
+    let routing_policy = context
+        .model_routing_policies
+        .get(&(provider_code.clone(), model.clone()));
     let provider_instances = resolve_fixed_model_provider_instances(
         node_id,
         &provider_code,
         &model,
+        routing_policy,
         context,
         compile_issues,
     )?;
     let provider_instance = provider_instances.first().copied()?;
 
     let context_policy = compile_llm_context_policy(config);
-    let distribution_rule = context
-        .model_distribution_rules
-        .get(&(provider_code.clone(), model.clone()))
-        .copied()
+    let distribution_rule = routing_policy
+        .map(|policy| policy.distribution_rule)
         .unwrap_or_default();
 
     Some(CompiledLlmRuntime {
@@ -292,6 +307,7 @@ fn resolve_fixed_model_provider_instances<'a>(
     node_id: &str,
     provider_code: &str,
     model: &str,
+    routing_policy: Option<&FlowCompileModelRoutingPolicy>,
     context: &'a FlowCompileContext,
     compile_issues: &mut Vec<CompileIssue>,
 ) -> Option<Vec<&'a FlowCompileProviderInstance>> {
@@ -319,9 +335,16 @@ fn resolve_fixed_model_provider_instances<'a>(
         return None;
     }
 
+    let excluded_provider_instance_ids = routing_policy
+        .map(|policy| &policy.excluded_provider_instance_ids)
+        .cloned()
+        .unwrap_or_default();
     let model_candidates = candidates
         .into_iter()
-        .filter(|instance| provider_instance_supports_model(instance, model))
+        .filter(|instance| {
+            provider_instance_supports_model(instance, model)
+                && !excluded_provider_instance_ids.contains(&instance.provider_instance_id)
+        })
         .collect::<Vec<_>>();
 
     if model_candidates.is_empty() {
@@ -333,13 +356,36 @@ fn resolve_fixed_model_provider_instances<'a>(
         return None;
     }
 
-    let runnable_candidates = model_candidates
+    let mut runnable_candidates = model_candidates
         .iter()
         .copied()
         .filter(|instance| instance.is_ready && instance.is_runnable)
         .collect::<Vec<_>>();
 
     if !runnable_candidates.is_empty() {
+        let configured_positions = routing_policy
+            .map(|policy| {
+                policy
+                    .provider_instance_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(position, id)| (id.as_str(), position))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        runnable_candidates.sort_by(|left, right| {
+            configured_positions
+                .get(left.provider_instance_id.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &configured_positions
+                        .get(right.provider_instance_id.as_str())
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                )
+                .then(left.provider_instance_id.cmp(&right.provider_instance_id))
+        });
         return Some(runnable_candidates);
     }
 

@@ -50,13 +50,13 @@ describe('console application runtime stream client', () => {
     vi.restoreAllMocks();
   });
 
-  test('normalizes runtime event envelope frames and sends cursor query', async () => {
+  test('AC-001 preserves Answer presentation metadata from runtime envelopes', async () => {
     const onEvent = vi.fn();
     const onCompleted = vi.fn();
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       sseResponse(`id: run-1:2
 event: text_delta
-data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":"node-run-1","event_type":"text_delta","sequence":2,"created_at":"2026-05-08T00:00:00Z","delta_index":2,"content_type":"text","text":"退款","payload":{"type":"text_delta","node_run_id":"node-run-1","node_id":"node-llm","text":"退款"}}
+data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"text_delta","sequence":2,"created_at":"2026-05-08T00:00:00Z","delta_index":2,"content_type":"text","text":"退款","payload":{"type":"text_delta","node_id":"node-answer","text":"退款","presentation":{"kind":"answer","answer_node_id":"node-answer","segment_index":0,"source_node_id":"node-llm","source_node_run_id":"node-run-1","source_output_key":"text"}}}
 
 `)
     );
@@ -83,9 +83,17 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":"node-run-1","event_t
     expect(onEvent).toHaveBeenCalledWith({
       type: 'text_delta',
       run_id: 'run-1',
-      node_run_id: 'node-run-1',
-      node_id: 'node-llm',
+      node_run_id: null,
+      node_id: 'node-answer',
       text: '退款',
+      presentation: {
+        kind: 'answer',
+        answer_node_id: 'node-answer',
+        segment_index: 0,
+        source_node_id: 'node-llm',
+        source_node_run_id: 'node-run-1',
+        source_output_key: 'text'
+      },
       event_id: 'run-1:2',
       sequence: 2,
       created_at: '2026-05-08T00:00:00Z',
@@ -581,11 +589,7 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":"node-run-1","event_t
       status: 'queued'
     });
     await expect(
-      getConsoleRunArchiveImportJob(
-        'app-1',
-        'job-1',
-        'http://127.0.0.1:7800'
-      )
+      getConsoleRunArchiveImportJob('app-1', 'job-1', 'http://127.0.0.1:7800')
     ).resolves.toMatchObject({
       job_id: 'job-1',
       status: 'succeeded',

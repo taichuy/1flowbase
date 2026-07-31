@@ -615,11 +615,13 @@ describe('ModelProvidersPage - instances modal', () => {
           {
             source_instance_id: 'provider-1',
             source_instance_display_name: 'OpenAI Production',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           },
           {
             source_instance_id: 'provider-2',
             source_instance_display_name: 'OpenAI Backup',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           }
         ]
@@ -670,7 +672,8 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(within(aggregatedRow).getByText('gpt-4o-mini')).not.toHaveClass(
         'model-provider-panel__mono'
       );
-      const productionTag = within(aggregatedRow).getByText('OpenAI Production');
+      const productionTag =
+        within(aggregatedRow).getByText('OpenAI Production');
       const backupTag = within(aggregatedRow).getByText('OpenAI Backup');
       expect(productionTag).toHaveClass('ant-tag-geekblue');
       expect(backupTag).toHaveClass('ant-tag-green');
@@ -713,11 +716,11 @@ describe('ModelProvidersPage - instances modal', () => {
         ) => {
           mainInstanceState = {
             ...mainInstanceState,
-            model_distribution_rules:
-              mainInstanceState.model_distribution_rules.map((rule) =>
-                rule.model_id === modelId
-                  ? { ...rule, distribution_rule: distributionRule }
-                  : rule
+            model_routing_policies:
+              mainInstanceState.model_routing_policies.map((policy) =>
+                policy.model_id === modelId
+                  ? { ...policy, distribution_rule: distributionRule }
+                  : policy
               )
           };
         }
@@ -751,6 +754,7 @@ describe('ModelProvidersPage - instances modal', () => {
             onDelete={vi.fn()}
             onToggleAutoIncludeNewInstances={vi.fn()}
             onChangeDistributionRule={distributionRuleChangeSpy}
+            onSaveRoutingPolicy={vi.fn()}
             onToggleIncludedInMain={vi.fn()}
           />
         </AppProviders>
@@ -777,7 +781,9 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(distributionRuleSelect).toBeEnabled();
       expect((await screen.findAllByText('无')).length).toBeGreaterThan(0);
       expect((await screen.findAllByText('轮询')).length).toBeGreaterThan(0);
-      expect((await screen.findAllByText('重试轮询')).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText('重试轮询')).length).toBeGreaterThan(
+        0
+      );
       fireEvent.change(distributionRuleSelect, {
         target: { value: 'retry_round_robin' }
       });
@@ -788,6 +794,139 @@ describe('ModelProvidersPage - instances modal', () => {
       );
     }
   );
+
+  test('AC-001 edits the routing rule and ordered instance group atomically', async () => {
+    authenticateAsModelProviderManager();
+    const mainInstance = buildMainInstanceSettings(true, 'round_robin');
+    mainInstance.model_routing_policies[0] = {
+      ...mainInstance.model_routing_policies[0],
+      provider_instance_ids: ['provider-2', 'provider-1']
+    };
+    const options = buildSettingsModelProviderOptions();
+    const firstGroup = options.providers[0].model_groups[0];
+    firstGroup.targets.push({
+      source_instance_id: 'provider-2',
+      source_instance_display_name: 'OpenAI Backup',
+      routing_enabled: true,
+      model: firstGroup.model
+    });
+    const saveSpy = vi.fn(
+      (
+        _modelId: string,
+        _distributionRule: string,
+        _providerInstanceIds: string[],
+        _excludedProviderInstanceIds: string[],
+        onSuccess: () => void
+      ) => onSuccess()
+    );
+
+    render(
+      <AppProviders>
+        <ModelProviderInstancesModal
+          open
+          catalogEntry={modelProviderCatalogEntries[0]}
+          providerDisplayName="OpenAI Compatible"
+          mainInstance={mainInstance}
+          modelGroups={options.providers[0].model_groups}
+          instances={buildSettingsModelProviderInstances()}
+          updatingMainInstance={false}
+          updatingInstanceId={null}
+          refreshingCandidates={false}
+          refreshing={false}
+          deleting={false}
+          canManage={true}
+          versionSwitchNotice={null}
+          onClose={vi.fn()}
+          onEdit={vi.fn()}
+          onRefreshCandidates={vi.fn()}
+          onRefreshModels={vi.fn()}
+          onDelete={vi.fn()}
+          onToggleAutoIncludeNewInstances={vi.fn()}
+          onChangeDistributionRule={vi.fn()}
+          onSaveRoutingPolicy={saveSpy}
+          onToggleIncludedInMain={vi.fn()}
+        />
+      </AppProviders>
+    );
+
+    const table = screen.getByRole('table', { name: '主实例' });
+    fireEvent.click(within(table).getAllByRole('button', { name: '编辑' })[0]);
+    await waitFor(() => {
+      expect(
+        document.querySelector('.model-provider-panel__routing-policy-modal')
+      ).toBeInTheDocument();
+    });
+    const policyDialog = document.querySelector(
+      '.model-provider-panel__routing-policy-modal'
+    ) as HTMLElement;
+    expect(
+      within(policyDialog).getByText('编辑轮询规则与分组顺序')
+    ).toBeInTheDocument();
+    const routingTable = within(policyDialog).getByRole('table');
+    const rowNames = () =>
+      Array.from(routingTable.querySelectorAll('tbody tr')).map(
+        (row) => row.textContent
+      );
+    expect(rowNames()).toEqual([
+      expect.stringContaining('OpenAI Backup'),
+      expect.stringContaining('OpenAI Production')
+    ]);
+    expect(
+      within(routingTable).getByRole('columnheader', { name: '参与分组' })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(routingTable).getByRole('switch', {
+        name: '参与分组 OpenAI Backup'
+      })
+    );
+
+    Array.from(routingTable.querySelectorAll('tbody tr')).forEach(
+      (row, index) => {
+        vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+          x: 0,
+          y: index * 48,
+          top: index * 48,
+          right: 640,
+          bottom: (index + 1) * 48,
+          left: 0,
+          width: 640,
+          height: 48,
+          toJSON: () => ({})
+        });
+      }
+    );
+    const firstDragHandle = within(routingTable).getAllByRole('button', {
+      name: '拖拽排序'
+    })[0];
+    firstDragHandle.focus();
+    fireEvent.keyDown(firstDragHandle, { key: ' ', code: 'Space' });
+    await waitFor(() => {
+      expect(firstDragHandle).toHaveAttribute('aria-pressed', 'true');
+    });
+    fireEvent.keyDown(firstDragHandle, { key: 'ArrowDown', code: 'ArrowDown' });
+    fireEvent.keyDown(firstDragHandle, { key: ' ', code: 'Space' });
+    await waitFor(() => {
+      expect(rowNames()).toEqual([
+        expect.stringContaining('OpenAI Production'),
+        expect.stringContaining('OpenAI Backup')
+      ]);
+    });
+    fireEvent.change(
+      within(policyDialog).getByRole('combobox', { name: '分发规则' }),
+      { target: { value: 'retry_round_robin' } }
+    );
+    fireEvent.click(
+      within(policyDialog).getByRole('button', { name: /保\s*存/ })
+    );
+
+    expect(saveSpy).toHaveBeenCalledWith(
+      primaryContractProviderModels[0].model_id,
+      'retry_round_robin',
+      ['provider-1', 'provider-2'],
+      ['provider-2'],
+      expect.any(Function)
+    );
+  });
 
   test(
     'runs candidate refresh and delete from the provider instances modal',
@@ -897,11 +1036,13 @@ describe('ModelProvidersPage - instances modal', () => {
           {
             source_instance_id: 'provider-1',
             source_instance_display_name: 'OpenAI Production',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           },
           {
             source_instance_id: 'provider-2',
             source_instance_display_name: 'OpenAI Backup',
+            routing_enabled: true,
             model: primaryContractProviderModels[0]
           }
         ]

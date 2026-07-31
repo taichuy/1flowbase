@@ -31,7 +31,8 @@ pub struct StoredModelProviderMainInstanceRow {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub auto_include_new_instances: bool,
-    pub model_distribution_rules: Vec<domain::ModelProviderMainModelDistributionRuleRecord>,
+    pub revision: i64,
+    pub model_routing_policies: Vec<domain::ModelProviderMainModelRoutingPolicyRecord>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -39,11 +40,13 @@ pub struct StoredModelProviderMainInstanceRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct StoredModelProviderMainModelDistributionRuleRow {
+pub struct StoredModelProviderMainModelRoutingPolicyRow {
     pub workspace_id: Uuid,
     pub provider_code: String,
     pub model_id: String,
     pub distribution_rule: String,
+    pub provider_instance_ids: Vec<Uuid>,
+    pub excluded_provider_instance_ids: Vec<Uuid>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -115,7 +118,8 @@ impl PgModelProviderMapper {
             workspace_id: row.workspace_id,
             provider_code: row.provider_code,
             auto_include_new_instances: row.auto_include_new_instances,
-            model_distribution_rules: row.model_distribution_rules,
+            revision: row.revision,
+            model_routing_policies: row.model_routing_policies,
             created_by: row.created_by,
             updated_by: row.updated_by,
             created_at: row.created_at,
@@ -123,14 +127,16 @@ impl PgModelProviderMapper {
         })
     }
 
-    pub fn to_main_model_distribution_rule_record(
-        row: StoredModelProviderMainModelDistributionRuleRow,
-    ) -> Result<domain::ModelProviderMainModelDistributionRuleRecord> {
-        Ok(domain::ModelProviderMainModelDistributionRuleRecord {
+    pub fn to_main_model_routing_policy_record(
+        row: StoredModelProviderMainModelRoutingPolicyRow,
+    ) -> Result<domain::ModelProviderMainModelRoutingPolicyRecord> {
+        Ok(domain::ModelProviderMainModelRoutingPolicyRecord {
             workspace_id: row.workspace_id,
             provider_code: row.provider_code,
             model_id: row.model_id,
             distribution_rule: parse_distribution_rule(&row.distribution_rule)?,
+            provider_instance_ids: row.provider_instance_ids,
+            excluded_provider_instance_ids: row.excluded_provider_instance_ids,
             created_by: row.created_by,
             updated_by: row.updated_by,
             created_at: row.created_at,

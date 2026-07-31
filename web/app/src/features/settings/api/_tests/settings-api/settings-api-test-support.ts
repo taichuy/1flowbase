@@ -8,10 +8,13 @@ const modelProviderApiFixtures = vi.hoisted(() => ({
   mainInstance: {
     provider_code: 'openai_compatible',
     auto_include_new_instances: true,
-    model_distribution_rules: [
+    revision: 1,
+    model_routing_policies: [
       {
         model_id: 'gpt-4o-mini',
-        distribution_rule: 'none'
+        distribution_rule: 'none',
+        provider_instance_ids: ['provider-1'],
+        excluded_provider_instance_ids: []
       }
     ]
   },
@@ -66,6 +69,7 @@ const modelProviderApiFixtures = vi.hoisted(() => ({
               {
                 source_instance_id: 'provider-openai-prod',
                 source_instance_display_name: 'OpenAI Production',
+                routing_enabled: true,
                 model: {
                   model_id: 'gpt-4o-mini',
                   display_name: 'GPT-4o Mini',

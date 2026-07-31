@@ -229,7 +229,8 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
             workspace_id: workspace.id,
             provider_code: "fixture_provider".into(),
             auto_include_new_instances: true,
-            model_distribution_rules: None,
+            expected_revision: 0,
+            model_routing_policies: None,
             updated_by: actor.id,
         },
     )
@@ -271,7 +272,8 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
             workspace_id: workspace.id,
             provider_code: "fixture_provider".into(),
             auto_include_new_instances: false,
-            model_distribution_rules: None,
+            expected_revision: default_include.revision,
+            model_routing_policies: None,
             updated_by: actor.id,
         },
     )
@@ -345,7 +347,7 @@ async fn model_provider_repository_persists_main_instance_defaults_and_instance_
 }
 
 #[tokio::test]
-async fn model_provider_repository_persists_main_model_distribution_rules_without_touching_instances(
+async fn model_provider_repository_persists_ordered_routing_policy_with_revision_and_delete_cleanup(
 ) {
     // #1250 AC-007: retry_round_robin persists without rewriting provider instances.
     let (store, workspace, actor, installation_id) = seed_store().await;
@@ -375,20 +377,31 @@ async fn model_provider_repository_persists_main_model_distribution_rules_withou
             workspace_id: workspace.id,
             provider_code: "fixture_provider".into(),
             auto_include_new_instances: true,
-            model_distribution_rules: Some(vec![domain::ModelProviderMainModelDistributionRule {
+            expected_revision: 0,
+            model_routing_policies: Some(vec![domain::ModelProviderMainModelRoutingPolicy {
                 model_id: "fixture_chat".into(),
                 distribution_rule: domain::ModelProviderDistributionRule::RetryRoundRobin,
+                provider_instance_ids: vec![instance.id],
+                excluded_provider_instance_ids: vec![instance.id],
             }]),
             updated_by: actor.id,
         },
     )
     .await
     .unwrap();
-    assert_eq!(record.model_distribution_rules.len(), 1);
-    assert_eq!(record.model_distribution_rules[0].model_id, "fixture_chat");
+    assert_eq!(record.model_routing_policies.len(), 1);
+    assert_eq!(record.model_routing_policies[0].model_id, "fixture_chat");
     assert_eq!(
-        record.model_distribution_rules[0].distribution_rule,
+        record.model_routing_policies[0].distribution_rule,
         domain::ModelProviderDistributionRule::RetryRoundRobin
+    );
+    assert_eq!(
+        record.model_routing_policies[0].provider_instance_ids,
+        vec![instance.id]
+    );
+    assert_eq!(
+        record.model_routing_policies[0].excluded_provider_instance_ids,
+        vec![instance.id]
     );
 
     let fetched =
@@ -397,9 +410,29 @@ async fn model_provider_repository_persists_main_model_distribution_rules_withou
             .unwrap()
             .unwrap();
     assert_eq!(
-        fetched.model_distribution_rules,
-        record.model_distribution_rules
+        fetched.model_routing_policies,
+        record.model_routing_policies
     );
+
+    let stale_error = ModelProviderRepository::upsert_main_instance(
+        &store,
+        &UpsertModelProviderMainInstanceInput {
+            workspace_id: workspace.id,
+            provider_code: "fixture_provider".into(),
+            auto_include_new_instances: false,
+            expected_revision: 0,
+            model_routing_policies: Some(Vec::new()),
+            updated_by: actor.id,
+        },
+    )
+    .await
+    .expect_err("stale revision must not overwrite the routing policy");
+    assert!(matches!(
+        stale_error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+        Some(control_plane::errors::ControlPlaneError::Conflict(
+            "model_provider_main_instance_revision"
+        ))
+    ));
 
     let instance_columns: Vec<String> = sqlx::query_scalar(
         r#"
@@ -421,6 +454,22 @@ async fn model_provider_repository_persists_main_model_distribution_rules_withou
             .enabled_model_ids,
         vec!["fixture_chat".to_string(), "custom-stable".to_string()]
     );
+
+    ModelProviderRepository::delete_instance(&store, workspace.id, instance.id)
+        .await
+        .unwrap();
+    let after_delete =
+        ModelProviderRepository::get_main_instance(&store, workspace.id, "fixture_provider")
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(after_delete.revision, record.revision + 1);
+    assert!(after_delete.model_routing_policies[0]
+        .provider_instance_ids
+        .is_empty());
+    assert!(after_delete.model_routing_policies[0]
+        .excluded_provider_instance_ids
+        .is_empty());
 }
 
 #[tokio::test]

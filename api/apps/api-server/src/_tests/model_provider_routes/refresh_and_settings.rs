@@ -125,6 +125,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
     let main_instance_operation = &paths
         ["/api/console/settings/model-providers/providers/{provider_code}/main-instance"]["put"];
     assert!(main_instance_operation["responses"].get("404").is_some());
+    assert!(main_instance_operation["responses"].get("409").is_some());
     let request_schema_name = main_instance_operation["requestBody"]["content"]["application/json"]
         ["schema"]["$ref"]
         .as_str()
@@ -136,7 +137,10 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         Some("boolean")
     );
     assert!(schemas[request_schema_name]["properties"]
-        .get("model_distribution_rules")
+        .get("model_routing_policies")
+        .is_some());
+    assert!(schemas[request_schema_name]["properties"]
+        .get("expected_revision")
         .is_some());
     assert!(schemas[request_schema_name]
         .get("properties")
@@ -250,7 +254,8 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "auto_include_new_instances": false
+                        "auto_include_new_instances": false,
+                        "expected_revision": 0
                     })
                     .to_string(),
                 ))
@@ -274,7 +279,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         Some(false)
     );
     assert_eq!(
-        update_main_instance_payload["data"]["model_distribution_rules"]
+        update_main_instance_payload["data"]["model_routing_policies"]
             .as_array()
             .unwrap()
             .len(),
@@ -404,10 +409,13 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
                 .body(Body::from(
                     json!({
                         "auto_include_new_instances": false,
-                        "model_distribution_rules": [
+                        "expected_revision": 1,
+                        "model_routing_policies": [
                             {
                                 "model_id": "fixture_chat",
-                                "distribution_rule": "retry_round_robin"
+                                "distribution_rule": "retry_round_robin",
+                                "provider_instance_ids": [alpha_id.clone()],
+                                "excluded_provider_instance_ids": [alpha_id.clone()]
                             }
                         ]
                     })
@@ -425,16 +433,49 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
     )
     .unwrap();
     assert_eq!(
-        update_distribution_rule_payload["data"]["model_distribution_rules"][0]["model_id"]
-            .as_str(),
+        update_distribution_rule_payload["data"]["model_routing_policies"][0]["model_id"].as_str(),
         Some("fixture_chat")
     );
     assert_eq!(
-        update_distribution_rule_payload["data"]["model_distribution_rules"][0]
-            ["distribution_rule"]
+        update_distribution_rule_payload["data"]["model_routing_policies"][0]["distribution_rule"]
             .as_str(),
         Some("retry_round_robin")
     );
+    assert_eq!(
+        update_distribution_rule_payload["data"]["model_routing_policies"][0]
+            ["provider_instance_ids"][0]
+            .as_str(),
+        Some(alpha_id.as_str())
+    );
+    assert_eq!(
+        update_distribution_rule_payload["data"]["model_routing_policies"][0]
+            ["excluded_provider_instance_ids"][0]
+            .as_str(),
+        Some(alpha_id.as_str())
+    );
+
+    let stale_update = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/settings/model-providers/providers/fixture_provider/main-instance")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "auto_include_new_instances": true,
+                        "expected_revision": 1,
+                        "model_routing_policies": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stale_update.status(), StatusCode::CONFLICT);
 
     let options = app
         .clone()
@@ -507,6 +548,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         alpha_target["source_instance_display_name"].as_str(),
         Some("Alpha")
     );
+    assert_eq!(alpha_target["routing_enabled"].as_bool(), Some(false));
     assert_eq!(
         alpha_group["model"]["model_id"].as_str(),
         Some("fixture_chat")
@@ -527,6 +569,7 @@ async fn model_provider_routes_main_instance_settings_drive_inclusion_and_groupe
         .iter()
         .find(|target| target["source_instance_id"].as_str() == Some(beta_id.as_str()))
         .expect("beta target");
+    assert_eq!(beta_target["routing_enabled"].as_bool(), Some(true));
     assert_eq!(
         beta_target["source_instance_display_name"].as_str(),
         Some("Beta")

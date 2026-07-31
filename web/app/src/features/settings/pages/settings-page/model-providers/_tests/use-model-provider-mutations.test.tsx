@@ -182,27 +182,35 @@ describe('useModelProviderMutations', () => {
     );
   });
 
-  test('AC-001 sends model_distribution_rules when updating main-instance model settings', async () => {
+  test('AC-002 sends the complete routing policy and revision when updating main-instance settings', async () => {
     const mutations = setupMutations();
-    modelProvidersApi.updateSettingsModelProviderMainInstance.mockResolvedValue({
-      provider_code: 'openai_compatible',
-      auto_include_new_instances: true,
-      model_distribution_rules: [
-        {
-          model_id: 'gpt-4o-mini',
-          distribution_rule: 'retry_round_robin'
-        }
-      ]
-    });
+    modelProvidersApi.updateSettingsModelProviderMainInstance.mockResolvedValue(
+      {
+        provider_code: 'openai_compatible',
+        auto_include_new_instances: true,
+        revision: 8,
+        model_routing_policies: [
+          {
+            model_id: 'gpt-4o-mini',
+            distribution_rule: 'retry_round_robin',
+            provider_instance_ids: ['provider-2', 'provider-1'],
+            excluded_provider_instance_ids: ['provider-2']
+          }
+        ]
+      }
+    );
 
     await act(async () => {
       await mutations.current.updateMainInstanceSettingsMutation.mutateAsync({
         providerCode: 'openai_compatible',
         auto_include_new_instances: true,
-        model_distribution_rules: [
+        expected_revision: 7,
+        model_routing_policies: [
           {
             model_id: 'gpt-4o-mini',
-            distribution_rule: 'retry_round_robin'
+            distribution_rule: 'retry_round_robin',
+            provider_instance_ids: ['provider-2', 'provider-1'],
+            excluded_provider_instance_ids: ['provider-2']
           }
         ]
       });
@@ -214,10 +222,13 @@ describe('useModelProviderMutations', () => {
       'openai_compatible',
       {
         auto_include_new_instances: true,
-        model_distribution_rules: [
+        expected_revision: 7,
+        model_routing_policies: [
           {
             model_id: 'gpt-4o-mini',
-            distribution_rule: 'retry_round_robin'
+            distribution_rule: 'retry_round_robin',
+            provider_instance_ids: ['provider-2', 'provider-1'],
+            excluded_provider_instance_ids: ['provider-2']
           }
         ]
       },

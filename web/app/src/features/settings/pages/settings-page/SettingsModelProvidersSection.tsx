@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useMemo,
-  useReducer,
-  type SetStateAction
-} from 'react';
+import { useCallback, useMemo, useReducer, type SetStateAction } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Layout, Modal, Typography } from 'antd';
@@ -362,10 +357,17 @@ export function SettingsModelProvidersSection({
           provider_code: modalProviderOption.provider_code,
           auto_include_new_instances:
             modalProviderOption.main_instance.auto_include_new_instances,
-          model_distribution_rules: modalProviderOption.model_groups.map(
+          revision: 0,
+          model_routing_policies: modalProviderOption.model_groups.map(
             (group) => ({
               model_id: group.model_id,
-              distribution_rule: group.distribution_rule
+              distribution_rule: group.distribution_rule,
+              provider_instance_ids: group.targets.map(
+                (target) => target.source_instance_id
+              ),
+              excluded_provider_instance_ids: group.targets
+                .filter((target) => !target.routing_enabled)
+                .map((target) => target.source_instance_id)
             })
           )
         }
@@ -374,10 +376,7 @@ export function SettingsModelProvidersSection({
   return (
     <>
       {modalContextHolder}
-      <SettingsSectionSurface
-        heightMode="fill"
-        status={sectionStatus}
-      >
+      <SettingsSectionSurface heightMode="fill" status={sectionStatus}>
         <div className="model-provider-panel">
           <Layout className="model-provider-panel__main">
             <Layout.Content className="model-provider-panel__left">
@@ -613,7 +612,10 @@ export function SettingsModelProvidersSection({
         mainInstance={modalMainInstance}
         modelGroups={modalProviderOption?.model_groups ?? []}
         instances={modalInstances}
-        updatingMainInstance={updateMainInstanceSettingsMutation.isPending}
+        updatingMainInstance={
+          updateMainInstanceSettingsMutation.isPending ||
+          mainInstanceQuery.isFetching
+        }
         updatingInstanceId={
           updateInstanceInclusionMutation.isPending
             ? (updateInstanceInclusionMutation.variables?.instance.id ?? null)
@@ -665,7 +667,8 @@ export function SettingsModelProvidersSection({
           updateMainInstanceSettingsMutation.mutate({
             providerCode: instanceModalState.providerCode,
             auto_include_new_instances: checked,
-            model_distribution_rules: modalMainInstance.model_distribution_rules
+            expected_revision: modalMainInstance.revision,
+            model_routing_policies: modalMainInstance.model_routing_policies
           });
         }}
         onChangeDistributionRule={(modelId, distributionRule) => {
@@ -673,25 +676,70 @@ export function SettingsModelProvidersSection({
             return;
           }
 
-          const existingRules = new Map(
-            modalMainInstance.model_distribution_rules.map((rule) => [
-              rule.model_id,
-              rule.distribution_rule
-            ])
+          const existingPolicy = modalMainInstance.model_routing_policies.find(
+            (policy) => policy.model_id === modelId
           );
-          existingRules.set(modelId, distributionRule);
+          const nextPolicy = existingPolicy
+            ? { ...existingPolicy, distribution_rule: distributionRule }
+            : {
+                model_id: modelId,
+                distribution_rule: distributionRule,
+                provider_instance_ids:
+                  modalProviderOption?.model_groups
+                    .find((group) => group.model_id === modelId)
+                    ?.targets.map((target) => target.source_instance_id) ?? [],
+                excluded_provider_instance_ids:
+                  modalProviderOption?.model_groups
+                    .find((group) => group.model_id === modelId)
+                    ?.targets.filter((target) => !target.routing_enabled)
+                    .map((target) => target.source_instance_id) ?? []
+              };
 
           updateMainInstanceSettingsMutation.mutate({
             providerCode: instanceModalState.providerCode,
             auto_include_new_instances:
               modalMainInstance.auto_include_new_instances,
-            model_distribution_rules: Array.from(existingRules.entries()).map(
-              ([model_id, distribution_rule]) => ({
-                model_id,
-                distribution_rule
-              })
-            )
+            expected_revision: modalMainInstance.revision,
+            model_routing_policies: existingPolicy
+              ? modalMainInstance.model_routing_policies.map((policy) =>
+                  policy.model_id === modelId ? nextPolicy : policy
+                )
+              : [...modalMainInstance.model_routing_policies, nextPolicy]
           });
+        }}
+        onSaveRoutingPolicy={(
+          modelId,
+          distributionRule,
+          providerInstanceIds,
+          excludedProviderInstanceIds,
+          onSuccess
+        ) => {
+          if (!instanceModalState || !modalMainInstance) {
+            return;
+          }
+          const existingPolicy = modalMainInstance.model_routing_policies.find(
+            (policy) => policy.model_id === modelId
+          );
+          const nextPolicy = {
+            model_id: modelId,
+            distribution_rule: distributionRule,
+            provider_instance_ids: providerInstanceIds,
+            excluded_provider_instance_ids: excludedProviderInstanceIds
+          };
+          updateMainInstanceSettingsMutation.mutate(
+            {
+              providerCode: instanceModalState.providerCode,
+              auto_include_new_instances:
+                modalMainInstance.auto_include_new_instances,
+              expected_revision: modalMainInstance.revision,
+              model_routing_policies: existingPolicy
+                ? modalMainInstance.model_routing_policies.map((policy) =>
+                    policy.model_id === modelId ? nextPolicy : policy
+                  )
+                : [...modalMainInstance.model_routing_policies, nextPolicy]
+            },
+            { onSuccess }
+          );
         }}
         onToggleIncludedInMain={(instance, checked) => {
           updateInstanceInclusionMutation.mutate({

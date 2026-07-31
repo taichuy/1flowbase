@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
@@ -7,13 +7,10 @@ use crate::{
     binding_runtime::{render_templated_bindings, resolve_node_inputs},
     compiled_plan::CompiledPlan,
     execution_engine::{
-        branching::{
-            activate_downstream_nodes, initial_active_node_ids, select_if_else_source_handle,
-        },
         execute_code_node, execute_http_request_node, execute_llm_node,
-        execute_variable_assignment_node, materialize_start_builtin_defaults, CapabilityInvoker,
-        CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister, LlmRoutingCounterStore,
-        ProviderInvoker,
+        execute_variable_assignment_node, materialize_start_builtin_defaults, resolved_native_sql,
+        CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister,
+        LlmRoutingCounterStore, ProviderInvoker,
     },
     node_errors::build_node_type_not_implemented_error_payload,
 };
@@ -82,69 +79,6 @@ fn materialize_start_nodes_in_variable_pool(
             materialize_start_preview_defaults(start_payload);
         }
     }
-}
-
-fn collect_preview_execution_scope(plan: &CompiledPlan, target_node_id: &str) -> BTreeSet<String> {
-    let mut scope = BTreeSet::new();
-    let mut pending = vec![target_node_id.to_string()];
-
-    while let Some(node_id) = pending.pop() {
-        if !scope.insert(node_id.clone()) {
-            continue;
-        }
-        if let Some(node) = plan.nodes.get(&node_id) {
-            pending.extend(node.dependency_node_ids.iter().cloned());
-        }
-    }
-
-    scope
-}
-
-fn replay_deterministic_upstream_state(
-    plan: &CompiledPlan,
-    target_node_id: &str,
-    variable_pool: &mut Map<String, Value>,
-) -> Result<()> {
-    let execution_scope = collect_preview_execution_scope(plan, target_node_id);
-    let mut active_node_ids = initial_active_node_ids(plan);
-
-    for node_id in &plan.topological_order {
-        if node_id == target_node_id {
-            break;
-        }
-        if !execution_scope.contains(node_id) || !active_node_ids.contains(node_id) {
-            continue;
-        }
-        let Some(node) = plan.nodes.get(node_id) else {
-            continue;
-        };
-
-        let selected_source_handle = match node.node_type.as_str() {
-            "if_else" => select_if_else_source_handle(node, variable_pool)?,
-            "variable_assigner" => {
-                let resolved_inputs = resolve_node_inputs(node, variable_pool)?;
-                let output_payload =
-                    execute_variable_assignment_node(node, &resolved_inputs, variable_pool)?;
-                variable_pool.insert(node.node_id.clone(), output_payload);
-                None
-            }
-            _ => None,
-        };
-        activate_downstream_nodes(
-            plan,
-            &mut active_node_ids,
-            node,
-            selected_source_handle.as_deref(),
-        );
-    }
-
-    if !active_node_ids.contains(target_node_id) {
-        return Err(anyhow!(
-            "target node is inactive for supplied preview input: {target_node_id}"
-        ));
-    }
-
-    Ok(())
 }
 
 pub async fn run_node_preview<I>(
@@ -234,7 +168,6 @@ where
         .nodes
         .get(target_node_id)
         .ok_or_else(|| anyhow!("target node not found: {target_node_id}"))?;
-    replay_deterministic_upstream_state(plan, target_node_id, &mut variable_pool)?;
     let resolved_inputs = if node.node_type == "start" {
         variable_pool
             .get(target_node_id)
@@ -317,7 +250,9 @@ where
             Vec::new(),
         )
     } else if node.node_type == "sql" {
-        let execution = invoker.invoke_native_sql_node(node).await?;
+        let execution = invoker
+            .invoke_native_sql_node(node, resolved_native_sql(&resolved_inputs)?)
+            .await?;
         (
             execution.output_payload,
             execution.error_payload,

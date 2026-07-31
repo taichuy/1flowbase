@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::{
@@ -34,20 +35,32 @@ where
 {
     super::routing::ensure_provider_exists(repository, workspace_id, &command.provider_code)
         .await?;
+    validate_routing_policies(
+        repository,
+        workspace_id,
+        &command.provider_code,
+        command
+            .model_routing_policies
+            .as_deref()
+            .unwrap_or_default(),
+    )
+    .await?;
     let record = repository
         .upsert_main_instance(&UpsertModelProviderMainInstanceInput {
             workspace_id,
             provider_code: command.provider_code.clone(),
             auto_include_new_instances: command.auto_include_new_instances,
-            model_distribution_rules: command.model_distribution_rules.clone(),
+            expected_revision: command.expected_revision,
+            model_routing_policies: command.model_routing_policies.clone(),
             updated_by: command.actor_user_id,
         })
         .await?;
-    let model_distribution_rules = model_distribution_rules(&record);
+    let model_routing_policies = model_routing_policies(&record);
     Ok(ModelProviderMainInstanceView {
         provider_code: record.provider_code,
         auto_include_new_instances: record.auto_include_new_instances,
-        model_distribution_rules,
+        revision: record.revision,
+        model_routing_policies,
     })
 }
 
@@ -66,19 +79,70 @@ fn to_view(
     ModelProviderMainInstanceView {
         provider_code: provider_code.to_string(),
         auto_include_new_instances: auto_include_new_instances(record),
-        model_distribution_rules: record.map(model_distribution_rules).unwrap_or_default(),
+        revision: record.map(|record| record.revision).unwrap_or(0),
+        model_routing_policies: record.map(model_routing_policies).unwrap_or_default(),
     }
 }
 
-fn model_distribution_rules(
+fn model_routing_policies(
     record: &domain::ModelProviderMainInstanceRecord,
-) -> Vec<domain::ModelProviderMainModelDistributionRule> {
+) -> Vec<domain::ModelProviderMainModelRoutingPolicy> {
     record
-        .model_distribution_rules
+        .model_routing_policies
         .iter()
-        .map(|rule| domain::ModelProviderMainModelDistributionRule {
-            model_id: rule.model_id.clone(),
-            distribution_rule: rule.distribution_rule,
+        .map(|policy| domain::ModelProviderMainModelRoutingPolicy {
+            model_id: policy.model_id.clone(),
+            distribution_rule: policy.distribution_rule,
+            provider_instance_ids: policy.provider_instance_ids.clone(),
+            excluded_provider_instance_ids: policy.excluded_provider_instance_ids.clone(),
         })
         .collect()
+}
+
+async fn validate_routing_policies<R>(
+    repository: &R,
+    workspace_id: Uuid,
+    provider_code: &str,
+    policies: &[domain::ModelProviderMainModelRoutingPolicy],
+) -> Result<()>
+where
+    R: ModelProviderRepository,
+{
+    let provider_instance_ids = repository
+        .list_instances(workspace_id)
+        .await?
+        .into_iter()
+        .filter(|instance| instance.provider_code == provider_code)
+        .map(|instance| instance.id)
+        .collect::<HashSet<_>>();
+    let mut model_ids = HashSet::new();
+    for policy in policies {
+        if policy.model_id.trim().is_empty() || !model_ids.insert(policy.model_id.as_str()) {
+            return Err(
+                crate::errors::ControlPlaneError::InvalidInput("model_routing_policy").into(),
+            );
+        }
+        let mut ordered_ids = HashSet::new();
+        if policy.provider_instance_ids.iter().any(|instance_id| {
+            !provider_instance_ids.contains(instance_id) || !ordered_ids.insert(*instance_id)
+        }) {
+            return Err(
+                crate::errors::ControlPlaneError::InvalidInput("provider_instance_ids").into(),
+            );
+        }
+        let mut excluded_ids = HashSet::new();
+        if policy
+            .excluded_provider_instance_ids
+            .iter()
+            .any(|instance_id| {
+                !ordered_ids.contains(instance_id) || !excluded_ids.insert(*instance_id)
+            })
+        {
+            return Err(crate::errors::ControlPlaneError::InvalidInput(
+                "excluded_provider_instance_ids",
+            )
+            .into());
+        }
+    }
+    Ok(())
 }

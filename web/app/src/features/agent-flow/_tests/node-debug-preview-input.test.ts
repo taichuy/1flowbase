@@ -86,6 +86,97 @@ describe('node debug preview input', () => {
     });
   });
 
+  test('AC-003 asks only for variables referenced directly by SQL templates', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const sqlNode = createNodeDocument('sql', 'node-sql');
+    sqlNode.bindings = {
+      sql: {
+        kind: 'templated_text',
+        value: 'select * from users where id = {{node-start.query}}'
+      }
+    };
+    document.graph.nodes.push(sqlNode);
+
+    expect(buildNodeDebugPreviewPlan(document, 'node-sql')).toEqual({
+      input_payload: {},
+      missing_fields: [
+        expect.objectContaining({
+          nodeId: 'node-start',
+          key: 'query',
+          title: 'userinput.query',
+          valueType: 'string'
+        })
+      ]
+    });
+  });
+
+  test('AC-002 ignores variables referenced only by upstream branch nodes', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const ifElseNode = createNodeDocument('if_else', 'node-if-else');
+    const sqlNode = createNodeDocument('sql', 'node-sql');
+
+    ifElseNode.bindings.branches = {
+      kind: 'if_else_branches',
+      value: {
+        branches: [
+          {
+            id: 'if',
+            kind: 'if',
+            title: 'If',
+            sourceHandle: 'if',
+            condition: {
+              operator: 'and',
+              conditions: [
+                {
+                  kind: 'rule',
+                  left: ['node-start', 'model'],
+                  comparator: 'equals',
+                  right: { kind: 'constant', value: 'claude-opus-4-8' }
+                }
+              ]
+            }
+          },
+          {
+            id: 'else',
+            kind: 'else',
+            title: 'Else',
+            sourceHandle: 'else'
+          }
+        ]
+      }
+    };
+    document.graph.nodes.push(ifElseNode, sqlNode);
+    document.graph.edges.push(
+      {
+        id: 'edge-start-if-else',
+        source: 'node-start',
+        target: 'node-if-else',
+        sourceHandle: null,
+        targetHandle: null,
+        containerId: null,
+        points: []
+      },
+      {
+        id: 'edge-if-else-sql',
+        source: 'node-if-else',
+        target: 'node-sql',
+        sourceHandle: 'else',
+        targetHandle: null,
+        containerId: null,
+        points: []
+      }
+    );
+
+    expect(
+      buildNodeDebugPreviewPlan(document, 'node-sql', {
+        'node-start': { model: 'claude-opus-4-8' }
+      })
+    ).toEqual({
+      input_payload: {},
+      missing_fields: []
+    });
+  });
+
   test('builds debug confirmation fields for all referenced variables with cached values', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
@@ -168,7 +259,7 @@ describe('node debug preview input', () => {
     });
   });
 
-  test('collects upstream variable assignment inputs without applying state changes locally', () => {
+  test('AC-002 uses the cached direct reference without upstream assignment inputs', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const variableNode = createNodeDocument(
       'variable_assigner',
@@ -239,16 +330,13 @@ describe('node debug preview input', () => {
       input_payload: {
         conversation: {
           ApiBaseUrl: 'https://old.example.com'
-        },
-        'node-start': {
-          query: 'new.example.com'
         }
       },
       missing_fields: []
     });
   });
 
-  test('asks for templated values required by upstream variable assignments', () => {
+  test('AC-002 does not request values used only by upstream assignments', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const variableNode = createNodeDocument(
       'variable_assigner',
@@ -318,14 +406,7 @@ describe('node debug preview input', () => {
           ApiBaseUrl: 'https://old.example.com'
         }
       },
-      missing_fields: [
-        expect.objectContaining({
-          nodeId: 'node-start',
-          key: 'query',
-          title: 'userinput.query',
-          valueType: 'string'
-        })
-      ]
+      missing_fields: []
     });
   });
 
