@@ -14,12 +14,17 @@ const ASSIGNED = Object.freeze({
   package_sha256: PACKAGE_SHA256,
 });
 
-function providerTrace(phase, status, operation = 'invoke_stream_with_live_events') {
+function providerTrace(
+  phase,
+  status,
+  operation = 'invoke_stream_with_live_events',
+  installationId = INSTALLATION_ID,
+) {
   return [
     'INFO api_server::provider_runtime: provider runtime operation boundary',
     `operation="${operation}"`,
     'provider_code=deepseek',
-    `installation_id=${INSTALLATION_ID}`,
+    `installation_id=${installationId}`,
     `package_sha256=${PACKAGE_SHA256}`,
     `phase="${phase}"`,
     `status="${status}"`,
@@ -157,9 +162,62 @@ test('Root #1556 F19 count_tokens route and provider delta remain distinct obser
   });
   assert.equal(result.boundaries.selected_installation.status, 'observed');
   assert.equal(result.boundaries.provider_operation.operation, 'count_tokens');
+  assert.deepEqual(result.boundaries.provider_operation.observed_operations, ['count_tokens']);
   assert.equal(result.boundaries.provider_operation.end.status, 'observed');
   assert.equal(result.deepest_observed_boundary, 'provider_operation_end');
   assert.doesNotMatch(JSON.stringify(result), /secret-canary/u);
+});
+
+test('Root #1556 F19 provider sequence selects the last matching operation boundary', () => {
+  const result = receipt({
+    apiOutput: [
+      routeTrace('messages_count_tokens'),
+      providerTrace('start', 'started', 'count_tokens'),
+      providerTrace('end', 'succeeded', 'count_tokens'),
+      routeTrace('messages'),
+      providerTrace('start', 'started', 'invoke_stream_with_live_events'),
+    ].join('\n'),
+  });
+
+  assert.equal(result.correlation.status, 'observed');
+  assert.equal(result.boundaries.selected_installation.status, 'observed');
+  assert.deepEqual(result.boundaries.provider_operation.observed_operations,
+    ['count_tokens', 'invoke_stream_with_live_events']);
+  assert.equal(result.boundaries.provider_operation.operation, 'invoke_stream_with_live_events');
+  assert.equal(result.boundaries.provider_operation.start.status, 'observed');
+  assert.equal(result.boundaries.provider_operation.end.status, 'not_observed');
+  assert.equal(result.deepest_observed_boundary, 'provider_operation_start');
+});
+
+test('Root #1556 F19 mismatched provider start makes runtime correlation unknown', () => {
+  const otherInstallationId = '019fbdde-70e8-7862-a2cf-7f9846a4bd1c';
+  const result = receipt({
+    apiOutput: [
+      providerTrace('start', 'started', 'count_tokens'),
+      providerTrace('start', 'started', 'invoke_stream', otherInstallationId),
+    ].join('\n'),
+  });
+
+  assert.equal(result.correlation.status, 'unknown');
+  assert.equal(result.boundaries.selected_installation.status, 'unknown');
+  assert.equal(result.boundaries.provider_operation.start.status, 'unknown');
+  assert.equal(result.boundaries.provider_operation.end.status, 'unknown');
+});
+
+test('Root #1556 F19 duplicate ends after the last start make only the end boundary unknown', () => {
+  const result = receipt({
+    apiOutput: [
+      providerTrace('start', 'started', 'count_tokens'),
+      providerTrace('end', 'succeeded', 'count_tokens'),
+      providerTrace('end', 'failed', 'count_tokens'),
+    ].join('\n'),
+  });
+
+  assert.equal(result.correlation.status, 'observed');
+  assert.equal(result.boundaries.selected_installation.status, 'observed');
+  assert.equal(result.boundaries.provider_operation.start.status, 'observed');
+  assert.equal(result.boundaries.provider_operation.end.status, 'unknown');
+  assert.equal(result.deepest_observed_boundary, 'provider_operation_start');
 });
 
 test('Root #1556 F19 messages route without provider start stops at owned API request', () => {
@@ -192,7 +250,7 @@ test('Root #1556 F19 uncertain log suffix makes all API route and provider facts
   assert.equal(result.deepest_observed_boundary, 'client_transport');
 });
 
-test('Root #1556 F17 malformed, unallowlisted, ambiguous, and missing anchors never become false facts', () => {
+test('Root #1556 F17 malformed, unallowlisted, and missing anchors never become false facts', () => {
   const rawSecret = 'unallowlisted-secret-canary';
   const malformed = receipt({
     stdout: [
@@ -215,12 +273,4 @@ test('Root #1556 F17 malformed, unallowlisted, ambiguous, and missing anchors ne
   assert.equal(malformed.boundaries.anthropic_sse_terminal.status, 'not_observed');
   assert.equal(malformed.deepest_observed_boundary, 'client_transport');
   assert.doesNotMatch(JSON.stringify(malformed), /unallowlisted-secret-canary/u);
-
-  const ambiguous = receipt({
-    apiOutput: [providerTrace('start', 'started'), providerTrace('start', 'started')].join('\n'),
-  });
-  assert.equal(ambiguous.correlation.status, 'unknown');
-  assert.equal(ambiguous.boundaries.assigned_installation.status, 'observed');
-  assert.equal(ambiguous.boundaries.selected_installation.status, 'unknown');
-  assert.equal(ambiguous.boundaries.provider_operation.start.status, 'unknown');
 });

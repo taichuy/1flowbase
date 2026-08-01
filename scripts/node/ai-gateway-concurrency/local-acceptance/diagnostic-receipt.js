@@ -114,11 +114,12 @@ function routeBoundaries(apiOutput) {
 function correlatedApiBoundaries(apiOutput, assigned) {
   const lines = String(apiOutput || '').split(/\r?\n/u)
     .map((line) => line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, ''));
-  const traces = lines.map(providerTrace).filter(Boolean).filter((trace) => (
+  const traces = lines.map(providerTrace).filter(Boolean);
+  const matchesAssigned = (trace) => (
     trace.provider_code === assigned.provider_code
       && trace.installation_id === assigned.installation_id
       && trace.package_sha256 === assigned.package_sha256
-  ));
+  );
   const starts = traces.filter((trace) => trace.phase === 'start');
   if (starts.length === 0) {
     return {
@@ -127,7 +128,7 @@ function correlatedApiBoundaries(apiOutput, assigned) {
       canonical_sse_terminal: missing(),
     };
   }
-  if (starts.length !== 1) {
+  if (starts.some((trace) => !matchesAssigned(trace))) {
     return {
       correlation: missing('unknown'),
       provider_operation: { start: missing('unknown'), end: missing('unknown') },
@@ -135,8 +136,9 @@ function correlatedApiBoundaries(apiOutput, assigned) {
     };
   }
 
-  const start = starts[0];
-  const ends = traces.filter((trace) => trace.phase === 'end'
+  const start = starts.at(-1);
+  const observedOperations = [...new Set(starts.map((trace) => trace.operation))];
+  const ends = traces.filter((trace) => matchesAssigned(trace) && trace.phase === 'end'
     && trace.operation === start.operation && trace.index > start.index);
   const closes = lines.map(canonicalClose).filter(Boolean)
     .filter((close) => close.index > start.index);
@@ -144,6 +146,7 @@ function correlatedApiBoundaries(apiOutput, assigned) {
     correlation: observed({ method: 'assigned_installation_identity' }),
     provider_operation: {
       operation: start.operation,
+      observed_operations: observedOperations,
       start: observed({ status_value: start.status }),
       end: ends.length === 1
         ? observed({ status_value: ends[0].status })
