@@ -146,6 +146,10 @@ where
             runtime_context,
         )?)?
     };
+    project_visible_internal_llm_tool_shared_messages(
+        &mut provider_context.messages,
+        variable_pool,
+    );
     if provider_context.system.is_empty() {
         if let Some(system) = pending_llm_tool_callback_system(node, variable_pool)? {
             provider_context.system = system;

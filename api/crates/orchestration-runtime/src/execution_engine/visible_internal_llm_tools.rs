@@ -20,6 +20,7 @@ use self::callback_state::{
 };
 pub(super) use self::media_context::{
     inject_visible_internal_llm_tool_media_content_blocks,
+    project_visible_internal_llm_tool_shared_messages,
     visible_internal_llm_tool_blocks_external_tools,
 };
 use self::media_context::{

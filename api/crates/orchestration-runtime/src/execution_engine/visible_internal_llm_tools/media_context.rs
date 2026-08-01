@@ -1,5 +1,47 @@
 use super::*;
 
+pub(in crate::execution_engine) fn project_visible_internal_llm_tool_shared_messages(
+    messages: &mut Vec<ProviderMessage>,
+    variable_pool: &Map<String, Value>,
+) {
+    if !variable_pool.contains_key(VISIBLE_INTERNAL_LLM_TOOL_VARIABLE) {
+        return;
+    }
+
+    for message in messages.iter_mut() {
+        let Some(blocks) = message
+            .content_blocks
+            .as_mut()
+            .and_then(Value::as_array_mut)
+        else {
+            continue;
+        };
+        blocks.retain(|block| {
+            !matches!(
+                block.get("type").and_then(Value::as_str),
+                Some("reasoning" | "reasoning_redacted")
+            )
+        });
+    }
+    messages.retain(visible_internal_llm_tool_message_has_shared_content);
+}
+
+fn visible_internal_llm_tool_message_has_shared_content(message: &ProviderMessage) -> bool {
+    !message.content.trim().is_empty()
+        || message
+            .content_blocks
+            .as_ref()
+            .and_then(Value::as_array)
+            .is_some_and(|blocks| !blocks.is_empty())
+        || message
+            .tool_calls
+            .as_ref()
+            .and_then(Value::as_array)
+            .is_some_and(|tool_calls| !tool_calls.is_empty())
+        || message.tool_call_id.is_some()
+        || message.is_error.is_some()
+}
+
 pub(super) fn visible_internal_llm_tool_llm_resolved_inputs(
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,

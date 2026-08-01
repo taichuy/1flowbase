@@ -122,6 +122,10 @@ test("quality gate limits conversation Cargo probes to one owned database and de
         "orchestration-runtime-anthropic-callback-retry-tests",
         "anthropic_callback_retry",
       ],
+      [
+        "orchestration-runtime-cross-provider-image-llm-tests",
+        "ac_001_cross_provider_image_llm_does_not_inherit_parent_reasoning_semantics",
+      ],
       ["control-plane-answer-node-truth-tests", "ac_004_answer_node_truth"],
       ["api-server-answer-node-truth-tests", "ac_004_answer_node_truth"],
       [

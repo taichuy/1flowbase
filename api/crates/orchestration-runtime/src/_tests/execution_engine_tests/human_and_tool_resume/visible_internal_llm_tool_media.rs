@@ -1,6 +1,66 @@
 use super::visible_internal_llm_tool_fixtures::*;
 use super::*;
 
+struct CrossProviderVisibleToolInvoker {
+    inner: SequentialLlmToolCallInvoker,
+}
+
+#[async_trait]
+impl ProviderInvoker for CrossProviderVisibleToolInvoker {
+    async fn resolve_llm_route(
+        &self,
+        runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
+        let capabilities = if runtime.provider_code == "deepseek" {
+            [
+                "message_blocks.reasoning_history.v1".to_string(),
+                "message_blocks.redacted_reasoning_history.v1".to_string(),
+            ]
+            .into_iter()
+            .collect()
+        } else {
+            Default::default()
+        };
+        Ok(ResolvedProviderRoute::new(capabilities, ()))
+    }
+
+    async fn invoke_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        self.inner.invoke_llm(runtime, input).await
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for CrossProviderVisibleToolInvoker {
+    async fn invoke_capability_node(
+        &self,
+        runtime: &CompiledPluginRuntime,
+        config_payload: Value,
+        input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        self.inner
+            .invoke_capability_node(runtime, config_payload, input_payload)
+            .await
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for CrossProviderVisibleToolInvoker {
+    async fn invoke_code_node(
+        &self,
+        runtime: &CompiledCodeRuntime,
+        config_payload: Value,
+        input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        self.inner
+            .invoke_code_node(runtime, config_payload, input_payload)
+            .await
+    }
+}
+
 fn configure_image_llm_tool(plan: &mut CompiledPlan) {
     let main_llm = plan
         .nodes
@@ -729,4 +789,132 @@ async fn missing_workspace_image_path_reuses_inherited_image_content_blocks() {
         "mounted image LLM should receive inherited image content blocks when workspace_path is not readable by the server, got {:?}",
         mounted_input.messages
     );
+}
+
+#[tokio::test]
+async fn ac_001_cross_provider_image_llm_does_not_inherit_parent_reasoning_semantics() {
+    let (inner, captured_inputs) = sequential_tool_invoker(vec![
+        tool_call_response(vec![ProviderToolCall {
+            id: "call_image".to_string(),
+            name: "image_llm".to_string(),
+            arguments: json!({
+                "task": "描述这张图片",
+                "media": [
+                    {
+                        "kind": "image",
+                        "source": "workspace_path",
+                        "path": "uploads/windows-only.png"
+                    }
+                ]
+            }),
+            provider_metadata: json!({}),
+        }]),
+        final_llm_response("mounted-visible"),
+        final_llm_response("main-after-image"),
+    ]);
+    let invoker = CrossProviderVisibleToolInvoker { inner };
+    let mut plan = visible_internal_llm_tool_plan();
+    configure_image_llm_tool(&mut plan);
+    let main_runtime = plan
+        .nodes
+        .get_mut("node-llm")
+        .and_then(|node| node.llm_runtime.as_mut())
+        .expect("main llm runtime should exist");
+    main_runtime.provider_code = "deepseek".to_string();
+    main_runtime.protocol = "openai_compatible".to_string();
+    main_runtime.model = "deepseek-v4-pro".to_string();
+    let mounted_runtime = plan
+        .nodes
+        .get_mut("node-mounted-llm")
+        .and_then(|node| node.llm_runtime.as_mut())
+        .expect("mounted llm runtime should exist");
+    mounted_runtime.provider_code = "openai".to_string();
+    mounted_runtime.protocol = "openai_responses".to_string();
+    mounted_runtime.model = "gpt-5.6-luna".to_string();
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": {
+                "query": "uploads\\windows-only.png 找一下这幅图相关代码",
+                "history": [
+                    {
+                        "role": "user",
+                        "content": "uploads\\windows-only.png 找一下这幅图相关代码"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "我先看图。",
+                        "content_blocks": [
+                            { "type": "reasoning", "text": "parent private reasoning" },
+                            { "type": "reasoning_redacted", "data": "parent opaque reasoning" },
+                            { "type": "text", "text": "我先看图。" }
+                        ]
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": "call_read",
+                        "name": "Read",
+                        "content": "",
+                        "content_blocks": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": "aW1hZ2U="
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .expect("cross-provider image_llm flow should execute");
+
+    assert!(
+        outcome.variable_pool["node-answer"]["answer"]
+            .as_str()
+            .is_some_and(|answer| answer.ends_with("main-after-image")),
+        "main provider must resume after the image provider result, got {:?}",
+        outcome.variable_pool["node-answer"]["answer"]
+    );
+    let captured = captured_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned")
+        .clone();
+    assert_eq!(captured.len(), 3, "mounted image provider must be invoked");
+    let main_input = &captured[0];
+    assert!(main_input.required_capabilities.contains(
+        &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
+    ));
+    assert!(main_input.required_capabilities.contains(
+        &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+    ));
+    let mounted_input = &captured[1];
+    assert_eq!(mounted_input.provider_code, "openai");
+    assert!(
+        !mounted_input.required_capabilities.contains(
+            &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
+        )
+    );
+    assert!(
+        !mounted_input.required_capabilities.contains(
+            &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+        )
+    );
+    let mounted_block_types = mounted_input
+        .messages
+        .iter()
+        .filter_map(|message| message.content_blocks.as_ref())
+        .flat_map(|blocks| blocks.as_array().into_iter().flatten())
+        .filter_map(|block| block.get("type").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    assert!(mounted_block_types.contains(&"text"));
+    assert!(mounted_block_types.contains(&"image"));
+    assert!(!mounted_block_types.contains(&"reasoning"));
+    assert!(!mounted_block_types.contains(&"reasoning_redacted"));
 }

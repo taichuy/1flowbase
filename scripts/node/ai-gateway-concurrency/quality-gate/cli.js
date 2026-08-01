@@ -245,6 +245,11 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "anthropic_callback_retry",
     ),
     invocation(
+      "orchestration-runtime-cross-provider-image-llm-tests",
+      "orchestration-runtime",
+      "ac_001_cross_provider_image_llm_does_not_inherit_parent_reasoning_semantics",
+    ),
+    invocation(
       "control-plane-answer-node-truth-tests",
       "control-plane",
       "ac_004_answer_node_truth",
