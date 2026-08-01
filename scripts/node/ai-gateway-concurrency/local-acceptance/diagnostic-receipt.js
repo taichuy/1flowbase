@@ -10,7 +10,9 @@ const CLIENT_EVENT_TYPES = new Set([
   'message_stop',
   'result',
 ]);
-const PROVIDER_OPERATIONS = new Set(['invoke_stream', 'invoke_stream_with_live_events']);
+const PROVIDER_OPERATIONS = new Set([
+  'count_tokens', 'invoke_stream', 'invoke_stream_with_live_events',
+]);
 const PROVIDER_PHASES = new Set(['start', 'end']);
 const PROVIDER_STATUSES = new Set(['started', 'succeeded', 'failed']);
 const TRANSPORT_STATUSES = new Set([
@@ -19,6 +21,7 @@ const TRANSPORT_STATUSES = new Set([
 const CANONICAL_TERMINALS = new Set([
   'flow_cancelled', 'flow_failed', 'flow_finished', 'flow_incomplete', 'waiting_callback', 'waiting_human',
 ]);
+const ANTHROPIC_ROUTES = new Set(['messages', 'messages_count_tokens']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
@@ -79,19 +82,47 @@ function canonicalClose(line, index) {
   return { index, terminal_reason: terminalReason };
 }
 
-function correlatedApiBoundaries(apiOutput, selected) {
+function anthropicRoute(line) {
+  if (!line.includes('anthropic compatible route boundary')) return null;
+  const route = traceField(line, 'route');
+  const phase = traceField(line, 'phase');
+  if (!ANTHROPIC_ROUTES.has(route) || phase !== 'received') return null;
+  return route;
+}
+
+function observedRouteCount(count) {
+  return count > 0 ? observed({ count }) : missing();
+}
+
+function routeBoundaries(apiOutput) {
+  const counts = { messages: 0, messages_count_tokens: 0 };
+  for (const line of String(apiOutput || '').split(/\r?\n/u)) {
+    const route = anthropicRoute(line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, ''));
+    if (route) counts[route] += 1;
+  }
+  const routes = Object.entries(counts).filter(([, count]) => count > 0).map(([route]) => route);
+  return {
+    anthropic_route_requests: {
+      status: routes.length ? 'observed' : 'not_observed',
+      messages: observedRouteCount(counts.messages),
+      messages_count_tokens: observedRouteCount(counts.messages_count_tokens),
+    },
+    owned_api_request: routes.length ? observed({ routes }) : missing(),
+  };
+}
+
+function correlatedApiBoundaries(apiOutput, assigned) {
   const lines = String(apiOutput || '').split(/\r?\n/u)
     .map((line) => line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, ''));
   const traces = lines.map(providerTrace).filter(Boolean).filter((trace) => (
-    trace.provider_code === selected.provider_code
-      && trace.installation_id === selected.installation_id
-      && trace.package_sha256 === selected.package_sha256
+    trace.provider_code === assigned.provider_code
+      && trace.installation_id === assigned.installation_id
+      && trace.package_sha256 === assigned.package_sha256
   ));
   const starts = traces.filter((trace) => trace.phase === 'start');
   if (starts.length === 0) {
     return {
       correlation: missing(),
-      owned_api_request: missing(),
       provider_operation: { start: missing(), end: missing() },
       canonical_sse_terminal: missing(),
     };
@@ -99,7 +130,6 @@ function correlatedApiBoundaries(apiOutput, selected) {
   if (starts.length !== 1) {
     return {
       correlation: missing('unknown'),
-      owned_api_request: missing('unknown'),
       provider_operation: { start: missing('unknown'), end: missing('unknown') },
       canonical_sse_terminal: missing('unknown'),
     };
@@ -112,7 +142,6 @@ function correlatedApiBoundaries(apiOutput, selected) {
     .filter((close) => close.index > start.index);
   return {
     correlation: observed({ method: 'assigned_installation_identity' }),
-    owned_api_request: observed({ operation: start.operation }),
     provider_operation: {
       operation: start.operation,
       start: observed({ status_value: start.status }),
@@ -132,13 +161,14 @@ function deepestBoundary(boundaries) {
   if (boundaries.provider_operation.end.status === 'observed') return 'provider_operation_end';
   if (boundaries.provider_operation.start.status === 'observed') return 'provider_operation_start';
   if (boundaries.selected_installation.status === 'observed') return 'selected_installation';
+  if (boundaries.owned_api_request.status === 'observed') return 'owned_api_request';
   if (boundaries.client_transport.status === 'observed') return 'client_transport';
   if (boundaries.claude_tmux.status === 'observed') return 'claude_tmux';
   return 'not_observed';
 }
 
 function buildDiagnosticReceipt({
-  details, clientResult, apiOutput, selectedInstallation: assignedInstallation,
+  details, clientResult, apiLogDelta, selectedInstallation: assignedInstallation,
 }) {
   const assigned = assignedInstallation
     && /^[a-z0-9_-]{1,64}$/u.test(assignedInstallation.provider_code || '')
@@ -153,11 +183,22 @@ function buildDiagnosticReceipt({
     }
     : null;
   const clientEvents = structuredClientEvents(clientResult?.stdout);
-  const apiBoundaries = assigned
-    ? correlatedApiBoundaries(apiOutput, assigned)
+  const deltaObserved = apiLogDelta?.status === 'observed'
+    && typeof apiLogDelta.output === 'string';
+  const routeEvidence = deltaObserved
+    ? routeBoundaries(apiLogDelta.output)
+    : {
+      anthropic_route_requests: {
+        status: 'unknown',
+        messages: missing('unknown'),
+        messages_count_tokens: missing('unknown'),
+      },
+      owned_api_request: missing('unknown'),
+    };
+  const apiBoundaries = deltaObserved && assigned
+    ? correlatedApiBoundaries(apiLogDelta.output, assigned)
     : {
       correlation: missing('unknown'),
-      owned_api_request: missing('unknown'),
       provider_operation: { start: missing('unknown'), end: missing('unknown') },
       canonical_sse_terminal: missing('unknown'),
     };
@@ -172,7 +213,8 @@ function buildDiagnosticReceipt({
     selected_installation: apiBoundaries.correlation.status === 'observed'
       ? observed(assigned)
       : missing(apiBoundaries.correlation.status),
-    owned_api_request: apiBoundaries.owned_api_request,
+    anthropic_route_requests: routeEvidence.anthropic_route_requests,
+    owned_api_request: routeEvidence.owned_api_request,
     provider_operation: apiBoundaries.provider_operation,
     canonical_sse_terminal: apiBoundaries.canonical_sse_terminal,
     anthropic_sse_terminal: clientEvents.includes('message_stop')

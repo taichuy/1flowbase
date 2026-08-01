@@ -610,15 +610,27 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
 
     currentInstallationId = null;
     const afterPackageSha256 = crypto.createHash('sha256').update('after-package').digest('hex');
-    const providerStart = [
+    const initialApiLogs = [
+      'INFO anthropic compatible route boundary route="messages" phase="received"',
+      'initial-log-secret-canary',
+    ].join('\n');
+    const providerCountStart = [
       'INFO api_server::provider_runtime: provider runtime operation boundary',
-      'operation="invoke_stream_with_live_events"',
+      'operation="count_tokens"',
       'provider_code=deepseek',
       `installation_id=${afterInstallationId}`,
       `package_sha256=${afterPackageSha256}`,
       'phase="start"',
       'status="started"',
     ].join(' ');
+    const providerCountEnd = providerCountStart
+      .replace('phase="start"', 'phase="end"')
+      .replace('status="started"', 'status="succeeded"');
+    const followupApiLogs = [
+      'INFO anthropic compatible route boundary route="messages_count_tokens" phase="received"',
+      providerCountStart,
+      providerCountEnd,
+    ].join('\n');
     const partialSecret = 'followup-partial-raw-secret';
     let turn = 0;
     const followupFailure = await runCountTokensUpgrade({ manifest: manifestPath }, {
@@ -633,7 +645,9 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
       git: (_sourceRoot, args) => args.includes('--show-toplevel') ? mainSourceRoot : mainSourceSha,
       spawnOwned: (binary) => ({
         child: { binary, exitCode: null },
-        output: () => binary === apiServer ? providerStart : '',
+        output: () => binary === apiServer
+          ? [initialApiLogs, ...(turn > 1 ? [followupApiLogs] : [])].join('\n')
+          : '',
       }),
       waitForHealth: async () => {},
       stopOwned: async () => {},
@@ -664,12 +678,71 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.equal(followupFailure.diagnostic_receipt.boundaries.provider_operation.start.status,
       'observed');
     assert.equal(followupFailure.diagnostic_receipt.boundaries.provider_operation.end.status,
-      'not_observed');
+      'observed');
+    assert.equal(followupFailure.diagnostic_receipt.boundaries.provider_operation.operation,
+      'count_tokens');
+    assert.equal(
+      followupFailure.diagnostic_receipt.boundaries.anthropic_route_requests.messages.status,
+      'not_observed',
+    );
+    assert.equal(
+      followupFailure.diagnostic_receipt.boundaries.anthropic_route_requests.messages_count_tokens
+        .count,
+      1,
+    );
+    assert.equal(followupFailure.diagnostic_receipt.deepest_observed_boundary,
+      'provider_operation_end');
     assert.doesNotMatch(JSON.stringify(followupFailure),
-      /followup-partial-raw-secret|raw stderr/u);
+      /followup-partial-raw-secret|raw stderr|initial-log-secret-canary/u);
     assert.equal(fs.statSync(artifact).mode & 0o777, 0o600);
     assert.doesNotMatch(fs.readFileSync(artifact, 'utf8'),
       /followup-partial-raw-secret|raw stderr/u);
+
+    currentInstallationId = null;
+    let rotatedTurn = 0;
+    const rotatedSecret = 'rotated-log-secret-canary';
+    const prefixMismatch = await runCountTokensUpgrade({ manifest: manifestPath }, {
+      sourceEnv,
+      OwnerHttpClient: Owner,
+      openTemporaryOwnerSession: async () => temporarySession,
+      fetchImpl: async () => new Response('{"input_tokens":17}', { status: 200 }),
+      reserveLoopbackPort: (() => {
+        const ports = [41739, 41740];
+        return async () => ports.shift();
+      })(),
+      git: (_sourceRoot, args) => args.includes('--show-toplevel') ? mainSourceRoot : mainSourceSha,
+      spawnOwned: (binary) => ({
+        child: { binary, exitCode: null },
+        output: () => {
+          if (binary !== apiServer) return '';
+          if (rotatedTurn <= 1) return initialApiLogs;
+          return `${followupApiLogs}\n${rotatedSecret}`;
+        },
+      }),
+      waitForHealth: async () => {},
+      stopOwned: async () => {},
+      executeTmux: async () => {
+        rotatedTurn += 1;
+        if (rotatedTurn === 1) return { exit_code: 0, timed_out: false, stdout, stderr: '' };
+        return {
+          exit_code: null,
+          timed_out: true,
+          stdout: JSON.stringify({ type: 'stream_event', event: { type: 'message_start' } }),
+          stderr: '',
+        };
+      },
+      registry: disposableRegistry(),
+    });
+    assert.equal(prefixMismatch.diagnostic_receipt.boundaries.assigned_installation.status,
+      'observed');
+    assert.equal(prefixMismatch.diagnostic_receipt.boundaries.anthropic_route_requests.status,
+      'unknown');
+    assert.equal(prefixMismatch.diagnostic_receipt.boundaries.owned_api_request.status, 'unknown');
+    assert.equal(prefixMismatch.diagnostic_receipt.boundaries.selected_installation.status,
+      'unknown');
+    assert.equal(prefixMismatch.diagnostic_receipt.boundaries.provider_operation.start.status,
+      'unknown');
+    assert.doesNotMatch(JSON.stringify(prefixMismatch), /rotated-log-secret-canary/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

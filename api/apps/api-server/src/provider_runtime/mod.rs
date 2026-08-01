@@ -249,19 +249,34 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         input: ProviderCountTokensInput,
     ) -> anyhow::Result<ProviderCountTokensResult> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
-        self.ensure_provider_loaded(installation).await?;
-        let operation = {
-            let host = self.services.provider_host.read().await;
-            host.count_tokens_operation(&installation.plugin_id, input)
-                .map_err(anyhow::Error::new)
-        };
-        let result = match operation {
-            Ok(operation) => operation
-                .await
-                .map(|output| output.result)
-                .map_err(anyhow::Error::new),
-            Err(error) => Err(error),
-        };
+        let operation_name = "count_tokens";
+        trace_provider_operation_boundary(installation, operation_name, "start", "started");
+        let result = async {
+            self.ensure_provider_loaded(installation).await?;
+            let operation = {
+                let host = self.services.provider_host.read().await;
+                host.count_tokens_operation(&installation.plugin_id, input)
+                    .map_err(anyhow::Error::new)
+            };
+            match operation {
+                Ok(operation) => operation
+                    .await
+                    .map(|output| output.result)
+                    .map_err(anyhow::Error::new),
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        trace_provider_operation_boundary(
+            installation,
+            operation_name,
+            "end",
+            if result.is_ok() {
+                "succeeded"
+            } else {
+                "failed"
+            },
+        );
         finish_runtime_activity(activity, &result);
         result
     }

@@ -481,6 +481,35 @@ function writeRunArtifact(filePath, value, secrets) {
   fs.writeFileSync(filePath, `${JSON.stringify(redact(value, secrets), null, 2)}\n`, { mode: 0o600 });
 }
 
+function apiProcessLogSnapshot(apiProcess) {
+  if (typeof apiProcess?.stdout === 'function' || typeof apiProcess?.stderr === 'function') {
+    return {
+      stdout: String(apiProcess?.stdout?.() || ''),
+      stderr: String(apiProcess?.stderr?.() || ''),
+    };
+  }
+  if (typeof apiProcess?.output === 'function') {
+    return { output: String(apiProcess.output() || '') };
+  }
+  return null;
+}
+
+function deterministicLogSuffix(baseline, current) {
+  if (!baseline || !current) return { status: 'unknown', output: '' };
+  const baselineKeys = Object.keys(baseline);
+  const currentKeys = Object.keys(current);
+  if (baselineKeys.length !== currentKeys.length
+    || baselineKeys.some((key) => !Object.hasOwn(current, key))) {
+    return { status: 'unknown', output: '' };
+  }
+  const suffixes = [];
+  for (const key of baselineKeys) {
+    if (!current[key].startsWith(baseline[key])) return { status: 'unknown', output: '' };
+    suffixes.push(current[key].slice(baseline[key].length));
+  }
+  return { status: 'observed', output: suffixes.filter(Boolean).join('\n') };
+}
+
 async function reserveOwnedPort(reservePort, excluded = new Set()) {
   for (let attempt = 0; attempt < 32; attempt += 1) {
     const port = await reservePort();
@@ -551,6 +580,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
   let primaryError = null;
   let observed = null;
   let selectedInstallation = null;
+  let followupApiBaseline = null;
   let diagnosticReceipt = null;
   let cleanupErrors = [];
   const secrets = { descriptors: [] };
@@ -638,6 +668,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     if (transitionPublicationId !== publicationId) {
       throw new Error('DeepSeek installation transition changed the active publication');
     }
+    followupApiBaseline = apiProcessLogSnapshot(services.apiProcess);
     const followup = await runClaudeTurn({
       manifest, apiKey, paths, registry, vector, turnIndex: 1, sessionId, sourceEnv, dependencies,
     });
@@ -682,14 +713,14 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     primaryError = error;
     if (error instanceof ClientTurnError && error.details.stage === 'followup') {
       const apiProcess = services?.apiProcess;
-      const apiOutput = typeof apiProcess?.stdout === 'function'
-        || typeof apiProcess?.stderr === 'function'
-        ? [apiProcess?.stdout?.() || '', apiProcess?.stderr?.() || ''].join('\n')
-        : apiProcess?.output?.() || '';
+      const apiLogDelta = deterministicLogSuffix(
+        followupApiBaseline,
+        apiProcessLogSnapshot(apiProcess),
+      );
       diagnosticReceipt = buildDiagnosticReceipt({
         details: error.details,
         clientResult: error.diagnosticClientResult,
-        apiOutput,
+        apiLogDelta,
         selectedInstallation,
       });
     }

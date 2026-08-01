@@ -14,10 +14,10 @@ const ASSIGNED = Object.freeze({
   package_sha256: PACKAGE_SHA256,
 });
 
-function providerTrace(phase, status) {
+function providerTrace(phase, status, operation = 'invoke_stream_with_live_events') {
   return [
     'INFO api_server::provider_runtime: provider runtime operation boundary',
-    'operation="invoke_stream_with_live_events"',
+    `operation="${operation}"`,
     'provider_code=deepseek',
     `installation_id=${INSTALLATION_ID}`,
     `package_sha256=${PACKAGE_SHA256}`,
@@ -26,11 +26,21 @@ function providerTrace(phase, status) {
   ].join(' ');
 }
 
-function receipt({ stdout = '', apiOutput = '', selectedInstallation = ASSIGNED } = {}) {
+function routeTrace(route) {
+  return [
+    'INFO api_server::application_public_api::anthropic: anthropic compatible route boundary',
+    `route="${route}"`,
+    'phase="received"',
+  ].join(' ');
+}
+
+function receipt({
+  stdout = '', apiOutput = '', apiDeltaStatus = 'observed', selectedInstallation = ASSIGNED,
+} = {}) {
   return buildDiagnosticReceipt({
     details: { stage: 'followup', turn_index: 1, transport_status: 'timed_out' },
     clientResult: { stdout, stderr: 'raw-stderr-secret' },
-    apiOutput,
+    apiLogDelta: { status: apiDeltaStatus, output: apiOutput },
     selectedInstallation,
   });
 }
@@ -46,7 +56,10 @@ test('Root #1556 F17 timeout receipt parses partial Claude events and provider s
       }),
       '{malformed-json',
     ].join('\n'),
-    apiOutput: providerTrace('start', 'started'),
+    apiOutput: [
+      routeTrace('messages'),
+      providerTrace('start', 'started'),
+    ].join('\n'),
   });
 
   assert.equal(result.stage, 'followup');
@@ -70,6 +83,7 @@ test('Root #1556 F17 timeout receipt parses partial Claude events and provider s
 
 test('Root #1556 F17 receipt recognizes correlated provider end and canonical SSE close', () => {
   const apiOutput = [
+    routeTrace('messages'),
     providerTrace('start', 'started'),
     providerTrace('end', 'succeeded'),
     [
@@ -97,7 +111,7 @@ test('Root #1556 F17 receipt recognizes Anthropic message_stop without retaining
       type: 'stream_event',
       event: { type: 'message_stop', secret: 'message-stop-secret' },
     }),
-    apiOutput: providerTrace('start', 'started'),
+    apiOutput: [routeTrace('messages'), providerTrace('start', 'started')].join('\n'),
   });
 
   assert.deepEqual(result.boundaries.anthropic_sse_terminal, {
@@ -119,6 +133,62 @@ test('Root #1556 F17 current assignment alone does not prove runtime selection',
   assert.equal(result.boundaries.selected_installation.status, 'not_observed');
   assert.equal(result.boundaries.owned_api_request.status, 'not_observed');
   assert.equal(result.boundaries.provider_operation.start.status, 'not_observed');
+  assert.equal(result.deepest_observed_boundary, 'client_transport');
+});
+
+test('Root #1556 F19 count_tokens route and provider delta remain distinct observed boundaries', () => {
+  const result = receipt({
+    apiOutput: [
+      routeTrace('messages_count_tokens'),
+      providerTrace('start', 'started', 'count_tokens'),
+      providerTrace('end', 'succeeded', 'count_tokens'),
+      'raw unallowlisted secret-canary',
+    ].join('\n'),
+  });
+
+  assert.deepEqual(result.boundaries.anthropic_route_requests.messages, {
+    status: 'not_observed',
+  });
+  assert.deepEqual(result.boundaries.anthropic_route_requests.messages_count_tokens, {
+    status: 'observed', count: 1,
+  });
+  assert.deepEqual(result.boundaries.owned_api_request, {
+    status: 'observed', routes: ['messages_count_tokens'],
+  });
+  assert.equal(result.boundaries.selected_installation.status, 'observed');
+  assert.equal(result.boundaries.provider_operation.operation, 'count_tokens');
+  assert.equal(result.boundaries.provider_operation.end.status, 'observed');
+  assert.equal(result.deepest_observed_boundary, 'provider_operation_end');
+  assert.doesNotMatch(JSON.stringify(result), /secret-canary/u);
+});
+
+test('Root #1556 F19 messages route without provider start stops at owned API request', () => {
+  const result = receipt({ apiOutput: routeTrace('messages') });
+
+  assert.deepEqual(result.boundaries.anthropic_route_requests.messages, {
+    status: 'observed', count: 1,
+  });
+  assert.equal(result.boundaries.anthropic_route_requests.messages_count_tokens.status,
+    'not_observed');
+  assert.equal(result.boundaries.owned_api_request.status, 'observed');
+  assert.equal(result.boundaries.selected_installation.status, 'not_observed');
+  assert.equal(result.boundaries.provider_operation.start.status, 'not_observed');
+  assert.equal(result.deepest_observed_boundary, 'owned_api_request');
+});
+
+test('Root #1556 F19 uncertain log suffix makes all API route and provider facts unknown', () => {
+  const result = receipt({
+    apiDeltaStatus: 'unknown',
+    apiOutput: [routeTrace('messages'), providerTrace('start', 'started')].join('\n'),
+  });
+
+  assert.equal(result.boundaries.assigned_installation.status, 'observed');
+  assert.equal(result.boundaries.anthropic_route_requests.status, 'unknown');
+  assert.equal(result.boundaries.anthropic_route_requests.messages.status, 'unknown');
+  assert.equal(result.boundaries.owned_api_request.status, 'unknown');
+  assert.equal(result.boundaries.selected_installation.status, 'unknown');
+  assert.equal(result.boundaries.provider_operation.start.status, 'unknown');
+  assert.equal(result.boundaries.provider_operation.end.status, 'unknown');
   assert.equal(result.deepest_observed_boundary, 'client_transport');
 });
 
