@@ -174,13 +174,13 @@ pub struct ModelFieldResponse {
     pub is_required: bool,
     pub api_required: bool,
     pub is_unique: bool,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     pub default_value: Option<serde_json::Value>,
     pub display_interface: Option<String>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     pub display_options: serde_json::Value,
     pub relation_target_model_id: Option<String>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     pub relation_options: serde_json::Value,
     pub sort_order: i32,
     pub capabilities: ModelFieldCapabilitiesResponse,

@@ -216,7 +216,7 @@ async fn create_system_model_uses_fixed_system_scope_id() {
 }
 
 #[tokio::test]
-async fn create_workspace_model_creates_system_model_and_workspace_grant() {
+async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
     let service = ModelDefinitionService::for_tests();
 
     let created = service
@@ -233,8 +233,9 @@ async fn create_workspace_model_creates_system_model_and_workspace_grant() {
         .await
         .unwrap();
 
-    assert_eq!(created.scope_kind, DataModelScopeKind::System);
-    assert_eq!(created.scope_id, SYSTEM_SCOPE_ID);
+    assert_eq!(created.scope_kind, DataModelScopeKind::Workspace);
+    assert_eq!(created.scope_id, Uuid::nil());
+    assert!(created.physical_table_name.starts_with("rtm_workspace_"));
 
     let grant = service
         .load_runtime_scope_grant(

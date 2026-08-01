@@ -487,8 +487,8 @@ where
             .repository
             .create_model_definition(&CreateModelDefinitionInput {
                 actor_user_id: command.actor_user_id,
-                scope_kind: DataModelScopeKind::System,
-                scope_id: domain::SYSTEM_SCOPE_ID,
+                scope_kind: command.scope_kind,
+                scope_id: grant_scope_id,
                 data_source_instance_id: command.data_source_instance_id,
                 source_kind,
                 external_resource_key,

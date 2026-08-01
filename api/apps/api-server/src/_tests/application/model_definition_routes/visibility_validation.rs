@@ -117,6 +117,28 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let legacy_scope_kind = ["te", "am"].concat();
 
+    let session_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/session")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(session_response.status(), StatusCode::OK);
+    let session_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(session_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let current_workspace_id = session_payload["data"]["session"]["current_workspace_id"]
+        .as_str()
+        .unwrap();
+
     let workspace_response = app
         .clone()
         .oneshot(
@@ -140,6 +162,19 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
         .unwrap();
 
     assert_eq!(workspace_response.status(), StatusCode::CREATED);
+    let workspace_body = to_bytes(workspace_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let workspace_payload: serde_json::Value = serde_json::from_slice(&workspace_body).unwrap();
+    assert_eq!(workspace_payload["data"]["scope_kind"], json!("workspace"));
+    assert_eq!(
+        workspace_payload["data"]["scope_id"],
+        json!(current_workspace_id)
+    );
+    assert!(workspace_payload["data"]["physical_table_name"]
+        .as_str()
+        .unwrap()
+        .starts_with("rtm_workspace_"));
 
     let system_response = app
         .clone()
@@ -195,6 +230,157 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
         .unwrap();
 
     assert_eq!(legacy_response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn model_definition_response_schemas_accept_nullable_and_dynamic_json_fields() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/data-models/model-definitions")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "scope_kind": "workspace",
+                        "code": "nullable_response_contract",
+                        "title": "Nullable Response Contract"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let created_model: serde_json::Value = serde_json::from_slice(
+        &to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let model_id = created_model["data"]["id"].as_str().unwrap();
+    assert!(created_model["data"]["external_resource_key"].is_null());
+    assert!(created_model["data"]["builtin_kind"].is_null());
+
+    let field_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{model_id}/fields"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "code": "state",
+                        "title": "State",
+                        "field_kind": "text",
+                        "default_value": "todo"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(field_response.status(), StatusCode::CREATED);
+    let created_field: serde_json::Value = serde_json::from_slice(
+        &to_bytes(field_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(created_field["data"]["default_value"], json!("todo"));
+    assert!(created_field["data"]["description"].is_null());
+    assert!(created_field["data"]["external_field_key"].is_null());
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/data-models/model-definitions")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let listed_models: serde_json::Value = serde_json::from_slice(
+        &to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let openapi_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(openapi_response.status(), StatusCode::OK);
+    let openapi: serde_json::Value = serde_json::from_slice(
+        &to_bytes(openapi_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let response_cases = [
+        (
+            "model_definitions.create",
+            "POST",
+            "/api/console/settings/data-models/model-definitions",
+            &created_model["data"],
+        ),
+        (
+            "model_fields.create",
+            "POST",
+            "/api/console/settings/data-models/model-definitions/{id}/fields",
+            &created_field["data"],
+        ),
+        (
+            "model_definitions.list",
+            "GET",
+            "/api/console/settings/data-models/model-definitions",
+            &listed_models["data"],
+        ),
+    ];
+    for (id, method, path, payload) in response_cases {
+        let operation = crate::openapi_docs::DocsCatalogOperation {
+            id: id.into(),
+            method: method.into(),
+            path: path.into(),
+            summary: None,
+            description: None,
+            tags: Vec::new(),
+            group: "settings".into(),
+            deprecated: false,
+        };
+        let interface =
+            crate::openapi_interface::catalog_entry_from_operation(&operation, &openapi)
+                .expect("Data Model interface catalog entry");
+        let response_validator = jsonschema::validator_for(&interface.response_schema)
+            .expect("generated Data Model response schema");
+        assert!(
+            response_validator.validate(payload).is_ok(),
+            "{id} response must match its strict interface schema"
+        );
+    }
 }
 
 #[tokio::test]
