@@ -70,7 +70,7 @@ export function installSettingsExtension(
   return installConsoleExtension(
     {
       category: entry.category,
-      artifact_id: entry.artifact_id,
+      artifact_id: entry.id,
       artifact_kind: entry.artifact_kind,
       ...overrides
     },
@@ -81,10 +81,11 @@ export function installSettingsExtension(
 
 export function uploadSettingsExtension(
   file: File,
+  category: SettingsExtensionCategory,
   csrfToken: string,
-  overrides: Parameters<typeof uploadConsoleExtension>[2] = {}
+  overrides: Parameters<typeof uploadConsoleExtension>[3] = {}
 ) {
-  return uploadConsoleExtension(file, csrfToken, overrides);
+  return uploadConsoleExtension(file, category, csrfToken, overrides);
 }
 
 export { getConsoleExtensionRiskChallenge as getSettingsExtensionRiskChallenge };

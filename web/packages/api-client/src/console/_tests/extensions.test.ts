@@ -94,7 +94,7 @@ describe('extension center client contract', () => {
   test('Root-AC-006 uploads a package and retries with exact challenge overrides', async () => {
     const file = new File(['extension'], 'extension.1flowbasepkg');
     await expect(
-      uploadConsoleExtension(file, 'csrf', {
+      uploadConsoleExtension(file, 'runtime-extensions', 'csrf', {
         risk_override: {
           reason: 'user_confirmed',
           acknowledged_warnings: ['signature_invalid']
@@ -109,6 +109,9 @@ describe('extension center client contract', () => {
     const request = vi.mocked(transport.apiFetch).mock.calls.at(-1)?.[0];
     expect(request?.rawBody).toBeInstanceOf(FormData);
     expect((request?.rawBody as FormData).get('file')).toBe(file);
+    expect((request?.rawBody as FormData).get('category')).toBe(
+      'runtime-extensions'
+    );
     expect((request?.rawBody as FormData).get('risk_override')).toBe(
       JSON.stringify({
         reason: 'user_confirmed',

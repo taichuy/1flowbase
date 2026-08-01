@@ -59,20 +59,26 @@ const installedEntry = {
 
 const catalogEntry = {
   category: 'runtime-extensions' as const,
-  artifact_id: '@taichuy/openai',
+  id: '@taichuy/openai',
+  name: 'OpenAI Provider',
   organization: '@taichuy',
-  display_name: 'OpenAI Provider',
+  artifact: 'openai',
+  version: '1.1.0',
   description: 'Remote provider extension',
-  latest_version: '1.1.0',
+  host_version_requirement: '>=0.4.0',
+  source: { kind: 'github_release' },
+  signature: { key_id: 'official-key' },
+  checksum: 'sha256:catalog-entry',
+  download_locator: { url: 'https://example.com/openai.1flowbasepkg' },
+  catalog_page: 1,
+  catalog_source: 'official',
   current_version: '1.0.0',
-  current_host_version: '0.3.1',
-  minimum_host_version: '0.4.0',
-  system_requirements: '>=0.4.0',
   installation_status: 'installed',
   artifact_kind: 'model_provider',
-  source: 'official',
+  installation_source: 'official',
   trust: 'official',
-  warnings: []
+  warnings: [],
+  compatibility: null
 };
 
 function authenticate() {
@@ -128,8 +134,12 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
       category: 'runtime-extensions',
       catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
       limit: 20,
       next_cursor: null,
+      total_entries: 1,
       entries: [catalogEntry]
     });
     extensionsApi.fetchSettingsExtensionCatalogEntry.mockResolvedValue(
@@ -229,6 +239,11 @@ describe('SettingsExtensionCenterSection', () => {
           code: 'signature_invalid',
           message: '签名与产物内容不一致，但仍可继续。',
           overridable: true
+        },
+        {
+          code: 'policy_locked',
+          message: '该警告不可由用户确认覆盖。',
+          overridable: false
         }
       ],
       compatibility: null
@@ -252,6 +267,7 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       screen.getByText('签名与产物内容不一致，但仍可继续。')
     ).toBeInTheDocument();
+    expect(screen.getByText('该警告不可由用户确认覆盖。')).toBeInTheDocument();
     await riskConfirmation?.onOk?.();
 
     await waitFor(() => {
@@ -287,6 +303,12 @@ describe('SettingsExtensionCenterSection', () => {
     const uploadDialog = await screen.findByRole('dialog');
     const input = uploadDialog.querySelector('input[type="file"]');
     const file = new File(['extension'], 'extension.1flowbasepkg');
+    fireEvent.mouseDown(
+      within(uploadDialog).getByRole('combobox', { name: '类型' })
+    );
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'runtime-extensions' })
+    );
     fireEvent.change(input!, { target: { files: [file] } });
     fireEvent.click(
       within(uploadDialog).getByRole('button', { name: '上传并安装' })
@@ -297,6 +319,7 @@ describe('SettingsExtensionCenterSection', () => {
     await waitFor(() => {
       expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
         file,
+        'runtime-extensions',
         'csrf-123',
         {}
       );

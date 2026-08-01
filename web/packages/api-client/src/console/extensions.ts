@@ -50,27 +50,37 @@ export interface ConsoleInstalledExtensionPage {
 
 export interface ConsoleExtensionCatalogEntry {
   category: ConsoleExtensionCategory;
-  artifact_id: string;
+  id: string;
+  name: string;
   organization: string;
-  display_name: string;
-  description: string | null;
-  latest_version: string;
+  artifact: string;
+  version: string;
+  description: string;
+  host_version_requirement: string;
+  source: Record<string, unknown>;
+  signature: Record<string, unknown> | null;
+  checksum: string | null;
+  download_locator: Record<string, unknown>;
+  catalog_page: number;
+  catalog_source: string;
   current_version: string | null;
-  current_host_version: string | null;
-  minimum_host_version: string | null;
-  system_requirements: string | null;
   installation_status: string;
   artifact_kind: string | null;
-  source: string;
+  installation_source: string | null;
   trust: string;
   warnings: ConsoleExtensionWarning[];
+  compatibility: ConsoleExtensionCompatibilityChallenge | null;
 }
 
 export interface ConsoleExtensionCatalogPage {
   category: ConsoleExtensionCategory;
-  catalog_page: string | null;
+  catalog_page: string;
+  catalog_page_number: number;
+  catalog_page_checksum: string;
+  catalog_page_locator: string;
   limit: number;
   next_cursor: string | null;
+  total_entries: number;
   entries: ConsoleExtensionCatalogEntry[];
 }
 
@@ -173,6 +183,7 @@ export function installConsoleExtension(
 
 export function uploadConsoleExtension(
   file: File,
+  category: ConsoleExtensionCategory,
   csrfToken: string,
   overrides: {
     compatibility_override?: ConsoleExtensionCompatibilityOverride;
@@ -181,6 +192,7 @@ export function uploadConsoleExtension(
 ) {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('category', category);
   if (overrides.compatibility_override) {
     formData.append(
       'compatibility_override',

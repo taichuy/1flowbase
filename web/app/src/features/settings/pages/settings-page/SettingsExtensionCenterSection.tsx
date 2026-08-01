@@ -10,6 +10,7 @@ import {
   Flex,
   List,
   Modal,
+  Select,
   Space,
   Table,
   Tabs,
@@ -52,7 +53,7 @@ type ExtensionOperation =
       entry: SettingsExtensionCatalogEntry;
       update: boolean;
     }
-  | { kind: 'upload'; file: File };
+  | { kind: 'upload'; file: File; category: SettingsExtensionCategory };
 
 const CATEGORIES: SettingsExtensionCategory[] = [
   'agent-flow',
@@ -67,8 +68,30 @@ function isInstalledRow(row: ExtensionRow): row is SettingsInstalledExtension {
   return 'installation' in row;
 }
 
-function extensionKey(row: Pick<ExtensionRow, 'category' | 'artifact_id'>) {
-  return `${row.category}:${row.artifact_id}`;
+function extensionId(row: ExtensionRow) {
+  return isInstalledRow(row) ? row.artifact_id : row.id;
+}
+
+function extensionName(row: ExtensionRow) {
+  return isInstalledRow(row) ? row.display_name : row.name;
+}
+
+function extensionVersion(row: ExtensionRow) {
+  return isInstalledRow(row) ? row.current_version : row.version;
+}
+
+function extensionHostRequirement(row: ExtensionRow) {
+  return isInstalledRow(row)
+    ? row.system_requirements
+    : row.host_version_requirement;
+}
+
+function extensionSource(row: ExtensionRow) {
+  return isInstalledRow(row) ? row.source : row.catalog_source;
+}
+
+function extensionKey(row: ExtensionRow) {
+  return `${row.category}:${extensionId(row)}`;
 }
 
 export function SettingsExtensionCenterSection() {
@@ -89,6 +112,8 @@ export function SettingsExtensionCenterSection() {
   );
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
+  const [uploadCategory, setUploadCategory] =
+    useState<SettingsExtensionCategory>();
 
   const installedQuery = useQuery({
     queryKey: settingsInstalledExtensionsQueryKey(cursor),
@@ -148,7 +173,7 @@ export function SettingsExtensionCenterSection() {
                   ? null
                   : (catalogQuery.data?.catalog_page ?? null),
               items: entries.map((entry) => ({
-                artifact_id: entry.artifact_id,
+                artifact_id: extensionId(entry),
                 current_version: isInstalledRow(entry)
                   ? entry.current_version
                   : entry.current_version!
@@ -190,7 +215,12 @@ export function SettingsExtensionCenterSection() {
       if (!csrfToken) throw new Error('csrf token required');
       try {
         if (operation.kind === 'upload') {
-          await uploadSettingsExtension(operation.file, csrfToken, overrides);
+          await uploadSettingsExtension(
+            operation.file,
+            operation.category,
+            csrfToken,
+            overrides
+          );
         } else {
           await installSettingsExtension(
             operation.entry,
@@ -208,6 +238,9 @@ export function SettingsExtensionCenterSection() {
     },
     onSuccess: async ({ challenge, operation }) => {
       if (challenge) {
+        const acknowledgedWarnings = challenge.warnings
+          .filter((warning) => warning.overridable)
+          .map((warning) => warning.code);
         Modal.confirm({
           title: t('auto.risk_warnings'),
           content: (
@@ -223,12 +256,14 @@ export function SettingsExtensionCenterSection() {
             operationMutation.mutateAsync({
               operation,
               overrides: {
-                risk_override: {
-                  reason: 'user_confirmed',
-                  acknowledged_warnings: challenge.warnings.map(
-                    (warning) => warning.code
-                  )
-                },
+                ...(acknowledgedWarnings.length > 0
+                  ? {
+                      risk_override: {
+                        reason: 'user_confirmed',
+                        acknowledged_warnings: acknowledgedWarnings
+                      }
+                    }
+                  : {}),
                 ...(challenge.compatibility
                   ? {
                       compatibility_override: {
@@ -250,6 +285,7 @@ export function SettingsExtensionCenterSection() {
       if (operation.kind === 'upload') {
         setUploadOpen(false);
         setUploadFiles([]);
+        setUploadCategory(undefined);
       }
       await queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
@@ -296,8 +332,8 @@ export function SettingsExtensionCenterSection() {
   const columns: TableColumnsType<ExtensionRow> = [
     {
       title: t('auto.name'),
-      dataIndex: 'display_name',
-      key: 'display_name',
+      key: 'name',
+      render: (_, row) => extensionName(row),
       ellipsis: true
     },
     {
@@ -314,21 +350,24 @@ export function SettingsExtensionCenterSection() {
     },
     {
       title: t('auto.current_version'),
-      key: 'current_version',
-      render: (_, row) => row.current_version ?? '—'
+      key: 'version',
+      render: (_, row) => extensionVersion(row)
     },
     {
       title: t('auto.system_requirements'),
-      dataIndex: 'system_requirements',
-      key: 'system_requirements',
-      render: (value: string | null) => value ?? '—'
+      key: 'host_version_requirement',
+      render: (_, row) => extensionHostRequirement(row) ?? '—'
     },
     {
       title: t('auto.installation'),
       dataIndex: 'installation_status',
       key: 'installation_status'
     },
-    { title: t('auto.source'), dataIndex: 'source', key: 'source' },
+    {
+      title: t('auto.source'),
+      key: 'source',
+      render: (_, row) => extensionSource(row)
+    },
     { title: t('auto.trust'), dataIndex: 'trust', key: 'trust' },
     {
       title: t('auto.operation'),
@@ -477,7 +516,7 @@ export function SettingsExtensionCenterSection() {
 
       <Drawer
         open={Boolean(selected)}
-        title={selected?.display_name}
+        title={selected ? extensionName(selected) : undefined}
         width={420}
         onClose={() => setSelected(null)}
       >
@@ -490,13 +529,13 @@ export function SettingsExtensionCenterSection() {
               {selected.description ?? '—'}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.current_version')}>
-              {selected.current_version ?? '—'}
+              {extensionVersion(selected)}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.system_requirements')}>
-              {selected.system_requirements ?? '—'}
+              {extensionHostRequirement(selected) ?? '—'}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.source')}>
-              {selected.source}
+              {extensionSource(selected)}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.trust')}>
               {selected.trust}
@@ -511,17 +550,22 @@ export function SettingsExtensionCenterSection() {
         okText={t('auto.upload_and_install')}
         cancelText={t('auto.cancel')}
         confirmLoading={operationMutation.isPending}
+        okButtonProps={{
+          disabled:
+            !uploadCategory || !(uploadFiles[0]?.originFileObj instanceof File)
+        }}
         onCancel={() => {
           setUploadOpen(false);
           setUploadFiles([]);
+          setUploadCategory(undefined);
         }}
         onOk={() => {
           const file = uploadFiles[0]?.originFileObj;
-          if (!(file instanceof File)) {
+          if (!(file instanceof File) || !uploadCategory) {
             message.warning(t('auto.select_plug_package_first'));
             return;
           }
-          submitOperation({ kind: 'upload', file });
+          submitOperation({ kind: 'upload', file, category: uploadCategory });
         }}
       >
         <Typography.Paragraph type="secondary">
@@ -529,6 +573,16 @@ export function SettingsExtensionCenterSection() {
             'auto.supports_one_flowbasepkg_compatible_tar_gz_zip_uploading_host_backend'
           )}
         </Typography.Paragraph>
+        <Select<SettingsExtensionCategory>
+          aria-label={t('auto.kind')}
+          value={uploadCategory}
+          options={CATEGORIES.map((category) => ({
+            label: category,
+            value: category
+          }))}
+          onChange={setUploadCategory}
+          style={{ width: '100%', marginBottom: 16 }}
+        />
         <Upload
           maxCount={1}
           fileList={uploadFiles}
