@@ -131,7 +131,7 @@ pub struct ModelProviderConfigFieldResponse {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_value: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -159,7 +159,7 @@ pub struct ProviderModelDescriptorResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PluginFormOptionResponse {
     pub label: String,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     pub value: serde_json::Value,
     pub description: Option<String>,
     pub disabled: Option<bool>,
@@ -169,9 +169,9 @@ pub struct PluginFormOptionResponse {
 pub struct PluginFormConditionResponse {
     pub field: String,
     pub operator: String,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     pub value: Option<serde_json::Value>,
-    #[schema(value_type = [Object])]
+    #[schema(value_type = [Value])]
     pub values: Vec<serde_json::Value>,
 }
 
@@ -190,7 +190,7 @@ pub struct PluginFormFieldSchemaResponse {
     pub enabled_by_default: Option<bool>,
     pub description: Option<String>,
     pub placeholder: Option<String>,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Value)]
     pub default_value: Option<serde_json::Value>,
     pub min: Option<f64>,
     pub max: Option<f64>,
