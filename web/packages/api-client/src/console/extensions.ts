@@ -13,6 +13,19 @@ export type ConsoleExtensionCategory =
   | 'mcp'
   | 'runtime-extensions';
 
+export type ConsoleExtensionApplicationAction =
+  | 'none'
+  | 'import_agent_flow'
+  | 'import_mcp'
+  | 'activate_i18n'
+  | 'configure_model_provider';
+
+export type ConsoleExtensionApplicationStatus =
+  | 'not_required'
+  | 'not_applied'
+  | 'applied'
+  | 'available';
+
 export interface ConsoleExtensionWarning {
   code: string;
   message: string;
@@ -64,6 +77,8 @@ export interface ConsoleInstalledExtension {
   signature_algorithm: string | null;
   signing_key_id: string | null;
   status: string;
+  application_action: ConsoleExtensionApplicationAction;
+  application_status: ConsoleExtensionApplicationStatus;
   installed_by: string;
   created_at: string;
   updated_at: string;
@@ -141,7 +156,24 @@ export interface ConsoleExtensionInstallResponse {
   installation: ConsoleInstalledExtension;
   local_artifact_was_present: boolean;
   node_plugin_installation_id: string | null;
-  workspace_application_status: 'not_imported' | null;
+  application_action: ConsoleExtensionApplicationAction;
+  application_status: ConsoleExtensionApplicationStatus;
+}
+
+export interface ConsoleInstalledI18nExtensionPreview {
+  extension_installation_id: string;
+  application_status: 'not_applied' | 'applied';
+  active_catalog_version: string | null;
+  installed_catalog_version: string;
+  revision: number;
+  integrity_warnings: ConsoleExtensionWarning[];
+  required_integrity_override: ConsoleExtensionRiskChallenge | null;
+}
+
+export interface ConsoleInstalledI18nExtensionActivation {
+  status: 'current' | 'activated';
+  catalog_version: string;
+  revision: number;
 }
 
 export type ConsoleMcpExtensionConflictResolution = 'keep_existing';
@@ -341,6 +373,34 @@ export function applyConsoleInstalledMcpExtension(
       extension_installation_id,
       ...options
     },
+    csrfToken
+  });
+}
+
+export function previewConsoleInstalledI18nExtension(
+  extensionInstallationId: string
+) {
+  return apiFetch<ConsoleInstalledI18nExtensionPreview>({
+    path: `/api/console/settings/i18n/installed-extension/${encodeURIComponent(
+      extensionInstallationId
+    )}/preview`
+  });
+}
+
+export function activateConsoleInstalledI18nExtension(
+  extensionInstallationId: string,
+  input: {
+    expected_revision: number;
+    integrity_override?: ConsoleExtensionRiskOverride;
+  },
+  csrfToken: string
+) {
+  return apiFetch<ConsoleInstalledI18nExtensionActivation>({
+    path: `/api/console/settings/i18n/installed-extension/${encodeURIComponent(
+      extensionInstallationId
+    )}/activate`,
+    method: 'POST',
+    body: input,
     csrfToken
   });
 }

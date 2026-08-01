@@ -13,6 +13,8 @@ use crate::{
 };
 use domain::{CatalogVersion, WorkspaceCatalogRevision, WorkspaceCatalogState};
 
+use super::bootstrap::VerifiedOfficialCatalogSeed;
+
 #[derive(Debug, Clone, Copy)]
 pub struct OfficialI18nCatalogUpdateCommand {
     pub workspace_id: Uuid,
@@ -116,6 +118,45 @@ where
             .await?;
         Ok(OfficialI18nCatalogUpdateOutcome::Activated {
             catalog_version: latest.catalog_version,
+            state,
+        })
+    }
+
+    pub async fn activate_installed(
+        &self,
+        command: OfficialI18nCatalogUpdateCommand,
+        seed: VerifiedOfficialCatalogSeed,
+    ) -> Result<OfficialI18nCatalogUpdateOutcome> {
+        let state = self
+            .repository
+            .get_workspace_catalog_state(command.workspace_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("workspace_i18n_catalog_state"))?;
+        if state.revision() != command.expected_revision {
+            return Err(ControlPlaneError::Conflict("i18n_catalog_revision").into());
+        }
+        if let Some(active) = self.active_release_descriptor(&state).await? {
+            if active.catalog_version == *seed.catalog_version()
+                && active.semantic_sha256 == *seed.semantic_sha256()
+            {
+                return Ok(OfficialI18nCatalogUpdateOutcome::Current {
+                    catalog_version: active.catalog_version,
+                });
+            }
+        }
+        let catalog_version = seed.catalog_version().clone();
+        let release = seed.bind_to_workspace(command.workspace_id)?;
+        self.repository.import_verified_release(&release).await?;
+        let state = self
+            .repository
+            .activate_verified_release(
+                command.workspace_id,
+                release.id(),
+                command.expected_revision,
+            )
+            .await?;
+        Ok(OfficialI18nCatalogUpdateOutcome::Activated {
+            catalog_version,
             state,
         })
     }

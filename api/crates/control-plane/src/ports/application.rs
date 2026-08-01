@@ -174,6 +174,20 @@ impl ReplaceApplicationJsDependencySelectionInput {
 
 #[async_trait]
 pub trait ApplicationRepository: Send + Sync {
+    async fn record_application_extension_source(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        extension_installation_id: Uuid,
+        actor_user_id: Uuid,
+    ) -> anyhow::Result<()>;
+
+    async fn has_application_extension_source(
+        &self,
+        workspace_id: Uuid,
+        extension_installation_id: Uuid,
+    ) -> anyhow::Result<bool>;
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

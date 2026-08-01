@@ -121,6 +121,50 @@ async fn find_application(
 
 #[async_trait]
 impl ApplicationRepository for PgControlPlaneStore {
+    async fn record_application_extension_source(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        extension_installation_id: Uuid,
+        actor_user_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            insert into application_extension_sources (
+                application_id, workspace_id, extension_installation_id, imported_by
+            ) values ($1, $2, $3, $4)
+            on conflict (application_id) do nothing
+            "#,
+        )
+        .bind(application_id)
+        .bind(workspace_id)
+        .bind(extension_installation_id)
+        .bind(actor_user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    async fn has_application_extension_source(
+        &self,
+        workspace_id: Uuid,
+        extension_installation_id: Uuid,
+    ) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            r#"
+            select exists(
+                select 1
+                from application_extension_sources
+                where workspace_id = $1 and extension_installation_id = $2
+            )
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(extension_installation_id)
+        .fetch_one(self.pool())
+        .await?)
+    }
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

@@ -47,6 +47,7 @@ pub struct ImportApplicationArchiveCommand {
     pub name: Option<String>,
     pub description: Option<String>,
     pub resources: AgentFlowTemplateResourceSnapshot,
+    pub source_extension_installation_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -318,6 +319,17 @@ where
                 "导入应用归档",
             )
             .await?;
+
+        if let Some(installation_id) = command.source_extension_installation_id {
+            self.repository
+                .record_application_extension_source(
+                    actor.current_workspace_id,
+                    application.id,
+                    installation_id,
+                    command.actor_user_id,
+                )
+                .await?;
+        }
 
         Ok(ImportAgentFlowTemplateResult {
             application,

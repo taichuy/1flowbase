@@ -5,8 +5,15 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use control_plane::ports::I18nCatalogRepository;
+use control_plane::{
+    plugin_management::{
+        ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
+        InstallExtensionArtifactCommand,
+    },
+    ports::{AuthRepository, I18nCatalogRepository},
+};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::io::{Cursor, Read};
 use tower::ServiceExt;
 use zip::ZipArchive;
@@ -588,6 +595,151 @@ async fn ac_005_single_application_zip_previews_and_imports_as_draft() {
         imported_body["data"]["application"]["application_type"],
         json!("agent_flow")
     );
+}
+
+#[tokio::test]
+async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_workspace_application()
+{
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "agent_flow",
+                        "name": "Installed extension source",
+                        "description": "extension source fixture"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let created: Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let source_id = created["data"]["id"].as_str().unwrap();
+    let export = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/archive/export")
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "application_ids": [source_id] }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let archive = to_bytes(export.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .to_vec();
+    let outcome =
+        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+            .install_from_bytes(InstallExtensionArtifactCommand {
+                actor_user_id: actor.id,
+                category: ExtensionCatalogCategory::AgentFlow,
+                organization: "taichuy".into(),
+                artifact_id: "installed-flow".into(),
+                version: "1.0.0".into(),
+                node_id: state.api_node_id.clone(),
+                artifact_bytes: archive.clone(),
+                source: "upload".into(),
+                trust: "unknown".into(),
+                expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(&archive))),
+                signature_status: domain::ExtensionSignatureStatus::Verified,
+                signature_algorithm: Some("ed25519".into()),
+                signing_key_id: Some("fixture".into()),
+                declared_warnings: Vec::new(),
+                risk_override: None,
+                confirmation_receipt: None,
+                application_action: domain::ExtensionApplicationAction::ImportAgentFlow,
+            })
+            .await
+            .unwrap();
+    let ExtensionArtifactInstallOutcome::Installed { installation, .. } = outcome else {
+        panic!("fixture must install");
+    };
+
+    let preview_path = format!(
+        "/api/console/applications/archive/installed-extension/{}/preview",
+        installation.id
+    );
+    let preview = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&preview_path)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(preview.status(), StatusCode::OK);
+    let preview: Value =
+        serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(preview["data"]["application_status"], "not_applied");
+    assert_eq!(
+        preview["data"]["preview"]["application"]["name"],
+        "Installed extension source"
+    );
+
+    let import = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/applications/archive/installed-extension/{}/import",
+                    installation.id
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "name": "Imported from extension" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(import.status(), StatusCode::CREATED);
+
+    let applied = app
+        .oneshot(
+            Request::builder()
+                .uri(&preview_path)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let applied: Value =
+        serde_json::from_slice(&to_bytes(applied.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(applied["data"]["application_status"], "applied");
 }
 
 #[tokio::test]

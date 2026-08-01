@@ -98,6 +98,8 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
     pub status: String,
+    pub application_action: String,
+    pub application_status: String,
     pub installed_by: String,
     pub created_at: String,
     pub updated_at: String,
@@ -117,7 +119,8 @@ pub struct ExtensionInstallResponse {
     pub installation: LocalExtensionInventoryEntryResponse,
     pub local_artifact_was_present: bool,
     pub node_plugin_installation_id: Option<String>,
-    pub workspace_application_status: Option<String>,
+    pub application_action: String,
+    pub application_status: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -299,10 +302,6 @@ fn extension_installation_service(
     ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
 }
 
-fn workspace_application_status(category: ExtensionCatalogCategory) -> Option<String> {
-    (category == ExtensionCatalogCategory::Mcp).then(|| "not_imported".to_string())
-}
-
 fn to_risk_warnings(
     warnings: &[domain::ExtensionIntegrityWarning],
 ) -> Vec<ExtensionRiskWarningResponse> {
@@ -358,6 +357,8 @@ fn to_local_inventory_family(
         signature_algorithm: entry.signature_algorithm,
         signing_key_id: entry.signing_key_id,
         status: entry.status.as_str().to_string(),
+        application_action: entry.application_action.as_str().to_string(),
+        application_status: default_application_status(entry.application_action).to_string(),
         installed_by: entry.installed_by.to_string(),
         created_at: format_time(entry.created_at),
         updated_at: format_time(entry.updated_at),
@@ -420,7 +421,7 @@ pub async fn list_local_extension_inventory(
     headers: HeaderMap,
     Query(query): Query<LocalExtensionInventoryQuery>,
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryPageResponse>>, ApiError> {
-    let _context = require_session(&state, &headers).await?;
+    let context = require_session(&state, &headers).await?;
     let category = query
         .category
         .as_deref()
@@ -441,14 +442,23 @@ pub async fn list_local_extension_inventory(
     }
     let (total_entries, next_cursor, page_entries) =
         paginate_installed_families(families, query.cursor.as_deref(), limit);
+    let mut entries = Vec::with_capacity(page_entries.len());
+    for family in page_entries {
+        let status = workspace_application_status(
+            &state,
+            context.actor.current_workspace_id,
+            &family.current,
+        )
+        .await?;
+        let mut response = to_local_inventory_family_entry(family);
+        response.application_status = status.to_string();
+        entries.push(response);
+    }
     Ok(Json(ApiSuccess::new(LocalExtensionInventoryPageResponse {
         limit,
         total_entries,
         next_cursor,
-        entries: page_entries
-            .into_iter()
-            .map(to_local_inventory_family_entry)
-            .collect(),
+        entries,
     })))
 }
 
@@ -845,6 +855,7 @@ struct NodePluginInspection {
     signature_status: domain::ExtensionSignatureStatus,
     signature_algorithm: Option<String>,
     signing_key_id: Option<String>,
+    application_action: domain::ExtensionApplicationAction,
 }
 
 #[derive(Debug)]
@@ -858,6 +869,7 @@ struct UploadedExtensionArtifact {
     signature_status: domain::ExtensionSignatureStatus,
     signature_algorithm: Option<String>,
     signing_key_id: Option<String>,
+    application_action: domain::ExtensionApplicationAction,
 }
 
 #[derive(Default)]
@@ -1143,6 +1155,15 @@ async fn inspect_node_plugin(
         signature_status: signature_status_from_intake(&intake.signature_status),
         signature_algorithm: intake.signature_algorithm,
         signing_key_id: intake.signing_key_id,
+        application_action: if manifest
+            .slot_codes
+            .iter()
+            .any(|slot| slot == "model_provider")
+        {
+            domain::ExtensionApplicationAction::ConfigureModelProvider
+        } else {
+            domain::ExtensionApplicationAction::None
+        },
     };
     let _ = tokio::fs::remove_dir_all(&intake.extracted_root).await;
     Ok(inspection)
@@ -1211,10 +1232,12 @@ async fn install_or_update_official_extension(
         return Ok((
             StatusCode::OK,
             Json(ApiSuccess::new(ExtensionInstallResponse {
+                application_action: installation.application_action.as_str().to_string(),
+                application_status: default_application_status(installation.application_action)
+                    .to_string(),
                 installation: to_local_inventory_entry(installation),
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
-                workspace_application_status: workspace_application_status(category),
             })),
         )
             .into_response());
@@ -1291,6 +1314,7 @@ async fn install_or_update_official_extension(
         .and_then(|signature| signature.get("key_id"))
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
+    let mut application_action = catalog_application_action(category);
     if is_node_plugin_category(category) {
         let inspection = inspect_node_plugin(
             state,
@@ -1312,6 +1336,7 @@ async fn install_or_update_official_extension(
         signature_status = inspection.signature_status;
         signature_algorithm = inspection.signature_algorithm;
         signing_key_id = inspection.signing_key_id;
+        application_action = inspection.application_action;
     }
     let trust = match (source_kind, signature_status) {
         ("official_registry", domain::ExtensionSignatureStatus::Verified) => "official",
@@ -1344,6 +1369,7 @@ async fn install_or_update_official_extension(
             declared_warnings,
             risk_override,
             confirmation_receipt,
+            application_action,
         })
         .await?;
     let (installation, local_artifact_was_present) = match outcome {
@@ -1377,10 +1403,12 @@ async fn install_or_update_official_extension(
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(ExtensionInstallResponse {
+            application_action: installation.application_action.as_str().to_string(),
+            application_status: default_application_status(installation.application_action)
+                .to_string(),
             installation: to_local_inventory_entry(installation),
             local_artifact_was_present,
             node_plugin_installation_id,
-            workspace_application_status: workspace_application_status(category),
         })),
     )
         .into_response())
@@ -1418,5 +1446,9 @@ pub async fn update_official_extension(
 
 pub(crate) mod upload;
 pub use upload::install_uploaded_extension;
+mod application;
+use application::{
+    catalog_application_action, default_application_status, workspace_application_status,
+};
 #[cfg(test)]
 mod _tests;

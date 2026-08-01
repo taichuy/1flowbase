@@ -35,12 +35,20 @@ const extensionsApi = vi.hoisted(() => ({
   previewSettingsInstalledMcpExtension: vi.fn(),
   applySettingsInstalledMcpExtension: vi.fn(),
   getSettingsInstalledMcpExtensionConflict: vi.fn(),
-  getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn()
+  getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn(),
+  previewSettingsInstalledI18nExtension: vi.fn(),
+  activateSettingsInstalledI18nExtension: vi.fn()
+}));
+
+const applicationsApi = vi.hoisted(() => ({
+  previewInstalledApplicationExtension: vi.fn(),
+  importInstalledApplicationExtension: vi.fn()
 }));
 
 const routerApi = vi.hoisted(() => ({ navigate: vi.fn() }));
 
 vi.mock('../api/extensions', () => extensionsApi);
+vi.mock('../../applications/api/applications', () => applicationsApi);
 vi.mock('../api/mcp-management', () => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog']
 }));
@@ -69,6 +77,8 @@ const installedEntry = {
   signature_algorithm: 'ed25519',
   signing_key_id: 'official-key',
   status: 'installed',
+  application_action: 'configure_model_provider' as const,
+  application_status: 'available' as const,
   installed_by: 'user-1',
   created_at: '2026-08-01T10:00:00Z',
   updated_at: '2026-08-01T10:00:00Z',
@@ -225,7 +235,13 @@ describe('SettingsExtensionCenterSection', () => {
         }
       ]
     });
-    extensionsApi.installSettingsExtension.mockResolvedValue({});
+    extensionsApi.installSettingsExtension.mockResolvedValue({
+      installation: installedEntry,
+      local_artifact_was_present: false,
+      node_plugin_installation_id: 'plugin-installation-1',
+      application_action: 'configure_model_provider',
+      application_status: 'available'
+    });
     extensionsApi.getSettingsExtensionRiskChallenge.mockReturnValue(null);
     extensionsApi.getSettingsInstalledMcpExtensionConflict.mockReturnValue(
       null
@@ -233,6 +249,25 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.getSettingsInstalledMcpExtensionIntegrityChallenge.mockReturnValue(
       null
     );
+    applicationsApi.previewInstalledApplicationExtension.mockResolvedValue({
+      extension_installation_id: 'agent-installation-1',
+      application_status: 'not_applied',
+      integrity_warnings: [],
+      required_integrity_override: null,
+      preview: {
+        application: {
+          application_type: 'agent_flow',
+          name: 'Imported flow',
+          description: 'Flow description',
+          icon: null,
+          icon_type: null,
+          icon_background: null
+        },
+        dependencies: [],
+        unresolved_nodes: [],
+        flow_document: {}
+      }
+    });
     vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn() } as never);
     vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
@@ -247,6 +282,10 @@ describe('SettingsExtensionCenterSection', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '可信度' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('可配置')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '配置供应商' })
     ).toBeInTheDocument();
     expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
     await waitFor(() => {
@@ -322,8 +361,6 @@ describe('SettingsExtensionCenterSection', () => {
         'runtime-extensions:taichuy/openai'
       );
     });
-    const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    await confirmation?.onOk?.();
     await waitFor(() => {
       expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
         catalogEntry,
@@ -360,10 +397,8 @@ describe('SettingsExtensionCenterSection', () => {
     renderSection('runtime-extensions');
     const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
-    const installConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    await installConfirmation?.onOk?.();
 
-    await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(1));
     const riskConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
     render(riskConfirmation?.content as ReactNode);
     expect(
@@ -468,13 +503,68 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('D5-AC-004/008 keeps MCP installed on conflict cancel and applies only after confirmation', async () => {
+  test('D6-AC-001 installs Agent Flow without a generic confirmation and opens the shared application import preview', async () => {
+    const agentCatalogEntry = {
+      ...catalogEntry,
+      id: 'agent-flow:taichuy/fusion',
+      category: 'agent-flow' as const,
+      artifact: 'fusion',
+      name: 'Fusion',
+      current_version: null,
+      installation_status: 'not_installed'
+    };
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'agent-flow',
+      catalog_page: 'start',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:agent',
+      catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [agentCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockResolvedValue({
+      installation: { ...installedEntry, id: 'agent-installation-1' },
+      local_artifact_was_present: false,
+      node_plugin_installation_id: null,
+      application_action: 'import_agent_flow',
+      application_status: 'not_applied'
+    });
+    renderSection('agent-flow');
+    const row = await screen.findByRole('row', { name: /Fusion/ });
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
+        agentCatalogEntry,
+        'csrf-123',
+        {},
+        false
+      );
+      expect(
+        applicationsApi.previewInstalledApplicationExtension
+      ).toHaveBeenCalledWith('agent-installation-1');
+    });
+    expect(Modal.confirm).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole('dialog', { name: /导入应用压缩包/ })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(
+      applicationsApi.importInstalledApplicationExtension
+    ).not.toHaveBeenCalled();
+  });
+
+  test('D6-AC-002 reuses the complete MCP bundle review and applies exact preview decisions', async () => {
     const mcpEntry = {
       ...installedEntry,
       id: 'mcp-installation-1',
       category: 'mcp' as const,
       catalog_id: 'mcp:taichuy/sample',
-      artifact_id: 'sample'
+      artifact_id: 'sample',
+      application_action: 'import_mcp' as const,
+      application_status: 'not_applied' as const
     };
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
       limit: 20,
@@ -504,10 +594,43 @@ describe('SettingsExtensionCenterSection', () => {
         ],
         compatibility: null
       },
-      preview: { tools: [], instances: [], connections: [] }
+      preview: {
+        manifest: {
+          organization: 'taichuy',
+          bundle_id: 'sample',
+          bundle_version: '1.0.0',
+          locale: 'zh_Hans',
+          minimum_host_version: '*',
+          exported_from_system_version: '1.0.0'
+        },
+        current_system_version: '1.0.0',
+        version_status: 'same_system_version',
+        tools: [{ id: 'tool.weather', result: 'imported', reason: null }],
+        instances: [],
+        connections: []
+      }
     });
     extensionsApi.applySettingsInstalledMcpExtension.mockResolvedValue({
-      workspace_application_status: 'imported'
+      extension_installation_id: 'mcp-installation-1',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'imported',
+      integrity_warnings: [],
+      import_report: {
+        manifest: {
+          organization: 'taichuy',
+          bundle_id: 'sample',
+          bundle_version: '1.0.0',
+          locale: 'zh_Hans',
+          minimum_host_version: '*',
+          exported_from_system_version: '1.0.0'
+        },
+        current_system_version: '1.0.0',
+        version_status: 'same_system_version',
+        status: 'completed',
+        tools: [{ id: 'tool.weather', result: 'imported', reason: null }],
+        instances: [],
+        connections: []
+      }
     });
     renderSection('installed');
     const row = await screen.findByRole('row', { name: /sample/ });
@@ -516,19 +639,12 @@ describe('SettingsExtensionCenterSection', () => {
       expect(
         extensionsApi.previewSettingsInstalledMcpExtension
       ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123');
-      expect(Modal.confirm).toHaveBeenCalled();
     });
     expect(
-      extensionsApi.applySettingsInstalledMcpExtension
-    ).not.toHaveBeenCalled();
-
-    const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    render(confirmation?.content as ReactNode);
-    expect(
-      screen.getByText('本地产物校验值与安装记录不一致。')
+      await screen.findByText('本地产物校验值与安装记录不一致。')
     ).toBeInTheDocument();
-    expect(screen.getByText(/保留工作区内已有/)).toBeInTheDocument();
-    await confirmation?.onOk?.();
+    expect(screen.getByText('tool.weather')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /导入/ }));
     await waitFor(() => {
       expect(
         extensionsApi.applySettingsInstalledMcpExtension
@@ -542,161 +658,52 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('D5-F02 shows a changed integrity 409 and retries with the exact backend diagnostic codes', async () => {
-    const integrityError = new Error('integrity confirmation required');
-    const challenge = {
-      extension_installation_id: 'mcp-installation-1',
-      integrity_warnings: [
-        {
-          code: 'checksum_mismatch',
-          message: '本地产物在预览后发生变化。',
-          overridable: true
-        }
-      ],
-      required_integrity_override: {
-        warnings: [
-          {
-            code: 'checksum_mismatch',
-            message: '本地产物在预览后发生变化。',
-            overridable: true
-          }
-        ],
-        compatibility: null
-      }
+  test('D6-AC-003 previews and activates the installed local i18n catalog', async () => {
+    const i18nRow = {
+      ...installedEntry,
+      id: 'i18n-installation-1',
+      category: 'i18n' as const,
+      artifact_id: 'platform',
+      application_action: 'activate_i18n' as const,
+      application_status: 'not_applied' as const
     };
-    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
-      extension_installation_id: 'mcp-installation-1',
-      artifact_installation_status: 'installed',
-      workspace_application_status: 'ready_to_import',
-      required_conflict_resolution: null,
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [i18nRow]
+    });
+    extensionsApi.previewSettingsInstalledI18nExtension.mockResolvedValue({
+      extension_installation_id: 'i18n-installation-1',
+      application_status: 'not_applied',
+      active_catalog_version: '2.0.0',
+      installed_catalog_version: '2.0.1',
+      revision: 4,
       integrity_warnings: [],
-      required_integrity_override: null,
-      preview: { tools: [], instances: [], connections: [] }
+      required_integrity_override: null
     });
-    extensionsApi.applySettingsInstalledMcpExtension
-      .mockRejectedValueOnce(integrityError)
-      .mockResolvedValueOnce({ workspace_application_status: 'imported' });
-    extensionsApi.getSettingsInstalledMcpExtensionIntegrityChallenge.mockImplementation(
-      (error: unknown) => (error === integrityError ? challenge : null)
-    );
-    const mcpRow = {
-      ...installedEntry,
-      category: 'mcp' as const,
-      artifact_id: 'openai'
-    };
-    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
-      limit: 20,
-      total_entries: 1,
-      next_cursor: null,
-      entries: [mcpRow]
+    extensionsApi.activateSettingsInstalledI18nExtension.mockResolvedValue({
+      status: 'activated',
+      catalog_version: '2.0.1',
+      revision: 5
     });
-    const { queryClient } = renderSection('installed');
-    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
-    const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
-    await waitFor(() => expect(Modal.confirm).toHaveBeenCalled());
-    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
-    await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(2));
-    const integrityConfirmation = vi
-      .mocked(Modal.confirm)
-      .mock.calls.at(-1)?.[0];
-    render(integrityConfirmation?.content as ReactNode);
-    expect(screen.getByText('本地产物在预览后发生变化。')).toBeInTheDocument();
-    await integrityConfirmation?.onOk?.();
-    await waitFor(() => {
-      expect(
-        extensionsApi.applySettingsInstalledMcpExtension
-      ).toHaveBeenLastCalledWith('mcp-installation-1', 'csrf-123', {
-        integrity_override: {
-          reason: 'user_confirmed',
-          acknowledged_warnings: ['checksum_mismatch']
-        }
-      });
-    });
-    await waitFor(() => {
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ['settings', 'extension-center']
-      });
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ['settings', 'mcp-management', 'catalog']
-      });
-    });
-  });
-
-  test('D5-F02 keeps an installed MCP artifact visible when preview is forbidden', async () => {
-    const mcpRow = {
-      ...installedEntry,
-      category: 'mcp' as const
-    };
-    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
-      limit: 20,
-      total_entries: 1,
-      next_cursor: null,
-      entries: [mcpRow]
-    });
-    extensionsApi.previewSettingsInstalledMcpExtension.mockRejectedValue(
-      new Error('403 forbidden')
-    );
     renderSection('installed');
-    const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
-
-    await waitFor(() => {
-      expect(message.error).toHaveBeenCalledWith('无法预览已安装的 MCP 扩展');
+    const row = await screen.findByRole('row', { name: /platform/ });
+    fireEvent.click(within(row).getByRole('button', { name: '激活' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: '激活多语言目录'
     });
-    expect(row).toBeInTheDocument();
-    expect(
-      extensionsApi.applySettingsInstalledMcpExtension
-    ).not.toHaveBeenCalled();
-  });
-
-  test('D5-AC-004 starts MCP preview after install and leaves application untouched when cancelled', async () => {
-    const mcpCatalogEntry = {
-      ...catalogEntry,
-      id: 'mcp:taichuy/sample',
-      category: 'mcp' as const,
-      artifact: 'sample',
-      name: 'Sample MCP',
-      current_version: null,
-      installation_status: 'not_installed'
-    };
-    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
-      category: 'mcp',
-      catalog_page: 'start',
-      catalog_page_number: 1,
-      catalog_page_checksum: 'sha256:mcp',
-      catalog_page_locator: 'mcp/catalog/v1/pages/1.json',
-      limit: 20,
-      next_cursor: null,
-      total_entries: 1,
-      entries: [mcpCatalogEntry]
-    });
-    extensionsApi.installSettingsExtension.mockResolvedValue({
-      installation: { id: 'mcp-installation-2' },
-      workspace_application_status: 'not_imported'
-    });
-    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
-      extension_installation_id: 'mcp-installation-2',
-      artifact_installation_status: 'installed',
-      workspace_application_status: 'confirmation_required',
-      required_conflict_resolution: 'keep_existing',
-      integrity_warnings: [],
-      required_integrity_override: null,
-      preview: { tools: [], instances: [], connections: [] }
-    });
-    renderSection('mcp');
-    const row = await screen.findByRole('row', { name: /Sample MCP/ });
-    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
-    const installConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    await installConfirmation?.onOk?.();
+    expect(within(dialog).getByText('2.0.0')).toBeInTheDocument();
+    expect(within(dialog).getByText('2.0.1')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '激活' }));
     await waitFor(() => {
       expect(
-        extensionsApi.previewSettingsInstalledMcpExtension
-      ).toHaveBeenCalledWith('mcp-installation-2', 'csrf-123');
-      expect(Modal.confirm).toHaveBeenCalledTimes(2);
+        extensionsApi.activateSettingsInstalledI18nExtension
+      ).toHaveBeenCalledWith(
+        'i18n-installation-1',
+        { expected_revision: 4 },
+        'csrf-123'
+      );
     });
-    expect(
-      extensionsApi.applySettingsInstalledMcpExtension
-    ).not.toHaveBeenCalled();
   });
 });

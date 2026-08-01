@@ -17,17 +17,17 @@ interface ApplicationTemplateImportModalProps {
   preview: AgentFlowTemplatePreview | null;
   name: string;
   importing: boolean;
+  integrityWarnings?: string[];
   onNameChange: (value: string) => void;
   onCancel: () => void;
   onImport: () => void;
 }
 
-function dependencyLabel(dependency: AgentFlowTemplatePreview['dependencies'][number]) {
+function dependencyLabel(
+  dependency: AgentFlowTemplatePreview['dependencies'][number]
+) {
   if (dependency.dependency.kind === 'model_provider') {
-    return [
-      dependency.dependency.provider_code,
-      dependency.dependency.model_id
-    ]
+    return [dependency.dependency.provider_code, dependency.dependency.model_id]
       .filter(Boolean)
       .join(' / ');
   }
@@ -50,6 +50,7 @@ export function ApplicationTemplateImportModal({
   preview,
   name,
   importing,
+  integrityWarnings = [],
   onNameChange,
   onCancel,
   onImport
@@ -57,7 +58,9 @@ export function ApplicationTemplateImportModal({
   const { t } = useTranslation('applications');
   const unresolvedNodes = preview?.unresolved_nodes ?? [];
   const missingDependencies =
-    preview?.dependencies.filter((dependency) => dependency.status !== 'ready') ?? [];
+    preview?.dependencies.filter(
+      (dependency) => dependency.status !== 'ready'
+    ) ?? [];
 
   return (
     <Modal
@@ -73,6 +76,19 @@ export function ApplicationTemplateImportModal({
     >
       {preview ? (
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {integrityWarnings.length > 0 ? (
+            <Alert
+              showIcon
+              type="warning"
+              message={
+                <List
+                  size="small"
+                  dataSource={integrityWarnings}
+                  renderItem={(warning) => <List.Item>{warning}</List.Item>}
+                />
+              }
+            />
+          ) : null}
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('auto.application_name')}>
               <Input
@@ -83,11 +99,14 @@ export function ApplicationTemplateImportModal({
               />
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.application_description')}>
-              {preview.application.description || t('auto.application_description_empty')}
+              {preview.application.description ||
+                t('auto.application_description_empty')}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.template_dependency_summary')}>
               <Space size="small" wrap>
-                <Tag color={missingDependencies.length > 0 ? 'warning' : 'success'}>
+                <Tag
+                  color={missingDependencies.length > 0 ? 'warning' : 'success'}
+                >
                   {t('auto.missing_dependency_count', {
                     value1: missingDependencies.length
                   })}
@@ -104,12 +123,18 @@ export function ApplicationTemplateImportModal({
           {missingDependencies.length > 0 ? (
             <List
               size="small"
-              header={<Typography.Text strong>{t('auto.missing_dependencies')}</Typography.Text>}
+              header={
+                <Typography.Text strong>
+                  {t('auto.missing_dependencies')}
+                </Typography.Text>
+              }
               dataSource={missingDependencies}
               renderItem={(dependency) => (
                 <List.Item>
                   <Space direction="vertical" size={2}>
-                    <Typography.Text>{dependencyLabel(dependency)}</Typography.Text>
+                    <Typography.Text>
+                      {dependencyLabel(dependency)}
+                    </Typography.Text>
                     <Typography.Text type="secondary">
                       {dependency.reason ?? dependency.status}
                     </Typography.Text>
@@ -122,7 +147,11 @@ export function ApplicationTemplateImportModal({
           {unresolvedNodes.length > 0 ? (
             <List
               size="small"
-              header={<Typography.Text strong>{t('auto.unresolved_nodes')}</Typography.Text>}
+              header={
+                <Typography.Text strong>
+                  {t('auto.unresolved_nodes')}
+                </Typography.Text>
+              }
               dataSource={unresolvedNodes}
               renderItem={(node) => (
                 <List.Item>
@@ -138,7 +167,11 @@ export function ApplicationTemplateImportModal({
               )}
             />
           ) : (
-            <Alert type="success" showIcon message={t('auto.template_ready_to_import')} />
+            <Alert
+              type="success"
+              showIcon
+              message={t('auto.template_ready_to_import')}
+            />
           )}
         </Space>
       ) : null}

@@ -1,16 +1,6 @@
 import { UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  Button,
-  Descriptions,
-  Modal,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message
-} from 'antd';
+import { Alert, Button, Modal, Space, Table, Typography, message } from 'antd';
 import { useRef, useState } from 'react';
 
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -27,64 +17,14 @@ import {
   settingsMcpBundleExportDefaultsQueryKey,
   settingsOfficialMcpBundlesQueryKey,
   type ExportSettingsMcpBundleBody,
-  type SettingsMcpBundleImportReport,
-  type SettingsMcpBundlePreview,
   type SettingsOfficialMcpBundleEntry
 } from '../../../api/mcp-management';
 import { McpBundleExportModal } from './McpBundleExportModal';
+import {
+  McpBundleReviewModal,
+  type McpBundleReview
+} from './McpBundleReviewModal';
 import { downloadMcpBundle } from './mcp-bundle-download';
-
-type BundleReview = SettingsMcpBundlePreview | SettingsMcpBundleImportReport;
-
-function versionWarning(status: SettingsMcpBundlePreview['version_status']) {
-  if (status === 'exported_from_older_system') {
-    return i18nText('settingsMcpManagement', 'auto.mcp_bundle_source_older');
-  }
-  if (status === 'exported_from_newer_system') {
-    return i18nText('settingsMcpManagement', 'auto.mcp_bundle_source_newer');
-  }
-  if (status === 'unknown_system_version') {
-    return i18nText('settingsMcpManagement', 'auto.mcp_bundle_source_unknown');
-  }
-  return null;
-}
-
-function itemReason(reason: string | null) {
-  switch (reason) {
-    case 'interface_missing':
-      return i18nText(
-        'settingsMcpManagement',
-        'auto.mcp_bundle_interface_missing'
-      );
-    case 'tool_id_conflict':
-    case 'instance_id_conflict':
-    case 'connection_id_conflict':
-      return i18nText('settingsMcpManagement', 'auto.mcp_bundle_id_conflict');
-    case 'connection_missing':
-      return i18nText(
-        'settingsMcpManagement',
-        'auto.mcp_bundle_connection_missing'
-      );
-    case 'credentials_missing':
-      return i18nText(
-        'settingsMcpManagement',
-        'auto.upstream_credentials_missing'
-      );
-    case 'binding_tool_missing':
-      return i18nText(
-        'settingsMcpManagement',
-        'auto.mcp_bundle_binding_tool_missing'
-      );
-    default:
-      return reason ?? '-';
-  }
-}
-
-function resultColor(result: string) {
-  if (result === 'imported') return 'green';
-  if (result === 'unavailable' || result === 'failed') return 'red';
-  return 'default';
-}
 
 export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
@@ -94,7 +34,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const [selectedOfficial, setSelectedOfficial] =
     useState<SettingsOfficialMcpBundleEntry | null>(null);
   const [sourceOpen, setSourceOpen] = useState(false);
-  const [review, setReview] = useState<BundleReview | null>(null);
+  const [review, setReview] = useState<McpBundleReview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -189,16 +129,6 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
       setExporting(false);
     }
   }
-
-  const warning = review ? versionWarning(review.version_status) : null;
-  const imported = review && 'status' in review;
-  const rows = review
-    ? [
-        ...review.tools.map((item) => ({ ...item, kind: 'Tool' })),
-        ...review.instances.map((item) => ({ ...item, kind: 'Instance' })),
-        ...review.connections.map((item) => ({ ...item, kind: 'Connection' }))
-      ]
-    : [];
 
   return (
     <>
@@ -305,136 +235,16 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         </Space>
       </Modal>
 
-      <Modal
-        width={760}
-        open={review !== null}
-        title={i18nText(
-          'settingsMcpManagement',
-          'auto.mcp_bundle_import_title'
-        )}
-        okText={
-          imported
-            ? i18nText('settings', 'auto.close')
-            : i18nText('settingsMcpManagement', 'auto.mcp_bundle_import_anyway')
-        }
-        cancelButtonProps={{
-          style: imported ? { display: 'none' } : undefined
-        }}
-        confirmLoading={importing}
+      <McpBundleReviewModal
+        review={review}
+        importing={importing}
         onCancel={() => {
           setReview(null);
           setSelectedFile(null);
           setSelectedOfficial(null);
         }}
-        onOk={() => {
-          if (imported) {
-            setReview(null);
-            setSelectedFile(null);
-            setSelectedOfficial(null);
-          } else {
-            void handleImport();
-          }
-        }}
-      >
-        {review ? (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            {warning ? (
-              <Alert showIcon type="warning" message={warning} />
-            ) : null}
-            {imported ? (
-              <Alert
-                showIcon
-                type={review.status === 'completed' ? 'success' : 'warning'}
-                message={
-                  review.status === 'completed'
-                    ? i18nText(
-                        'settingsMcpManagement',
-                        'auto.mcp_bundle_import_completed'
-                      )
-                    : i18nText(
-                        'settingsMcpManagement',
-                        'auto.mcp_bundle_import_completed_with_warnings'
-                      )
-                }
-              />
-            ) : null}
-            <Descriptions size="small" column={2}>
-              <Descriptions.Item
-                label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_name'
-                )}
-              >
-                {review.manifest.organization}/{review.manifest.bundle_id}
-              </Descriptions.Item>
-              <Descriptions.Item
-                label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_version'
-                )}
-              >
-                {review.manifest.bundle_version}
-              </Descriptions.Item>
-              <Descriptions.Item
-                label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_source_version'
-                )}
-              >
-                {review.manifest.exported_from_system_version}
-              </Descriptions.Item>
-              <Descriptions.Item
-                label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_current_version'
-                )}
-              >
-                {review.current_system_version}
-              </Descriptions.Item>
-            </Descriptions>
-            <Table
-              size="small"
-              rowKey={(item) => `${item.kind}:${item.id}`}
-              pagination={false}
-              dataSource={rows}
-              columns={[
-                {
-                  title: i18nText(
-                    'settingsMcpManagement',
-                    'auto.mcp_bundle_item'
-                  ),
-                  dataIndex: 'id'
-                },
-                {
-                  title: i18nText(
-                    'settingsMcpManagement',
-                    'auto.mcp_bundle_kind'
-                  ),
-                  dataIndex: 'kind'
-                },
-                {
-                  title: i18nText(
-                    'settingsMcpManagement',
-                    'auto.mcp_bundle_result'
-                  ),
-                  dataIndex: 'result',
-                  render: (value: string) => (
-                    <Tag color={resultColor(value)}>{value}</Tag>
-                  )
-                },
-                {
-                  title: i18nText(
-                    'settingsMcpManagement',
-                    'auto.mcp_bundle_reason'
-                  ),
-                  dataIndex: 'reason',
-                  render: (value: string | null) => itemReason(value)
-                }
-              ]}
-            />
-          </Space>
-        ) : null}
-      </Modal>
+        onImport={() => void handleImport()}
+      />
 
       <McpBundleExportModal
         open={exportOpen}

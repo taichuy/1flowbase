@@ -180,6 +180,20 @@ pub struct UpsertMcpClientCredentialInput {
 
 #[async_trait]
 pub trait McpManagementRepository: Send + Sync {
+    async fn record_mcp_extension_bundle_import(
+        &self,
+        workspace_id: Uuid,
+        extension_installation_id: Uuid,
+        actor_user_id: Uuid,
+        result_status: &str,
+    ) -> anyhow::Result<()>;
+
+    async fn has_mcp_extension_bundle_import(
+        &self,
+        workspace_id: Uuid,
+        extension_installation_id: Uuid,
+    ) -> anyhow::Result<bool>;
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

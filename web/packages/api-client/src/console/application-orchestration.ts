@@ -1,6 +1,11 @@
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
 import { apiFetch, apiFetchBlob, type ApiBlobResponse } from '../transport';
+import type {
+  ConsoleExtensionRiskChallenge,
+  ConsoleExtensionRiskOverride,
+  ConsoleExtensionWarning
+} from './extensions';
 
 export interface ConsoleFlowVersionSummary {
   id: string;
@@ -241,6 +246,47 @@ export function importConsoleApplicationArchive(
     path: '/api/console/applications/archive/import',
     method: 'POST',
     rawBody: formData,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export interface ConsoleInstalledApplicationExtensionPreview {
+  extension_installation_id: string;
+  application_status: 'not_applied' | 'applied';
+  integrity_warnings: ConsoleExtensionWarning[];
+  required_integrity_override: ConsoleExtensionRiskChallenge | null;
+  preview: ConsoleAgentFlowTemplatePreview;
+}
+
+export function previewConsoleInstalledApplicationExtension(
+  extensionInstallationId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleInstalledApplicationExtensionPreview>({
+    path: `/api/console/applications/archive/installed-extension/${encodeURIComponent(
+      extensionInstallationId
+    )}/preview`,
+    baseUrl
+  });
+}
+
+export function importConsoleInstalledApplicationExtension(
+  extensionInstallationId: string,
+  input: {
+    name?: string;
+    description?: string;
+    integrity_override?: ConsoleExtensionRiskOverride;
+  },
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ImportConsoleAgentFlowTemplateResponse>({
+    path: `/api/console/applications/archive/installed-extension/${encodeURIComponent(
+      extensionInstallationId
+    )}/import`,
+    method: 'POST',
+    body: input,
     csrfToken,
     baseUrl
   });

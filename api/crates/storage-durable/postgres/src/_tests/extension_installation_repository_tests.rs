@@ -70,6 +70,7 @@ fn input(actor_user_id: Uuid) -> UpsertExtensionInstallationInput {
         signing_key_id: Some("official-2026".into()),
         warnings: Vec::new(),
         receipt: serde_json::json!({"kind": "install"}),
+        application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
         status: domain::ExtensionInstallationStatus::Installed,
         installed_by: actor_user_id,
     }

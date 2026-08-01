@@ -1,11 +1,19 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::HeaderMap, Json, Router};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    Json, Router,
+};
 use control_plane::{
     errors::ControlPlaneError,
     i18n_catalog::{
         OfficialI18nCatalogUpdateCommand, OfficialI18nCatalogUpdateOutcome,
         OfficialI18nCatalogUpdateStatus,
+    },
+    plugin_management::{
+        installed_extension_integrity_warnings, validate_extension_integrity_override,
+        ExtensionInstallationService, ExtensionRiskOverride,
     },
     ports::I18nCatalogRepository,
 };
@@ -51,12 +59,31 @@ pub struct ActivateI18nCatalogResponse {
     pub revision: i64,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InstalledI18nCatalogPreviewResponse {
+    pub extension_installation_id: String,
+    pub application_status: String,
+    pub active_catalog_version: Option<String>,
+    pub installed_catalog_version: String,
+    pub revision: i64,
+    #[schema(value_type = Vec<Object>)]
+    pub integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    #[schema(value_type = Option<Object>)]
+    pub required_integrity_override: Option<domain::ExtensionRiskChallenge>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ActivateInstalledI18nCatalogBody {
+    pub expected_revision: i64,
+    pub integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
         .route(
@@ -79,6 +106,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 activate_i18n_catalog_update,
                 ConsoleOperation("i18n_catalog.update.activate".to_string()),
             ),
+        )
+        .route(
+            "/settings/i18n/installed-extension/:installation_id/preview",
+            console_get(preview_installed_i18n_catalog, Authenticated),
+        )
+        .route(
+            "/settings/i18n/installed-extension/:installation_id/activate",
+            console_post(activate_installed_i18n_catalog, Authenticated),
         )
         .merge(management::route_assembly())
 }
@@ -227,6 +262,153 @@ pub async fn activate_i18n_catalog_update(
         } => ActivateI18nCatalogResponse {
             status: "activated",
             catalog_version: catalog_version.as_str().to_owned(),
+            revision: state.revision().value(),
+        },
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}
+
+async fn load_installed_i18n_catalog(
+    state: &ApiState,
+    installation_id: uuid::Uuid,
+) -> Result<
+    (
+        domain::ExtensionInstallationRecord,
+        control_plane::i18n_catalog::VerifiedOfficialCatalogSeed,
+        Vec<domain::ExtensionIntegrityWarning>,
+    ),
+    ApiError,
+> {
+    let installation =
+        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+            .find_local_installation_by_id(&state.api_node_id, installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
+    if installation.identity.category != domain::ExtensionCategory::I18n
+        || installation.application_action != domain::ExtensionApplicationAction::ActivateI18n
+    {
+        return Err(ControlPlaneError::InvalidInput("i18n_extension_installation").into());
+    }
+    let bytes = tokio::fs::read(&installation.local_path).await?;
+    let warnings = installed_extension_integrity_warnings(&installation, &bytes);
+    let seed = tokio::task::spawn_blocking(move || {
+        let inspection = crate::official_i18n_catalog_seed::inspect_catalog_seed(&bytes)?;
+        crate::official_i18n_catalog_seed::decode_downloaded_catalog_seed(&bytes, &inspection)
+    })
+    .await
+    .map_err(|_| ControlPlaneError::InvalidInput("i18n_catalog_seed"))?
+    .map_err(|_| ControlPlaneError::InvalidInput("i18n_catalog_seed"))?;
+    Ok((installation, seed, warnings))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/i18n/installed-extension/{installation_id}/preview",
+    summary = "Preview an installed translation catalog",
+    description = "Inspects the exact local extension artifact and compares it with the active root translation catalog without a remote fetch.",
+    params(("installation_id" = uuid::Uuid, Path, description = "Extension installation ID")),
+    responses((status = 200, body = InstalledI18nCatalogPreviewResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn preview_installed_i18n_catalog(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(installation_id): Path<uuid::Uuid>,
+) -> Result<Json<ApiSuccess<InstalledI18nCatalogPreviewResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_root_catalog_actor(&state, &context.actor)?;
+    let (_, seed, warnings) = load_installed_i18n_catalog(&state, installation_id).await?;
+    let catalog_state = I18nCatalogRepository::get_workspace_catalog_state(
+        &state.store,
+        context.actor.current_workspace_id,
+    )
+    .await?
+    .ok_or(ControlPlaneError::NotFound("workspace_i18n_catalog_state"))?;
+    let active = match catalog_state.active_release_id() {
+        Some(release_id) => {
+            I18nCatalogRepository::get_i18n_catalog_release_descriptor(
+                &state.store,
+                context.actor.current_workspace_id,
+                release_id,
+            )
+            .await?
+        }
+        None => None,
+    };
+    let applied = active.as_ref().is_some_and(|descriptor| {
+        descriptor.catalog_version == *seed.catalog_version()
+            && descriptor.semantic_sha256 == *seed.semantic_sha256()
+    });
+    Ok(Json(ApiSuccess::new(InstalledI18nCatalogPreviewResponse {
+        extension_installation_id: installation_id.to_string(),
+        application_status: if applied { "applied" } else { "not_applied" }.to_string(),
+        active_catalog_version: active
+            .map(|descriptor| descriptor.catalog_version.as_str().to_string()),
+        installed_catalog_version: seed.catalog_version().as_str().to_string(),
+        revision: catalog_state.revision().value(),
+        required_integrity_override: (!warnings.is_empty()).then(|| {
+            domain::ExtensionRiskChallenge {
+                warnings: warnings.clone(),
+                compatibility: None,
+            }
+        }),
+        integrity_warnings: warnings,
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/i18n/installed-extension/{installation_id}/activate",
+    summary = "Activate an installed translation catalog",
+    description = "Activates the exact local extension artifact at the expected catalog revision while preserving custom translations and overrides.",
+    params(("installation_id" = uuid::Uuid, Path, description = "Extension installation ID")),
+    request_body = ActivateInstalledI18nCatalogBody,
+    responses((status = 200, body = ActivateI18nCatalogResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn activate_installed_i18n_catalog(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(installation_id): Path<uuid::Uuid>,
+    Json(body): Json<ActivateInstalledI18nCatalogBody>,
+) -> Result<Json<ApiSuccess<ActivateI18nCatalogResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    require_root_catalog_actor(&state, &context.actor)?;
+    let (_, seed, warnings) = load_installed_i18n_catalog(&state, installation_id).await?;
+    let risk_override = body.integrity_override.map(|value| ExtensionRiskOverride {
+        reason: value.reason,
+        acknowledged_warnings: value.acknowledged_warnings,
+    });
+    if !validate_extension_integrity_override(&warnings, risk_override.as_ref())? {
+        return Err(
+            ControlPlaneError::Conflict("i18n_catalog_integrity_confirmation_required").into(),
+        );
+    }
+    let expected_revision = WorkspaceCatalogRevision::new(body.expected_revision)
+        .map_err(|_| invalid_input("expected_revision"))?;
+    let outcome = state
+        .official_i18n_catalog_update_service
+        .activate_installed(
+            OfficialI18nCatalogUpdateCommand {
+                workspace_id: context.actor.current_workspace_id,
+                expected_revision,
+            },
+            seed,
+        )
+        .await?;
+    let response = match outcome {
+        OfficialI18nCatalogUpdateOutcome::Current { catalog_version } => {
+            ActivateI18nCatalogResponse {
+                status: "current",
+                catalog_version: catalog_version.as_str().to_string(),
+                revision: expected_revision.value(),
+            }
+        }
+        OfficialI18nCatalogUpdateOutcome::Activated {
+            catalog_version,
+            state,
+        } => ActivateI18nCatalogResponse {
+            status: "activated",
+            catalog_version: catalog_version.as_str().to_string(),
             revision: state.revision().value(),
         },
     };

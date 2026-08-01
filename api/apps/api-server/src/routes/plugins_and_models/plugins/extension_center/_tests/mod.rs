@@ -33,19 +33,26 @@ use crate::official_extension_catalog::{
 
 use super::upload::upload_challenge;
 use super::{
-    artifact_preflight_challenge, extension_update_status, paginate_installed_families,
-    project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
-    validate_preflight_overrides, workspace_application_status, InstalledCatalogJoin,
-    PreflightDecision, UploadedExtensionArtifact,
+    artifact_preflight_challenge, catalog_application_action, default_application_status,
+    extension_update_status, paginate_installed_families, project_catalog_entry,
+    project_installed_catalog_joins, requested_installation_identity, validate_preflight_overrides,
+    InstalledCatalogJoin, PreflightDecision, UploadedExtensionArtifact,
 };
 
 #[test]
-fn delivery_1560_d5_ac_004_mcp_install_keeps_workspace_application_explicitly_not_imported() {
+fn delivery_1545_d6_ac_001_catalog_categories_expose_typed_application_actions() {
     assert_eq!(
-        workspace_application_status(super::ExtensionCatalogCategory::Mcp).as_deref(),
-        Some("not_imported")
+        catalog_application_action(super::ExtensionCatalogCategory::Mcp),
+        domain::ExtensionApplicationAction::ImportMcp
     );
-    assert!(workspace_application_status(super::ExtensionCatalogCategory::I18n).is_none());
+    assert_eq!(
+        catalog_application_action(super::ExtensionCatalogCategory::AgentFlow),
+        domain::ExtensionApplicationAction::ImportAgentFlow
+    );
+    assert_eq!(
+        default_application_status(domain::ExtensionApplicationAction::ImportAgentFlow),
+        "not_applied"
+    );
 }
 
 #[test]
@@ -181,6 +188,7 @@ fn installation_record(
         signing_key_id: Some("official-key-2026-04".to_string()),
         warnings: Vec::new(),
         receipt: json!({}),
+        application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
         status: domain::ExtensionInstallationStatus::Installed,
         installed_by: Uuid::now_v7(),
         created_at: updated_at,
@@ -261,6 +269,7 @@ async fn root_1545_bf1_exact_local_version_returns_without_catalog_network() {
                 declared_warnings: Vec::new(),
                 risk_override: None,
                 confirmation_receipt: None,
+                application_action: domain::ExtensionApplicationAction::ActivateI18n,
             })
             .await
             .unwrap();

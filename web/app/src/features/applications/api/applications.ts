@@ -7,9 +7,11 @@ import {
   getConsoleApplicationCatalog,
   getDefaultApiBaseUrl,
   importConsoleApplicationArchive,
+  importConsoleInstalledApplicationExtension,
   listConsoleApplicationEnvironmentVariables,
   listConsoleApplications,
   previewConsoleApplicationArchive,
+  previewConsoleInstalledApplicationExtension,
   replaceConsoleApplicationEnvironmentVariables,
   updateConsoleApplication,
   type ApiBaseUrlLocation,
@@ -181,6 +183,28 @@ export function importAgentFlowTemplate(
       name: input.name,
       description: input.description
     },
+    csrfToken,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function previewInstalledApplicationExtension(
+  extensionInstallationId: string
+) {
+  return previewConsoleInstalledApplicationExtension(
+    extensionInstallationId,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function importInstalledApplicationExtension(
+  extensionInstallationId: string,
+  input: Parameters<typeof importConsoleInstalledApplicationExtension>[1],
+  csrfToken: string
+) {
+  return importConsoleInstalledApplicationExtension(
+    extensionInstallationId,
+    input,
     csrfToken,
     getApplicationsApiBaseUrl()
   );

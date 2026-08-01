@@ -31,6 +31,11 @@ use control_plane::{
         ImportAgentFlowTemplateResult, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand,
     },
     i18n_catalog::CatalogResolver,
+    plugin_management::ExtensionInstallationService,
+    plugin_management::{
+        installed_extension_integrity_warnings, validate_extension_integrity_override,
+        ExtensionRiskOverride,
+    },
 };
 use domain::CatalogMessageIdentity;
 use orchestration_runtime::{
@@ -284,6 +289,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/applications/archive/installed-extension/:installation_id/preview",
+            console_get(preview_installed_application_extension, Authenticated),
+        )
+        .route(
+            "/applications/archive/installed-extension/:installation_id/import",
+            console_post(import_installed_application_extension, Authenticated),
+        )
+        .route(
             "/applications/orchestration/templates/official-catalog",
             console_get(list_official_agent_flow_template_catalog, Authenticated),
         )
@@ -424,6 +437,156 @@ async fn uploaded_application_archive_entry(
     Ok((single_application_entry(package)?, name, description))
 }
 
+async fn installed_application_archive_entry(
+    state: &ApiState,
+    installation_id: Uuid,
+) -> Result<
+    (
+        ApplicationArchiveEntry,
+        Vec<domain::ExtensionIntegrityWarning>,
+    ),
+    ApiError,
+> {
+    let installation =
+        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+            .find_local_installation_by_id(&state.api_node_id, installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
+    if installation.identity.category != domain::ExtensionCategory::AgentFlow
+        || installation.application_action != domain::ExtensionApplicationAction::ImportAgentFlow
+    {
+        return Err(ControlPlaneError::InvalidInput("agent_flow_extension_installation").into());
+    }
+    let bytes = tokio::fs::read(&installation.local_path).await?;
+    let warnings = installed_extension_integrity_warnings(&installation, &bytes);
+    let package = tokio::task::spawn_blocking(move || parse_application_archive(&bytes))
+        .await
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
+    Ok((single_application_entry(package)?, warnings))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ImportInstalledApplicationExtensionBody {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InstalledApplicationExtensionPreviewResponse {
+    pub extension_installation_id: String,
+    pub application_status: String,
+    #[schema(value_type = Vec<Object>)]
+    pub integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    #[schema(value_type = Option<Object>)]
+    pub required_integrity_override: Option<domain::ExtensionRiskChallenge>,
+    pub preview: AgentFlowTemplatePreviewResponse,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/archive/installed-extension/{installation_id}/preview",
+    summary = "Preview an installed Agent Flow extension",
+    description = "Loads the exact local extension artifact and returns the existing application import preview without creating an application.",
+    params(("installation_id" = Uuid, Path, description = "Extension installation ID")),
+    responses((status = 200, body = InstalledApplicationExtensionPreviewResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn preview_installed_application_extension(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(installation_id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<InstalledApplicationExtensionPreviewResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let (entry, warnings) = installed_application_archive_entry(&state, installation_id).await?;
+    let resources = FlowService::new(state.store.clone())
+        .load_agent_flow_template_resources(context.user.id)
+        .await?;
+    let preview = ApplicationArchiveService::new(state.store.clone())
+        .preview_archive(PreviewApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            entry,
+            resources,
+        })
+        .await?;
+    let applied = control_plane::ports::ApplicationRepository::has_application_extension_source(
+        &state.store,
+        context.actor.current_workspace_id,
+        installation_id,
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(
+        InstalledApplicationExtensionPreviewResponse {
+            extension_installation_id: installation_id.to_string(),
+            application_status: if applied { "applied" } else { "not_applied" }.to_string(),
+            required_integrity_override: (!warnings.is_empty()).then(|| {
+                domain::ExtensionRiskChallenge {
+                    warnings: warnings.clone(),
+                    compatibility: None,
+                }
+            }),
+            integrity_warnings: warnings,
+            preview: to_template_preview_response(preview),
+        },
+    )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/archive/installed-extension/{installation_id}/import",
+    summary = "Import an installed Agent Flow extension",
+    description = "Imports the exact local extension artifact into the current workspace and records its application provenance.",
+    params(("installation_id" = Uuid, Path, description = "Extension installation ID")),
+    request_body = ImportInstalledApplicationExtensionBody,
+    responses((status = 201, body = ImportAgentFlowTemplateResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn import_installed_application_extension(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(installation_id): Path<Uuid>,
+    Json(body): Json<ImportInstalledApplicationExtensionBody>,
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiSuccess<ImportAgentFlowTemplateResponse>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
+    let (entry, warnings) = installed_application_archive_entry(&state, installation_id).await?;
+    let risk_override = body.integrity_override.map(|value| ExtensionRiskOverride {
+        reason: value.reason,
+        acknowledged_warnings: value.acknowledged_warnings,
+    });
+    if !validate_extension_integrity_override(&warnings, risk_override.as_ref())? {
+        return Err(ControlPlaneError::Conflict(
+            "agent_flow_extension_integrity_confirmation_required",
+        )
+        .into());
+    }
+    let resources = FlowService::new(state.store.clone())
+        .load_agent_flow_template_resources(context.user.id)
+        .await?;
+    let imported = ApplicationArchiveService::new(state.store.clone())
+        .import_archive(ImportApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            entry,
+            name: body.name,
+            description: body.description,
+            resources,
+            source_extension_installation_id: Some(installation_id),
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(
+            to_import_response(&state, &locale, imported).await?,
+        )),
+    ))
+}
+
 #[utoipa::path(
     post,
     path = "/api/console/applications/archive/preview",
@@ -491,6 +654,7 @@ pub async fn import_application_archive(
             name,
             description,
             resources,
+            source_extension_installation_id: None,
         })
         .await?;
     Ok((

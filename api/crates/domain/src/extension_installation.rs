@@ -138,6 +138,39 @@ impl ExtensionInstallationStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ExtensionApplicationAction {
+    None,
+    ImportAgentFlow,
+    ImportMcp,
+    ActivateI18n,
+    ConfigureModelProvider,
+}
+
+impl ExtensionApplicationAction {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ImportAgentFlow => "import_agent_flow",
+            Self::ImportMcp => "import_mcp",
+            Self::ActivateI18n => "activate_i18n",
+            Self::ConfigureModelProvider => "configure_model_provider",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "none" => Some(Self::None),
+            "import_agent_flow" => Some(Self::ImportAgentFlow),
+            "import_mcp" => Some(Self::ImportMcp),
+            "activate_i18n" => Some(Self::ActivateI18n),
+            "configure_model_provider" => Some(Self::ConfigureModelProvider),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExtensionSignatureStatus {
     Verified,
     Missing,
@@ -212,6 +245,7 @@ pub struct ExtensionInstallationRecord {
     pub signing_key_id: Option<String>,
     pub warnings: Vec<ExtensionIntegrityWarning>,
     pub receipt: serde_json::Value,
+    pub application_action: ExtensionApplicationAction,
     pub status: ExtensionInstallationStatus,
     pub installed_by: Uuid,
     pub created_at: OffsetDateTime,

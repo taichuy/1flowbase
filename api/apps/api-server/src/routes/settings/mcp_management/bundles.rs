@@ -433,6 +433,15 @@ async fn import_official_bundle(
             current_system_version: current_system_version(),
         })
         .await?;
+    if let Some(extension_installation_id) = source.extension_installation_id {
+        service
+            .record_extension_bundle_import(
+                context.user.id,
+                extension_installation_id,
+                &report.status,
+            )
+            .await?;
+    }
     let response = match source.extension_installation_id {
         Some(extension_installation_id) => {
             McpBundleImportSourceResponse::InstalledExtension(InstalledMcpExtensionImportResponse {
