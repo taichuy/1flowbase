@@ -1,8 +1,11 @@
 import {
   checkConsoleExtensionUpdates,
+  getConsoleExtensionCatalogEntry,
+  getConsoleExtensionRiskChallenge,
   installConsoleExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
+  uploadConsoleExtension,
   type ConsoleExtensionCatalogEntry,
   type ConsoleExtensionCategory,
   type ConsoleExtensionCompatibilityOverride,
@@ -41,6 +44,13 @@ export function fetchSettingsExtensionCatalog(
   return listConsoleExtensionCatalog(category, cursor);
 }
 
+export function fetchSettingsExtensionCatalogEntry(
+  category: SettingsExtensionCategory,
+  artifactId: string
+) {
+  return getConsoleExtensionCatalogEntry(category, artifactId);
+}
+
 export function checkSettingsExtensionUpdates(
   input: Parameters<typeof checkConsoleExtensionUpdates>[0],
   csrfToken: string
@@ -68,3 +78,13 @@ export function installSettingsExtension(
     update
   );
 }
+
+export function uploadSettingsExtension(
+  file: File,
+  csrfToken: string,
+  overrides: Parameters<typeof uploadConsoleExtension>[2] = {}
+) {
+  return uploadConsoleExtension(file, csrfToken, overrides);
+}
+
+export { getConsoleExtensionRiskChallenge as getSettingsExtensionRiskChallenge };

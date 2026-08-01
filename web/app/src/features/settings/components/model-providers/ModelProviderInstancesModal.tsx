@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
 import {
-  Alert,
   Button,
   Empty,
   Space,
@@ -81,7 +80,6 @@ export function ModelProviderInstancesModal({
   refreshing,
   deleting,
   canManage,
-  versionSwitchNotice,
   onClose,
   onEdit,
   onRefreshCandidates,
@@ -104,10 +102,6 @@ export function ModelProviderInstancesModal({
   refreshing: boolean;
   deleting: boolean;
   canManage: boolean;
-  versionSwitchNotice: {
-    targetVersion: string | null;
-    migratedInstanceCount: number | null;
-  } | null;
   onClose: () => void;
   onEdit: (instance: SettingsModelProviderInstance) => void;
   onRefreshCandidates: (instance: SettingsModelProviderInstance) => void;
@@ -267,26 +261,6 @@ export function ModelProviderInstancesModal({
         scrollBodyClassName="model-provider-panel__instances-modal"
       >
         <>
-          {versionSwitchNotice ? (
-            <Alert
-              type="warning"
-              showIcon
-              message={i18nText('settings', 'auto.text')}
-              description={
-                versionSwitchNotice.targetVersion
-                  ? i18nText(
-                      'settings',
-                      'auto.target_version_instances_migrated',
-                      {
-                        value1: versionSwitchNotice.targetVersion,
-                        value2: versionSwitchNotice.migratedInstanceCount ?? 0
-                      }
-                    )
-                  : undefined
-              }
-            />
-          ) : null}
-
           <Tabs
             className="model-provider-panel__instances-tabs"
             defaultActiveKey="models"

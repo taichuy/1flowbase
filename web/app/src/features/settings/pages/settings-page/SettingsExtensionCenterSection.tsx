@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,33 +8,51 @@ import {
   Drawer,
   Empty,
   Flex,
+  List,
   Modal,
   Space,
   Table,
   Tabs,
   Tag,
   Tooltip,
+  Typography,
+  Upload,
   message,
-  type TableColumnsType
+  type TableColumnsType,
+  type UploadFile
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
+import { useAuthStore } from '../../../../state/auth-store';
 import {
   checkSettingsExtensionUpdates,
   fetchSettingsExtensionCatalog,
+  fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
+  getSettingsExtensionRiskChallenge,
   installSettingsExtension,
   settingsExtensionCatalogQueryKey,
   settingsInstalledExtensionsQueryKey,
+  uploadSettingsExtension,
   type SettingsExtensionCatalogEntry,
   type SettingsExtensionCategory,
   type SettingsInstalledExtension
 } from '../../api/extensions';
-import { useAuthStore } from '../../../../state/auth-store';
+import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
-type UpdateState = 'current' | 'update_available' | 'unknown_error';
+type UpdateState =
+  | 'checking'
+  | 'current'
+  | 'update_available'
+  | 'unknown_error';
+type ExtensionOperation =
+  | {
+      kind: 'catalog';
+      entry: SettingsExtensionCatalogEntry;
+      update: boolean;
+    }
+  | { kind: 'upload'; file: File };
 
 const CATEGORIES: SettingsExtensionCategory[] = [
   'agent-flow',
@@ -47,6 +65,10 @@ const CATEGORIES: SettingsExtensionCategory[] = [
 
 function isInstalledRow(row: ExtensionRow): row is SettingsInstalledExtension {
   return 'installation' in row;
+}
+
+function extensionKey(row: Pick<ExtensionRow, 'category' | 'artifact_id'>) {
+  return `${row.category}:${row.artifact_id}`;
 }
 
 export function SettingsExtensionCenterSection() {
@@ -62,6 +84,11 @@ export function SettingsExtensionCenterSection() {
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {}
   );
+  const [resolvingUpdateKey, setResolvingUpdateKey] = useState<string | null>(
+    null
+  );
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
 
   const installedQuery = useQuery({
     queryKey: settingsInstalledExtensionsQueryKey(cursor),
@@ -82,17 +109,33 @@ export function SettingsExtensionCenterSection() {
     retry: false
   });
 
+  const rows: ExtensionRow[] = useMemo(
+    () =>
+      activeTab === 'installed'
+        ? (installedQuery.data?.entries ?? [])
+        : (catalogQuery.data?.entries ?? []),
+    [activeTab, catalogQuery.data?.entries, installedQuery.data?.entries]
+  );
+
   useEffect(() => {
-    if (activeTab !== 'installed' || !installedQuery.data || !csrfToken) return;
-    const groups = new Map<
-      SettingsExtensionCategory,
-      SettingsInstalledExtension[]
-    >();
-    for (const entry of installedQuery.data.entries) {
-      const group = groups.get(entry.category) ?? [];
-      group.push(entry);
-      groups.set(entry.category, group);
+    if (!csrfToken || rows.length === 0) return;
+
+    const checkableRows = rows.filter(
+      (row) => isInstalledRow(row) || row.current_version !== null
+    );
+    const groups = new Map<SettingsExtensionCategory, ExtensionRow[]>();
+    for (const row of checkableRows) {
+      const group = groups.get(row.category) ?? [];
+      group.push(row);
+      groups.set(row.category, group);
     }
+    if (groups.size === 0) return;
+
+    const checking = Object.fromEntries(
+      checkableRows.map((row) => [extensionKey(row), 'checking' as const])
+    );
+    setUpdateStates((current) => ({ ...current, ...checking }));
+
     let cancelled = false;
     void Promise.all(
       [...groups.entries()].map(async ([category, entries]) => {
@@ -100,74 +143,114 @@ export function SettingsExtensionCenterSection() {
           const result = await checkSettingsExtensionUpdates(
             {
               category,
-              catalog_page: null,
+              catalog_page:
+                activeTab === 'installed'
+                  ? null
+                  : (catalogQuery.data?.catalog_page ?? null),
               items: entries.map((entry) => ({
                 artifact_id: entry.artifact_id,
-                current_version: entry.current_version
+                current_version: isInstalledRow(entry)
+                  ? entry.current_version
+                  : entry.current_version!
               }))
             },
             csrfToken
           );
           return result.items.map(
-            (item) => [item.artifact_id, item.status] as const
+            (item) => [`${category}:${item.artifact_id}`, item.status] as const
           );
         } catch {
           return entries.map(
-            (entry) => [entry.artifact_id, 'unknown_error'] as const
+            (entry) => [extensionKey(entry), 'unknown_error'] as const
           );
         }
       })
-    ).then((groupsResult) => {
-      if (!cancelled) setUpdateStates(Object.fromEntries(groupsResult.flat()));
+    ).then((results) => {
+      if (!cancelled) {
+        setUpdateStates((current) => ({
+          ...current,
+          ...Object.fromEntries(results.flat())
+        }));
+      }
     });
+
     return () => {
       cancelled = true;
     };
-  }, [activeTab, csrfToken, installedQuery.data]);
+  }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, cursor, rows]);
 
-  const installMutation = useMutation({
-    mutationFn: ({
-      entry,
-      update
+  const operationMutation = useMutation({
+    mutationFn: async ({
+      operation,
+      overrides = {}
     }: {
-      entry: SettingsExtensionCatalogEntry;
-      update: boolean;
+      operation: ExtensionOperation;
+      overrides?: Parameters<typeof uploadSettingsExtension>[2];
     }) => {
       if (!csrfToken) throw new Error('csrf token required');
-      const warningCodes = entry.warnings
-        .filter((item) => item.overridable)
-        .map((item) => item.code);
-      return installSettingsExtension(
-        entry,
-        csrfToken,
-        {
-          ...(warningCodes.length > 0
-            ? {
+      try {
+        if (operation.kind === 'upload') {
+          await uploadSettingsExtension(operation.file, csrfToken, overrides);
+        } else {
+          await installSettingsExtension(
+            operation.entry,
+            csrfToken,
+            overrides,
+            operation.update
+          );
+        }
+        return { challenge: null, operation };
+      } catch (error) {
+        const challenge = getSettingsExtensionRiskChallenge(error);
+        if (!challenge) throw error;
+        return { challenge, operation };
+      }
+    },
+    onSuccess: async ({ challenge, operation }) => {
+      if (challenge) {
+        Modal.confirm({
+          title: t('auto.risk_warnings'),
+          content: (
+            <List
+              size="small"
+              dataSource={challenge.warnings}
+              renderItem={(warning) => <List.Item>{warning.message}</List.Item>}
+            />
+          ),
+          okText: t('auto.confirm'),
+          cancelText: t('auto.cancel'),
+          onOk: () =>
+            operationMutation.mutateAsync({
+              operation,
+              overrides: {
                 risk_override: {
                   reason: 'user_confirmed',
-                  acknowledged_warnings: warningCodes
-                }
+                  acknowledged_warnings: challenge.warnings.map(
+                    (warning) => warning.code
+                  )
+                },
+                ...(challenge.compatibility
+                  ? {
+                      compatibility_override: {
+                        reason: challenge.compatibility.reason,
+                        acknowledged_current_host_version:
+                          challenge.compatibility.current_host_version,
+                        acknowledged_minimum_host_version:
+                          challenge.compatibility.minimum_host_version
+                      }
+                    }
+                  : {})
               }
-            : {}),
-          ...(entry.warnings.some(
-            (item) => item.code === 'below_minimum_host_version'
-          ) &&
-          entry.current_host_version &&
-          entry.minimum_host_version
-            ? {
-                compatibility_override: {
-                  reason: 'below_minimum_host_version' as const,
-                  acknowledged_current_host_version: entry.current_host_version,
-                  acknowledged_minimum_host_version: entry.minimum_host_version
-                }
-              }
-            : {})
-        },
-        update
-      );
-    },
-    onSuccess: async () => {
+            })
+        });
+        return;
+      }
+
       message.success(t('auto.extension_operation_submitted'));
+      if (operation.kind === 'upload') {
+        setUploadOpen(false);
+        setUploadFiles([]);
+      }
       await queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
       });
@@ -175,29 +258,39 @@ export function SettingsExtensionCenterSection() {
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
 
-  const rows: ExtensionRow[] =
-    activeTab === 'installed'
-      ? (installedQuery.data?.entries ?? [])
-      : (catalogQuery.data?.entries ?? []);
-  const nextCursor =
-    activeTab === 'installed'
-      ? installedQuery.data?.next_cursor
-      : catalogQuery.data?.next_cursor;
-
-  const confirmInstall = (
-    entry: SettingsExtensionCatalogEntry,
-    update: boolean
-  ) => {
-    const hasWarnings = entry.warnings.length > 0;
+  const submitOperation = (operation: ExtensionOperation) => {
     Modal.confirm({
-      title: update ? t('auto.update_extension') : t('auto.install_extension'),
-      content: hasWarnings
-        ? t('auto.extension_warning_confirmation')
-        : t('auto.extension_install_confirmation'),
+      title:
+        operation.kind === 'upload'
+          ? t('auto.upload_plugin')
+          : operation.update
+            ? t('auto.update_extension')
+            : t('auto.install_extension'),
+      content: t('auto.extension_install_confirmation'),
       okText: t('auto.confirm'),
       cancelText: t('auto.cancel'),
-      onOk: () => installMutation.mutateAsync({ entry, update })
+      onOk: () => operationMutation.mutateAsync({ operation })
     });
+  };
+
+  const resolveInstalledUpdate = async (row: SettingsInstalledExtension) => {
+    const key = extensionKey(row);
+    setResolvingUpdateKey(key);
+    try {
+      const entry = await fetchSettingsExtensionCatalogEntry(
+        row.category,
+        row.artifact_id
+      );
+      submitOperation({ kind: 'catalog', entry, update: true });
+    } catch {
+      setUpdateStates((current) => ({
+        ...current,
+        [key]: 'unknown_error'
+      }));
+      message.error(t('auto.extension_operation_failed'));
+    } finally {
+      setResolvingUpdateKey(null);
+    }
   };
 
   const columns: TableColumnsType<ExtensionRow> = [
@@ -208,7 +301,7 @@ export function SettingsExtensionCenterSection() {
       ellipsis: true
     },
     {
-      title: t('auto.type'),
+      title: t('auto.kind'),
       dataIndex: 'category',
       key: 'category',
       render: (value: string) => <Tag>{value}</Tag>
@@ -222,10 +315,7 @@ export function SettingsExtensionCenterSection() {
     {
       title: t('auto.current_version'),
       key: 'current_version',
-      render: (_, row) =>
-        isInstalledRow(row)
-          ? row.current_version
-          : (row.current_version ?? row.latest_version)
+      render: (_, row) => row.current_version ?? '—'
     },
     {
       title: t('auto.system_requirements'),
@@ -245,45 +335,71 @@ export function SettingsExtensionCenterSection() {
       key: 'actions',
       fixed: 'right',
       render: (_, row) => {
-        const updateState = updateStates[row.artifact_id];
+        const key = extensionKey(row);
+        const updateState = updateStates[key];
         const action = isInstalledRow(row) ? (
-          <Tooltip
-            title={
-              updateState === 'update_available'
-                ? t('auto.update_available')
-                : updateState === 'unknown_error'
-                  ? t('auto.update_check_failed')
-                  : t('auto.current_version_is_latest')
-            }
-          >
+          <span data-update-state={updateState ?? 'unknown_error'}>
+            <Tooltip
+              title={
+                updateState === 'update_available'
+                  ? t('auto.update_available')
+                  : updateState === 'current'
+                    ? t('auto.currently_latest_version')
+                    : t('auto.update_check_failed')
+              }
+            >
+              <Badge
+                dot
+                color={
+                  updateState === 'update_available'
+                    ? '#ffba00'
+                    : updateState === 'current'
+                      ? 'transparent'
+                      : '#fb565b'
+                }
+              >
+                <Button
+                  type="link"
+                  loading={resolvingUpdateKey === key}
+                  onClick={() => void resolveInstalledUpdate(row)}
+                >
+                  {t('auto.update')}
+                </Button>
+              </Badge>
+            </Tooltip>
+          </span>
+        ) : (
+          <span data-update-state={updateState ?? 'not_installed'}>
             <Badge
               dot
               color={
-                updateState === 'update_available'
-                  ? '#ffba00'
-                  : updateState === 'unknown_error'
-                    ? '#fb565b'
-                    : 'transparent'
+                row.installation_status === 'not_installed'
+                  ? 'transparent'
+                  : updateState === 'update_available'
+                    ? '#ffba00'
+                    : updateState === 'current'
+                      ? 'transparent'
+                      : '#fb565b'
               }
             >
-              <Button type="link" onClick={() => setActiveTab(row.category)}>
-                {t('auto.update')}
+              <Button
+                type="link"
+                loading={operationMutation.isPending}
+                onClick={() =>
+                  submitOperation({
+                    kind: 'catalog',
+                    entry: row,
+                    update: row.installation_status !== 'not_installed'
+                  })
+                }
+              >
+                {row.installation_status === 'not_installed'
+                  ? t('auto.install')
+                  : t('auto.update')}
               </Button>
             </Badge>
-          </Tooltip>
-        ) : row.artifact_kind ? (
-          <Button
-            type="link"
-            loading={installMutation.isPending}
-            onClick={() =>
-              confirmInstall(row, row.installation_status !== 'not_installed')
-            }
-          >
-            {row.installation_status === 'not_installed'
-              ? t('auto.install')
-              : t('auto.update')}
-          </Button>
-        ) : null;
+          </span>
+        );
         return (
           <Space size={4}>
             {action}
@@ -296,11 +412,21 @@ export function SettingsExtensionCenterSection() {
     }
   ];
 
+  const nextCursor =
+    activeTab === 'installed'
+      ? installedQuery.data?.next_cursor
+      : catalogQuery.data?.next_cursor;
+
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
         <Tabs
           activeKey={activeTab}
+          tabBarExtraContent={
+            <Button onClick={() => setUploadOpen(true)}>
+              {t('auto.upload_plugin')}
+            </Button>
+          }
           onChange={(key) => {
             setActiveTab(key as typeof activeTab);
             setCursor(undefined);
@@ -315,7 +441,7 @@ export function SettingsExtensionCenterSection() {
           ]}
         />
         <Table<ExtensionRow>
-          rowKey="artifact_id"
+          rowKey={(row) => extensionKey(row)}
           columns={columns}
           dataSource={rows}
           loading={installedQuery.isLoading || catalogQuery.isLoading}
@@ -348,6 +474,7 @@ export function SettingsExtensionCenterSection() {
           </Button>
         </Flex>
       </Flex>
+
       <Drawer
         open={Boolean(selected)}
         title={selected?.display_name}
@@ -356,16 +483,14 @@ export function SettingsExtensionCenterSection() {
       >
         {selected ? (
           <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label={t('auto.type')}>
+            <Descriptions.Item label={t('auto.kind')}>
               {selected.category}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.description')}>
               {selected.description ?? '—'}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.current_version')}>
-              {isInstalledRow(selected)
-                ? selected.current_version
-                : (selected.current_version ?? selected.latest_version)}
+              {selected.current_version ?? '—'}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.system_requirements')}>
               {selected.system_requirements ?? '—'}
@@ -379,6 +504,40 @@ export function SettingsExtensionCenterSection() {
           </Descriptions>
         ) : null}
       </Drawer>
+
+      <Modal
+        open={uploadOpen}
+        title={t('auto.upload_plugin')}
+        okText={t('auto.upload_and_install')}
+        cancelText={t('auto.cancel')}
+        confirmLoading={operationMutation.isPending}
+        onCancel={() => {
+          setUploadOpen(false);
+          setUploadFiles([]);
+        }}
+        onOk={() => {
+          const file = uploadFiles[0]?.originFileObj;
+          if (!(file instanceof File)) {
+            message.warning(t('auto.select_plug_package_first'));
+            return;
+          }
+          submitOperation({ kind: 'upload', file });
+        }}
+      >
+        <Typography.Paragraph type="secondary">
+          {t(
+            'auto.supports_one_flowbasepkg_compatible_tar_gz_zip_uploading_host_backend'
+          )}
+        </Typography.Paragraph>
+        <Upload
+          maxCount={1}
+          fileList={uploadFiles}
+          beforeUpload={() => false}
+          onChange={({ fileList }) => setUploadFiles(fileList.slice(-1))}
+        >
+          <Button>{t('auto.upload_plugin')}</Button>
+        </Upload>
+      </Modal>
     </SettingsSectionSurface>
   );
 }

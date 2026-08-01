@@ -17,55 +17,19 @@ import {
   type SettingsModelProviderMainInstance
 } from '../../../api/model-providers';
 import {
-  deleteSettingsPluginFamily,
-  installSettingsPluginCurrentNodeArtifact,
-  installSettingsOfficialPlugin,
-  refreshSettingsPluginCurrentNodeArtifact,
-  settingsOfficialPluginsQueryKey,
-  settingsPluginFamiliesQueryKey,
-  switchSettingsPluginFamilyVersion,
-  type SettingsPluginCompatibilityOverride,
-  upgradeSettingsPluginFamilyLatest,
-  uploadSettingsPluginPackage
-} from '../../../api/plugins';
-import { formatPluginAvailabilityStatus } from '../../../components/model-providers/plugin-installation-status';
-import {
-  formatTrustLabel,
-  isTaskSucceeded,
-  isTaskTerminal,
   MODEL_PROVIDER_MAIN_INSTANCE_QUERY_KEY_PREFIX,
   MODEL_PROVIDER_MODELS_QUERY_KEY_PREFIX,
-  type ModelProviderDrawerState,
-  type ModelProviderInstanceModalState,
-  type OfficialInstallState,
-  type RecentVersionSwitchNotice,
-  type UploadResultSummary
+  type ModelProviderDrawerState
 } from './shared';
-import { i18nText } from '../../../../../shared/i18n/text';
-import { frontstageBlockCatalogQueryKeyPrefix } from '../../../../frontstage/api/block-catalog';
 
 export function useModelProviderMutations({
   csrfToken,
   queryClient,
-  setDrawerState,
-  setInstanceModalState,
-  setOfficialInstallState,
-  setUploadValidationMessage,
-  setUploadResultSummary,
-  setRecentVersionSwitchNotice
+  setDrawerState
 }: {
   csrfToken: string | null;
   queryClient: QueryClient;
   setDrawerState: Dispatch<SetStateAction<ModelProviderDrawerState>>;
-  setInstanceModalState: Dispatch<
-    SetStateAction<ModelProviderInstanceModalState>
-  >;
-  setOfficialInstallState: Dispatch<SetStateAction<OfficialInstallState>>;
-  setUploadValidationMessage: Dispatch<SetStateAction<string | null>>;
-  setUploadResultSummary: Dispatch<SetStateAction<UploadResultSummary>>;
-  setRecentVersionSwitchNotice: Dispatch<
-    SetStateAction<RecentVersionSwitchNotice>
-  >;
 }) {
   async function invalidateModelProviderQueries() {
     await Promise.all([
@@ -76,9 +40,6 @@ export function useModelProviderMutations({
         queryKey: settingsModelProviderInstancesQueryKey
       }),
       queryClient.invalidateQueries({
-        queryKey: settingsPluginFamiliesQueryKey
-      }),
-      queryClient.invalidateQueries({
         queryKey: settingsModelProviderOptionsQueryKey
       }),
       queryClient.invalidateQueries({
@@ -86,22 +47,8 @@ export function useModelProviderMutations({
       }),
       queryClient.invalidateQueries({
         queryKey: MODEL_PROVIDER_MODELS_QUERY_KEY_PREFIX
-      }),
-      queryClient.invalidateQueries({
-        queryKey: settingsOfficialPluginsQueryKey
       })
     ]);
-  }
-
-  async function invalidatePluginContributionQueries() {
-    await invalidateModelProviderQueries();
-    await queryClient.invalidateQueries({
-      queryKey: frontstageBlockCatalogQueryKeyPrefix
-    });
-    queryClient.removeQueries({
-      queryKey: frontstageBlockCatalogQueryKeyPrefix,
-      type: 'inactive'
-    });
   }
 
   const createMutation = useMutation({
@@ -293,188 +240,6 @@ export function useModelProviderMutations({
     onSuccess: invalidateModelProviderQueries
   });
 
-  const familyDeleteMutation = useMutation({
-    mutationFn: async (providerCode: string) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return deleteSettingsPluginFamily(providerCode, csrfToken);
-    },
-    onSuccess: async () => {
-      setDrawerState(null);
-      setInstanceModalState(null);
-      await invalidatePluginContributionQueries();
-    }
-  });
-
-  const officialInstallMutation = useMutation({
-    mutationFn: async (input: {
-      pluginId: string;
-      compatibilityOverride?: SettingsPluginCompatibilityOverride;
-    }) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      if (input.compatibilityOverride) {
-        return installSettingsOfficialPlugin(
-          input.pluginId,
-          csrfToken,
-          input.compatibilityOverride
-        );
-      }
-
-      return installSettingsOfficialPlugin(input.pluginId, csrfToken);
-    },
-    onMutate: (input) => {
-      setOfficialInstallState({
-        pluginId: input.pluginId,
-        taskId: null,
-        status: 'installing'
-      });
-    },
-    onSuccess: async (result, input) => {
-      if (result.task.finished_at || isTaskTerminal(result.task.status)) {
-        const status = isTaskSucceeded(result.task.status)
-          ? 'success'
-          : 'failed';
-        setOfficialInstallState({
-          pluginId: input.pluginId,
-          taskId: null,
-          status
-        });
-        if (status === 'success') {
-          await invalidatePluginContributionQueries();
-        }
-        return;
-      }
-
-      setOfficialInstallState({
-        pluginId: input.pluginId,
-        taskId: result.task.id,
-        status: 'installing'
-      });
-    },
-    onError: (_error, input) => {
-      setOfficialInstallState({
-        pluginId: input.pluginId,
-        taskId: null,
-        status: 'failed'
-      });
-    }
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return uploadSettingsPluginPackage(file, csrfToken);
-    },
-    onSuccess: async (result) => {
-      setUploadValidationMessage(null);
-      setUploadResultSummary({
-        displayName: result.installation.display_name,
-        version: result.installation.plugin_version,
-        trustLabel: formatTrustLabel(result.installation.trust_level),
-        availabilityLabel: formatPluginAvailabilityStatus(
-          result.installation.availability_status
-        ).label
-      });
-      await invalidatePluginContributionQueries();
-    }
-  });
-
-  const refreshCurrentNodeArtifactMutation = useMutation({
-    mutationFn: async (installationId: string) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return refreshSettingsPluginCurrentNodeArtifact(
-        installationId,
-        csrfToken
-      );
-    },
-    onSuccess: invalidatePluginContributionQueries
-  });
-
-  const installCurrentNodeArtifactMutation = useMutation({
-    mutationFn: async (installationId: string) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return installSettingsPluginCurrentNodeArtifact(
-        installationId,
-        csrfToken
-      );
-    },
-    onSuccess: invalidatePluginContributionQueries
-  });
-
-  const versionMutation = useMutation({
-    mutationFn: async (
-      input:
-        | {
-            mode: 'upgrade';
-            providerCode: string;
-            compatibilityOverride?: SettingsPluginCompatibilityOverride;
-          }
-        | { mode: 'switch'; providerCode: string; installationId: string }
-    ) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      const task =
-        input.mode === 'upgrade'
-          ? input.compatibilityOverride
-            ? upgradeSettingsPluginFamilyLatest(
-                input.providerCode,
-                csrfToken,
-                input.compatibilityOverride
-              )
-            : upgradeSettingsPluginFamilyLatest(input.providerCode, csrfToken)
-          : switchSettingsPluginFamilyVersion(
-              input.providerCode,
-              input.installationId,
-              csrfToken
-            );
-
-      const resolvedTask = await task;
-      if (
-        isTaskTerminal(resolvedTask.status) &&
-        !isTaskSucceeded(resolvedTask.status)
-      ) {
-        throw new Error(
-          resolvedTask.status_message ??
-            i18nText('settings', 'auto.version_switching_failed')
-        );
-      }
-
-      return resolvedTask;
-    },
-    onSuccess: async (task, variables) => {
-      const detail = task.detail_json ?? {};
-
-      setRecentVersionSwitchNotice({
-        providerCode: variables.providerCode,
-        targetVersion:
-          typeof detail.target_version === 'string'
-            ? detail.target_version
-            : null,
-        migratedInstanceCount:
-          typeof detail.migrated_instance_count === 'number'
-            ? detail.migrated_instance_count
-            : null
-      });
-      await invalidatePluginContributionQueries();
-    }
-  });
-
   return {
     createMutation,
     updateMutation,
@@ -484,12 +249,6 @@ export function useModelProviderMutations({
     validateMutation,
     refreshMutation,
     revealSecretMutation,
-    deleteMutation,
-    familyDeleteMutation,
-    officialInstallMutation,
-    uploadMutation,
-    refreshCurrentNodeArtifactMutation,
-    installCurrentNodeArtifactMutation,
-    versionMutation
+    deleteMutation
   };
 }

@@ -16,15 +16,8 @@ import {
   type SettingsModelProviderOptions
 } from '../../../api/model-providers';
 import {
-  fetchSettingsOfficialPluginCatalog,
-  fetchSettingsPluginFamilies,
-  settingsOfficialPluginsQueryKey,
-  settingsPluginFamiliesQueryKey
-} from '../../../api/plugins';
-import {
   EMPTY_MODEL_PROVIDER_CATALOG,
   EMPTY_MODEL_PROVIDER_INSTANCES,
-  EMPTY_PLUGIN_FAMILIES,
   IDLE_MODEL_PROVIDER_MODELS_QUERY_KEY,
   MODEL_PROVIDER_MAIN_INSTANCE_QUERY_KEY_PREFIX,
   type ModelProviderDrawerState,
@@ -38,38 +31,19 @@ import {
 
 export function useModelProviderData({
   drawerState,
-  instanceModalState,
-  officialSearchQuery
+  instanceModalState
 }: {
   drawerState: ModelProviderDrawerState;
   instanceModalState: ModelProviderInstanceModalState;
-  officialSearchQuery?: string;
 }) {
   const { i18n } = useTranslation();
   const appLocale =
     toAppLocale(i18n.resolvedLanguage) ??
     toAppLocale(i18n.language) ??
     FALLBACK_APP_LOCALE;
-  const normalizedOfficialSearchQuery = officialSearchQuery?.trim() ?? '';
   const catalogQuery = useQuery({
     queryKey: [...settingsModelProviderCatalogQueryKey, appLocale],
     queryFn: () => fetchSettingsModelProviderCatalog(appLocale)
-  });
-  const familiesQuery = useQuery({
-    queryKey: [...settingsPluginFamiliesQueryKey, appLocale],
-    queryFn: () => fetchSettingsPluginFamilies(appLocale)
-  });
-  const officialCatalogQuery = useQuery({
-    queryKey: [
-      ...settingsOfficialPluginsQueryKey,
-      appLocale,
-      normalizedOfficialSearchQuery
-    ],
-    queryFn: () =>
-      fetchSettingsOfficialPluginCatalog({
-        locale: appLocale,
-        q: normalizedOfficialSearchQuery || undefined
-      })
   });
   const instancesQuery = useQuery({
     queryKey: settingsModelProviderInstancesQueryKey,
@@ -82,17 +56,7 @@ export function useModelProviderData({
 
   const instances = instancesQuery.data ?? EMPTY_MODEL_PROVIDER_INSTANCES;
   const catalogEntries = catalogQuery.data ?? EMPTY_MODEL_PROVIDER_CATALOG;
-  const families = familiesQuery.data ?? EMPTY_PLUGIN_FAMILIES;
-  const officialCatalogEntries = officialCatalogQuery.data?.entries ?? [];
   const providerOptions = optionsQuery.data?.providers;
-  const officialSourceMeta = officialCatalogQuery.data
-    ? {
-        sourceKind: officialCatalogQuery.data.source_kind,
-        sourceLabel: officialCatalogQuery.data.source_label,
-        registryUrl: officialCatalogQuery.data.registry_url,
-        sourceFreshness: officialCatalogQuery.data.source_freshness
-      }
-    : null;
 
   const catalogEntriesByInstallationId = useMemo(() => {
     const grouped: Record<string, (typeof catalogEntries)[number]> = {};
@@ -104,30 +68,15 @@ export function useModelProviderData({
     return grouped;
   }, [catalogEntries]);
 
-  const currentCatalogEntriesByProviderCode = useMemo(() => {
+  const catalogEntriesByProviderCode = useMemo(() => {
     const grouped: Record<string, (typeof catalogEntries)[number] | null> = {};
 
-    for (const family of families) {
-      grouped[family.provider_code] =
-        catalogEntriesByInstallationId[family.current_installation_id] ??
-        catalogEntries.find(
-          (entry) => entry.provider_code === family.provider_code
-        ) ??
-        null;
+    for (const entry of catalogEntries) {
+      grouped[entry.provider_code] = entry;
     }
 
     return grouped;
-  }, [catalogEntries, catalogEntriesByInstallationId, families]);
-
-  const familiesByProviderCode = useMemo(() => {
-    const grouped: Record<string, (typeof families)[number]> = {};
-
-    for (const family of families) {
-      grouped[family.provider_code] = family;
-    }
-
-    return grouped;
-  }, [families]);
+  }, [catalogEntries]);
 
   const instancesByProviderCode = useMemo(() => {
     const grouped: Record<string, typeof instances> = {};
@@ -161,12 +110,12 @@ export function useModelProviderData({
 
   const drawerCatalogEntry =
     drawerState?.mode === 'create'
-      ? (currentCatalogEntriesByProviderCode[drawerState.providerCode] ??
+      ? (catalogEntriesByProviderCode[drawerState.providerCode] ??
         catalogEntries[0] ??
         null)
       : editingInstance
         ? (catalogEntriesByInstallationId[editingInstance.installation_id] ??
-          currentCatalogEntriesByProviderCode[editingInstance.provider_code] ??
+          catalogEntriesByProviderCode[editingInstance.provider_code] ??
           null)
         : null;
 
@@ -180,8 +129,7 @@ export function useModelProviderData({
   );
 
   const modalCatalogEntry = instanceModalState
-    ? (currentCatalogEntriesByProviderCode[instanceModalState.providerCode] ??
-      null)
+    ? (catalogEntriesByProviderCode[instanceModalState.providerCode] ?? null)
     : null;
 
   const modalProviderOption = instanceModalState
@@ -227,8 +175,7 @@ export function useModelProviderData({
   const invalidCount = instances.filter(
     (instance) => instance.status === 'invalid'
   ).length;
-  const providerCount = families.length;
-  const officialCount = officialCatalogEntries.length;
+  const providerCount = catalogEntries.length;
   const overviewRows = [
     {
       key: 'providers',
@@ -244,27 +191,16 @@ export function useModelProviderData({
       key: 'invalid',
       label: i18nText('settings', 'auto.exception_instance'),
       value: String(invalidCount)
-    },
-    {
-      key: 'official',
-      label: i18nText('settings', 'auto.installable_providers'),
-      value: String(officialCount)
     }
   ];
 
   return {
     catalogQuery,
-    familiesQuery,
-    officialCatalogQuery,
     instancesQuery,
     optionsQuery,
     mainInstanceQuery,
     instances,
-    families,
-    officialCatalogEntries,
-    officialSourceMeta,
-    currentCatalogEntriesByProviderCode,
-    familiesByProviderCode,
+    catalogEntries,
     instancesByProviderCode,
     providerOptionsByProviderCode,
     editingInstance,

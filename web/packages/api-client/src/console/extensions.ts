@@ -1,3 +1,4 @@
+import { ApiClientError } from '../errors';
 import { apiFetch } from '../transport';
 
 export type ConsoleExtensionCategory =
@@ -10,7 +11,19 @@ export type ConsoleExtensionCategory =
 
 export interface ConsoleExtensionWarning {
   code: string;
+  message: string;
   overridable: boolean;
+}
+
+export interface ConsoleExtensionCompatibilityChallenge {
+  reason: 'below_minimum_host_version';
+  current_host_version: string;
+  minimum_host_version: string;
+}
+
+export interface ConsoleExtensionRiskChallenge {
+  warnings: ConsoleExtensionWarning[];
+  compatibility: ConsoleExtensionCompatibilityChallenge | null;
 }
 
 export interface ConsoleInstalledExtension {
@@ -85,6 +98,13 @@ export interface ConsoleExtensionCompatibilityOverride {
   acknowledged_minimum_host_version: string;
 }
 
+interface ConsoleExtensionRiskChallengeErrorBody {
+  status: number;
+  code: 'extension_risk_confirmation_required';
+  message: string;
+  risk_challenge: ConsoleExtensionRiskChallenge;
+}
+
 const BASE = '/api/console/settings/extension-center';
 
 export function listConsoleInstalledExtensions(cursor?: string, limit = 20) {
@@ -104,6 +124,15 @@ export function listConsoleExtensionCatalog(
   if (cursor) query.set('cursor', cursor);
   return apiFetch<ConsoleExtensionCatalogPage>({
     path: `${BASE}/catalog/${category}?${query.toString()}`
+  });
+}
+
+export function getConsoleExtensionCatalogEntry(
+  category: ConsoleExtensionCategory,
+  artifactId: string
+) {
+  return apiFetch<ConsoleExtensionCatalogEntry>({
+    path: `${BASE}/catalog/${category}/${encodeURIComponent(artifactId)}`
   });
 }
 
@@ -140,4 +169,47 @@ export function installConsoleExtension(
     body: input,
     csrfToken
   });
+}
+
+export function uploadConsoleExtension(
+  file: File,
+  csrfToken: string,
+  overrides: {
+    compatibility_override?: ConsoleExtensionCompatibilityOverride;
+    risk_override?: ConsoleExtensionRiskOverride;
+  } = {}
+) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (overrides.compatibility_override) {
+    formData.append(
+      'compatibility_override',
+      JSON.stringify(overrides.compatibility_override)
+    );
+  }
+  if (overrides.risk_override) {
+    formData.append('risk_override', JSON.stringify(overrides.risk_override));
+  }
+
+  return apiFetch<unknown>({
+    path: `${BASE}/install-upload`,
+    method: 'POST',
+    rawBody: formData,
+    contentType: null,
+    csrfToken
+  });
+}
+
+export function getConsoleExtensionRiskChallenge(
+  error: unknown
+): ConsoleExtensionRiskChallenge | null {
+  if (!(error instanceof ApiClientError) || error.status !== 409) return null;
+  if (!error.body || typeof error.body !== 'object') return null;
+
+  const body = error.body as Partial<ConsoleExtensionRiskChallengeErrorBody>;
+  return body.code === 'extension_risk_confirmation_required' &&
+    body.risk_challenge &&
+    Array.isArray(body.risk_challenge.warnings)
+    ? body.risk_challenge
+    : null;
 }
