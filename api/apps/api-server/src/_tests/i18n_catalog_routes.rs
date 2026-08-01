@@ -9,7 +9,7 @@ use control_plane::{
         ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
         InstallExtensionArtifactCommand,
     },
-    ports::AuthRepository,
+    ports::{AuthRepository, I18nCatalogRepository},
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

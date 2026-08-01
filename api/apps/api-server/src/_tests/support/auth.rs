@@ -3,8 +3,8 @@ use super::applications::{
     sample_runtime_profile, set_user_preferred_locale,
 };
 use super::plugins::{
-    InMemoryOfficialAgentFlowTemplateSource, InMemoryOfficialMcpBundleSource,
-    InMemoryOfficialPluginSource,
+    InMemoryOfficialAgentFlowTemplateSource, InMemoryOfficialExtensionCatalogSource,
+    InMemoryOfficialMcpBundleSource, InMemoryOfficialPluginSource,
 };
 use super::*;
 use axum::response::Response;
