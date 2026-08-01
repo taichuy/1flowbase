@@ -478,6 +478,7 @@ fn failed_flow_output_uses_terminal_answer_payload_even_when_answer_has_error() 
 fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() {
     let attempt_id = Uuid::now_v7();
     let flow_run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
     let scope_id = Uuid::now_v7();
     let started_at = OffsetDateTime::UNIX_EPOCH;
     let finished_at = started_at + time::Duration::milliseconds(7426);
@@ -498,6 +499,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         scope_id,
         attempt_id,
         flow_run_id,
+        node_run_id,
         Some(Uuid::nil()),
         Some("conversation-1"),
         "应用快照",
@@ -507,6 +509,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     );
 
     assert_eq!(task.application_name, "应用快照");
+    assert_eq!(task.node_run_id, Some(node_run_id));
     assert_eq!(task.application_id, Some(Uuid::nil()));
     assert_eq!(task.conversation_id.as_deref(), Some("conversation-1"));
     assert_eq!(task.attempt_index, 1);
@@ -521,4 +524,29 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.time_to_first_token_ms, None);
     assert_eq!(task.total_duration_ms, Some(7426));
     serde_json::to_value(task).unwrap();
+}
+
+#[test]
+fn provider_request_log_task_accepts_legacy_queue_payload_without_node_run_id_ac_003() {
+    let task = super::model_attempts::provider_request_log_task_from_attempt(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        None,
+        None,
+        "Legacy queue fixture",
+        OffsetDateTime::UNIX_EPOCH,
+        OffsetDateTime::UNIX_EPOCH,
+        &json!({}),
+    );
+    let mut payload = serde_json::to_value(task).expect("serialize request log task");
+    payload
+        .as_object_mut()
+        .expect("request log task object")
+        .remove("node_run_id");
+
+    let restored: crate::ports::ProviderRequestLogTask =
+        serde_json::from_value(payload).expect("legacy request log task");
+    assert_eq!(restored.node_run_id, None);
 }

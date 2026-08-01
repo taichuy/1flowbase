@@ -216,7 +216,7 @@ async fn create_system_model_uses_fixed_system_scope_id() {
 }
 
 #[tokio::test]
-async fn create_workspace_model_creates_system_model_and_workspace_grant() {
+async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
     let service = ModelDefinitionService::for_tests();
 
     let created = service
@@ -233,24 +233,88 @@ async fn create_workspace_model_creates_system_model_and_workspace_grant() {
         .await
         .unwrap();
 
-    assert_eq!(created.scope_kind, DataModelScopeKind::System);
-    assert_eq!(created.scope_id, SYSTEM_SCOPE_ID);
+    assert_eq!(created.scope_kind, DataModelScopeKind::Workspace);
+    assert_eq!(created.scope_id, Uuid::nil());
+    assert!(created.physical_table_name.starts_with("rtm_workspace_"));
 
-    let grant = service
-        .load_runtime_scope_grant(
-            &ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
-            created.id,
-            runtime_core::runtime_acl::RuntimeDataAction::View,
-        )
+    for action in [
+        runtime_core::runtime_acl::RuntimeDataAction::View,
+        runtime_core::runtime_acl::RuntimeDataAction::Create,
+        runtime_core::runtime_acl::RuntimeDataAction::Update,
+        runtime_core::runtime_acl::RuntimeDataAction::Delete,
+    ] {
+        let grant = service
+            .load_runtime_scope_grant(
+                &ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
+                created.id,
+                action,
+            )
+            .await
+            .unwrap()
+            .expect("workspace owner grant should authorize every runtime CRUD action");
+        assert_eq!(grant.scope_kind, DataModelScopeKind::Workspace);
+        assert_eq!(grant.scope_id, Uuid::nil());
+        assert_eq!(
+            grant.permission_profile,
+            domain::ScopeDataModelPermissionProfile::ScopeAll
+        );
+    }
+
+    let persisted_grants = service
+        .list_scope_grants(Uuid::nil(), created.id)
         .await
-        .unwrap()
-        .expect("workspace create path should persist a workspace grant");
-    assert_eq!(grant.scope_kind, DataModelScopeKind::Workspace);
-    assert_eq!(grant.scope_id, Uuid::nil());
-    assert_eq!(
-        grant.permission_profile,
-        domain::ScopeDataModelPermissionProfile::ScopeAll
-    );
+        .unwrap();
+    assert_eq!(persisted_grants.len(), 1);
+    let replayed = service
+        .create_scope_grant(CreateScopeDataModelGrantCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            scope_id: Uuid::nil(),
+            data_model_id: created.id,
+            enabled: true,
+            permission_profile: "scope_all".into(),
+            confirm_unsafe_external_source_system_all: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!(replayed.id, persisted_grants[0].id);
+}
+
+#[tokio::test]
+async fn in_memory_repository_rejects_cross_scope_grant_for_workspace_model() {
+    let repository = InMemoryModelDefinitionRepository::default();
+    let service = ModelDefinitionService::new(repository.clone());
+    let created = service
+        .create_model(CreateModelDefinitionCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            data_source_instance_id: None,
+            external_resource_key: None,
+            external_table_id: None,
+            code: "workspace_grant_fixture".into(),
+            title: "Workspace Grant Fixture".into(),
+            status: None,
+        })
+        .await
+        .unwrap();
+
+    let error = ModelDefinitionRepository::create_scope_data_model_grant(
+        &repository,
+        &CreateScopeDataModelGrantInput {
+            grant_id: Uuid::now_v7(),
+            scope_kind: DataModelScopeKind::System,
+            scope_id: SYSTEM_SCOPE_ID,
+            data_model_id: created.id,
+            enabled: true,
+            permission_profile: domain::ScopeDataModelPermissionProfile::ScopeAll,
+            created_by: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("workspace_model_scope_grant_mismatch"));
 }
 
 #[tokio::test]

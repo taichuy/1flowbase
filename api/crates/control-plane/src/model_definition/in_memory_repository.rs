@@ -33,6 +33,27 @@ pub struct InMemoryModelDefinitionRepository {
 }
 
 impl InMemoryModelDefinitionRepository {
+    fn ensure_model_accepts_scope_grant(
+        &self,
+        data_model_id: Uuid,
+        scope_kind: DataModelScopeKind,
+        scope_id: Uuid,
+    ) -> Result<()> {
+        let models = self.models.lock().expect("in-memory model lock poisoned");
+        let model = models
+            .get(&data_model_id)
+            .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+        if model.scope_kind == DataModelScopeKind::Workspace
+            && (scope_kind != DataModelScopeKind::Workspace || scope_id != model.scope_id)
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "workspace_model_scope_grant_mismatch",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     pub fn with_data_source_defaults(
         data_source_instance_id: Uuid,
         defaults: domain::DataSourceDefaults,
@@ -398,12 +419,11 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         &self,
         input: &CreateScopeDataModelGrantInput,
     ) -> Result<domain::ScopeDataModelGrantRecord> {
-        self.models
-            .lock()
-            .expect("in-memory model lock poisoned")
-            .get(&input.data_model_id)
-            .filter(|model| matches!(model.scope_kind, DataModelScopeKind::System))
-            .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+        self.ensure_model_accepts_scope_grant(
+            input.data_model_id,
+            input.scope_kind,
+            input.scope_id,
+        )?;
 
         let grant = domain::ScopeDataModelGrantRecord {
             id: input.grant_id,
@@ -427,12 +447,15 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
         &self,
         input: &UpdateScopeDataModelGrantInput,
     ) -> Result<domain::ScopeDataModelGrantRecord> {
-        self.models
+        let (scope_kind, scope_id) = self
+            .grants
             .lock()
-            .expect("in-memory model lock poisoned")
-            .get(&input.data_model_id)
-            .filter(|model| matches!(model.scope_kind, DataModelScopeKind::System))
-            .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+            .expect("in-memory grant lock poisoned")
+            .iter()
+            .find(|grant| grant.id == input.grant_id && grant.data_model_id == input.data_model_id)
+            .map(|grant| (grant.scope_kind, grant.scope_id))
+            .ok_or(ControlPlaneError::NotFound("scope_data_model_grant"))?;
+        self.ensure_model_accepts_scope_grant(input.data_model_id, scope_kind, scope_id)?;
 
         let mut grants = self.grants.lock().expect("in-memory grant lock poisoned");
         let grant = grants

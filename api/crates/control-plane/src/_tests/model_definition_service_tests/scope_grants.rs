@@ -21,8 +21,8 @@ async fn update_scope_grant_records_audit_event() {
         .create_scope_grant(
             control_plane::model_definition::CreateScopeDataModelGrantCommand {
                 actor_user_id: Uuid::nil(),
-                scope_kind: DataModelScopeKind::System,
-                scope_id: SYSTEM_SCOPE_ID,
+                scope_kind: DataModelScopeKind::Workspace,
+                scope_id: Uuid::nil(),
                 data_model_id: created.id,
                 enabled: true,
                 permission_profile: "scope_all".into(),
@@ -747,8 +747,8 @@ async fn delete_scope_grant_records_audit_event() {
         .create_scope_grant(
             control_plane::model_definition::CreateScopeDataModelGrantCommand {
                 actor_user_id: Uuid::nil(),
-                scope_kind: DataModelScopeKind::System,
-                scope_id: SYSTEM_SCOPE_ID,
+                scope_kind: DataModelScopeKind::Workspace,
+                scope_id: Uuid::nil(),
                 data_model_id: created.id,
                 enabled: true,
                 permission_profile: "scope_all".into(),

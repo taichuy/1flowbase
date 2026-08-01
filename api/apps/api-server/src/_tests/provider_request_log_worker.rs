@@ -19,6 +19,7 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         scope_id,
         attempt_id,
         flow_run_id: Uuid::now_v7(),
+        node_run_id: Some(Uuid::now_v7()),
         application_id: Some(Uuid::now_v7()),
         conversation_id: Some("conversation-1".into()),
         application_name: "Worker App Snapshot".into(),
@@ -113,6 +114,7 @@ async fn provider_request_log_worker_batches_valid_payloads_and_acks_each_task()
         .store
         .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
             scope_id,
+            flow_run_id: None,
             application_name: None,
             provider_instance_id: None,
             model_id: None,
@@ -144,6 +146,14 @@ async fn provider_request_log_worker_batches_valid_payloads_and_acks_each_task()
         .items
         .iter()
         .any(|item| item.attempt_id == second.attempt_id));
+    assert_eq!(
+        page.items
+            .iter()
+            .find(|item| item.attempt_id == first.attempt_id)
+            .expect("first persisted request log")
+            .node_run_id,
+        first.node_run_id
+    );
     assert!(entries
         .iter()
         .all(|entry| entry.key != first_task_id && entry.key != second_task_id));

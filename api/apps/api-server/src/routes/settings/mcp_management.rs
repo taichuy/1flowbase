@@ -99,7 +99,6 @@ pub struct McpToolResponse {
     pub operation: String,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
-    #[schema(value_type = Object)]
     pub result_schema: serde_json::Value,
     #[schema(value_type = Object)]
     pub input_mapping: serde_json::Value,
@@ -294,7 +293,6 @@ pub struct CreateMcpToolBody {
     pub execution_target: McpToolExecutionTargetDto,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
-    #[schema(value_type = Object)]
     pub result_schema: serde_json::Value,
     #[schema(value_type = Object)]
     pub input_mapping: serde_json::Value,
@@ -314,7 +312,6 @@ pub struct UpdateMcpToolBody {
     pub execution_target: McpToolExecutionTargetDto,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
-    #[schema(value_type = Object)]
     pub result_schema: serde_json::Value,
     #[schema(value_type = Object)]
     pub input_mapping: serde_json::Value,

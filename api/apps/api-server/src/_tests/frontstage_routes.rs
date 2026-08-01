@@ -12,6 +12,7 @@ use axum::{
 use serde_json::json;
 use serde_json::Value;
 use tower::ServiceExt;
+use utoipa::OpenApi;
 
 #[test]
 fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
@@ -412,7 +413,7 @@ async fn list_frontstage_pages_route_requires_session() {
 }
 
 #[tokio::test]
-async fn root_can_create_group_and_page() {
+async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -451,6 +452,24 @@ async fn root_can_create_group_and_page() {
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(payload["data"][0]["id"], json!(group_id));
     assert_eq!(payload["data"][0]["children"][0]["title"], json!("Home"));
+
+    let openapi = serde_json::to_value(crate::openapi::ApiDoc::openapi())
+        .expect("global OpenAPI should serialize");
+    let operation = crate::openapi_docs::DocsCatalogOperation {
+        id: "list_frontstage_pages".into(),
+        method: "GET".into(),
+        path: "/api/console/frontstage/{workspace_id}/pages".into(),
+        summary: None,
+        description: None,
+        tags: Vec::new(),
+        group: "other".into(),
+        deprecated: false,
+    };
+    let interface = crate::openapi_interface::catalog_entry_from_operation(&operation, &openapi)
+        .expect("frontstage page tree interface catalog entry");
+    let response_validator = jsonschema::validator_for(&interface.response_schema)
+        .expect("frontstage page tree response schema should be self-contained");
+    assert!(response_validator.validate(&payload["data"]).is_ok());
 }
 
 #[tokio::test]

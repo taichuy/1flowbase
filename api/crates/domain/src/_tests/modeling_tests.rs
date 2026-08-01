@@ -170,6 +170,7 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ("scope_id", ManyToOne, true, false),
         ("attempt_id", String, true, true),
         ("flow_run_id", ManyToOne, true, false),
+        ("node_run_id", ManyToOne, false, false),
         ("application_id", ManyToOne, false, false),
         ("conversation_id", String, false, false),
         ("application_name", String, true, false),
@@ -199,9 +200,14 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         .expect("model provider request logs contract");
     assert_eq!(contract.system_field_codes.len(), expected.len());
 
-    let migration = include_str!(
-        "../../../storage-durable/postgres/migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
-    );
+    let migrations = [
+        include_str!(
+            "../../../storage-durable/postgres/migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
+        ),
+        include_str!(
+            "../../../storage-durable/postgres/migrations/20260802100000_add_node_run_to_provider_request_logs.sql"
+        ),
+    ];
     for (code, field_kind, is_required, is_unique) in expected {
         let field = contract
             .field_contract(code)
@@ -218,8 +224,9 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         );
         assert_eq!(field.is_unique, is_unique, "unique mismatch for {code}");
 
-        let seeded_row = migration
-            .lines()
+        let seeded_row = migrations
+            .iter()
+            .flat_map(|migration| migration.lines())
             .find(|line| {
                 line.trim_start().starts_with("('") && line.contains(&format!(", '{code}', "))
             })

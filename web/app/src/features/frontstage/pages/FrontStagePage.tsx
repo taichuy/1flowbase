@@ -185,6 +185,24 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : null,
     [activePageContent]
   );
+  const confirmRuntimeWrite = useCallback(
+    ({ method, path }: { method: string; path: string }) =>
+      new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: i18nText('frontstage', 'auto.confirm_runtime_write'),
+          content: i18nText(
+            'frontstage',
+            'auto.confirm_runtime_write_description',
+            { value1: method.toUpperCase(), value2: path }
+          ),
+          okText: i18nText('frontstage', 'auto.confirm'),
+          cancelText: i18nText('frontstage', 'auto.cancel'),
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false)
+        });
+      }),
+    [modal]
+  );
   const jsBlockCapabilityHandlers = useMemo(
     () =>
       selectedPageId && tabId
@@ -193,6 +211,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             pageId: selectedPageId,
             tabId,
             csrfToken,
+            confirmRuntimeWrite,
             resolveBlockId: (requestId) => {
               const blockId = requestId.split(':')[1];
               return (
@@ -203,7 +222,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             }
           })
         : undefined,
-    [csrfToken, displayedPageDocument, selectedPageId, tabId, workspaceId]
+    [
+      confirmRuntimeWrite,
+      csrfToken,
+      displayedPageDocument,
+      selectedPageId,
+      tabId,
+      workspaceId
+    ]
   );
   const nativeContextHost = useMemo<
     FrontstageNativeBlockContextHost | undefined

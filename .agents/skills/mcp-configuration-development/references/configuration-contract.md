@@ -12,7 +12,7 @@
 | `full_description` | 不可拆分的组合契约与复杂上下文 | 短描述改写、路径复述、普通字段说明 |
 | `parameter_schema` / `result_schema` | Agent 输入与结果的结构 contract | GUI 展示布局 |
 | `input_mapping` | Agent 参数到接口参数的命名、说明、必填性与映射 | 业务接口本身不存在的语义 |
-| `output_mapping` | 接口结果到 Agent 结果的必要投影 | 隐藏真实错误或伪造成功 |
+| `output_mapping` | 接口结果到 Agent 结果的必要投影 | 复制 result Schema、隐藏真实错误或伪造成功 |
 | `permission_code` / `risk_level` | 权限标识与调用风险 | 导航分组 |
 | Binding | Tool 在实例中的挂载、可见性、别名和顺序 | Tool 定义副本 |
 | discovery policy | 列表深度、数量、搜索和返回字段 | 业务授权规则 |
@@ -74,6 +74,29 @@ Tool record 是跨 Binding 共享的 Agent contract，Binding alias 只能改显
 - 用真实 `mcp.call` 验证请求已经越过 `request_schema` 并到达目标业务边界；保存成功、明确业务拒绝或 `target_interface/http_status` 都可作为到达证据。
 - present `""` 与 `null` 必须原样交给 JSON Schema 判断是否合法；只有路径不存在才属于 mapping required 缺失。
 - 若 current `mcp.get` Schema、保存 mapping 与运行结果仍不一致，按运行时缺口停止依赖该 Tool，不用宽松 Schema 或噪音字段绕过。
+
+## Output Mapping
+
+`result_schema` 描述结果结构，`output_mapping` 只描述确有必要的结果投影，两者不是同一个字段：
+
+- 无需重命名、挑选或重组结果时，保存 `output_mapping: {}`。
+- 不把完整 JSON Schema 复制进 `output_mapping`；这种 schema-shaped mapping 可能保存成功，但会让调用阶段错误解释结果。
+- 只有当前 mapping contract 已从源码或既有正确 Tool 得到证据时才配置投影；不得为规避 response validation 自造 mapping DSL。
+
+## Dynamic Interfaces and Atomic Children
+
+部分资源在生命周期切换后才注册动态接口，例如已发布 Data Model 的 CRUD。先创建并发布父资源，再重新读取 interface catalog 和生成的 OpenAPI；动态接口未出现前不创建假 Tool。动态 Tool 使用稳定业务路径挂载，每个执行 contract 只保留一个 canonical Binding。
+
+部分创建接口会原子生成默认子资源，例如 single 模式页面的默认 Tab。父资源创建后先读取响应或详情，复用已经存在的稳定标识；只有 contract 明确没有创建子资源时才调用子资源创建 Tool。
+
+若写操作副作用已经成功，但 MCP 因失真的 `response_schema` 返回 `invalid_tool_configuration`：
+
+1. 不重复执行同一写操作；
+2. 用独立 list/options/detail、运行态 capability 或 OpenAPI 回读稳定标识与真实状态；
+3. 把该写 Tool 标记为运行时缺口，不用宽松 Schema、伪造 output mapping 或重复记录换取成功；
+4. 不依赖该错误响应的独立路径可继续装配。
+
+请求的 scope、运行态回读 scope 与物理资源归属必须一致。即使记录带有 workspace `scope_id`，若模型回读为 system 或物理资源使用 system 命名，也不能宣称 workspace 模型验收通过；保留成功实体并报告产品或运行时语义偏差。
 
 ## Invocation Contract
 

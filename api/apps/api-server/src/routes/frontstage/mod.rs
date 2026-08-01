@@ -70,7 +70,7 @@ pub struct FrontstagePageTreeNodeResponse {
     pub content_presentation: FrontstagePageContentPresentationResponse,
     pub slug: Option<String>,
     #[serde(default)]
-    #[schema(no_recursion)]
+    #[schema(value_type = Vec<Object>)]
     pub children: Vec<FrontstagePageTreeNodeResponse>,
 }
 

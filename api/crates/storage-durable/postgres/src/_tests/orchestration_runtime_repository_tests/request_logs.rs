@@ -11,6 +11,7 @@ fn request_log(
         scope_id,
         attempt_id,
         flow_run_id: Uuid::now_v7(),
+        node_run_id: None,
         application_id: Some(Uuid::now_v7()),
         conversation_id: Some("conversation-1".into()),
         application_name: "Runtime App Snapshot".into(),
@@ -42,6 +43,7 @@ fn request_log(
 fn query(scope_id: Uuid, page: i64, page_size: i64) -> ListModelProviderRequestLogsPageInput {
     ListModelProviderRequestLogsPageInput {
         scope_id,
+        flow_run_id: None,
         application_name: None,
         provider_instance_id: None,
         model_id: None,
@@ -52,6 +54,72 @@ fn query(scope_id: Uuid, page: i64, page_size: i64) -> ListModelProviderRequestL
         page,
         page_size,
     }
+}
+
+#[tokio::test]
+async fn provider_request_logs_filter_flow_run_within_workspace_and_return_node_run_ac_003() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let at = datetime!(2026-08-02 01:00:00 UTC);
+    let flow_run = seed_flow_run(&store, &seeded, &compiled, at).await;
+    let node_run = seed_node_run(&store, &flow_run, at).await;
+    let scope_id = seeded.workspace_id;
+    let other_scope_id = Uuid::now_v7();
+    let flow_run_id = flow_run.id;
+    let other_flow_run_id = Uuid::now_v7();
+    let node_run_id = node_run.id;
+    let mut linked = request_log(scope_id, Uuid::now_v7(), at, "succeeded", Some(1));
+    linked.flow_run_id = flow_run_id;
+    linked.node_run_id = Some(node_run_id);
+    let mut legacy = request_log(
+        scope_id,
+        Uuid::now_v7(),
+        at + Duration::seconds(1),
+        "succeeded",
+        Some(1),
+    );
+    legacy.flow_run_id = flow_run_id;
+    let mut other_flow = request_log(
+        scope_id,
+        Uuid::now_v7(),
+        at + Duration::seconds(2),
+        "succeeded",
+        Some(1),
+    );
+    other_flow.flow_run_id = other_flow_run_id;
+    let mut other_scope = request_log(
+        other_scope_id,
+        Uuid::now_v7(),
+        at + Duration::seconds(3),
+        "succeeded",
+        Some(1),
+    );
+    other_scope.flow_run_id = flow_run_id;
+    store
+        .insert_model_provider_request_logs_batch(&[linked, legacy, other_flow, other_scope])
+        .await
+        .unwrap();
+
+    let mut input = query(scope_id, 1, 20);
+    input.flow_run_id = Some(flow_run_id);
+    let page = store
+        .list_model_provider_request_logs_page(input)
+        .await
+        .unwrap();
+
+    assert_eq!(page.total_count, 2);
+    assert!(page
+        .items
+        .iter()
+        .any(|item| item.node_run_id == Some(node_run_id)));
+    assert!(page.items.iter().any(|item| item.node_run_id.is_none()));
+    assert!(page
+        .items
+        .iter()
+        .all(|item| item.flow_run_id == flow_run_id));
 }
 
 #[tokio::test]

@@ -1,6 +1,98 @@
 use super::*;
 
 #[tokio::test]
+async fn model_provider_options_schema_accepts_real_dynamic_json_leaves_ac_001() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let installation_id = install_enable_assign(&app, &cookie, &csrf).await;
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/model-providers/instances")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "installation_id": installation_id,
+                        "display_name": "Schema Fixture",
+                        "enabled_model_ids": ["fixture_chat"],
+                        "included_in_main": true,
+                        "config": {
+                            "base_url": "https://schema.example.com/v1",
+                            "api_key": "super-secret"
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+
+    let options = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/model-providers/options")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(options.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(options.into_body(), usize::MAX).await.unwrap()).unwrap();
+
+    let openapi = openapi_payload().await;
+    let operation = crate::openapi_docs::DocsCatalogOperation {
+        id: "model_provider_list_options".into(),
+        method: "GET".into(),
+        path: "/api/console/model-providers/options".into(),
+        summary: None,
+        description: None,
+        tags: Vec::new(),
+        group: "other".into(),
+        deprecated: false,
+    };
+    let interface = crate::openapi_interface::catalog_entry_from_operation(&operation, &openapi)
+        .expect("model-provider options interface catalog entry");
+    let response_validator = jsonschema::validator_for(&interface.response_schema)
+        .expect("generated model-provider options response schema");
+    assert!(response_validator.validate(&payload["data"]).is_ok());
+
+    let fields = payload["data"]["providers"][0]["parameter_form"]["fields"]
+        .as_array()
+        .expect("real parameter form fields");
+    let mode = fields
+        .iter()
+        .find(|field| field["key"] == "mode")
+        .expect("mode field");
+    let temperature = fields
+        .iter()
+        .find(|field| field["key"] == "temperature")
+        .expect("temperature field");
+    let real_dynamic_values = [
+        &mode["options"][0]["value"],
+        &temperature["default_value"],
+        &temperature["disabled_when"][0]["values"][1],
+    ];
+    assert!(real_dynamic_values[0].is_string());
+    assert!(real_dynamic_values[1].is_number());
+    assert!(real_dynamic_values[2].is_null());
+
+    let object_only = jsonschema::validator_for(&json!({ "type": "object" }))
+        .expect("controlled object-only negative schema");
+    assert!(real_dynamic_values
+        .iter()
+        .all(|value| object_only.validate(value).is_err()));
+}
+
+#[tokio::test]
 async fn model_provider_routes_refresh_models_keeps_enabled_model_ids_unchanged() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

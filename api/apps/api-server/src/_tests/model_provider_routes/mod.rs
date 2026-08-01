@@ -38,6 +38,21 @@ parameter_form:
       min: 0
       max: 2
       step: 0.1
+      visible_when:
+        - field: mode
+          operator: equals
+          value: balanced
+      disabled_when:
+        - field: quota
+          operator: in
+          values: [0, null]
+    - key: mode
+      label: Mode
+      type: string
+      control: select
+      options:
+        - label: Balanced
+          value: balanced
 config_schema:
   - key: base_url
     type: string

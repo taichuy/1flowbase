@@ -443,6 +443,7 @@ const MODEL_PROVIDER_REQUEST_LOGS_FIELDS: &[&str] = &[
     "scope_id",
     "attempt_id",
     "flow_run_id",
+    "node_run_id",
     "application_id",
     "conversation_id",
     "application_name",
@@ -496,6 +497,13 @@ const MODEL_PROVIDER_REQUEST_LOG_FIELD_CONTRACTS: &[BuiltinDataModelFieldContrac
         physical_column_name: "flow_run_id",
         field_kind: crate::ModelFieldKind::ManyToOne,
         is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "node_run_id",
+        physical_column_name: "node_run_id",
+        field_kind: crate::ModelFieldKind::ManyToOne,
+        is_required: false,
         is_unique: false,
     },
     BuiltinDataModelFieldContract {
