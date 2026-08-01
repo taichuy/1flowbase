@@ -171,7 +171,7 @@ describe('SettingsExtensionCenterSection', () => {
       catalog_page: null,
       items: [
         {
-          artifact_id: 'runtime-extensions:taichuy/openai',
+          catalog_id: 'runtime-extensions:taichuy/openai',
           current_version: '1.0.0',
           latest_version: '1.1.0',
           status: 'update_available'
@@ -203,7 +203,7 @@ describe('SettingsExtensionCenterSection', () => {
           catalog_page: null,
           items: [
             {
-              artifact_id: 'runtime-extensions:taichuy/openai',
+              catalog_id: 'runtime-extensions:taichuy/openai',
               current_version: '1.0.0'
             }
           ]

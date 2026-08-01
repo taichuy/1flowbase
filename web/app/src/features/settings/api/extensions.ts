@@ -47,9 +47,9 @@ export function fetchSettingsExtensionCatalog(
 
 export function fetchSettingsExtensionCatalogEntry(
   category: SettingsExtensionCategory,
-  artifactId: string
+  catalogId: string
 ) {
-  return getConsoleExtensionCatalogEntry(category, artifactId);
+  return getConsoleExtensionCatalogEntry(category, catalogId);
 }
 
 export function checkSettingsExtensionUpdates(
@@ -71,7 +71,7 @@ export function installSettingsExtension(
   return installConsoleExtension(
     {
       category: entry.category,
-      artifact_id: entry.id,
+      catalog_id: entry.id,
       version: entry.version,
       ...overrides
     },

@@ -91,7 +91,7 @@ export interface ConsoleExtensionCatalogPage {
 }
 
 export interface ConsoleExtensionUpdateItem {
-  artifact_id: string;
+  catalog_id: string;
   current_version: string;
   latest_version: string | null;
   status: 'current' | 'update_available' | 'unknown_error';
@@ -158,10 +158,10 @@ export function listConsoleExtensionCatalog(
 
 export function getConsoleExtensionCatalogEntry(
   category: ConsoleExtensionCategory,
-  artifactId: string
+  catalogId: string
 ) {
   return apiFetch<ConsoleExtensionCatalogEntry>({
-    path: `${BASE}/catalog/${category}/${encodeURIComponent(artifactId)}`
+    path: `${BASE}/catalog/${category}/${encodeURIComponent(catalogId)}`
   });
 }
 
@@ -169,7 +169,7 @@ export function checkConsoleExtensionUpdates(
   input: {
     category: ConsoleExtensionCategory;
     catalog_page: string | null;
-    items: Array<{ artifact_id: string; current_version: string }>;
+    items: Array<{ catalog_id: string; current_version: string }>;
   },
   csrfToken: string
 ) {
@@ -184,7 +184,7 @@ export function checkConsoleExtensionUpdates(
 export function installConsoleExtension(
   input: {
     category: ConsoleExtensionCategory;
-    artifact_id: string;
+    catalog_id: string;
     version: string;
     compatibility_override?: ConsoleExtensionCompatibilityOverride;
     risk_override?: ConsoleExtensionRiskOverride;

@@ -44,7 +44,7 @@ describe('extension center client contract', () => {
           catalog_page: 'page-2',
           items: [
             {
-              artifact_id: 'runtime-extensions:taichuy/openai',
+              catalog_id: 'runtime-extensions:taichuy/openai',
               current_version: '1.0.0'
             }
           ]
@@ -63,7 +63,7 @@ describe('extension center client contract', () => {
       installConsoleExtension(
         {
           category: 'runtime-extensions',
-          artifact_id: 'runtime-extensions:taichuy/openai',
+          catalog_id: 'runtime-extensions:taichuy/openai',
           version: '1.1.0',
           compatibility_override: {
             reason: 'below_minimum_host_version',
@@ -83,7 +83,7 @@ describe('extension center client contract', () => {
       method: 'POST',
       body: {
         category: 'runtime-extensions',
-        artifact_id: 'runtime-extensions:taichuy/openai',
+        catalog_id: 'runtime-extensions:taichuy/openai',
         version: '1.1.0'
       },
       csrfToken: 'csrf'

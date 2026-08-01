@@ -193,7 +193,7 @@ export function SettingsExtensionCenterSection() {
                   ? null
                   : (catalogQuery.data?.catalog_page ?? null),
               items: entries.map((entry) => ({
-                artifact_id: extensionCatalogId(entry),
+                catalog_id: extensionCatalogId(entry),
                 current_version: isInstalledRow(entry)
                   ? entry.version
                   : entry.current_version!
@@ -202,7 +202,7 @@ export function SettingsExtensionCenterSection() {
             csrfToken
           );
           return result.items.map(
-            (item) => [`${category}:${item.artifact_id}`, item.status] as const
+            (item) => [`${category}:${item.catalog_id}`, item.status] as const
           );
         } catch {
           return entries.map(
