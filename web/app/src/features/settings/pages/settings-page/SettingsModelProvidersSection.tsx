@@ -384,12 +384,6 @@ export function SettingsModelProvidersSection({
                     ? versionMutation.variables.providerCode
                     : null
                 }
-                upgradingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables.mode === 'upgrade'
-                    ? versionMutation.variables.providerCode
-                    : null
-                }
                 onViewInstances={(entry) => {
                   setInstanceModalState({
                     providerCode: entry.provider_code,
@@ -399,12 +393,6 @@ export function SettingsModelProvidersSection({
                 onCreate={(entry) => {
                   setDrawerState({
                     mode: 'create',
-                    providerCode: entry.provider_code
-                  });
-                }}
-                onUpgradeLatest={(entry) => {
-                  versionMutation.mutate({
-                    mode: 'upgrade',
                     providerCode: entry.provider_code
                   });
                 }}

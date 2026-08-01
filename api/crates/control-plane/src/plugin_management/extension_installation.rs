@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{errors::ControlPlaneError, ports::ExtensionInstallationRepository};
 
 use super::{
-    catalog::{extension_source, extension_trust},
+    catalog::{extension_source, extension_trust, extension_trust_values},
     route_plugin_package, ExtensionCatalogCategory, RoutedPluginPackageKind,
 };
 
@@ -390,6 +390,59 @@ where
         }
         Ok(missing)
     }
+}
+
+pub(super) fn extension_projection_for_plugin_installation(
+    node_id: &str,
+    installation: &crate::ports::UpsertPluginInstallationInput,
+    manifest: &plugin_framework::PluginManifestV1,
+) -> Result<crate::ports::UpsertExtensionInstallationInput> {
+    let category = match route_plugin_package(manifest)? {
+        RoutedPluginPackageKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
+        RoutedPluginPackageKind::ModelProviderRuntime
+        | RoutedPluginPackageKind::DataSourceRuntime => ExtensionCatalogCategory::RuntimeExtensions,
+        RoutedPluginPackageKind::CapabilityPlugin => ExtensionCatalogCategory::CapabilityPlugins,
+    };
+    let signature_status = legacy_signature_status(installation.signature_status.as_deref());
+    let checksum = installation
+        .checksum
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+    Ok(crate::ports::UpsertExtensionInstallationInput {
+        installation_id: Uuid::now_v7(),
+        identity: domain::ExtensionInstallationIdentity {
+            category: domain::ExtensionCategory::parse(category.as_str())
+                .ok_or(ControlPlaneError::InvalidInput("extension_category"))?,
+            organization: manifest.vendor.clone(),
+            artifact_id: manifest
+                .plugin_code()
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?
+                .to_string(),
+            version: manifest.version.clone(),
+            node_id: node_id.to_string(),
+        },
+        source: extension_source(&installation.source_kind).to_string(),
+        trust: extension_trust_values(&installation.source_kind, &installation.trust_level)
+            .to_string(),
+        local_path: installation.installed_path.clone(),
+        checksum: checksum.clone(),
+        signature_status,
+        signature_algorithm: installation.signature_algorithm.clone(),
+        signing_key_id: installation.signing_key_id.clone(),
+        warnings: integrity_warnings(
+            installation.checksum.as_deref(),
+            &checksum,
+            signature_status,
+        ),
+        receipt: json!({
+            "kind": "plugin_installation_projection",
+            "artifact_layout": "unpacked_directory",
+            "plugin_installation_id": installation.installation_id,
+            "manifest_fingerprint": installation.manifest_fingerprint,
+        }),
+        status: domain::ExtensionInstallationStatus::Installed,
+        installed_by: installation.actor_user_id,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

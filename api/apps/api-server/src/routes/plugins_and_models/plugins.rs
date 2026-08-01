@@ -12,16 +12,14 @@ use axum::{
 };
 use control_plane::plugin_management::{
     AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand,
-    ExtensionInstallationService, InstallCurrentNodePluginArtifactCommand,
-    InstallOfficialPluginCommand, InstallPluginCommand, InstallPluginResult,
-    InstallUploadedPluginCommand, OfficialPluginCatalogEntry, OfficialPluginCatalogFilter,
-    OfficialPluginCatalogView, PluginCatalogEntry, PluginCatalogFilter,
-    PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
+    InstallCurrentNodePluginArtifactCommand, InstallOfficialPluginCommand, InstallPluginCommand,
+    InstallPluginResult, InstallUploadedPluginCommand, OfficialPluginCatalogEntry,
+    OfficialPluginCatalogFilter, OfficialPluginCatalogView, PluginCatalogEntry,
+    PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
     PluginManagementService, PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand,
     RefreshPluginPackageCatalogProjectionCommand, SwitchPluginVersionCommand,
     UpgradeLatestPluginFamilyCommand,
 };
-use control_plane::ports::PluginRepository;
 use control_plane::resource_action::{
     ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
     ResourceScopeKind,
@@ -534,35 +532,6 @@ fn service(
     )
 }
 
-async fn project_extension_inventory(
-    state: &ApiState,
-    installation: &domain::PluginInstallationRecord,
-) -> anyhow::Result<()> {
-    let report =
-        ExtensionInstallationService::new(state.store.clone(), state.provider_install_root.clone())
-            .adopt_plugin_installations(&state.api_node_id, std::slice::from_ref(installation))
-            .await?;
-
-    if let Some(warning) = report.warnings.into_iter().next() {
-        anyhow::bail!(
-            "failed to project plugin installation {} into extension inventory: {}",
-            warning.plugin_installation_id,
-            warning.message
-        );
-    }
-    Ok(())
-}
-
-async fn project_extension_inventory_by_id(
-    state: &ApiState,
-    installation_id: Uuid,
-) -> anyhow::Result<()> {
-    let installation = state.store.get_installation(installation_id).await?.ok_or(
-        control_plane::errors::ControlPlaneError::NotFound("plugin_installation"),
-    )?;
-    project_extension_inventory(state, &installation).await
-}
-
 fn install_plugin_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel, ApiError> {
     let mut registry = ResourceActionRegistry::default();
     registry.register_resource(ResourceDefinition::core(
@@ -584,7 +553,6 @@ fn install_plugin_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKe
                     package_root: input.package_root,
                 })
                 .await?;
-            project_extension_inventory(&state, &result.installation).await?;
             Ok(serde_json::to_value(to_install_response(result))?)
         }
     })?;
@@ -1116,7 +1084,6 @@ pub async fn install_uploaded_plugin(
             package_bytes,
         })
         .await?;
-    project_extension_inventory(&state, &result.installation).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -1146,7 +1113,6 @@ pub async fn install_official_plugin(
             risk_override: to_risk_override(body.risk_override),
         })
         .await?;
-    project_extension_inventory(&state, &result.installation).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -1221,7 +1187,6 @@ pub async fn install_current_node_artifact(
             installation_id: parse_uuid(&installation_id, "installation_id")?,
         })
         .await?;
-    project_extension_inventory_by_id(&state, artifact.installation_id).await?;
     Ok(Json(ApiSuccess::new(to_artifact_instance_response(
         artifact,
     ))))
@@ -1254,9 +1219,6 @@ pub async fn upgrade_latest(
             risk_override,
         })
         .await?;
-    if let Some(installation_id) = task.installation_id {
-        project_extension_inventory_by_id(&state, installation_id).await?;
-    }
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
@@ -1282,9 +1244,6 @@ pub async fn switch_version(
             target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
         })
         .await?;
-    if let Some(installation_id) = task.installation_id {
-        project_extension_inventory_by_id(&state, installation_id).await?;
-    }
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 

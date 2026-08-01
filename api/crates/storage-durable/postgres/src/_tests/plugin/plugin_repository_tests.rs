@@ -682,7 +682,8 @@ fn installation_commit_input(
     use control_plane::ports::{
         CommitPluginInstallationProjectionInput, FrontendBlockCatalogRegistryInput,
         ReplaceInstallationFrontendBlocksInput, ReplaceInstallationJsDependenciesInput,
-        ReplaceInstallationNodeContributionsInput, UpsertPluginArtifactInstanceInput,
+        ReplaceInstallationNodeContributionsInput, UpsertExtensionInstallationInput,
+        UpsertPluginArtifactInstanceInput,
     };
 
     CommitPluginInstallationProjectionInput {
@@ -711,6 +712,27 @@ fn installation_commit_input(
             last_load_error: None,
             metadata_json: json!({"block_contributions": ["hero_banner"]}),
             actor_user_id,
+        },
+        extension_installation: UpsertExtensionInstallationInput {
+            installation_id: Uuid::now_v7(),
+            identity: domain::ExtensionInstallationIdentity {
+                category: domain::ExtensionCategory::CapabilityPlugins,
+                organization: "taichuy".into(),
+                artifact_id: "fixture_frontend_blocks".into(),
+                version: "0.1.0".into(),
+                node_id: "test-node".into(),
+            },
+            source: "upload".into(),
+            trust: "unknown".into(),
+            local_path: "/tmp/fixture_frontend_blocks/0.1.0".into(),
+            checksum: "unknown".into(),
+            signature_status: domain::ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            warnings: Vec::new(),
+            receipt: json!({"kind": "fixture"}),
+            status: domain::ExtensionInstallationStatus::Installed,
+            installed_by: actor_user_id,
         },
         artifact_instance: UpsertPluginArtifactInstanceInput {
             node_id: "test-node".into(),

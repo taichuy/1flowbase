@@ -54,10 +54,8 @@ export function ModelProviderCatalogPanel({
   loading,
   canManage,
   switchingProviderCode,
-  upgradingProviderCode,
   onCreate,
   onViewInstances,
-  onUpgradeLatest,
   onSwitchVersion
 }: {
   overviewRows: { key: string; label: string; value: string }[];
@@ -69,10 +67,8 @@ export function ModelProviderCatalogPanel({
   loading?: boolean;
   canManage: boolean;
   switchingProviderCode?: string | null;
-  upgradingProviderCode?: string | null;
   onCreate: (entry: SettingsPluginFamilyEntry) => void;
   onViewInstances: (entry: SettingsPluginFamilyEntry) => void;
-  onUpgradeLatest: (entry: SettingsPluginFamilyEntry) => void;
   onSwitchVersion: (
     entry: SettingsPluginFamilyEntry,
     installationId: string
@@ -231,18 +227,6 @@ export function ModelProviderCatalogPanel({
                           onSwitchVersion(entry, installationId);
                         }}
                       />
-                      {entry.has_update ? (
-                        <Button
-                          size="small"
-                          type="default"
-                          loading={
-                            upgradingProviderCode === entry.provider_code
-                          }
-                          onClick={() => onUpgradeLatest(entry)}
-                        >
-                          {i18nText('settings', 'auto.update')}
-                        </Button>
-                      ) : null}
                     </Space>
                   ) : (
                     <Typography.Text strong>

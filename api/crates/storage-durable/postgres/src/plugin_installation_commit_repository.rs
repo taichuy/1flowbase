@@ -114,6 +114,40 @@ pub(crate) async fn commit_plugin_installation_projection(
     .execute(&mut *tx)
     .await?;
 
+    let extension = &input.extension_installation;
+    sqlx::query(
+        r#"
+            insert into extension_installations (
+                id, category, organization, artifact_id, artifact_version, node_id,
+                source, trust, local_path, checksum, signature_status, signature_algorithm,
+                signing_key_id, warnings, receipt, status, installed_by
+            ) values (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+            )
+            on conflict (category, organization, artifact_id, artifact_version, node_id)
+            do nothing
+        "#,
+    )
+    .bind(extension.installation_id)
+    .bind(extension.identity.category.as_str())
+    .bind(&extension.identity.organization)
+    .bind(&extension.identity.artifact_id)
+    .bind(&extension.identity.version)
+    .bind(&extension.identity.node_id)
+    .bind(&extension.source)
+    .bind(&extension.trust)
+    .bind(&extension.local_path)
+    .bind(&extension.checksum)
+    .bind(extension.signature_status.as_str())
+    .bind(&extension.signature_algorithm)
+    .bind(&extension.signing_key_id)
+    .bind(serde_json::to_value(&extension.warnings)?)
+    .bind(&extension.receipt)
+    .bind(extension.status.as_str())
+    .bind(extension.installed_by)
+    .execute(&mut *tx)
+    .await?;
+
     if let Some(package_catalog) = &input.package_catalog {
         sqlx::query(
             r#"
