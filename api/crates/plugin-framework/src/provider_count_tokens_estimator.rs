@@ -167,3 +167,32 @@ impl CanonicalPromptEstimate {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider_contract::ProviderCountTokensFallbackReason;
+
+    #[test]
+    fn d1_p03_count_tokens_estimator_fault_injection_projects_typed_fallback_zero() {
+        let mut estimate = CanonicalPromptEstimate {
+            tokens: u64::MAX,
+            unknown_block_count: 0,
+        };
+        let injected = estimate.add_tokens(1);
+        assert_eq!(injected, Err(ProviderCountTokensEstimatorError::Overflow));
+
+        let result = match injected {
+            Ok(()) => unreachable!("fixture must inject an estimator overflow"),
+            Err(_) => ProviderCountTokensResult::fallback_zero(),
+        };
+        assert_eq!(result.input_tokens, 0);
+        assert_eq!(result.method, ProviderCountTokensMethod::FallbackZero);
+        assert_eq!(result.coverage, ProviderCountTokensCoverage::Partial);
+        assert_eq!(result.unknown_block_count, 0);
+        assert_eq!(
+            result.fallback_reason,
+            Some(ProviderCountTokensFallbackReason::EstimatorFault)
+        );
+    }
+}

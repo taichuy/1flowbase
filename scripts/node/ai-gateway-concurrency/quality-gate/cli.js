@@ -217,6 +217,11 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
   });
   return [
     invocation(
+      "plugin-framework-count-tokens-estimator-total-corpus",
+      "plugin-framework",
+      "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
+    ),
+    invocation(
       "plugin-framework-count-tokens-contract-tests",
       "plugin-framework",
       "count_tokens",

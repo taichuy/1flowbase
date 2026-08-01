@@ -33,7 +33,7 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 #[test]
-fn native_blocking_response_exposes_typed_operation_terminal() {
+fn d3_p12_count_tokens_native_blocking_response_exposes_typed_operation_terminal() {
     let terminal = NativeOperationTerminal::CountTokens(
         CountTokensReceipt::new(ProviderCountTokensResult::generic_estimate(
             29,
