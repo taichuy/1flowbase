@@ -688,7 +688,24 @@ describe('section shell routing', () => {
   );
 
   test(
-    'D5-AC-006 redirects Extension Center base and keeps category/cursor in browser history',
+    'D5-AC-005 replaces the Extension Center base URL with its canonical installed route',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['extension-center', 'model-providers'])
+      );
+      authenticateWithPermissions([], 'root');
+      renderApp('/settings/extension-center');
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/installed'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'D5-AC-006 keeps Extension Center category/cursor in browser history',
     async () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['extension-center', 'model-providers'])
@@ -708,12 +725,7 @@ describe('section shell routing', () => {
         })
       );
       authenticateWithPermissions([], 'root');
-      renderApp('/settings/extension-center');
-      await waitFor(() => {
-        expect(window.location.pathname).toBe(
-          '/settings/extension-center/installed'
-        );
-      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      renderApp('/settings/extension-center/installed');
       expect(
         await screen.findByRole(
           'tab',
