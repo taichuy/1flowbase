@@ -107,7 +107,10 @@ export function settingsSectionItemsFromConsoleNavigation(
         {
           key: settingsSectionKeyFromPath(route.path, route.surface_key),
           label_key: item.label_key,
-          to: route.path
+          to:
+            route.path === '/settings/extension-center'
+              ? '/settings/extension-center/installed'
+              : route.path
         }
       ];
     });
@@ -157,7 +160,7 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
   {
     key: 'extension-center',
     label_key: 'auto.extension_center',
-    to: '/settings/extension-center'
+    to: '/settings/extension-center/installed'
   },
   {
     key: 'files',

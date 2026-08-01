@@ -1,20 +1,26 @@
 import {
+  applyConsoleInstalledMcpExtension,
   checkConsoleExtensionUpdates,
   getConsoleExtensionCatalogEntry,
+  getConsoleInstalledMcpExtensionConflict,
+  getConsoleInstalledMcpExtensionIntegrityChallenge,
   getConsoleExtensionRiskChallenge,
   installConsoleExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
-  uploadConsoleExtension,
+  previewConsoleInstalledMcpExtension,
   type ConsoleExtensionCatalogEntry,
   type ConsoleExtensionCategory,
   type ConsoleExtensionCompatibilityOverride,
   type ConsoleExtensionRiskOverride,
-  type ConsoleExtensionUploadMetadata,
+  type ConsoleInstalledMcpExtensionApplyOptions,
   type ConsoleInstalledExtension
 } from '@1flowbase/api-client';
 
 export type SettingsExtensionCategory = ConsoleExtensionCategory;
+export type SettingsExtensionCenterCategory =
+  | 'installed'
+  | SettingsExtensionCategory;
 export type SettingsInstalledExtension = ConsoleInstalledExtension;
 export type SettingsExtensionCatalogEntry = ConsoleExtensionCatalogEntry;
 
@@ -80,13 +86,28 @@ export function installSettingsExtension(
   );
 }
 
-export function uploadSettingsExtension(
-  file: File,
-  metadata: ConsoleExtensionUploadMetadata,
-  csrfToken: string,
-  overrides: Parameters<typeof uploadConsoleExtension>[3] = {}
+export function previewSettingsInstalledMcpExtension(
+  extensionInstallationId: string,
+  csrfToken: string
 ) {
-  return uploadConsoleExtension(file, metadata, csrfToken, overrides);
+  return previewConsoleInstalledMcpExtension(
+    extensionInstallationId,
+    csrfToken
+  );
+}
+
+export function applySettingsInstalledMcpExtension(
+  extensionInstallationId: string,
+  csrfToken: string,
+  options: ConsoleInstalledMcpExtensionApplyOptions = {}
+) {
+  return applyConsoleInstalledMcpExtension(
+    extensionInstallationId,
+    csrfToken,
+    options
+  );
 }
 
 export { getConsoleExtensionRiskChallenge as getSettingsExtensionRiskChallenge };
+export { getConsoleInstalledMcpExtensionConflict as getSettingsInstalledMcpExtensionConflict };
+export { getConsoleInstalledMcpExtensionIntegrityChallenge as getSettingsInstalledMcpExtensionIntegrityChallenge };

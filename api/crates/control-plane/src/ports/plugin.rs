@@ -152,7 +152,7 @@ impl OfficialPluginCatalogFreshness {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OfficialPluginArtifact {
     pub os: String,
     pub arch: String,
@@ -164,14 +164,14 @@ pub struct OfficialPluginArtifact {
     pub signing_key_id: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OfficialPluginI18nSummary {
     pub default_locale: String,
     pub available_locales: Vec<String>,
     pub bundles: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OfficialPluginSourceEntry {
     pub plugin_id: String,
     pub plugin_type: String,

@@ -423,6 +423,18 @@ where
         }
     }
 
+    pub async fn find_local_installation_by_id(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .list_installed_for_node(node_id)
+            .await?
+            .into_iter()
+            .find(|record| record.id == installation_id))
+    }
+
     pub async fn reconcile_node_inventory(&self, node_id: &str) -> Result<usize> {
         let records = self
             .repository
@@ -626,6 +638,30 @@ fn integrity_warnings(
     }
     warnings.sort_by(|left, right| left.code.cmp(&right.code));
     warnings
+}
+
+pub fn installed_extension_integrity_warnings(
+    installation: &domain::ExtensionInstallationRecord,
+    artifact_bytes: &[u8],
+) -> Vec<domain::ExtensionIntegrityWarning> {
+    merge_integrity_warnings(
+        installation.warnings.clone(),
+        integrity_warnings(
+            Some(&installation.checksum),
+            &sha256_checksum(artifact_bytes),
+            installation.signature_status,
+        ),
+    )
+}
+
+pub fn validate_extension_integrity_override(
+    warnings: &[domain::ExtensionIntegrityWarning],
+    risk_override: Option<&ExtensionRiskOverride>,
+) -> Result<bool> {
+    Ok(matches!(
+        validate_risk_override(warnings, risk_override)?,
+        RiskOverrideDecision::Accepted(_)
+    ))
 }
 
 fn warning(code: &str, message: &str) -> domain::ExtensionIntegrityWarning {

@@ -141,7 +141,7 @@ pub(super) fn validate_plugin_risk_override(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct OfficialPluginHostCompatibility {
+pub struct OfficialPluginHostCompatibility {
     pub minimum_host_version: String,
     pub current_host_version: String,
     pub status: String,
@@ -161,7 +161,7 @@ impl<R, H> PluginManagementService<R, H> {
             official_source,
             install_root: install_root.into(),
             node_id: String::new(),
-            host_version: default_current_host_version(),
+            host_version: current_plugin_host_version(),
             allow_uploaded_host_extensions: true,
             use_case: PluginManagementUseCase::BusinessActions,
             model_routing_cache_store: None,
@@ -319,7 +319,7 @@ impl<R, H> PluginManagementService<R, H> {
     }
 }
 
-fn default_current_host_version() -> String {
+pub fn current_plugin_host_version() -> String {
     option_env!("FLOWBASE_API_SERVER_VERSION")
         .map(str::trim)
         .filter(|version| !version.is_empty())
@@ -332,7 +332,7 @@ fn parse_semver(value: &str) -> Option<Version> {
     Version::parse(version).ok()
 }
 
-pub(super) fn official_plugin_host_compatibility(
+pub fn official_plugin_host_compatibility(
     minimum_host_version: &str,
     current_host_version: &str,
 ) -> OfficialPluginHostCompatibility {
@@ -363,8 +363,20 @@ pub(super) fn validate_official_plugin_compatibility_override(
     current_host_version: &str,
     compatibility_override: Option<&PluginCompatibilityOverride>,
 ) -> Result<Option<serde_json::Value>> {
+    validate_plugin_compatibility_requirement(
+        &entry.minimum_host_version,
+        current_host_version,
+        compatibility_override,
+    )
+}
+
+pub(super) fn validate_plugin_compatibility_requirement(
+    minimum_host_version: &str,
+    current_host_version: &str,
+    compatibility_override: Option<&PluginCompatibilityOverride>,
+) -> Result<Option<serde_json::Value>> {
     let compatibility =
-        official_plugin_host_compatibility(&entry.minimum_host_version, current_host_version);
+        official_plugin_host_compatibility(minimum_host_version, current_host_version);
     if compatibility.status != PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM {
         return Ok(None);
     }
@@ -374,7 +386,7 @@ pub(super) fn validate_official_plugin_compatibility_override(
     };
     if compatibility_override.reason != PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM
         || compatibility_override.acknowledged_current_host_version != current_host_version
-        || compatibility_override.acknowledged_minimum_host_version != entry.minimum_host_version
+        || compatibility_override.acknowledged_minimum_host_version != minimum_host_version
     {
         return Err(ControlPlaneError::InvalidInput(PLUGIN_COMPATIBILITY_OVERRIDE_INVALID).into());
     }

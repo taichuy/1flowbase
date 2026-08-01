@@ -35,9 +35,18 @@ use super::upload::upload_challenge;
 use super::{
     artifact_preflight_challenge, extension_update_status, paginate_installed_families,
     project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
-    validate_preflight_overrides, InstalledCatalogJoin, PreflightDecision,
-    UploadedExtensionArtifact,
+    validate_preflight_overrides, workspace_application_status, InstalledCatalogJoin,
+    PreflightDecision, UploadedExtensionArtifact,
 };
+
+#[test]
+fn delivery_1560_d5_ac_004_mcp_install_keeps_workspace_application_explicitly_not_imported() {
+    assert_eq!(
+        workspace_application_status(super::ExtensionCatalogCategory::Mcp).as_deref(),
+        Some("not_imported")
+    );
+    assert!(workspace_application_status(super::ExtensionCatalogCategory::I18n).is_none());
+}
 
 #[test]
 fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_identity() {
@@ -343,6 +352,7 @@ fn root_1545_ac_5_preflight_requires_exact_integrity_and_compatibility_acknowled
         locator: "https://example.test/plugin.1flowbasepkg".to_string(),
         expected_checksum: None,
         signature: None,
+        platform: None,
     };
     let challenge = artifact_preflight_challenge(&entry, &descriptor, &[]);
     assert_eq!(

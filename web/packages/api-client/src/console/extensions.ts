@@ -1,5 +1,9 @@
 import { ApiClientError } from '../errors';
 import { apiFetch } from '../transport';
+import type {
+  ConsoleMcpBundleImportReport,
+  ConsoleMcpBundlePreview
+} from '../console-mcp-management';
 
 export type ConsoleExtensionCategory =
   | 'agent-flow'
@@ -137,6 +141,56 @@ export interface ConsoleExtensionInstallResponse {
   installation: ConsoleInstalledExtension;
   local_artifact_was_present: boolean;
   node_plugin_installation_id: string | null;
+  workspace_application_status: 'not_imported' | null;
+}
+
+export type ConsoleMcpExtensionConflictResolution = 'keep_existing';
+
+export interface ConsoleInstalledMcpExtensionApplyOptions {
+  conflict_resolution?: ConsoleMcpExtensionConflictResolution;
+  integrity_override?: ConsoleExtensionRiskOverride;
+}
+
+export interface ConsoleInstalledMcpExtensionPreview {
+  extension_installation_id: string;
+  artifact_installation_status: 'installed';
+  workspace_application_status: 'ready_to_import' | 'confirmation_required';
+  required_conflict_resolution: ConsoleMcpExtensionConflictResolution | null;
+  integrity_warnings: ConsoleExtensionWarning[];
+  required_integrity_override: ConsoleExtensionRiskChallenge | null;
+  preview: ConsoleMcpBundlePreview;
+}
+
+export interface ConsoleInstalledMcpExtensionImport {
+  extension_installation_id: string;
+  artifact_installation_status: 'installed';
+  workspace_application_status: 'imported';
+  integrity_warnings: ConsoleExtensionWarning[];
+  import_report: ConsoleMcpBundleImportReport;
+}
+
+interface ConsoleInstalledMcpExtensionConflictErrorBody {
+  status: number;
+  code: 'mcp_bundle_conflict_confirmation_required';
+  message: string;
+  extension_installation_id: string;
+  artifact_installation_status: 'installed';
+  workspace_application_status: 'not_imported';
+  required_conflict_resolution: ConsoleMcpExtensionConflictResolution;
+  integrity_warnings: ConsoleExtensionWarning[];
+  preview: ConsoleMcpBundlePreview;
+}
+
+export interface ConsoleInstalledMcpExtensionIntegrityChallengeErrorBody {
+  status: number;
+  code: 'mcp_bundle_integrity_confirmation_required';
+  message: string;
+  extension_installation_id: string;
+  artifact_installation_status: 'installed';
+  workspace_application_status: 'not_imported';
+  integrity_warnings: ConsoleExtensionWarning[];
+  required_integrity_override: ConsoleExtensionRiskChallenge;
+  preview: ConsoleMcpBundlePreview;
 }
 
 export interface ConsoleExtensionUploadMetadata {
@@ -261,6 +315,63 @@ export function uploadConsoleExtension(
     contentType: null,
     csrfToken
   });
+}
+
+export function previewConsoleInstalledMcpExtension(
+  extension_installation_id: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleInstalledMcpExtensionPreview>({
+    path: '/api/console/mcp/bundles/preview-official',
+    method: 'POST',
+    body: { extension_installation_id },
+    csrfToken
+  });
+}
+
+export function applyConsoleInstalledMcpExtension(
+  extension_installation_id: string,
+  csrfToken: string,
+  options: ConsoleInstalledMcpExtensionApplyOptions = {}
+) {
+  return apiFetch<ConsoleInstalledMcpExtensionImport>({
+    path: '/api/console/mcp/bundles/import-official',
+    method: 'POST',
+    body: {
+      extension_installation_id,
+      ...options
+    },
+    csrfToken
+  });
+}
+
+export function getConsoleInstalledMcpExtensionIntegrityChallenge(
+  error: unknown
+): ConsoleInstalledMcpExtensionIntegrityChallengeErrorBody | null {
+  if (!(error instanceof ApiClientError) || error.status !== 409) return null;
+  if (!error.body || typeof error.body !== 'object') return null;
+  const body =
+    error.body as Partial<ConsoleInstalledMcpExtensionIntegrityChallengeErrorBody>;
+  return body.code === 'mcp_bundle_integrity_confirmation_required' &&
+    body.required_integrity_override &&
+    Array.isArray(body.integrity_warnings) &&
+    body.preview
+    ? (body as ConsoleInstalledMcpExtensionIntegrityChallengeErrorBody)
+    : null;
+}
+
+export function getConsoleInstalledMcpExtensionConflict(
+  error: unknown
+): ConsoleInstalledMcpExtensionConflictErrorBody | null {
+  if (!(error instanceof ApiClientError) || error.status !== 409) return null;
+  if (!error.body || typeof error.body !== 'object') return null;
+  const body =
+    error.body as Partial<ConsoleInstalledMcpExtensionConflictErrorBody>;
+  return body.code === 'mcp_bundle_conflict_confirmation_required' &&
+    body.required_conflict_resolution === 'keep_existing' &&
+    body.preview
+    ? (body as ConsoleInstalledMcpExtensionConflictErrorBody)
+    : null;
 }
 
 export function getConsoleExtensionRiskChallenge(

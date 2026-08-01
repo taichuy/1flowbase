@@ -332,17 +332,25 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let api_docs = Arc::new(
         openapi_docs::build_default_api_docs_registry_with_cookie_name(&config.cookie_name)?,
     );
-    let resolved_official_source = config.resolve_official_plugin_source();
     let resolved_official_agent_flow_template_source =
         config.resolve_official_agent_flow_template_source();
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let official_agent_flow_template_cache = infrastructure.cache_store();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
-    let official_plugin_source =
-        Arc::new(official_plugin_registry::ApiOfficialPluginRegistry::new(
-            resolved_official_source,
+    let official_extension_catalog_source = Arc::new(
+        official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config),
+    );
+    let official_plugin_source = Arc::new(
+        official_extension_catalog::ApiOfficialRuntimeExtensionSource::new(
+            official_extension_catalog_source.clone(),
+            if config.official_plugin_signature_required {
+                "signature_required".to_string()
+            } else {
+                "allow_unsigned".to_string()
+            },
             trusted_public_keys,
-        ));
+        ),
+    );
     let official_agent_flow_template_source = Arc::new(
         official_agent_flow_templates::ApiOfficialAgentFlowTemplateRegistry::new(
             resolved_official_agent_flow_template_source,
@@ -353,9 +361,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
         ));
-    let official_extension_catalog_source = Arc::new(
-        official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config),
-    );
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
