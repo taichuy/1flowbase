@@ -14,9 +14,9 @@ use axum::{
     Json,
 };
 use control_plane::plugin_management::{
-    ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
-    ExtensionRiskOverride, InstallExtensionArtifactCommand, InstallExtensionNodePluginCommand,
-    PluginManagementService,
+    group_installed_extension_families, ExtensionArtifactInstallOutcome, ExtensionCatalogCategory,
+    ExtensionInstallationService, ExtensionRiskOverride, InstallExtensionArtifactCommand,
+    InstallExtensionNodePluginCommand, InstalledExtensionFamily, PluginManagementService,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
 use serde::{Deserialize, Serialize};
@@ -37,8 +37,8 @@ use crate::{
 };
 
 use super::{
-    base_service, enforce_plugin_upload_limit, format_time, parse_uuid,
-    PluginCompatibilityOverrideBody, PluginRiskOverrideBody, MAX_PLUGIN_UPLOAD_BYTES,
+    base_service, enforce_plugin_upload_limit, format_time, PluginCompatibilityOverrideBody,
+    PluginRiskOverrideBody, MAX_PLUGIN_UPLOAD_BYTES,
 };
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
@@ -63,6 +63,24 @@ pub struct ExtensionCompatibilityWarningResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct LocalExtensionInstalledVersionResponse {
+    pub id: String,
+    pub version: String,
+    pub source: String,
+    pub trust: String,
+    pub warnings: Vec<ExtensionRiskWarningResponse>,
+    pub local_path: String,
+    pub checksum: String,
+    pub signature_status: String,
+    pub signature_algorithm: Option<String>,
+    pub signing_key_id: Option<String>,
+    pub status: String,
+    pub installed_by: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInventoryEntryResponse {
     pub id: String,
     pub catalog_id: String,
@@ -83,11 +101,13 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub installed_by: String,
     pub created_at: String,
     pub updated_at: String,
+    pub installed_versions: Vec<LocalExtensionInstalledVersionResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInventoryPageResponse {
     pub limit: usize,
+    pub total_entries: usize,
     pub next_cursor: Option<String>,
     pub entries: Vec<LocalExtensionInventoryEntryResponse>,
 }
@@ -163,6 +183,7 @@ pub struct ExtensionCatalogGatewayPageResponse {
 pub struct ExtensionUpdateCheckItemBody {
     pub catalog_id: String,
     pub current_version: String,
+    pub installed_versions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -277,8 +298,43 @@ fn extension_installation_service(
     ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
 }
 
-fn to_local_inventory_entry(
+fn to_risk_warnings(
+    warnings: &[domain::ExtensionIntegrityWarning],
+) -> Vec<ExtensionRiskWarningResponse> {
+    warnings
+        .iter()
+        .map(|warning| ExtensionRiskWarningResponse {
+            message: warning.message.clone(),
+            code: warning.code.clone(),
+            overridable: warning.overridable,
+        })
+        .collect()
+}
+
+fn to_installed_version(
+    entry: &domain::ExtensionInstallationRecord,
+) -> LocalExtensionInstalledVersionResponse {
+    LocalExtensionInstalledVersionResponse {
+        id: entry.id.to_string(),
+        version: entry.identity.version.clone(),
+        source: entry.source.clone(),
+        trust: entry.trust.clone(),
+        warnings: to_risk_warnings(&entry.warnings),
+        local_path: entry.local_path.clone(),
+        checksum: entry.checksum.clone(),
+        signature_status: entry.signature_status.as_str().to_string(),
+        signature_algorithm: entry.signature_algorithm.clone(),
+        signing_key_id: entry.signing_key_id.clone(),
+        status: entry.status.as_str().to_string(),
+        installed_by: entry.installed_by.to_string(),
+        created_at: format_time(entry.created_at),
+        updated_at: format_time(entry.updated_at),
+    }
+}
+
+fn to_local_inventory_family(
     entry: domain::ExtensionInstallationRecord,
+    installed_versions: Vec<domain::ExtensionInstallationRecord>,
 ) -> LocalExtensionInventoryEntryResponse {
     LocalExtensionInventoryEntryResponse {
         id: entry.id.to_string(),
@@ -290,15 +346,7 @@ fn to_local_inventory_entry(
         node_id: entry.identity.node_id,
         source: entry.source,
         trust: entry.trust,
-        warnings: entry
-            .warnings
-            .into_iter()
-            .map(|warning| ExtensionRiskWarningResponse {
-                message: warning.message,
-                code: warning.code,
-                overridable: warning.overridable,
-            })
-            .collect(),
+        warnings: to_risk_warnings(&entry.warnings),
         local_path: entry.local_path,
         checksum: entry.checksum,
         signature_status: entry.signature_status.as_str().to_string(),
@@ -308,7 +356,51 @@ fn to_local_inventory_entry(
         installed_by: entry.installed_by.to_string(),
         created_at: format_time(entry.created_at),
         updated_at: format_time(entry.updated_at),
+        installed_versions: installed_versions
+            .iter()
+            .map(to_installed_version)
+            .collect(),
     }
+}
+
+fn to_local_inventory_entry(
+    entry: domain::ExtensionInstallationRecord,
+) -> LocalExtensionInventoryEntryResponse {
+    to_local_inventory_family(entry.clone(), vec![entry])
+}
+
+fn to_local_inventory_family_entry(
+    family: InstalledExtensionFamily,
+) -> LocalExtensionInventoryEntryResponse {
+    to_local_inventory_family(family.current, family.installed_versions)
+}
+
+fn paginate_installed_families(
+    families: Vec<InstalledExtensionFamily>,
+    cursor: Option<&str>,
+    limit: usize,
+) -> (usize, Option<String>, Vec<InstalledExtensionFamily>) {
+    let start = cursor
+        .and_then(|cursor| {
+            families
+                .iter()
+                .position(|family| family.catalog_id() == cursor)
+        })
+        .map_or(0, |index| index.saturating_add(1));
+    let total_entries = families.len();
+    let page_entries = families
+        .into_iter()
+        .skip(start)
+        .take(limit)
+        .collect::<Vec<_>>();
+    let next_cursor = (start.saturating_add(page_entries.len()) < total_entries)
+        .then(|| {
+            page_entries
+                .last()
+                .map(InstalledExtensionFamily::catalog_id)
+        })
+        .flatten();
+    (total_entries, next_cursor, page_entries)
 }
 
 #[utoipa::path(
@@ -335,35 +427,22 @@ pub async fn list_local_extension_inventory(
             )
         })
         .transpose()?;
-    let cursor = query
-        .cursor
-        .as_deref()
-        .map(|value| parse_uuid(value, "cursor"))
-        .transpose()?;
     let limit = query.limit.unwrap_or(20).clamp(1, 50);
-    let mut entries = extension_installation_service(&state)
-        .list_installed_for_node(&state.api_node_id)
+    let mut families = extension_installation_service(&state)
+        .list_installed_families_for_node(&state.api_node_id)
         .await?;
     if let Some(category) = category {
-        entries.retain(|entry| entry.identity.category == category);
+        families.retain(|family| family.current.identity.category == category);
     }
-    let start = cursor
-        .and_then(|cursor| entries.iter().position(|entry| entry.id == cursor))
-        .map_or(0, |index| index.saturating_add(1));
-    let page_entries = entries
-        .into_iter()
-        .skip(start)
-        .take(limit)
-        .collect::<Vec<_>>();
-    let next_cursor = (page_entries.len() == limit)
-        .then(|| page_entries.last().map(|entry| entry.id.to_string()))
-        .flatten();
+    let (total_entries, next_cursor, page_entries) =
+        paginate_installed_families(families, query.cursor.as_deref(), limit);
     Ok(Json(ApiSuccess::new(LocalExtensionInventoryPageResponse {
         limit,
+        total_entries,
         next_cursor,
         entries: page_entries
             .into_iter()
-            .map(to_local_inventory_entry)
+            .map(to_local_inventory_family_entry)
             .collect(),
     })))
 }
@@ -390,17 +469,19 @@ fn project_installed_catalog_joins(
     category: ExtensionCatalogCategory,
 ) -> HashMap<String, InstalledCatalogJoin> {
     let mut joins = HashMap::new();
-    for entry in records {
+    for family in group_installed_extension_families(records) {
+        let entry = family.current;
         if entry.identity.category.as_str() != category.as_str() {
             continue;
         }
-        joins
-            .entry(entry.identity.catalog_id())
-            .or_insert_with(|| InstalledCatalogJoin {
+        joins.insert(
+            entry.identity.catalog_id(),
+            InstalledCatalogJoin {
                 current_version: entry.identity.version,
                 source: entry.source,
                 trust: entry.trust,
-            });
+            },
+        );
     }
     joins
 }
@@ -410,6 +491,17 @@ fn catalog_entry_join<'a>(
     installed: &'a HashMap<String, InstalledCatalogJoin>,
 ) -> Option<&'a InstalledCatalogJoin> {
     installed.get(&entry.id)
+}
+
+fn extension_update_status(
+    latest_version: Option<&str>,
+    installed_versions: &[String],
+) -> &'static str {
+    match latest_version {
+        Some(version) if installed_versions.iter().any(|local| local == version) => "current",
+        Some(_) => "update_available",
+        None => "unknown_error",
+    }
 }
 
 fn warning_message(code: &str) -> String {
@@ -697,6 +789,17 @@ pub async fn check_extension_catalog_page_updates(
             )
             .into());
         }
+        if item.installed_versions.is_empty()
+            || item
+                .installed_versions
+                .iter()
+                .any(|version| !valid_extension_segment(version))
+        {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "installed_extension_versions",
+            )
+            .into());
+        }
     }
     let page = load_catalog_page(&state, category, body.catalog_page.clone()).await?;
     let latest = page
@@ -709,11 +812,8 @@ pub async fn check_extension_catalog_page_updates(
         .into_iter()
         .map(|item| {
             let latest_version = latest.get(&item.catalog_id).cloned();
-            let status = match latest_version.as_deref() {
-                Some(version) if version == item.current_version => "current",
-                Some(_) => "update_available",
-                None => "unknown_error",
-            };
+            let status =
+                extension_update_status(latest_version.as_deref(), &item.installed_versions);
             ExtensionUpdateCheckItemResponse {
                 catalog_id: item.catalog_id,
                 current_version: item.current_version,

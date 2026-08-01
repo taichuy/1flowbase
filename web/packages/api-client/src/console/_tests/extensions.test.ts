@@ -8,7 +8,8 @@ import {
   installConsoleExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
-  uploadConsoleExtension
+  uploadConsoleExtension,
+  type ConsoleInstalledExtensionPage
 } from '../extensions';
 import { ApiClientError } from '../../errors';
 
@@ -28,6 +29,58 @@ describe('extension center client contract', () => {
     });
   });
 
+  test('D4-AC-013 keeps family pagination and version history in the backend DTO', () => {
+    const page = {
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [
+        {
+          id: 'installation-current',
+          catalog_id: 'runtime-extensions:taichuy/anthropic',
+          category: 'runtime-extensions',
+          organization: 'taichuy',
+          artifact_id: 'anthropic',
+          version: '0.1.23',
+          node_id: 'node-a',
+          source: 'upload',
+          trust: 'unknown',
+          warnings: [],
+          local_path: '/api/plugins/anthropic/0.1.23',
+          checksum: 'sha256:current',
+          signature_status: 'missing',
+          signature_algorithm: null,
+          signing_key_id: null,
+          status: 'installed',
+          installed_by: 'user-1',
+          created_at: '2026-08-01T00:00:00Z',
+          updated_at: '2026-08-01T00:00:00Z',
+          installed_versions: [
+            {
+              id: 'installation-current',
+              version: '0.1.23',
+              source: 'upload',
+              trust: 'unknown',
+              warnings: [],
+              local_path: '/api/plugins/anthropic/0.1.23',
+              checksum: 'sha256:current',
+              signature_status: 'missing',
+              signature_algorithm: null,
+              signing_key_id: null,
+              status: 'installed',
+              installed_by: 'user-1',
+              created_at: '2026-08-01T00:00:00Z',
+              updated_at: '2026-08-01T00:00:00Z'
+            }
+          ]
+        }
+      ]
+    } satisfies ConsoleInstalledExtensionPage;
+
+    expect(page.total_entries).toBe(1);
+    expect(page.entries[0].installed_versions).toHaveLength(1);
+  });
+
   test('D4-AC-002 addresses repository category catalog pages directly', async () => {
     await expect(
       listConsoleExtensionCatalog('runtime-extensions', 'page-2', 20)
@@ -45,7 +98,8 @@ describe('extension center client contract', () => {
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
-              current_version: '1.0.0'
+              current_version: '1.0.0',
+              installed_versions: ['1.0.0']
             }
           ]
         },

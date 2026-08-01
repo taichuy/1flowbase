@@ -11,8 +11,9 @@ use uuid::Uuid;
 
 use crate::{
     plugin_management::{
-        ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
-        ExtensionRiskOverride, InstallExtensionArtifactCommand, EXTENSION_RISK_CHECKSUM_MISMATCH,
+        group_installed_extension_families, ExtensionArtifactInstallOutcome,
+        ExtensionCatalogCategory, ExtensionInstallationService, ExtensionRiskOverride,
+        InstallExtensionArtifactCommand, EXTENSION_RISK_CHECKSUM_MISMATCH,
         EXTENSION_RISK_SIGNATURE_INVALID, EXTENSION_RISK_SIGNATURE_MISSING,
         EXTENSION_RISK_SIGNING_KEY_UNKNOWN,
     },
@@ -409,4 +410,63 @@ async fn root_1545_ac4_rejects_path_traversal_before_writing() {
     let install = command(ExtensionCatalogCategory::AgentFlow, "../escape", b"fixture");
     assert!(service.install_from_bytes(install).await.is_err());
     assert!(!root.exists());
+}
+
+#[test]
+fn root_1545_d4_ac_13_groups_installed_versions_by_stable_family_identity() {
+    let now = OffsetDateTime::now_utc();
+    let families = group_installed_extension_families([
+        installed_record("anthropic", "0.1.18", now),
+        installed_record("deepseek", "0.1.15", now),
+        installed_record("anthropic", "0.1.23", now - time::Duration::DAY),
+    ]);
+
+    assert_eq!(families.len(), 2);
+    assert_eq!(
+        families[0].catalog_id(),
+        "runtime-extensions:taichuy/anthropic"
+    );
+    assert_eq!(families[0].current.identity.version, "0.1.23");
+    assert_eq!(
+        families[0]
+            .installed_versions
+            .iter()
+            .map(|record| record.identity.version.as_str())
+            .collect::<Vec<_>>(),
+        vec!["0.1.23", "0.1.18"]
+    );
+    assert_eq!(
+        families[1].catalog_id(),
+        "runtime-extensions:taichuy/deepseek"
+    );
+}
+
+fn installed_record(
+    artifact_id: &str,
+    version: &str,
+    updated_at: OffsetDateTime,
+) -> domain::ExtensionInstallationRecord {
+    domain::ExtensionInstallationRecord {
+        id: Uuid::now_v7(),
+        identity: domain::ExtensionInstallationIdentity {
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "taichuy".to_string(),
+            artifact_id: artifact_id.to_string(),
+            version: version.to_string(),
+            node_id: "node-a".to_string(),
+        },
+        source: "official_registry".to_string(),
+        trust: "official".to_string(),
+        local_path: format!("/tmp/{artifact_id}/{version}"),
+        checksum: "sha256:fixture".to_string(),
+        signature_status: domain::ExtensionSignatureStatus::Verified,
+        signature_algorithm: Some("ed25519".to_string()),
+        signing_key_id: Some("official-key".to_string()),
+        warnings: Vec::new(),
+        receipt: serde_json::json!({}),
+        status: domain::ExtensionInstallationStatus::Installed,
+        installed_by: Uuid::now_v7(),
+        created_at: updated_at,
+        updated_at,
+    }
 }
