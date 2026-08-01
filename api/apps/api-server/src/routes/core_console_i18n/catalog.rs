@@ -26,6 +26,11 @@ macro_rules! resource {
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("auto.api_documentation", "API documentation"),
     settings_feature!("auto.translation_catalog_title", "Language catalog"),
+    settings_feature!("auto.extension_center", "Extension center"),
+    settings_feature!(
+        "console.policy_groups.settings.system.extension-center.description",
+        "Discover and manage host-installed extensions"
+    ),
     settings_feature!("auto.api_key_authentication", "API key authentication"),
     settings_feature!("auto.system_runtime", "System runtime"),
     settings_feature!("auto.application_management", "Application management"),

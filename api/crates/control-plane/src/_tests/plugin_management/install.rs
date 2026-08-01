@@ -6,7 +6,7 @@ use crate::{
         AssignPluginCommand, EnablePluginCommand, InstallOfficialPluginCommand,
         InstallPluginCommand, InstallUploadedPluginCommand, OfficialPluginCatalogFilter,
         PluginCatalogFilter, PluginCompatibilityOverride, PluginManagementService,
-        RefreshCurrentNodePluginArtifactCommand,
+        PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand, PLUGIN_RISK_SIGNATURE_MISSING,
     },
     ports::{
         CreatePluginTaskInput, FrontendBlockCatalogRepository, JsDependencyRepository,
@@ -204,6 +204,53 @@ async fn plugin_management_service_refreshes_empty_current_node_without_global_p
 }
 
 #[tokio::test]
+async fn ac_be_1_plugin_management_rebuilds_inventory_from_local_receipt() {
+    let workspace_id = Uuid::now_v7();
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-receipt-rebuild-{}", Uuid::now_v7()));
+    let source_repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let source_service = PluginManagementService::new(
+        source_repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    source_service
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: source_repository.actor.user_id,
+            file_name: "openai_compatible-0.1.0.1flowbasepkg".into(),
+            package_bytes: build_openai_compatible_package_bytes("0.1.0", false),
+        })
+        .await
+        .unwrap();
+
+    let rebuilt_repository = MemoryPluginManagementRepository::new(domain::ActorContext::root(
+        Uuid::now_v7(),
+        workspace_id,
+        "root",
+    ));
+    let rebuilt_service = PluginManagementService::new(
+        rebuilt_repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let rebuilt = rebuilt_service
+        .rebuild_inventory_from_local_receipts(rebuilt_repository.actor.user_id)
+        .await
+        .unwrap();
+
+    assert_eq!(rebuilt, 1);
+    let installations = rebuilt_repository.list_installations().await.unwrap();
+    assert_eq!(installations.len(), 1);
+    assert_eq!(installations[0].source_kind, "uploaded");
+    assert!(PathBuf::from(&installations[0].installed_path).is_dir());
+}
+
+#[tokio::test]
 async fn plugin_management_service_marks_current_node_artifact_outdated_for_stale_local_version() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
@@ -263,7 +310,7 @@ async fn plugin_management_service_marks_current_node_artifact_outdated_for_stal
 }
 
 #[tokio::test]
-async fn plugin_management_service_marks_current_node_artifact_mismatched_when_expected_checksum_is_missing_from_marker(
+async fn ac_be_4_plugin_management_service_keeps_local_artifact_ready_when_expected_checksum_is_missing_from_marker(
 ) {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
@@ -312,8 +359,13 @@ async fn plugin_management_service_marks_current_node_artifact_mismatched_when_e
         .await
         .unwrap();
 
-    assert_eq!(artifact.artifact_status.as_str(), "mismatched");
+    assert_eq!(artifact.artifact_status.as_str(), "ready");
     assert_eq!(artifact.last_error.as_deref(), Some("checksum_missing"));
+    assert!(repository
+        .audit_events()
+        .await
+        .iter()
+        .any(|event| event == "plugin.local_artifact_warning"));
 }
 
 #[tokio::test]
@@ -351,6 +403,10 @@ async fn plugin_management_service_lists_official_catalog_and_installs_latest_re
             actor_user_id: repository.actor.user_id,
             plugin_id: "1flowbase.openai_compatible".to_string(),
             compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
         })
         .await
         .unwrap();
@@ -425,6 +481,10 @@ async fn plugin_management_service_requires_explicit_override_for_below_minimum_
             actor_user_id: repository.actor.user_id,
             plugin_id: "1flowbase.openai_compatible".to_string(),
             compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
         })
         .await
         .unwrap_err();
@@ -444,6 +504,10 @@ async fn plugin_management_service_requires_explicit_override_for_below_minimum_
                 reason: "below_minimum_host_version".to_string(),
                 acknowledged_current_host_version: env!("CARGO_PKG_VERSION").to_string(),
                 acknowledged_minimum_host_version: "999.0.0".to_string(),
+            }),
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
             }),
         })
         .await
@@ -472,7 +536,7 @@ async fn plugin_management_service_requires_explicit_override_for_below_minimum_
 }
 
 #[tokio::test]
-async fn plugin_management_service_rejects_unsigned_signature_required_official_package() {
+async fn ac_be_4_plugin_management_service_requires_confirmation_for_unsigned_official_package() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
         workspace_id,
@@ -490,13 +554,34 @@ async fn plugin_management_service_rejects_unsigned_signature_required_official_
             actor_user_id: repository.actor.user_id,
             plugin_id: "1flowbase.openai_compatible".into(),
             compatibility_override: None,
+            risk_override: None,
         })
         .await
-        .expect_err("unsigned official package must fail");
+        .expect_err("unsigned official package must require confirmation");
 
-    assert!(error
-        .to_string()
-        .contains("requires a valid official signature"));
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict(
+            "plugin_risk_confirmation_required"
+        ))
+    ));
+
+    let result = service
+        .install_official_plugin(InstallOfficialPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            plugin_id: "1flowbase.openai_compatible".into(),
+            compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "operator accepted unsigned package".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
+        })
+        .await
+        .expect("confirmed warning should allow installation");
+    assert_eq!(
+        result.installation.metadata_json["risk_warnings"][0],
+        PLUGIN_RISK_SIGNATURE_MISSING
+    );
 }
 
 #[tokio::test]

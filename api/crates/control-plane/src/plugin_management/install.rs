@@ -14,6 +14,15 @@ pub struct InstallOfficialPluginCommand {
     pub actor_user_id: Uuid,
     pub plugin_id: String,
     pub compatibility_override: Option<PluginCompatibilityOverride>,
+    pub risk_override: Option<PluginRiskOverride>,
+}
+
+pub struct InstallOfficialExtensionCommand {
+    pub actor_user_id: Uuid,
+    pub artifact_id: String,
+    pub expected_plugin_type: String,
+    pub compatibility_override: Option<PluginCompatibilityOverride>,
+    pub risk_override: Option<PluginRiskOverride>,
 }
 
 pub struct InstallUploadedPluginCommand {
@@ -31,6 +40,26 @@ pub struct UpgradeLatestPluginFamilyCommand {
     pub actor_user_id: Uuid,
     pub provider_code: String,
     pub compatibility_override: Option<PluginCompatibilityOverride>,
+    pub risk_override: Option<PluginRiskOverride>,
+}
+
+fn official_package_risk_warnings(
+    package_bytes: &[u8],
+    expected_checksum: &str,
+    intake: &PackageIntakeResult,
+) -> Vec<String> {
+    let actual = format!("sha256:{:x}", Sha256::digest(package_bytes));
+    let mut warnings = Vec::new();
+    if actual != expected_checksum {
+        warnings.push(PLUGIN_RISK_CHECKSUM_MISMATCH.to_string());
+    }
+    match intake.signature_status.as_str() {
+        "verified" => {}
+        "unsigned" => warnings.push(PLUGIN_RISK_SIGNATURE_MISSING.to_string()),
+        "unknown_key" => warnings.push(PLUGIN_RISK_SIGNING_KEY_UNKNOWN.to_string()),
+        _ => warnings.push(PLUGIN_RISK_SIGNATURE_INVALID.to_string()),
+    }
+    warnings
 }
 
 #[derive(Debug, Clone)]
@@ -488,6 +517,18 @@ where
             compute_manifest_fingerprint(&staged_installation.staged_path().join("manifest.yaml"))
                 .await
                 .map_err(map_framework_error)?;
+        write_artifact_marker(
+            staged_installation.staged_path(),
+            &plugin_id,
+            &manifest.version,
+            None,
+            Some(&manifest_fingerprint),
+            Some("builtin"),
+            Some("verified_official"),
+            Some("builtin"),
+            None,
+            None,
+        )?;
         staged_installation.activate()?;
 
         let installation_input = UpsertPluginInstallationInput {
@@ -654,13 +695,20 @@ where
             &downloaded.package_bytes,
             &PackageIntakePolicy {
                 source_kind: snapshot.source.source_kind.clone(),
-                trust_mode: entry.trust_mode.clone(),
-                expected_artifact_sha256: Some(entry.selected_artifact.checksum.clone()),
+                trust_mode: "allow_unsigned".to_string(),
+                expected_artifact_sha256: None,
                 trusted_public_keys: self.official_source.trusted_public_keys(),
                 original_filename: Some(downloaded.file_name.clone()),
             },
         )
         .await?;
+        let risk_warnings = official_package_risk_warnings(
+            &downloaded.package_bytes,
+            &entry.selected_artifact.checksum,
+            &intake,
+        );
+        let risk_override =
+            validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
         self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
         let result = async {
             let mut detail_json = json!({
@@ -670,6 +718,10 @@ where
             });
             if let Some(compatibility_override) = compatibility_override.clone() {
                 detail_json["compatibility_override"] = compatibility_override;
+            }
+            detail_json["risk_warnings"] = json!(risk_warnings);
+            if let Some(risk_override) = risk_override.clone() {
+                detail_json["risk_override"] = risk_override;
             }
             let install = self
                 .install_intake_result(
@@ -702,6 +754,67 @@ where
         }
         .await;
         result
+    }
+
+    pub async fn install_official_extension(
+        &self,
+        command: InstallOfficialExtensionCommand,
+    ) -> Result<InstallPluginResult> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
+        let snapshot = self.official_source.list_official_catalog().await?;
+        let entry = snapshot
+            .entries
+            .into_iter()
+            .find(|item| item.plugin_id == command.artifact_id)
+            .ok_or(ControlPlaneError::NotFound("official_plugin"))?;
+        if entry.plugin_type != command.expected_plugin_type {
+            return Err(ControlPlaneError::InvalidInput("extension_catalog_category").into());
+        }
+        let compatibility_override = validate_official_plugin_compatibility_override(
+            &entry,
+            &self.host_version,
+            command.compatibility_override.as_ref(),
+        )?;
+        let downloaded = self.official_source.download_plugin(&entry).await?;
+        let intake = intake_package_bytes(
+            &downloaded.package_bytes,
+            &PackageIntakePolicy {
+                source_kind: snapshot.source.source_kind,
+                trust_mode: "allow_unsigned".to_string(),
+                expected_artifact_sha256: None,
+                trusted_public_keys: self.official_source.trusted_public_keys(),
+                original_filename: Some(downloaded.file_name.clone()),
+            },
+        )
+        .await?;
+        let risk_warnings = official_package_risk_warnings(
+            &downloaded.package_bytes,
+            &entry.selected_artifact.checksum,
+            &intake,
+        );
+        let risk_override =
+            validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
+        let mut detail_json = json!({
+            "install_kind": "extension_center_official_install",
+            "plugin_id": command.artifact_id,
+            "file_name": downloaded.file_name,
+            "risk_warnings": risk_warnings,
+        });
+        if let Some(value) = compatibility_override {
+            detail_json["compatibility_override"] = value;
+        }
+        if let Some(value) = risk_override {
+            detail_json["risk_override"] = value;
+        }
+        self.install_intake_result(
+            command.actor_user_id,
+            intake,
+            Some(downloaded.package_bytes),
+            detail_json,
+        )
+        .await
     }
 
     pub async fn upgrade_latest(
@@ -758,15 +871,20 @@ where
                     &downloaded.package_bytes,
                     &PackageIntakePolicy {
                         source_kind: snapshot.source.source_kind.clone(),
-                        trust_mode: snapshot_entry.trust_mode.clone(),
-                        expected_artifact_sha256: Some(
-                            snapshot_entry.selected_artifact.checksum.clone(),
-                        ),
+                        trust_mode: "allow_unsigned".to_string(),
+                        expected_artifact_sha256: None,
                         trusted_public_keys: self.official_source.trusted_public_keys(),
                         original_filename: Some(downloaded.file_name.clone()),
                     },
                 )
                 .await?;
+                let risk_warnings = official_package_risk_warnings(
+                    &downloaded.package_bytes,
+                    &snapshot_entry.selected_artifact.checksum,
+                    &intake,
+                );
+                let risk_override =
+                    validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
                 let mut detail_json = json!({
                     "install_kind": "official_upgrade",
                     "plugin_id": snapshot_entry.plugin_id,
@@ -775,6 +893,10 @@ where
                 });
                 if let Some(compatibility_override) = compatibility_override.clone() {
                     detail_json["compatibility_override"] = compatibility_override;
+                }
+                detail_json["risk_warnings"] = json!(risk_warnings);
+                if let Some(risk_override) = risk_override {
+                    detail_json["risk_override"] = risk_override;
                 }
                 self.install_intake_result(
                     command.actor_user_id,
@@ -900,6 +1022,11 @@ where
                 &manifest.version,
                 source_metadata.checksum.as_deref(),
                 Some(&manifest_fingerprint),
+                Some(&source_metadata.source_kind),
+                Some(&source_metadata.trust_level),
+                source_metadata.signature_status.as_deref(),
+                source_metadata.signature_algorithm.as_deref(),
+                source_metadata.signing_key_id.as_deref(),
             )?;
             staged_installation.activate()?;
             if let Some(package) = staged_package.as_mut() {

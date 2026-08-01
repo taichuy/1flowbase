@@ -72,6 +72,30 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
 
     assert_eq!(routes("system.model-providers").len(), 26);
     assert_eq!(
+        routes("system.extension-center"),
+        vec![
+            (
+                "GET",
+                "/api/console/settings/extension-center/catalog/{category}"
+            ),
+            (
+                "GET",
+                "/api/console/settings/extension-center/catalog/{category}/{artifact_id}"
+            ),
+            ("GET", "/api/console/settings/extension-center/installed"),
+            ("POST", "/api/console/settings/extension-center/install"),
+            (
+                "POST",
+                "/api/console/settings/extension-center/install-upload"
+            ),
+            ("POST", "/api/console/settings/extension-center/update"),
+            (
+                "POST",
+                "/api/console/settings/extension-center/update-check"
+            ),
+        ]
+    );
+    assert_eq!(
         routes("system.model-providers"),
         vec![
             (

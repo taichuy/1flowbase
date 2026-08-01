@@ -358,6 +358,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     .with_node_id(config.api_node_id.clone())
     .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
     plugin_management
+        .rebuild_inventory_from_local_receipts(bootstrap_result.root_user_id)
+        .await?;
+    plugin_management
         .ensure_builtin_plugin(
             control_plane::plugin_management::EnsureBuiltinPluginCommand {
                 actor_user_id: bootstrap_result.root_user_id,

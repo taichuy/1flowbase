@@ -44,7 +44,14 @@ async fn plugin_routes_list_official_catalog_and_install_official_package() {
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "plugin_id": "1flowbase.openai_compatible" }).to_string(),
+                    json!({
+                        "plugin_id": "1flowbase.openai_compatible",
+                        "risk_override": {
+                            "reason": "route fixture accepts unsigned package",
+                            "acknowledged_warnings": ["signature_missing"]
+                        }
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )

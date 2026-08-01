@@ -97,6 +97,7 @@ pub async fn install_official_plugin(
             actor_user_id: context.user.id,
             plugin_id: body.plugin_id,
             compatibility_override: to_compatibility_override(body.compatibility_override),
+            risk_override: to_risk_override(body.risk_override),
         })
         .await?;
     Ok((
@@ -195,13 +196,17 @@ pub async fn upgrade_latest(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let body = body.map(|Json(body)| body);
+    let compatibility_override = body
+        .as_ref()
+        .and_then(|body| to_compatibility_override(body.compatibility_override.clone()));
+    let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
     let task = service(&state, "model_provider_plugins.families.upgrade")
         .upgrade_latest(UpgradeLatestPluginFamilyCommand {
             actor_user_id: context.user.id,
             provider_code,
-            compatibility_override: body
-                .map(|Json(body)| body.compatibility_override)
-                .and_then(to_compatibility_override),
+            compatibility_override,
+            risk_override,
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))

@@ -16,7 +16,8 @@ use crate::{
     plugin_management::{
         AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand, InstallPluginCommand,
         InstallUploadedPluginCommand, PluginCatalogFilter, PluginCompatibilityOverride,
-        PluginManagementService, SwitchPluginVersionCommand, UpgradeLatestPluginFamilyCommand,
+        PluginManagementService, PluginRiskOverride, SwitchPluginVersionCommand,
+        UpgradeLatestPluginFamilyCommand, PLUGIN_RISK_SIGNATURE_MISSING,
     },
     ports::{
         CreatePluginAssignmentInput, DownloadedOfficialPluginPackage, ModelProviderRepository,
@@ -277,6 +278,10 @@ async fn plugin_management_service_upgrades_to_latest_without_redownloading_when
             actor_user_id: repository.actor.user_id,
             provider_code: "fixture_provider".into(),
             compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
         })
         .await
         .unwrap();
@@ -348,6 +353,10 @@ async fn ac_001_ac_002_upgrade_latest_installs_and_loads_existing_global_target_
             actor_user_id: repository.actor.user_id,
             provider_code: "openai_compatible".into(),
             compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
         })
         .await
         .unwrap();
@@ -468,6 +477,10 @@ async fn plugin_management_service_requires_override_when_upgrading_to_below_min
             actor_user_id: repository.actor.user_id,
             provider_code: "fixture_provider".into(),
             compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
         })
         .await
         .unwrap_err();
@@ -486,6 +499,10 @@ async fn plugin_management_service_requires_override_when_upgrading_to_below_min
                 reason: "below_minimum_host_version".into(),
                 acknowledged_current_host_version: env!("CARGO_PKG_VERSION").into(),
                 acknowledged_minimum_host_version: "999.0.0".into(),
+            }),
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
             }),
         })
         .await

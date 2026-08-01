@@ -90,6 +90,10 @@ enum PluginManagementUseCase {
 }
 
 pub const PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM: &str = "below_minimum_host_version";
+pub const PLUGIN_RISK_CHECKSUM_MISMATCH: &str = "checksum_mismatch";
+pub const PLUGIN_RISK_SIGNATURE_MISSING: &str = "signature_missing";
+pub const PLUGIN_RISK_SIGNATURE_INVALID: &str = "signature_invalid";
+pub const PLUGIN_RISK_SIGNING_KEY_UNKNOWN: &str = "signing_key_unknown";
 const PLUGIN_HOST_COMPATIBILITY_COMPATIBLE: &str = "compatible";
 const PLUGIN_HOST_VERSION_BELOW_MINIMUM_CONFLICT: &str = "plugin_host_version_below_minimum";
 const PLUGIN_COMPATIBILITY_OVERRIDE_INVALID: &str = "plugin_compatibility_override";
@@ -99,6 +103,37 @@ pub struct PluginCompatibilityOverride {
     pub reason: String,
     pub acknowledged_current_host_version: String,
     pub acknowledged_minimum_host_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginRiskOverride {
+    pub reason: String,
+    pub acknowledged_warnings: Vec<String>,
+}
+
+pub(super) fn validate_plugin_risk_override(
+    warnings: &[String],
+    risk_override: Option<&PluginRiskOverride>,
+) -> Result<Option<serde_json::Value>> {
+    if warnings.is_empty() {
+        return Ok(None);
+    }
+    let Some(risk_override) = risk_override else {
+        return Err(ControlPlaneError::Conflict("plugin_risk_confirmation_required").into());
+    };
+    let mut expected = warnings.to_vec();
+    expected.sort();
+    expected.dedup();
+    let mut acknowledged = risk_override.acknowledged_warnings.clone();
+    acknowledged.sort();
+    acknowledged.dedup();
+    if risk_override.reason.trim().is_empty() || acknowledged != expected {
+        return Err(ControlPlaneError::InvalidInput("plugin_risk_override").into());
+    }
+    Ok(Some(json!({
+        "reason": risk_override.reason,
+        "acknowledged_warnings": expected,
+    })))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +228,20 @@ impl<R, H> PluginManagementService<R, H> {
                 .expect("compiled model-provider settings group must be valid"),
             operation_id: domain::ConsoleOperationId::try_from(operation_id)
                 .expect("compiled model-provider plugin operation id must be valid"),
+        };
+        self
+    }
+
+    pub fn for_extension_center_console_operation(mut self, operation_id: &'static str) -> Self
+    where
+        R: RoleConsolePolicyReader + Clone + 'static,
+    {
+        self.use_case = PluginManagementUseCase::PluginConsoleOperation {
+            policy_reader: Arc::new(self.repository.clone()),
+            group: domain::ConsolePolicyGroup::settings_feature("system.extension-center")
+                .expect("compiled extension-center settings group must be valid"),
+            operation_id: domain::ConsoleOperationId::try_from(operation_id)
+                .expect("compiled extension-center operation id must be valid"),
         };
         self
     }
@@ -343,6 +392,12 @@ fn merge_install_detail_metadata(
     if let Some(compatibility_override) = detail_json.get("compatibility_override").cloned() {
         metadata_json["compatibility_override"] = compatibility_override;
     }
+    if let Some(risk_override) = detail_json.get("risk_override").cloned() {
+        metadata_json["risk_override"] = risk_override;
+    }
+    if let Some(risk_warnings) = detail_json.get("risk_warnings").cloned() {
+        metadata_json["risk_warnings"] = risk_warnings;
+    }
 }
 
 fn plugin_install_audit_detail(
@@ -359,6 +414,12 @@ fn plugin_install_audit_detail(
     }
     if let Some(compatibility_override) = detail_json.get("compatibility_override").cloned() {
         audit_detail["compatibility_override"] = compatibility_override;
+    }
+    if let Some(risk_override) = detail_json.get("risk_override").cloned() {
+        audit_detail["risk_override"] = risk_override;
+    }
+    if let Some(risk_warnings) = detail_json.get("risk_warnings").cloned() {
+        audit_detail["risk_warnings"] = risk_warnings;
     }
     audit_detail
 }

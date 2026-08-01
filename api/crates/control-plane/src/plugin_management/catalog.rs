@@ -25,6 +25,138 @@ pub struct PluginCatalogView {
     pub i18n_catalog: I18nCatalog,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionCatalogCategory {
+    HostExtension,
+    ModelProvider,
+    DataSource,
+    CapabilityPlugin,
+    McpBundle,
+    AgentFlowTemplate,
+}
+
+impl ExtensionCatalogCategory {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            "host_extension" => Ok(Self::HostExtension),
+            "model_provider" => Ok(Self::ModelProvider),
+            "data_source" => Ok(Self::DataSource),
+            "capability_plugin" => Ok(Self::CapabilityPlugin),
+            "mcp_bundle" => Ok(Self::McpBundle),
+            "agent_flow_template" => Ok(Self::AgentFlowTemplate),
+            _ => Err(ControlPlaneError::InvalidInput("extension_catalog_category").into()),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::HostExtension => "host_extension",
+            Self::ModelProvider => "model_provider",
+            Self::DataSource => "data_source",
+            Self::CapabilityPlugin => "capability_plugin",
+            Self::McpBundle => "mcp_bundle",
+            Self::AgentFlowTemplate => "agent_flow_template",
+        }
+    }
+
+    pub fn plugin_type(self) -> Option<&'static str> {
+        match self {
+            Self::HostExtension => Some("host_extension"),
+            Self::ModelProvider => Some("model_provider"),
+            Self::DataSource => Some("data_source"),
+            Self::CapabilityPlugin => Some("capability_plugin"),
+            Self::McpBundle | Self::AgentFlowTemplate => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionRiskWarning {
+    pub code: String,
+    pub overridable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalExtensionInventoryEntry {
+    pub installation: domain::PluginInstallationRecord,
+    pub local_artifact: domain::PluginArtifactInstanceRecord,
+    pub category: String,
+    pub source: String,
+    pub trust: String,
+    pub warnings: Vec<ExtensionRiskWarning>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalExtensionInventoryPage {
+    pub entries: Vec<LocalExtensionInventoryEntry>,
+    pub limit: usize,
+    pub next_cursor: Option<String>,
+}
+
+fn extension_source(source_kind: &str) -> &'static str {
+    match source_kind {
+        "builtin" => "builtin",
+        "official_registry" => "official_registry",
+        "mirror_registry" => "mirror",
+        "uploaded" => "upload",
+        _ => "upload",
+    }
+}
+
+fn extension_trust(installation: &domain::PluginInstallationRecord) -> &'static str {
+    if installation.source_kind == "builtin"
+        || (installation.source_kind == "official_registry"
+            && installation.trust_level == "verified_official")
+    {
+        "official"
+    } else if installation.trust_level == "verified_official" {
+        "trusted"
+    } else {
+        "unknown"
+    }
+}
+
+fn installation_category(installation: &domain::PluginInstallationRecord) -> &str {
+    if is_host_extension_installation(installation) {
+        return "host_extension";
+    }
+    if is_model_provider_installation(installation) {
+        return "model_provider";
+    }
+    installation
+        .metadata_json
+        .get("plugin_type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("capability_plugin")
+}
+
+fn extension_warnings(
+    installation: &domain::PluginInstallationRecord,
+    artifact: &domain::PluginArtifactInstanceRecord,
+) -> Vec<ExtensionRiskWarning> {
+    let mut codes = Vec::new();
+    if let Some(code) = artifact.last_error.as_deref() {
+        codes.push(code.to_string());
+    }
+    match installation.signature_status.as_deref() {
+        Some("verified" | "builtin") => {}
+        Some("unknown_key") => codes.push(PLUGIN_RISK_SIGNING_KEY_UNKNOWN.to_string()),
+        Some("invalid" | "malformed_signature") => {
+            codes.push(PLUGIN_RISK_SIGNATURE_INVALID.to_string())
+        }
+        _ => codes.push(PLUGIN_RISK_SIGNATURE_MISSING.to_string()),
+    }
+    codes.sort();
+    codes.dedup();
+    codes
+        .into_iter()
+        .map(|code| ExtensionRiskWarning {
+            code,
+            overridable: true,
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PluginCatalogFilter {
     pub plugin_type: Option<String>,
@@ -359,6 +491,57 @@ where
         + JsDependencyRepository,
     H: ProviderRuntimePort,
 {
+    pub async fn list_local_inventory(
+        &self,
+        actor_user_id: Uuid,
+        category: Option<ExtensionCatalogCategory>,
+        cursor: Option<Uuid>,
+        limit: usize,
+    ) -> Result<LocalExtensionInventoryPage> {
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        self.ensure_use_case_permission(&actor, "plugin_config.view.all")
+            .await?;
+        let mut installations = self.repository.list_installations().await?;
+        installations.sort_by(|left, right| left.id.cmp(&right.id));
+        let start = cursor
+            .and_then(|cursor| installations.iter().position(|item| item.id == cursor))
+            .map_or(0, |index| index.saturating_add(1));
+        let mut entries = Vec::with_capacity(limit);
+        let mut last_seen = None;
+        for installation in installations.into_iter().skip(start) {
+            let item_category = installation_category(&installation);
+            if category.is_some_and(|category| category.as_str() != item_category) {
+                continue;
+            }
+            last_seen = Some(installation.id);
+            let artifact = self
+                .refresh_current_node_artifact_snapshot(&installation)
+                .await?;
+            if artifact.installed_path.is_none() {
+                continue;
+            }
+            entries.push(LocalExtensionInventoryEntry {
+                category: item_category.to_string(),
+                source: extension_source(&installation.source_kind).to_string(),
+                trust: extension_trust(&installation).to_string(),
+                warnings: extension_warnings(&installation, &artifact),
+                installation,
+                local_artifact: artifact,
+            });
+            if entries.len() == limit {
+                break;
+            }
+        }
+        let next_cursor = (entries.len() == limit)
+            .then(|| last_seen.map(|id| id.to_string()))
+            .flatten();
+        Ok(LocalExtensionInventoryPage {
+            entries,
+            limit,
+            next_cursor,
+        })
+    }
+
     pub async fn list_catalog(
         &self,
         actor_user_id: Uuid,
