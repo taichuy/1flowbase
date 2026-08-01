@@ -10,6 +10,29 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+#[tokio::test]
+async fn mcp_tool_contract_accepts_boolean_json_result_schemas() {
+    let response = crate::app()
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let openapi = response_json(response).await;
+
+    for schema_name in ["McpToolResponse", "CreateMcpToolBody", "UpdateMcpToolBody"] {
+        assert_eq!(
+            openapi["components"]["schemas"][schema_name]["properties"]["result_schema"],
+            json!({}),
+            "{schema_name}.result_schema must accept object and boolean JSON Schema forms"
+        );
+    }
+}
+
 async fn create_exposed_published_model(
     app: &axum::Router,
     cookie: &str,

@@ -24,11 +24,14 @@
 - `short_description` 说明直接结果。
 - 普通 Tool 的 `full_description == ""`；非空内容通过组合契约三条件检查。
 - Agent-facing 参数名、说明和 required 与 `input_mapping` 一致。
+- 无需结果投影的 Tool 使用 `output_mapping == {}`，没有把 `result_schema` 复制为 mapping。
 - Group 与 Binding 引用有效，启用、可见与排序状态符合目标。
 - 没有写入或配置 `children_count`。
 - 必需容器对象已通过真实 `mcp.call` 证明能由当前 request Schema 与 interface wrapper 自动物化，没有用 mapping 虚假占位值绕过 Schema。
 - 已发布能力只有在存在可绑定 operation 与可验证认证 contract 时才配置 invocation Tool；否则明确记录缺口。
 - 本轮停止或失败后不存在无 Tool 的空 Group、错误复用 Binding 或无消费者新 Tool。
+- 动态接口只在父资源达到目标生命周期后创建；系统原子生成的默认子资源被复用，没有重复创建。
+- 请求 scope、运行态回读 scope 与物理资源归属一致；不一致时对应验收点标为未完全满足并报告。
 
 ### Runtime
 
@@ -40,6 +43,7 @@
 4. `mcp.call` 使用 `mcp.get` 返回的 contract 成功执行，并验证可观察结果。
 5. 至少验证一个关键失败边界，例如缺失必填参数、非法状态、无权限、错误稳定标识或错误 `des_id`。
 6. 涉及模型节点时，从成功 run/trace 核对实际 provider、model 与 protocol；保存或编译成功不能替代执行证据。
+7. 涉及低代码运行页面时，在用户授权的本地环境执行真实浏览器 CRUD 与写后刷新；只有持久化 document/code 证据时，视觉与交互结论标记为未验证。
 
 ## Coverage Table
 
@@ -54,6 +58,7 @@
 - 配置缺口：Tool、mapping、Group、Binding、文案或 policy 可在当前 Skill 范围修复。
 - 业务接口缺口：没有 bindable interface，或接口 contract 无法完成用户任务；报告并停止伪配置。
 - 运行时缺口：保存配置正确，但 `list/get/call` 未按 contract 输出或执行；报告代码证据，不在本 Skill 中修复。
+- 副作用后响应校验缺口：写入已落库，但返回值因 `response_schema` 失真而失败；禁止重试写入，使用独立读模型确认状态，并把原 Tool 标为运行时缺口。
 - 未分类调用缺口：协议只返回通用错误且没有本地结构化日志或其他证据；不得猜成配置或业务错误。
 - 产品决策缺口：GUI 与后端表达不同目标或无法判断 canonical 行为；返回需求对齐。
 
