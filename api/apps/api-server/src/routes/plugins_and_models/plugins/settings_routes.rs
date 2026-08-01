@@ -100,6 +100,7 @@ pub async fn install_official_plugin(
             risk_override: to_risk_override(body.risk_override),
         })
         .await?;
+    project_extension_inventory(&state, &result.installation).await?;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_install_response(result))),
@@ -128,6 +129,7 @@ pub async fn install_uploaded_plugin(
             package_bytes,
         })
         .await?;
+    project_extension_inventory(&state, &result.installation).await?;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_install_response(result))),
@@ -177,6 +179,7 @@ pub async fn install_current_node_artifact(
             installation_id: parse_uuid(&installation_id, "installation_id")?,
         })
         .await?;
+    project_extension_inventory_by_id(&state, artifact.installation_id).await?;
     Ok(Json(ApiSuccess::new(to_artifact_instance_response(
         artifact,
     ))))
@@ -209,6 +212,9 @@ pub async fn upgrade_latest(
             risk_override,
         })
         .await?;
+    if let Some(installation_id) = task.installation_id {
+        project_extension_inventory_by_id(&state, installation_id).await?;
+    }
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
@@ -234,6 +240,9 @@ pub async fn switch_version(
             target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
         })
         .await?;
+    if let Some(installation_id) = task.installation_id {
+        project_extension_inventory_by_id(&state, installation_id).await?;
+    }
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
