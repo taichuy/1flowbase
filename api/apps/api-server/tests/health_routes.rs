@@ -241,6 +241,11 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
                 NoopOfficialAgentFlowTemplateSource,
             ),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
+            official_extension_catalog_source: std::sync::Arc::new(
+                api_server::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(
+                    &config,
+                ),
+            ),
             official_i18n_catalog_update_service:
                 api_server::app_state::build_official_i18n_catalog_update_service(
                     store.clone(),

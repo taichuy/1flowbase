@@ -508,6 +508,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::plugins::InstallOfficialPluginBody,
         crate::routes::plugins::InstallPluginResponse,
         crate::routes::plugins::extension_center::ExtensionRiskWarningResponse,
+        crate::routes::plugins::extension_center::ExtensionCompatibilityWarningResponse,
         crate::routes::plugins::extension_center::LocalExtensionInventoryEntryResponse,
         crate::routes::plugins::extension_center::LocalExtensionInventoryPageResponse,
         crate::routes::plugins::extension_center::ExtensionCatalogGatewayEntryResponse,

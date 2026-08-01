@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
@@ -9,7 +9,7 @@ use axum::{
 };
 use control_plane::plugin_management::{
     ExtensionCatalogCategory, InstallOfficialExtensionCommand, InstallUploadedPluginCommand,
-    LocalExtensionInventoryEntry, OfficialPluginCatalogFilter, PluginManagementService,
+    LocalExtensionInventoryEntry, PluginManagementService,
 };
 use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
@@ -20,18 +20,18 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
+    official_extension_catalog::OfficialExtensionCatalogEntry,
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 use super::{
-    base_service, enforce_plugin_upload_limit, parse_uuid, read_upload_file, requested_locales,
-    resolve_locale_meta, to_artifact_instance_response, to_compatibility_override,
-    to_install_response, to_installation_response_with_artifact, to_risk_override,
-    InstallPluginResponse, PluginArtifactInstanceResponse, PluginCompatibilityOverrideBody,
-    PluginInstallationResponse, PluginRiskOverrideBody, PluginUploadMultipartBody,
-    MAX_PLUGIN_UPLOAD_BYTES,
+    base_service, enforce_plugin_upload_limit, parse_uuid, read_upload_file,
+    to_artifact_instance_response, to_compatibility_override, to_install_response,
+    to_installation_response_with_artifact, to_risk_override, InstallPluginResponse,
+    PluginArtifactInstanceResponse, PluginCompatibilityOverrideBody, PluginInstallationResponse,
+    PluginRiskOverrideBody, PluginUploadMultipartBody, MAX_PLUGIN_UPLOAD_BYTES,
 };
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
@@ -44,7 +44,15 @@ pub struct LocalExtensionInventoryQuery {
 #[derive(Debug, Serialize, ToSchema, Clone)]
 pub struct ExtensionRiskWarningResponse {
     pub code: String,
+    pub message: String,
     pub overridable: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct ExtensionCompatibilityWarningResponse {
+    pub reason: String,
+    pub current_host_version: String,
+    pub minimum_host_version: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -74,37 +82,46 @@ pub struct LocalExtensionInventoryPageResponse {
 #[derive(Debug, Deserialize, IntoParams, Clone)]
 pub struct ExtensionCatalogGatewayQuery {
     pub cursor: Option<String>,
-    pub limit: Option<usize>,
-    pub locale: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema, Clone)]
 pub struct ExtensionCatalogGatewayEntryResponse {
     pub category: String,
-    pub artifact_id: String,
+    pub id: String,
+    pub name: String,
     pub organization: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub latest_version: String,
+    pub artifact: String,
+    pub version: String,
+    pub description: String,
+    pub host_version_requirement: String,
+    #[schema(value_type = Object)]
+    pub source: serde_json::Value,
+    #[schema(value_type = Option<Object>)]
+    pub signature: Option<serde_json::Value>,
+    pub checksum: Option<String>,
+    #[schema(value_type = Object)]
+    pub download_locator: serde_json::Value,
+    pub catalog_page: u32,
+    pub catalog_source: String,
     pub current_version: Option<String>,
-    pub current_host_version: Option<String>,
-    pub minimum_host_version: Option<String>,
-    pub system_requirements: Option<String>,
     pub installation_status: String,
     pub artifact_kind: Option<String>,
-    pub source: String,
+    pub installation_source: Option<String>,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
-    #[schema(value_type = Object)]
-    pub metadata_json: serde_json::Value,
+    pub compatibility: Option<ExtensionCompatibilityWarningResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ExtensionCatalogGatewayPageResponse {
     pub category: String,
-    pub catalog_page: Option<String>,
+    pub catalog_page: String,
+    pub catalog_page_number: u32,
+    pub catalog_page_checksum: String,
+    pub catalog_page_locator: String,
     pub limit: usize,
     pub next_cursor: Option<String>,
+    pub total_entries: usize,
     pub entries: Vec<ExtensionCatalogGatewayEntryResponse>,
 }
 
@@ -225,6 +242,7 @@ fn to_local_inventory_entry(
             .warnings
             .into_iter()
             .map(|warning| ExtensionRiskWarningResponse {
+                message: warning_message(&warning.code),
                 code: warning.code,
                 overridable: warning.overridable,
             })
@@ -275,203 +293,242 @@ pub async fn list_local_extension_inventory(
     })))
 }
 
+#[derive(Debug, Clone)]
+struct InstalledCatalogJoin {
+    current_version: String,
+    artifact_kind: Option<String>,
+    source: String,
+    trust: String,
+}
+
+async fn installed_catalog_joins(
+    state: &ApiState,
+    actor_user_id: Uuid,
+    category: ExtensionCatalogCategory,
+) -> Result<HashMap<String, InstalledCatalogJoin>, ApiError> {
+    let mut cursor = None;
+    let mut joins = HashMap::new();
+    loop {
+        let page = service(state, "extension_center.catalog.view")
+            .list_local_inventory(actor_user_id, Some(category), cursor, 50)
+            .await?;
+        for entry in page.entries {
+            joins.insert(
+                entry.artifact_id,
+                InstalledCatalogJoin {
+                    current_version: entry.current_version,
+                    artifact_kind: entry.artifact_kind,
+                    source: entry.source,
+                    trust: entry.trust,
+                },
+            );
+        }
+        let Some(next_cursor) = page.next_cursor else {
+            break;
+        };
+        cursor = Some(parse_uuid(&next_cursor, "extension_inventory_cursor")?);
+    }
+    Ok(joins)
+}
+
+fn catalog_entry_join<'a>(
+    entry: &OfficialExtensionCatalogEntry,
+    installed: &'a HashMap<String, InstalledCatalogJoin>,
+) -> Option<&'a InstalledCatalogJoin> {
+    installed
+        .get(&entry.id)
+        .or_else(|| {
+            entry
+                .source
+                .metadata
+                .get("plugin_id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|plugin_id| installed.get(plugin_id))
+        })
+        .or_else(|| installed.get(&format!("{}.{}", entry.organization, entry.artifact)))
+}
+
+fn warning_message(code: &str) -> String {
+    match code {
+        "signature_missing" => "The catalog entry has no signature metadata.",
+        "signing_key_unknown" => "The catalog entry references an unknown signing key.",
+        "checksum_missing" => "The catalog entry has no artifact checksum.",
+        "below_minimum_host_version" => "The extension requires a newer 1flowbase host version.",
+        _ => "The extension requires confirmation before installation.",
+    }
+    .to_string()
+}
+
+fn catalog_entry_warnings(
+    entry: &OfficialExtensionCatalogEntry,
+    trusted_key_ids: &[String],
+) -> Vec<ExtensionRiskWarningResponse> {
+    let mut warnings = Vec::new();
+    if entry.signature.is_none() {
+        warnings.push("signature_missing");
+    } else if entry.signing_key_id().map_or(true, |key_id| {
+        !trusted_key_ids.iter().any(|trusted| trusted == key_id)
+    }) {
+        warnings.push("signing_key_unknown");
+    }
+    if entry.checksum.is_none() {
+        warnings.push("checksum_missing");
+    }
+    if catalog_entry_compatibility(entry).is_some() {
+        warnings.push("below_minimum_host_version");
+    }
+    warnings
+        .into_iter()
+        .map(|code| ExtensionRiskWarningResponse {
+            code: code.to_string(),
+            message: warning_message(code),
+            overridable: true,
+        })
+        .collect()
+}
+
+fn current_host_version() -> &'static str {
+    option_env!("FLOWBASE_API_SERVER_VERSION")
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+}
+
+fn catalog_entry_compatibility(
+    entry: &OfficialExtensionCatalogEntry,
+) -> Option<ExtensionCompatibilityWarningResponse> {
+    if host_version_requirement_is_satisfied(
+        current_host_version(),
+        &entry.host_version_requirement,
+    ) {
+        return None;
+    }
+    let minimum_host_version = entry
+        .host_version_requirement
+        .trim()
+        .strip_prefix(">=")?
+        .trim()
+        .to_string();
+    Some(ExtensionCompatibilityWarningResponse {
+        reason: "below_minimum_host_version".to_string(),
+        current_host_version: current_host_version().to_string(),
+        minimum_host_version,
+    })
+}
+
+fn host_version_requirement_is_satisfied(current: &str, requirement: &str) -> bool {
+    let requirement = requirement.trim();
+    if requirement == "*" || requirement.is_empty() {
+        return true;
+    }
+    let Some(minimum) = requirement.strip_prefix(">=").map(str::trim) else {
+        // Unknown requirement syntax remains visible in the original catalog field. It must not
+        // be mislabeled as a below-minimum result without a comparable minimum version.
+        return true;
+    };
+    let parse = |value: &str| {
+        let mut parts = value.trim().trim_start_matches('v').split('.');
+        Some((
+            parts.next()?.parse::<u64>().ok()?,
+            parts.next()?.parse::<u64>().ok()?,
+            parts.next()?.split('-').next()?.parse::<u64>().ok()?,
+        ))
+    };
+    match (parse(current), parse(minimum)) {
+        (Some(current), Some(minimum)) => current >= minimum,
+        _ => true,
+    }
+}
+
+fn project_catalog_entry(
+    entry: OfficialExtensionCatalogEntry,
+    catalog_source: &str,
+    installed: &HashMap<String, InstalledCatalogJoin>,
+    trusted_key_ids: &[String],
+) -> ExtensionCatalogGatewayEntryResponse {
+    let installation = catalog_entry_join(&entry, installed);
+    let catalog_trust = match (
+        catalog_source,
+        entry
+            .signing_key_id()
+            .is_some_and(|key_id| trusted_key_ids.iter().any(|trusted| trusted == key_id)),
+    ) {
+        ("official", true) => "official",
+        (_, true) => "trusted",
+        _ => "unknown",
+    };
+    let source =
+        serde_json::to_value(&entry.source).expect("typed extension catalog source must serialize");
+    let warnings = catalog_entry_warnings(&entry, trusted_key_ids);
+    let compatibility = catalog_entry_compatibility(&entry);
+    ExtensionCatalogGatewayEntryResponse {
+        category: entry.category,
+        id: entry.id,
+        name: entry.name,
+        organization: entry.organization,
+        artifact: entry.artifact,
+        version: entry.version,
+        description: entry.description,
+        host_version_requirement: entry.host_version_requirement,
+        source,
+        signature: entry.signature,
+        checksum: entry.checksum,
+        download_locator: entry.download_locator,
+        catalog_page: entry.catalog_page,
+        catalog_source: catalog_source.to_string(),
+        current_version: installation.map(|value| value.current_version.clone()),
+        installation_status: if installation.is_some() {
+            "installed".to_string()
+        } else {
+            "not_installed".to_string()
+        },
+        artifact_kind: installation.and_then(|value| value.artifact_kind.clone()),
+        installation_source: installation.map(|value| value.source.clone()),
+        trust: installation
+            .map(|value| value.trust.clone())
+            .unwrap_or_else(|| catalog_trust.to_string()),
+        warnings,
+        compatibility,
+    }
+}
+
 async fn load_catalog_page(
     state: &ApiState,
     actor_user_id: Uuid,
     category: ExtensionCatalogCategory,
     cursor: Option<String>,
-    limit: usize,
-    locales: control_plane::i18n::RequestedLocales,
 ) -> Result<ExtensionCatalogGatewayPageResponse, ApiError> {
-    if matches!(
-        category,
-        ExtensionCatalogCategory::HostExtensions
-            | ExtensionCatalogCategory::CapabilityPlugins
-            | ExtensionCatalogCategory::RuntimeExtensions
-    ) {
-        let plugin_type = category.fixed_plugin_type().map(str::to_string);
-        let view = service(state, "extension_center.catalog.view")
-            .list_official_catalog(
-                actor_user_id,
-                OfficialPluginCatalogFilter {
-                    plugin_type,
-                    search_query: None,
-                    cursor: cursor.clone(),
-                    limit,
-                },
-                locales,
-            )
-            .await?;
-        let trusted_keys = state.official_plugin_source.trusted_public_keys();
-        let source = match view.source_kind.as_str() {
-            "mirror_registry" => "mirror",
-            _ => "official_registry",
-        };
-        let entries = view
-            .entries
-            .into_iter()
-            .map(|entry| {
-                let key_is_trusted = entry
-                    .selected_artifact
-                    .signing_key_id
-                    .as_deref()
-                    .is_some_and(|key_id| trusted_keys.iter().any(|key| key.key_id == key_id));
-                let trust = if key_is_trusted && source == "official_registry" {
-                    "official"
-                } else if key_is_trusted {
-                    "trusted"
-                } else {
-                    "unknown"
-                };
-                let warnings = entry
-                    .compatibility_warning_reason
-                    .iter()
-                    .map(|code| ExtensionRiskWarningResponse {
-                        code: code.clone(),
-                        overridable: true,
-                    })
-                    .collect();
-                ExtensionCatalogGatewayEntryResponse {
-                    category: category.as_str().to_string(),
-                    organization: entry
-                        .plugin_id
-                        .split('.')
-                        .next()
-                        .unwrap_or("unknown")
-                        .to_string(),
-                    artifact_id: entry.plugin_id,
-                    display_name: entry.display_name,
-                    description: entry.description,
-                    latest_version: entry.latest_version.clone(),
-                    current_version: (entry.install_status.as_str() != "not_installed")
-                        .then_some(entry.latest_version.clone()),
-                    current_host_version: Some(entry.current_host_version),
-                    minimum_host_version: Some(entry.minimum_host_version.clone()),
-                    system_requirements: Some(entry.minimum_host_version),
-                    installation_status: entry.install_status.as_str().to_string(),
-                    artifact_kind: Some(entry.plugin_type),
-                    source: source.to_string(),
-                    trust: trust.to_string(),
-                    warnings,
-                    metadata_json: serde_json::json!({
-                        "provider_code": entry.provider_code,
-                        "protocol": entry.protocol,
-                        "icon": entry.icon,
-                        "help_url": entry.help_url,
-                        "model_discovery_mode": entry.model_discovery_mode,
-                        "install_status": entry.install_status.as_str(),
-                    }),
-                }
-            })
-            .collect();
-        return Ok(ExtensionCatalogGatewayPageResponse {
-            category: category.as_str().to_string(),
-            catalog_page: cursor,
-            limit: view.page.limit,
-            next_cursor: view.page.next_cursor,
-            entries,
-        });
-    }
-
-    match category {
-        ExtensionCatalogCategory::Mcp => {
-            let snapshot = state.official_mcp_bundle_source.list_catalog().await?;
-            let start = cursor
-                .as_deref()
-                .and_then(|value| value.parse::<usize>().ok())
-                .unwrap_or(0);
-            let end = start.saturating_add(limit).min(snapshot.entries.len());
-            let entries = snapshot.entries[start..end]
-                .iter()
-                .map(|entry| ExtensionCatalogGatewayEntryResponse {
-                    category: category.as_str().to_string(),
-                    artifact_id: format!("{}.{}", entry.organization, entry.bundle_id),
-                    organization: entry.organization.clone(),
-                    display_name: entry.bundle_id.clone(),
-                    description: None,
-                    latest_version: entry.latest_version.clone(),
-                    current_version: None,
-                    current_host_version: None,
-                    minimum_host_version: Some(entry.minimum_host_version.clone()),
-                    system_requirements: Some(entry.minimum_host_version.clone()),
-                    installation_status: "not_installed".to_string(),
-                    artifact_kind: None,
-                    source: match snapshot.source.source_kind.as_str() {
-                        "mirror_registry" => "mirror",
-                        _ => "official_registry",
-                    }
-                    .to_string(),
-                    trust: "unknown".to_string(),
-                    warnings: Vec::new(),
-                    metadata_json: serde_json::json!({
-                        "locale": entry.locale,
-                        "exported_from_system_version": entry.exported_from_system_version,
-                        "artifact_sha256": entry.artifact_sha256,
-                    }),
-                })
-                .collect();
-            Ok(ExtensionCatalogGatewayPageResponse {
-                category: category.as_str().to_string(),
-                catalog_page: cursor,
-                limit,
-                next_cursor: (end < snapshot.entries.len()).then(|| end.to_string()),
-                entries,
-            })
-        }
-        ExtensionCatalogCategory::AgentFlow => {
-            let snapshot = state
-                .official_agent_flow_template_source
-                .list_catalog_page(cursor.clone())
-                .await?;
-            let entries = snapshot
-                .entries
-                .into_iter()
-                .map(|entry| ExtensionCatalogGatewayEntryResponse {
-                    category: category.as_str().to_string(),
-                    artifact_id: entry.workflow_id.clone(),
-                    organization: "taichuy".to_string(),
-                    display_name: entry.application.name.clone(),
-                    description: Some(entry.application.description.clone()),
-                    latest_version: entry.schema_version,
-                    current_version: None,
-                    current_host_version: None,
-                    minimum_host_version: None,
-                    system_requirements: None,
-                    installation_status: "not_installed".to_string(),
-                    artifact_kind: None,
-                    source: match snapshot.source.source_kind.as_str() {
-                        "mirror_registry" => "mirror",
-                        _ => "official_registry",
-                    }
-                    .to_string(),
-                    trust: "unknown".to_string(),
-                    warnings: Vec::new(),
-                    metadata_json: serde_json::json!({
-                        "application": entry.application,
-                        "template_sha256": entry.template_sha256,
-                        "updated_at": entry.updated_at,
-                    }),
-                })
-                .collect();
-            Ok(ExtensionCatalogGatewayPageResponse {
-                category: category.as_str().to_string(),
-                catalog_page: cursor,
-                limit: snapshot.page.page_size,
-                next_cursor: snapshot.page.next_cursor,
-                entries,
-            })
-        }
-        ExtensionCatalogCategory::I18n => Ok(ExtensionCatalogGatewayPageResponse {
-            category: category.as_str().to_string(),
-            catalog_page: cursor,
-            limit,
-            next_cursor: None,
-            entries: Vec::new(),
-        }),
-        ExtensionCatalogCategory::HostExtensions
-        | ExtensionCatalogCategory::CapabilityPlugins
-        | ExtensionCatalogCategory::RuntimeExtensions => unreachable!("handled above"),
-    }
+    let page = state
+        .official_extension_catalog_source
+        .list_page(category.as_str(), cursor.as_deref())
+        .await?;
+    let installed = installed_catalog_joins(state, actor_user_id, category).await?;
+    let trusted_key_ids = state
+        .official_plugin_source
+        .trusted_public_keys()
+        .iter()
+        .map(|key| key.key_id.clone())
+        .collect::<Vec<_>>();
+    let catalog_source = match page.source_kind.as_str() {
+        "official_repository" => "official",
+        _ => "mirror",
+    };
+    let entries = page
+        .entries
+        .into_iter()
+        .map(|entry| project_catalog_entry(entry, catalog_source, &installed, &trusted_key_ids))
+        .collect();
+    Ok(ExtensionCatalogGatewayPageResponse {
+        category: page.category,
+        catalog_page: page.metadata.cursor,
+        catalog_page_number: page.metadata.page,
+        catalog_page_checksum: page.metadata.checksum,
+        catalog_page_locator: page.metadata.locator,
+        limit: page.metadata.page_size,
+        next_cursor: page.metadata.next_cursor,
+        total_entries: page.metadata.total_entries,
+        entries,
+    })
 }
 
 #[utoipa::path(
@@ -488,17 +545,8 @@ pub async fn list_extension_catalog_gateway(
     Query(query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
     let category = ExtensionCatalogCategory::parse(&category)?;
-    let page = load_catalog_page(
-        &state,
-        context.user.id,
-        category,
-        query.cursor,
-        query.limit.unwrap_or(20).clamp(1, 50),
-        requested_locales(&locale_meta),
-    )
-    .await?;
+    let page = load_catalog_page(&state, context.user.id, category, query.cursor).await?;
     Ok(Json(ApiSuccess::new(page)))
 }
 
@@ -513,28 +561,35 @@ pub async fn get_extension_catalog_entry(
     State(state): State<Arc<ApiState>>,
     Path((category, artifact_id)): Path<(String, String)>,
     headers: HeaderMap,
-    Query(query): Query<ExtensionCatalogGatewayQuery>,
+    Query(_query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayEntryResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
     let category = ExtensionCatalogCategory::parse(&category)?;
-    let page = load_catalog_page(
-        &state,
-        context.user.id,
-        category,
-        query.cursor,
-        query.limit.unwrap_or(50).clamp(1, 50),
-        requested_locales(&locale_meta),
-    )
-    .await?;
-    let entry = page
-        .entries
-        .into_iter()
-        .find(|entry| entry.artifact_id == artifact_id)
+    let located = state
+        .official_extension_catalog_source
+        .find_entry(category.as_str(), &artifact_id)
+        .await?
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_catalog_entry",
         ))?;
-    Ok(Json(ApiSuccess::new(entry)))
+    let installed = installed_catalog_joins(&state, context.user.id, category).await?;
+    let trusted_key_ids = state
+        .official_plugin_source
+        .trusted_public_keys()
+        .iter()
+        .map(|key| key.key_id.clone())
+        .collect::<Vec<_>>();
+    let catalog_source = if located.source_kind == "official_repository" {
+        "official"
+    } else {
+        "mirror"
+    };
+    Ok(Json(ApiSuccess::new(project_catalog_entry(
+        located.entry,
+        catalog_source,
+        &installed,
+        &trusted_key_ids,
+    ))))
 }
 
 #[utoipa::path(
@@ -558,19 +613,12 @@ pub async fn check_extension_catalog_page_updates(
         .into());
     }
     let category = ExtensionCatalogCategory::parse(&body.category)?;
-    let page = load_catalog_page(
-        &state,
-        context.user.id,
-        category,
-        body.catalog_page.clone(),
-        50,
-        control_plane::i18n::RequestedLocales::new("en_US", "en_US"),
-    )
-    .await?;
+    let page =
+        load_catalog_page(&state, context.user.id, category, body.catalog_page.clone()).await?;
     let latest = page
         .entries
         .into_iter()
-        .map(|entry| (entry.artifact_id, entry.latest_version))
+        .map(|entry| (entry.id, entry.version))
         .collect::<std::collections::HashMap<_, _>>();
     let items = body
         .items
@@ -690,3 +738,6 @@ pub async fn install_uploaded_extension(
         Json(ApiSuccess::new(to_install_response(result))),
     ))
 }
+
+#[cfg(test)]
+mod _tests;

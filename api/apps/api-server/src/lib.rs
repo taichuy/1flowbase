@@ -17,6 +17,7 @@ pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
 pub mod official_agent_flow_templates;
+pub mod official_extension_catalog;
 pub mod official_i18n_catalog_seed;
 pub mod official_i18n_catalog_source;
 pub mod official_mcp_bundles;
@@ -348,6 +349,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
         ));
+    let official_extension_catalog_source = Arc::new(
+        official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config),
+    );
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
@@ -447,6 +451,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         official_plugin_source,
         official_agent_flow_template_source,
         official_mcp_bundle_source,
+        official_extension_catalog_source,
         official_i18n_catalog_update_service,
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
