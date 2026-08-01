@@ -13,10 +13,14 @@ const {
 } = require('../count-tokens-upgrade');
 const {
   APPLICATION_ID,
+  ClientTurnError,
+  conversationSummary,
   loadApiFileEnvironment,
   loadRunManifest,
+  publicError,
   reserveOwnedPort,
   runCountTokensUpgrade,
+  transitionLocalUpgrade,
   verifiedSourceCwd,
 } = require('../count-tokens-upgrade-runner');
 const { redact } = require('../../local-client-acceptance/artifacts');
@@ -27,8 +31,14 @@ function observed() {
     after_upgrade_application_id: 'published-deepseek-app',
     publication_id: 'published-deepseek-v1',
     after_upgrade_publication_id: 'published-deepseek-v1',
-    before_plugin: { plugin_id: 'deepseek@0.1.17', package_sha256: 'sha256:before' },
-    after_plugin: { plugin_id: 'deepseek@0.1.18', package_sha256: 'sha256:after' },
+    before_plugin: { installation_id: 'before-id', plugin_id: 'deepseek@0.1.17', package_sha256: 'sha256:before' },
+    after_plugin: { installation_id: 'after-id', plugin_id: 'deepseek@0.1.18', package_sha256: 'sha256:after' },
+    baseline_setup: {
+      installation_id: 'before-id', publication_id: 'published-deepseek-v1',
+      publication_unchanged: true,
+    },
+    transition_mode: 'existing_local',
+    after_package_sha256: 'sha256:after',
     republish_events: 0,
     network_installs: 0,
     count_tokens_application_id: 'published-deepseek-app',
@@ -59,6 +69,47 @@ test('Root #1556 P13 controlled negative rejects a publication change during plu
     () => buildCountTokensUpgradeEvidence(loadCountTokensUpgradeFixture(), value),
     /republished the application/u,
   );
+});
+
+test('Root #1556 F16 preserves the uploaded-local fallback when after installation is omitted', async () => {
+  const archiveSha = 'a'.repeat(64);
+  const installationIdValue = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
+  const actions = [];
+  let uploads = 0;
+  const owner = {
+    async uploadPackage() {
+      uploads += 1;
+      return {
+        archive_sha256: archiveSha,
+        installation: {
+          id: installationIdValue,
+          provider_code: 'deepseek',
+          plugin_version: '2.0.0',
+        },
+      };
+    },
+    async write(pathname) { actions.push(pathname); },
+    async read() {
+      return { data: { entries: [{
+        provider_code: 'deepseek',
+        current_installation_id: installationIdValue,
+        current_version: '2.0.0',
+        current_local_artifact: { local_checksum: archiveSha },
+      }] } };
+    },
+  };
+
+  const transition = await transitionLocalUpgrade(owner, {
+    afterInstallationId: null,
+    afterPackage: '/local/deepseek.1flowbasepkg',
+  }, archiveSha);
+  assert.equal(transition.transitionMode, 'uploaded_local');
+  assert.equal(transition.afterPlugin.installation_id, installationIdValue);
+  assert.equal(uploads, 1);
+  assert.deepEqual(actions, [
+    `/api/console/plugins/${installationIdValue}/enable`,
+    `/api/console/plugins/${installationIdValue}/assign`,
+  ]);
 });
 
 test('Root #1556 F09 rejects shared service ports and fixes the token-bound application', async () => {
@@ -111,6 +162,56 @@ test('Root #1556 F10 startup diagnostics use the artifact secret redactor', () =
   assert.equal(safe.primary_error.diagnostic.service, 'api-server');
 });
 
+test('Root #1556 F15 emits typed bounded details for initial and follow-up turn failures', () => {
+  const sessionId = '11111111-1111-4111-8111-111111111111';
+  const assistant = {
+    type: 'assistant', session_id: sessionId,
+    message: { content: [{ type: 'text', text: 'raw-assistant-secret' }] },
+  };
+  const terminal = {
+    type: 'result', session_id: sessionId, is_error: false,
+    terminal_reason: 'completed', result: null,
+  };
+  const cases = [
+    { status: 'timed_out', result: { exit_code: 0, timed_out: true, events: [assistant, terminal] } },
+    { status: 'nonzero_exit', result: { exit_code: 7, timed_out: false, events: [assistant, terminal] } },
+    { status: 'terminal_missing', result: { exit_code: 0, timed_out: false, events: [assistant] } },
+    { status: 'assistant_missing', result: { exit_code: 0, timed_out: false, events: [terminal] } },
+  ];
+
+  let sampleError = null;
+  for (const turnIndex of [0, 1]) {
+    for (const fixture of cases) {
+      const result = {
+        exit_code: fixture.result.exit_code,
+        timed_out: fixture.result.timed_out,
+        stdout: fixture.result.events.map(JSON.stringify).join('\n'),
+        stderr: 'raw-stderr-secret raw-api-key raw-prompt',
+      };
+      let error;
+      try { conversationSummary(result, { turnIndex, sessionId }); }
+      catch (caught) { error = caught; }
+      assert.ok(error instanceof ClientTurnError);
+      sampleError = error;
+      assert.equal(error.code, 'client_turn_failed');
+      assert.equal(error.details.stage, turnIndex === 0 ? 'initial' : 'followup');
+      assert.equal(error.details.turn_index, turnIndex);
+      assert.equal(error.details.transport_status, fixture.status);
+      assert.equal(error.details.session_continuity_observed, true);
+      assert.deepEqual(Object.keys(error.details).sort(), [
+        'assistant_text_count', 'exit_code', 'session_continuity_observed', 'stage',
+        'terminal_observed', 'timed_out', 'transport_status', 'turn_index',
+      ]);
+      assert.doesNotMatch(JSON.stringify(error.details),
+        /raw-assistant|raw-stderr|raw-api-key|raw-prompt|11111111/u);
+    }
+  }
+  const artifactError = publicError(sampleError);
+  assert.equal(artifactError.code, 'client_turn_failed');
+  assert.deepEqual(artifactError.details, sampleError.details);
+  assert.doesNotMatch(JSON.stringify(artifactError), /raw-assistant|raw-stderr|raw-prompt|raw-api-key/u);
+});
+
 test('Root #1556 F13 structural contract owns frozen services and validated source configuration', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../count-tokens-upgrade-runner.js'),
@@ -149,7 +250,9 @@ test('Root #1556 F13 structural contract owns frozen services and validated sour
   for (const field of ['database_url']) {
     assert.ok(Object.hasOwn(example.environment, field), `run environment omitted ${field}`);
   }
-  assert.equal(example.schema_version, '1flowbase.local-count-tokens-upgrade-run/v5');
+  assert.equal(example.schema_version, '1flowbase.local-count-tokens-upgrade-run/v6');
+  assert.equal(example.upgrade.before_installation_id, '019fbac1-a20d-7830-94f3-74c9040b0169');
+  assert.equal(example.upgrade.after_installation_id, '019fbdde-70e8-7862-a2cf-7f9846a4bd1b');
   assert.equal(example.environment.owner_username, 'ONEFLOWBASE_OWNER_USERNAME');
   assert.equal(example.environment.owner_password, 'ONEFLOWBASE_OWNER_PASSWORD');
   assert.equal(Object.hasOwn(example.environment, 'owner_cookie'), false);
@@ -180,13 +283,14 @@ test('Root #1556 F09 missing configuration is typed unavailable beside cleanup f
   assert.equal(result.cleanup.errors[0].message, 'cleanup fixture');
 });
 
-test('Root #1556 F12 explicitly rejects legacy v3 and v4 manifests', () => {
+test('Root #1556 F16 explicitly rejects legacy v3 through v5 manifests', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'count-tokens-legacy-manifest-'));
   try {
     const manifestPath = path.join(root, 'run.json');
     for (const schemaVersion of [
       '1flowbase.local-count-tokens-upgrade-run/v3',
       '1flowbase.local-count-tokens-upgrade-run/v4',
+      '1flowbase.local-count-tokens-upgrade-run/v5',
     ]) {
       fs.writeFileSync(manifestPath, JSON.stringify({ schema_version: schemaVersion }));
       assert.throws(() => loadRunManifest(manifestPath), /schema mismatch/u);
@@ -204,6 +308,8 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     const pluginRunner = path.join(root, 'plugin-runner');
     const packageManifest = path.join(root, 'package.json');
     const upgradePackage = path.join(root, 'deepseek.1flowbasepkg');
+    const beforeInstallationId = '019fbac1-a20d-7830-94f3-74c9040b0169';
+    const afterInstallationId = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
     const artifact = path.join(root, 'tmp/test-governance/result.json');
     fs.writeFileSync(executable, '#!/bin/sh\n', { mode: 0o700 });
     fs.writeFileSync(apiServer, '#!/bin/sh\n', { mode: 0o700 });
@@ -231,7 +337,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
       'BOOTSTRAP_WORKSPACE_NAME="dotenv-workspace"',
       "BOOTSTRAP_ROOT_EMAIL='dotenv-root@example.test'",
       'BOOTSTRAP_ROOT_PASSWORD=dotenv-root-password',
-      'ACCEPTANCE_SCHEMA=1flowbase.local-count-tokens-upgrade-run/v5',
+      'ACCEPTANCE_SCHEMA=1flowbase.local-count-tokens-upgrade-run/v6',
       'PROVIDER_PATH=/opt/1flowbase/providers/deepseek',
       `API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON='${trustedKeysJson}'`,
       '',
@@ -239,7 +345,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     fs.writeFileSync(apiEnvPath, apiEnvContent);
     fs.writeFileSync(mainSourceReceipt, `${mainSourceSha}\n`);
     fs.writeFileSync(manifestPath, JSON.stringify({
-      schema_version: '1flowbase.local-count-tokens-upgrade-run/v5',
+      schema_version: '1flowbase.local-count-tokens-upgrade-run/v6',
       application_id: APPLICATION_ID,
       main_source_sha: mainSourceSha,
       main_source_receipt: mainSourceReceipt,
@@ -261,7 +367,11 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
         provider_install_root: 'PROVIDER_INSTALL_ROOT',
       },
       api_cookie_name: 'flowbase_console_session',
-      upgrade: { after_package: upgradePackage },
+      upgrade: {
+        before_installation_id: beforeInstallationId,
+        after_installation_id: afterInstallationId,
+        after_package: upgradePackage,
+      },
       claude: {
         executable,
         provenance: {
@@ -274,7 +384,9 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
       },
       artifact,
     }));
-    let upgraded = false;
+    let currentInstallationId = null;
+    let uploadCalls = 0;
+    const pluginActions = [];
     class Owner {
       attachSession() {}
       async read(pathname) {
@@ -286,21 +398,25 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
         }
         return { data: { entries: [{
           provider_code: 'deepseek',
-          current_installation_id: upgraded ? 'installation-after' : 'installation-before',
-          current_version: upgraded ? '2.0.0' : '1.0.0',
-          current_local_artifact: { local_checksum: upgraded
+          current_installation_id: currentInstallationId,
+          current_version: currentInstallationId === afterInstallationId ? '2.0.0' : '1.0.0',
+          current_local_artifact: { local_checksum: currentInstallationId === afterInstallationId
             ? crypto.createHash('sha256').update('after-package').digest('hex')
             : 'before-checksum' },
         }] } };
       }
       async uploadPackage() {
-        upgraded = true;
+        uploadCalls += 1;
         return {
           archive_sha256: crypto.createHash('sha256').update('after-package').digest('hex'),
-          installation: { id: 'installation-after', provider_code: 'deepseek', plugin_version: '2.0.0' },
+          installation: { id: afterInstallationId, provider_code: 'deepseek', plugin_version: '2.0.0' },
         };
       }
-      async write() { return { data: { status: 'succeeded' } }; }
+      async write(pathname) {
+        pluginActions.push(pathname);
+        if (pathname.endsWith('/assign')) currentInstallationId = pathname.split('/').at(-2);
+        return { data: { status: 'succeeded' } };
+      }
     }
     const stdout = [
       JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } }),
@@ -381,6 +497,17 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.equal(result.evidence.runtime.api_server.port, 41732);
     assert.equal(result.evidence.runtime.plugin_runner.port, 41731);
     assert.equal(result.evidence.runtime.api_server_cwd, apiServerCwd);
+    assert.equal(result.evidence.plugin_upgrade.transition_mode, 'existing_local');
+    assert.equal(result.evidence.plugin_upgrade.baseline_setup.installation_id, beforeInstallationId);
+    assert.equal(result.evidence.plugin_upgrade.before.installation_id, beforeInstallationId);
+    assert.equal(result.evidence.plugin_upgrade.after.installation_id, afterInstallationId);
+    assert.equal(uploadCalls, 0);
+    assert.deepEqual(pluginActions.slice(0, 4), [
+      `/api/console/plugins/${beforeInstallationId}/enable`,
+      `/api/console/plugins/${beforeInstallationId}/assign`,
+      `/api/console/plugins/${afterInstallationId}/enable`,
+      `/api/console/plugins/${afterInstallationId}/assign`,
+    ]);
     assert.deepEqual(result.evidence.runtime.api_env_source, {
       path: apiEnvPath,
       sha256: crypto.createHash('sha256').update(apiEnvContent).digest('hex'),
@@ -470,7 +597,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.match(loginFailureJson,
       /dotenv-workspace|dotenv-root@example|dotenv-key|quoted-json-value/u);
     assert.match(loginFailureJson,
-      /1flowbase\.local-count-tokens-upgrade-run\/v5|\/opt\/1flowbase\/providers\/deepseek/u);
+      /1flowbase\.local-count-tokens-upgrade-run\/v6|\/opt\/1flowbase\/providers\/deepseek/u);
     assert.equal(loginFailure.primary_error.message.includes(productProviderRoot), true);
     assert.match(loginFailure.primary_error.message,
       /postgres:\/\/<redacted>@127\.0\.0\.1\/wrong/u);

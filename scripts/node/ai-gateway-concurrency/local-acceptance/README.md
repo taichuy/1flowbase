@@ -13,8 +13,14 @@ never proxied, reused, stopped, or restarted.
 After the owned API is healthy, the runner uses owner username/password values
 from named environment variables to open a process-local temporary session via
 the repository-owned auth helper. It attaches that session to the owner client,
-reuses the named application API key, and uploads a local DeepSeek package
-through the repository-owned plugin install action. The session is revoked
+reuses the named application API key, and assigns the manifest-pinned baseline
+DeepSeek installation through repository-owned plugin actions. It then selects
+the pinned existing-local after installation, or uploads the local package only
+when `after_installation_id` is omitted. Both paths verify the after-package
+digest, preserve the publication id, and report zero network installs. The
+successful artifact records `baseline_setup` and identifies `transition_mode` as
+`existing_local` or `uploaded_local`. The final after installation remains
+assigned for manual testing; cleanup does not roll it back. The session is revoked
 before the owned API stops, with revocation failures recorded independently from
 the primary result. The runner never builds, checks out, publishes, or downloads
 anything.

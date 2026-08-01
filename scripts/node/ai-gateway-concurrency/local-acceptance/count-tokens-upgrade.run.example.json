@@ -1,5 +1,5 @@
 {
-  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v5",
+  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v6",
   "application_id": "019f5443-5b8e-74b2-90e3-c867dbddd37b",
   "main_source_sha": "replace-with-40-character-lowercase-sha",
   "main_source_receipt": "/absolute/path/to/tmp/test-governance/ai-gateway-quality-gate/main-source-sha.log",
@@ -25,6 +25,8 @@
   },
   "api_cookie_name": "flowbase_console_session",
   "upgrade": {
+    "before_installation_id": "019fbac1-a20d-7830-94f3-74c9040b0169",
+    "after_installation_id": "019fbdde-70e8-7862-a2cf-7f9846a4bd1b",
     "after_package": "/absolute/path/to/deepseek-upgrade.1flowbasepkg"
   },
   "claude": {

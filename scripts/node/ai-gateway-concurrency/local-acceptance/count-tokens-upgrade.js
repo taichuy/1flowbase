@@ -57,6 +57,14 @@ function buildCountTokensUpgradeEvidence(fixture, observed) {
     'plugin upgrade republished the application');
   requireCondition(observed.before_plugin?.package_sha256 && observed.after_plugin?.package_sha256,
     'plugin upgrade evidence omitted package provenance');
+  requireCondition(observed.baseline_setup?.installation_id === observed.before_plugin?.installation_id
+    && observed.baseline_setup?.publication_unchanged === true,
+  'plugin upgrade evidence omitted the repeatable baseline setup');
+  requireCondition(['existing_local', 'uploaded_local'].includes(observed.transition_mode),
+    'plugin upgrade evidence omitted the local transition mode');
+  requireCondition(observed.after_package_sha256
+    && observed.after_package_sha256 === observed.after_plugin.package_sha256,
+  'plugin upgrade evidence did not bind the after package digest');
   requireCondition(observed.before_plugin.package_sha256 !== observed.after_plugin.package_sha256,
     'plugin upgrade evidence did not change the installed package');
   requireCondition(observed.republish_events === 0, 'plugin upgrade emitted a republish event');
@@ -82,6 +90,9 @@ function buildCountTokensUpgradeEvidence(fixture, observed) {
     plugin_upgrade: {
       before: observed.before_plugin,
       after: observed.after_plugin,
+      baseline_setup: observed.baseline_setup,
+      transition_mode: observed.transition_mode,
+      after_package_sha256: observed.after_package_sha256,
       republish_events: observed.republish_events,
       network_installs: observed.network_installs,
     },

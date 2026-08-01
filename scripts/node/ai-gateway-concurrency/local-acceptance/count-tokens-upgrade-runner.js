@@ -27,16 +27,26 @@ const {
 } = require('./count-tokens-upgrade');
 
 const APPLICATION_ID = '019f5443-5b8e-74b2-90e3-c867dbddd37b';
-const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v5';
+const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v6';
 const FORBIDDEN_PORTS = new Set([3100, 7800, 7801]);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 class UnavailableError extends Error {
   constructor(message) {
     super(message);
     this.name = 'UnavailableError';
     this.code = 'configuration_unavailable';
+  }
+}
+
+class ClientTurnError extends Error {
+  constructor(details) {
+    super(`Claude ${details.stage} conversation turn failed`);
+    this.name = 'ClientTurnError';
+    this.code = 'client_turn_failed';
+    this.details = details;
   }
 }
 
@@ -73,6 +83,13 @@ function envName(value, label) {
 
 function optionalEnvName(value, label) {
   return value === undefined || value === null ? null : envName(value, label);
+}
+
+function installationId(value, label, optional = false) {
+  if (optional && (value === undefined || value === null)) return null;
+  const id = requireValue(value, label);
+  if (!UUID_PATTERN.test(id)) throw new Error(`${label} must be a canonical lowercase UUID`);
+  return id;
 }
 
 function safeClaim(value, label) {
@@ -173,6 +190,18 @@ function loadRunManifest(filePath, dependencies = {}) {
   if (!artifact.includes(`${path.sep}tmp${path.sep}test-governance${path.sep}`)) {
     throw new Error('CountTokens upgrade artifact must be under tmp/test-governance');
   }
+  const beforeInstallationId = installationId(
+    value.upgrade?.before_installation_id,
+    'baseline DeepSeek installation id',
+  );
+  const afterInstallationId = installationId(
+    value.upgrade?.after_installation_id,
+    'after DeepSeek installation id',
+    true,
+  );
+  if (afterInstallationId === beforeInstallationId) {
+    throw new Error('after DeepSeek installation id must differ from the baseline installation id');
+  }
   return {
     applicationId: APPLICATION_ID,
     mainSourceSha,
@@ -183,6 +212,8 @@ function loadRunManifest(filePath, dependencies = {}) {
     pluginRunner,
     model: requireValue(value.model, 'published model'),
     afterPackage: requireFile(value.upgrade?.after_package, 'local DeepSeek upgrade package'),
+    beforeInstallationId,
+    afterInstallationId,
     claudeExecutable: requireFile(value.claude?.executable, 'Claude executable', true),
     claude: {
       packageManifest: requireFile(value.claude?.provenance?.package_manifest, 'Claude package manifest'),
@@ -225,6 +256,7 @@ function publicError(error) {
     name: error?.name || 'Error',
     code: error?.code || 'execution_failed',
     message: error?.message || String(error),
+    ...(error?.details ? { details: error.details } : {}),
     ...(error?.diagnostic ? { diagnostic: error.diagnostic } : {}),
   };
 }
@@ -323,10 +355,37 @@ function conversationVector() {
   });
 }
 
-function conversationSummary(result) {
+function turnStage(turnIndex) {
+  return turnIndex === 0 ? 'initial' : 'followup';
+}
+
+function turnFailureDetails(result, surface, turnIndex, sessionId, transportStatus) {
+  const observedSessionId = surface?.events?.find(
+    (event) => typeof event.session_id === 'string',
+  )?.session_id ?? null;
+  return {
+    stage: turnStage(turnIndex),
+    turn_index: turnIndex,
+    exit_code: Number.isInteger(result?.exit_code) ? result.exit_code : null,
+    timed_out: result?.timed_out === true,
+    terminal_observed: surface?.terminal?.observed === true,
+    assistant_text_count: surface?.assistantTexts?.length || 0,
+    session_continuity_observed: observedSessionId === sessionId,
+    transport_status: transportStatus,
+  };
+}
+
+function conversationSummary(result, { turnIndex, sessionId }) {
   const surface = clientSurface('claude', result, 'success');
-  if (result.exit_code !== 0 || result.timed_out || !surface.terminal.observed || surface.assistantTexts.length === 0) {
-    throw new Error('Claude conversation turn did not complete');
+  let transportStatus = 'completed';
+  if (result.timed_out) transportStatus = 'timed_out';
+  else if (result.exit_code !== 0) transportStatus = 'nonzero_exit';
+  else if (!surface.terminal.observed) transportStatus = 'terminal_missing';
+  else if (surface.assistantTexts.length === 0) transportStatus = 'assistant_missing';
+  if (transportStatus !== 'completed') {
+    throw new ClientTurnError(
+      turnFailureDetails(result, surface, turnIndex, sessionId, transportStatus),
+    );
   }
   const text = surface.assistantTexts.map((entry) => entry.text).join('');
   return {
@@ -338,16 +397,32 @@ function conversationSummary(result) {
 }
 
 async function runClaudeTurn({ manifest, apiKey, paths, registry, vector, turnIndex, sessionId, sourceEnv, dependencies }) {
-  const plan = buildClientPlan('claude', manifest.claudeExecutable, {
-    provider: 'deepseek', model: manifest.model, apiKey, gatewayBaseUrl: manifest.gatewayBaseUrl,
-  }, paths, vector, 'anthropic_sse', { turnIndex, sessionId });
-  writeConfigs(plan);
-  const result = await (dependencies.executeTmux || executeTmux)(plan, {
-    registry,
-    parentEnv: sourceEnv,
-    tmuxExecutable: dependencies.tmuxExecutable || 'tmux',
-  });
-  return conversationSummary(result);
+  let plan;
+  try {
+    plan = buildClientPlan('claude', manifest.claudeExecutable, {
+      provider: 'deepseek', model: manifest.model, apiKey, gatewayBaseUrl: manifest.gatewayBaseUrl,
+    }, paths, vector, 'anthropic_sse', { turnIndex, sessionId });
+    writeConfigs(plan);
+  } catch {
+    throw new ClientTurnError(turnFailureDetails(null, null, turnIndex, sessionId, 'setup_error'));
+  }
+  let result;
+  try {
+    result = await (dependencies.executeTmux || executeTmux)(plan, {
+      registry,
+      parentEnv: sourceEnv,
+      tmuxExecutable: dependencies.tmuxExecutable || 'tmux',
+    });
+  } catch {
+    throw new ClientTurnError(turnFailureDetails(
+      null,
+      null,
+      turnIndex,
+      sessionId,
+      'execution_error',
+    ));
+  }
+  return conversationSummary(result, { turnIndex, sessionId });
 }
 
 async function installLocalUpgrade(owner, archivePath) {
@@ -363,6 +438,36 @@ async function installLocalUpgrade(owner, archivePath) {
     version: installation.plugin_version,
     package_sha256: uploaded.archive_sha256,
   };
+}
+
+async function activateLocalInstallation(owner, installationIdValue) {
+  await owner.write(`/api/console/plugins/${installationIdValue}/enable`);
+  await owner.write(`/api/console/plugins/${installationIdValue}/assign`);
+  const current = await readDeepSeekFamily(owner);
+  if (current.installation_id !== installationIdValue) {
+    throw new Error(`DeepSeek current installation did not become ${installationIdValue}`);
+  }
+  return current;
+}
+
+async function transitionLocalUpgrade(owner, manifest, afterPackageSha256) {
+  if (manifest.afterInstallationId) {
+    const afterPlugin = await activateLocalInstallation(owner, manifest.afterInstallationId);
+    if (checksum(afterPlugin.package_sha256) !== afterPackageSha256) {
+      throw new Error('existing local DeepSeek installation checksum does not match after_package');
+    }
+    return { transitionMode: 'existing_local', afterPlugin };
+  }
+
+  const installed = await installLocalUpgrade(owner, manifest.afterPackage);
+  const afterPlugin = await readDeepSeekFamily(owner);
+  if (afterPlugin.installation_id !== installed.installation_id
+    || afterPlugin.version !== installed.version
+    || checksum(afterPlugin.package_sha256) !== checksum(installed.package_sha256)
+    || checksum(installed.package_sha256) !== afterPackageSha256) {
+    throw new Error('installed DeepSeek upgrade provenance does not match the uploaded package');
+  }
+  return { transitionMode: 'uploaded_local', afterPlugin };
 }
 
 function writeRunArtifact(filePath, value, secrets) {
@@ -487,9 +592,20 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     }
     owner = new (dependencies.OwnerHttpClient || OwnerHttpClient)(services.apiBaseUrl, fetchImpl);
     owner.attachSession(temporarySession.cookie, temporarySession.csrfToken);
-    await assertTokenBinding(owner, manifest.applicationId, apiKeyId, apiKey);
+    const baselinePublicationId = await activePublication(owner, manifest.applicationId);
+    const beforePlugin = await activateLocalInstallation(owner, manifest.beforeInstallationId);
     const publicationId = await activePublication(owner, manifest.applicationId);
-    const beforePlugin = await readDeepSeekFamily(owner);
+    if (publicationId !== baselinePublicationId) {
+      throw new Error('baseline DeepSeek assignment changed the active publication');
+    }
+    const baselineSetup = {
+      installation_id: beforePlugin.installation_id,
+      version: beforePlugin.version,
+      package_sha256: beforePlugin.package_sha256,
+      publication_id: publicationId,
+      publication_unchanged: true,
+    };
+    await assertTokenBinding(owner, manifest.applicationId, apiKeyId, apiKey);
     const tokenResult = await countTokens(manifest.gatewayBaseUrl, apiKey, manifest.model, fetchImpl);
     const paths = clientPaths(tempRoot, 'claude-deepseek-upgrade', null);
     const vector = conversationVector();
@@ -497,22 +613,24 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     const initial = await runClaudeTurn({
       manifest, apiKey, paths, registry, vector, turnIndex: 0, sessionId, sourceEnv, dependencies,
     });
-    const uploaded = await installLocalUpgrade(owner, manifest.afterPackage);
-    const afterPlugin = await readDeepSeekFamily(owner);
+    const afterPackageSha256 = sha256File(manifest.afterPackage);
+    const transition = await transitionLocalUpgrade(owner, manifest, afterPackageSha256);
+    const afterPlugin = transition.afterPlugin;
     if (beforePlugin.version === afterPlugin.version
       || checksum(beforePlugin.package_sha256) === checksum(afterPlugin.package_sha256)) {
       throw new Error('local DeepSeek package did not upgrade version and checksum');
     }
-    if (afterPlugin.installation_id !== uploaded.installation_id
-      || afterPlugin.version !== uploaded.version
-      || checksum(afterPlugin.package_sha256) !== checksum(uploaded.package_sha256)
-      || checksum(uploaded.package_sha256) !== sha256File(manifest.afterPackage)) {
-      throw new Error('installed DeepSeek upgrade provenance does not match the uploaded package');
+    const transitionPublicationId = await activePublication(owner, manifest.applicationId);
+    if (transitionPublicationId !== publicationId) {
+      throw new Error('DeepSeek installation transition changed the active publication');
     }
-    const afterPublicationId = await activePublication(owner, manifest.applicationId);
     const followup = await runClaudeTurn({
       manifest, apiKey, paths, registry, vector, turnIndex: 1, sessionId, sourceEnv, dependencies,
     });
+    const afterPublicationId = await activePublication(owner, manifest.applicationId);
+    if (afterPublicationId !== publicationId) {
+      throw new Error('Claude follow-up observed a changed active publication');
+    }
     observed = {
       application_id: manifest.applicationId,
       after_upgrade_application_id: manifest.applicationId,
@@ -520,6 +638,9 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
       after_upgrade_publication_id: afterPublicationId,
       before_plugin: beforePlugin,
       after_plugin: afterPlugin,
+      baseline_setup: baselineSetup,
+      transition_mode: transition.transitionMode,
+      after_package_sha256: afterPackageSha256,
       republish_events: publicationId === afterPublicationId ? 0 : 1,
       network_installs: 0,
       count_tokens_application_id: manifest.applicationId,
@@ -586,11 +707,15 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
 
 module.exports = {
   APPLICATION_ID,
+  ClientTurnError,
   RUN_SCHEMA,
   UnavailableError,
-  loadRunManifest,
+  conversationSummary,
   loadApiFileEnvironment,
+  loadRunManifest,
+  publicError,
   reserveOwnedPort,
   runCountTokensUpgrade,
+  transitionLocalUpgrade,
   verifiedSourceCwd,
 };

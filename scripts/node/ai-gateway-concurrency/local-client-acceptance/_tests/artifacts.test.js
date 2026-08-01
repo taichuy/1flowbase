@@ -31,7 +31,7 @@ test('AC-009 redacts explicit and shaped secrets from structured artifacts', () 
 
 test('Root #1556 F11 redacts by structure without corrupting schema text with a short DB password', () => {
   const safe = redact({
-    schema_version: '1flowbase.local-count-tokens-upgrade-run/v5',
+    schema_version: '1flowbase.local-count-tokens-upgrade-run/v6',
     provider_path: '/opt/1flowbase/providers/deepseek',
     owner_password: 'owner-password',
     primary_error: {
@@ -42,7 +42,7 @@ test('Root #1556 F11 redacts by structure without corrupting schema text with a 
     credentialUrls: ['postgres://owner:1flowbase@127.0.0.1/dev'],
   });
 
-  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v5');
+  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v6');
   assert.equal(safe.provider_path, '/opt/1flowbase/providers/deepseek');
   assert.equal(safe.owner_password, '<redacted>');
   assert.match(safe.primary_error.message, /postgres:\/\/<redacted>@127\.0\.0\.1\/dev/u);
@@ -90,7 +90,7 @@ test('Root #1556 F14 classifies dotenv secrets while preserving public material 
     key_id: 'dotenv-key',
     public_key_pem: 'quoted-json-value',
   }]);
-  const schema = '1flowbase.local-count-tokens-upgrade-run/v5';
+  const schema = '1flowbase.local-count-tokens-upgrade-run/v6';
   const providerPath = '/opt/1flowbase/providers/deepseek';
   const apiKeyId = 'public-api-key-id';
   const secretResolver = 'env';
@@ -123,7 +123,7 @@ test('Root #1556 F14 classifies dotenv secrets while preserving public material 
 test('Root #1556 F14 sanitizes DB URL userinfo without replacing common password text', () => {
   const databaseUrl = 'postgres://owner:1flowbase@127.0.0.1:35432/1flowbase';
   const safe = redact({
-    schema_version: '1flowbase.local-count-tokens-upgrade-run/v5',
+    schema_version: '1flowbase.local-count-tokens-upgrade-run/v6',
     primary_error: {
       message: `raw=${databaseUrl} encoded=${encodeURIComponent(databaseUrl)}`,
     },
@@ -131,7 +131,7 @@ test('Root #1556 F14 sanitizes DB URL userinfo without replacing common password
     descriptors: [{ kind: 'env', key: 'API_DATABASE_URL', value: databaseUrl }],
   });
 
-  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v5');
+  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v6');
   assert.match(safe.primary_error.message,
     /raw=postgres:\/\/<redacted>@127\.0\.0\.1:35432\/1flowbase/u);
   assert.doesNotMatch(safe.primary_error.message, /owner:1flowbase|postgres%3A/u);
