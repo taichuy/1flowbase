@@ -1,4 +1,4 @@
-import { Button, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Empty, Space, Table, Tag, Typography } from 'antd';
 
 import { formatDateTime } from '../../../../shared/i18n/format';
 import { ScrollableSurface } from '../../../../shared/ui/scrollable-surface/ScrollableSurface';
@@ -22,21 +22,6 @@ function getCatalogDescription(
   );
 }
 
-function compareVersions(left: string, right: string) {
-  return right.localeCompare(left, undefined, {
-    numeric: true,
-    sensitivity: 'base'
-  });
-}
-
-function sortInstalledVersions(
-  versions: SettingsPluginFamilyEntry['installed_versions']
-) {
-  return Array.from(versions).sort((left, right) =>
-    compareVersions(left.plugin_version, right.plugin_version)
-  );
-}
-
 function formatCheckedAt(value: string) {
   const timestamp = new Date(value);
 
@@ -54,14 +39,10 @@ export function ModelProviderCatalogPanel({
   loading,
   canManage,
   deletingProviderCode,
-  switchingProviderCode,
-  upgradingProviderCode,
   refreshingArtifactInstallationId,
   installingArtifactInstallationId,
   onCreate,
   onViewInstances,
-  onUpgradeLatest,
-  onSwitchVersion,
   onRefreshCurrentNodeArtifact,
   onInstallCurrentNodeArtifact,
   onDelete
@@ -75,17 +56,10 @@ export function ModelProviderCatalogPanel({
   loading?: boolean;
   canManage: boolean;
   deletingProviderCode?: string | null;
-  switchingProviderCode?: string | null;
-  upgradingProviderCode?: string | null;
   refreshingArtifactInstallationId?: string | null;
   installingArtifactInstallationId?: string | null;
   onCreate: (entry: SettingsPluginFamilyEntry) => void;
   onViewInstances: (entry: SettingsPluginFamilyEntry) => void;
-  onUpgradeLatest: (entry: SettingsPluginFamilyEntry) => void;
-  onSwitchVersion: (
-    entry: SettingsPluginFamilyEntry,
-    installationId: string
-  ) => void;
   onRefreshCurrentNodeArtifact: (entry: SettingsPluginFamilyEntry) => void;
   onInstallCurrentNodeArtifact: (entry: SettingsPluginFamilyEntry) => void;
   onDelete: (entry: SettingsPluginFamilyEntry) => void;
@@ -232,65 +206,11 @@ export function ModelProviderCatalogPanel({
               const shouldShowLocalArtifactVersion =
                 Boolean(localArtifactVersion) &&
                 localArtifactVersion !== entry.current_version;
-              const versionOptions = sortInstalledVersions(
-                entry.installed_versions
-              ).map((version) => ({
-                  value: version.installation_id,
-                  label: version.plugin_version
-                }));
-
               return (
                 <div className="model-provider-panel__catalog-version">
-                  {canManage ? (
-                    <Space
-                      size={8}
-                      wrap
-                      className="model-provider-panel__version-inline"
-                    >
-                      <Select
-                        size="small"
-                        value={entry.current_installation_id}
-                        className="model-provider-panel__version-select"
-                        classNames={{
-                          popup: {
-                            root: 'model-provider-panel__version-dropdown'
-                          }
-                        }}
-                        aria-label={i18nText(
-                          'settings',
-                          'auto.switch_version',
-                          { value1: entry.display_name }
-                        )}
-                        loading={switchingProviderCode === entry.provider_code}
-                        options={versionOptions}
-                        onChange={(installationId) => {
-                          if (
-                            installationId === entry.current_installation_id
-                          ) {
-                            return;
-                          }
-
-                          onSwitchVersion(entry, installationId);
-                        }}
-                      />
-                      {entry.has_update ? (
-                        <Button
-                          size="small"
-                          type="default"
-                          loading={
-                            upgradingProviderCode === entry.provider_code
-                          }
-                          onClick={() => onUpgradeLatest(entry)}
-                        >
-                          {i18nText('settings', 'auto.update')}
-                        </Button>
-                      ) : null}
-                    </Space>
-                  ) : (
-                    <Typography.Text strong>
-                      {entry.current_version}
-                    </Typography.Text>
-                  )}
+                  <Typography.Text strong>
+                    {entry.current_version}
+                  </Typography.Text>
                   {shouldShowLocalArtifactVersion ? (
                     <Typography.Text
                       type="secondary"

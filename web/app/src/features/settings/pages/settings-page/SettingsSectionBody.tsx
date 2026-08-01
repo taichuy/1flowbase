@@ -30,6 +30,11 @@ const ModelProviderSettingsTabs = lazy(() =>
     default: module.ModelProviderSettingsTabs
   }))
 );
+const SettingsExtensionCenterSection = lazy(() =>
+  import('./SettingsExtensionCenterSection').then((module) => ({
+    default: module.SettingsExtensionCenterSection
+  }))
+);
 const SettingsMcpManagementSection = lazy(() =>
   import('./SettingsMcpManagementSection').then((module) => ({
     default: module.SettingsMcpManagementSection
@@ -101,6 +106,12 @@ export function SettingsSectionBody({
           <ApplicationManagementPanel />
         </SettingsSectionBoundary>
       );
+    case 'extension-center':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsExtensionCenterSection />
+        </SettingsSectionBoundary>
+      );
     case 'members':
       return (
         <MemberManagementPanel
@@ -149,9 +160,7 @@ export function SettingsSectionBody({
     case 'memory-observation':
       return (
         <SettingsSectionBoundary>
-          <SettingsSectionSurface
-            heightMode="fill"
-          >
+          <SettingsSectionSurface heightMode="fill">
             <HostInfrastructureMemoryObservationPanel
               canManage={access.canManageHostInfrastructure}
             />

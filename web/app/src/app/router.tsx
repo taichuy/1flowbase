@@ -292,8 +292,7 @@ function FrontStageWorkspaceContent({
       : rootNode?.kind === 'page'
         ? [rootNode]
         : pageTreeQuery.data;
-  const scopedPageTreeRootId =
-    rootNode?.kind === 'group' ? rootNode.id : null;
+  const scopedPageTreeRootId = rootNode?.kind === 'group' ? rootNode.id : null;
   const resolvePageTreeParentId = (parentId: string | null) =>
     parentId ?? scopedPageTreeRootId;
   const effectivePageId = rootNode?.kind === 'page' ? rootNode.id : pageId;
@@ -331,7 +330,11 @@ function FrontStageWorkspaceContent({
   const pageContentQuery = useQuery({
     queryKey:
       selectedPageId && tabReference
-        ? frontstagePageContentQueryKey(workspaceId, selectedPageId, tabReference)
+        ? frontstagePageContentQueryKey(
+            workspaceId,
+            selectedPageId,
+            tabReference
+          )
         : ['frontstage', workspaceId, 'pages', 'unselected', 'content'],
     queryFn: () => {
       if (!selectedPageId) {
@@ -342,7 +345,11 @@ function FrontStageWorkspaceContent({
         throw new Error('FrontStage page content query requires selected tab');
       }
 
-      return fetchFrontstagePageContent(workspaceId, selectedPageId, tabReference);
+      return fetchFrontstagePageContent(
+        workspaceId,
+        selectedPageId,
+        tabReference
+      );
     },
     enabled: shouldLoadPageContent,
     retry: false
@@ -358,7 +365,12 @@ function FrontStageWorkspaceContent({
     );
   }
 
-  if (rootNode?.kind === 'group' && !pageId && selectedPageId && rootNode.slug) {
+  if (
+    rootNode?.kind === 'group' &&
+    !pageId &&
+    selectedPageId &&
+    rootNode.slug
+  ) {
     return (
       <Navigate
         to={FRONTSTAGE_SLUG_PAGE_PATH}
@@ -601,6 +613,13 @@ const settingsApplicationsRoute = createRoute({
   component: () => renderSettingsRoute('applications')
 });
 
+const settingsExtensionCenterRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/extension-center',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('extension-center')
+});
+
 const settingsDataModelsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/data-models',
@@ -788,6 +807,7 @@ const routeTree = rootRoute.addChildren([
     settingsMemoryObservationRoute,
     settingsI18nRoute,
     settingsApplicationsRoute,
+    settingsExtensionCenterRoute,
     settingsFilesRoute,
     settingsDataModelsRoute,
     settingsModelProvidersRoute,

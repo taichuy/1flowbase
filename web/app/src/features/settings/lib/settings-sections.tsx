@@ -9,6 +9,7 @@ export type SettingsSectionKey =
   | 'memory-observation'
   | 'i18n'
   | 'applications'
+  | 'extension-center'
   | 'files'
   | 'data-models'
   | 'mcp-management'
@@ -58,6 +59,7 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'memory-observation',
   'i18n',
   'applications',
+  'extension-center',
   'files',
   'data-models',
   'mcp-management',
@@ -151,6 +153,11 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'applications',
     label_key: 'auto.application_management',
     to: '/settings/applications'
+  },
+  {
+    key: 'extension-center',
+    label_key: 'auto.extension_center',
+    to: '/settings/extension-center'
   },
   {
     key: 'files',

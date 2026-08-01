@@ -8,7 +8,6 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { ModelProviderCatalogPanel } from '../../components/model-providers/ModelProviderCatalogPanel';
 import { ModelProviderInstanceDrawer } from '../../components/model-providers/ModelProviderInstanceDrawer';
 import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
-import { OfficialPluginInstallPanel } from '../../components/model-providers/OfficialPluginInstallPanel';
 import { PluginUploadInstallModal } from '../../components/model-providers/PluginUploadInstallModal';
 import {
   settingsModelProviderCatalogQueryKey,
@@ -212,11 +211,6 @@ export function SettingsModelProvidersSection({
       dispatchSectionState({ type: 'setRecentVersionSwitchNotice', value }),
     []
   );
-  const setOfficialSearchQuery = useCallback(
-    (value: SetStateAction<string>) =>
-      dispatchSectionState({ type: 'setOfficialSearchQuery', value }),
-    []
-  );
   const clearUploadState = () => {
     resetUploadState(
       setUploadFileList,
@@ -261,22 +255,17 @@ export function SettingsModelProvidersSection({
       type: 'inactive'
     });
   };
-  const { officialInstallState, setOfficialInstallState, pluginTaskQuery } =
-    useOfficialPluginTask({
-      onSettled: handleOfficialInstallSettled
-    });
+  const { setOfficialInstallState, pluginTaskQuery } = useOfficialPluginTask({
+    onSettled: handleOfficialInstallSettled
+  });
   const {
     catalogQuery,
     familiesQuery,
-    officialCatalogQuery,
     instancesQuery,
     optionsQuery,
     mainInstanceQuery,
     families,
-    officialCatalogEntries,
-    officialSourceMeta,
     currentCatalogEntriesByProviderCode,
-    familiesByProviderCode,
     editingInstance,
     editingModelCatalog,
     drawerCatalogEntry,
@@ -347,9 +336,6 @@ export function SettingsModelProvidersSection({
       ) : null,
     [errorMessage]
   );
-  const officialCatalogErrorMessage = officialCatalogQuery.error
-    ? i18nText('settings', 'auto.official_supplier_catalog_unavailable')
-    : null;
   const modalMainInstance =
     mainInstanceQuery.data ??
     (modalProviderOption
@@ -391,18 +377,6 @@ export function SettingsModelProvidersSection({
                     ? (familyDeleteMutation.variables ?? null)
                     : null
                 }
-                switchingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables.mode === 'switch'
-                    ? versionMutation.variables.providerCode
-                    : null
-                }
-                upgradingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables.mode === 'upgrade'
-                    ? versionMutation.variables.providerCode
-                    : null
-                }
                 refreshingArtifactInstallationId={
                   refreshCurrentNodeArtifactMutation.isPending
                     ? (refreshCurrentNodeArtifactMutation.variables ?? null)
@@ -423,19 +397,6 @@ export function SettingsModelProvidersSection({
                   setDrawerState({
                     mode: 'create',
                     providerCode: entry.provider_code
-                  });
-                }}
-                onUpgradeLatest={(entry) => {
-                  versionMutation.mutate({
-                    mode: 'upgrade',
-                    providerCode: entry.provider_code
-                  });
-                }}
-                onSwitchVersion={(entry, installationId) => {
-                  versionMutation.mutate({
-                    mode: 'switch',
-                    providerCode: entry.provider_code,
-                    installationId
                   });
                 }}
                 onRefreshCurrentNodeArtifact={(entry) => {
@@ -491,51 +452,6 @@ export function SettingsModelProvidersSection({
                 }}
               />
             </Layout.Content>
-
-            <Layout.Sider
-              width={360}
-              theme="light"
-              className="model-provider-panel__sidebar"
-            >
-              <OfficialPluginInstallPanel
-                sourceMeta={officialSourceMeta}
-                entries={officialCatalogEntries}
-                catalogErrorMessage={officialCatalogErrorMessage}
-                familiesByProviderCode={familiesByProviderCode}
-                searchQuery={officialSearchQuery}
-                loading={officialCatalogQuery.isLoading}
-                canManage={canManage}
-                activePluginId={officialInstallState.pluginId}
-                installState={officialInstallState.status}
-                upgradingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables?.mode === 'upgrade'
-                    ? (versionMutation.variables.providerCode ?? null)
-                    : null
-                }
-                onInstall={(entry, compatibilityOverride) => {
-                  officialInstallMutation.mutate({
-                    pluginId: entry.plugin_id,
-                    compatibilityOverride
-                  });
-                }}
-                onOpenUpload={() => {
-                  setUploadModalOpen(true);
-                  clearUploadState();
-                }}
-                onSearchQueryChange={setOfficialSearchQuery}
-                onRetryCatalog={() => {
-                  void officialCatalogQuery.refetch();
-                }}
-                onUpgradeLatest={(entry, compatibilityOverride) => {
-                  versionMutation.mutate({
-                    mode: 'upgrade',
-                    providerCode: entry.provider_code,
-                    compatibilityOverride
-                  });
-                }}
-              />
-            </Layout.Sider>
           </Layout>
         </div>
       </SettingsSectionSurface>
