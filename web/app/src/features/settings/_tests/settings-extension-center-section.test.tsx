@@ -31,11 +31,21 @@ const extensionsApi = vi.hoisted(() => ({
   fetchSettingsExtensionCatalogEntry: vi.fn(),
   checkSettingsExtensionUpdates: vi.fn(),
   installSettingsExtension: vi.fn(),
-  uploadSettingsExtension: vi.fn(),
-  getSettingsExtensionRiskChallenge: vi.fn()
+  getSettingsExtensionRiskChallenge: vi.fn(),
+  previewSettingsInstalledMcpExtension: vi.fn(),
+  applySettingsInstalledMcpExtension: vi.fn(),
+  getSettingsInstalledMcpExtensionConflict: vi.fn()
 }));
 
+const routerApi = vi.hoisted(() => ({ navigate: vi.fn() }));
+
 vi.mock('../api/extensions', () => extensionsApi);
+vi.mock('../api/mcp-management', () => ({
+  settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog']
+}));
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => routerApi.navigate
+}));
 
 import { AppI18nProvider } from '../../../app/AppI18nProvider';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
@@ -145,7 +155,17 @@ function authenticate() {
   });
 }
 
-function renderSection() {
+function renderSection(
+  category:
+    | 'installed'
+    | 'agent-flow'
+    | 'capability-plugins'
+    | 'host-extensions'
+    | 'i18n'
+    | 'mcp'
+    | 'runtime-extensions' = 'installed',
+  cursor?: string
+) {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -158,30 +178,13 @@ function renderSection() {
     </AppI18nProvider>
   );
 
-  return render(<SettingsExtensionCenterSection />, { wrapper });
-}
-
-async function selectUploadCategory(
-  uploadDialog: HTMLElement,
-  category: string
-) {
-  const combobox = within(uploadDialog).getByRole('combobox', { name: '类型' });
-  const pointerTarget = combobox.closest('.ant-select-selector');
-  if (!pointerTarget) {
-    throw new Error('upload category Select has no visible pointer target');
-  }
-
-  fireEvent.mouseDown(pointerTarget);
-  const listbox = await screen.findByRole('listbox');
-  fireEvent.click(within(listbox).getByRole('option', { name: category }));
-}
-
-async function submitEnabledUpload(uploadDialog: HTMLElement) {
-  const submit = within(uploadDialog).getByRole('button', {
-    name: '上传并安装'
-  });
-  await waitFor(() => expect(submit).toBeEnabled());
-  fireEvent.click(submit);
+  return {
+    ...render(
+      <SettingsExtensionCenterSection category={category} cursor={cursor} />,
+      { wrapper }
+    ),
+    queryClient: client
+  };
 }
 
 describe('SettingsExtensionCenterSection', () => {
@@ -222,8 +225,10 @@ describe('SettingsExtensionCenterSection', () => {
       ]
     });
     extensionsApi.installSettingsExtension.mockResolvedValue({});
-    extensionsApi.uploadSettingsExtension.mockResolvedValue({});
     extensionsApi.getSettingsExtensionRiskChallenge.mockReturnValue(null);
+    extensionsApi.getSettingsInstalledMcpExtensionConflict.mockReturnValue(
+      null
+    );
     vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn() } as never);
   });
 
@@ -262,15 +267,10 @@ describe('SettingsExtensionCenterSection', () => {
     ).toHaveAttribute('data-update-state', 'update_available');
 
     fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
-    await waitFor(() => {
-      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
-        'runtime-extensions',
-        undefined
-      );
-      expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
-        expect.objectContaining({ catalog_page: 'page-1' }),
-        'csrf-123'
-      );
+    expect(routerApi.navigate).toHaveBeenCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'runtime-extensions' },
+      search: { cursor: undefined }
     });
   });
 
@@ -291,10 +291,7 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('D4-AC-014 never renders a response from a different catalog category under the active tab', async () => {
-    renderSection();
-    expect(await screen.findByText('openai')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('tab', { name: 'agent-flow' }));
+    renderSection('agent-flow');
     await waitFor(() => {
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
         'agent-flow',
@@ -355,8 +352,7 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.getSettingsExtensionRiskChallenge.mockImplementation(
       (error: unknown) => (error === riskError ? challenge : null)
     );
-    renderSection();
-    fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
+    renderSection('runtime-extensions');
     const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
     const installConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
@@ -386,7 +382,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('Root-AC-003/006 exposes upload and marks a failed current-page check red', async () => {
+  test('D5-AC-005 removes unified upload while keeping failed update status visible', async () => {
     extensionsApi.checkSettingsExtensionUpdates.mockRejectedValue(
       new Error('catalog unavailable')
     );
@@ -400,24 +396,10 @@ describe('SettingsExtensionCenterSection', () => {
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
-    const uploadDialog = await screen.findByRole('dialog');
-    const input = uploadDialog.querySelector('input[type="file"]');
-    const file = new File(['extension'], 'extension.1flowbasepkg');
-    await selectUploadCategory(uploadDialog, 'runtime-extensions');
-    fireEvent.change(input!, { target: { files: [file] } });
-    await submitEnabledUpload(uploadDialog);
-    const uploadConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    await uploadConfirmation?.onOk?.();
-
-    await waitFor(() => {
-      expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
-        file,
-        { category: 'runtime-extensions' },
-        'csrf-123',
-        {}
-      );
-    });
+    expect(
+      screen.queryByRole('button', { name: '上传插件' })
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
     view.unmount();
   });
 
@@ -445,7 +427,7 @@ describe('SettingsExtensionCenterSection', () => {
         ]
       })
     );
-    renderSection();
+    const view = renderSection('agent-flow');
 
     for (const category of [
       'agent-flow',
@@ -454,8 +436,8 @@ describe('SettingsExtensionCenterSection', () => {
       'i18n',
       'mcp',
       'runtime-extensions'
-    ]) {
-      fireEvent.click(screen.getByRole('tab', { name: category }));
+    ] as const) {
+      view.rerender(<SettingsExtensionCenterSection category={category} />);
       const row = await screen.findByRole('row', {
         name: new RegExp(`${category} Extension`)
       });
@@ -465,60 +447,113 @@ describe('SettingsExtensionCenterSection', () => {
     }
   });
 
-  test.each([
-    {
-      category: 'agent-flow' as const,
-      version: '1.2.0',
-      expectedVersion: '1.2.0'
-    },
-    {
-      category: 'i18n' as const,
-      version: '',
-      expectedVersion: undefined
-    }
-  ])(
-    'Root-AC-006 submits explicit $category upload identity without filename inference',
-    async ({ category, version, expectedVersion }) => {
-      renderSection();
-      fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
-      const uploadDialog = await screen.findByRole('dialog');
-      await selectUploadCategory(uploadDialog, category);
-
-      fireEvent.change(
-        within(uploadDialog).getByRole('textbox', { name: '组织' }),
-        { target: { value: '@taichuy' } }
+  test('D5-AC-006 restores cursor from route search and writes pagination to navigation', async () => {
+    renderSection('runtime-extensions', 'cursor-2');
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'runtime-extensions',
+        'cursor-2'
       );
-      fireEvent.change(
-        within(uploadDialog).getByRole('textbox', { name: '产物标识' }),
-        { target: { value: 'sample-extension' } }
-      );
-      if (version) {
-        fireEvent.change(
-          within(uploadDialog).getByRole('textbox', { name: '版本' }),
-          { target: { value: version } }
-        );
-      }
-      const file = new File(['extension'], 'opaque-upload.bin');
-      fireEvent.change(uploadDialog.querySelector('input[type="file"]')!, {
-        target: { files: [file] }
-      });
-      await submitEnabledUpload(uploadDialog);
-      const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-      await confirmation?.onOk?.();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上一页' }));
+    expect(routerApi.navigate).toHaveBeenCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'runtime-extensions' },
+      search: { cursor: undefined }
+    });
+  });
 
-      await waitFor(() => {
-        expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
-          file,
-          {
-            category,
-            organization: '@taichuy',
-            artifact_id: 'sample-extension',
-            ...(expectedVersion ? { version: expectedVersion } : {})
-          },
-          'csrf-123',
-          {}
-        );
-      });
-    }
-  );
+  test('D5-AC-004/008 keeps MCP installed on conflict cancel and applies only after confirmation', async () => {
+    const mcpEntry = {
+      ...installedEntry,
+      id: 'mcp-installation-1',
+      category: 'mcp' as const,
+      catalog_id: 'mcp:taichuy/sample',
+      artifact_id: 'sample'
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [mcpEntry]
+    });
+    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
+      extension_installation_id: 'mcp-installation-1',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'confirmation_required',
+      required_conflict_resolution: 'keep_existing',
+      preview: { tools: [], instances: [], connections: [] }
+    });
+    extensionsApi.applySettingsInstalledMcpExtension.mockResolvedValue({
+      workspace_application_status: 'imported'
+    });
+    renderSection('installed');
+    const row = await screen.findByRole('row', { name: /sample/ });
+    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await waitFor(() => {
+      expect(
+        extensionsApi.previewSettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123');
+      expect(Modal.confirm).toHaveBeenCalled();
+    });
+    expect(
+      extensionsApi.applySettingsInstalledMcpExtension
+    ).not.toHaveBeenCalled();
+
+    const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+    await confirmation?.onOk?.();
+    await waitFor(() => {
+      expect(
+        extensionsApi.applySettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123', 'keep_existing');
+    });
+  });
+
+  test('D5-AC-004 starts MCP preview after install and leaves application untouched when cancelled', async () => {
+    const mcpCatalogEntry = {
+      ...catalogEntry,
+      id: 'mcp:taichuy/sample',
+      category: 'mcp' as const,
+      artifact: 'sample',
+      name: 'Sample MCP',
+      current_version: null,
+      installation_status: 'not_installed'
+    };
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'mcp',
+      catalog_page: 'start',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:mcp',
+      catalog_page_locator: 'mcp/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [mcpCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockResolvedValue({
+      installation: { id: 'mcp-installation-2' },
+      workspace_application_status: 'not_imported'
+    });
+    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
+      extension_installation_id: 'mcp-installation-2',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'confirmation_required',
+      required_conflict_resolution: 'keep_existing',
+      preview: { tools: [], instances: [], connections: [] }
+    });
+    renderSection('mcp');
+    const row = await screen.findByRole('row', { name: /Sample MCP/ });
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+    const installConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+    await installConfirmation?.onOk?.();
+    await waitFor(() => {
+      expect(
+        extensionsApi.previewSettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith('mcp-installation-2', 'csrf-123');
+      expect(Modal.confirm).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      extensionsApi.applySettingsInstalledMcpExtension
+    ).not.toHaveBeenCalled();
+  });
 });

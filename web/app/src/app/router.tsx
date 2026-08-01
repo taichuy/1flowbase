@@ -51,6 +51,7 @@ import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
+import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions';
 
 const ApplicationDetailPage = lazy(() =>
   import('../features/applications/pages/ApplicationDetailPage').then(
@@ -245,7 +246,9 @@ const templatesRoute = createRoute({
 function renderSettingsRoute(
   requestedSectionKey?: string,
   modelProviderTab?: 'providers' | 'request-logs',
-  rolePermissionTab?: RolePermissionTab
+  rolePermissionTab?: RolePermissionTab,
+  extensionCenterCategory?: SettingsExtensionCenterCategory,
+  extensionCenterCursor?: string
 ) {
   return (
     <RouteGuard routeId="settings">
@@ -254,6 +257,8 @@ function renderSettingsRoute(
           requestedSectionKey={requestedSectionKey}
           modelProviderTab={modelProviderTab}
           rolePermissionTab={rolePermissionTab}
+          extensionCenterCategory={extensionCenterCategory}
+          extensionCenterCursor={extensionCenterCursor}
         />
       </LazyRouteBoundary>
     </RouteGuard>
@@ -617,7 +622,54 @@ const settingsExtensionCenterRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/extension-center',
   notFoundComponent: NotFoundPage,
-  component: () => renderSettingsRoute('extension-center')
+  component: () => (
+    <Navigate
+      to="/settings/extension-center/$category"
+      params={{ category: 'installed' }}
+      search={{ cursor: undefined }}
+      replace
+    />
+  )
+});
+
+const extensionCenterCategories = new Set<SettingsExtensionCenterCategory>([
+  'installed',
+  'agent-flow',
+  'capability-plugins',
+  'host-extensions',
+  'i18n',
+  'mcp',
+  'runtime-extensions'
+]);
+
+const settingsExtensionCenterCategoryRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/extension-center/$category',
+  validateSearch: (search: Record<string, unknown>) => ({
+    cursor:
+      typeof search.cursor === 'string' && search.cursor.trim().length > 0
+        ? search.cursor
+        : undefined
+  }),
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { category } = settingsExtensionCenterCategoryRoute.useParams();
+    const { cursor } = settingsExtensionCenterCategoryRoute.useSearch();
+    if (
+      !extensionCenterCategories.has(
+        category as SettingsExtensionCenterCategory
+      )
+    ) {
+      return <NotFoundPage />;
+    }
+    return renderSettingsRoute(
+      'extension-center',
+      undefined,
+      undefined,
+      category as SettingsExtensionCenterCategory,
+      cursor
+    );
+  }
 });
 
 const settingsDataModelsRoute = createRoute({
@@ -808,6 +860,7 @@ const routeTree = rootRoute.addChildren([
     settingsI18nRoute,
     settingsApplicationsRoute,
     settingsExtensionCenterRoute,
+    settingsExtensionCenterCategoryRoute,
     settingsFilesRoute,
     settingsDataModelsRoute,
     settingsModelProvidersRoute,

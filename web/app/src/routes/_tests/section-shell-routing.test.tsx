@@ -159,6 +159,22 @@ const consoleNavigationApi = vi.hoisted(() => ({
   fetchSettingsConsoleNavigation: vi.fn()
 }));
 
+const extensionsApi = vi.hoisted(() => ({
+  settingsInstalledExtensionsQueryKey: vi.fn(() => ['extensions', 'installed']),
+  settingsExtensionCatalogQueryKey: vi.fn(
+    (category: string, cursor?: string) => ['extensions', category, cursor]
+  ),
+  fetchSettingsInstalledExtensions: vi.fn(),
+  fetchSettingsExtensionCatalog: vi.fn(),
+  fetchSettingsExtensionCatalogEntry: vi.fn(),
+  checkSettingsExtensionUpdates: vi.fn(),
+  installSettingsExtension: vi.fn(),
+  getSettingsExtensionRiskChallenge: vi.fn(),
+  previewSettingsInstalledMcpExtension: vi.fn(),
+  applySettingsInstalledMcpExtension: vi.fn(),
+  getSettingsInstalledMcpExtensionConflict: vi.fn()
+}));
+
 vi.mock('../../features/settings/api/members', () => membersApi);
 vi.mock('../../features/settings/api/roles', () => rolesApi);
 vi.mock('../../features/settings/api/permissions', () => permissionsApi);
@@ -170,6 +186,7 @@ vi.mock(
   '../../features/settings/api/console-navigation',
   () => consoleNavigationApi
 );
+vi.mock('../../features/settings/api/extensions', () => extensionsApi);
 
 import { AppProviders } from '../../app/AppProviders';
 import { AppRouterProvider } from '../../app/router';
@@ -202,6 +219,10 @@ const settingsRouteRecords = {
   'model-providers': {
     label_key: 'auto.model_providers',
     path: '/settings/model-providers'
+  },
+  'extension-center': {
+    label_key: 'auto.extension_center',
+    path: '/settings/extension-center'
   }
 } as const;
 
@@ -270,6 +291,25 @@ describe('section shell routing', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       settingsConsoleNavigation(['api-key-authentication'])
+    );
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 0,
+      next_cursor: null,
+      entries: []
+    });
+    extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
+      async (category: string) => ({
+        category,
+        catalog_page: 'start',
+        catalog_page_number: 1,
+        catalog_page_checksum: 'sha256:fixture',
+        catalog_page_locator: 'fixture',
+        limit: 20,
+        next_cursor: null,
+        total_entries: 0,
+        entries: []
+      })
     );
     membersApi.fetchSettingsMembers.mockResolvedValue([]);
     rolesApi.fetchSettingsRoles.mockResolvedValue([
@@ -635,6 +675,45 @@ describe('section shell routing', () => {
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
         screen.getByRole('tab', { name: '动态路由', selected: true })
+      ).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'D5-AC-006 redirects Extension Center base and keeps category/cursor in browser history',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['extension-center', 'model-providers'])
+      );
+      authenticateWithPermissions([], 'root');
+      renderApp('/settings/extension-center');
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/installed'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'mcp' }));
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/settings/extension-center/mcp');
+      });
+      window.history.pushState(
+        {},
+        '',
+        '/settings/extension-center/runtime-extensions?cursor=cursor-2'
+      );
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      await waitFor(() => {
+        expect(
+          extensionsApi.fetchSettingsExtensionCatalog
+        ).toHaveBeenCalledWith('runtime-extensions', 'cursor-2');
+      });
+      expect(
+        screen.getByRole('tab', {
+          name: 'runtime-extensions',
+          selected: true
+        })
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT

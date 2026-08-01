@@ -11,6 +11,7 @@ import {
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 import type { SettingsSectionKey } from '../../lib/settings-sections';
+import type { SettingsExtensionCenterCategory } from '../../api/extensions';
 import { SettingsAuthCenterSection } from './SettingsAuthCenterSection';
 import { SettingsDataModelsSection } from './SettingsDataModelsSection';
 import { SettingsFilesSection } from './SettingsFilesSection';
@@ -90,12 +91,16 @@ export function SettingsSectionBody({
   sectionKey,
   access,
   modelProviderTab = 'providers',
-  rolePermissionTab = 'console-policy'
+  rolePermissionTab = 'console-policy',
+  extensionCenterCategory = 'installed',
+  extensionCenterCursor
 }: {
   sectionKey: SettingsSectionKey;
   access: SettingsSectionAccess;
   modelProviderTab?: 'providers' | 'request-logs';
   rolePermissionTab?: RolePermissionTab;
+  extensionCenterCategory?: SettingsExtensionCenterCategory;
+  extensionCenterCursor?: string;
 }) {
   const navigate = useNavigate();
 
@@ -109,7 +114,10 @@ export function SettingsSectionBody({
     case 'extension-center':
       return (
         <SettingsSectionBoundary>
-          <SettingsExtensionCenterSection />
+          <SettingsExtensionCenterSection
+            category={extensionCenterCategory}
+            cursor={extensionCenterCursor}
+          />
         </SettingsSectionBoundary>
       );
     case 'members':

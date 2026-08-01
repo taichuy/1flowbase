@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import {
   Badge,
   Button,
@@ -8,19 +9,14 @@ import {
   Drawer,
   Empty,
   Flex,
-  Form,
-  Input,
   List,
   Modal,
-  Select,
   Space,
   Tabs,
   Tag,
   Tooltip,
   Typography,
-  Upload,
-  message,
-  type UploadFile
+  message
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 
@@ -32,19 +28,23 @@ import {
 } from '../../../../shared/ui/data-table/DataTable';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
+  applySettingsInstalledMcpExtension,
   checkSettingsExtensionUpdates,
   fetchSettingsExtensionCatalog,
   fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
+  getSettingsInstalledMcpExtensionConflict,
   getSettingsExtensionRiskChallenge,
   installSettingsExtension,
+  previewSettingsInstalledMcpExtension,
   settingsExtensionCatalogQueryKey,
   settingsInstalledExtensionsQueryKey,
-  uploadSettingsExtension,
   type SettingsExtensionCatalogEntry,
   type SettingsExtensionCategory,
+  type SettingsExtensionCenterCategory,
   type SettingsInstalledExtension
 } from '../../api/extensions';
+import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
@@ -53,22 +53,12 @@ type UpdateState =
   | 'current'
   | 'update_available'
   | 'unknown_error';
-type ExtensionOperation =
-  | {
-      kind: 'catalog';
-      entry: SettingsExtensionCatalogEntry;
-      update: boolean;
-    }
-  | {
-      kind: 'upload';
-      file: File;
-      metadata: {
-        category: SettingsExtensionCategory;
-        organization?: string;
-        artifact_id?: string;
-        version?: string;
-      };
-    };
+type ExtensionOperation = {
+  kind: 'catalog';
+  entry: SettingsExtensionCatalogEntry;
+  update: boolean;
+};
+type ExtensionOverrides = Parameters<typeof installSettingsExtension>[2];
 
 const CATEGORIES: SettingsExtensionCategory[] = [
   'agent-flow',
@@ -115,17 +105,17 @@ function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
 }
 
-export function SettingsExtensionCenterSection() {
+export function SettingsExtensionCenterSection({
+  category: activeTab,
+  cursor
+}: {
+  category: SettingsExtensionCenterCategory;
+  cursor?: string;
+}) {
   const { t } = useTranslation('settings');
+  const navigate = useNavigate();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<
-    'installed' | SettingsExtensionCategory
-  >('installed');
-  const [cursor, setCursor] = useState<string>();
-  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>(
-    []
-  );
   const [selected, setSelected] = useState<ExtensionRow | null>(null);
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {}
@@ -133,13 +123,11 @@ export function SettingsExtensionCenterSection() {
   const [resolvingUpdateKey, setResolvingUpdateKey] = useState<string | null>(
     null
   );
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
-  const [uploadCategory, setUploadCategory] =
-    useState<SettingsExtensionCategory>();
-  const [uploadOrganization, setUploadOrganization] = useState('');
-  const [uploadArtifactId, setUploadArtifactId] = useState('');
-  const [uploadVersion, setUploadVersion] = useState('');
+
+  useEffect(() => {
+    setSelected(null);
+    setUpdateStates({});
+  }, [activeTab, cursor]);
 
   const installedQuery = useQuery({
     queryKey: settingsInstalledExtensionsQueryKey(cursor),
@@ -243,39 +231,106 @@ export function SettingsExtensionCenterSection() {
     };
   }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, cursor, rows]);
 
+  const invalidateExtensionAndMcpState = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'extension-center']
+      }),
+      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
+    ]);
+  }, [queryClient]);
+
+  const applyInstalledMcpExtension = useCallback(
+    async (
+      extensionInstallationId: string,
+      conflictResolution?: 'keep_existing'
+    ) => {
+      if (!csrfToken) throw new Error('csrf token required');
+      try {
+        await applySettingsInstalledMcpExtension(
+          extensionInstallationId,
+          csrfToken,
+          conflictResolution
+        );
+        message.success(t('auto.mcp_extension_apply_succeeded'));
+        await invalidateExtensionAndMcpState();
+      } catch (error) {
+        const conflict = getSettingsInstalledMcpExtensionConflict(error);
+        if (!conflict) {
+          message.error(t('auto.mcp_extension_apply_failed'));
+          return;
+        }
+        Modal.confirm({
+          title: t('auto.mcp_extension_conflict_title'),
+          content: t('auto.mcp_extension_conflict_keep_existing'),
+          okText: t('auto.confirm'),
+          cancelText: t('auto.cancel'),
+          onOk: () =>
+            applyInstalledMcpExtension(
+              conflict.extension_installation_id,
+              conflict.required_conflict_resolution
+            )
+        });
+      }
+    },
+    [csrfToken, invalidateExtensionAndMcpState, t]
+  );
+
+  const previewInstalledMcpExtension = useCallback(
+    async (extensionInstallationId: string) => {
+      if (!csrfToken) throw new Error('csrf token required');
+      try {
+        const result = await previewSettingsInstalledMcpExtension(
+          extensionInstallationId,
+          csrfToken
+        );
+        const conflictResolution = result.required_conflict_resolution;
+        Modal.confirm({
+          title: conflictResolution
+            ? t('auto.mcp_extension_conflict_title')
+            : t('auto.mcp_extension_apply_title'),
+          content: conflictResolution
+            ? t('auto.mcp_extension_conflict_keep_existing')
+            : t('auto.mcp_extension_apply_confirmation'),
+          okText: t('auto.confirm'),
+          cancelText: t('auto.cancel'),
+          onOk: () =>
+            applyInstalledMcpExtension(
+              result.extension_installation_id,
+              conflictResolution ?? undefined
+            )
+        });
+      } catch {
+        message.error(t('auto.mcp_extension_preview_failed'));
+      }
+    },
+    [applyInstalledMcpExtension, csrfToken, t]
+  );
+
   const operationMutation = useMutation({
     mutationFn: async ({
       operation,
       overrides = {}
     }: {
       operation: ExtensionOperation;
-      overrides?: Parameters<typeof uploadSettingsExtension>[3];
+      overrides?: ExtensionOverrides;
     }) => {
       if (!csrfToken) throw new Error('csrf token required');
       try {
-        if (operation.kind === 'upload') {
-          await uploadSettingsExtension(
-            operation.file,
-            operation.metadata,
-            csrfToken,
-            overrides
-          );
-        } else {
-          await installSettingsExtension(
-            operation.entry,
-            csrfToken,
-            overrides,
-            operation.update
-          );
-        }
-        return { challenge: null, operation };
+        const result = await installSettingsExtension(
+          operation.entry,
+          csrfToken,
+          overrides,
+          operation.update
+        );
+        return { challenge: null, operation, result };
       } catch (error) {
         const challenge = getSettingsExtensionRiskChallenge(error);
         if (!challenge) throw error;
-        return { challenge, operation };
+        return { challenge, operation, result: null };
       }
     },
-    onSuccess: async ({ challenge, operation }) => {
+    onSuccess: async ({ challenge, operation, result }) => {
       if (challenge) {
         const acknowledgedWarnings = challenge.warnings
           .filter((warning) => warning.overridable)
@@ -321,17 +376,15 @@ export function SettingsExtensionCenterSection() {
       }
 
       message.success(t('auto.extension_operation_submitted'));
-      if (operation.kind === 'upload') {
-        setUploadOpen(false);
-        setUploadFiles([]);
-        setUploadCategory(undefined);
-        setUploadOrganization('');
-        setUploadArtifactId('');
-        setUploadVersion('');
-      }
       await queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
       });
+      if (
+        operation.entry.category === 'mcp' &&
+        result?.workspace_application_status === 'not_imported'
+      ) {
+        await previewInstalledMcpExtension(result.installation.id);
+      }
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
@@ -340,12 +393,9 @@ export function SettingsExtensionCenterSection() {
   const submitOperation = useCallback(
     (operation: ExtensionOperation) => {
       Modal.confirm({
-        title:
-          operation.kind === 'upload'
-            ? t('auto.upload_plugin')
-            : operation.update
-              ? t('auto.update_extension')
-              : t('auto.install_extension'),
+        title: operation.update
+          ? t('auto.update_extension')
+          : t('auto.install_extension'),
         content: t('auto.extension_install_confirmation'),
         okText: t('auto.confirm'),
         cancelText: t('auto.cancel'),
@@ -442,36 +492,46 @@ export function SettingsExtensionCenterSection() {
           const key = extensionKey(row);
           const updateState = updateStates[key];
           const action = isInstalledRow(row) ? (
-            <span data-update-state={updateState ?? 'unknown_error'}>
-              <Tooltip
-                title={
-                  updateState === 'update_available'
-                    ? t('auto.update_available')
-                    : updateState === 'current'
-                      ? t('auto.currently_latest_version')
-                      : t('auto.update_check_failed')
-                }
-              >
-                <Badge
-                  dot
-                  color={
+            <Space size={4}>
+              <span data-update-state={updateState ?? 'unknown_error'}>
+                <Tooltip
+                  title={
                     updateState === 'update_available'
-                      ? '#ffba00'
+                      ? t('auto.update_available')
                       : updateState === 'current'
-                        ? 'transparent'
-                        : '#fb565b'
+                        ? t('auto.currently_latest_version')
+                        : t('auto.update_check_failed')
                   }
                 >
-                  <Button
-                    type="link"
-                    loading={resolvingUpdateKey === key}
-                    onClick={() => void resolveInstalledUpdate(row)}
+                  <Badge
+                    dot
+                    color={
+                      updateState === 'update_available'
+                        ? '#ffba00'
+                        : updateState === 'current'
+                          ? 'transparent'
+                          : '#fb565b'
+                    }
                   >
-                    {t('auto.update')}
-                  </Button>
-                </Badge>
-              </Tooltip>
-            </span>
+                    <Button
+                      type="link"
+                      loading={resolvingUpdateKey === key}
+                      onClick={() => void resolveInstalledUpdate(row)}
+                    >
+                      {t('auto.update')}
+                    </Button>
+                  </Badge>
+                </Tooltip>
+              </span>
+              {row.category === 'mcp' ? (
+                <Button
+                  type="link"
+                  onClick={() => void previewInstalledMcpExtension(row.id)}
+                >
+                  {t('auto.apply_to_workspace')}
+                </Button>
+              ) : null}
+            </Space>
           ) : (
             <span data-update-state={updateState ?? 'not_installed'}>
               <Badge
@@ -517,6 +577,7 @@ export function SettingsExtensionCenterSection() {
     ],
     [
       operationMutation.isPending,
+      previewInstalledMcpExtension,
       resolveInstalledUpdate,
       resolvingUpdateKey,
       submitOperation,
@@ -541,19 +602,6 @@ export function SettingsExtensionCenterSection() {
     activeTab === 'installed'
       ? installedQuery.isLoading || installedQuery.isFetching
       : catalogQuery.isLoading || catalogQuery.isFetching;
-  const uploadNeedsIdentity =
-    uploadCategory === 'agent-flow' || uploadCategory === 'i18n';
-  const uploadNeedsVersion = uploadCategory === 'agent-flow';
-  const uploadFile = uploadFiles[0]?.originFileObj;
-  const uploadIdentityReady =
-    !uploadNeedsIdentity ||
-    (uploadOrganization.trim().length > 0 &&
-      uploadArtifactId.trim().length > 0 &&
-      (!uploadNeedsVersion || uploadVersion.trim().length > 0));
-  const uploadReady =
-    Boolean(uploadCategory) &&
-    uploadFile instanceof File &&
-    uploadIdentityReady;
 
   return (
     <SettingsSectionSurface heightMode="fill">
@@ -561,11 +609,11 @@ export function SettingsExtensionCenterSection() {
         <Tabs
           activeKey={activeTab}
           onChange={(key) => {
-            setActiveTab(key as typeof activeTab);
-            setCursor(undefined);
-            setCursorHistory([]);
-            setSelected(null);
-            setUpdateStates({});
+            void navigate({
+              to: '/settings/extension-center/$category',
+              params: { category: key },
+              search: { cursor: undefined }
+            });
           }}
           items={[
             { key: 'installed', label: t('auto.installed_extensions') },
@@ -584,9 +632,6 @@ export function SettingsExtensionCenterSection() {
           loading={tableLoading}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
-              <Button onClick={() => setUploadOpen(true)}>
-                {t('auto.upload_plugin')}
-              </Button>
               <DataTableColumnSettings
                 columns={columns}
                 configuration={tableConfiguration}
@@ -594,21 +639,26 @@ export function SettingsExtensionCenterSection() {
             </Flex>
           }
           cursorPagination={{
-            currentPage: cursorHistory.length + 1,
-            hasPreviousPage: cursorHistory.length > 0,
+            currentPage: cursor ? 2 : 1,
+            hasPreviousPage: Boolean(cursor),
             hasNextPage: Boolean(nextCursor),
             previousLabel: t('auto.previous_page'),
             nextLabel: t('auto.next_page'),
             total: totalEntries,
             onPreviousPage: () => {
-              const previousCursor = cursorHistory.at(-1);
-              setCursor(previousCursor);
-              setCursorHistory((history) => history.slice(0, -1));
+              void navigate({
+                to: '/settings/extension-center/$category',
+                params: { category: activeTab },
+                search: { cursor: undefined }
+              });
             },
             onNextPage: () => {
               if (!nextCursor) return;
-              setCursorHistory((history) => [...history, cursor]);
-              setCursor(nextCursor);
+              void navigate({
+                to: '/settings/extension-center/$category',
+                params: { category: activeTab },
+                search: { cursor: nextCursor }
+              });
             }
           }}
         />
@@ -684,112 +734,6 @@ export function SettingsExtensionCenterSection() {
           </Flex>
         ) : null}
       </Drawer>
-
-      <Modal
-        open={uploadOpen}
-        title={t('auto.upload_plugin')}
-        okText={t('auto.upload_and_install')}
-        cancelText={t('auto.cancel')}
-        confirmLoading={operationMutation.isPending}
-        okButtonProps={{
-          disabled: !uploadReady
-        }}
-        onCancel={() => {
-          setUploadOpen(false);
-          setUploadFiles([]);
-          setUploadCategory(undefined);
-          setUploadOrganization('');
-          setUploadArtifactId('');
-          setUploadVersion('');
-        }}
-        onOk={() => {
-          if (
-            !(uploadFile instanceof File) ||
-            !uploadCategory ||
-            !uploadReady
-          ) {
-            message.warning(t('auto.select_plug_package_first'));
-            return;
-          }
-          submitOperation({
-            kind: 'upload',
-            file: uploadFile,
-            metadata: {
-              category: uploadCategory,
-              ...(uploadNeedsIdentity
-                ? {
-                    organization: uploadOrganization.trim(),
-                    artifact_id: uploadArtifactId.trim(),
-                    ...(uploadVersion.trim()
-                      ? { version: uploadVersion.trim() }
-                      : {})
-                  }
-                : {})
-            }
-          });
-        }}
-      >
-        <Typography.Paragraph type="secondary">
-          {t(
-            'auto.supports_one_flowbasepkg_compatible_tar_gz_zip_uploading_host_backend'
-          )}
-        </Typography.Paragraph>
-        <Select<SettingsExtensionCategory>
-          aria-label={t('auto.kind')}
-          virtual={false}
-          value={uploadCategory}
-          options={CATEGORIES.map((category) => ({
-            label: category,
-            value: category
-          }))}
-          onChange={(category) => {
-            setUploadCategory(category);
-            setUploadOrganization('');
-            setUploadArtifactId('');
-            setUploadVersion('');
-          }}
-          style={{ width: '100%', marginBottom: 16 }}
-        />
-        {uploadNeedsIdentity ? (
-          <Form layout="vertical" component={false}>
-            <Form.Item label={t('auto.organization')} required>
-              <Input
-                aria-label={t('auto.organization')}
-                value={uploadOrganization}
-                onChange={(event) =>
-                  setUploadOrganization(event.currentTarget.value)
-                }
-              />
-            </Form.Item>
-            <Form.Item label={t('auto.artifact_id')} required>
-              <Input
-                aria-label={t('auto.artifact_id')}
-                value={uploadArtifactId}
-                onChange={(event) =>
-                  setUploadArtifactId(event.currentTarget.value)
-                }
-              />
-            </Form.Item>
-            <Form.Item label={t('auto.version')} required={uploadNeedsVersion}>
-              <Input
-                aria-label={t('auto.version')}
-                value={uploadVersion}
-                onChange={(event) =>
-                  setUploadVersion(event.currentTarget.value)
-                }
-              />
-            </Form.Item>
-          </Form>
-        ) : null}
-        <Upload
-          maxCount={1}
-          fileList={uploadFiles}
-          beforeUpload={() => false}
-          onChange={({ fileList }) => setUploadFiles(fileList.slice(-1))}
-        >
-          <Button>{t('auto.upload_plugin')}</Button>
-        </Upload>
-      </Modal>
     </SettingsSectionSurface>
   );
 }

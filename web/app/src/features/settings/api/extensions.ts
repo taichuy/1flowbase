@@ -1,10 +1,13 @@
 import {
+  applyConsoleInstalledMcpExtension,
   checkConsoleExtensionUpdates,
   getConsoleExtensionCatalogEntry,
+  getConsoleInstalledMcpExtensionConflict,
   getConsoleExtensionRiskChallenge,
   installConsoleExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
+  previewConsoleInstalledMcpExtension,
   uploadConsoleExtension,
   type ConsoleExtensionCatalogEntry,
   type ConsoleExtensionCategory,
@@ -15,6 +18,9 @@ import {
 } from '@1flowbase/api-client';
 
 export type SettingsExtensionCategory = ConsoleExtensionCategory;
+export type SettingsExtensionCenterCategory =
+  | 'installed'
+  | SettingsExtensionCategory;
 export type SettingsInstalledExtension = ConsoleInstalledExtension;
 export type SettingsExtensionCatalogEntry = ConsoleExtensionCatalogEntry;
 
@@ -80,6 +86,28 @@ export function installSettingsExtension(
   );
 }
 
+export function previewSettingsInstalledMcpExtension(
+  extensionInstallationId: string,
+  csrfToken: string
+) {
+  return previewConsoleInstalledMcpExtension(
+    extensionInstallationId,
+    csrfToken
+  );
+}
+
+export function applySettingsInstalledMcpExtension(
+  extensionInstallationId: string,
+  csrfToken: string,
+  conflictResolution?: 'keep_existing'
+) {
+  return applyConsoleInstalledMcpExtension(
+    extensionInstallationId,
+    csrfToken,
+    conflictResolution
+  );
+}
+
 export function uploadSettingsExtension(
   file: File,
   metadata: ConsoleExtensionUploadMetadata,
@@ -90,3 +118,4 @@ export function uploadSettingsExtension(
 }
 
 export { getConsoleExtensionRiskChallenge as getSettingsExtensionRiskChallenge };
+export { getConsoleInstalledMcpExtensionConflict as getSettingsInstalledMcpExtensionConflict };
