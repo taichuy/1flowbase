@@ -19,6 +19,7 @@ pub struct StoredExtensionInstallationRow {
     pub signing_key_id: Option<String>,
     pub warnings: serde_json::Value,
     pub receipt: serde_json::Value,
+    pub application_action: String,
     pub status: String,
     pub installed_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -53,6 +54,13 @@ pub fn to_extension_installation_record(
         signing_key_id: row.signing_key_id,
         warnings: serde_json::from_value(row.warnings)?,
         receipt: row.receipt,
+        application_action: domain::ExtensionApplicationAction::parse(&row.application_action)
+            .ok_or_else(|| {
+                anyhow!(
+                    "unknown extension application action: {}",
+                    row.application_action
+                )
+            })?,
         status: domain::ExtensionInstallationStatus::parse(&row.status)
             .ok_or_else(|| anyhow!("unknown extension installation status: {}", row.status))?,
         installed_by: row.installed_by,

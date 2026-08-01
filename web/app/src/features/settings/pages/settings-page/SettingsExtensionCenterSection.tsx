@@ -28,16 +28,12 @@ import {
 } from '../../../../shared/ui/data-table/DataTable';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
-  applySettingsInstalledMcpExtension,
   checkSettingsExtensionUpdates,
   fetchSettingsExtensionCatalog,
   fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
-  getSettingsInstalledMcpExtensionConflict,
-  getSettingsInstalledMcpExtensionIntegrityChallenge,
   getSettingsExtensionRiskChallenge,
   installSettingsExtension,
-  previewSettingsInstalledMcpExtension,
   settingsExtensionCatalogQueryKey,
   settingsInstalledExtensionsQueryKey,
   type SettingsExtensionCatalogEntry,
@@ -46,6 +42,10 @@ import {
   type SettingsInstalledExtension
 } from '../../api/extensions';
 import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
+import {
+  ExtensionApplicationFlow,
+  type ExtensionApplicationTarget
+} from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
@@ -60,14 +60,6 @@ type ExtensionOperation = {
   update: boolean;
 };
 type ExtensionOverrides = Parameters<typeof installSettingsExtension>[2];
-type InstalledMcpApplyOptions = Parameters<
-  typeof applySettingsInstalledMcpExtension
->[2];
-type InstalledMcpIntegrityChallenge = NonNullable<
-  Awaited<
-    ReturnType<typeof previewSettingsInstalledMcpExtension>
-  >['required_integrity_override']
->;
 
 const CATEGORIES: SettingsExtensionCategory[] = [
   'agent-flow',
@@ -110,17 +102,24 @@ function extensionInstallationStatus(row: ExtensionRow) {
   return isInstalledRow(row) ? row.status : row.installation_status;
 }
 
-function extensionKey(row: ExtensionRow) {
-  return extensionCatalogId(row);
+function extensionApplicationStatusLabel(
+  status: SettingsInstalledExtension['application_status'],
+  t: (key: string) => string
+) {
+  switch (status) {
+    case 'not_required':
+      return t('auto.extension_application_not_required');
+    case 'not_applied':
+      return t('auto.extension_application_not_applied');
+    case 'applied':
+      return t('auto.extension_application_applied');
+    case 'available':
+      return t('auto.extension_application_available');
+  }
 }
 
-function confirmedMcpIntegrityOverride(
-  challenge: InstalledMcpIntegrityChallenge
-) {
-  return {
-    reason: 'user_confirmed',
-    acknowledged_warnings: challenge.warnings.map((warning) => warning.code)
-  };
+function extensionKey(row: ExtensionRow) {
+  return extensionCatalogId(row);
 }
 
 export function SettingsExtensionCenterSection({
@@ -141,6 +140,8 @@ export function SettingsExtensionCenterSection({
   const [resolvingUpdateKey, setResolvingUpdateKey] = useState<string | null>(
     null
   );
+  const [applicationTarget, setApplicationTarget] =
+    useState<ExtensionApplicationTarget | null>(null);
 
   useEffect(() => {
     setSelected(null);
@@ -257,143 +258,9 @@ export function SettingsExtensionCenterSection({
       queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
     ]);
   }, [queryClient]);
-
-  const applyInstalledMcpExtension = useCallback(
-    async (
-      extensionInstallationId: string,
-      options: InstalledMcpApplyOptions = {}
-    ) => {
-      if (!csrfToken) throw new Error('csrf token required');
-      try {
-        await applySettingsInstalledMcpExtension(
-          extensionInstallationId,
-          csrfToken,
-          options
-        );
-        message.success(t('auto.mcp_extension_apply_succeeded'));
-        await invalidateExtensionAndMcpState();
-      } catch (error) {
-        const integrityChallenge =
-          getSettingsInstalledMcpExtensionIntegrityChallenge(error);
-        if (integrityChallenge) {
-          Modal.confirm({
-            title: t('auto.mcp_extension_integrity_title'),
-            content: (
-              <List
-                size="small"
-                dataSource={integrityChallenge.integrity_warnings}
-                renderItem={(warning) => (
-                  <List.Item>{warning.message}</List.Item>
-                )}
-              />
-            ),
-            okText: t('auto.confirm'),
-            cancelText: t('auto.cancel'),
-            onOk: () =>
-              applyInstalledMcpExtension(
-                integrityChallenge.extension_installation_id,
-                {
-                  ...options,
-                  integrity_override: confirmedMcpIntegrityOverride(
-                    integrityChallenge.required_integrity_override
-                  )
-                }
-              )
-          });
-          return;
-        }
-        const conflict = getSettingsInstalledMcpExtensionConflict(error);
-        if (!conflict) {
-          message.error(t('auto.mcp_extension_apply_failed'));
-          return;
-        }
-        Modal.confirm({
-          title: t('auto.mcp_extension_conflict_title'),
-          content: (
-            <Space direction="vertical">
-              {conflict.integrity_warnings.length > 0 ? (
-                <List
-                  size="small"
-                  dataSource={conflict.integrity_warnings}
-                  renderItem={(warning) => (
-                    <List.Item>{warning.message}</List.Item>
-                  )}
-                />
-              ) : null}
-              <Typography.Text>
-                {t('auto.mcp_extension_conflict_keep_existing')}
-              </Typography.Text>
-            </Space>
-          ),
-          okText: t('auto.confirm'),
-          cancelText: t('auto.cancel'),
-          onOk: () =>
-            applyInstalledMcpExtension(conflict.extension_installation_id, {
-              ...options,
-              conflict_resolution: conflict.required_conflict_resolution
-            })
-        });
-      }
-    },
-    [csrfToken, invalidateExtensionAndMcpState, t]
-  );
-
-  const previewInstalledMcpExtension = useCallback(
-    async (extensionInstallationId: string) => {
-      if (!csrfToken) throw new Error('csrf token required');
-      try {
-        const result = await previewSettingsInstalledMcpExtension(
-          extensionInstallationId,
-          csrfToken
-        );
-        const conflictResolution = result.required_conflict_resolution;
-        const integrityChallenge = result.required_integrity_override;
-        const integrityWarnings = result.integrity_warnings;
-        Modal.confirm({
-          title:
-            integrityWarnings.length > 0
-              ? t('auto.mcp_extension_integrity_title')
-              : conflictResolution
-                ? t('auto.mcp_extension_conflict_title')
-                : t('auto.mcp_extension_apply_title'),
-          content: (
-            <Space direction="vertical">
-              {integrityWarnings.length > 0 ? (
-                <List
-                  size="small"
-                  dataSource={integrityWarnings}
-                  renderItem={(warning) => (
-                    <List.Item>{warning.message}</List.Item>
-                  )}
-                />
-              ) : null}
-              <Typography.Text>
-                {conflictResolution
-                  ? t('auto.mcp_extension_conflict_keep_existing')
-                  : t('auto.mcp_extension_apply_confirmation')}
-              </Typography.Text>
-            </Space>
-          ),
-          okText: t('auto.confirm'),
-          cancelText: t('auto.cancel'),
-          onOk: () =>
-            applyInstalledMcpExtension(result.extension_installation_id, {
-              ...(conflictResolution
-                ? { conflict_resolution: conflictResolution }
-                : {}),
-              ...(integrityChallenge
-                ? {
-                    integrity_override:
-                      confirmedMcpIntegrityOverride(integrityChallenge)
-                  }
-                : {})
-            })
-        });
-      } catch {
-        message.error(t('auto.mcp_extension_preview_failed'));
-      }
-    },
-    [applyInstalledMcpExtension, csrfToken, t]
+  const closeApplicationFlow = useCallback(
+    () => setApplicationTarget(null),
+    []
   );
 
   const operationMutation = useMutation({
@@ -464,15 +331,18 @@ export function SettingsExtensionCenterSection({
         return;
       }
 
-      message.success(t('auto.extension_operation_submitted'));
-      await queryClient.invalidateQueries({
-        queryKey: ['settings', 'extension-center']
-      });
+      message.success(t('auto.extension_operation_completed'));
+      await invalidateExtensionAndMcpState();
       if (
-        operation.entry.category === 'mcp' &&
-        result?.workspace_application_status === 'not_imported'
+        result &&
+        ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
+          result.application_action
+        )
       ) {
-        await previewInstalledMcpExtension(result.installation.id);
+        setApplicationTarget({
+          installationId: result.installation.id,
+          action: result.application_action
+        });
       }
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
@@ -481,17 +351,9 @@ export function SettingsExtensionCenterSection({
 
   const submitOperation = useCallback(
     (operation: ExtensionOperation) => {
-      Modal.confirm({
-        title: operation.update
-          ? t('auto.update_extension')
-          : t('auto.install_extension'),
-        content: t('auto.extension_install_confirmation'),
-        okText: t('auto.confirm'),
-        cancelText: t('auto.cancel'),
-        onOk: () => runOperation({ operation })
-      });
+      void runOperation({ operation });
     },
-    [runOperation, t]
+    [runOperation]
   );
 
   const resolveInstalledUpdate = useCallback(
@@ -556,8 +418,17 @@ export function SettingsExtensionCenterSection({
       {
         title: t('auto.installation'),
         key: 'installation_status',
-        width: 120,
-        render: (_, row) => extensionInstallationStatus(row)
+        width: 190,
+        render: (_, row) => (
+          <Space size={4} wrap>
+            <Tag>{extensionInstallationStatus(row)}</Tag>
+            {isInstalledRow(row) ? (
+              <Tag>
+                {extensionApplicationStatusLabel(row.application_status, t)}
+              </Tag>
+            ) : null}
+          </Space>
+        )
       },
       {
         title: t('auto.source'),
@@ -612,12 +483,33 @@ export function SettingsExtensionCenterSection({
                   </Badge>
                 </Tooltip>
               </span>
-              {row.category === 'mcp' ? (
+              {row.application_action === 'configure_model_provider' ? (
                 <Button
                   type="link"
-                  onClick={() => void previewInstalledMcpExtension(row.id)}
+                  onClick={() =>
+                    window.location.assign(
+                      '/settings/model-providers/providers'
+                    )
+                  }
                 >
-                  {t('auto.apply_to_workspace')}
+                  {t('auto.configure_provider')}
+                </Button>
+              ) : row.application_action !== 'none' ? (
+                <Button
+                  type="link"
+                  disabled={row.application_status === 'applied'}
+                  onClick={() =>
+                    setApplicationTarget({
+                      installationId: row.id,
+                      action: row.application_action
+                    })
+                  }
+                >
+                  {row.application_status === 'applied'
+                    ? t('auto.extension_application_applied')
+                    : row.application_action === 'activate_i18n'
+                      ? t('auto.activate')
+                      : t('auto.apply_to_workspace')}
                 </Button>
               ) : null}
             </Space>
@@ -666,7 +558,6 @@ export function SettingsExtensionCenterSection({
     ],
     [
       operationMutation.isPending,
-      previewInstalledMcpExtension,
       resolveInstalledUpdate,
       resolvingUpdateKey,
       submitOperation,
@@ -823,6 +714,12 @@ export function SettingsExtensionCenterSection({
           </Flex>
         ) : null}
       </Drawer>
+      <ExtensionApplicationFlow
+        target={applicationTarget}
+        csrfToken={csrfToken ?? ''}
+        onClose={closeApplicationFlow}
+        onApplied={invalidateExtensionAndMcpState}
+      />
     </SettingsSectionSurface>
   );
 }

@@ -554,6 +554,24 @@ impl InMemoryFlowRepository {
 
 #[async_trait]
 impl ApplicationRepository for InMemoryFlowRepository {
+    async fn record_application_extension_source(
+        &self,
+        _workspace_id: Uuid,
+        _application_id: Uuid,
+        _extension_installation_id: Uuid,
+        _actor_user_id: Uuid,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn has_application_extension_source(
+        &self,
+        _workspace_id: Uuid,
+        _extension_installation_id: Uuid,
+    ) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

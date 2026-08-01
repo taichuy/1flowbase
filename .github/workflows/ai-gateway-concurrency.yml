@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: taichuy/1flowbase-official-plugins
-          ref: 8beaeac52c6c255a209ea5aee4748dff02f0661b
+          ref: 1308af8c37a437928c4f082c324f7943ef258edc
           path: tmp/ai-gateway-concurrency/official-source
           fetch-depth: 1
 
@@ -84,9 +84,12 @@ jobs:
           shared-key: ai-gateway-protocol-conformance
           workspaces: |
             api -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/anthropic -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai_compatible -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
+            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
 
       - name: Run the single blocking AI Gateway quality command
         id: protocol_conformance

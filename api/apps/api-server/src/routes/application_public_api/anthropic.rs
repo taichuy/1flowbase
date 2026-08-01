@@ -36,7 +36,7 @@ use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::ProtocolContextEnvelope;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tracing::debug;
+use tracing::{debug, info};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -111,6 +111,11 @@ impl IntoResponse for AnthropicRouteError {
                 },
             ),
         };
+        info!(
+            status_code = status.as_u16(),
+            error_type = %error.error_type,
+            "anthropic compatible route error boundary"
+        );
         (
             status,
             Json(AnthropicErrorBody {
@@ -166,6 +171,11 @@ pub async fn create_message(
     uri: Uri,
     body: Bytes,
 ) -> Result<Response, AnthropicRouteError> {
+    info!(
+        route = "messages",
+        phase = "received",
+        "anthropic compatible route boundary"
+    );
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     let source_body = value.clone();
@@ -269,6 +279,11 @@ pub async fn count_message_tokens(
     uri: Uri,
     body: Bytes,
 ) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
+    info!(
+        route = "messages_count_tokens",
+        phase = "received",
+        "anthropic compatible route boundary"
+    );
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     let source_body = value.clone();

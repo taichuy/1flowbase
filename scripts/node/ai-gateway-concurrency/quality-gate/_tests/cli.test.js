@@ -61,19 +61,18 @@ test("quality gate exposes one explicit command with local source and database i
   assert.throws(() => parseArgs(["run"]), /required/u);
 });
 
-test("quality gate runs the blocking official provider library suites from the paired source", () => {
+test("quality gate runs all six blocking official provider suites from the paired source", () => {
   assert.deepEqual(
     officialProviderTestInvocations("/official").map(({ name, args }) => [
       name,
       args,
     ]),
-    ["openai", "anthropic", "deepseek", "openai_compatible"].map((provider) => [
+    ["openai", "anthropic", "aliyun_bailian", "deepseek", "gemini", "openai_compatible"].map((provider) => [
       `${provider}-provider-tests`,
       [
         "test",
         "--manifest-path",
-        `/official/runtime-extensions/model-providers/${provider}/Cargo.toml`,
-        "--lib",
+        `/official/runtime-extensions/@taichuy/${provider}/Cargo.toml`,
         "--locked",
       ],
     ]),
@@ -110,6 +109,15 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   assert.deepEqual(
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
+      [
+        "plugin-framework-count-tokens-estimator-total-corpus",
+        "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
+      ],
+      ["plugin-framework-count-tokens-contract-tests", "count_tokens"],
+      ["plugin-runner-count-tokens-totality-tests", "count_tokens"],
+      ["orchestration-runtime-count-tokens-terminal-tests", "count_tokens"],
+      ["control-plane-count-tokens-route-tests", "count_tokens"],
+      ["api-server-count-tokens-envelope-tests", "count_tokens"],
       ["plugin-framework-message-block-contract-tests", "root_1534"],
       ["orchestration-runtime-semantic-route-tests", "root_1534"],
       ["orchestration-runtime-upstream-error-tests", "upstream"],
@@ -181,6 +189,50 @@ test("quality gate limits conversation Cargo probes to one owned database and de
     ({ name }) => name !== "control-plane-conversation-tests",
   )) {
     assert.notEqual(args.at(-1), "application_public_api");
+  }
+});
+
+test("F03 Cargo filters execute the estimator corpus, fault fixture, and Native typed receipt tests", () => {
+  const repoRoot = path.resolve(__dirname, "../../../../../");
+  const invocations = conversationTestInvocations(
+    repoRoot,
+    "postgres://gate@127.0.0.1:35432/owned",
+  );
+  const requiredTests = [
+    {
+      packageName: "plugin-framework",
+      testName: "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
+      source: "api/crates/plugin-framework/src/_tests/provider_contract_tests.rs",
+    },
+    {
+      packageName: "plugin-framework",
+      testName: "d1_p03_count_tokens_estimator_fault_injection_projects_typed_fallback_zero",
+      source: "api/crates/plugin-framework/src/provider_count_tokens_estimator.rs",
+    },
+    {
+      packageName: "api-server",
+      testName: "d3_p12_count_tokens_native_blocking_response_exposes_typed_operation_terminal",
+      source: "api/apps/api-server/src/_tests/application_public_api/native_routes.rs",
+    },
+  ];
+
+  for (const required of requiredTests) {
+    const testSource = fs.readFileSync(path.join(repoRoot, required.source), "utf8");
+    assert.ok(
+      testSource.includes(`fn ${required.testName}(`),
+      `${required.testName} must exist in the real Rust test source`,
+    );
+    const matching = invocations.filter(({ args }) => {
+      const packageIndex = args.indexOf("-p");
+      const filter = args.at(-1);
+      return args[packageIndex + 1] === required.packageName
+        && required.testName.includes(filter);
+    });
+    assert.equal(
+      matching.length,
+      1,
+      `${required.testName} must be selected by exactly one Cargo command`,
+    );
   }
 });
 

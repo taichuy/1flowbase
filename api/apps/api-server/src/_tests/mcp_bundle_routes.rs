@@ -310,6 +310,7 @@ async fn app_with_installed_mcp_extension(
                 declared_warnings: Vec::new(),
                 risk_override: None,
                 confirmation_receipt: None,
+                application_action: domain::ExtensionApplicationAction::ImportMcp,
             })
             .await
             .unwrap();
@@ -566,6 +567,10 @@ async fn delivery_1560_d5_ac_004_installed_mcp_artifact_previews_without_workspa
         extension_installation_id.to_string()
     );
     assert_eq!(installed["data"]["entries"][0]["status"], "installed");
+    assert_eq!(
+        installed["data"]["entries"][0]["application_status"],
+        "not_applied"
+    );
 }
 
 #[tokio::test]
@@ -592,6 +597,16 @@ async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_re
     assert_eq!(
         first_payload["data"]["workspace_application_status"],
         "imported"
+    );
+    let installed = get_json(
+        &app,
+        "/api/console/settings/extension-center/installed?category=mcp",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        installed["data"]["entries"][0]["application_status"],
+        "applied"
     );
 
     let preview = post_json(

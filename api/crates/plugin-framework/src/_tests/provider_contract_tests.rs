@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::provider_count_tokens_estimator::estimate_provider_count_tokens;
 use plugin_framework::{
     installation::PluginTaskStatus,
     provider_contract::{
@@ -7,7 +8,8 @@ use plugin_framework::{
         NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
         NativePromptCacheControlType, ProtocolContextEnvelope, ProviderBalanceInfo,
         ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
+        ProviderCountTokensCoverage, ProviderCountTokensError, ProviderCountTokensFallbackReason,
+        ProviderCountTokensInput, ProviderCountTokensMethod, ProviderCountTokensResult,
         ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
         ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
         ProviderOutputItemPhase, ProviderRuntimeError, ProviderRuntimeErrorKind,
@@ -69,6 +71,96 @@ fn provider_usage_serializes_input_cache_hit_and_miss_tokens() {
     assert_eq!(payload["input_cache_miss_tokens"], 60);
     assert_eq!(payload["output_tokens"], 12);
     assert_eq!(payload["total_tokens"], 112);
+}
+
+#[test]
+fn d1_p01_count_tokens_reuses_the_complete_generate_envelope_without_field_drift() {
+    let invocation = ProviderInvocationInput {
+        previous_response_id: Some("resp-1".to_string()),
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "hello".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([{"type":"text","text":"world"}])),
+        }],
+        system: vec![NativePromptBlock::text("system")],
+        tools: vec![json!({"name":"lookup","input_schema":{"type":"object"}})],
+        mcp_bindings: vec![json!({"server":"catalog"})],
+        response_format: Some(json!({"type":"json_schema"})),
+        model_parameters: BTreeMap::from([("temperature".to_string(), json!(0.2))]),
+        native_transport: Some(ProviderNativeTransport {
+            protocol: "native".to_string(),
+            wire_body: json!({"opaque":"transport"}),
+            digest: "digest".to_string(),
+            size_bytes: 22,
+        }),
+        ..ProviderInvocationInput::default()
+    };
+
+    let count = ProviderCountTokensInput::from_invocation(invocation.clone());
+
+    assert_eq!(count.messages, invocation.messages);
+    assert_eq!(count.tools, invocation.tools);
+    assert_eq!(count.mcp_bindings, invocation.mcp_bindings);
+    assert_eq!(count.response_format, invocation.response_format);
+    assert_eq!(count.model_parameters, invocation.model_parameters);
+    assert_eq!(count.native_transport, invocation.native_transport);
+}
+
+#[test]
+fn d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families() {
+    let invocation = ProviderInvocationInput {
+        system: vec![NativePromptBlock::text("system text")],
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::User,
+            content: "plain text".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type":"json","json":{"answer":42}},
+                {"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}},
+                {"type":"url","url":"https://example.test/context"},
+                {"type":"future_canonical_block","payload":{"nested":true}}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let estimate = estimate_provider_count_tokens(&invocation)
+        .expect("bounded canonical fixture must be estimable");
+
+    assert!(estimate.input_tokens > 0);
+    assert_eq!(estimate.method, ProviderCountTokensMethod::GenericEstimate);
+    assert_eq!(estimate.coverage, ProviderCountTokensCoverage::Partial);
+    assert_eq!(estimate.unknown_block_count, 1);
+    assert_eq!(estimate.fallback_reason, None);
+}
+
+#[test]
+fn d1_p02_count_tokens_internal_receipt_fields_have_stable_wire_names() {
+    let result = ProviderCountTokensResult::generic_estimate(
+        19,
+        ProviderCountTokensCoverage::Complete,
+        0,
+        ProviderCountTokensFallbackReason::CapabilityUnavailable,
+    );
+
+    assert_eq!(
+        serde_json::to_value(result).unwrap(),
+        json!({
+            "operation": "count_tokens",
+            "input_tokens": 19,
+            "method": "generic_estimate",
+            "coverage": "complete",
+            "unknown_block_count": 0,
+            "fallback_reason": "capability_unavailable"
+        })
+    );
 }
 
 #[test]
@@ -511,11 +603,11 @@ fn wp_r14a_count_tokens_and_compact_share_exact_profile_projection() {
         query: BTreeMap::from([("preview".to_string(), vec!["one".to_string()])]),
         ..ProtocolContextEnvelope::default()
     };
-    let count_tokens = ProviderCountTokensInput {
+    let count_tokens = ProviderCountTokensInput::from_invocation(ProviderInvocationInput {
         client_protocol_envelope: Some(envelope.clone()),
         required_capabilities: BTreeSet::from([ProviderInvocationCapability::ProtocolContext]),
-        ..ProviderCountTokensInput::default()
-    };
+        ..ProviderInvocationInput::default()
+    });
     let count_wire = count_tokens
         .to_current_provider_wire_value(&[
             "count_tokens".to_string(),
@@ -753,8 +845,7 @@ fn root_1534_ac_003_explicit_anthropic_capabilities_accept_reasoning_block_seman
 
 #[test]
 fn c1_count_tokens_wire_is_tagged_and_requires_a_declared_capability() {
-    let input = ProviderCountTokensInput {
-        operation: ProviderWireOperation::CountTokens,
+    let input = ProviderCountTokensInput::from_invocation(ProviderInvocationInput {
         contract_version: Default::default(),
         provider_instance_id: "provider-1".to_string(),
         provider_code: "anthropic".to_string(),
@@ -769,8 +860,8 @@ fn c1_count_tokens_wire_is_tagged_and_requires_a_declared_capability() {
             tool_calls: None,
             content_blocks: None,
         }],
-        ..ProviderCountTokensInput::default()
-    };
+        ..ProviderInvocationInput::default()
+    });
 
     let wire = input
         .to_current_provider_wire_value(&["count_tokens".to_string()])
@@ -781,16 +872,23 @@ fn c1_count_tokens_wire_is_tagged_and_requires_a_declared_capability() {
         wire["messages"][0]["content"],
         json!("count this exact prompt")
     );
-    assert!(wire.get("tools").is_none());
+    assert_eq!(wire["tools"], json!([]));
 
     let result = serde_json::to_value(ProviderCountTokensResult {
         operation: ProviderWireOperation::CountTokens,
         input_tokens: 37,
+        ..ProviderCountTokensResult::default()
     })
     .expect("typed CountTokens result should serialize");
     assert_eq!(
         result,
-        json!({ "operation": "count_tokens", "input_tokens": 37 })
+        json!({
+            "operation": "count_tokens",
+            "input_tokens": 37,
+            "method": "upstream_api",
+            "coverage": "complete",
+            "unknown_block_count": 0
+        })
     );
 
     assert!(matches!(

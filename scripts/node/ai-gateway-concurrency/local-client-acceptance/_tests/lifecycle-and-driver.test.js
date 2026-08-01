@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const childProcess = require('node:child_process');
+const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -22,7 +23,9 @@ const {
   publicPlan, runLocalClientAcceptance, vectorsForTarget,
   verifyMeaningfulGitWorkspace,
 } = require('../driver');
-const { OwnedResources, executionEnvironment } = require('../lifecycle');
+const {
+  OwnedResources, TIMED_OUT_CAPTURE_BYTES, executeTmux, executionEnvironment,
+} = require('../lifecycle');
 
 function output(events, exitCode = 0) {
   return {
@@ -130,6 +133,68 @@ test('AC-009 cleanup terminates owned children, tmux servers, and temporary root
   assert.deepEqual(killed, ['SIGTERM', 'SIGKILL']);
   assert.deepEqual(tmux, [['tmux', '-L', 'owned-socket', 'kill-server']]);
   assert.deepEqual(removed, ['/tmp/owned-root']);
+});
+
+test('Root #1556 F17 timeout stops owned tmux before bounded partial output is returned', async () => {
+  const roots = [];
+  const stoppedSockets = [];
+  let killStatus = 0;
+  const registry = {
+    addTempRoot(value) { roots.push(value); return value; },
+    addTmuxSocket(value) { this.socket = value; return value; },
+    releaseTmuxSocket(value) { stoppedSockets.push(value); },
+    addChild(child) { return child; },
+    releaseChild() {},
+    spawnSync(_tmux, args) {
+      assert.deepEqual(args.slice(-1), ['kill-server']);
+      return { status: killStatus };
+    },
+  };
+  const spawnImpl = () => {
+    const activeRoot = roots.at(-1);
+    fs.writeFileSync(path.join(activeRoot, 'stdout.log'), [
+      JSON.stringify({ type: 'stream_event', event: { type: 'message_start' } }),
+      'raw-secret-canary',
+      'x'.repeat(TIMED_OUT_CAPTURE_BYTES),
+    ].join('\n'));
+    fs.writeFileSync(path.join(activeRoot, 'stderr.log'), 'partial stderr');
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter();
+    queueMicrotask(() => child.emit('exit', 0));
+    return child;
+  };
+  try {
+    const result = await executeTmux({
+      invocation: { executable: '/fixture/claude', args: [], cwd: roots[0] || os.tmpdir() },
+      environment: {},
+    }, {
+      registry,
+      spawnImpl,
+      timeoutMs: 5,
+      tmuxExecutable: '/fixture/tmux',
+    });
+    assert.equal(result.timed_out, true);
+    assert.equal(result.stdout.includes('message_start'), true);
+    assert.equal(Buffer.byteLength(result.stdout), TIMED_OUT_CAPTURE_BYTES);
+    assert.equal(stoppedSockets.length, 1);
+
+    killStatus = 1;
+    const failedStop = await executeTmux({
+      invocation: { executable: '/fixture/claude', args: [], cwd: os.tmpdir() },
+      environment: {},
+    }, {
+      registry,
+      spawnImpl,
+      timeoutMs: 5,
+      tmuxExecutable: '/fixture/tmux',
+    });
+    assert.equal(failedStop.timed_out, true);
+    assert.equal(failedStop.stdout, '');
+    assert.equal(failedStop.stderr, '');
+    assert.equal(stoppedSockets.length, 1);
+  } finally {
+    for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('AC-009 child environment carries gateway config without inheriting host credentials', () => {

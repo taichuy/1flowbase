@@ -1,0 +1,43 @@
+{
+  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v6",
+  "application_id": "019f5443-5b8e-74b2-90e3-c867dbddd37b",
+  "main_source_sha": "replace-with-40-character-lowercase-sha",
+  "main_source_receipt": "/absolute/path/to/tmp/test-governance/ai-gateway-quality-gate/main-source-sha.log",
+  "main_source_root": "/absolute/path/to/frozen/main-source",
+  "api_server_cwd": "/absolute/path/to/frozen/main-source/api/apps/api-server",
+  "api_server_binary": {
+    "path": "/absolute/path/to/frozen/api-server",
+    "sha256": "replace-with-64-character-lowercase-sha256",
+    "source_sha": "replace-with-the-same-40-character-lowercase-sha"
+  },
+  "plugin_runner_binary": {
+    "path": "/absolute/path/to/frozen/plugin-runner",
+    "sha256": "replace-with-64-character-lowercase-sha256",
+    "source_sha": "replace-with-the-same-40-character-lowercase-sha"
+  },
+  "model": "1flowbase",
+  "environment": {
+    "application_api_key": "ONEFLOWBASE_APPLICATION_API_KEY",
+    "application_api_key_id": "ONEFLOWBASE_APPLICATION_API_KEY_ID",
+    "owner_username": "ONEFLOWBASE_OWNER_USERNAME",
+    "owner_password": "ONEFLOWBASE_OWNER_PASSWORD",
+    "database_url": "ONEFLOWBASE_DATABASE_URL"
+  },
+  "api_cookie_name": "flowbase_console_session",
+  "upgrade": {
+    "before_installation_id": "019fbac1-a20d-7830-94f3-74c9040b0169",
+    "after_installation_id": "019fbdde-70e8-7862-a2cf-7f9846a4bd1b",
+    "after_package": "/absolute/path/to/deepseek-upgrade.1flowbasepkg"
+  },
+  "claude": {
+    "executable": "/absolute/path/to/claude",
+    "provenance": {
+      "package_manifest": "/absolute/path/to/@anthropic-ai/claude-code/package.json",
+      "package_name": "@anthropic-ai/claude-code",
+      "package_version": "pinned-version",
+      "package_integrity": "sha512-pinned-integrity",
+      "install_command": "pre-existing pinned local installation"
+    }
+  },
+  "artifact": "tmp/test-governance/ai-gateway-concurrency/local-count-tokens-upgrade.json"
+}

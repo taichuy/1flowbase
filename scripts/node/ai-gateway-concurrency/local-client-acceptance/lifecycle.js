@@ -8,6 +8,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const ENVIRONMENT_ALLOWLIST = Object.freeze([
   'PATH', 'LANG', 'LC_ALL', 'TZ', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS',
 ]);
+const TIMED_OUT_CAPTURE_BYTES = 64 * 1024;
 
 class OwnedResources {
   constructor(dependencies = {}) {
@@ -175,14 +176,26 @@ async function executeTmux(plan, options = {}) {
     return { exit_code: null, signal: null, timed_out: false, stdout: '', stderr: launched.error };
   }
   let timedOut = false;
+  let tmuxStopped = false;
   try {
     await waitForFile(statusPath, timeoutMs);
-  } catch (error) {
+  } catch {
     timedOut = true;
-    return { exit_code: null, signal: 'SIGKILL', timed_out: true, stdout: '', stderr: error.message };
   } finally {
     const result = registry.spawnSync(tmux, ['-L', socket, 'kill-server'], { stdio: 'ignore' });
-    if (!result?.error) registry.releaseTmuxSocket(socket);
+    if (!result?.error && result?.status === 0) {
+      tmuxStopped = true;
+      registry.releaseTmuxSocket(socket);
+    }
+  }
+  if (timedOut) {
+    return {
+      exit_code: null,
+      signal: 'SIGKILL',
+      timed_out: true,
+      stdout: tmuxStopped ? readBoundedFile(stdoutPath, TIMED_OUT_CAPTURE_BYTES) : '',
+      stderr: tmuxStopped ? readBoundedFile(stderrPath, TIMED_OUT_CAPTURE_BYTES) : '',
+    };
   }
   return {
     exit_code: Number.parseInt(fs.readFileSync(statusPath, 'utf8').trim(), 10),
@@ -195,6 +208,7 @@ async function executeTmux(plan, options = {}) {
 
 module.exports = {
   ENVIRONMENT_ALLOWLIST,
+  TIMED_OUT_CAPTURE_BYTES,
   OwnedResources,
   executeChild,
   executeTmux,

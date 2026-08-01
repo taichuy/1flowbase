@@ -167,6 +167,7 @@ async fn classify_uploaded_extension(
                 signature_status: domain::ExtensionSignatureStatus::Missing,
                 signature_algorithm: None,
                 signing_key_id: None,
+                application_action: domain::ExtensionApplicationAction::ActivateI18n,
             });
         }
         if let Ok(template) =
@@ -198,6 +199,7 @@ async fn classify_uploaded_extension(
                 signature_status: domain::ExtensionSignatureStatus::Missing,
                 signature_algorithm: None,
                 signing_key_id: None,
+                application_action: domain::ExtensionApplicationAction::ImportAgentFlow,
             });
         }
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -248,6 +250,7 @@ async fn classify_uploaded_extension(
             signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
+            application_action: domain::ExtensionApplicationAction::ImportMcp,
         });
     }
 
@@ -283,6 +286,7 @@ async fn classify_uploaded_extension(
         signature_status: inspection.signature_status,
         signature_algorithm: inspection.signature_algorithm,
         signing_key_id: inspection.signing_key_id,
+        application_action: inspection.application_action,
     })
 }
 
@@ -359,10 +363,12 @@ async fn install_uploaded_artifact(
         return Ok((
             StatusCode::OK,
             Json(ApiSuccess::new(ExtensionInstallResponse {
+                application_action: installation.application_action.as_str().to_string(),
+                application_status: default_application_status(installation.application_action)
+                    .to_string(),
                 installation: to_local_inventory_entry(installation),
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
-                workspace_application_status: workspace_application_status(artifact.category),
             })),
         )
             .into_response());
@@ -411,6 +417,7 @@ async fn install_uploaded_artifact(
             declared_warnings,
             risk_override,
             confirmation_receipt,
+            application_action: artifact.application_action,
         })
         .await?;
     let (installation, local_artifact_was_present) = match outcome {
@@ -444,10 +451,12 @@ async fn install_uploaded_artifact(
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(ExtensionInstallResponse {
+            application_action: installation.application_action.as_str().to_string(),
+            application_status: default_application_status(installation.application_action)
+                .to_string(),
             installation: to_local_inventory_entry(installation),
             local_artifact_was_present,
             node_plugin_installation_id,
-            workspace_application_status: workspace_application_status(artifact.category),
         })),
     )
         .into_response())

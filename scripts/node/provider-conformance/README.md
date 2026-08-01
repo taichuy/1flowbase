@@ -8,8 +8,11 @@ substitute provider binary or infer behavior from source text.
 The fixture fixes the matrix to OpenAI, Anthropic, Aliyun Bailian, DeepSeek,
 Gemini, and OpenAI Compatible. For each unpacked package the runner checks the
 current manifest contract and then loads it through the real `plugin-runner`.
-The provider binary is invoked against a loopback fake upstream which verifies
-the exact vendor method, path, selected headers, and JSON request body.
+Each packaged provider binary first runs the fixed typed CountTokens matrix;
+Anthropic and Gemini prove their exact upstream method, path, auth, and body,
+while the other four providers prove total partial estimates for unknown media.
+The same package is then invoked through the host's existing Generate stream
+path against a loopback fake upstream, preserving the prior regression matrix.
 
 ```bash
 node scripts/node/provider-conformance/cli.js \
@@ -20,7 +23,7 @@ node scripts/node/provider-conformance/cli.js \
   --package-dir tmp/provider-conformance/packages \
   --plugin-runner-bin api/target/release/plugin-runner \
   --fixture scripts/node/provider-conformance/fixtures/six-provider-matrix.json \
-  --artifact tmp/provider-conformance/paired-sha.json
+  --artifact tmp/test-governance/provider-conformance/paired-sha.json
 ```
 
 For every provider, the artifact records one receipt chain from the exact

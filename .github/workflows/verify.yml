@@ -67,7 +67,7 @@ jobs:
           rm -rf tmp/provider-conformance/packages
 
           for provider_code in "${providers[@]}"; do
-            plugin_dir="tmp/provider-conformance/official-source/runtime-extensions/model-providers/${provider_code}"
+            plugin_dir="tmp/provider-conformance/official-source/runtime-extensions/@taichuy/${provider_code}"
             cross build --manifest-path "${plugin_dir}/Cargo.toml" --release --target "${target}"
             runtime_binary_name="$(node tmp/provider-conformance/official-source/scripts/list-provider-package-targets.mjs --plugin-dir "${plugin_dir}" --rust-target "${target}" --field runtime_binary_name)"
             node scripts/node/plugin/cli.js package \
@@ -90,13 +90,13 @@ jobs:
             --package-dir tmp/provider-conformance/packages \
             --plugin-runner-bin api/target/release/plugin-runner \
             --fixture scripts/node/provider-conformance/fixtures/six-provider-matrix.json \
-            --artifact tmp/provider-conformance/paired-sha.json
+            --artifact tmp/test-governance/provider-conformance/paired-sha.json
 
       - name: Upload paired SHA artifact
         uses: actions/upload-artifact@v6
         with:
           name: provider-conformance-pair
-          path: tmp/provider-conformance/paired-sha.json
+          path: tmp/test-governance/provider-conformance/paired-sha.json
           if-no-files-found: error
 
   repo-tooling-gate:

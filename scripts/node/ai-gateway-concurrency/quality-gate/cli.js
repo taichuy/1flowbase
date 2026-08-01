@@ -14,7 +14,9 @@ const { createDatabase } = require("../local-acceptance/system");
 const OFFICIAL_PROVIDER_CODES = Object.freeze([
   "openai",
   "anthropic",
+  "aliyun_bailian",
   "deepseek",
+  "gemini",
   "openai_compatible",
 ]);
 const MAX_COMMAND_LOG_BYTES = 2 * 1024 * 1024;
@@ -215,6 +217,36 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
   });
   return [
     invocation(
+      "plugin-framework-count-tokens-estimator-total-corpus",
+      "plugin-framework",
+      "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
+    ),
+    invocation(
+      "plugin-framework-count-tokens-contract-tests",
+      "plugin-framework",
+      "count_tokens",
+    ),
+    invocation(
+      "plugin-runner-count-tokens-totality-tests",
+      "plugin-runner",
+      "count_tokens",
+    ),
+    invocation(
+      "orchestration-runtime-count-tokens-terminal-tests",
+      "orchestration-runtime",
+      "count_tokens",
+    ),
+    invocation(
+      "control-plane-count-tokens-route-tests",
+      "control-plane",
+      "count_tokens",
+    ),
+    invocation(
+      "api-server-count-tokens-envelope-tests",
+      "api-server",
+      "count_tokens",
+    ),
+    invocation(
       "plugin-framework-message-block-contract-tests",
       "plugin-framework",
       "root_1534",
@@ -310,11 +342,10 @@ function officialProviderTestInvocations(officialSourceRoot) {
       "--manifest-path",
       path.join(
         officialSourceRoot,
-        "runtime-extensions/model-providers",
+        "runtime-extensions/@taichuy",
         providerCode,
         "Cargo.toml",
       ),
-      "--lib",
       "--locked",
     ],
   }));
@@ -419,7 +450,7 @@ async function runQualityGate(rawOptions) {
     for (const providerCode of OFFICIAL_PROVIDER_CODES) {
       const pluginRoot = path.join(
         officialSourceRoot,
-        "runtime-extensions/model-providers",
+        "runtime-extensions/@taichuy",
         providerCode,
       );
       const built = attempt(`${providerCode}-provider-build`, "cargo", [
@@ -460,6 +491,28 @@ async function runQualityGate(rawOptions) {
       "-p",
       "plugin-runner",
     ]);
+
+    if (mainSourceSha && officialSourceSha) {
+      attempt("six-provider-count-tokens-and-generate-conformance", "node", [
+        path.join(repoRoot, "scripts/node/provider-conformance/cli.js"),
+        "--main-root",
+        repoRoot,
+        "--official-root",
+        officialSourceRoot,
+        "--main-sha",
+        mainSourceSha,
+        "--official-sha",
+        officialSourceSha,
+        "--package-dir",
+        packageRoot,
+        "--plugin-runner-bin",
+        path.join(repoRoot, "api/target/release/plugin-runner"),
+        "--fixture",
+        path.join(repoRoot, "scripts/node/provider-conformance/fixtures/six-provider-matrix.json"),
+        "--artifact",
+        path.join(artifactRoot, "provider-conformance-pair.json"),
+      ]);
+    }
 
     if (failures.length === 0 && database) {
       try {

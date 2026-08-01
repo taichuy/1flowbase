@@ -284,6 +284,7 @@ impl ProviderRuntimePort for CapturingCountTokensRuntime {
         Ok(ProviderCountTokensResult {
             operation: ProviderWireOperation::CountTokens,
             input_tokens: 23,
+            ..ProviderCountTokensResult::default()
         })
     }
 
@@ -325,7 +326,7 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
     let result = orchestration_runtime::execution_engine::ProviderInvoker::count_tokens(
         &invoker,
         &runtime,
-        ProviderCountTokensInput {
+        ProviderCountTokensInput::from_invocation(ProviderInvocationInput {
             provider_instance_id: provider_instance_id.to_string(),
             provider_code: "fixture_provider".to_string(),
             protocol: "openai_compatible".to_string(),
@@ -339,8 +340,8 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
                 tool_calls: None,
                 content_blocks: None,
             }],
-            ..ProviderCountTokensInput::default()
-        },
+            ..ProviderInvocationInput::default()
+        }),
     )
     .await
     .expect("selected provider CountTokens capability should run");

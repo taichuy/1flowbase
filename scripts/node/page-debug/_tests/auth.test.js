@@ -1,7 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { loadRootCredentials, openTemporaryConsoleSession } = require('../auth.js');
+const {
+  loadRootCredentials,
+  openTemporaryConsoleSession,
+  openTemporaryOwnerSession,
+} = require('../auth.js');
 
 test('loadRootCredentials falls back to api-server bootstrap env values', () => {
   const credentials = loadRootCredentials({
@@ -230,4 +234,62 @@ test('AC-004 independently disposes concurrent temporary console sessions', asyn
     { sessionId: 'session-a', csrfToken: 'csrf-session-a' },
     { sessionId: 'session-b', csrfToken: 'csrf-session-b' },
   ]);
+});
+
+test('Root #1556 F11 opens and revokes a fetch-based owner session on the owned API', async () => {
+  const calls = [];
+  const session = await openTemporaryOwnerSession({
+    apiBaseUrl: 'http://127.0.0.1:41732',
+    account: 'root',
+    password: 'owner-password',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      if (init.method === 'POST') {
+        return new Response(JSON.stringify({ data: { csrf_token: 'owned-csrf' } }), {
+          status: 200,
+          headers: { 'set-cookie': 'flowbase_console_session=owned-cookie; HttpOnly; Path=/' },
+        });
+      }
+      return new Response(null, { status: 204 });
+    },
+  });
+
+  assert.equal(session.cookie, 'flowbase_console_session=owned-cookie');
+  assert.equal(session.csrfToken, 'owned-csrf');
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    authenticator_id: '00000000-0000-0000-0000-000000000001',
+    identifier: 'root',
+    password: 'owner-password',
+  });
+  await session.dispose();
+  assert.equal(calls[1].url, 'http://127.0.0.1:41732/api/console/session');
+  assert.deepEqual(calls[1].init.headers, {
+    cookie: 'flowbase_console_session=owned-cookie',
+    'x-csrf-token': 'owned-csrf',
+  });
+});
+
+test('Root #1556 F11 owner session preserves login and revoke failures', async () => {
+  await assert.rejects(
+    () => openTemporaryOwnerSession({
+      apiBaseUrl: 'http://127.0.0.1:41732',
+      account: 'root',
+      password: 'wrong',
+      fetchImpl: async () => new Response('not_authenticated', { status: 401 }),
+    }),
+    /not_authenticated/u,
+  );
+
+  const session = await openTemporaryOwnerSession({
+    apiBaseUrl: 'http://127.0.0.1:41732',
+    account: 'root',
+    password: 'owner-password',
+    fetchImpl: async (_url, init) => init.method === 'POST'
+      ? new Response(JSON.stringify({ data: { csrf_token: 'owned-csrf' } }), {
+        status: 200,
+        headers: { 'set-cookie': 'flowbase_console_session=owned-cookie; Path=/' },
+      })
+      : new Response('revoke fixture', { status: 500 }),
+  });
+  await assert.rejects(() => session.dispose(), /revoke fixture/u);
 });

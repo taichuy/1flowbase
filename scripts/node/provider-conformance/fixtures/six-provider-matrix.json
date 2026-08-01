@@ -16,6 +16,7 @@
           "protocol": "stdio_json_worker",
           "entry": "bin/openai-provider",
           "capabilities": [
+            "count_tokens",
             "compact.responses_compact",
             "compact.responses_compaction_v2",
             "responses.native_passthrough",
@@ -209,7 +210,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/aliyun_bailian-provider",
-          "capabilities": []
+          "capabilities": ["count_tokens"]
         }
       },
       "input": {
@@ -275,7 +276,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/deepseek-provider",
-          "capabilities": ["message_blocks.reasoning_history.v1"]
+          "capabilities": ["count_tokens", "message_blocks.reasoning_history.v1"]
         }
       },
       "input": {
@@ -359,7 +360,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/gemini-provider",
-          "capabilities": []
+          "capabilities": ["count_tokens"]
         }
       },
       "input": {
@@ -424,7 +425,7 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/openai_compatible-provider",
-          "capabilities": ["protocol_context.restore.openai_chat.v1"]
+          "capabilities": ["count_tokens", "protocol_context.restore.openai_chat.v1"]
         }
       },
       "input": {
@@ -478,6 +479,85 @@
       }
     }
   ],
+  "count_tokens": {
+    "operation": "count_tokens",
+    "required_capability": "count_tokens",
+    "unknown_media": {
+      "model": "unknown-fixture-model",
+      "messages": [{
+        "role": "user",
+        "content": "",
+        "content_blocks": [{
+          "type": "image_url",
+          "image_url": { "url": "file:///missing-conformance-fixture.png" }
+        }]
+      }]
+    },
+    "providers": {
+      "openai": {
+        "expected_result": { "method": "provider_estimate", "coverage": "partial", "unknown_block_count": 1 },
+        "expected_upstream_requests": 0
+      },
+      "anthropic": {
+        "upstream_response": { "input_tokens": 37 },
+        "expected_result": { "input_tokens": 37, "method": "upstream_api", "coverage": "complete", "unknown_block_count": 0 },
+        "expected_upstream_requests": 1,
+        "expected_wire": {
+          "method": "POST",
+          "path": "/v1/messages/count_tokens",
+          "headers": {
+            "content-type": "application/json",
+            "x-api-key": "$SECRET_CANARY",
+            "anthropic-version": "2023-06-01"
+          },
+          "body": {
+            "model": "claude-sonnet-4-20250514",
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  { "type": "thinking", "thinking": "private reasoning", "signature": "sig" },
+                  { "type": "redacted_thinking", "data": "opaque" },
+                  { "type": "text", "text": "visible answer" }
+                ]
+              },
+              { "role": "user", "content": [{ "type": "text", "text": "$PROMPT_CANARY" }] }
+            ],
+            "system": [{ "type": "text", "text": "$SYSTEM_PROMPT_CANARY", "cache_control": { "type": "ephemeral" } }],
+            "metadata": { "user_id": "$END_USER_CANARY" }
+          }
+        }
+      },
+      "aliyun_bailian": {
+        "expected_result": { "method": "provider_estimate", "coverage": "partial", "unknown_block_count": 1 },
+        "expected_upstream_requests": 0
+      },
+      "deepseek": {
+        "expected_result": { "method": "provider_estimate", "coverage": "partial", "unknown_block_count": 1 },
+        "expected_upstream_requests": 0
+      },
+      "gemini": {
+        "upstream_response": { "totalTokens": 29 },
+        "expected_result": { "input_tokens": 29, "method": "upstream_api", "coverage": "complete", "unknown_block_count": 0 },
+        "expected_upstream_requests": 1,
+        "expected_wire": {
+          "method": "POST",
+          "path": "/v1beta/models/gemini-2.5-flash:countTokens",
+          "headers": {
+            "content-type": "application/json",
+            "x-goog-api-key": "$SECRET_CANARY"
+          },
+          "body": {
+            "contents": [{ "role": "user", "parts": [{ "text": "$PROMPT_CANARY" }] }]
+          }
+        }
+      },
+      "openai_compatible": {
+        "expected_result": { "method": "provider_estimate", "coverage": "partial", "unknown_block_count": 1 },
+        "expected_upstream_requests": 0
+      }
+    }
+  },
   "negative_cases": {
     "pair": [
       {

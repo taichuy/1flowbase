@@ -1,0 +1,28 @@
+{
+  "schema_version": "1flowbase.local-count-tokens-upgrade/v1",
+  "artifact": "tmp/test-governance/ai-gateway-concurrency/local-count-tokens-upgrade.json",
+  "provider": "deepseek",
+  "client": "claude",
+  "published_application": {
+    "reuse_same_application": true,
+    "reuse_same_publication": true,
+    "count_tokens_path": "/v1/messages/count_tokens",
+    "conversation_path": "/v1/messages"
+  },
+  "steps": [
+    "count_tokens_through_published_application",
+    "claude_conversation_turn",
+    "upgrade_plugin_without_republish",
+    "claude_followup_turn"
+  ],
+  "upgrade": {
+    "republish": false,
+    "network_install": false
+  },
+  "resources": {
+    "reuse_local_acceptance_provenance": true,
+    "reuse_owned_tmux": true,
+    "finally_cleanup": true,
+    "forbidden_ports": [3100, 7800, 7801]
+  }
+}

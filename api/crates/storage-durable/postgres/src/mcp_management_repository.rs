@@ -277,6 +277,54 @@ fn map_instance_discovery_policy(
 
 #[async_trait]
 impl McpManagementRepository for PgControlPlaneStore {
+    async fn record_mcp_extension_bundle_import(
+        &self,
+        workspace_id: Uuid,
+        extension_installation_id: Uuid,
+        actor_user_id: Uuid,
+        result_status: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            insert into mcp_extension_bundle_imports (
+                workspace_id, extension_installation_id, imported_by, result_status
+            ) values ($1, $2, $3, $4)
+            on conflict (workspace_id, extension_installation_id)
+            do update set
+                imported_by = excluded.imported_by,
+                result_status = excluded.result_status,
+                imported_at = now()
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(extension_installation_id)
+        .bind(actor_user_id)
+        .bind(result_status)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    async fn has_mcp_extension_bundle_import(
+        &self,
+        workspace_id: Uuid,
+        extension_installation_id: Uuid,
+    ) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            r#"
+            select exists(
+                select 1
+                from mcp_extension_bundle_imports
+                where workspace_id = $1 and extension_installation_id = $2
+            )
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(extension_installation_id)
+        .fetch_one(self.pool())
+        .await?)
+    }
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

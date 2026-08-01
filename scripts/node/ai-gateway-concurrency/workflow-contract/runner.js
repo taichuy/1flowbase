@@ -25,6 +25,7 @@ const { normalizeRunInputs } = require('./inputs');
 const { PROVENANCE_FIDELITY_ORACLE } = require('./provenance');
 const { verifyRuntimeProvenance } = require('./runtime-provenance');
 const { verifyGatewayRequestFidelity } = require('./request-fidelity-gateway');
+const { countTokensOracleInventory } = require('./count-tokens-matrix');
 const {
   PROTOCOL_CONTEXT_PROFILE_MATRIX,
   verifyProtocolContextProfileMatrix,
@@ -72,6 +73,7 @@ function protocolOracleInventory() {
       sources: [...new Set(PROTOCOL_CONTEXT_PROFILE_MATRIX.map((row) => row.source_protocol))],
       providers: [...new Set(PROTOCOL_CONTEXT_PROFILE_MATRIX.map((row) => row.provider))],
     },
+    count_tokens: countTokensOracleInventory(),
   };
 }
 

@@ -399,7 +399,13 @@ fn canonical_native_operation_terminal_wins_over_later_ordinary_node_payload() {
     for terminal in [
         json!({
             "semantic_terminal": "count_tokens",
-            "result": { "operation": "count_tokens", "input_tokens": 41 }
+            "result": {
+                "operation": "count_tokens",
+                "input_tokens": 41,
+                "method": "upstream_api",
+                "coverage": "complete",
+                "unknown_block_count": 0
+            }
         }),
         json!({
             "semantic_terminal": "compact",

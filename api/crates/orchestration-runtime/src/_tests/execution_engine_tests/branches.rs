@@ -31,6 +31,7 @@ impl ProviderInvoker for CountTokensInvoker {
         Ok(ProviderCountTokensResult {
             operation: ProviderWireOperation::CountTokens,
             input_tokens: 37,
+            ..ProviderCountTokensResult::default()
         })
     }
 }
@@ -433,6 +434,7 @@ async fn selected_llm_branch_emits_one_typed_count_tokens_terminal_with_canonica
         &plan,
         &json!({ "node-start": {
             "query": "canonical count prompt",
+            "model": "ingress-must-not-select-provider",
             "status": "vip",
             "segment": "enterprise-a",
             "operation": { "kind": "count_tokens", "profile": null }
@@ -462,6 +464,7 @@ async fn selected_llm_branch_emits_one_typed_count_tokens_terminal_with_canonica
         captured[0].model,
         llm_template.llm_runtime.as_ref().unwrap().model
     );
+    assert_ne!(captured[0].model, "ingress-must-not-select-provider");
     assert!(captured[0]
         .messages
         .iter()

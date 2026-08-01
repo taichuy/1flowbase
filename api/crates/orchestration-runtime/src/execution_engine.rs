@@ -1855,20 +1855,7 @@ where
             });
         }
     };
-    let input = ProviderCountTokensInput {
-        operation: ProviderWireOperation::CountTokens,
-        contract_version: invocation.input.contract_version,
-        provider_instance_id: invocation.input.provider_instance_id,
-        provider_code: invocation.input.provider_code,
-        protocol: invocation.input.protocol,
-        model: invocation.input.model,
-        provider_config: Value::Null,
-        messages: invocation.input.messages,
-        system: invocation.input.system,
-        request_context: invocation.input.request_context,
-        required_capabilities: invocation.input.required_capabilities,
-        client_protocol_envelope: invocation.input.client_protocol_envelope,
-    };
+    let input = ProviderCountTokensInput::from_invocation(invocation.input);
     match invoker.count_tokens(runtime, input).await {
         Ok(result) => {
             let receipt = CountTokensReceipt::new(result)?;

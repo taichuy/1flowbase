@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 264,
-  "count": 528,
+  "projected_interface_count": 271,
+  "count": 542,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -603,6 +603,24 @@
       "GET",
       "/api/console/settings/data-models/model-definitions/:id/scope-grants",
       "List model scope grants"
+    ],
+    [
+      "extension_center.catalog.view",
+      "GET",
+      "/api/console/settings/extension-center/catalog/:category",
+      "View extension center catalog"
+    ],
+    [
+      "extension_center.catalog.detail",
+      "GET",
+      "/api/console/settings/extension-center/catalog/:category/:catalog_id",
+      "Extension center catalog detail"
+    ],
+    [
+      "extension_center.installed.view",
+      "GET",
+      "/api/console/settings/extension-center/installed",
+      "View extension center installed"
     ],
     [
       "file_storages.list",
@@ -1269,6 +1287,30 @@
       "POST",
       "/api/console/settings/data-models/model-definitions:batchDelete",
       "Batch delete models"
+    ],
+    [
+      "extension_center.install",
+      "POST",
+      "/api/console/settings/extension-center/install",
+      "Install extension center"
+    ],
+    [
+      "extension_center.install.upload",
+      "POST",
+      "/api/console/settings/extension-center/install-upload",
+      "Upload extension center install"
+    ],
+    [
+      "extension_center.update",
+      "POST",
+      "/api/console/settings/extension-center/update",
+      "Update extension center"
+    ],
+    [
+      "extension_center.update_check",
+      "POST",
+      "/api/console/settings/extension-center/update-check",
+      "Check extension center update"
     ],
     [
       "file_storages.create",

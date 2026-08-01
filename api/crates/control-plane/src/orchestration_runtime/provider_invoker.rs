@@ -1,5 +1,9 @@
 use super::*;
 use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
+use plugin_framework::{
+    provider_contract::ProviderCountTokensFallbackReason,
+    provider_count_tokens_estimator::estimate_provider_count_tokens,
+};
 
 use super::canonical_stream::{
     CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
@@ -56,18 +60,36 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: plugin_framework::provider_contract::ProviderCountTokensInput,
     ) -> Result<plugin_framework::provider_contract::ProviderCountTokensResult> {
-        let instance = self.resolve_llm_instance(runtime).await?;
-        let installation = self.ready_installation(instance.installation_id).await?;
-        let package = load_provider_package(&installation.installed_path)?;
-        input.provider_config = build_provider_runtime_config(
-            &self.repository,
-            &self.provider_secret_master_key,
-            &package,
-            &instance,
-        )
-        .await?;
+        let attempted = async {
+            let instance = self.resolve_llm_instance(runtime).await?;
+            let installation = self.ready_installation(instance.installation_id).await?;
+            let package = load_provider_package(&installation.installed_path)?;
+            input.set_provider_config(
+                build_provider_runtime_config(
+                    &self.repository,
+                    &self.provider_secret_master_key,
+                    &package,
+                    &instance,
+                )
+                .await?,
+            );
+            self.runtime
+                .count_tokens(&installation, input.clone())
+                .await
+        }
+        .await;
 
-        self.runtime.count_tokens(&installation, input).await
+        match attempted {
+            Ok(result) => Ok(result),
+            Err(_) => Ok(match estimate_provider_count_tokens(input.as_invocation()) {
+                Ok(mut result) => {
+                    result.fallback_reason =
+                        Some(ProviderCountTokensFallbackReason::PluginUnavailable);
+                    result
+                }
+                Err(_) => plugin_framework::provider_contract::ProviderCountTokensResult::fallback_zero(),
+            }),
+        }
     }
 
     async fn resolve_protocol_context_locator(&self, locator: &Value) -> Result<Option<Value>> {

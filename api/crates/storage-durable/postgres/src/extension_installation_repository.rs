@@ -14,7 +14,7 @@ use crate::{
 const RETURNING_COLUMNS: &str = r#"
     id, category, organization, artifact_id, artifact_version, node_id,
     source, trust, local_path, checksum, signature_status, signature_algorithm,
-    signing_key_id, warnings, receipt, status, installed_by, created_at, updated_at
+    signing_key_id, warnings, receipt, application_action, status, installed_by, created_at, updated_at
 "#;
 
 #[async_trait]
@@ -28,9 +28,9 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
             insert into extension_installations (
                 id, category, organization, artifact_id, artifact_version, node_id,
                 source, trust, local_path, checksum, signature_status, signature_algorithm,
-                signing_key_id, warnings, receipt, status, installed_by
+                signing_key_id, warnings, receipt, application_action, status, installed_by
             ) values (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
             )
             on conflict (category, organization, artifact_id, artifact_version, node_id)
             do update set
@@ -43,6 +43,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
                 signing_key_id = excluded.signing_key_id,
                 warnings = excluded.warnings,
                 receipt = excluded.receipt,
+                application_action = excluded.application_action,
                 status = excluded.status,
                 installed_by = excluded.installed_by,
                 updated_at = now()
@@ -65,6 +66,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
             .bind(&input.signing_key_id)
             .bind(serde_json::to_value(&input.warnings)?)
             .bind(&input.receipt)
+            .bind(input.application_action.as_str())
             .bind(input.status.as_str())
             .bind(input.installed_by)
             .fetch_one(self.pool())
@@ -154,6 +156,7 @@ fn map_row(row: PgRow) -> Result<domain::ExtensionInstallationRecord> {
         signing_key_id: row.try_get("signing_key_id")?,
         warnings: row.try_get("warnings")?,
         receipt: row.try_get("receipt")?,
+        application_action: row.try_get("application_action")?,
         status: row.try_get("status")?,
         installed_by: row.try_get("installed_by")?,
         created_at: row.try_get("created_at")?,

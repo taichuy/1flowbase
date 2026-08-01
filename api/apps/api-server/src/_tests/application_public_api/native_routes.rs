@@ -19,7 +19,9 @@ use control_plane::ports::{
     CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateFlowRunInput,
 };
 use orchestration_runtime::execution_state::{CountTokensReceipt, NativeOperationTerminal};
-use plugin_framework::provider_contract::{ProviderCountTokensResult, ProviderWireOperation};
+use plugin_framework::provider_contract::{
+    ProviderCountTokensCoverage, ProviderCountTokensFallbackReason, ProviderCountTokensResult,
+};
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use tower::ServiceExt;
@@ -31,12 +33,14 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 #[test]
-fn native_blocking_response_exposes_typed_operation_terminal() {
+fn d3_p12_count_tokens_native_blocking_response_exposes_typed_operation_terminal() {
     let terminal = NativeOperationTerminal::CountTokens(
-        CountTokensReceipt::new(ProviderCountTokensResult {
-            operation: ProviderWireOperation::CountTokens,
-            input_tokens: 29,
-        })
+        CountTokensReceipt::new(ProviderCountTokensResult::generic_estimate(
+            29,
+            ProviderCountTokensCoverage::Complete,
+            0,
+            ProviderCountTokensFallbackReason::CapabilityUnavailable,
+        ))
         .expect("fixture CountTokens receipt"),
     );
     let response = to_native_run_response(NativeRunResult {
@@ -60,7 +64,14 @@ fn native_blocking_response_exposes_typed_operation_terminal() {
         response.operation_terminal,
         Some(json!({
             "semantic_terminal": "count_tokens",
-            "result": { "operation": "count_tokens", "input_tokens": 29 }
+            "result": {
+                "operation": "count_tokens",
+                "input_tokens": 29,
+                "method": "generic_estimate",
+                "coverage": "complete",
+                "unknown_block_count": 0,
+                "fallback_reason": "capability_unavailable"
+            }
         }))
     );
 }

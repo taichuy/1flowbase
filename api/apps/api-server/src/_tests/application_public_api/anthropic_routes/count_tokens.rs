@@ -23,6 +23,7 @@ async fn c1_anthropic_count_tokens_uses_the_selected_workflow_llm_provider() {
     let payload = response_json(response).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
     assert_eq!(payload["input_tokens"], json!(29));
+    assert_eq!(payload.as_object().map(|body| body.len()), Some(1));
     assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
