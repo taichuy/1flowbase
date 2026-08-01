@@ -10,16 +10,18 @@ test('AC-BOOT-1 and AC-BOOT-2 lock exact default artifacts into the API image', 
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
   assert.equal(lock.schema_version, '1flowbase.extension-bootstrap-lock/v1');
   assert.deepEqual(
-    lock.defaults.map(({ category, id, version, source, bootstrap }) => ({
-      category, id, version, source, bootstrap,
+    lock.defaults.map(({ category, artifact_kind, id, version, source, bootstrap }) => ({
+      category, artifact_kind, id, version, source, bootstrap,
     })),
     [
       {
-        category: 'model_provider', id: '1flowbase.anthropic', version: '0.1.33',
+        category: 'runtime_extensions', artifact_kind: 'model_provider',
+        id: '1flowbase.anthropic', version: '0.1.33',
         source: 'official_registry', bootstrap: true,
       },
       {
-        category: 'model_provider', id: '1flowbase.anthropic', version: '0.1.33',
+        category: 'runtime_extensions', artifact_kind: 'model_provider',
+        id: '1flowbase.anthropic', version: '0.1.33',
         source: 'official_registry', bootstrap: true,
       },
     ],
