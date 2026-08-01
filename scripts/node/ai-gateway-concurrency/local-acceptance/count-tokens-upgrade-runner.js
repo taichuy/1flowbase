@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const { OwnerHttpClient } = require('../gateway-fixture/http-owner');
 const {
@@ -24,7 +25,7 @@ const {
 } = require('./count-tokens-upgrade');
 
 const APPLICATION_ID = '019f5443-5b8e-74b2-90e3-c867dbddd37b';
-const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v2';
+const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v3';
 const FORBIDDEN_PORTS = new Set([3100, 7800, 7801]);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
@@ -118,7 +119,39 @@ function binaryReceipt(contract, label, mainSourceSha) {
   return { path: filePath, sha256: actual, source_sha: mainSourceSha, bytes: stat.size };
 }
 
-function loadRunManifest(filePath) {
+function git(root, args) {
+  return execFileSync('git', ['-C', root, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function verifiedSourceCwd(value, mainSourceSha, dependencies = {}) {
+  const sourceRoot = fs.realpathSync(requireDirectory(value.main_source_root, 'main source root'));
+  const apiServerCwd = fs.realpathSync(requireDirectory(value.api_server_cwd, 'api-server cwd'));
+  const expectedCwd = fs.realpathSync(requireDirectory(
+    path.join(sourceRoot, 'api/apps/api-server'),
+    'main source api/apps/api-server directory',
+  ));
+  if (apiServerCwd !== expectedCwd) {
+    throw new UnavailableError('api-server cwd must be main_source_root/api/apps/api-server');
+  }
+  const runGit = dependencies.git || git;
+  let topLevel;
+  let head;
+  try {
+    topLevel = fs.realpathSync(runGit(sourceRoot, ['rev-parse', '--show-toplevel']));
+    head = runGit(sourceRoot, ['rev-parse', 'HEAD']);
+  } catch {
+    throw new UnavailableError('main source Git provenance is unavailable');
+  }
+  if (topLevel !== sourceRoot || head !== mainSourceSha) {
+    throw new UnavailableError('main source root HEAD does not match main_source_sha');
+  }
+  return { sourceRoot, apiServerCwd };
+}
+
+function loadRunManifest(filePath, dependencies = {}) {
   let value;
   try { value = JSON.parse(fs.readFileSync(path.resolve(filePath), 'utf8')); }
   catch (error) { throw new UnavailableError(`CountTokens upgrade run manifest is unavailable: ${error.message}`); }
@@ -127,6 +160,7 @@ function loadRunManifest(filePath) {
   const mainSourceSha = fullSha(value.main_source_sha, 'main source SHA');
   const mainSourceReceipt = requireFile(value.main_source_receipt, 'gate main-source receipt');
   verifyMainSourceReceipt(mainSourceReceipt, mainSourceSha);
+  const source = verifiedSourceCwd(value, mainSourceSha, dependencies);
   const apiServer = binaryReceipt(value.api_server_binary, 'api-server', mainSourceSha);
   const pluginRunner = binaryReceipt(value.plugin_runner_binary, 'plugin-runner', mainSourceSha);
   const artifact = path.resolve(requireValue(value.artifact, 'artifact path'));
@@ -137,6 +171,8 @@ function loadRunManifest(filePath) {
     applicationId: APPLICATION_ID,
     mainSourceSha,
     mainSourceReceipt,
+    mainSourceRoot: source.sourceRoot,
+    apiServerCwd: source.apiServerCwd,
     apiServer,
     pluginRunner,
     model: requireValue(value.model, 'published model'),
@@ -178,6 +214,7 @@ function publicError(error) {
     name: error?.name || 'Error',
     code: error?.code || 'execution_failed',
     message: error?.message || String(error),
+    ...(error?.diagnostic ? { diagnostic: error.diagnostic } : {}),
   };
 }
 
@@ -352,7 +389,7 @@ async function startFrozenServices({
     API_PROVIDER_SECRET_MASTER_KEY: providerSecretMasterKey,
     API_COOKIE_NAME: manifest.cookieName,
     API_COOKIE_SECURE: 'false',
-  }, { cwd: scratchRoot, parentEnv: sourceEnv });
+  }, { cwd: manifest.apiServerCwd, parentEnv: sourceEnv });
   await health(apiBaseUrl, 'api-server', {
     fetchImpl: dependencies.fetchImpl || globalThis.fetch,
     processHandle: services.apiProcess,
@@ -378,7 +415,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
   let secrets = [];
   let artifactPath = null;
   try {
-    manifest = loadRunManifest(rawOptions.manifest);
+    manifest = loadRunManifest(rawOptions.manifest, dependencies);
     artifactPath = manifest.artifact;
     const apiKey = envValue(sourceEnv, manifest.env.apiKey, 'application API key');
     const apiKeyId = envValue(sourceEnv, manifest.env.apiKeyId, 'application API key id');
@@ -457,6 +494,8 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
       runtime: {
         main_source_sha: manifest.mainSourceSha,
         main_source_receipt: manifest.mainSourceReceipt,
+        main_source_root: manifest.mainSourceRoot,
+        api_server_cwd: manifest.apiServerCwd,
         api_server: { ...manifest.apiServer, port: services.apiPort },
         plugin_runner: { ...manifest.pluginRunner, port: services.pluginPort },
       },
@@ -505,4 +544,5 @@ module.exports = {
   loadRunManifest,
   reserveOwnedPort,
   runCountTokensUpgrade,
+  verifiedSourceCwd,
 };

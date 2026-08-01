@@ -2,8 +2,10 @@
 
 The existing harness owns both the full local client matrix and the executable
 CountTokens upgrade scenario. The upgrade runner verifies the gate-produced
-main-source receipt and the expected SHA-256/source SHA of the frozen api-server
-and plugin-runner binaries, then starts both binaries as owned processes on
+main-source receipt, verifies `main_source_root` has that exact Git HEAD, requires
+`api_server_cwd` to be its `api/apps/api-server` directory, and verifies the
+expected SHA-256/source SHA of the frozen api-server and plugin-runner binaries.
+It then starts both binaries as owned processes on
 ephemeral loopback ports. It connects them to the configured development database
 only to reuse the fixed application/publication data. Shared API processes are
 never proxied, reused, stopped, or restarted.
@@ -30,3 +32,10 @@ publication id, frozen binary paths/digests/source SHA/ports, CountTokens result
 hashed conversation summaries, provenance,
 and independent primary/cleanup failures. It never contains the application
 key, owner cookie, CSRF token, or raw conversation text.
+
+The api-server child runs from the validated source cwd so its normal development
+`.env` loading remains available; explicit manifest-selected environment values
+still override its port, database, plugin-runner URL, provider master key, and
+provider install root. A child that exits before health produces bounded typed
+stdout/stderr diagnostics, which pass through the same secret redaction as the
+rest of the artifact.

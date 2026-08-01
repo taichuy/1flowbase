@@ -4,7 +4,11 @@ const assert = require('node:assert/strict');
 const net = require('node:net');
 const test = require('node:test');
 
-const { assertLoopbackPortAvailable, waitForHealth } = require('../process-owner');
+const {
+  DIAGNOSTIC_STREAM_LIMIT,
+  assertLoopbackPortAvailable,
+  waitForHealth,
+} = require('../process-owner');
 
 test('explicit loopback port availability rejects an occupied listener', async (context) => {
   const listener = net.createServer();
@@ -52,5 +56,26 @@ test('owned child exit during a successful health response is still rejected', a
       }),
     }),
     /api-server exited before becoming healthy \(exit code 1\)/u,
+  );
+});
+
+test('owned child startup exit exposes typed bounded stdout and stderr diagnostics', async () => {
+  const processHandle = {
+    child: { exitCode: 17, signalCode: null },
+    stdout: () => `prefix-${'x'.repeat(DIAGNOSTIC_STREAM_LIMIT + 100)}`,
+    stderr: () => `stderr-${'y'.repeat(DIAGNOSTIC_STREAM_LIMIT + 200)}`,
+  };
+  await assert.rejects(
+    waitForHealth('http://127.0.0.1:41731', 'api-server', { processHandle }),
+    (error) => {
+      assert.equal(error.code, 'owned_service_startup_exit');
+      assert.equal(error.diagnostic.service, 'api-server');
+      assert.equal(error.diagnostic.exit_code, 17);
+      assert.equal(Buffer.byteLength(error.diagnostic.stdout.text) <= DIAGNOSTIC_STREAM_LIMIT, true);
+      assert.equal(Buffer.byteLength(error.diagnostic.stderr.text) <= DIAGNOSTIC_STREAM_LIMIT, true);
+      assert.equal(error.diagnostic.stdout.truncated_bytes > 0, true);
+      assert.equal(error.diagnostic.stderr.truncated_bytes > 0, true);
+      return true;
+    },
   );
 });

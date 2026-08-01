@@ -15,7 +15,9 @@ const {
   APPLICATION_ID,
   reserveOwnedPort,
   runCountTokensUpgrade,
+  verifiedSourceCwd,
 } = require('../count-tokens-upgrade-runner');
+const { redact } = require('../../local-client-acceptance/artifacts');
 
 function observed() {
   return {
@@ -63,6 +65,50 @@ test('Root #1556 F09 rejects shared service ports and fixes the token-bound appl
   assert.equal(await reserveOwnedPort(async () => candidates.shift()), 41731);
 });
 
+test('Root #1556 F10 rejects scratch cwd and verifies the exact source HEAD', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'count-tokens-source-cwd-'));
+  try {
+    const apiCwd = path.join(root, 'api/apps/api-server');
+    const scratch = path.join(root, 'scratch');
+    fs.mkdirSync(apiCwd, { recursive: true });
+    fs.mkdirSync(scratch);
+    const sha = 'b'.repeat(40);
+    const git = (_sourceRoot, args) => args.includes('--show-toplevel') ? root : sha;
+    assert.throws(
+      () => verifiedSourceCwd({ main_source_root: root, api_server_cwd: scratch }, sha, { git }),
+      /must be main_source_root\/api\/apps\/api-server/u,
+    );
+    assert.deepEqual(
+      verifiedSourceCwd({ main_source_root: root, api_server_cwd: apiCwd }, sha, { git }),
+      { sourceRoot: root, apiServerCwd: apiCwd },
+    );
+    assert.throws(
+      () => verifiedSourceCwd(
+        { main_source_root: root, api_server_cwd: apiCwd },
+        'c'.repeat(40),
+        { git },
+      ),
+      /HEAD does not match/u,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Root #1556 F10 startup diagnostics use the artifact secret redactor', () => {
+  const safe = redact({
+    primary_error: {
+      diagnostic: {
+        service: 'api-server',
+        stdout: { text: 'db=postgres://owner:db-secret@127.0.0.1/dev', truncated_bytes: 0 },
+        stderr: { text: 'key=provider-master-secret', truncated_bytes: 0 },
+      },
+    },
+  }, ['postgres://owner:db-secret@127.0.0.1/dev', 'provider-master-secret']);
+  assert.doesNotMatch(JSON.stringify(safe), /db-secret|provider-master-secret/u);
+  assert.equal(safe.primary_error.diagnostic.service, 'api-server');
+});
+
 test('Root #1556 F09 structural contract owns frozen services and preserves both failure channels', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../count-tokens-upgrade-runner.js'),
@@ -85,6 +131,7 @@ test('Root #1556 F09 structural contract owns frozen services and preserves both
     assert.ok(source.includes(required), `runner omitted ${required}`);
   }
   assert.match(source, /const sourceEnv = dependencies\.sourceEnv \|\| process\.env;[\s\S]*try \{[\s\S]*finally \{/u);
+  assert.match(source, /const safeResult = redact\(result, secrets\)/u);
   assert.doesNotMatch(source, /signIn\(|\/api\/public\/auth\/sign-in/u);
   assert.doesNotMatch(source, /console_base_url|gateway_base_url/u);
   const example = JSON.parse(fs.readFileSync(
@@ -92,7 +139,8 @@ test('Root #1556 F09 structural contract owns frozen services and preserves both
     'utf8',
   ));
   for (const field of [
-    'main_source_sha', 'main_source_receipt', 'api_server_binary', 'plugin_runner_binary',
+    'main_source_sha', 'main_source_receipt', 'main_source_root', 'api_server_cwd',
+    'api_server_binary', 'plugin_runner_binary',
   ]) {
     assert.ok(Object.hasOwn(example, field), `run manifest omitted ${field}`);
   }
@@ -100,6 +148,8 @@ test('Root #1556 F09 structural contract owns frozen services and preserves both
     assert.ok(Object.hasOwn(example.environment, field), `run environment omitted ${field}`);
   }
   assert.equal(Object.hasOwn(example, 'endpoints'), false);
+  assert.match(source, /api-server cwd must be main_source_root\/api\/apps\/api-server/u);
+  assert.match(source, /cwd: manifest\.apiServerCwd/u);
 });
 
 test('Root #1556 F09 missing configuration is typed unavailable beside cleanup failure', async () => {
@@ -131,12 +181,17 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
     const manifestPath = path.join(root, 'run.json');
     const mainSourceSha = 'a'.repeat(40);
     const mainSourceReceipt = path.join(root, 'main-source-sha.log');
+    const mainSourceRoot = path.join(root, 'main-source');
+    const apiServerCwd = path.join(mainSourceRoot, 'api/apps/api-server');
+    fs.mkdirSync(apiServerCwd, { recursive: true });
     fs.writeFileSync(mainSourceReceipt, `${mainSourceSha}\n`);
     fs.writeFileSync(manifestPath, JSON.stringify({
-      schema_version: '1flowbase.local-count-tokens-upgrade-run/v2',
+      schema_version: '1flowbase.local-count-tokens-upgrade-run/v3',
       application_id: APPLICATION_ID,
       main_source_sha: mainSourceSha,
       main_source_receipt: mainSourceReceipt,
+      main_source_root: mainSourceRoot,
+      api_server_cwd: apiServerCwd,
       api_server_binary: {
         path: apiServer, sha256: crypto.createHash('sha256').update('#!/bin/sh\n').digest('hex'),
         source_sha: mainSourceSha,
@@ -198,6 +253,7 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } }),
       JSON.stringify({ type: 'result', is_error: false, terminal_reason: 'completed', result: 'ok' }),
     ].join('\n');
+    const spawned = [];
     const result = await runCountTokensUpgrade({ manifest: manifestPath }, {
       sourceEnv: {
         APP_KEY: 'secret-app-key', APP_KEY_ID: 'key-id',
@@ -212,7 +268,11 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
         const ports = [41731, 41732];
         return async () => ports.shift();
       })(),
-      spawnOwned: (binary) => ({ child: { binary, exitCode: null } }),
+      git: (_sourceRoot, args) => args.includes('--show-toplevel') ? mainSourceRoot : mainSourceSha,
+      spawnOwned: (binary, _env, options) => {
+        spawned.push({ binary, cwd: options.cwd });
+        return { child: { binary, exitCode: null } };
+      },
       waitForHealth: async () => {},
       stopOwned: async () => {},
       executeTmux: async () => ({ exit_code: 0, timed_out: false, stdout, stderr: '' }),
@@ -232,6 +292,9 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
     assert.equal(result.evidence.runtime.main_source_sha, mainSourceSha);
     assert.equal(result.evidence.runtime.api_server.port, 41732);
     assert.equal(result.evidence.runtime.plugin_runner.port, 41731);
+    assert.equal(result.evidence.runtime.api_server_cwd, apiServerCwd);
+    assert.equal(spawned.find((row) => row.binary === apiServer).cwd, apiServerCwd);
+    assert.notEqual(spawned.find((row) => row.binary === pluginRunner).cwd, apiServerCwd);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
