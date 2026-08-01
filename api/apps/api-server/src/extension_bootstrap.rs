@@ -60,7 +60,8 @@ mod tests {
         let entries = load_locked_extension_bootstrap(&root).unwrap();
         assert_eq!(entries.len(), 1);
         let entry = &entries[0];
-        assert_eq!(entry.category.as_str(), "model_provider");
+        assert_eq!(entry.category.as_str(), "runtime-extensions");
+        assert_eq!(entry.artifact_kind, "model_provider");
         assert_eq!(entry.id, "1flowbase.anthropic");
         assert_eq!(entry.version, "0.1.33");
         assert!(entry.checksum.starts_with("sha256:"));

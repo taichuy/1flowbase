@@ -52,7 +52,8 @@ impl OfficialPluginSourcePort for FailingCountingSource {
 
 fn locked_entry() -> LockedExtensionBootstrapEntry {
     LockedExtensionBootstrapEntry {
-        category: ExtensionCatalogCategory::ModelProvider,
+        category: ExtensionCatalogCategory::RuntimeExtensions,
+        artifact_kind: "model_provider".into(),
         id: "1flowbase.fixture_provider".into(),
         version: "0.1.0".into(),
         checksum: format!("sha256:{}", "a".repeat(64)),
@@ -131,16 +132,14 @@ async fn ac_boot_4_remote_failure_returns_structured_warning_instead_of_error() 
 
 #[test]
 fn ac_boot_7_catalog_category_projects_binding_to_domain_owner() {
-    let application = ExtensionCatalogCategory::ModelProvider.application();
+    let application = ExtensionCatalogCategory::RuntimeExtensions.application();
     assert!(application.installs_node_artifact);
     assert_eq!(
         application.binding_owner,
         crate::plugin_management::ExtensionDomainBindingOwner::RuntimeExtension
     );
     assert_eq!(
-        ExtensionCatalogCategory::McpBundle
-            .application()
-            .binding_owner,
+        ExtensionCatalogCategory::Mcp.application().binding_owner,
         crate::plugin_management::ExtensionDomainBindingOwner::Mcp
     );
 }

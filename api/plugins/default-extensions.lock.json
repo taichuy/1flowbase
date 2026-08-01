@@ -2,7 +2,8 @@
   "schema_version": "1flowbase.extension-bootstrap-lock/v1",
   "defaults": [
     {
-      "category": "model_provider",
+      "category": "runtime_extensions",
+      "artifact_kind": "model_provider",
       "id": "1flowbase.anthropic",
       "version": "0.1.33",
       "checksum": "sha256:0d8f6143d139fc36ed609a95acfa3881a37a30bd7b80b68b3b6338b4d6d85970",
@@ -13,7 +14,8 @@
       "bootstrap": true
     },
     {
-      "category": "model_provider",
+      "category": "runtime_extensions",
+      "artifact_kind": "model_provider",
       "id": "1flowbase.anthropic",
       "version": "0.1.33",
       "checksum": "sha256:5648b0afbbc1d399517dec327c9a85ff90ab16181cc1118fa909f64e4fa1e0b8",

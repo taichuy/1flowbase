@@ -28,12 +28,12 @@ pub struct PluginCatalogView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtensionCatalogCategory {
-    HostExtension,
-    ModelProvider,
-    DataSource,
-    CapabilityPlugin,
-    McpBundle,
-    AgentFlowTemplate,
+    AgentFlow,
+    CapabilityPlugins,
+    HostExtensions,
+    I18n,
+    Mcp,
+    RuntimeExtensions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,47 +66,49 @@ pub struct TypedExtensionApplication {
 impl ExtensionCatalogCategory {
     pub fn parse(value: &str) -> Result<Self> {
         match value {
-            "host_extension" => Ok(Self::HostExtension),
-            "model_provider" => Ok(Self::ModelProvider),
-            "data_source" => Ok(Self::DataSource),
-            "capability_plugin" => Ok(Self::CapabilityPlugin),
-            "mcp_bundle" => Ok(Self::McpBundle),
-            "agent_flow_template" => Ok(Self::AgentFlowTemplate),
+            "agent-flow" => Ok(Self::AgentFlow),
+            "capability-plugins" => Ok(Self::CapabilityPlugins),
+            "host-extensions" => Ok(Self::HostExtensions),
+            "i18n" => Ok(Self::I18n),
+            "mcp" => Ok(Self::Mcp),
+            "runtime-extensions" => Ok(Self::RuntimeExtensions),
             _ => Err(ControlPlaneError::InvalidInput("extension_catalog_category").into()),
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::HostExtension => "host_extension",
-            Self::ModelProvider => "model_provider",
-            Self::DataSource => "data_source",
-            Self::CapabilityPlugin => "capability_plugin",
-            Self::McpBundle => "mcp_bundle",
-            Self::AgentFlowTemplate => "agent_flow_template",
+            Self::AgentFlow => "agent-flow",
+            Self::CapabilityPlugins => "capability-plugins",
+            Self::HostExtensions => "host-extensions",
+            Self::I18n => "i18n",
+            Self::Mcp => "mcp",
+            Self::RuntimeExtensions => "runtime-extensions",
         }
     }
 
-    pub fn plugin_type(self) -> Option<&'static str> {
+    pub fn fixed_plugin_type(self) -> Option<&'static str> {
         match self {
-            Self::HostExtension => Some("host_extension"),
-            Self::ModelProvider => Some("model_provider"),
-            Self::DataSource => Some("data_source"),
-            Self::CapabilityPlugin => Some("capability_plugin"),
-            Self::McpBundle | Self::AgentFlowTemplate => None,
+            Self::HostExtensions => Some("host_extension"),
+            Self::CapabilityPlugins => Some("capability_plugin"),
+            Self::AgentFlow | Self::I18n | Self::Mcp | Self::RuntimeExtensions => None,
         }
     }
 
     pub fn application(self) -> TypedExtensionApplication {
         let binding_owner = match self {
-            Self::HostExtension => ExtensionDomainBindingOwner::Host,
-            Self::ModelProvider | Self::DataSource => ExtensionDomainBindingOwner::RuntimeExtension,
-            Self::CapabilityPlugin => ExtensionDomainBindingOwner::CapabilityPlugin,
-            Self::McpBundle => ExtensionDomainBindingOwner::Mcp,
-            Self::AgentFlowTemplate => ExtensionDomainBindingOwner::AgentFlow,
+            Self::HostExtensions => ExtensionDomainBindingOwner::Host,
+            Self::RuntimeExtensions => ExtensionDomainBindingOwner::RuntimeExtension,
+            Self::CapabilityPlugins => ExtensionDomainBindingOwner::CapabilityPlugin,
+            Self::Mcp => ExtensionDomainBindingOwner::Mcp,
+            Self::AgentFlow => ExtensionDomainBindingOwner::AgentFlow,
+            Self::I18n => ExtensionDomainBindingOwner::Host,
         };
         TypedExtensionApplication {
-            installs_node_artifact: self.plugin_type().is_some(),
+            installs_node_artifact: matches!(
+                self,
+                Self::HostExtensions | Self::RuntimeExtensions | Self::CapabilityPlugins
+            ),
             binding_owner,
         }
     }
@@ -126,6 +128,12 @@ pub struct LocalExtensionInventoryEntry {
     pub source: String,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarning>,
+    pub artifact_id: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub current_version: String,
+    pub system_requirements: Option<String>,
+    pub installation_status: String,
 }
 
 #[derive(Debug, Clone)]
@@ -160,16 +168,21 @@ fn extension_trust(installation: &domain::PluginInstallationRecord) -> &'static 
 
 fn installation_category(installation: &domain::PluginInstallationRecord) -> &str {
     if is_host_extension_installation(installation) {
-        return "host_extension";
+        return "host-extensions";
     }
     if is_model_provider_installation(installation) {
-        return "model_provider";
+        return "runtime-extensions";
     }
-    installation
+    match installation
         .metadata_json
         .get("plugin_type")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("capability_plugin")
+    {
+        "data_source" | "model_provider" => "runtime-extensions",
+        "host_extension" => "host-extensions",
+        _ => "capability-plugins",
+    }
 }
 
 fn extension_warnings(
@@ -567,6 +580,17 @@ where
                 source: extension_source(&installation.source_kind).to_string(),
                 trust: extension_trust(&installation).to_string(),
                 warnings: extension_warnings(&installation, &artifact),
+                artifact_id: metadata_string(&installation.metadata_json, "official_plugin_id")
+                    .unwrap_or_else(|| installation.plugin_id.clone()),
+                display_name: metadata_string(&installation.metadata_json, "display_name")
+                    .unwrap_or_else(|| installation.provider_code.clone()),
+                description: metadata_string(&installation.metadata_json, "description"),
+                current_version: installation.plugin_version.clone(),
+                system_requirements: metadata_string(
+                    &installation.metadata_json,
+                    "minimum_host_version",
+                ),
+                installation_status: "installed".to_string(),
                 installation,
                 local_artifact: artifact,
             });

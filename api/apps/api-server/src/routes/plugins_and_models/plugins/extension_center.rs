@@ -50,6 +50,12 @@ pub struct ExtensionRiskWarningResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInventoryEntryResponse {
     pub category: String,
+    pub artifact_id: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub current_version: String,
+    pub system_requirements: Option<String>,
+    pub installation_status: String,
     pub source: String,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
@@ -77,8 +83,13 @@ pub struct ExtensionCatalogGatewayEntryResponse {
     pub artifact_id: String,
     pub organization: String,
     pub display_name: String,
+    pub description: Option<String>,
     pub latest_version: String,
+    pub current_version: Option<String>,
     pub minimum_host_version: Option<String>,
+    pub system_requirements: Option<String>,
+    pub installation_status: String,
+    pub artifact_kind: Option<String>,
     pub source: String,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
@@ -127,6 +138,7 @@ pub struct ExtensionUpdateCheckResponse {
 pub struct InstallOfficialExtensionBody {
     pub category: String,
     pub artifact_id: String,
+    pub artifact_kind: Option<String>,
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
     pub risk_override: Option<PluginRiskOverrideBody>,
 }
@@ -198,6 +210,12 @@ fn to_local_inventory_entry(
 ) -> LocalExtensionInventoryEntryResponse {
     LocalExtensionInventoryEntryResponse {
         category: entry.category,
+        artifact_id: entry.artifact_id,
+        display_name: entry.display_name,
+        description: entry.description,
+        current_version: entry.current_version,
+        system_requirements: entry.system_requirements,
+        installation_status: entry.installation_status,
         source: entry.source,
         trust: entry.trust,
         warnings: entry
@@ -262,12 +280,18 @@ async fn load_catalog_page(
     limit: usize,
     locales: control_plane::i18n::RequestedLocales,
 ) -> Result<ExtensionCatalogGatewayPageResponse, ApiError> {
-    if let Some(plugin_type) = category.plugin_type() {
+    if matches!(
+        category,
+        ExtensionCatalogCategory::HostExtensions
+            | ExtensionCatalogCategory::CapabilityPlugins
+            | ExtensionCatalogCategory::RuntimeExtensions
+    ) {
+        let plugin_type = category.fixed_plugin_type().map(str::to_string);
         let view = service(state, "extension_center.catalog.view")
             .list_official_catalog(
                 actor_user_id,
                 OfficialPluginCatalogFilter {
-                    plugin_type: Some(plugin_type.to_string()),
+                    plugin_type,
                     search_query: None,
                     cursor: cursor.clone(),
                     limit,
@@ -314,8 +338,14 @@ async fn load_catalog_page(
                         .to_string(),
                     artifact_id: entry.plugin_id,
                     display_name: entry.display_name,
-                    latest_version: entry.latest_version,
-                    minimum_host_version: Some(entry.minimum_host_version),
+                    description: entry.description,
+                    latest_version: entry.latest_version.clone(),
+                    current_version: (entry.install_status.as_str() != "not_installed")
+                        .then_some(entry.latest_version.clone()),
+                    minimum_host_version: Some(entry.minimum_host_version.clone()),
+                    system_requirements: Some(entry.minimum_host_version),
+                    installation_status: entry.install_status.as_str().to_string(),
+                    artifact_kind: Some(entry.plugin_type),
                     source: source.to_string(),
                     trust: trust.to_string(),
                     warnings,
@@ -340,7 +370,7 @@ async fn load_catalog_page(
     }
 
     match category {
-        ExtensionCatalogCategory::McpBundle => {
+        ExtensionCatalogCategory::Mcp => {
             let snapshot = state.official_mcp_bundle_source.list_catalog().await?;
             let start = cursor
                 .as_deref()
@@ -354,8 +384,13 @@ async fn load_catalog_page(
                     artifact_id: format!("{}.{}", entry.organization, entry.bundle_id),
                     organization: entry.organization.clone(),
                     display_name: entry.bundle_id.clone(),
+                    description: None,
                     latest_version: entry.latest_version.clone(),
+                    current_version: None,
                     minimum_host_version: Some(entry.minimum_host_version.clone()),
+                    system_requirements: Some(entry.minimum_host_version.clone()),
+                    installation_status: "not_installed".to_string(),
+                    artifact_kind: None,
                     source: match snapshot.source.source_kind.as_str() {
                         "mirror_registry" => "mirror",
                         _ => "official_registry",
@@ -378,7 +413,7 @@ async fn load_catalog_page(
                 entries,
             })
         }
-        ExtensionCatalogCategory::AgentFlowTemplate => {
+        ExtensionCatalogCategory::AgentFlow => {
             let snapshot = state
                 .official_agent_flow_template_source
                 .list_catalog_page(cursor.clone())
@@ -391,8 +426,13 @@ async fn load_catalog_page(
                     artifact_id: entry.workflow_id.clone(),
                     organization: "taichuy".to_string(),
                     display_name: entry.application.name.clone(),
+                    description: Some(entry.application.description.clone()),
                     latest_version: entry.schema_version,
+                    current_version: None,
                     minimum_host_version: None,
+                    system_requirements: None,
+                    installation_status: "not_installed".to_string(),
+                    artifact_kind: None,
                     source: match snapshot.source.source_kind.as_str() {
                         "mirror_registry" => "mirror",
                         _ => "official_registry",
@@ -415,10 +455,16 @@ async fn load_catalog_page(
                 entries,
             })
         }
-        _ => Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_catalog_category",
-        )
-        .into()),
+        ExtensionCatalogCategory::I18n => Ok(ExtensionCatalogGatewayPageResponse {
+            category: category.as_str().to_string(),
+            catalog_page: cursor,
+            limit,
+            next_cursor: None,
+            entries: Vec::new(),
+        }),
+        ExtensionCatalogCategory::HostExtensions
+        | ExtensionCatalogCategory::CapabilityPlugins
+        | ExtensionCatalogCategory::RuntimeExtensions => unreachable!("handled above"),
     }
 }
 
@@ -554,7 +600,11 @@ async fn install_or_update_official_extension(
     let context = require_session(state, headers).await?;
     require_csrf(headers, &context)?;
     let category = ExtensionCatalogCategory::parse(&body.category)?;
-    if category.plugin_type().is_none() {
+    let expected_plugin_type = body
+        .artifact_kind
+        .as_deref()
+        .or_else(|| category.fixed_plugin_type());
+    if !category.application().installs_node_artifact || expected_plugin_type.is_none() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
             "extension_requires_domain_application",
         )
@@ -564,9 +614,8 @@ async fn install_or_update_official_extension(
         .install_official_extension(InstallOfficialExtensionCommand {
             actor_user_id: context.user.id,
             artifact_id: body.artifact_id,
-            expected_plugin_type: category
-                .plugin_type()
-                .expect("non-installable categories returned above")
+            expected_plugin_type: expected_plugin_type
+                .expect("installable categories require an artifact kind")
                 .to_string(),
             compatibility_override: to_compatibility_override(body.compatibility_override),
             risk_override: to_risk_override(body.risk_override),

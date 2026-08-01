@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LockedExtensionBootstrapEntry {
     pub category: ExtensionCatalogCategory,
+    pub artifact_kind: String,
     pub id: String,
     pub version: String,
     pub checksum: String,
@@ -146,7 +147,8 @@ where
             .into_iter()
             .find(|candidate| candidate.plugin_id == locked.id)
             .ok_or(ControlPlaneError::NotFound("official_plugin"))?;
-        if entry.plugin_type != locked.category.as_str()
+        if locked.category != ExtensionCatalogCategory::RuntimeExtensions
+            || entry.plugin_type != locked.artifact_kind
             || entry.latest_version != locked.version
             || entry.selected_artifact.checksum != locked.checksum
             || entry.selected_artifact.download_url != locked.artifact_url
@@ -180,7 +182,7 @@ where
         )
         .await?;
         let package_kind = route_plugin_package(&intake.manifest)?;
-        if locked.category.plugin_type() != Some(package_kind.as_plugin_type())
+        if locked.artifact_kind != package_kind.as_plugin_type()
             || intake.manifest.version != locked.version
         {
             return Err(ControlPlaneError::Conflict("extension_bootstrap_package_mismatch").into());
