@@ -331,7 +331,7 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     ).rejects.toThrow(
       'Write interface call was cancelled.'
     );
-    expect(client.dispatchFrontstageCallable).toHaveBeenCalledTimes(1);
+    expect(client.dispatchFrontstageCallable).not.toHaveBeenCalled();
     expect(client.issueFrontstageCallableWriteGrant).not.toHaveBeenCalled();
   });
 
