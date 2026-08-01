@@ -57,9 +57,12 @@ test('AC-012: cold Rust compilation is accelerated without treating cache as gat
   );
   const expectedWorkspaces = [
     'api -> target',
-    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/anthropic -> target',
-    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai -> target',
-    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/model-providers/openai_compatible -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target',
+    'tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target',
   ];
   for (const workspace of expectedWorkspaces) {
     assert.ok(cacheWorkspaces.includes(workspace), `missing Rust cache workspace: ${workspace}`);

@@ -352,7 +352,7 @@ function bindOfficialManifestReceipts(packages, officialRoot) {
     const manifestPath = path.join(
       officialRoot,
       'runtime-extensions',
-      'model-providers',
+      '@taichuy',
       providerCode,
       'manifest.yaml'
     );
@@ -690,9 +690,12 @@ async function createFakeUpstream() {
         Object.entries(request.headers).map(([name, value]) => [name.toLowerCase(), String(value)])
       );
       requests.push({ method: request.method || '', path: request.url || '', headers, body });
-      const payload = fakeResponseBody(activeResponse);
+      const countTokensResponse = activeResponse && typeof activeResponse === 'object';
+      const payload = countTokensResponse
+        ? JSON.stringify(activeResponse)
+        : fakeResponseBody(activeResponse);
       response.writeHead(200, {
-        'content-type': 'text/event-stream',
+        'content-type': countTokensResponse ? 'application/json' : 'text/event-stream',
         'content-length': Buffer.byteLength(payload),
         connection: 'close',
       });
@@ -745,6 +748,109 @@ function assertWire(provider, captured, tokens) {
     stableJson(request.body) === stableJson(expected.body),
     `vendor request body mismatch for ${provider.provider_code}`
   );
+}
+
+function assertExactVendorWire(providerCode, expectedWire, captured, tokens) {
+  requireCondition(captured.length === 1, `CountTokens upstream request count failed for ${providerCode}`);
+  const request = captured[0];
+  const expected = replaceTokens(expectedWire, tokens);
+  requireCondition(
+    request.method === expected.method && request.path === expected.path,
+    `CountTokens vendor method or path mismatch for ${providerCode}`
+  );
+  for (const [name, value] of Object.entries(expected.headers)) {
+    requireCondition(
+      request.headers[name] === value,
+      `CountTokens vendor header mismatch for ${providerCode}`
+    );
+  }
+  requireCondition(
+    stableJson(request.body) === stableJson(expected.body),
+    `CountTokens vendor request body mismatch for ${providerCode}`
+  );
+}
+
+function invokePackagedRuntime(packageInfo, input) {
+  const executable = path.join(packageInfo.package_root, packageInfo.manifest.runtime.entry);
+  requireCondition(fs.existsSync(executable), `actual ${packageInfo.provider.provider_code} package runtime is missing`);
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, [], {
+      cwd: packageInfo.package_root,
+      env: { ...process.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const stdout = createBoundedCapture(child.stdout);
+    const stderr = createBoundedCapture(child.stderr);
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new ConformanceError(`actual ${packageInfo.provider.provider_code} CountTokens invocation timed out`));
+    }, HTTP_TIMEOUT_MS);
+    child.once('error', () => {
+      clearTimeout(timer);
+      reject(new ConformanceError(`actual ${packageInfo.provider.provider_code} CountTokens runtime failed to start`));
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new ConformanceError(
+          `actual ${packageInfo.provider.provider_code} CountTokens runtime exited with ${code}: ${stderr.snapshot().slice(0, 512)}`
+        ));
+        return;
+      }
+      const lines = stdout.snapshot().trim().split(/\r?\n/u).filter(Boolean);
+      try {
+        resolve(JSON.parse(lines.at(-1) || 'null'));
+      } catch {
+        reject(new ConformanceError(`actual ${packageInfo.provider.provider_code} CountTokens runtime returned invalid JSON`));
+      }
+    });
+    child.stdin.end(`${JSON.stringify({ method: 'invoke', input })}\n`);
+  });
+}
+
+async function runCountTokensMatrix({ packages, matrix, upstream, tokens }) {
+  const contract = matrix.count_tokens;
+  requireCondition(contract?.operation === 'count_tokens', 'CountTokens matrix operation is missing');
+  requireCondition(contract?.required_capability === 'count_tokens', 'CountTokens matrix capability is missing');
+  for (const providerCode of REQUIRED_PROVIDER_CODES) {
+    const packageInfo = packages.get(providerCode);
+    const row = contract.providers?.[providerCode];
+    requireCondition(row, `CountTokens matrix omitted ${providerCode}`);
+    requireCondition(
+      packageInfo.manifest.runtime.capabilities.includes('count_tokens'),
+      `actual ${providerCode} package omitted the CountTokens manifest capability`
+    );
+    const usesUpstream = row.expected_upstream_requests === 1;
+    const baseInput = cloneJson(packageInfo.provider.input);
+    const input = replaceTokens({
+      ...baseInput,
+      operation: contract.operation,
+      required_capabilities: [
+        ...new Set([...(baseInput.required_capabilities || []), contract.required_capability]),
+      ],
+      ...(usesUpstream ? {} : contract.unknown_media),
+    }, {
+      ...tokens,
+      $UPSTREAM_BASE_URL: upstream.base_url,
+    });
+    const requestStart = upstream.begin(row.upstream_response || 'unused_count_tokens_upstream');
+    const envelope = await invokePackagedRuntime(packageInfo, input);
+    requireCondition(envelope?.ok === true && envelope.error == null, `actual ${providerCode} CountTokens envelope failed`);
+    requireCondition(envelope.result?.operation === 'count_tokens', `actual ${providerCode} returned an untyped CountTokens operation`);
+    requireCondition(Number.isSafeInteger(envelope.result?.input_tokens) && envelope.result.input_tokens >= 0,
+      `actual ${providerCode} CountTokens input_tokens is not an unsigned safe integer`);
+    for (const [field, value] of Object.entries(row.expected_result)) {
+      requireCondition(envelope.result[field] === value, `actual ${providerCode} CountTokens ${field} mismatch`);
+    }
+    requireCondition(
+      envelope.result.fallback_reason === undefined || envelope.result.fallback_reason === null,
+      `actual ${providerCode} CountTokens unexpectedly reported a host fallback`
+    );
+    const captured = upstream.takeOnlySince(requestStart);
+    requireCondition(captured.length === row.expected_upstream_requests,
+      `actual ${providerCode} CountTokens upstream request count mismatch`);
+    if (row.expected_wire) assertExactVendorWire(providerCode, row.expected_wire, captured, tokens);
+  }
 }
 
 async function assertWireAudit(runner, provider, tokens) {
@@ -1031,6 +1137,13 @@ async function runConformance(options) {
       upstream,
       packageInfo: packages.get(matrix.negative_cases.legacy_input.target_provider),
       matrix,
+      tokens: canaries,
+    });
+
+    await runCountTokensMatrix({
+      packages,
+      matrix,
+      upstream,
       tokens: canaries,
     });
 

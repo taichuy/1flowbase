@@ -61,19 +61,18 @@ test("quality gate exposes one explicit command with local source and database i
   assert.throws(() => parseArgs(["run"]), /required/u);
 });
 
-test("quality gate runs the blocking official provider library suites from the paired source", () => {
+test("quality gate runs all six blocking official provider suites from the paired source", () => {
   assert.deepEqual(
     officialProviderTestInvocations("/official").map(({ name, args }) => [
       name,
       args,
     ]),
-    ["openai", "anthropic", "deepseek", "openai_compatible"].map((provider) => [
+    ["openai", "anthropic", "aliyun_bailian", "deepseek", "gemini", "openai_compatible"].map((provider) => [
       `${provider}-provider-tests`,
       [
         "test",
         "--manifest-path",
-        `/official/runtime-extensions/model-providers/${provider}/Cargo.toml`,
-        "--lib",
+        `/official/runtime-extensions/@taichuy/${provider}/Cargo.toml`,
         "--locked",
       ],
     ]),
@@ -110,6 +109,11 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   assert.deepEqual(
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
+      ["plugin-framework-count-tokens-contract-tests", "count_tokens"],
+      ["plugin-runner-count-tokens-totality-tests", "count_tokens"],
+      ["orchestration-runtime-count-tokens-terminal-tests", "count_tokens"],
+      ["control-plane-count-tokens-route-tests", "count_tokens"],
+      ["api-server-count-tokens-envelope-tests", "count_tokens"],
       ["plugin-framework-message-block-contract-tests", "root_1534"],
       ["orchestration-runtime-semantic-route-tests", "root_1534"],
       ["orchestration-runtime-upstream-error-tests", "upstream"],
