@@ -163,7 +163,7 @@ fn build_interface_arguments(
 
     for mapping in input_mapping.mappings {
         let mcp_value = match get_path_value(mcp_arguments, &mapping.mcp_param) {
-            Some(value) if !is_blank_argument(value) => value.clone(),
+            Some(value) => value.clone(),
             _ if mapping.required => {
                 return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                     "mcp_arguments",
@@ -197,7 +197,55 @@ fn build_interface_arguments(
         }
     }
 
+    materialize_required_object_containers(
+        interface_entry.parameter_schema.pointer("/properties/path"),
+        &mut arguments.path,
+    );
+    materialize_required_object_containers(
+        interface_entry
+            .parameter_schema
+            .pointer("/properties/query"),
+        &mut arguments.query,
+    );
+    materialize_required_object_containers(
+        interface_entry.parameter_schema.pointer("/properties/body"),
+        &mut arguments.body,
+    );
+
     Ok(arguments)
+}
+
+fn materialize_required_object_containers(schema: Option<&Value>, target: &mut Map<String, Value>) {
+    let Some(schema) = schema else {
+        return;
+    };
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return;
+    };
+
+    for (name, property_schema) in properties {
+        if required.contains(name.as_str())
+            && !target.contains_key(name)
+            && schema_describes_object(property_schema)
+        {
+            target.insert(name.clone(), Value::Object(Map::new()));
+        }
+        if let Some(value) = target.get_mut(name).and_then(Value::as_object_mut) {
+            materialize_required_object_containers(Some(property_schema), value);
+        }
+    }
+}
+
+fn schema_describes_object(schema: &Value) -> bool {
+    schema.get("type").and_then(Value::as_str) == Some("object")
+        || schema.get("properties").is_some_and(Value::is_object)
 }
 
 fn parameter_target(
@@ -319,8 +367,4 @@ fn set_path_value(target: &mut Map<String, Value>, path: &str, value: Value) {
             .expect("entry was just initialized as an object");
     }
     cursor.insert(segments[segments.len() - 1].to_string(), value);
-}
-
-fn is_blank_argument(value: &Value) -> bool {
-    matches!(value, Value::Null) || value.as_str().is_some_and(str::is_empty)
 }

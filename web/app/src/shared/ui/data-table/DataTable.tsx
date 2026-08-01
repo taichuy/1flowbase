@@ -20,6 +20,50 @@ export type { DataTableColumn, DataTableConfiguration };
 export type DataTableRowSelection<T extends object> =
   TableProps<T>['rowSelection'];
 
+export type DataTableCursorPagination = {
+  currentPage: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+  previousLabel: string;
+  nextLabel: string;
+  total: number;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+};
+
+type DataTableBaseProps<T extends object> = {
+  className?: string;
+  columns: Array<DataTableColumn<T>>;
+  configuration: DataTableConfiguration;
+  dataSource: T[];
+  emptyText?: ReactNode;
+  loading?: boolean;
+  rowClassName?: (record: T, index: number) => string;
+  rowKey: keyof T | ((record: T) => Key);
+  toolbar?: ReactNode;
+  onRow?: TableProps<T>['onRow'];
+  rowSelection?: DataTableRowSelection<T>;
+};
+
+type DataTablePagePaginationProps = {
+  cursorPagination?: never;
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+};
+
+type DataTableCursorPaginationProps = {
+  cursorPagination: DataTableCursorPagination;
+  page?: never;
+  pageSize?: never;
+  total?: never;
+  onPageChange?: never;
+};
+
+export type DataTableProps<T extends object> = DataTableBaseProps<T> &
+  (DataTablePagePaginationProps | DataTableCursorPaginationProps);
+
 type ResizeHeaderCellProps = ThHTMLAttributes<HTMLElement> & {
   onResizeMouseDown?: (event: MouseEvent<HTMLElement>) => void;
 };
@@ -130,37 +174,20 @@ export function DataTableColumnSettings<T extends object>({
   );
 }
 
-export function DataTable<T extends object>({
-  className,
-  columns,
-  configuration,
-  dataSource,
-  loading = false,
-  page,
-  pageSize,
-  rowClassName,
-  rowKey,
-  toolbar,
-  onRow,
-  rowSelection,
-  total,
-  onPageChange
-}: {
-  className?: string;
-  columns: Array<DataTableColumn<T>>;
-  configuration: DataTableConfiguration;
-  dataSource: T[];
-  loading?: boolean;
-  page: number;
-  pageSize: number;
-  rowClassName?: (record: T, index: number) => string;
-  rowKey: keyof T | ((record: T) => Key);
-  toolbar?: ReactNode;
-  onRow?: TableProps<T>['onRow'];
-  rowSelection?: DataTableRowSelection<T>;
-  total: number;
-  onPageChange: (page: number) => void;
-}) {
+export function DataTable<T extends object>(props: DataTableProps<T>) {
+  const {
+    className,
+    columns,
+    configuration,
+    dataSource,
+    emptyText,
+    loading = false,
+    rowClassName,
+    rowKey,
+    toolbar,
+    onRow,
+    rowSelection
+  } = props;
   const { visibleColumnKeys, columnWidths, setColumnWidths } = configuration;
 
   const startResize = useCallback(
@@ -274,6 +301,7 @@ export function DataTable<T extends object>({
           rowKey={rowKey as string | ((record: T) => Key)}
           dataSource={dataSource}
           loading={loading}
+          locale={emptyText ? { emptyText } : undefined}
           style={{ minWidth: fixedTableWidth }}
           tableLayout="fixed"
           components={{
@@ -293,17 +321,44 @@ export function DataTable<T extends object>({
           columns={tableColumns}
         />
       </div>
-      <Pagination
-        className="data-table__pagination"
-        current={page}
-        pageSize={pageSize}
-        total={total}
-        showSizeChanger={false}
-        showTotal={(paginationTotal) =>
-          i18nText('sharedUi', 'auto.total_items', { value1: paginationTotal })
-        }
-        onChange={onPageChange}
-      />
+      {props.cursorPagination ? (
+        <div
+          className="data-table__pagination data-table__cursor-pagination"
+          data-current-page={props.cursorPagination.currentPage}
+        >
+          <span>
+            {i18nText('sharedUi', 'auto.total_items', {
+              value1: props.cursorPagination.total
+            })}
+          </span>
+          <Button
+            disabled={!props.cursorPagination.hasPreviousPage}
+            onClick={props.cursorPagination.onPreviousPage}
+          >
+            {props.cursorPagination.previousLabel}
+          </Button>
+          <Button
+            disabled={!props.cursorPagination.hasNextPage}
+            onClick={props.cursorPagination.onNextPage}
+          >
+            {props.cursorPagination.nextLabel}
+          </Button>
+        </div>
+      ) : (
+        <Pagination
+          className="data-table__pagination"
+          current={props.page}
+          pageSize={props.pageSize}
+          total={props.total}
+          showSizeChanger={false}
+          showTotal={(paginationTotal) =>
+            i18nText('sharedUi', 'auto.total_items', {
+              value1: paginationTotal
+            })
+          }
+          onChange={props.onPageChange}
+        />
+      )}
     </section>
   );
 }

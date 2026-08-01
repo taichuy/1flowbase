@@ -84,6 +84,7 @@ pub struct ResolvedOfficialPluginSourceConfig {
 pub struct ResolvedOfficialExtensionCatalogSourceConfig {
     pub source_kind: String,
     pub index_url: String,
+    pub official_index_url: String,
     pub github_proxy_url: Option<String>,
 }
 
@@ -523,6 +524,7 @@ fn resolve_official_extension_catalog_sources(
                 ResolvedOfficialExtensionCatalogSourceConfig {
                     source_kind: source_kind.to_string(),
                     index_url,
+                    official_index_url: format!("{default_base}/{category}/catalog/v1/index.json"),
                     github_proxy_url: github_proxy_url.clone(),
                 },
             )

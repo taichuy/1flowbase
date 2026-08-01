@@ -510,6 +510,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::plugins::extension_center::ExtensionRiskWarningResponse,
         crate::routes::plugins::extension_center::ExtensionCompatibilityWarningResponse,
         crate::routes::plugins::extension_center::LocalExtensionInventoryEntryResponse,
+        crate::routes::plugins::extension_center::LocalExtensionInstalledVersionResponse,
         crate::routes::plugins::extension_center::LocalExtensionInventoryPageResponse,
         crate::routes::plugins::extension_center::ExtensionInstallResponse,
         crate::routes::plugins::extension_center::ExtensionRiskChallengeResponse,

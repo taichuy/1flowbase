@@ -13,8 +13,8 @@ use axum::{
 };
 use control_plane::{
     plugin_management::{
-        ExtensionArtifactInstallOutcome, ExtensionInstallationService,
-        InstallExtensionArtifactCommand,
+        group_installed_extension_families, ExtensionArtifactInstallOutcome,
+        ExtensionInstallationService, InstallExtensionArtifactCommand,
     },
     ports::AuthRepository,
 };
@@ -33,10 +33,20 @@ use crate::official_extension_catalog::{
 
 use super::upload::upload_challenge;
 use super::{
-    artifact_preflight_challenge, project_catalog_entry, project_installed_catalog_joins,
-    requested_installation_identity, validate_preflight_overrides, InstalledCatalogJoin,
+    artifact_preflight_challenge, extension_update_status, paginate_installed_families,
+    project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
+    validate_preflight_overrides, workspace_application_status, InstalledCatalogJoin,
     PreflightDecision, UploadedExtensionArtifact,
 };
+
+#[test]
+fn delivery_1560_d5_ac_004_mcp_install_keeps_workspace_application_explicitly_not_imported() {
+    assert_eq!(
+        workspace_application_status(super::ExtensionCatalogCategory::Mcp).as_deref(),
+        Some("not_imported")
+    );
+    assert!(workspace_application_status(super::ExtensionCatalogCategory::I18n).is_none());
+}
 
 #[test]
 fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_identity() {
@@ -109,6 +119,44 @@ fn root_1545_bf1_catalog_projection_keeps_newest_version_for_stable_identity() {
     );
     let response = project_catalog_entry(runtime_entry(), "official", &installed, &[]);
     assert_eq!(response.current_version.as_deref(), Some("1.2.0"));
+}
+
+#[test]
+fn root_1545_d4_ac_13_paginates_installed_families_instead_of_version_records() {
+    let now = OffsetDateTime::now_utc();
+    let mut anthropic_old = installation_record("0.1.18", now);
+    anthropic_old.identity.artifact_id = "anthropic".to_string();
+    let mut anthropic_current = installation_record("0.1.23", now);
+    anthropic_current.identity.artifact_id = "anthropic".to_string();
+    let mut deepseek = installation_record("0.1.15", now);
+    deepseek.identity.artifact_id = "deepseek".to_string();
+    let families = group_installed_extension_families([anthropic_old, deepseek, anthropic_current]);
+
+    let (total, next_cursor, first_page) = paginate_installed_families(families, None, 1);
+    assert_eq!(total, 2);
+    assert_eq!(first_page.len(), 1);
+    assert_eq!(first_page[0].installed_versions.len(), 2);
+    assert_eq!(
+        next_cursor.as_deref(),
+        Some("runtime-extensions:taichuy/anthropic")
+    );
+}
+
+#[test]
+fn root_1545_d4_ac_16_treats_catalog_latest_as_current_when_any_local_version_matches() {
+    let installed_versions = vec!["0.1.23".to_string(), "0.1.22".to_string()];
+    assert_eq!(
+        extension_update_status(Some("0.1.22"), &installed_versions),
+        "current"
+    );
+    assert_eq!(
+        extension_update_status(Some("0.1.24"), &installed_versions),
+        "update_available"
+    );
+    assert_eq!(
+        extension_update_status(None, &installed_versions),
+        "unknown_error"
+    );
 }
 
 fn installation_record(
@@ -304,6 +352,7 @@ fn root_1545_ac_5_preflight_requires_exact_integrity_and_compatibility_acknowled
         locator: "https://example.test/plugin.1flowbasepkg".to_string(),
         expected_checksum: None,
         signature: None,
+        platform: None,
     };
     let challenge = artifact_preflight_challenge(&entry, &descriptor, &[]);
     assert_eq!(

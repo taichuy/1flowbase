@@ -1,6 +1,7 @@
-use std::{io::ErrorKind, path::PathBuf};
+use std::{cmp::Ordering, collections::BTreeMap, io::ErrorKind, path::PathBuf};
 
 use anyhow::{Context, Result};
+use semver::Version;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::fs;
@@ -67,6 +68,61 @@ pub enum ExtensionArtifactInstallOutcome {
         installation: domain::ExtensionInstallationRecord,
         local_artifact_was_present: bool,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct InstalledExtensionFamily {
+    pub current: domain::ExtensionInstallationRecord,
+    pub installed_versions: Vec<domain::ExtensionInstallationRecord>,
+}
+
+impl InstalledExtensionFamily {
+    pub fn catalog_id(&self) -> String {
+        self.current.identity.catalog_id()
+    }
+}
+
+pub fn group_installed_extension_families(
+    records: impl IntoIterator<Item = domain::ExtensionInstallationRecord>,
+) -> Vec<InstalledExtensionFamily> {
+    let mut grouped = BTreeMap::<String, Vec<domain::ExtensionInstallationRecord>>::new();
+    for record in records {
+        grouped
+            .entry(record.identity.catalog_id())
+            .or_default()
+            .push(record);
+    }
+
+    grouped
+        .into_values()
+        .filter_map(|mut installed_versions| {
+            installed_versions.sort_by(compare_installed_extension_versions);
+            let current = installed_versions.first()?.clone();
+            Some(InstalledExtensionFamily {
+                current,
+                installed_versions,
+            })
+        })
+        .collect()
+}
+
+fn compare_installed_extension_versions(
+    left: &domain::ExtensionInstallationRecord,
+    right: &domain::ExtensionInstallationRecord,
+) -> Ordering {
+    match (
+        Version::parse(&left.identity.version),
+        Version::parse(&right.identity.version),
+    ) {
+        (Ok(left_version), Ok(right_version)) => right_version
+            .cmp(&left_version)
+            .then_with(|| right.updated_at.cmp(&left.updated_at))
+            .then_with(|| right.id.cmp(&left.id)),
+        _ => right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.id.cmp(&left.id)),
+    }
 }
 
 pub struct ExtensionInstallationService<R> {
@@ -337,6 +393,15 @@ where
         Ok(installed)
     }
 
+    pub async fn list_installed_families_for_node(
+        &self,
+        node_id: &str,
+    ) -> Result<Vec<InstalledExtensionFamily>> {
+        Ok(group_installed_extension_families(
+            self.list_installed_for_node(node_id).await?,
+        ))
+    }
+
     pub async fn find_local_installation(
         &self,
         identity: &domain::ExtensionInstallationIdentity,
@@ -356,6 +421,18 @@ where
             Ok(false) => Ok(None),
             Err(error) => Err(error).context("failed to inspect local extension artifact"),
         }
+    }
+
+    pub async fn find_local_installation_by_id(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .list_installed_for_node(node_id)
+            .await?
+            .into_iter()
+            .find(|record| record.id == installation_id))
     }
 
     pub async fn reconcile_node_inventory(&self, node_id: &str) -> Result<usize> {
@@ -561,6 +638,30 @@ fn integrity_warnings(
     }
     warnings.sort_by(|left, right| left.code.cmp(&right.code));
     warnings
+}
+
+pub fn installed_extension_integrity_warnings(
+    installation: &domain::ExtensionInstallationRecord,
+    artifact_bytes: &[u8],
+) -> Vec<domain::ExtensionIntegrityWarning> {
+    merge_integrity_warnings(
+        installation.warnings.clone(),
+        integrity_warnings(
+            Some(&installation.checksum),
+            &sha256_checksum(artifact_bytes),
+            installation.signature_status,
+        ),
+    )
+}
+
+pub fn validate_extension_integrity_override(
+    warnings: &[domain::ExtensionIntegrityWarning],
+    risk_override: Option<&ExtensionRiskOverride>,
+) -> Result<bool> {
+    Ok(matches!(
+        validate_risk_override(warnings, risk_override)?,
+        RiskOverrideDecision::Accepted(_)
+    ))
 }
 
 fn warning(code: &str, message: &str) -> domain::ExtensionIntegrityWarning {

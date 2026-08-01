@@ -149,6 +149,36 @@ describe('DataTable', () => {
     );
   });
 
+  test('supports cursor pagination without changing page-based consumers', () => {
+    const onPreviousPage = vi.fn();
+    const onNextPage = vi.fn();
+    render(
+      <DataTable<SampleRow>
+        columns={columns}
+        configuration={createConfiguration()}
+        cursorPagination={{
+          currentPage: 2,
+          hasPreviousPage: true,
+          hasNextPage: true,
+          previousLabel: '上一页',
+          nextLabel: '下一页',
+          total: 45,
+          onPreviousPage,
+          onNextPage
+        }}
+        dataSource={[]}
+        rowKey="id"
+      />
+    );
+
+    expect(screen.getByText('共 45 条')).toBeInTheDocument();
+    expect(document.querySelector('[data-current-page="2"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '上一页' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    expect(onPreviousPage).toHaveBeenCalledTimes(1);
+    expect(onNextPage).toHaveBeenCalledTimes(1);
+  });
+
   test('renders table actions in the Ant Design table title area', () => {
     render(
       <DataTable<SampleRow>

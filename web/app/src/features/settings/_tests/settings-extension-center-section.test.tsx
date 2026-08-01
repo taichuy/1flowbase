@@ -6,7 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { Modal } from 'antd';
+import { message, Modal } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -31,11 +31,22 @@ const extensionsApi = vi.hoisted(() => ({
   fetchSettingsExtensionCatalogEntry: vi.fn(),
   checkSettingsExtensionUpdates: vi.fn(),
   installSettingsExtension: vi.fn(),
-  uploadSettingsExtension: vi.fn(),
-  getSettingsExtensionRiskChallenge: vi.fn()
+  getSettingsExtensionRiskChallenge: vi.fn(),
+  previewSettingsInstalledMcpExtension: vi.fn(),
+  applySettingsInstalledMcpExtension: vi.fn(),
+  getSettingsInstalledMcpExtensionConflict: vi.fn(),
+  getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn()
 }));
 
+const routerApi = vi.hoisted(() => ({ navigate: vi.fn() }));
+
 vi.mock('../api/extensions', () => extensionsApi);
+vi.mock('../api/mcp-management', () => ({
+  settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog']
+}));
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => routerApi.navigate
+}));
 
 import { AppI18nProvider } from '../../../app/AppI18nProvider';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
@@ -60,7 +71,41 @@ const installedEntry = {
   status: 'installed',
   installed_by: 'user-1',
   created_at: '2026-08-01T10:00:00Z',
-  updated_at: '2026-08-01T10:00:00Z'
+  updated_at: '2026-08-01T10:00:00Z',
+  installed_versions: [
+    {
+      id: 'extension-installation-1',
+      version: '1.0.0',
+      source: 'official',
+      trust: 'official',
+      warnings: [],
+      local_path: '/api/plugins/openai/1.0.0',
+      checksum: 'sha256:installed',
+      signature_status: 'valid',
+      signature_algorithm: 'ed25519',
+      signing_key_id: 'official-key',
+      status: 'installed',
+      installed_by: 'user-1',
+      created_at: '2026-08-01T10:00:00Z',
+      updated_at: '2026-08-01T10:00:00Z'
+    },
+    {
+      id: 'extension-installation-0',
+      version: '0.9.0',
+      source: 'upload',
+      trust: 'unknown',
+      warnings: [],
+      local_path: '/api/plugins/openai/0.9.0',
+      checksum: 'sha256:previous',
+      signature_status: 'missing',
+      signature_algorithm: null,
+      signing_key_id: null,
+      status: 'installed',
+      installed_by: 'user-1',
+      created_at: '2026-07-01T10:00:00Z',
+      updated_at: '2026-07-01T10:00:00Z'
+    }
+  ]
 };
 
 const catalogEntry = {
@@ -111,7 +156,17 @@ function authenticate() {
   });
 }
 
-function renderSection() {
+function renderSection(
+  category:
+    | 'installed'
+    | 'agent-flow'
+    | 'capability-plugins'
+    | 'host-extensions'
+    | 'i18n'
+    | 'mcp'
+    | 'runtime-extensions' = 'installed',
+  cursor?: string
+) {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -124,30 +179,13 @@ function renderSection() {
     </AppI18nProvider>
   );
 
-  return render(<SettingsExtensionCenterSection />, { wrapper });
-}
-
-async function selectUploadCategory(
-  uploadDialog: HTMLElement,
-  category: string
-) {
-  const combobox = within(uploadDialog).getByRole('combobox', { name: '类型' });
-  const pointerTarget = combobox.closest('.ant-select-selector');
-  if (!pointerTarget) {
-    throw new Error('upload category Select has no visible pointer target');
-  }
-
-  fireEvent.mouseDown(pointerTarget);
-  const listbox = await screen.findByRole('listbox');
-  fireEvent.click(within(listbox).getByRole('option', { name: category }));
-}
-
-async function submitEnabledUpload(uploadDialog: HTMLElement) {
-  const submit = within(uploadDialog).getByRole('button', {
-    name: '上传并安装'
-  });
-  await waitFor(() => expect(submit).toBeEnabled());
-  fireEvent.click(submit);
+  return {
+    ...render(
+      <SettingsExtensionCenterSection category={category} cursor={cursor} />,
+      { wrapper }
+    ),
+    queryClient: client
+  };
 }
 
 describe('SettingsExtensionCenterSection', () => {
@@ -157,6 +195,7 @@ describe('SettingsExtensionCenterSection', () => {
     authenticate();
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
       limit: 20,
+      total_entries: 1,
       next_cursor: null,
       entries: [installedEntry]
     });
@@ -187,9 +226,15 @@ describe('SettingsExtensionCenterSection', () => {
       ]
     });
     extensionsApi.installSettingsExtension.mockResolvedValue({});
-    extensionsApi.uploadSettingsExtension.mockResolvedValue({});
     extensionsApi.getSettingsExtensionRiskChallenge.mockReturnValue(null);
+    extensionsApi.getSettingsInstalledMcpExtensionConflict.mockReturnValue(
+      null
+    );
+    extensionsApi.getSettingsInstalledMcpExtensionIntegrityChallenge.mockReturnValue(
+      null
+    );
     vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn() } as never);
+    vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
 
   test('Root-AC-002/003 renders seven tabs, loads installed inventory first, and checks only visible pages', async () => {
@@ -212,7 +257,8 @@ describe('SettingsExtensionCenterSection', () => {
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
-              current_version: '1.0.0'
+              current_version: '1.0.0',
+              installed_versions: ['1.0.0', '0.9.0']
             }
           ]
         },
@@ -226,15 +272,40 @@ describe('SettingsExtensionCenterSection', () => {
     ).toHaveAttribute('data-update-state', 'update_available');
 
     fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
+    expect(routerApi.navigate).toHaveBeenCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'runtime-extensions' },
+      search: { cursor: undefined }
+    });
+  });
+
+  test('D4-AC-013 renders one family row and keeps every installed version in the view drawer', async () => {
+    renderSection();
+
+    const openaiRows = await screen.findAllByRole('row', { name: /openai/ });
+    expect(openaiRows).toHaveLength(1);
+    fireEvent.click(
+      within(openaiRows[0]).getByRole('button', { name: '查看' })
+    );
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('已安装版本')).toBeInTheDocument();
+    expect(within(drawer).getByText('0.9.0')).toBeInTheDocument();
+    expect(
+      within(drawer).getByText('/api/plugins/openai/0.9.0')
+    ).toBeInTheDocument();
+  });
+
+  test('D4-AC-014 never renders a response from a different catalog category under the active tab', async () => {
+    renderSection('agent-flow');
     await waitFor(() => {
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
-        'runtime-extensions',
+        'agent-flow',
         undefined
       );
-      expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
-        expect.objectContaining({ catalog_page: 'page-1' }),
-        'csrf-123'
-      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('OpenAI Provider')).not.toBeInTheDocument();
+      expect(screen.queryByText('openai')).not.toBeInTheDocument();
     });
   });
 
@@ -286,8 +357,7 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.getSettingsExtensionRiskChallenge.mockImplementation(
       (error: unknown) => (error === riskError ? challenge : null)
     );
-    renderSection();
-    fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
+    renderSection('runtime-extensions');
     const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
     const installConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
@@ -317,7 +387,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('Root-AC-003/006 exposes upload and marks a failed current-page check red', async () => {
+  test('D5-AC-005 removes unified upload while keeping failed update status visible', async () => {
     extensionsApi.checkSettingsExtensionUpdates.mockRejectedValue(
       new Error('catalog unavailable')
     );
@@ -331,24 +401,10 @@ describe('SettingsExtensionCenterSection', () => {
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
-    const uploadDialog = await screen.findByRole('dialog');
-    const input = uploadDialog.querySelector('input[type="file"]');
-    const file = new File(['extension'], 'extension.1flowbasepkg');
-    await selectUploadCategory(uploadDialog, 'runtime-extensions');
-    fireEvent.change(input!, { target: { files: [file] } });
-    await submitEnabledUpload(uploadDialog);
-    const uploadConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    await uploadConfirmation?.onOk?.();
-
-    await waitFor(() => {
-      expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
-        file,
-        { category: 'runtime-extensions' },
-        'csrf-123',
-        {}
-      );
-    });
+    expect(
+      screen.queryByRole('button', { name: '上传插件' })
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
     view.unmount();
   });
 
@@ -376,7 +432,7 @@ describe('SettingsExtensionCenterSection', () => {
         ]
       })
     );
-    renderSection();
+    const view = renderSection('agent-flow');
 
     for (const category of [
       'agent-flow',
@@ -385,8 +441,8 @@ describe('SettingsExtensionCenterSection', () => {
       'i18n',
       'mcp',
       'runtime-extensions'
-    ]) {
-      fireEvent.click(screen.getByRole('tab', { name: category }));
+    ] as const) {
+      view.rerender(<SettingsExtensionCenterSection category={category} />);
       const row = await screen.findByRole('row', {
         name: new RegExp(`${category} Extension`)
       });
@@ -396,60 +452,251 @@ describe('SettingsExtensionCenterSection', () => {
     }
   });
 
-  test.each([
-    {
-      category: 'agent-flow' as const,
-      version: '1.2.0',
-      expectedVersion: '1.2.0'
-    },
-    {
-      category: 'i18n' as const,
-      version: '',
-      expectedVersion: undefined
-    }
-  ])(
-    'Root-AC-006 submits explicit $category upload identity without filename inference',
-    async ({ category, version, expectedVersion }) => {
-      renderSection();
-      fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
-      const uploadDialog = await screen.findByRole('dialog');
-      await selectUploadCategory(uploadDialog, category);
-
-      fireEvent.change(
-        within(uploadDialog).getByRole('textbox', { name: '组织' }),
-        { target: { value: '@taichuy' } }
+  test('D5-AC-006 restores cursor from route search and writes pagination to navigation', async () => {
+    renderSection('runtime-extensions', 'cursor-2');
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'runtime-extensions',
+        'cursor-2'
       );
-      fireEvent.change(
-        within(uploadDialog).getByRole('textbox', { name: '产物标识' }),
-        { target: { value: 'sample-extension' } }
-      );
-      if (version) {
-        fireEvent.change(
-          within(uploadDialog).getByRole('textbox', { name: '版本' }),
-          { target: { value: version } }
-        );
-      }
-      const file = new File(['extension'], 'opaque-upload.bin');
-      fireEvent.change(uploadDialog.querySelector('input[type="file"]')!, {
-        target: { files: [file] }
-      });
-      await submitEnabledUpload(uploadDialog);
-      const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-      await confirmation?.onOk?.();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '上一页' }));
+    expect(routerApi.navigate).toHaveBeenCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'runtime-extensions' },
+      search: { cursor: undefined }
+    });
+  });
 
-      await waitFor(() => {
-        expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
-          file,
+  test('D5-AC-004/008 keeps MCP installed on conflict cancel and applies only after confirmation', async () => {
+    const mcpEntry = {
+      ...installedEntry,
+      id: 'mcp-installation-1',
+      category: 'mcp' as const,
+      catalog_id: 'mcp:taichuy/sample',
+      artifact_id: 'sample'
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [mcpEntry]
+    });
+    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
+      extension_installation_id: 'mcp-installation-1',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'confirmation_required',
+      required_conflict_resolution: 'keep_existing',
+      integrity_warnings: [
+        {
+          code: 'checksum_mismatch',
+          message: '本地产物校验值与安装记录不一致。',
+          overridable: true
+        }
+      ],
+      required_integrity_override: {
+        warnings: [
           {
-            category,
-            organization: '@taichuy',
-            artifact_id: 'sample-extension',
-            ...(expectedVersion ? { version: expectedVersion } : {})
-          },
-          'csrf-123',
-          {}
-        );
+            code: 'checksum_mismatch',
+            message: '本地产物校验值与安装记录不一致。',
+            overridable: true
+          }
+        ],
+        compatibility: null
+      },
+      preview: { tools: [], instances: [], connections: [] }
+    });
+    extensionsApi.applySettingsInstalledMcpExtension.mockResolvedValue({
+      workspace_application_status: 'imported'
+    });
+    renderSection('installed');
+    const row = await screen.findByRole('row', { name: /sample/ });
+    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await waitFor(() => {
+      expect(
+        extensionsApi.previewSettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123');
+      expect(Modal.confirm).toHaveBeenCalled();
+    });
+    expect(
+      extensionsApi.applySettingsInstalledMcpExtension
+    ).not.toHaveBeenCalled();
+
+    const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+    render(confirmation?.content as ReactNode);
+    expect(
+      screen.getByText('本地产物校验值与安装记录不一致。')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/保留工作区内已有/)).toBeInTheDocument();
+    await confirmation?.onOk?.();
+    await waitFor(() => {
+      expect(
+        extensionsApi.applySettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123', {
+        conflict_resolution: 'keep_existing',
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
       });
-    }
-  );
+    });
+  });
+
+  test('D5-F02 shows a changed integrity 409 and retries with the exact backend diagnostic codes', async () => {
+    const integrityError = new Error('integrity confirmation required');
+    const challenge = {
+      extension_installation_id: 'mcp-installation-1',
+      integrity_warnings: [
+        {
+          code: 'checksum_mismatch',
+          message: '本地产物在预览后发生变化。',
+          overridable: true
+        }
+      ],
+      required_integrity_override: {
+        warnings: [
+          {
+            code: 'checksum_mismatch',
+            message: '本地产物在预览后发生变化。',
+            overridable: true
+          }
+        ],
+        compatibility: null
+      }
+    };
+    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
+      extension_installation_id: 'mcp-installation-1',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'ready_to_import',
+      required_conflict_resolution: null,
+      integrity_warnings: [],
+      required_integrity_override: null,
+      preview: { tools: [], instances: [], connections: [] }
+    });
+    extensionsApi.applySettingsInstalledMcpExtension
+      .mockRejectedValueOnce(integrityError)
+      .mockResolvedValueOnce({ workspace_application_status: 'imported' });
+    extensionsApi.getSettingsInstalledMcpExtensionIntegrityChallenge.mockImplementation(
+      (error: unknown) => (error === integrityError ? challenge : null)
+    );
+    const mcpRow = {
+      ...installedEntry,
+      category: 'mcp' as const,
+      artifact_id: 'openai'
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [mcpRow]
+    });
+    const { queryClient } = renderSection('installed');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await waitFor(() => expect(Modal.confirm).toHaveBeenCalled());
+    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(2));
+    const integrityConfirmation = vi
+      .mocked(Modal.confirm)
+      .mock.calls.at(-1)?.[0];
+    render(integrityConfirmation?.content as ReactNode);
+    expect(screen.getByText('本地产物在预览后发生变化。')).toBeInTheDocument();
+    await integrityConfirmation?.onOk?.();
+    await waitFor(() => {
+      expect(
+        extensionsApi.applySettingsInstalledMcpExtension
+      ).toHaveBeenLastCalledWith('mcp-installation-1', 'csrf-123', {
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      });
+    });
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['settings', 'extension-center']
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['settings', 'mcp-management', 'catalog']
+      });
+    });
+  });
+
+  test('D5-F02 keeps an installed MCP artifact visible when preview is forbidden', async () => {
+    const mcpRow = {
+      ...installedEntry,
+      category: 'mcp' as const
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [mcpRow]
+    });
+    extensionsApi.previewSettingsInstalledMcpExtension.mockRejectedValue(
+      new Error('403 forbidden')
+    );
+    renderSection('installed');
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('无法预览已安装的 MCP 扩展');
+    });
+    expect(row).toBeInTheDocument();
+    expect(
+      extensionsApi.applySettingsInstalledMcpExtension
+    ).not.toHaveBeenCalled();
+  });
+
+  test('D5-AC-004 starts MCP preview after install and leaves application untouched when cancelled', async () => {
+    const mcpCatalogEntry = {
+      ...catalogEntry,
+      id: 'mcp:taichuy/sample',
+      category: 'mcp' as const,
+      artifact: 'sample',
+      name: 'Sample MCP',
+      current_version: null,
+      installation_status: 'not_installed'
+    };
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'mcp',
+      catalog_page: 'start',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:mcp',
+      catalog_page_locator: 'mcp/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [mcpCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockResolvedValue({
+      installation: { id: 'mcp-installation-2' },
+      workspace_application_status: 'not_imported'
+    });
+    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
+      extension_installation_id: 'mcp-installation-2',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'confirmation_required',
+      required_conflict_resolution: 'keep_existing',
+      integrity_warnings: [],
+      required_integrity_override: null,
+      preview: { tools: [], instances: [], connections: [] }
+    });
+    renderSection('mcp');
+    const row = await screen.findByRole('row', { name: /Sample MCP/ });
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+    const installConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+    await installConfirmation?.onOk?.();
+    await waitFor(() => {
+      expect(
+        extensionsApi.previewSettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith('mcp-installation-2', 'csrf-123');
+      expect(Modal.confirm).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      extensionsApi.applySettingsInstalledMcpExtension
+    ).not.toHaveBeenCalled();
+  });
 });

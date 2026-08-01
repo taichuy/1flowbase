@@ -14,6 +14,16 @@
 6. 删除或禁用无引用的重复配置时，先确认没有其他实例依赖；不进行超出当前任务的批量清理。
 7. 不新增 Group 计数字段，也不写入 `children_count`；验证运行时派生结果。
 
+## Partial Failure
+
+若第一项 Tool 创建成功、后续 Tool 失败：
+
+1. 立即停止继续创建 Group 或 Binding，先用 JSON-RPC `category`、`field` 与 `http_status` 确定失败阶段；只有分类通用、为 `interface_dispatch` 或与证据冲突时才读取本地结构化日志。
+2. 检查 present 空字符串、`null` 是否进入 JSON Schema，required 空对象是否由 request Schema 自动物化；用错误分类证明调用阶段，不得用噪音 `full_description` 或虚假 selector 绕过。
+3. 检查复用 Tool 是否带有旧领域专用描述；Binding alias 不能修复共享描述污染。
+4. 候选 Tool 若因 `response_schema` 或独立 contract 缺口失败，只删除它的无消费者 Tool 与 Binding；继续验证不依赖它的领域能力。
+5. 保留原有配置，按账本删除本轮空 Group 和错误 Binding，再报告最小阻断证据。
+
 ## Before
 
 ```text

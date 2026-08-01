@@ -49,6 +49,78 @@ async fn create_mcp_instance(app: &axum::Router, cookie: &str, csrf: &str) {
     );
 }
 
+async fn create_interface_tool_and_binding(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    tool_id: &str,
+    interface_id: &str,
+    input_mapping: Value,
+) {
+    let create_tool_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/tools")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tool_id": tool_id,
+                        "des_id": format!("{tool_id}_description"),
+                        "name": tool_id,
+                        "short_description": format!("Execute {tool_id}."),
+                        "full_description": "",
+                        "execution_target": {
+                            "kind": "interface_wrapper",
+                            "interface_id": interface_id
+                        },
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": input_mapping,
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "low",
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = create_tool_response.status();
+    let payload = response_json(create_tool_response).await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
+
+    let create_binding_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/taichuy/tool-bindings")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "group_path": "/runtime",
+                        "tool_id": tool_id,
+                        "display_alias": null,
+                        "visible": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_binding_response.status(), StatusCode::CREATED);
+}
+
 async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
     let response = app
         .clone()
@@ -700,4 +772,142 @@ async fn mcp_call_rejects_stale_or_missing_required_des_id() {
         assert_eq!(payload["error"]["code"], json!(-32602));
         assert_eq!(payload["error"]["message"], json!("Invalid des_id"));
     }
+}
+
+#[tokio::test]
+async fn mcp_call_get_catalog_preserves_discovery_policy_field_array() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+    create_interface_tool_and_binding(
+        &app,
+        &cookie,
+        &csrf,
+        "catalog_snapshot",
+        "get_mcp_catalog",
+        json!({ "mappings": [] }),
+    )
+    .await;
+
+    let payload = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":20,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.call",
+                "arguments":{"tool_id":"catalog_snapshot","arguments":{}}
+            }
+        }),
+    )
+    .await;
+
+    assert!(payload["error"].is_null(), "{payload}");
+    assert_eq!(payload["result"]["isError"], json!(false));
+    let policies = payload["result"]["structuredContent"]["discovery_policies"]
+        .as_array()
+        .expect("catalog should return discovery policies");
+    assert_eq!(policies.len(), 1, "{payload}");
+    assert!(policies[0]["list_return_fields"].is_array(), "{payload}");
+}
+
+#[tokio::test]
+async fn mcp_call_classifies_interface_argument_and_target_failures() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+    create_interface_tool_and_binding(
+        &app,
+        &cookie,
+        &csrf,
+        "publish_probe",
+        "publish_application_api",
+        json!({
+            "mappings": [
+                {
+                    "interface_param": "application_id",
+                    "mcp_param": "application_id",
+                    "required": true
+                },
+                {
+                    "interface_param": "api_enabled",
+                    "mcp_param": "api_enabled",
+                    "required": true
+                },
+                {
+                    "interface_param": "mapping.input.query_target",
+                    "mcp_param": "query_target",
+                    "required": true
+                }
+            ]
+        }),
+    )
+    .await;
+
+    let invalid_arguments = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":21,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.call",
+                "arguments":{
+                    "tool_id":"publish_probe",
+                    "arguments":{
+                        "application_id":null,
+                        "api_enabled":true,
+                        "query_target":"node-start.query"
+                    }
+                }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(invalid_arguments["error"]["code"], json!(-32602));
+    assert_eq!(
+        invalid_arguments["error"]["data"],
+        json!({
+            "category":"invalid_tool_arguments",
+            "field":"request_schema"
+        })
+    );
+
+    let target_failure = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":22,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.call",
+                "arguments":{
+                    "tool_id":"publish_probe",
+                    "arguments":{
+                        "application_id":"00000000-0000-0000-0000-000000000000",
+                        "api_enabled":true,
+                        "query_target":"node-start.query"
+                    }
+                }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(target_failure["error"]["code"], json!(-32603));
+    assert_eq!(
+        target_failure["error"]["data"],
+        json!({
+            "category":"target_interface",
+            "http_status":404
+        })
+    );
+    let serialized = target_failure.to_string();
+    assert!(!serialized.contains("change-me"));
+    assert!(!serialized.contains("resource not found"));
 }

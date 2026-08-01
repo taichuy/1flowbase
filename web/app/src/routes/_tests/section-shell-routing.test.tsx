@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const membersApi = vi.hoisted(() => ({
@@ -159,6 +165,23 @@ const consoleNavigationApi = vi.hoisted(() => ({
   fetchSettingsConsoleNavigation: vi.fn()
 }));
 
+const extensionsApi = vi.hoisted(() => ({
+  settingsInstalledExtensionsQueryKey: vi.fn(() => ['extensions', 'installed']),
+  settingsExtensionCatalogQueryKey: vi.fn(
+    (category: string, cursor?: string) => ['extensions', category, cursor]
+  ),
+  fetchSettingsInstalledExtensions: vi.fn(),
+  fetchSettingsExtensionCatalog: vi.fn(),
+  fetchSettingsExtensionCatalogEntry: vi.fn(),
+  checkSettingsExtensionUpdates: vi.fn(),
+  installSettingsExtension: vi.fn(),
+  getSettingsExtensionRiskChallenge: vi.fn(),
+  previewSettingsInstalledMcpExtension: vi.fn(),
+  applySettingsInstalledMcpExtension: vi.fn(),
+  getSettingsInstalledMcpExtensionConflict: vi.fn(),
+  getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn()
+}));
+
 vi.mock('../../features/settings/api/members', () => membersApi);
 vi.mock('../../features/settings/api/roles', () => rolesApi);
 vi.mock('../../features/settings/api/permissions', () => permissionsApi);
@@ -170,6 +193,7 @@ vi.mock(
   '../../features/settings/api/console-navigation',
   () => consoleNavigationApi
 );
+vi.mock('../../features/settings/api/extensions', () => extensionsApi);
 
 import { AppProviders } from '../../app/AppProviders';
 import { AppRouterProvider } from '../../app/router';
@@ -202,6 +226,10 @@ const settingsRouteRecords = {
   'model-providers': {
     label_key: 'auto.model_providers',
     path: '/settings/model-providers'
+  },
+  'extension-center': {
+    label_key: 'auto.extension_center',
+    path: '/settings/extension-center'
   }
 } as const;
 
@@ -270,6 +298,25 @@ describe('section shell routing', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       settingsConsoleNavigation(['api-key-authentication'])
+    );
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 0,
+      next_cursor: null,
+      entries: []
+    });
+    extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
+      async (category: string) => ({
+        category,
+        catalog_page: 'start',
+        catalog_page_number: 1,
+        catalog_page_checksum: 'sha256:fixture',
+        catalog_page_locator: 'fixture',
+        limit: 20,
+        next_cursor: null,
+        total_entries: 0,
+        entries: []
+      })
     );
     membersApi.fetchSettingsMembers.mockResolvedValue([]);
     rolesApi.fetchSettingsRoles.mockResolvedValue([
@@ -635,6 +682,125 @@ describe('section shell routing', () => {
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
         screen.getByRole('tab', { name: '动态路由', selected: true })
+      ).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'D5-AC-005 replaces the Extension Center base URL with its canonical installed route',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['extension-center', 'model-providers'])
+      );
+      authenticateWithPermissions([], 'root');
+      renderApp('/settings/extension-center');
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/installed'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'D5-AC-006 keeps Extension Center category/cursor in browser history',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['extension-center', 'model-providers'])
+      );
+      extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
+        async (category: string, cursor?: string) => ({
+          category,
+          catalog_page: cursor ?? 'start',
+          catalog_page_number: cursor ? 2 : 1,
+          catalog_page_checksum: 'sha256:fixture',
+          catalog_page_locator: 'fixture',
+          limit: 20,
+          next_cursor:
+            category === 'runtime-extensions' && !cursor ? 'cursor-2' : null,
+          total_entries: 0,
+          entries: []
+        })
+      );
+      authenticateWithPermissions([], 'root');
+      renderApp('/settings/extension-center/installed');
+      expect(
+        await screen.findByRole(
+          'tab',
+          {
+            name: '已安装扩展',
+            selected: true
+          },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'mcp' }));
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/settings/extension-center/mcp');
+      });
+      expect(
+        await screen.findByRole('tab', { name: 'mcp', selected: true })
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/runtime-extensions'
+        );
+        expect(window.location.search).toBe('');
+        expect(
+          extensionsApi.fetchSettingsExtensionCatalog
+        ).toHaveBeenCalledWith('runtime-extensions', undefined);
+      });
+      fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
+      await waitFor(() => {
+        expect(window.location.search).toBe('?cursor=cursor-2');
+        expect(
+          extensionsApi.fetchSettingsExtensionCatalog
+        ).toHaveBeenCalledWith('runtime-extensions', 'cursor-2');
+      });
+
+      act(() => window.history.back());
+      await waitFor(() => expect(window.location.search).toBe(''));
+      expect(
+        await screen.findByRole('tab', {
+          name: 'runtime-extensions',
+          selected: true
+        })
+      ).toBeInTheDocument();
+
+      act(() => window.history.back());
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/settings/extension-center/mcp');
+        expect(window.location.search).toBe('');
+      });
+      expect(
+        await screen.findByRole('tab', { name: 'mcp', selected: true })
+      ).toBeInTheDocument();
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'mcp',
+        undefined
+      );
+
+      act(() => window.history.forward());
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/runtime-extensions'
+        );
+        expect(window.location.search).toBe('');
+      });
+      act(() => window.history.forward());
+      await waitFor(() => {
+        expect(window.location.search).toBe('?cursor=cursor-2');
+      });
+      expect(
+        await screen.findByRole('tab', {
+          name: 'runtime-extensions',
+          selected: true
+        })
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
