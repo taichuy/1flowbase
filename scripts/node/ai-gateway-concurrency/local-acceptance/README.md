@@ -38,12 +38,16 @@ and independent primary/cleanup failures. It never contains the application
 key, owner password, temporary cookie, CSRF token, database credentials,
 provider master key, or raw conversation text.
 
-The api-server child runs from the validated source cwd so product `ApiConfig`
-loads its normal development `.env` and owns the canonical provider master-key
-and install-root defaults. The runner explicitly overrides only its owned port,
-database, plugin-runner URL, and cookie settings. A manifest may optionally name
+The runner derives the exact `api/apps/api-server/.env` path from the validated
+api-server cwd and parses it with the repository-owned dotenv parser. That full
+map seeds only the owned api-server child; it is not shell-sourced or passed to
+the plugin-runner. Runner-owned development mode, port, database, plugin-runner
+URL, and cookie settings override the file. A manifest may optionally name
 `provider_secret_master_key` or `provider_install_root` environment overrides;
-the runner injects them only when the named environment value is non-empty.
-Missing optional names or values are not configuration failures. A child that
-exits before health produces bounded typed stdout/stderr diagnostics, which pass
-through the same secret redaction as the rest of the artifact.
+a non-empty override wins last, while missing names or values are not
+configuration failures. Accidental provider settings inherited from the parent
+process are excluded unless the source `.env` or an optional override supplies
+them. Artifacts record only the derived `.env` path and, when the file exists,
+its SHA-256; they never record parsed values. A child that exits before health
+produces bounded typed stdout/stderr diagnostics, which pass through the same
+secret redaction as the rest of the artifact.

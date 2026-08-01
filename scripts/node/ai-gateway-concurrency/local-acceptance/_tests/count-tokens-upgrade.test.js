@@ -13,6 +13,7 @@ const {
 } = require('../count-tokens-upgrade');
 const {
   APPLICATION_ID,
+  loadApiFileEnvironment,
   loadRunManifest,
   reserveOwnedPort,
   runCountTokensUpgrade,
@@ -110,7 +111,7 @@ test('Root #1556 F10 startup diagnostics use the artifact secret redactor', () =
   assert.equal(safe.primary_error.diagnostic.service, 'api-server');
 });
 
-test('Root #1556 F09 structural contract owns frozen services and preserves both failure channels', () => {
+test('Root #1556 F13 structural contract owns frozen services and validated source configuration', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../count-tokens-upgrade-runner.js'),
     'utf8',
@@ -155,6 +156,13 @@ test('Root #1556 F09 structural contract owns frozen services and preserves both
   assert.equal(Object.hasOwn(example.environment, 'owner_csrf'), false);
   assert.equal(Object.hasOwn(example.environment, 'provider_secret_master_key'), false);
   assert.equal(Object.hasOwn(example.environment, 'provider_install_root'), false);
+  assert.deepEqual(Object.keys(example.environment).sort(), [
+    'application_api_key',
+    'application_api_key_id',
+    'database_url',
+    'owner_password',
+    'owner_username',
+  ]);
   assert.equal(Object.hasOwn(example, 'endpoints'), false);
   assert.match(source, /api-server cwd must be main_source_root\/api\/apps\/api-server/u);
   assert.match(source, /cwd: manifest\.apiServerCwd/u);
@@ -188,7 +196,7 @@ test('Root #1556 F12 explicitly rejects legacy v3 and v4 manifests', () => {
   }
 });
 
-test('Root #1556 F09 executable runner performs the owned upgrade sequence without recording secrets', async () => {
+test('Root #1556 F13 executable runner loads owned API dotenv without recording secrets', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'count-tokens-upgrade-runner-'));
   try {
     const executable = path.join(root, 'claude');
@@ -208,6 +216,24 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
     const mainSourceRoot = path.join(root, 'main-source');
     const apiServerCwd = path.join(mainSourceRoot, 'api/apps/api-server');
     fs.mkdirSync(apiServerCwd, { recursive: true });
+    const trustedKeysJson = JSON.stringify([{
+      key_id: 'dotenv-key',
+      algorithm: 'ed25519',
+      public_key_pem: 'quoted-json-value',
+    }]);
+    const apiEnvPath = path.join(apiServerCwd, '.env');
+    const apiEnvContent = [
+      'API_ENV=production',
+      'API_SERVER_ADDR=127.0.0.1:9999',
+      'API_DATABASE_URL=postgres://dotenv:dotenv-password@127.0.0.1/wrong',
+      'API_PLUGIN_RUNNER_INTERNAL_BASE_URL=http://127.0.0.1:9998',
+      'API_COOKIE_NAME=dotenv_cookie_must_not_win',
+      'BOOTSTRAP_WORKSPACE_NAME="dotenv-workspace"',
+      "BOOTSTRAP_ROOT_EMAIL='dotenv-root@example.test'",
+      `API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON='${trustedKeysJson}'`,
+      '',
+    ].join('\n');
+    fs.writeFileSync(apiEnvPath, apiEnvContent);
     fs.writeFileSync(mainSourceReceipt, `${mainSourceSha}\n`);
     fs.writeFileSync(manifestPath, JSON.stringify({
       schema_version: '1flowbase.local-count-tokens-upgrade-run/v5',
@@ -287,6 +313,17 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       API_PROVIDER_SECRET_MASTER_KEY: 'inherited-master-key-must-not-win',
       API_PROVIDER_INSTALL_ROOT: '/inherited/install/root/must-not-win',
     };
+    const disposableRegistry = (onClose = () => {}) => {
+      const roots = [];
+      return {
+        addTempRoot(value) { roots.push(value); return value; },
+        async close() {
+          for (const value of roots) fs.rmSync(value, { recursive: true, force: true });
+          onClose();
+          return [];
+        },
+      };
+    };
     const temporarySession = {
       cookie: 'flowbase_console_session=secret-cookie',
       csrfToken: 'secret-csrf',
@@ -317,10 +354,7 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       waitForHealth: async () => {},
       stopOwned: async () => { lifecycle.push('process-stopped'); },
       executeTmux: async () => ({ exit_code: 0, timed_out: false, stdout, stderr: '' }),
-      registry: {
-        addTempRoot(value) { return value; },
-        async close() { lifecycle.push('resources-closed'); return []; },
-      },
+      registry: disposableRegistry(() => lifecycle.push('resources-closed')),
     });
     assert.equal(result.status, 'pass');
     assert.equal(result.availability, 'available');
@@ -330,6 +364,8 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       /secret-app-key|secret-owner-password|secret-cookie|secret-csrf|secret-provider-master-key|owner:1flowbase/u,
     );
     assert.doesNotMatch(encoded, /inherited-master-key|inherited\/install/u);
+    assert.doesNotMatch(encoded, /dotenv-workspace|dotenv-root@example|dotenv-key|quoted-json-value/u);
+    assert.doesNotMatch(encoded, /dotenv-password|dotenv_cookie_must_not_win|127\.0\.0\.1:999[89]/u);
     assert.deepEqual(attachedSession, {
       cookie: 'flowbase_console_session=secret-cookie',
       csrfToken: 'secret-csrf',
@@ -342,6 +378,10 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
     assert.equal(result.evidence.runtime.api_server.port, 41732);
     assert.equal(result.evidence.runtime.plugin_runner.port, 41731);
     assert.equal(result.evidence.runtime.api_server_cwd, apiServerCwd);
+    assert.deepEqual(result.evidence.runtime.api_env_source, {
+      path: apiEnvPath,
+      sha256: crypto.createHash('sha256').update(apiEnvContent).digest('hex'),
+    });
     assert.equal(spawned.find((row) => row.binary === apiServer).cwd, apiServerCwd);
     assert.notEqual(spawned.find((row) => row.binary === pluginRunner).cwd, apiServerCwd);
     assert.equal(Object.hasOwn(spawned.find((row) => row.binary === apiServer).env,
@@ -352,8 +392,54 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       'API_PROVIDER_SECRET_MASTER_KEY'), false);
     assert.equal(Object.hasOwn(spawned.find((row) => row.binary === apiServer).parentEnv,
       'API_PROVIDER_INSTALL_ROOT'), false);
+    const spawnedApiEnv = spawned.find((row) => row.binary === apiServer).env;
+    assert.equal(spawnedApiEnv.BOOTSTRAP_WORKSPACE_NAME, 'dotenv-workspace');
+    assert.equal(spawnedApiEnv.BOOTSTRAP_ROOT_EMAIL, 'dotenv-root@example.test');
+    assert.equal(spawnedApiEnv.API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON, trustedKeysJson);
+    assert.deepEqual(JSON.parse(spawnedApiEnv.API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON),
+      JSON.parse(trustedKeysJson));
+    assert.equal(spawnedApiEnv.API_ENV, 'development');
+    assert.equal(spawnedApiEnv.API_SERVER_ADDR, '127.0.0.1:41732');
+    assert.equal(spawnedApiEnv.API_DATABASE_URL, sourceEnv.DATABASE_URL);
+    assert.equal(spawnedApiEnv.API_PLUGIN_RUNNER_INTERNAL_BASE_URL, 'http://127.0.0.1:41731');
+    assert.equal(spawnedApiEnv.API_COOKIE_NAME, 'flowbase_console_session');
+    const spawnedPluginEnv = spawned.find((row) => row.binary === pluginRunner).env;
+    assert.equal(Object.hasOwn(spawnedPluginEnv, 'BOOTSTRAP_WORKSPACE_NAME'), false);
+    assert.equal(Object.hasOwn(spawnedPluginEnv,
+      'API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON'), false);
+
+    const productProviderRoot = path.join(root, 'dotenv-provider-root');
+    fs.mkdirSync(productProviderRoot);
+    fs.appendFileSync(apiEnvPath, [
+      'API_PROVIDER_SECRET_MASTER_KEY=dotenv-provider-master-key',
+      `API_PROVIDER_INSTALL_ROOT=${productProviderRoot}`,
+      '',
+    ].join('\n'));
+    const fileEnvironment = loadApiFileEnvironment(apiServerCwd);
+    const productProviderApiEnvs = [];
+    const productConfigFailure = await runCountTokensUpgrade({ manifest: manifestPath }, {
+      sourceEnv,
+      git: (_sourceRoot, args) => args.includes('--show-toplevel') ? mainSourceRoot : mainSourceSha,
+      reserveLoopbackPort: (() => {
+        const ports = [41735, 41736];
+        return async () => ports.shift();
+      })(),
+      spawnOwned: (binary, env) => {
+        if (binary === apiServer) productProviderApiEnvs.push(env);
+        return { child: { exitCode: null } };
+      },
+      waitForHealth: async () => {},
+      openTemporaryOwnerSession: async () => { throw new Error('product dotenv fixture'); },
+      stopOwned: async () => {},
+      registry: disposableRegistry(),
+    });
+    assert.equal(productConfigFailure.primary_error.message, 'product dotenv fixture');
+    assert.equal(productProviderApiEnvs[0].API_PROVIDER_SECRET_MASTER_KEY,
+      'dotenv-provider-master-key');
+    assert.equal(productProviderApiEnvs[0].API_PROVIDER_INSTALL_ROOT, productProviderRoot);
 
     const overrideApiEnvs = [];
+    const fileDiagnosticCanary = Object.values(fileEnvironment.values).join('|');
     const loginFailure = await runCountTokensUpgrade({ manifest: manifestPath }, {
       sourceEnv: {
         ...sourceEnv,
@@ -370,11 +456,17 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
         return { child: { exitCode: null } };
       },
       waitForHealth: async () => {},
-      openTemporaryOwnerSession: async () => { throw new Error('owned login failed'); },
+      openTemporaryOwnerSession: async () => {
+        throw new Error(`owned login failed ${fileDiagnosticCanary}`);
+      },
       stopOwned: async () => { throw new Error('owned process cleanup failed'); },
-      registry: { addTempRoot(value) { return value; }, async close() { return []; } },
+      registry: disposableRegistry(),
     });
-    assert.equal(loginFailure.primary_error.message, 'owned login failed');
+    assert.match(loginFailure.primary_error.message, /^owned login failed/u);
+    assert.doesNotMatch(JSON.stringify(loginFailure),
+      /dotenv-workspace|dotenv-root@example|dotenv-key|quoted-json-value/u);
+    assert.doesNotMatch(JSON.stringify(loginFailure),
+      /dotenv-password|dotenv_cookie_must_not_win|dotenv-provider|127\.0\.0\.1:999[89]/u);
     assert.equal(loginFailure.cleanup.status, 'fail');
     assert.match(loginFailure.cleanup.errors[0].message, /owned process cleanup failed/u);
     assert.equal(overrideApiEnvs[0].API_PROVIDER_SECRET_MASTER_KEY, 'secret-provider-master-key');

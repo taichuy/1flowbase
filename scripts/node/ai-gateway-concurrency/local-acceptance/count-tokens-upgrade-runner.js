@@ -20,6 +20,7 @@ const { OwnedResources, executeTmux } = require('../local-client-acceptance/life
 const { clientSurface } = require('../local-client-acceptance/client-surface');
 const { redact } = require('../local-client-acceptance/artifacts');
 const { openTemporaryOwnerSession } = require('../../page-debug/auth');
+const { parseEnvFile } = require('../../dev-up/env');
 const {
   buildCountTokensUpgradeEvidence,
   loadCountTokensUpgradeFixture,
@@ -232,6 +233,18 @@ function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+function loadApiFileEnvironment(apiServerCwd, dependencies = {}) {
+  const filePath = path.join(apiServerCwd, '.env');
+  const values = (dependencies.parseEnvFile || parseEnvFile)(filePath);
+  return {
+    values,
+    source: {
+      path: filePath,
+      ...(fs.existsSync(filePath) ? { sha256: sha256File(filePath) } : {}),
+    },
+  };
+}
+
 function checksum(value) {
   return typeof value === 'string' ? value.replace(/^sha256:/u, '') : null;
 }
@@ -366,7 +379,7 @@ async function reserveOwnedPort(reservePort, excluded = new Set()) {
 }
 
 async function startFrozenServices({
-  manifest, databaseUrl, providerSecretMasterKey, providerInstallRoot, scratchRoot,
+  manifest, apiFileEnv, databaseUrl, providerSecretMasterKey, providerInstallRoot, scratchRoot,
   dependencies, services, sourceEnv,
 }) {
   const reservePort = dependencies.reserveLoopbackPort || reserveLoopbackPort;
@@ -392,6 +405,7 @@ async function startFrozenServices({
     processHandle: services.pluginProcess,
   });
   services.apiProcess = spawnProcess(manifest.apiServer.path, {
+    ...apiFileEnv,
     ...scrubbed,
     API_ENV: 'development',
     API_SERVER_ADDR: `127.0.0.1:${apiPort}`,
@@ -441,12 +455,19 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     const providerInstallRoot = providerInstallRootValue
       ? requireDirectory(providerInstallRootValue, 'provider install root override')
       : null;
-    secrets.credentials.push(apiKey, ownerPassword, providerSecretMasterKey);
+    const apiEnvironment = loadApiFileEnvironment(manifest.apiServerCwd, dependencies);
+    secrets.credentials.push(
+      apiKey,
+      ownerPassword,
+      providerSecretMasterKey,
+      ...Object.values(apiEnvironment.values),
+    );
     secrets.credentialUrls.push(databaseUrl);
     const tempRoot = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-count-tokens-upgrade-')));
     services = {};
     services = await startFrozenServices({
-      manifest, databaseUrl, providerSecretMasterKey, providerInstallRoot,
+      manifest, apiFileEnv: apiEnvironment.values, databaseUrl,
+      providerSecretMasterKey, providerInstallRoot,
       scratchRoot: tempRoot, dependencies, services, sourceEnv,
     });
     manifest.gatewayBaseUrl = services.apiBaseUrl;
@@ -513,6 +534,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
         main_source_receipt: manifest.mainSourceReceipt,
         main_source_root: manifest.mainSourceRoot,
         api_server_cwd: manifest.apiServerCwd,
+        api_env_source: apiEnvironment.source,
         api_server: { ...manifest.apiServer, port: services.apiPort },
         plugin_runner: { ...manifest.pluginRunner, port: services.pluginPort },
       },
@@ -563,6 +585,7 @@ module.exports = {
   RUN_SCHEMA,
   UnavailableError,
   loadRunManifest,
+  loadApiFileEnvironment,
   reserveOwnedPort,
   runCountTokensUpgrade,
   verifiedSourceCwd,
