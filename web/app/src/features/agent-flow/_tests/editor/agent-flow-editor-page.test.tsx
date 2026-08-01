@@ -920,6 +920,24 @@ describe('AgentFlowEditorShell', () => {
     ).toBeEnabled();
   });
 
+  test('AC-001 keeps the thinking loading state while orchestration data loads', () => {
+    vi.spyOn(orchestrationApi, 'fetchOrchestrationState').mockImplementationOnce(
+      () => new Promise(() => undefined)
+    );
+
+    renderShell(
+      <AgentFlowEditorPage
+        applicationId="app-1"
+        applicationName="Support Agent"
+      />
+    );
+
+    expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass(
+      'loading-state--compact'
+    );
+    expect(screen.queryByText('正在加载编排')).not.toBeInTheDocument();
+  });
+
   test('renders editor chrome on small screens', async () => {
     vi.spyOn(orchestrationApi, 'fetchOrchestrationState').mockResolvedValueOnce(
       createInitialState()

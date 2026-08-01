@@ -61,10 +61,14 @@ function getFieldLabelTag() {
   return null;
 }
 
-function getFieldHelp(renderer: string) {
-  return renderer === 'llm_context_policy'
-    ? '将传入上下文注入当前LLM节点中'
-    : null;
+function getFieldHelp(path: string) {
+  if (path === 'config.context_policy') {
+    return i18nText('agentFlow', 'auto.llm_context_help');
+  }
+  if (path === 'config.protocol_context') {
+    return i18nText('agentFlow', 'auto.llm_protocol_context_help');
+  }
+  return null;
 }
 
 function createHttpRequestKeyValueEntry() {
@@ -246,7 +250,7 @@ export function NodeInspector({
                     (issue) => issue.level === 'error'
                   );
                   const labelTag = getFieldLabelTag();
-                  const labelHelp = getFieldHelp(childBlock.renderer);
+                  const labelHelp = getFieldHelp(childBlock.path);
                   const labelAction = getFieldLabelAction(
                     childBlock,
                     activeAdapter

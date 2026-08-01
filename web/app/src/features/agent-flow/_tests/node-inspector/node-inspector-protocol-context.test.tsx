@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { appI18n } from '../../../../shared/i18n/app-i18n';
 import {
   DocumentObserver,
   SelectionSeed,
@@ -35,10 +36,37 @@ describe('NodeInspector protocol context', () => {
     expect(
       within(field).getByRole('combobox', { name: '协议上下文变量' })
     ).toBeEnabled();
+    expect(
+      within(field).getByLabelText(
+        '将选中的协议上下文透传给当前 LLM 节点调用的模型服务。'
+      )
+    ).toBeInTheDocument();
     expect(field).toHaveTextContent('protocol_context');
     expect(getLlmNodeConfig(state.draft.document)).not.toHaveProperty(
       'protocol_context'
     );
+  });
+
+  test('shows the protocol passthrough help in English', async () => {
+    window.localStorage.setItem('1flowbase.ui.locale_preference', 'en_US');
+    await appI18n.changeLanguage('en_US');
+    const state = createInitialStateWithProtocolContextCodeNode();
+
+    renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state}>
+        <SelectionSeed nodeId="node-llm" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    const field = await screen.findByTestId(
+      'inspector-field-config.protocol_context'
+    );
+    expect(
+      within(field).getByLabelText(
+        'Passes the selected protocol context through to the model service called by this LLM node.'
+      )
+    ).toBeInTheDocument();
   });
 
   test('WP-D1D drives enablement and whole-object selection from one nullable reference', async () => {

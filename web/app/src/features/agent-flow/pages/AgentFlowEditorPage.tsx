@@ -3,6 +3,7 @@ import { Result } from 'antd';
 import type { ReactNode } from 'react';
 
 import { ApiClientError } from '@1flowbase/api-client';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
 import {
   applicationEnvironmentVariablesQueryKey,
@@ -46,12 +47,7 @@ export function AgentFlowEditorPage({
     nodeContributionsQuery.isPending ||
     environmentVariablesQuery.isPending
   ) {
-    return (
-      <Result
-        status="info"
-        title={i18nText('agentFlow', 'auto.orchestration_loading')}
-      />
-    );
+    return <LoadingState compact />;
   }
 
   if (
