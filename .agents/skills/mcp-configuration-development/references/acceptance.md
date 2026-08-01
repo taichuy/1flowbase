@@ -26,7 +26,7 @@
 - Agent-facing 参数名、说明和 required 与 `input_mapping` 一致。
 - Group 与 Binding 引用有效，启用、可见与排序状态符合目标。
 - 没有写入或配置 `children_count`。
-- 必需容器对象已通过真实 `mcp.call` 证明能由 mapping 构造，没有用虚假占位值绕过 Schema。
+- 必需容器对象已通过真实 `mcp.call` 证明能由当前 request Schema 与 interface wrapper 自动物化，没有用 mapping 虚假占位值绕过 Schema。
 - 已发布能力只有在存在可绑定 operation 与可验证认证 contract 时才配置 invocation Tool；否则明确记录缺口。
 - 本轮停止或失败后不存在无 Tool 的空 Group、错误复用 Binding 或无消费者新 Tool。
 
