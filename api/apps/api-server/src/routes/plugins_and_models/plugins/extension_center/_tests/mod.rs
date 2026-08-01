@@ -343,6 +343,7 @@ fn root_1545_ac_5_preflight_requires_exact_integrity_and_compatibility_acknowled
         locator: "https://example.test/plugin.1flowbasepkg".to_string(),
         expected_checksum: None,
         signature: None,
+        platform: None,
     };
     let challenge = artifact_preflight_challenge(&entry, &descriptor, &[]);
     assert_eq!(

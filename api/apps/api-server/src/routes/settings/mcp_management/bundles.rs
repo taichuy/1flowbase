@@ -27,6 +27,7 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
+    official_extension_catalog::{OfficialExtensionCatalogEntry, OfficialExtensionCatalogPage},
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
@@ -111,7 +112,21 @@ async fn list_official_bundles(
     McpManagementService::new(state.store.clone())
         .authorize_bundle_management(context.user.id)
         .await?;
-    let mut catalog = state.official_mcp_bundle_source.list_catalog().await?;
+    let first_page = state
+        .official_extension_catalog_source
+        .list_page("mcp", None)
+        .await?;
+    let mut next_cursor = first_page.metadata.next_cursor.clone();
+    let mut pages = vec![first_page];
+    while let Some(cursor) = next_cursor {
+        let page = state
+            .official_extension_catalog_source
+            .list_page("mcp", Some(&cursor))
+            .await?;
+        next_cursor = page.metadata.next_cursor.clone();
+        pages.push(page);
+    }
+    let mut catalog = project_official_mcp_catalog(&state, pages)?;
     let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
     catalog.source.source_label = crate::app_state::resolve_official_source_label(
         &state,
@@ -121,6 +136,74 @@ async fn list_official_bundles(
     )
     .await?;
     Ok(Json(ApiSuccess::new(catalog)))
+}
+
+fn project_official_mcp_catalog(
+    state: &ApiState,
+    pages: Vec<OfficialExtensionCatalogPage>,
+) -> anyhow::Result<crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot> {
+    let first = pages
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("official MCP catalog has no page"))?;
+    let source_kind = first.source_kind.clone();
+    let catalog_url = first.metadata.locator.clone();
+    let entries = pages
+        .into_iter()
+        .flat_map(|page| page.entries)
+        .map(|entry| project_official_mcp_entry(state, entry))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    Ok(
+        crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot {
+            source: crate::official_mcp_bundles::OfficialMcpBundleCatalogSource {
+                source_label: source_kind.clone(),
+                source_kind,
+                catalog_url,
+            },
+            entries,
+        },
+    )
+}
+
+fn project_official_mcp_entry(
+    state: &ApiState,
+    entry: OfficialExtensionCatalogEntry,
+) -> anyhow::Result<crate::official_mcp_bundles::OfficialMcpBundleCatalogEntry> {
+    if entry.category != "mcp" {
+        anyhow::bail!("official MCP catalog projection received another category");
+    }
+    let locale = catalog_metadata_string(&entry, "locale")?;
+    let exported_from_system_version =
+        catalog_metadata_string(&entry, "exported_from_system_version")?;
+    let release_tag = catalog_metadata_string(&entry, "release_tag")?;
+    let descriptor = state
+        .official_extension_catalog_source
+        .resolve_artifact(&entry)?;
+    Ok(crate::official_mcp_bundles::OfficialMcpBundleCatalogEntry {
+        organization: entry.organization,
+        bundle_id: entry.artifact,
+        latest_version: entry.version,
+        locale,
+        minimum_host_version: entry.host_version_requirement,
+        exported_from_system_version,
+        release_tag,
+        download_url: descriptor.locator,
+        artifact_sha256: descriptor.expected_checksum,
+    })
+}
+
+fn catalog_metadata_string(
+    entry: &OfficialExtensionCatalogEntry,
+    field: &'static str,
+) -> anyhow::Result<String> {
+    entry
+        .source
+        .metadata
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| anyhow::anyhow!("official extension catalog entry is missing {field}"))
 }
 
 async fn preview_official_bundle(

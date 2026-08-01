@@ -66,16 +66,182 @@ pub async fn list_official_catalog(
         query.locale.clone(),
         context.user.preferred_locale,
     );
-    let catalog = service(&state, "model_provider_plugins.official_catalog.view")
-        .list_official_catalog(
+    let local_catalog = service(&state, "model_provider_plugins.official_catalog.view")
+        .list_catalog(
             context.user.id,
-            official_filter_from_query(&query),
+            filter_from_query(&PluginCatalogQuery {
+                plugin_type: query.plugin_type.clone(),
+                locale: query.locale.clone(),
+            }),
             requested_locales(&locale_meta),
         )
         .await?;
-    Ok(Json(ApiSuccess::new(
-        to_official_catalog_response(&state, locale_meta, catalog).await?,
-    )))
+    let page = state
+        .official_extension_catalog_source
+        .list_page("runtime-extensions", query.cursor.as_deref())
+        .await?;
+    let filter = official_filter_from_query(&query);
+    let installed = local_catalog
+        .entries
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.installation.provider_code,
+                if entry.assigned_to_current_workspace {
+                    "assigned"
+                } else {
+                    "installed"
+                },
+            )
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut entries = page
+        .entries
+        .into_iter()
+        .filter_map(
+            |entry| match project_model_provider_catalog_entry(&state, entry, &installed) {
+                Ok(Some(entry)) => Some(Ok(entry)),
+                Ok(None) => None,
+                Err(error) => Some(Err(error)),
+            },
+        )
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    if let Some(search) = filter.search_query.as_deref() {
+        let search = search.to_lowercase();
+        entries.retain(|entry| {
+            entry.display_name.to_lowercase().contains(&search)
+                || entry
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| description.to_lowercase().contains(&search))
+                || entry.provider_code.to_lowercase().contains(&search)
+                || entry.plugin_id.to_lowercase().contains(&search)
+                || entry.protocol.to_lowercase().contains(&search)
+        });
+    }
+    entries.truncate(filter.limit);
+    let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
+        .expect("runtime profile must resolve a supported catalog locale");
+    let source_label = crate::app_state::resolve_official_source_label(
+        &state,
+        &locale,
+        &page.source_kind,
+        page.source_kind.clone(),
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(OfficialPluginCatalogResponse {
+        source_kind: page.source_kind,
+        source_label,
+        registry_url: page.metadata.locator,
+        source_freshness: match page.metadata.freshness {
+            crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh => "fresh",
+            crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Stale => "stale",
+        }
+        .to_string(),
+        locale_meta,
+        page: OfficialPluginCatalogPageResponse {
+            limit: filter.limit,
+            next_cursor: page.metadata.next_cursor,
+        },
+        entries,
+    })))
+}
+
+fn project_model_provider_catalog_entry(
+    state: &ApiState,
+    entry: crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    installed: &std::collections::HashMap<String, &'static str>,
+) -> anyhow::Result<Option<OfficialPluginCatalogEntryResponse>> {
+    if catalog_metadata_optional(&entry, "plugin_type").as_deref()
+        != Some(MODEL_PROVIDER_PLUGIN_TYPE)
+    {
+        return Ok(None);
+    }
+    let plugin_id = catalog_metadata_required(&entry, "plugin_id")?;
+    let provider_code = catalog_metadata_required(&entry, "provider_code")?;
+    let protocol = catalog_metadata_required(&entry, "protocol")?;
+    let model_discovery_mode = catalog_metadata_required(&entry, "model_discovery_mode")?;
+    let icon = catalog_metadata_optional(&entry, "icon");
+    let help_url = catalog_metadata_optional(&entry, "help_url");
+    let descriptor = state
+        .official_extension_catalog_source
+        .resolve_artifact(&entry)?;
+    let checksum = descriptor.expected_checksum.ok_or_else(|| {
+        anyhow::anyhow!("official model-provider catalog entry is missing checksum")
+    })?;
+    let platform = descriptor.platform.ok_or_else(|| {
+        anyhow::anyhow!("official model-provider catalog entry has no current-platform artifact")
+    })?;
+    let signature_algorithm = descriptor
+        .signature
+        .as_ref()
+        .and_then(|signature| signature.get("algorithm"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let signing_key_id = descriptor
+        .signature
+        .as_ref()
+        .and_then(|signature| signature.get("key_id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let current_host_version = control_plane::plugin_management::current_plugin_host_version();
+    let compatibility = control_plane::plugin_management::official_plugin_host_compatibility(
+        &entry.host_version_requirement,
+        &current_host_version,
+    );
+    Ok(Some(OfficialPluginCatalogEntryResponse {
+        plugin_id,
+        plugin_type: MODEL_PROVIDER_PLUGIN_TYPE.to_string(),
+        provider_code: provider_code.clone(),
+        display_name: entry.name,
+        description: (!entry.description.trim().is_empty()).then_some(entry.description),
+        icon,
+        protocol,
+        latest_version: entry.version,
+        minimum_host_version: compatibility.minimum_host_version,
+        current_host_version: compatibility.current_host_version,
+        compatibility_status: compatibility.status,
+        compatibility_warning_reason: compatibility.warning_reason,
+        selected_artifact: OfficialPluginArtifactResponse {
+            os: platform.os,
+            arch: platform.arch,
+            libc: platform.libc,
+            rust_target: platform.rust_target,
+            download_url: descriptor.locator,
+            checksum,
+            signature_algorithm,
+            signing_key_id,
+        },
+        help_url,
+        model_discovery_mode,
+        install_status: installed
+            .get(&provider_code)
+            .copied()
+            .unwrap_or("not_installed")
+            .to_string(),
+    }))
+}
+
+fn catalog_metadata_required(
+    entry: &crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    field: &'static str,
+) -> anyhow::Result<String> {
+    catalog_metadata_optional(entry, field)
+        .ok_or_else(|| anyhow::anyhow!("official model-provider catalog entry is missing {field}"))
+}
+
+fn catalog_metadata_optional(
+    entry: &crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    field: &str,
+) -> Option<String> {
+    entry
+        .source
+        .metadata
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 #[utoipa::path(

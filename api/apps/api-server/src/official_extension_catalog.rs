@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -16,7 +20,14 @@ use crate::{
 const EXTENSION_CATALOG_SCHEMA_VERSION: &str = "1flowbase.extension-catalog/v1";
 const MAX_EXTENSION_CATALOG_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_EXTENSION_ARTIFACT_BYTES: usize = 64 * 1024 * 1024;
-const EXTENSION_SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const EXTENSION_SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+const EXTENSION_SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OfficialExtensionCatalogFreshness {
+    Fresh,
+    Stale,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct OfficialExtensionCatalogEntrySource {
@@ -63,6 +74,7 @@ pub struct OfficialExtensionCatalogPageMetadata {
     pub next_cursor: Option<String>,
     pub page_size: usize,
     pub total_entries: usize,
+    pub freshness: OfficialExtensionCatalogFreshness,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +97,15 @@ pub struct OfficialExtensionArtifactDescriptor {
     pub locator: String,
     pub expected_checksum: Option<String>,
     pub signature: Option<Value>,
+    pub platform: Option<OfficialExtensionArtifactPlatform>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfficialExtensionArtifactPlatform {
+    pub os: String,
+    pub arch: String,
+    pub libc: Option<String>,
+    pub rust_target: String,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +144,20 @@ pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
 pub struct ApiOfficialExtensionCatalogSource {
     sources: Arc<BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>>,
     client: Client,
+    last_success: Arc<Mutex<HashMap<CatalogCacheKey, OfficialExtensionCatalogPage>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CatalogCacheKey {
+    category: String,
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CatalogEndpoint {
+    source_kind: String,
+    index_url: String,
+    github_proxy_url: Option<String>,
 }
 
 impl ApiOfficialExtensionCatalogSource {
@@ -130,6 +165,7 @@ impl ApiOfficialExtensionCatalogSource {
         Self {
             sources: Arc::new(config.official_extension_catalog_sources.clone()),
             client: extension_source_client(),
+            last_success: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -137,6 +173,19 @@ impl ApiOfficialExtensionCatalogSource {
         Self {
             sources: Arc::new(sources),
             client: extension_source_client(),
+            last_success: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_request_timeout(
+        sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
+        request_timeout: Duration,
+    ) -> Self {
+        Self {
+            sources: Arc::new(sources),
+            client: extension_source_client_with_timeout(request_timeout),
+            last_success: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -146,31 +195,54 @@ impl ApiOfficialExtensionCatalogSource {
         })
     }
 
+    fn endpoints(&self, category: &str) -> Result<Vec<CatalogEndpoint>> {
+        let source = self.source(category)?;
+        let primary_url =
+            rewrite_github_raw_url(&source.index_url, source.github_proxy_url.as_deref());
+        let primary = CatalogEndpoint {
+            source_kind: if primary_url != source.index_url {
+                "configured_proxy".to_string()
+            } else {
+                source.source_kind.clone()
+            },
+            index_url: primary_url.clone(),
+            github_proxy_url: source.github_proxy_url.clone(),
+        };
+        if primary_url == source.official_index_url {
+            return Ok(vec![primary]);
+        }
+        Ok(vec![
+            primary,
+            CatalogEndpoint {
+                source_kind: "official_repository".to_string(),
+                index_url: source.official_index_url.clone(),
+                github_proxy_url: None,
+            },
+        ])
+    }
+
     async fn fetch_index(
         &self,
         category: &str,
-    ) -> Result<(
-        ResolvedOfficialExtensionCatalogSourceConfig,
-        CatalogIndexDocument,
-    )> {
-        let source = self.source(category)?.clone();
-        let index_url =
-            rewrite_github_raw_url(&source.index_url, source.github_proxy_url.as_deref());
-        let bytes = self.download_document(&index_url).await?;
+        endpoint: &CatalogEndpoint,
+    ) -> Result<CatalogIndexDocument> {
+        let bytes = self.download_document(&endpoint.index_url).await?;
         let document = serde_json::from_slice::<CatalogIndexDocument>(&bytes)
             .context("failed to decode official extension catalog index")?;
         validate_index(&document, category)?;
-        Ok((source, document))
+        Ok(document)
     }
 
     async fn fetch_page(
         &self,
-        source: &ResolvedOfficialExtensionCatalogSourceConfig,
+        endpoint: &CatalogEndpoint,
         index: &CatalogIndexDocument,
         page_reference: &CatalogPageReference,
     ) -> Result<OfficialExtensionCatalogPage> {
-        let locator =
-            rewrite_github_raw_url(&page_reference.locator, source.github_proxy_url.as_deref());
+        let locator = rewrite_github_raw_url(
+            &page_reference.locator,
+            endpoint.github_proxy_url.as_deref(),
+        );
         let bytes = self.download_document(&locator).await?;
         ensure_sha256(&bytes, &page_reference.checksum)?;
         let document = serde_json::from_slice::<CatalogPageDocument>(&bytes)
@@ -178,7 +250,7 @@ impl ApiOfficialExtensionCatalogSource {
         validate_page(&document, &index.category, page_reference)?;
 
         Ok(OfficialExtensionCatalogPage {
-            source_kind: source.source_kind.clone(),
+            source_kind: endpoint.source_kind.clone(),
             category: index.category.clone(),
             metadata: OfficialExtensionCatalogPageMetadata {
                 page: document.page,
@@ -188,9 +260,51 @@ impl ApiOfficialExtensionCatalogSource {
                 next_cursor: document.next_cursor,
                 page_size: index.page_size,
                 total_entries: index.total_entries,
+                freshness: OfficialExtensionCatalogFreshness::Fresh,
             },
             entries: document.entries,
         })
+    }
+
+    async fn load_page(
+        &self,
+        category: &str,
+        cursor: Option<&str>,
+        endpoint: &CatalogEndpoint,
+    ) -> Result<OfficialExtensionCatalogPage> {
+        let index = self.fetch_index(category, endpoint).await?;
+        let requested_cursor = cursor
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&index.first_page.cursor);
+        let page_reference = index
+            .pages
+            .iter()
+            .find(|page| page.cursor == requested_cursor)
+            .ok_or_else(|| anyhow!("official extension catalog cursor was not found"))?;
+        self.fetch_page(endpoint, &index, page_reference).await
+    }
+
+    fn cache_key(category: &str, cursor: Option<&str>) -> CatalogCacheKey {
+        CatalogCacheKey {
+            category: category.to_string(),
+            cursor: cursor
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        }
+    }
+
+    fn remember_page(&self, key: CatalogCacheKey, page: &OfficialExtensionCatalogPage) {
+        if let Ok(mut cache) = self.last_success.lock() {
+            cache.insert(key, page.clone());
+        }
+    }
+
+    fn stale_page(&self, key: &CatalogCacheKey) -> Option<OfficialExtensionCatalogPage> {
+        let mut page = self.last_success.lock().ok()?.get(key)?.clone();
+        page.metadata.freshness = OfficialExtensionCatalogFreshness::Stale;
+        Some(page)
     }
 
     async fn download_document(&self, url: &str) -> Result<Vec<u8>> {
@@ -243,8 +357,13 @@ impl ApiOfficialExtensionCatalogSource {
 }
 
 fn extension_source_client() -> Client {
+    extension_source_client_with_timeout(EXTENSION_SOURCE_REQUEST_TIMEOUT)
+}
+
+fn extension_source_client_with_timeout(request_timeout: Duration) -> Client {
     Client::builder()
-        .timeout(EXTENSION_SOURCE_REQUEST_TIMEOUT)
+        .connect_timeout(EXTENSION_SOURCE_CONNECT_TIMEOUT)
+        .timeout(request_timeout)
         .build()
         .expect("extension source HTTP client configuration must be valid")
 }
@@ -256,17 +375,24 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         category: &str,
         cursor: Option<&str>,
     ) -> Result<OfficialExtensionCatalogPage> {
-        let (source, index) = self.fetch_index(category).await?;
-        let requested_cursor = cursor
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(&index.first_page.cursor);
-        let page_reference = index
-            .pages
-            .iter()
-            .find(|page| page.cursor == requested_cursor)
-            .ok_or_else(|| anyhow!("official extension catalog cursor was not found"))?;
-        self.fetch_page(&source, &index, page_reference).await
+        let key = Self::cache_key(category, cursor);
+        let mut failures = Vec::new();
+        for endpoint in self.endpoints(category)? {
+            match self.load_page(category, cursor, &endpoint).await {
+                Ok(page) => {
+                    self.remember_page(key.clone(), &page);
+                    return Ok(page);
+                }
+                Err(error) => failures.push(error),
+            }
+        }
+        if let Some(page) = self.stale_page(&key) {
+            return Ok(page);
+        }
+        Err(failures
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| anyhow!("official extension catalog has no configured source")))
     }
 
     async fn find_entry(
@@ -274,19 +400,66 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         category: &str,
         catalog_id: &str,
     ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>> {
-        let (source, index) = self.fetch_index(category).await?;
-        for page_reference in &index.pages {
-            let page = self.fetch_page(&source, &index, page_reference).await?;
-            if let Some(entry) = page
-                .entries
-                .into_iter()
-                .find(|entry| entry.id == catalog_id)
-            {
-                return Ok(Some(LocatedOfficialExtensionCatalogEntry {
-                    source_kind: source.source_kind.clone(),
-                    entry,
-                }));
+        let mut failures = Vec::new();
+        for endpoint in self.endpoints(category)? {
+            let index = match self.fetch_index(category, &endpoint).await {
+                Ok(index) => index,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
+                }
+            };
+            let mut failed = None;
+            for page_reference in &index.pages {
+                match self.fetch_page(&endpoint, &index, page_reference).await {
+                    Ok(page) => {
+                        self.remember_page(
+                            Self::cache_key(category, Some(&page.metadata.cursor)),
+                            &page,
+                        );
+                        if let Some(entry) = page
+                            .entries
+                            .into_iter()
+                            .find(|entry| entry.id == catalog_id)
+                        {
+                            return Ok(Some(LocatedOfficialExtensionCatalogEntry {
+                                source_kind: endpoint.source_kind.clone(),
+                                entry,
+                            }));
+                        }
+                    }
+                    Err(error) => {
+                        failed = Some(error);
+                        break;
+                    }
+                }
             }
+            if let Some(error) = failed {
+                failures.push(error);
+                continue;
+            }
+            return Ok(None);
+        }
+        if !failures.is_empty() {
+            if let Ok(cache) = self.last_success.lock() {
+                if let Some(page) = cache.values().find(|page| {
+                    page.category == category
+                        && page.entries.iter().any(|entry| entry.id == catalog_id)
+                }) {
+                    if let Some(entry) = page
+                        .entries
+                        .iter()
+                        .find(|entry| entry.id == catalog_id)
+                        .cloned()
+                    {
+                        return Ok(Some(LocatedOfficialExtensionCatalogEntry {
+                            source_kind: page.source_kind.clone(),
+                            entry,
+                        }));
+                    }
+                }
+            }
+            return Err(failures.remove(0));
         }
         Ok(None)
     }
@@ -334,6 +507,7 @@ struct PlatformArtifactDocument {
     os: String,
     arch: String,
     libc: Option<String>,
+    rust_target: Option<String>,
     locator: String,
     checksum: Option<String>,
     signature: Option<Value>,
@@ -356,6 +530,7 @@ fn resolve_artifact_descriptor(
                 locator: rewrite_github_download_url(&url, github_proxy_url),
                 expected_checksum: entry.checksum.clone(),
                 signature: entry.signature.clone(),
+                platform: None,
             })
         }
         "platform_release_assets" => {
@@ -369,9 +544,33 @@ fn resolve_artifact_descriptor(
                     .signature
                     .clone()
                     .or_else(|| entry.signature.clone()),
+                platform: Some(OfficialExtensionArtifactPlatform {
+                    os: selected.os.clone(),
+                    arch: selected.arch.clone(),
+                    libc: selected.libc.clone(),
+                    rust_target: selected
+                        .rust_target
+                        .clone()
+                        .unwrap_or_else(|| rust_target_for_platform(selected)),
+                }),
             })
         }
         _ => bail!("unsupported official extension download locator kind"),
+    }
+}
+
+fn rust_target_for_platform(artifact: &PlatformArtifactDocument) -> String {
+    let architecture = match artifact.arch.as_str() {
+        "amd64" => "x86_64",
+        "arm64" => "aarch64",
+        value => value,
+    };
+    match (artifact.os.as_str(), artifact.libc.as_deref()) {
+        ("linux", Some("musl")) => format!("{architecture}-unknown-linux-musl"),
+        ("linux", _) => format!("{architecture}-unknown-linux-gnu"),
+        ("windows", _) => format!("{architecture}-pc-windows-msvc"),
+        ("macos", _) => format!("{architecture}-apple-darwin"),
+        (os, _) => format!("{architecture}-unknown-{os}"),
     }
 }
 

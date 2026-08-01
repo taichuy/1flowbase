@@ -1,6 +1,10 @@
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -120,6 +124,142 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
     server.abort();
 }
 
+#[tokio::test]
+async fn delivery_1560_d5_ac_001_mirror_failure_falls_back_to_official_metadata() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, _) = catalog_documents(&base_url);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(BTreeMap::from([(
+        "runtime-extensions".to_string(),
+        ResolvedOfficialExtensionCatalogSourceConfig {
+            source_kind: "configured_mirror".to_string(),
+            index_url: format!("{base_url}/unavailable-mirror/index.json"),
+            official_index_url: format!("{base_url}/runtime-extensions/catalog/v1/index.json"),
+            github_proxy_url: None,
+        },
+    )]));
+
+    let page = source.list_page("runtime-extensions", None).await.unwrap();
+    assert_eq!(page.source_kind, "official_repository");
+    assert_eq!(
+        page.metadata.freshness,
+        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh
+    );
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/unavailable-mirror/index.json",
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/pages/1.json"
+        ]
+    );
+    server.abort();
+}
+
+#[derive(Clone)]
+struct SwitchableCatalogFixture {
+    documents: Arc<BTreeMap<String, Vec<u8>>>,
+    failing: Arc<AtomicBool>,
+}
+
+async fn switchable_catalog_response(
+    State(fixture): State<SwitchableCatalogFixture>,
+    request: Request<Body>,
+) -> Response {
+    if fixture.failing.load(Ordering::SeqCst) {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    match fixture.documents.get(request.uri().path()) {
+        Some(bytes) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            bytes.clone(),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_ac_002_last_success_is_returned_stale_without_touching_local_artifacts() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let failing = Arc::new(AtomicBool::new(false));
+    let fixture = SwitchableCatalogFixture {
+        documents: Arc::new(documents),
+        failing: Arc::clone(&failing),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(switchable_catalog_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    source.list_page("mcp", None).await.unwrap();
+    failing.store(true, Ordering::SeqCst);
+
+    let stale = source.list_page("mcp", None).await.unwrap();
+    assert_eq!(
+        stale.metadata.freshness,
+        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Stale
+    );
+    assert_eq!(stale.entries[0].id, "mcp:taichuy/mcp-fixture");
+    server.abort();
+}
+
+async fn never_responds() -> Response {
+    std::future::pending::<Response>().await
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_ac_003_no_stale_timeout_returns_a_bounded_clear_failure() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let index_url = format!("http://{}/index.json", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, Router::new().fallback(never_responds))
+            .await
+            .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new_with_request_timeout(
+        BTreeMap::from([(
+            "mcp".to_string(),
+            ResolvedOfficialExtensionCatalogSourceConfig {
+                source_kind: "official_repository".to_string(),
+                index_url: index_url.clone(),
+                official_index_url: index_url,
+                github_proxy_url: None,
+            },
+        )]),
+        Duration::from_millis(40),
+    );
+    let started = Instant::now();
+    let error = source.list_page("mcp", None).await.unwrap_err();
+    assert!(started.elapsed() < Duration::from_millis(500));
+    assert!(error
+        .to_string()
+        .contains("failed to request official extension catalog document"));
+    server.abort();
+}
+
 #[test]
 fn root_1545_ac_3_platform_download_selects_current_target_and_rewrites_github_proxy() {
     let category = "runtime-extensions";
@@ -128,6 +268,7 @@ fn root_1545_ac_3_platform_download_selects_current_target_and_rewrites_github_p
         ResolvedOfficialExtensionCatalogSourceConfig {
             source_kind: "configured_mirror".to_string(),
             index_url: "https://example.test/index.json".to_string(),
+            official_index_url: "https://example.test/index.json".to_string(),
             github_proxy_url: Some("https://proxy.example".to_string()),
         },
     )]));
@@ -190,6 +331,10 @@ fn root_1545_ac_3_platform_download_selects_current_target_and_rewrites_github_p
         descriptor.expected_checksum.as_deref(),
         Some(format!("sha256:{}", "c".repeat(64)).as_str())
     );
+    let platform = descriptor.platform.as_ref().unwrap();
+    assert_eq!(platform.os, os);
+    assert_eq!(platform.arch, arch);
+    assert!(!platform.rust_target.is_empty());
 }
 
 async fn catalog_response(
@@ -266,6 +411,7 @@ fn catalog_documents(
             ResolvedOfficialExtensionCatalogSourceConfig {
                 source_kind: "official_repository".to_string(),
                 index_url: format!("{base_url}/{category}/catalog/v1/index.json"),
+                official_index_url: format!("{base_url}/{category}/catalog/v1/index.json"),
                 github_proxy_url: None,
             },
         );
