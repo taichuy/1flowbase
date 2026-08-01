@@ -34,7 +34,15 @@ const modelProvidersApi = vi.hoisted(() => ({
   fetchSettingsModelProviderOptions: vi.fn()
 }));
 
+const pluginsApi = vi.hoisted(() => ({
+  settingsOfficialPluginsQueryKey: ['settings', 'plugins', 'official-catalog'],
+  settingsPluginFamiliesQueryKey: ['settings', 'plugins', 'families'],
+  fetchSettingsOfficialPluginCatalog: vi.fn(),
+  fetchSettingsPluginFamilies: vi.fn()
+}));
+
 vi.mock('../../../../api/model-providers', () => modelProvidersApi);
+vi.mock('../../../../api/plugins', () => pluginsApi);
 
 function createQueryClient() {
   return new QueryClient({
@@ -109,6 +117,35 @@ describe('useModelProviderData', () => {
       revision: 0,
       model_routing_policies: []
     });
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([
+      {
+        provider_code: 'openai_compatible',
+        display_name: 'OpenAI Compatible',
+        protocol: 'openai_compatible',
+        help_url: null,
+        default_base_url: 'https://api.openai.com/v1',
+        model_discovery_mode: 'hybrid',
+        current_installation_id: 'installation-1',
+        current_version: '0.1.0',
+        latest_version: '0.1.0',
+        has_update: false,
+        installed_versions: []
+      }
+    ]);
+    pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
+      source_kind: 'official_registry',
+      source_label: 'official',
+      registry_url: 'https://official.example.com/registry.json',
+      locale_meta: {
+        resolved_locale: 'zh_Hans',
+        fallback_locale: 'en_US'
+      },
+      page: {
+        limit: 20,
+        next_cursor: null
+      },
+      entries: []
+    });
   });
 
   test('uses main-instance settings as the create drawer inclusion default when provider options are empty', async () => {
@@ -123,8 +160,12 @@ describe('useModelProviderData', () => {
     expect(
       modelProvidersApi.fetchSettingsModelProviderCatalog
     ).toHaveBeenCalledWith('zh_Hans');
-    expect(
-      modelProvidersApi.fetchSettingsModelProviderCatalog
-    ).toHaveBeenCalledTimes(1);
+    expect(pluginsApi.fetchSettingsPluginFamilies).toHaveBeenCalledWith(
+      'zh_Hans'
+    );
+    expect(pluginsApi.fetchSettingsOfficialPluginCatalog).toHaveBeenCalledWith({
+      locale: 'zh_Hans',
+      q: undefined
+    });
   });
 });

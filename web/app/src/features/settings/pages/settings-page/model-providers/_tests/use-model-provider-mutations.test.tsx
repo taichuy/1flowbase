@@ -32,7 +32,31 @@ const modelProvidersApi = vi.hoisted(() => ({
   validateSettingsModelProviderInstance: vi.fn()
 }));
 
+const pluginsApi = vi.hoisted(() => ({
+  settingsOfficialPluginsQueryKey: ['settings', 'plugins', 'official-catalog'],
+  settingsPluginFamiliesQueryKey: ['settings', 'plugins', 'families'],
+  deleteSettingsPluginFamily: vi.fn(),
+  installSettingsPluginCurrentNodeArtifact: vi.fn(),
+  installSettingsOfficialPlugin: vi.fn(),
+  refreshSettingsPluginCurrentNodeArtifact: vi.fn(),
+  switchSettingsPluginFamilyVersion: vi.fn(),
+  upgradeSettingsPluginFamilyLatest: vi.fn(),
+  uploadSettingsPluginPackage: vi.fn()
+}));
+
+const blockCatalogApi = vi.hoisted(() => ({
+  frontstageBlockCatalogQueryKeyPrefix: ['frontstage', 'block-catalog']
+}));
+
 vi.mock('../../../../api/model-providers', () => modelProvidersApi);
+vi.mock('../../../../api/plugins', () => pluginsApi);
+vi.mock('../../../../../frontstage/api/block-catalog', () => blockCatalogApi);
+vi.mock(
+  '../../../../components/model-providers/plugin-installation-status',
+  () => ({
+    formatPluginAvailabilityStatus: vi.fn(() => ({ label: '可用' }))
+  })
+);
 
 function createQueryClient() {
   return new QueryClient({
@@ -54,7 +78,12 @@ function setupMutations(queryClient = createQueryClient()) {
       useModelProviderMutations({
         csrfToken: 'csrf-123',
         queryClient,
-        setDrawerState: stateSetter
+        setDrawerState: stateSetter,
+        setInstanceModalState: stateSetter,
+        setOfficialInstallState: stateSetter,
+        setUploadValidationMessage: stateSetter,
+        setUploadResultSummary: stateSetter,
+        setRecentVersionSwitchNotice: stateSetter
       }),
     { wrapper }
   );
@@ -91,11 +120,34 @@ function buildInstance(): SettingsModelProviderInstance {
   };
 }
 
+function buildPluginTask(id: string) {
+  return {
+    id,
+    installation_id: 'installation-1',
+    workspace_id: null,
+    provider_code: 'openai_compatible',
+    task_kind: 'install',
+    status: 'queued',
+    status_message: null,
+    detail_json: {},
+    created_at: '2026-04-18T10:05:00Z',
+    updated_at: '2026-04-18T10:05:00Z',
+    finished_at: null
+  };
+}
+
 describe('useModelProviderMutations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     modelProvidersApi.updateSettingsModelProviderInstance.mockResolvedValue(
       buildInstance()
+    );
+    pluginsApi.installSettingsOfficialPlugin.mockResolvedValue({
+      installation: {},
+      task: buildPluginTask('task-install')
+    });
+    pluginsApi.upgradeSettingsPluginFamilyLatest.mockResolvedValue(
+      buildPluginTask('task-upgrade')
     );
   });
 
@@ -182,5 +234,114 @@ describe('useModelProviderMutations', () => {
       },
       'csrf-123'
     );
+  });
+
+  test('passes official plugin host compatibility override to install and upgrade mutations', async () => {
+    const mutations = setupMutations();
+    const compatibilityOverride = {
+      reason: 'below_minimum_host_version',
+      acknowledged_current_host_version: '0.2.0',
+      acknowledged_minimum_host_version: '0.3.0'
+    } as const;
+
+    await act(async () => {
+      await mutations.current.officialInstallMutation.mutateAsync({
+        pluginId: '1flowbase.openai_compatible',
+        compatibilityOverride
+      });
+    });
+
+    expect(pluginsApi.installSettingsOfficialPlugin).toHaveBeenCalledWith(
+      '1flowbase.openai_compatible',
+      'csrf-123',
+      compatibilityOverride
+    );
+
+    await act(async () => {
+      await mutations.current.versionMutation.mutateAsync({
+        mode: 'upgrade',
+        providerCode: 'openai_compatible',
+        compatibilityOverride
+      });
+    });
+
+    expect(pluginsApi.upgradeSettingsPluginFamilyLatest).toHaveBeenCalledWith(
+      'openai_compatible',
+      'csrf-123',
+      compatibilityOverride
+    );
+  });
+
+  test('invalidates active and removes inactive frontstage catalog caches after plugin changes', async () => {
+    const queryClient = createQueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    pluginsApi.uploadSettingsPluginPackage.mockResolvedValue({
+      installation: {
+        display_name: 'Blocks',
+        plugin_version: '1.0.0',
+        trust_level: 'official',
+        availability_status: 'available'
+      }
+    });
+    const mutations = setupMutations(queryClient);
+
+    pluginsApi.installSettingsOfficialPlugin.mockResolvedValue({
+      installation: {},
+      task: {
+        ...buildPluginTask('task-install-success'),
+        status: 'succeeded',
+        finished_at: '2026-07-10T13:00:00Z'
+      }
+    });
+
+    await act(async () => {
+      await mutations.current.officialInstallMutation.mutateAsync({
+        pluginId: 'official.blocks'
+      });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
+
+    invalidateSpy.mockClear();
+    removeSpy.mockClear();
+
+    await act(async () => {
+      await mutations.current.uploadMutation.mutateAsync(
+        new File(['plugin'], 'blocks.1flowbasepkg')
+      );
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
+
+    invalidateSpy.mockClear();
+    removeSpy.mockClear();
+    pluginsApi.deleteSettingsPluginFamily.mockResolvedValue(undefined);
+
+    await act(async () => {
+      await mutations.current.familyDeleteMutation.mutateAsync(
+        'official.blocks'
+      );
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
+      type: 'inactive'
+    });
   });
 });
