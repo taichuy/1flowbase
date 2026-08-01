@@ -184,7 +184,6 @@ async fn native_responses_defers_cross_provider_failover_validation_to_the_llm_c
                 provider_code: "other_provider".into(),
                 protocol: "openai_responses".into(),
                 upstream_model_id: "other-model".into(),
-                runtime_capabilities: BTreeSet::new(),
             },
         ],
         distribution_rule:

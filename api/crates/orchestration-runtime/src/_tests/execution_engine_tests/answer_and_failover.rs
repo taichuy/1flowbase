@@ -1,6 +1,5 @@
 use super::*;
 use crate::node_error_policy::ERROR_BRANCH_SOURCE_HANDLE;
-use std::collections::BTreeSet;
 
 #[tokio::test]
 async fn failed_llm_does_not_expose_error_text_to_downstream_answer_contract() {
@@ -516,7 +515,6 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "primary-model".to_string(),
-                    runtime_capabilities: BTreeSet::new(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-backup".to_string(),
@@ -524,7 +522,6 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "backup-model".to_string(),
-                    runtime_capabilities: BTreeSet::new(),
                 },
             ],
             distribution_rule: LlmDistributionRule::RoundRobin,
@@ -1156,7 +1153,6 @@ fn model_group_llm_runtime(
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "gpt-5.4-mini".to_string(),
-                    runtime_capabilities: BTreeSet::new(),
                 })
                 .collect(),
             distribution_rule,
@@ -1198,7 +1194,6 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "primary-model".to_string(),
-                    runtime_capabilities: BTreeSet::new(),
                 },
                 CompiledLlmRouteTarget {
                     provider_instance_id: "provider-backup".to_string(),
@@ -1206,7 +1201,6 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
                     provider_code: "fixture_provider".to_string(),
                     protocol: "openai_compatible".to_string(),
                     upstream_model_id: "backup-model".to_string(),
-                    runtime_capabilities: BTreeSet::new(),
                 },
             ],
             distribution_rule: LlmDistributionRule::RetryRoundRobin,

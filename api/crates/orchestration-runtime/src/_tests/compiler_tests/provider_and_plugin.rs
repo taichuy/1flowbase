@@ -605,7 +605,6 @@ fn compile_uses_selected_instance_models_instead_of_provider_family_aggregate() 
             included_in_main: true,
             available_models: BTreeSet::from(["other-model".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
 
@@ -616,6 +615,28 @@ fn compile_uses_selected_instance_models_instead_of_provider_family_aggregate() 
         .compile_issues
         .iter()
         .any(|issue| issue.code == CompileIssueCode::ModelNotAvailable));
+}
+
+#[test]
+fn root_1534_compile_fixed_route_does_not_freeze_provider_capabilities() {
+    let flow_id = Uuid::now_v7();
+    let plan = FlowCompiler::compile(
+        flow_id,
+        "draft-1",
+        &sample_document(flow_id),
+        &compile_context(),
+    )
+    .unwrap();
+    let plan_json = serde_json::to_value(&plan).unwrap();
+    let fixed_target =
+        &plan_json["nodes"]["node-llm"]["llm_runtime"]["routing"]["fixed_model_target"];
+
+    assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
+    assert_eq!(fixed_target["provider_instance_id"], "provider-selected");
+    assert!(
+        fixed_target.get("runtime_capabilities").is_none(),
+        "Provider capabilities must be resolved from the live installation"
+    );
 }
 
 #[test]
@@ -634,7 +655,6 @@ fn compile_failover_queue_routes_with_frozen_targets() {
             included_in_main: true,
             available_models: BTreeSet::from(["backup-model".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
     let mut document = sample_document(flow_id);
@@ -677,6 +697,14 @@ fn compile_failover_queue_routes_with_frozen_targets() {
     assert_eq!(
         routing["queue_targets"][1]["provider_instance_display_name"],
         json!("Backup Provider")
+    );
+    assert!(
+        routing["queue_targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|target| target.get("runtime_capabilities").is_none()),
+        "Provider capabilities must not be frozen into failover targets"
     );
 }
 
@@ -747,7 +775,6 @@ fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
     let plan =
@@ -789,7 +816,6 @@ fn ac_004_compile_routes_main_model_targets_in_configured_order() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.model_routing_policies.insert(
@@ -838,7 +864,6 @@ fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.provider_instances.insert(
@@ -853,7 +878,6 @@ fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.model_routing_policies.insert(
@@ -925,7 +949,6 @@ fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
             included_in_main: true,
             available_models: BTreeSet::from(["gpt-5.4-mini".to_string()]),
             allow_custom_models: false,
-            runtime_capabilities: BTreeSet::new(),
         },
     );
     context.model_routing_policies.insert(

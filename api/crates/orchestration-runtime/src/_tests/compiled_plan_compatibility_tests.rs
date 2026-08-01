@@ -25,11 +25,19 @@ fn compiled_llm_route_target_accepts_legacy_payload_without_provider_display_nam
         "provider_instance_id": "provider-backup",
         "provider_code": "openai_compatible",
         "protocol": "openai_chat",
-        "upstream_model_id": "legacy-backup-model"
+        "upstream_model_id": "legacy-backup-model",
+        "runtime_capabilities": ["message_blocks.reasoning_history.v1"]
     }))
     .unwrap();
 
     assert_eq!(target.provider_instance_display_name, "");
+    assert!(
+        serde_json::to_value(target)
+            .unwrap()
+            .get("runtime_capabilities")
+            .is_none(),
+        "Provider capabilities belong to the live installation, not the compiled plan"
+    );
 }
 
 #[test]

@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use super::*;
 use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
 
@@ -13,6 +11,13 @@ mod protocol_context;
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
+
+#[derive(Clone)]
+struct RuntimeProviderInvocationPin {
+    instance: domain::ModelProviderInstanceRecord,
+    installation: domain::PluginInstallationRecord,
+    package: ProviderPackage,
+}
 
 #[async_trait]
 impl<R, H> orchestration_runtime::execution_engine::ProviderInvoker for RuntimeProviderInvoker<R, H>
@@ -69,12 +74,10 @@ where
         self.open_protocol_context_locator_value(locator).await
     }
 
-    async fn invoke_llm(
+    async fn resolve_llm_route(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
-        mut input: ProviderInvocationInput,
-    ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
-        self.apply_provider_transport(runtime, &mut input)?;
+    ) -> Result<orchestration_runtime::execution_engine::ResolvedProviderRoute> {
         let provider_resolve_started = std::time::Instant::now();
         let instance = self.resolve_llm_instance(runtime).await?;
         tracing::debug!(
@@ -112,6 +115,49 @@ where
             package_load_ms = package_load_started.elapsed().as_millis() as u64,
             "package load finished"
         );
+        let runtime_capabilities = package
+            .manifest
+            .runtime
+            .capabilities
+            .iter()
+            .cloned()
+            .collect();
+        Ok(
+            orchestration_runtime::execution_engine::ResolvedProviderRoute::new(
+                runtime_capabilities,
+                RuntimeProviderInvocationPin {
+                    instance,
+                    installation,
+                    package,
+                },
+            ),
+        )
+    }
+
+    async fn invoke_llm(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        input: ProviderInvocationInput,
+    ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
+        let resolved_route = self.resolve_llm_route(runtime).await?;
+        self.invoke_resolved_llm(runtime, resolved_route, input)
+            .await
+    }
+
+    async fn invoke_resolved_llm(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        resolved_route: orchestration_runtime::execution_engine::ResolvedProviderRoute,
+        mut input: ProviderInvocationInput,
+    ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
+        self.apply_provider_transport(runtime, &mut input)?;
+        let pin = resolved_route
+            .invocation_pin::<RuntimeProviderInvocationPin>()
+            .ok_or(ControlPlaneError::InvalidInput("resolved_provider_route"))?
+            .clone();
+        let instance = pin.instance;
+        let installation = pin.installation;
+        let package = pin.package;
         adapt_or_ensure_model_supports_content_blocks(
             &self.repository,
             &instance,
@@ -1596,7 +1642,7 @@ where
 
 pub(super) async fn freeze_failover_queue_routes<R>(
     repository: &R,
-    workspace_id: Uuid,
+    _workspace_id: Uuid,
     compiled_plan: &mut orchestration_runtime::compiled_plan::CompiledPlan,
 ) -> Result<()>
 where
@@ -1655,34 +1701,6 @@ where
                 )
             })
             .collect::<std::collections::HashMap<_, _>>();
-        let mut provider_runtime_capabilities = std::collections::HashMap::new();
-        for item in snapshot_items.iter().filter(|item| item.enabled) {
-            let capabilities = match repository
-                .get_instance(workspace_id, item.provider_instance_id)
-                .await?
-            {
-                Some(instance) => repository
-                    .get_installation(instance.installation_id)
-                    .await?
-                    .and_then(|installation| {
-                        installation
-                            .metadata_json
-                            .get("runtime_capabilities")
-                            .and_then(Value::as_array)
-                            .map(|values| {
-                                values
-                                    .iter()
-                                    .filter_map(Value::as_str)
-                                    .map(str::to_string)
-                                    .collect::<BTreeSet<_>>()
-                            })
-                    })
-                    .unwrap_or_default(),
-                None => BTreeSet::new(),
-            };
-            provider_runtime_capabilities
-                .insert(item.provider_instance_id.to_string(), capabilities);
-        }
         routing.queue_targets = snapshot_items
             .into_iter()
             .filter(|item| item.enabled)
@@ -1696,10 +1714,6 @@ where
                     provider_code: item.provider_code,
                     protocol: item.protocol,
                     upstream_model_id: item.upstream_model_id,
-                    runtime_capabilities: provider_runtime_capabilities
-                        .get(&item.provider_instance_id.to_string())
-                        .cloned()
-                        .unwrap_or_default(),
                 },
             )
             .collect();

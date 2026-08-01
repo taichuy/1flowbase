@@ -29,7 +29,7 @@ use crate::{
         resume_flow_debug_run, start_flow_debug_run, start_flow_debug_run_with_runtime_context,
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
         ExecutionRuntimeContext, LlmRoutingCounterStore, NativeSqlInvocationOutput,
-        ProviderInvocationOutput, ProviderInvoker,
+        ProviderInvocationOutput, ProviderInvoker, ResolvedProviderRoute,
     },
     execution_state::{
         compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,
@@ -45,6 +45,21 @@ struct StubProviderInvoker {
 
 #[async_trait]
 impl ProviderInvoker for StubProviderInvoker {
+    async fn resolve_llm_route(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
+        Ok(ResolvedProviderRoute::new(
+            [
+                "message_blocks.reasoning_history.v1".to_string(),
+                "message_blocks.redacted_reasoning_history.v1".to_string(),
+            ]
+            .into_iter()
+            .collect(),
+            (),
+        ))
+    }
+
     async fn invoke_llm(
         &self,
         _runtime: &CompiledLlmRuntime,

@@ -1,4 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    any::Any,
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -98,8 +102,49 @@ pub struct ProviderInvocationOutput {
     pub time_to_first_token_ms: Option<u64>,
 }
 
+#[derive(Clone)]
+pub struct ResolvedProviderRoute {
+    pub runtime_capabilities: BTreeSet<String>,
+    invocation_pin: Arc<dyn Any + Send + Sync>,
+}
+
+impl ResolvedProviderRoute {
+    pub fn new<T>(runtime_capabilities: BTreeSet<String>, invocation_pin: T) -> Self
+    where
+        T: Any + Send + Sync,
+    {
+        Self {
+            runtime_capabilities,
+            invocation_pin: Arc::new(invocation_pin),
+        }
+    }
+
+    pub fn invocation_pin<T>(&self) -> Option<&T>
+    where
+        T: Any + Send + Sync,
+    {
+        self.invocation_pin.downcast_ref::<T>()
+    }
+}
+
 #[async_trait]
 pub trait ProviderInvoker: Send + Sync {
+    async fn resolve_llm_route(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
+        Ok(ResolvedProviderRoute::new(BTreeSet::new(), ()))
+    }
+
+    async fn invoke_resolved_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        _resolved_route: ResolvedProviderRoute,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        self.invoke_llm(runtime, input).await
+    }
+
     async fn invoke_llm(
         &self,
         runtime: &CompiledLlmRuntime,
@@ -1211,8 +1256,7 @@ where
         )
     })?;
     if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
-        let attempt_runtimes =
-            llm_request_runtimes(node, runtime, runtime_context, &BTreeSet::new()).await?;
+        let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("CountTokens LLM consumer has no selected runtime"))?;
@@ -1232,8 +1276,7 @@ where
         runtime_context.operation(),
         domain::AiNativeOperation::Compact(_)
     ) {
-        let attempt_runtimes =
-            llm_request_runtimes(node, runtime, runtime_context, &BTreeSet::new()).await?;
+        let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;
@@ -1290,35 +1333,7 @@ where
         .as_ref()
         .map(|invocation| invocation.input.required_capabilities.clone())
         .unwrap_or_default();
-    let attempt_runtimes =
-        match llm_request_runtimes(node, runtime, runtime_context, &required_capabilities).await {
-            Ok(runtimes) => runtimes,
-            Err(error) => {
-                let provider_error = provider_runtime_error_from_anyhow(&error);
-                let error_payload = build_provider_error_payload(runtime, &provider_error);
-                return build_failed_llm_execution(
-                    node,
-                    runtime,
-                    error_payload,
-                    LlmFailureProjection::NoNodeOutput,
-                    None,
-                    build_llm_metrics_payload(
-                        runtime,
-                        ProviderUsage::default(),
-                        Some(ProviderFinishReason::Error),
-                        0,
-                        Vec::new(),
-                        None,
-                        None,
-                    ),
-                    Vec::new(),
-                    LlmDebugInvocation {
-                        messages: &[],
-                        context: None,
-                    },
-                );
-            }
-        };
+    let request_count = llm_request_count(node);
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -1333,7 +1348,105 @@ where
     let mut failed_attempts = Vec::new();
     let mut retry_reason: Option<String> = None;
 
-    for (attempt_index, attempt_runtime) in attempt_runtimes.iter().enumerate() {
+    for attempt_index in 0..request_count {
+        let resolved_attempt = match resolve_llm_request_runtime(
+            runtime,
+            runtime_context,
+            invoker,
+            &required_capabilities,
+            attempt_index,
+        )
+        .await
+        {
+            Ok(attempt) => attempt,
+            Err(error) => {
+                let provider_error = provider_runtime_error_from_anyhow(&error);
+                let error_payload = build_provider_error_payload(runtime, &provider_error);
+                return build_failed_llm_execution(
+                    node,
+                    runtime,
+                    error_payload,
+                    LlmFailureProjection::NoNodeOutput,
+                    None,
+                    build_llm_metrics_payload(
+                        runtime,
+                        ProviderUsage::default(),
+                        Some(ProviderFinishReason::Error),
+                        0,
+                        attempt_metrics,
+                        None,
+                        None,
+                    ),
+                    Vec::new(),
+                    LlmDebugInvocation {
+                        messages: &[],
+                        context: None,
+                    },
+                );
+            }
+        };
+        let attempt_runtime = &resolved_attempt.runtime;
+        let resolved_route = match resolved_attempt.route {
+            Ok(route) => route,
+            Err(error) => {
+                let attempt_started_at = OffsetDateTime::now_utc();
+                let provider_error = provider_runtime_error_from_anyhow(&error);
+                let mut error_payload =
+                    build_provider_error_payload(attempt_runtime, &provider_error);
+                error_payload["failed_after_first_token"] = Value::Bool(false);
+                let attempt = build_attempt_metric(AttemptMetricInput {
+                    attempt_index,
+                    retry_reason: retry_reason.as_deref(),
+                    runtime: attempt_runtime,
+                    status: "failed",
+                    failed_after_first_token: false,
+                    error_payload: Some(&error_payload),
+                    usage: &ProviderUsage::default(),
+                    event_count: 0,
+                    started_at: attempt_started_at,
+                    first_token_at: None,
+                    finished_at: OffsetDateTime::now_utc(),
+                    time_to_first_token_ms: None,
+                });
+                attempt_metrics.push(attempt.clone());
+                failed_attempts.push(attempt);
+                if retry_enabled
+                    && provider_error_allows_retry(&provider_error)
+                    && attempt_index + 1 < request_count
+                {
+                    retry_reason = error_payload
+                        .get("error_code")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    if retry_interval_ms > 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms))
+                            .await;
+                    }
+                    continue;
+                }
+                return build_failed_llm_execution(
+                    node,
+                    attempt_runtime,
+                    error_payload,
+                    LlmFailureProjection::NoNodeOutput,
+                    Some(recoverable_provider_error_message(&provider_error)),
+                    build_llm_metrics_payload(
+                        attempt_runtime,
+                        ProviderUsage::default(),
+                        Some(ProviderFinishReason::Error),
+                        0,
+                        attempt_metrics,
+                        None,
+                        None,
+                    ),
+                    Vec::new(),
+                    LlmDebugInvocation {
+                        messages: &[],
+                        context: None,
+                    },
+                );
+            }
+        };
         let route_matches_probe = routing_probe.is_some()
             && attempt_runtime.provider_instance_id == runtime.provider_instance_id
             && attempt_runtime.provider_code == runtime.provider_code
@@ -1443,7 +1556,10 @@ where
             &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
         let attempt_started_at = OffsetDateTime::now_utc();
-        let mut output = match invoker.invoke_llm(attempt_runtime, invocation.input).await {
+        let mut output = match invoker
+            .invoke_resolved_llm(attempt_runtime, resolved_route, invocation.input)
+            .await
+        {
             Ok(output) => output,
             Err(error) => {
                 let attempt_finished_at = OffsetDateTime::now_utc();
@@ -1470,7 +1586,7 @@ where
                 failed_attempts.push(attempt);
                 if retry_enabled
                     && provider_error_allows_retry(&provider_error)
-                    && attempt_index + 1 < attempt_runtimes.len()
+                    && attempt_index + 1 < request_count
                 {
                     retry_reason = error_payload
                         .get("error_code")
@@ -1607,7 +1723,7 @@ where
                 && provider_error
                     .as_ref()
                     .is_none_or(provider_error_allows_retry)
-                && attempt_index + 1 < attempt_runtimes.len()
+                && attempt_index + 1 < request_count
             {
                 retry_reason = error_payload
                     .get("error_code")

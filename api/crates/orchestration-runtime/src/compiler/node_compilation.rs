@@ -420,7 +420,6 @@ fn fixed_model_routing(
                 provider_code: provider_instance.provider_code.clone(),
                 protocol: provider_instance.protocol.clone(),
                 upstream_model_id: model.to_string(),
-                runtime_capabilities: provider_instance.runtime_capabilities.clone(),
             })
             .collect::<Vec<_>>();
         let distribution_key = (distribution_rule == LlmDistributionRule::RoundRobin)
@@ -448,7 +447,6 @@ fn fixed_model_routing(
             "provider_code": provider_instance.provider_code.clone(),
             "protocol": provider_instance.protocol.clone(),
             "upstream_model_id": model,
-            "runtime_capabilities": provider_instance.runtime_capabilities.clone(),
         })),
         queue_template_id: None,
         queue_snapshot_id: None,
@@ -534,7 +532,6 @@ fn compile_failover_queue_runtime(
         provider_code: String::new(),
         protocol: String::new(),
         upstream_model_id: String::new(),
-        runtime_capabilities: BTreeSet::new(),
     });
 
     Some(CompiledLlmRuntime {
@@ -648,7 +645,6 @@ fn compile_failover_queue_target(
             .unwrap_or(&provider_instance.protocol)
             .to_string(),
         upstream_model_id,
-        runtime_capabilities: provider_instance.runtime_capabilities.clone(),
     })
 }
 

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -169,8 +169,6 @@ pub struct CompiledLlmRouteTarget {
     pub provider_code: String,
     pub protocol: String,
     pub upstream_model_id: String,
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub runtime_capabilities: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

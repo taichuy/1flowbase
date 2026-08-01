@@ -86,8 +86,6 @@ pub struct FlowCompileProviderInstance {
     pub included_in_main: bool,
     pub available_models: BTreeSet<String>,
     pub allow_custom_models: bool,
-    #[serde(default)]
-    pub runtime_capabilities: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
