@@ -607,6 +607,69 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.match(loginFailure.cleanup.errors[0].message, /owned process cleanup failed/u);
     assert.equal(overrideApiEnvs[0].API_PROVIDER_SECRET_MASTER_KEY, 'secret-provider-master-key');
     assert.equal(overrideApiEnvs[0].API_PROVIDER_INSTALL_ROOT, root);
+
+    currentInstallationId = null;
+    const afterPackageSha256 = crypto.createHash('sha256').update('after-package').digest('hex');
+    const providerStart = [
+      'INFO api_server::provider_runtime: provider runtime operation boundary',
+      'operation="invoke_stream_with_live_events"',
+      'provider_code=deepseek',
+      `installation_id=${afterInstallationId}`,
+      `package_sha256=${afterPackageSha256}`,
+      'phase="start"',
+      'status="started"',
+    ].join(' ');
+    const partialSecret = 'followup-partial-raw-secret';
+    let turn = 0;
+    const followupFailure = await runCountTokensUpgrade({ manifest: manifestPath }, {
+      sourceEnv,
+      OwnerHttpClient: Owner,
+      openTemporaryOwnerSession: async () => temporarySession,
+      fetchImpl: async () => new Response('{"input_tokens":17}', { status: 200 }),
+      reserveLoopbackPort: (() => {
+        const ports = [41737, 41738];
+        return async () => ports.shift();
+      })(),
+      git: (_sourceRoot, args) => args.includes('--show-toplevel') ? mainSourceRoot : mainSourceSha,
+      spawnOwned: (binary) => ({
+        child: { binary, exitCode: null },
+        output: () => binary === apiServer ? providerStart : '',
+      }),
+      waitForHealth: async () => {},
+      stopOwned: async () => {},
+      executeTmux: async () => {
+        turn += 1;
+        if (turn === 1) return { exit_code: 0, timed_out: false, stdout, stderr: '' };
+        return {
+          exit_code: null,
+          timed_out: true,
+          stdout: [
+            JSON.stringify({ type: 'stream_event', event: { type: 'message_start' } }),
+            JSON.stringify({
+              type: 'stream_event',
+              event: { type: 'content_block_delta', delta: { text: partialSecret } },
+            }),
+          ].join('\n'),
+          stderr: `raw stderr ${partialSecret}`,
+        };
+      },
+      registry: disposableRegistry(),
+    });
+    assert.equal(followupFailure.status, 'fail');
+    assert.equal(followupFailure.evidence, null);
+    assert.equal(followupFailure.primary_error.details.stage, 'followup');
+    assert.equal(followupFailure.primary_error.details.transport_status, 'timed_out');
+    assert.equal(followupFailure.diagnostic_receipt.boundaries.selected_installation.installation_id,
+      afterInstallationId);
+    assert.equal(followupFailure.diagnostic_receipt.boundaries.provider_operation.start.status,
+      'observed');
+    assert.equal(followupFailure.diagnostic_receipt.boundaries.provider_operation.end.status,
+      'not_observed');
+    assert.doesNotMatch(JSON.stringify(followupFailure),
+      /followup-partial-raw-secret|raw stderr/u);
+    assert.equal(fs.statSync(artifact).mode & 0o777, 0o600);
+    assert.doesNotMatch(fs.readFileSync(artifact, 'utf8'),
+      /followup-partial-raw-secret|raw stderr/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

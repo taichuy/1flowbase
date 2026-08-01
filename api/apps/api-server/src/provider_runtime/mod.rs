@@ -39,6 +39,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use storage_durable::MainDurableStore;
 use tokio::sync::RwLock;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::runtime_activity::{
@@ -294,22 +295,37 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
-        self.ensure_provider_loaded(installation).await?;
-        let operation = {
-            let host = self.services.provider_host.read().await;
-            host.invoke_stream_operation(&installation.plugin_id, input)
-                .map_err(map_provider_framework_error)
-        };
-        let result = match operation {
-            Ok(operation) => operation
-                .await
-                .map(|output| ProviderRuntimeInvocationOutput {
-                    events: output.events,
-                    result: output.result,
-                })
-                .map_err(map_provider_framework_error),
-            Err(error) => Err(error),
-        };
+        let operation_name = "invoke_stream";
+        trace_provider_operation_boundary(installation, operation_name, "start", "started");
+        let result = async {
+            self.ensure_provider_loaded(installation).await?;
+            let operation = {
+                let host = self.services.provider_host.read().await;
+                host.invoke_stream_operation(&installation.plugin_id, input)
+                    .map_err(map_provider_framework_error)
+            };
+            match operation {
+                Ok(operation) => operation
+                    .await
+                    .map(|output| ProviderRuntimeInvocationOutput {
+                        events: output.events,
+                        result: output.result,
+                    })
+                    .map_err(map_provider_framework_error),
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        trace_provider_operation_boundary(
+            installation,
+            operation_name,
+            "end",
+            if result.is_ok() {
+                "succeeded"
+            } else {
+                "failed"
+            },
+        );
         finish_runtime_activity(activity, &result);
         result
     }
@@ -321,33 +337,70 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
-        self.ensure_provider_loaded(installation).await?;
-        let operation = {
-            let host = self.services.provider_host.read().await;
-            let (required_live_events, diagnostic_live_events) = live_events
-                .map(|senders| (Some(senders.required), Some(senders.diagnostic)))
-                .unwrap_or((None, None));
-            host.invoke_stream_with_live_events_operation(
-                &installation.plugin_id,
-                input,
-                required_live_events,
-                diagnostic_live_events,
-            )
-            .map_err(map_provider_framework_error)
-        };
-        let result = match operation {
-            Ok(operation) => operation
-                .await
-                .map(|output| ProviderRuntimeInvocationOutput {
-                    events: output.events,
-                    result: output.result,
-                })
-                .map_err(map_provider_framework_error),
-            Err(error) => Err(error),
-        };
+        let operation_name = "invoke_stream_with_live_events";
+        trace_provider_operation_boundary(installation, operation_name, "start", "started");
+        let result = async {
+            self.ensure_provider_loaded(installation).await?;
+            let operation = {
+                let host = self.services.provider_host.read().await;
+                let (required_live_events, diagnostic_live_events) = live_events
+                    .map(|senders| (Some(senders.required), Some(senders.diagnostic)))
+                    .unwrap_or((None, None));
+                host.invoke_stream_with_live_events_operation(
+                    &installation.plugin_id,
+                    input,
+                    required_live_events,
+                    diagnostic_live_events,
+                )
+                .map_err(map_provider_framework_error)
+            };
+            match operation {
+                Ok(operation) => operation
+                    .await
+                    .map(|output| ProviderRuntimeInvocationOutput {
+                        events: output.events,
+                        result: output.result,
+                    })
+                    .map_err(map_provider_framework_error),
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        trace_provider_operation_boundary(
+            installation,
+            operation_name,
+            "end",
+            if result.is_ok() {
+                "succeeded"
+            } else {
+                "failed"
+            },
+        );
         finish_runtime_activity(activity, &result);
         result
     }
+}
+
+fn trace_provider_operation_boundary(
+    installation: &domain::PluginInstallationRecord,
+    operation: &'static str,
+    phase: &'static str,
+    status: &'static str,
+) {
+    let package_sha256 = installation
+        .checksum
+        .as_deref()
+        .unwrap_or("")
+        .trim_start_matches("sha256:");
+    info!(
+        operation = %operation,
+        provider_code = %installation.provider_code,
+        installation_id = %installation.id,
+        package_sha256 = %package_sha256,
+        phase = %phase,
+        status = %status,
+        "provider runtime operation boundary"
+    );
 }
 
 #[async_trait]

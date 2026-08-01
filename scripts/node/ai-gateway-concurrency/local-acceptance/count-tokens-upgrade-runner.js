@@ -21,6 +21,7 @@ const { clientSurface } = require('../local-client-acceptance/client-surface');
 const { redact } = require('../local-client-acceptance/artifacts');
 const { openTemporaryOwnerSession } = require('../../page-debug/auth');
 const { parseEnvFile } = require('../../dev-up/env');
+const { buildDiagnosticReceipt } = require('./diagnostic-receipt');
 const {
   buildCountTokensUpgradeEvidence,
   loadCountTokensUpgradeFixture,
@@ -42,11 +43,15 @@ class UnavailableError extends Error {
 }
 
 class ClientTurnError extends Error {
-  constructor(details) {
+  constructor(details, clientResult = null) {
     super(`Claude ${details.stage} conversation turn failed`);
     this.name = 'ClientTurnError';
     this.code = 'client_turn_failed';
     this.details = details;
+    Object.defineProperty(this, 'diagnosticClientResult', {
+      value: clientResult,
+      enumerable: false,
+    });
   }
 }
 
@@ -385,6 +390,7 @@ function conversationSummary(result, { turnIndex, sessionId }) {
   if (transportStatus !== 'completed') {
     throw new ClientTurnError(
       turnFailureDetails(result, surface, turnIndex, sessionId, transportStatus),
+      result,
     );
   }
   const text = surface.assistantTexts.map((entry) => entry.text).join('');
@@ -544,6 +550,8 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
   let services = null;
   let primaryError = null;
   let observed = null;
+  let selectedInstallation = null;
+  let diagnosticReceipt = null;
   let cleanupErrors = [];
   const secrets = { descriptors: [] };
   let artifactPath = null;
@@ -616,6 +624,12 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     const afterPackageSha256 = sha256File(manifest.afterPackage);
     const transition = await transitionLocalUpgrade(owner, manifest, afterPackageSha256);
     const afterPlugin = transition.afterPlugin;
+    selectedInstallation = {
+      provider_code: 'deepseek',
+      installation_id: afterPlugin.installation_id,
+      version: afterPlugin.version,
+      package_sha256: checksum(afterPlugin.package_sha256),
+    };
     if (beforePlugin.version === afterPlugin.version
       || checksum(beforePlugin.package_sha256) === checksum(afterPlugin.package_sha256)) {
       throw new Error('local DeepSeek package did not upgrade version and checksum');
@@ -666,6 +680,19 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     };
   } catch (error) {
     primaryError = error;
+    if (error instanceof ClientTurnError && error.details.stage === 'followup') {
+      const apiProcess = services?.apiProcess;
+      const apiOutput = typeof apiProcess?.stdout === 'function'
+        || typeof apiProcess?.stderr === 'function'
+        ? [apiProcess?.stdout?.() || '', apiProcess?.stderr?.() || ''].join('\n')
+        : apiProcess?.output?.() || '';
+      diagnosticReceipt = buildDiagnosticReceipt({
+        details: error.details,
+        clientResult: error.diagnosticClientResult,
+        apiOutput,
+        selectedInstallation,
+      });
+    }
   } finally {
     const stopProcess = dependencies.stopOwned || stopOwned;
     if (temporarySession) {
@@ -698,6 +725,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     application_id: APPLICATION_ID,
     evidence,
     primary_error: primaryError ? publicError(primaryError) : null,
+    diagnostic_receipt: diagnosticReceipt,
     cleanup,
   };
   const safeResult = redact(result, secrets);
