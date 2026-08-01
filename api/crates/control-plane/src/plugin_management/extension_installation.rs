@@ -57,6 +57,7 @@ pub struct InstallExtensionArtifactCommand {
     pub declared_warnings: Vec<domain::ExtensionIntegrityWarning>,
     pub risk_override: Option<ExtensionRiskOverride>,
     pub confirmation_receipt: Option<serde_json::Value>,
+    pub application_action: domain::ExtensionApplicationAction,
 }
 
 #[derive(Debug, Clone)]
@@ -200,6 +201,7 @@ where
                 ExtensionCatalogCategory::CapabilityPlugins
             }
         };
+        let application_action = application_action_for_manifest(&manifest);
         let identity = domain::ExtensionInstallationIdentity {
             category: domain::ExtensionCategory::parse(category.as_str())
                 .ok_or(ControlPlaneError::InvalidInput("extension_category"))?,
@@ -245,6 +247,7 @@ where
                     "plugin_installation_id": installation.id,
                     "manifest_fingerprint": installation.manifest_fingerprint,
                 }),
+                application_action,
                 status: domain::ExtensionInstallationStatus::Installed,
                 installed_by: installation.created_by,
             })
@@ -360,6 +363,7 @@ where
                 signing_key_id: command.signing_key_id,
                 warnings,
                 receipt: serde_json::to_value(receipt)?,
+                application_action: command.application_action,
                 status: domain::ExtensionInstallationStatus::Installed,
                 installed_by: command.actor_user_id,
             })
@@ -517,9 +521,24 @@ pub(super) fn extension_projection_for_plugin_installation(
             "plugin_installation_id": installation.installation_id,
             "manifest_fingerprint": installation.manifest_fingerprint,
         }),
+        application_action: application_action_for_manifest(manifest),
         status: domain::ExtensionInstallationStatus::Installed,
         installed_by: installation.actor_user_id,
     })
+}
+
+fn application_action_for_manifest(
+    manifest: &plugin_framework::PluginManifestV1,
+) -> domain::ExtensionApplicationAction {
+    if manifest
+        .slot_codes
+        .iter()
+        .any(|slot| slot == "model_provider")
+    {
+        domain::ExtensionApplicationAction::ConfigureModelProvider
+    } else {
+        domain::ExtensionApplicationAction::None
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -73,6 +73,34 @@ impl<R> McpManagementService<R>
 where
     R: McpManagementRepository,
 {
+    pub async fn record_extension_bundle_import(
+        &self,
+        actor_user_id: Uuid,
+        extension_installation_id: Uuid,
+        result_status: &str,
+    ) -> Result<()> {
+        let actor = self.authorize_manage(actor_user_id).await?;
+        self.repository
+            .record_mcp_extension_bundle_import(
+                actor.current_workspace_id,
+                extension_installation_id,
+                actor_user_id,
+                result_status,
+            )
+            .await
+    }
+
+    pub async fn extension_bundle_is_imported(
+        &self,
+        actor_user_id: Uuid,
+        extension_installation_id: Uuid,
+    ) -> Result<bool> {
+        let actor = self.authorize_manage(actor_user_id).await?;
+        self.repository
+            .has_mcp_extension_bundle_import(actor.current_workspace_id, extension_installation_id)
+            .await
+    }
+
     pub async fn authorize_bundle_management(&self, actor_user_id: Uuid) -> Result<()> {
         self.authorize_manage(actor_user_id).await?;
         Ok(())

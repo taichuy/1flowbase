@@ -63,10 +63,10 @@ pub use data_source::{
     DataSourcePreviewSessionRecord, DataSourceSecretRecord,
 };
 pub use extension_installation::{
-    ExtensionCatalogIdentity, ExtensionCategory, ExtensionCompatibilityWarning,
-    ExtensionInstallationIdentity, ExtensionInstallationReceipt, ExtensionInstallationRecord,
-    ExtensionInstallationStatus, ExtensionIntegrityWarning, ExtensionRiskChallenge,
-    ExtensionSignatureStatus,
+    ExtensionApplicationAction, ExtensionCatalogIdentity, ExtensionCategory,
+    ExtensionCompatibilityWarning, ExtensionInstallationIdentity, ExtensionInstallationReceipt,
+    ExtensionInstallationRecord, ExtensionInstallationStatus, ExtensionIntegrityWarning,
+    ExtensionRiskChallenge, ExtensionSignatureStatus,
 };
 pub use file_management::{
     FileStorageHealthStatus, FileStorageRecord, FileTableRecord, FileTableScopeKind,

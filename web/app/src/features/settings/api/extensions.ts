@@ -1,4 +1,5 @@
 import {
+  activateConsoleInstalledI18nExtension,
   applyConsoleInstalledMcpExtension,
   checkConsoleExtensionUpdates,
   getConsoleExtensionCatalogEntry,
@@ -9,7 +10,9 @@ import {
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
   previewConsoleInstalledMcpExtension,
+  previewConsoleInstalledI18nExtension,
   type ConsoleExtensionCatalogEntry,
+  type ConsoleExtensionApplicationAction,
   type ConsoleExtensionCategory,
   type ConsoleExtensionCompatibilityOverride,
   type ConsoleExtensionRiskOverride,
@@ -18,6 +21,8 @@ import {
 } from '@1flowbase/api-client';
 
 export type SettingsExtensionCategory = ConsoleExtensionCategory;
+export type SettingsExtensionApplicationAction =
+  ConsoleExtensionApplicationAction;
 export type SettingsExtensionCenterCategory =
   | 'installed'
   | SettingsExtensionCategory;
@@ -105,6 +110,24 @@ export function applySettingsInstalledMcpExtension(
     extensionInstallationId,
     csrfToken,
     options
+  );
+}
+
+export function previewSettingsInstalledI18nExtension(
+  extensionInstallationId: string
+) {
+  return previewConsoleInstalledI18nExtension(extensionInstallationId);
+}
+
+export function activateSettingsInstalledI18nExtension(
+  extensionInstallationId: string,
+  input: Parameters<typeof activateConsoleInstalledI18nExtension>[1],
+  csrfToken: string
+) {
+  return activateConsoleInstalledI18nExtension(
+    extensionInstallationId,
+    input,
+    csrfToken
   );
 }
 

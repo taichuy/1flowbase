@@ -14,6 +14,7 @@ pub struct UpsertExtensionInstallationInput {
     pub signing_key_id: Option<String>,
     pub warnings: Vec<domain::ExtensionIntegrityWarning>,
     pub receipt: serde_json::Value,
+    pub application_action: domain::ExtensionApplicationAction,
     pub status: domain::ExtensionInstallationStatus,
     pub installed_by: Uuid,
 }

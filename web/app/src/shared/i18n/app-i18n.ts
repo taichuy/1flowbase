@@ -33,6 +33,8 @@ import settingsApplicationManagementZhHans from '../../features/settings/compone
 import settingsApplicationManagementEnUS from '../../features/settings/components/application-management/i18n/en_US.json';
 import settingsMcpManagementZhHans from '../../features/settings/components/mcp-management/i18n/zh_Hans.json';
 import settingsMcpManagementEnUS from '../../features/settings/components/mcp-management/i18n/en_US.json';
+import settingsExtensionCenterZhHans from '../../features/settings/components/extension-center/i18n/zh_Hans.json';
+import settingsExtensionCenterEnUS from '../../features/settings/components/extension-center/i18n/en_US.json';
 import settingsZhHans from '../../features/settings/i18n/zh_Hans.json';
 import settingsEnUS from '../../features/settings/i18n/en_US.json';
 import sharedZhHans from './resources/zh_Hans.json';
@@ -56,6 +58,7 @@ const appTranslationResources = {
     me: meZhHans,
     schemaUi: schemaUiZhHans,
     settingsApplicationManagement: settingsApplicationManagementZhHans,
+    settingsExtensionCenter: settingsExtensionCenterZhHans,
     settingsMcpManagement: settingsMcpManagementZhHans,
     settings: settingsZhHans,
     shared: sharedZhHans,
@@ -74,6 +77,7 @@ const appTranslationResources = {
     me: meEnUS,
     schemaUi: schemaUiEnUS,
     settingsApplicationManagement: settingsApplicationManagementEnUS,
+    settingsExtensionCenter: settingsExtensionCenterEnUS,
     settingsMcpManagement: settingsMcpManagementEnUS,
     settings: settingsEnUS,
     shared: sharedEnUS,

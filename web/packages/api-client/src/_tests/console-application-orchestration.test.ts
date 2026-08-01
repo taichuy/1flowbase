@@ -5,8 +5,10 @@ import {
   downloadConsoleOfficialAgentFlowTemplate,
   exportConsoleApplicationArchive,
   importConsoleApplicationArchive,
+  importConsoleInstalledApplicationExtension,
   listConsoleOfficialAgentFlowTemplateCatalog,
-  previewConsoleApplicationArchive
+  previewConsoleApplicationArchive,
+  previewConsoleInstalledApplicationExtension
 } from '../console/application-orchestration';
 
 describe('console application orchestration official template client', () => {
@@ -73,6 +75,44 @@ describe('console application orchestration official template client', () => {
       )
     ).resolves.toMatchObject({
       path: '/api/console/applications/orchestration/templates/official-catalog?cursor=2',
+      baseUrl: 'https://api.flowbase.test'
+    });
+  });
+
+  test('previews and imports the exact installed Agent Flow extension', async () => {
+    await expect(
+      previewConsoleInstalledApplicationExtension(
+        'installation-1',
+        'https://api.flowbase.test'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/applications/archive/installed-extension/installation-1/preview',
+      baseUrl: 'https://api.flowbase.test'
+    });
+    await expect(
+      importConsoleInstalledApplicationExtension(
+        'installation-1',
+        {
+          name: 'Imported flow',
+          integrity_override: {
+            reason: 'user_confirmed',
+            acknowledged_warnings: ['checksum_mismatch']
+          }
+        },
+        'csrf-123',
+        'https://api.flowbase.test'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/applications/archive/installed-extension/installation-1/import',
+      method: 'POST',
+      body: {
+        name: 'Imported flow',
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      },
+      csrfToken: 'csrf-123',
       baseUrl: 'https://api.flowbase.test'
     });
   });

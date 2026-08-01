@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.1",
+    "catalog_version": "2.0.2",
     "files": [
       {
         "keys": [
@@ -76,6 +76,8 @@
           "Bind file tables storage in the system backend.",
           "Cancel flow run",
           "Cancel flow run in the system backend.",
+          "Check extension center update",
+          "Check extension center update in the system backend.",
           "Check i18n catalog update",
           "Check i18n catalog update in the system backend.",
           "Check MCP tools description",
@@ -210,6 +212,8 @@
           "Export MCP catalog in the system backend.",
           "Export MCP instances",
           "Export MCP instances in the system backend.",
+          "Extension center catalog detail",
+          "Extension center catalog detail in the system backend.",
           "Get application",
           "Get application API docs catalog",
           "Get application API docs catalog in the system backend.",
@@ -302,6 +306,8 @@
           "Import official MCP bundle in the system backend.",
           "Import uploaded MCP bundle",
           "Import uploaded MCP bundle in the system backend.",
+          "Install extension center",
+          "Install extension center in the system backend.",
           "Install model provider plugins artifact",
           "Install model provider plugins artifact in the system backend.",
           "Install plugins",
@@ -482,6 +488,8 @@
           "Update auth center authenticator public UI block in the system backend.",
           "Update data sources defaults",
           "Update data sources defaults in the system backend.",
+          "Update extension center",
+          "Update extension center in the system backend.",
           "Update file storages",
           "Update file storages in the system backend.",
           "Update MCP discovery policy",
@@ -514,6 +522,8 @@
           "Update version in the system backend.",
           "Update workspace",
           "Update workspace in the system backend.",
+          "Upload extension center install",
+          "Upload extension center install in the system backend.",
           "Upload model provider plugins install",
           "Upload model provider plugins install in the system backend.",
           "Upload plugins install",
@@ -532,6 +542,10 @@
           "View auth center overview in the system backend.",
           "View data sources",
           "View data sources in the system backend.",
+          "View extension center catalog",
+          "View extension center catalog in the system backend.",
+          "View extension center installed",
+          "View extension center installed in the system backend.",
           "View frontend blocks",
           "View frontend blocks in the system backend.",
           "View host infrastructure providers",
@@ -599,7 +613,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:492d55ccf7f404fbf8e3f6b831ce025f7df19cbb2c4eb10b159dd270d6d036b8"
+        "sha256": "sha256:721382d72fd4792d9a0222f2a963e51405459aec40d0cf522610feec2d4204a9"
       },
       {
         "keys": [
@@ -613,6 +627,8 @@
           "Bind file tables storage in the system backend.",
           "Cancel flow run",
           "Cancel flow run in the system backend.",
+          "Check extension center update",
+          "Check extension center update in the system backend.",
           "Check i18n catalog update",
           "Check i18n catalog update in the system backend.",
           "Check MCP tools description",
@@ -747,6 +763,8 @@
           "Export MCP catalog in the system backend.",
           "Export MCP instances",
           "Export MCP instances in the system backend.",
+          "Extension center catalog detail",
+          "Extension center catalog detail in the system backend.",
           "Get application",
           "Get application API docs catalog",
           "Get application API docs catalog in the system backend.",
@@ -839,6 +857,8 @@
           "Import official MCP bundle in the system backend.",
           "Import uploaded MCP bundle",
           "Import uploaded MCP bundle in the system backend.",
+          "Install extension center",
+          "Install extension center in the system backend.",
           "Install model provider plugins artifact",
           "Install model provider plugins artifact in the system backend.",
           "Install plugins",
@@ -1019,6 +1039,8 @@
           "Update auth center authenticator public UI block in the system backend.",
           "Update data sources defaults",
           "Update data sources defaults in the system backend.",
+          "Update extension center",
+          "Update extension center in the system backend.",
           "Update file storages",
           "Update file storages in the system backend.",
           "Update MCP discovery policy",
@@ -1051,6 +1073,8 @@
           "Update version in the system backend.",
           "Update workspace",
           "Update workspace in the system backend.",
+          "Upload extension center install",
+          "Upload extension center install in the system backend.",
           "Upload model provider plugins install",
           "Upload model provider plugins install in the system backend.",
           "Upload plugins install",
@@ -1069,6 +1093,10 @@
           "View auth center overview in the system backend.",
           "View data sources",
           "View data sources in the system backend.",
+          "View extension center catalog",
+          "View extension center catalog in the system backend.",
+          "View extension center installed",
+          "View extension center installed in the system backend.",
           "View frontend blocks",
           "View frontend blocks in the system backend.",
           "View host infrastructure providers",
@@ -1136,7 +1164,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:285fb0786b85422602e9a4bc1ae769cbcb6724503fb3b077fb5215c7600171e4"
+        "sha256": "sha256:7050262625b2730449765f71d45cba02b8570b80b6feae8cccd5a96457d363e7"
       },
       {
         "keys": [
@@ -1150,6 +1178,8 @@
           "Authentication center operations",
           "Data model and data source operations",
           "Data source",
+          "Discover and manage host-installed extensions",
+          "Extension center",
           "File management",
           "File management operations",
           "Host infrastructure operations",
@@ -1171,7 +1201,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/settings/en_US.json",
-        "sha256": "sha256:ae672b8f6535df20238d3201d41dde6a6ff8f751260a52b76ba09a7580df8c76"
+        "sha256": "sha256:216c0691597c1f5bfe6aef8bcedc4294e087b8c88f6a76015fef15329eab7830"
       },
       {
         "keys": [
@@ -1185,6 +1215,8 @@
           "Authentication center operations",
           "Data model and data source operations",
           "Data source",
+          "Discover and manage host-installed extensions",
+          "Extension center",
           "File management",
           "File management operations",
           "Host infrastructure operations",
@@ -1206,7 +1238,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/settings/zh_Hans.json",
-        "sha256": "sha256:30192715efc2e209302e8c8d1f8a91932ec8f6dc8e1f124f109a8bf3f8b7e405"
+        "sha256": "sha256:6e2f8da21e30ce930236e2453e4d3e0f0080dd96a3267ad2faeaf858b012aae0"
       },
       {
         "keys": [
@@ -1461,13 +1493,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-07-31T05:49:26.000Z",
+    "generated_at": "2026-08-01T18:00:00.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:ac2c2ed3d828f445b9aaf3f28a1d863d4c33340b151216961894589dca7e3bed",
+    "semantic_sha256": "sha256:70664ff0f6094dfc54df3d05fe4f0c5e2a4980b3e038043f4abc5be42577b44d",
     "source_locale": "en_US"
   },
   "messages": [
@@ -1707,6 +1739,20 @@
       "translations": {
         "en_US": "Cancel flow run in the system backend.",
         "zh_Hans": "取消流程运行（系统后端）"
+      }
+    },
+    {
+      "key": "Check extension center update",
+      "translations": {
+        "en_US": "Check extension center update",
+        "zh_Hans": "检查扩展中心更新"
+      }
+    },
+    {
+      "key": "Check extension center update in the system backend.",
+      "translations": {
+        "en_US": "Check extension center update in the system backend.",
+        "zh_Hans": "检查扩展中心更新（系统后端）"
       }
     },
     {
@@ -2585,6 +2631,13 @@
       }
     },
     {
+      "key": "Discover and manage host-installed extensions",
+      "translations": {
+        "en_US": "Discover and manage host-installed extensions",
+        "zh_Hans": "发现并管理宿主机已安装扩展"
+      }
+    },
+    {
       "key": "Discover data sources",
       "translations": {
         "en_US": "Discover data sources",
@@ -2813,6 +2866,27 @@
       "translations": {
         "en_US": "Extension",
         "zh_Hans": "扩展名"
+      }
+    },
+    {
+      "key": "Extension center",
+      "translations": {
+        "en_US": "Extension center",
+        "zh_Hans": "扩展中心"
+      }
+    },
+    {
+      "key": "Extension center catalog detail",
+      "translations": {
+        "en_US": "Extension center catalog detail",
+        "zh_Hans": "查看扩展中心目录详情"
+      }
+    },
+    {
+      "key": "Extension center catalog detail in the system backend.",
+      "translations": {
+        "en_US": "Extension center catalog detail in the system backend.",
+        "zh_Hans": "查看扩展中心目录详情（系统后端）"
       }
     },
     {
@@ -3513,6 +3587,20 @@
       "translations": {
         "en_US": "Infrastructure",
         "zh_Hans": "基础设施"
+      }
+    },
+    {
+      "key": "Install extension center",
+      "translations": {
+        "en_US": "Install extension center",
+        "zh_Hans": "安装扩展中心产物"
+      }
+    },
+    {
+      "key": "Install extension center in the system backend.",
+      "translations": {
+        "en_US": "Install extension center in the system backend.",
+        "zh_Hans": "安装扩展中心产物（系统后端）"
       }
     },
     {
@@ -5154,6 +5242,20 @@
       }
     },
     {
+      "key": "Update extension center",
+      "translations": {
+        "en_US": "Update extension center",
+        "zh_Hans": "更新扩展中心产物"
+      }
+    },
+    {
+      "key": "Update extension center in the system backend.",
+      "translations": {
+        "en_US": "Update extension center in the system backend.",
+        "zh_Hans": "更新扩展中心产物（系统后端）"
+      }
+    },
+    {
       "key": "Update file storages",
       "translations": {
         "en_US": "Update file storages",
@@ -5392,6 +5494,20 @@
       }
     },
     {
+      "key": "Upload extension center install",
+      "translations": {
+        "en_US": "Upload extension center install",
+        "zh_Hans": "上传并安装扩展中心产物"
+      }
+    },
+    {
+      "key": "Upload extension center install in the system backend.",
+      "translations": {
+        "en_US": "Upload extension center install in the system backend.",
+        "zh_Hans": "上传并安装扩展中心产物（系统后端）"
+      }
+    },
+    {
       "key": "Upload model provider plugins install",
       "translations": {
         "en_US": "Upload model provider plugins install",
@@ -5557,6 +5673,34 @@
       "translations": {
         "en_US": "View data sources in the system backend.",
         "zh_Hans": "查看数据源（系统后端）"
+      }
+    },
+    {
+      "key": "View extension center catalog",
+      "translations": {
+        "en_US": "View extension center catalog",
+        "zh_Hans": "查看扩展中心目录"
+      }
+    },
+    {
+      "key": "View extension center catalog in the system backend.",
+      "translations": {
+        "en_US": "View extension center catalog in the system backend.",
+        "zh_Hans": "查看扩展中心目录（系统后端）"
+      }
+    },
+    {
+      "key": "View extension center installed",
+      "translations": {
+        "en_US": "View extension center installed",
+        "zh_Hans": "查看已安装扩展"
+      }
+    },
+    {
+      "key": "View extension center installed in the system backend.",
+      "translations": {
+        "en_US": "View extension center installed in the system backend.",
+        "zh_Hans": "查看已安装扩展（系统后端）"
       }
     },
     {

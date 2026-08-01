@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 70,
+  "count": 72,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -11,6 +11,11 @@
       "category": "settings_feature_label",
       "path": "api/crates/access-control/src/settings_features.rs",
       "key": "Language catalog"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Extension center"
     },
     {
       "category": "settings_feature_label",
@@ -81,6 +86,11 @@
       "category": "settings_policy_group",
       "path": "api/crates/access-control/src/settings_features.rs",
       "key": "Root language catalog operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Discover and manage host-installed extensions"
     },
     {
       "category": "settings_policy_group",

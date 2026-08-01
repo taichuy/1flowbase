@@ -10,6 +10,116 @@ pub(super) struct InMemoryOfficialAgentFlowTemplateSource;
 #[derive(Clone, Default)]
 pub(super) struct InMemoryOfficialMcpBundleSource;
 
+#[derive(Clone, Default)]
+pub(super) struct InMemoryOfficialExtensionCatalogSource;
+
+fn runtime_extension_catalog_entry() -> OfficialExtensionCatalogEntry {
+    OfficialExtensionCatalogEntry {
+        id: "runtime-extensions:taichuy/openai_compatible".to_string(),
+        name: "OpenAI Compatible".to_string(),
+        category: "runtime-extensions".to_string(),
+        organization: "taichuy".to_string(),
+        artifact: "openai_compatible".to_string(),
+        version: "0.2.0".to_string(),
+        description: "Official provider plugin".to_string(),
+        host_version_requirement: ">=0.1.0".to_string(),
+        source: OfficialExtensionCatalogEntrySource {
+            kind: "runtime_extension_manifest".to_string(),
+            locator: "runtime-extensions/@taichuy/openai_compatible/manifest.yaml".to_string(),
+            metadata: std::collections::BTreeMap::from([
+                (
+                    "plugin_id".to_string(),
+                    json!("1flowbase.openai_compatible"),
+                ),
+                ("plugin_type".to_string(), json!("model_provider")),
+                ("provider_code".to_string(), json!("openai_compatible")),
+                ("protocol".to_string(), json!("openai_compatible")),
+                ("model_discovery_mode".to_string(), json!("hybrid")),
+            ]),
+        },
+        signature: None,
+        checksum: None,
+        download_locator: json!({ "kind": "platform_release_assets" }),
+        catalog_page: 1,
+    }
+}
+
+#[async_trait]
+impl OfficialExtensionCatalogSourcePort for InMemoryOfficialExtensionCatalogSource {
+    async fn list_page(
+        &self,
+        category: &str,
+        _cursor: Option<&str>,
+    ) -> anyhow::Result<OfficialExtensionCatalogPage> {
+        anyhow::ensure!(
+            category == "runtime-extensions",
+            "unexpected catalog category"
+        );
+        Ok(OfficialExtensionCatalogPage {
+            source_kind: "official_repository".to_string(),
+            category: category.to_string(),
+            metadata: OfficialExtensionCatalogPageMetadata {
+                page: 1,
+                cursor: "start".to_string(),
+                checksum: "sha256:test-runtime-extensions".to_string(),
+                locator: "https://example.test/runtime-extensions/catalog/v1/pages/1.json"
+                    .to_string(),
+                next_cursor: None,
+                page_size: 100,
+                total_entries: 1,
+                freshness: OfficialExtensionCatalogFreshness::Fresh,
+            },
+            entries: vec![runtime_extension_catalog_entry()],
+        })
+    }
+
+    async fn find_entry(
+        &self,
+        category: &str,
+        catalog_id: &str,
+    ) -> anyhow::Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        let entry = runtime_extension_catalog_entry();
+        Ok(
+            (category == entry.category && catalog_id == entry.id).then_some(
+                LocatedOfficialExtensionCatalogEntry {
+                    source_kind: "official_repository".to_string(),
+                    entry,
+                },
+            ),
+        )
+    }
+
+    fn resolve_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<OfficialExtensionArtifactDescriptor> {
+        let bytes = build_official_provider_package("0.2.0");
+        Ok(OfficialExtensionArtifactDescriptor {
+            locator_kind: "platform_release_asset".to_string(),
+            locator: "https://example.test/openai_compatible-0.2.0.1flowbasepkg".to_string(),
+            expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(&bytes))),
+            signature: None,
+            platform: Some(OfficialExtensionArtifactPlatform {
+                os: "linux".to_string(),
+                arch: "amd64".to_string(),
+                libc: Some("musl".to_string()),
+                rust_target: "x86_64-unknown-linux-musl".to_string(),
+            }),
+        })
+    }
+
+    async fn download_artifact(
+        &self,
+        entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<DownloadedOfficialExtensionArtifact> {
+        Ok(DownloadedOfficialExtensionArtifact {
+            descriptor: self.resolve_artifact(entry)?,
+            file_name: "openai_compatible-0.2.0.1flowbasepkg".to_string(),
+            artifact_bytes: build_official_provider_package("0.2.0"),
+        })
+    }
+}
+
 #[async_trait]
 impl OfficialMcpBundleSourcePort for InMemoryOfficialMcpBundleSource {
     async fn list_catalog(&self) -> anyhow::Result<OfficialMcpBundleCatalogSnapshot> {

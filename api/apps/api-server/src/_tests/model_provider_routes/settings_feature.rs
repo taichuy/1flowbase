@@ -590,8 +590,9 @@ async fn model_providers_feature_only_completes_plugin_install_and_family_lifecy
         )
         .await
         .unwrap();
-    assert_eq!(upload.status(), StatusCode::CREATED);
+    let upload_status = upload.status();
     let upload_payload = response_json(upload).await;
+    assert_eq!(upload_status, StatusCode::CREATED, "{upload_payload}");
     let old_installation_id = upload_payload["data"]["installation"]["id"]
         .as_str()
         .unwrap()
@@ -624,8 +625,9 @@ async fn model_providers_feature_only_completes_plugin_install_and_family_lifecy
         )
         .await
         .unwrap();
-    assert_eq!(install_official.status(), StatusCode::CREATED);
+    let official_status = install_official.status();
     let official_payload = response_json(install_official).await;
+    assert_eq!(official_status, StatusCode::CREATED, "{official_payload}");
     let current_installation_id = official_payload["data"]["installation"]["id"]
         .as_str()
         .unwrap()

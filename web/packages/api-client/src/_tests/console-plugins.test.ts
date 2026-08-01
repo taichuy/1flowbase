@@ -1,8 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
+  activateConsoleInstalledI18nExtension,
   applyConsoleInstalledMcpExtension,
   getConsoleInstalledMcpExtensionIntegrityChallenge,
+  previewConsoleInstalledI18nExtension,
   previewConsoleInstalledMcpExtension
 } from '../console/extensions';
 import { ApiClientError } from '../errors';
@@ -124,6 +126,40 @@ describe('console extension MCP workspace application client', () => {
         })
       )
     ).toEqual(body);
+  });
+});
+
+describe('console extension i18n application client', () => {
+  test('previews and activates the exact installed local catalog', async () => {
+    await expect(
+      previewConsoleInstalledI18nExtension('installation-1')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/installed-extension/installation-1/preview'
+    });
+    await expect(
+      activateConsoleInstalledI18nExtension(
+        'installation-1',
+        {
+          expected_revision: 4,
+          integrity_override: {
+            reason: 'user_confirmed',
+            acknowledged_warnings: ['checksum_mismatch']
+          }
+        },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/installed-extension/installation-1/activate',
+      method: 'POST',
+      body: {
+        expected_revision: 4,
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      },
+      csrfToken: 'csrf-123'
+    });
   });
 });
 

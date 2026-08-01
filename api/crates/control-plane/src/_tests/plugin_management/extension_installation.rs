@@ -51,6 +51,7 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
             signing_key_id: input.signing_key_id.clone(),
             warnings: input.warnings.clone(),
             receipt: input.receipt.clone(),
+            application_action: input.application_action,
             status: input.status,
             installed_by: input.installed_by,
             created_at,
@@ -129,6 +130,7 @@ fn command(
         declared_warnings: Vec::new(),
         risk_override: None,
         confirmation_receipt: None,
+        application_action: domain::ExtensionApplicationAction::None,
     }
 }
 
@@ -464,6 +466,7 @@ fn installed_record(
         signing_key_id: Some("official-key".to_string()),
         warnings: Vec::new(),
         receipt: serde_json::json!({}),
+        application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
         status: domain::ExtensionInstallationStatus::Installed,
         installed_by: Uuid::now_v7(),
         created_at: updated_at,

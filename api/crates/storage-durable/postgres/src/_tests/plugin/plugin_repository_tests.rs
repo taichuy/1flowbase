@@ -731,6 +731,7 @@ fn installation_commit_input(
             signing_key_id: None,
             warnings: Vec::new(),
             receipt: json!({"kind": "fixture"}),
+            application_action: domain::ExtensionApplicationAction::None,
             status: domain::ExtensionInstallationStatus::Installed,
             installed_by: actor_user_id,
         },
