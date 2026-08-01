@@ -463,7 +463,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
     fileManagementApi.fetchSettingsFileTables.mockResolvedValue([]);
   });
 
-  test('renders provider family rows and upgrades to the latest version from the catalog version column', async () => {
+  test('renders provider family rows and upgrades from the lifecycle sidebar', async () => {
     authenticateAsModelProviderManager();
 
     renderApp('/settings/model-providers');
@@ -488,8 +488,8 @@ describe('ModelProvidersPage - catalog and family version', () => {
     );
 
     expect(
-      within(catalogRow).getByRole('button', { name: /更\s*新/ })
-    ).toBeInTheDocument();
+      within(catalogRow).queryByRole('button', { name: /更\s*新/ })
+    ).not.toBeInTheDocument();
     expect(
       within(catalogRow).queryByRole('button', { name: '版本管理' })
     ).not.toBeInTheDocument();
@@ -504,7 +504,11 @@ describe('ModelProvidersPage - catalog and family version', () => {
       within(catalogRow).queryByText(/^当前节点版本：/)
     ).not.toBeInTheDocument();
     fireEvent.click(
-      within(catalogRow).getByRole('button', { name: /更\s*新/ })
+      await screen.findByRole('button', { name: '升级到最新版本' })
+    );
+    const confirmDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(confirmDialog).getByRole('button', { name: '升级到最新版本' })
     );
 
     await waitFor(() => {
