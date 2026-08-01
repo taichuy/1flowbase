@@ -255,11 +255,7 @@ async fn test_state_with_runtime_profile_state(
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
             official_agent_flow_template_source: Arc::new(InMemoryOfficialAgentFlowTemplateSource),
             official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
-            official_extension_catalog_source: Arc::new(
-                crate::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(
-                    &config,
-                ),
-            ),
+            official_extension_catalog_source: Arc::new(InMemoryOfficialExtensionCatalogSource),
             official_i18n_catalog_update_service:
                 crate::app_state::build_official_i18n_catalog_update_service(store.clone(), &config),
             api_node_id: config.api_node_id.clone(),

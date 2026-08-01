@@ -421,6 +421,16 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "GET",
+                "/api/console/applications/archive/installed-extension/:installation_id/preview",
+                "authenticated",
+            ),
+            (
+                "POST",
+                "/api/console/applications/archive/installed-extension/:installation_id/import",
+                "authenticated",
+            ),
+            (
+                "GET",
                 "/api/console/applications/orchestration/templates/official-catalog",
                 "authenticated",
             ),
@@ -1343,6 +1353,41 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
                 "GET",
                 "/api/console/node-contributions",
                 "node_contributions.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/extension-center/installed",
+                "extension_center.installed.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/extension-center/catalog/:category",
+                "extension_center.catalog.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/extension-center/catalog/:category/:catalog_id",
+                "extension_center.catalog.detail"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/update-check",
+                "extension_center.update_check"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/install",
+                "extension_center.install"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/update",
+                "extension_center.update"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/install-upload",
+                "extension_center.install.upload"
             ),
             (
                 "GET",

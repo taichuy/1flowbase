@@ -46,6 +46,12 @@ fn settings_i18n_routes_expose_state_and_management_without_module_bundle_contra
 #[tokio::test]
 async fn delivery_1545_d6_installed_i18n_catalog_previews_and_activates_local_artifact() {
     let (state, _) = test_api_state_with_database_url().await;
+    I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &state.store,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
         domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,

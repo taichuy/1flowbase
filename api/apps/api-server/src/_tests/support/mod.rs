@@ -46,6 +46,13 @@ use crate::{
         OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateCatalogSource,
         OfficialAgentFlowTemplateSourcePort,
     },
+    official_extension_catalog::{
+        DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
+        OfficialExtensionArtifactDescriptor, OfficialExtensionArtifactPlatform,
+        OfficialExtensionCatalogEntry, OfficialExtensionCatalogEntrySource,
+        OfficialExtensionCatalogFreshness, OfficialExtensionCatalogPage,
+        OfficialExtensionCatalogPageMetadata, OfficialExtensionCatalogSourcePort,
+    },
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogEntry,
         OfficialMcpBundleCatalogSnapshot, OfficialMcpBundleCatalogSource,
