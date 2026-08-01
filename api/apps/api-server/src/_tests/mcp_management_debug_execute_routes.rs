@@ -317,6 +317,118 @@ async fn mcp_debug_execute_returns_debug_details_when_requested() {
 }
 
 #[tokio::test]
+async fn mcp_debug_execute_preserves_present_empty_required_string() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create_interface_id = create_bindable_create_interface(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "mcp_debug_empty_string_orders",
+    )
+    .await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/debug/execute")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "interface_id": create_interface_id,
+                        "mcp_arguments": { "title": "" },
+                        "input_mapping": {
+                            "mappings": [{
+                                "interface_param": "order_title",
+                                "mcp_param": "title",
+                                "required": true
+                            }]
+                        },
+                        "output_mapping": {
+                            "type": "object",
+                            "properties": { "order_title": { "type": "string" } }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(payload["data"]["order_title"], json!(""));
+}
+
+#[tokio::test]
+async fn mcp_debug_execute_materializes_required_empty_object_container() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let publish_interface_id = bindable_interface_id_for_path(
+        &app,
+        &root_cookie,
+        "POST",
+        "/api/console/applications/{application_id}/api-publications",
+    )
+    .await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/debug/execute")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "interface_id": publish_interface_id,
+                        "mcp_arguments": {
+                            "application_id": "00000000-0000-0000-0000-000000000000",
+                            "api_enabled": true,
+                            "query_target": "node-start.query"
+                        },
+                        "input_mapping": {
+                            "mappings": [
+                                {
+                                    "interface_param": "application_id",
+                                    "mcp_param": "application_id",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "api_enabled",
+                                    "mcp_param": "api_enabled",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "mapping.input.query_target",
+                                    "mcp_param": "query_target",
+                                    "required": true
+                                }
+                            ]
+                        },
+                        "output_mapping": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let payload = response_json(response).await;
+    assert_ne!(payload["code"], json!("request_schema"), "{payload}");
+}
+
+#[tokio::test]
 async fn mcp_debug_execute_filters_array_item_fields_from_output_mapping() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

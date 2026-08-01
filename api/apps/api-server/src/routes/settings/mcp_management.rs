@@ -174,7 +174,7 @@ pub struct McpInstanceDiscoveryPolicyResponse {
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Vec<String>)]
     pub list_return_fields: serde_json::Value,
 }
 
@@ -348,7 +348,7 @@ pub struct UpdateMcpInstanceDiscoveryPolicyBody {
     pub list_max_depth: i32,
     pub list_regex_enabled: bool,
     pub list_regex_max_length: i32,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Vec<String>)]
     pub list_return_fields: serde_json::Value,
 }
 

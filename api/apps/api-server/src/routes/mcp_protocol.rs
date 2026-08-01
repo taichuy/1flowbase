@@ -172,12 +172,24 @@ async fn handle_mcp_request(
                         .unwrap_or_else(|| json!({}));
                     match &tool.execution_target {
                         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-                            let interface = bindable_mcp_interface(
+                            let interface = match bindable_mcp_interface(
                                 state.as_ref(),
                                 context.user.id,
                                 interface_id,
                             )
-                            .await?;
+                            .await
+                            {
+                                Ok(interface) => interface,
+                                Err(error) => {
+                                    tracing::warn!(
+                                        tool_id = %tool.tool_id,
+                                        interface_id = %interface_id,
+                                        error = %error.0,
+                                        "MCP interface tool could not resolve its target interface"
+                                    );
+                                    return Ok(interface_api_error_response(request.id, &error.0));
+                                }
+                            };
                             let body = McpDebugExecuteBody {
                                 interface_id: interface_id.clone(),
                                 debug_response_mode: McpDebugResponseMode::ToolResult,
@@ -201,23 +213,24 @@ async fn handle_mcp_request(
                                         error = %error,
                                         "MCP interface tool dispatch failed before receiving a target response"
                                     );
-                                    return Ok(jsonrpc_error(
-                                        request.id,
-                                        -32603,
-                                        "Tool execution failed",
-                                    ));
+                                    return Ok(interface_api_error_response(request.id, &error));
                                 }
                                 Err(super::mcp_management::debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
+                                    let status = response.status();
                                     tracing::warn!(
                                         tool_id = %tool.tool_id,
                                         interface_id = %interface_id,
-                                        status = %response.status(),
+                                        status = %status,
                                         "MCP interface tool target returned a non-success status"
                                     );
-                                    return Ok(jsonrpc_error(
+                                    return Ok(jsonrpc_error_data(
                                         request.id,
                                         -32603,
                                         "Tool execution failed",
+                                        json!({
+                                            "category": "target_interface",
+                                            "http_status": status.as_u16()
+                                        }),
                                     ));
                                 }
                             }
@@ -442,6 +455,40 @@ fn jsonrpc_error_data(
     )
 }
 
+fn interface_api_error_response(
+    id: Option<Value>,
+    error: &anyhow::Error,
+) -> (StatusCode, Json<JsonRpcResponse>) {
+    let (code, category, field) =
+        match error.downcast_ref::<control_plane::errors::ControlPlaneError>() {
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments")) => {
+                (-32602, "invalid_tool_arguments", Some("mcp_arguments"))
+            }
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("request_schema")) => {
+                (-32602, "invalid_tool_arguments", Some("request_schema"))
+            }
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("input_mapping")) => {
+                (-32603, "invalid_tool_configuration", Some("input_mapping"))
+            }
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("response_schema")) => (
+                -32603,
+                "invalid_tool_configuration",
+                Some("response_schema"),
+            ),
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("interface_id"))
+            | Some(control_plane::errors::ControlPlaneError::NotFound("mcp_interface")) => {
+                (-32603, "interface_catalog", Some("interface_id"))
+            }
+            _ => (-32603, "interface_dispatch", None),
+        };
+    let mut data =
+        serde_json::Map::from_iter([("category".to_string(), Value::String(category.to_string()))]);
+    if let Some(field) = field {
+        data.insert("field".to_string(), Value::String(field.to_string()));
+    }
+    jsonrpc_error_data(id, code, "Tool execution failed", Value::Object(data))
+}
+
 #[cfg(test)]
 mod issue_1246_tests {
     use super::*;
@@ -458,5 +505,24 @@ mod issue_1246_tests {
             response.0.error.unwrap()["data"]["reason"],
             json!("upstream protocol error: tool unavailable")
         );
+    }
+
+    #[test]
+    fn interface_wrapper_errors_expose_only_stable_safe_classification() {
+        for (field, code, category) in [
+            ("mcp_arguments", -32602, "invalid_tool_arguments"),
+            ("request_schema", -32602, "invalid_tool_arguments"),
+            ("input_mapping", -32603, "invalid_tool_configuration"),
+            ("response_schema", -32603, "invalid_tool_configuration"),
+        ] {
+            let error: anyhow::Error =
+                control_plane::errors::ControlPlaneError::InvalidInput(field).into();
+            let (_, response) = interface_api_error_response(Some(json!("call-1")), &error);
+            let error = response.0.error.unwrap();
+            assert_eq!(error["code"], json!(code));
+            assert_eq!(error["data"]["category"], json!(category));
+            assert_eq!(error["data"]["field"], json!(field));
+            assert!(!error.to_string().contains("secret-marker"));
+        }
     }
 }
