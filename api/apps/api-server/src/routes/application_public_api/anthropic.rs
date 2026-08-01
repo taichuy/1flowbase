@@ -111,6 +111,11 @@ impl IntoResponse for AnthropicRouteError {
                 },
             ),
         };
+        info!(
+            status_code = status.as_u16(),
+            error_type = %error.error_type,
+            "anthropic compatible route error boundary"
+        );
         (
             status,
             Json(AnthropicErrorBody {

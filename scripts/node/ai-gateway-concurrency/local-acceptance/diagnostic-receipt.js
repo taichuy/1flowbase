@@ -22,6 +22,7 @@ const CANONICAL_TERMINALS = new Set([
   'flow_cancelled', 'flow_failed', 'flow_finished', 'flow_incomplete', 'waiting_callback', 'waiting_human',
 ]);
 const ANTHROPIC_ROUTES = new Set(['messages', 'messages_count_tokens']);
+const ERROR_TYPE_PATTERN = /^[a-z][a-z0-9_]{0,63}$/u;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
@@ -111,6 +112,36 @@ function routeBoundaries(apiOutput) {
   };
 }
 
+function anthropicRouteError(line) {
+  if (!line.includes('anthropic compatible route error boundary')) return null;
+  const statusCode = Number(traceField(line, 'status_code'));
+  const errorType = traceField(line, 'error_type');
+  if (!Number.isInteger(statusCode) || statusCode < 400 || statusCode > 599
+    || !ERROR_TYPE_PATTERN.test(errorType || '')) return null;
+  return { status_code: statusCode, error_type: errorType };
+}
+
+function routeErrorBoundary(apiOutput) {
+  const errors = String(apiOutput || '').split(/\r?\n/u)
+    .map((line) => line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, ''))
+    .map(anthropicRouteError)
+    .filter(Boolean);
+  if (errors.length === 0) return missing();
+  const counts = new Map();
+  for (const error of errors) {
+    const key = `${error.status_code}:${error.error_type}`;
+    const current = counts.get(key) || { ...error, count: 0 };
+    current.count += 1;
+    counts.set(key, current);
+  }
+  const observedPairs = [...counts.values()].sort((left, right) => (
+    left.status_code - right.status_code
+      || (left.error_type < right.error_type ? -1 : Number(left.error_type > right.error_type))
+  ));
+  if (observedPairs.length === 1) return observed(observedPairs[0]);
+  return { status: 'unknown', observed_pairs: observedPairs };
+}
+
 function correlatedApiBoundaries(apiOutput, assigned) {
   const lines = String(apiOutput || '').split(/\r?\n/u)
     .map((line) => line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, ''));
@@ -164,6 +195,7 @@ function deepestBoundary(boundaries) {
   if (boundaries.provider_operation.end.status === 'observed') return 'provider_operation_end';
   if (boundaries.provider_operation.start.status === 'observed') return 'provider_operation_start';
   if (boundaries.selected_installation.status === 'observed') return 'selected_installation';
+  if (boundaries.anthropic_route_error.status === 'observed') return 'anthropic_route_error';
   if (boundaries.owned_api_request.status === 'observed') return 'owned_api_request';
   if (boundaries.client_transport.status === 'observed') return 'client_transport';
   if (boundaries.claude_tmux.status === 'observed') return 'claude_tmux';
@@ -198,6 +230,9 @@ function buildDiagnosticReceipt({
       },
       owned_api_request: missing('unknown'),
     };
+  const routeErrorEvidence = deltaObserved
+    ? routeErrorBoundary(apiLogDelta.output)
+    : missing('unknown');
   const apiBoundaries = deltaObserved && assigned
     ? correlatedApiBoundaries(apiLogDelta.output, assigned)
     : {
@@ -218,6 +253,7 @@ function buildDiagnosticReceipt({
       : missing(apiBoundaries.correlation.status),
     anthropic_route_requests: routeEvidence.anthropic_route_requests,
     owned_api_request: routeEvidence.owned_api_request,
+    anthropic_route_error: routeErrorEvidence,
     provider_operation: apiBoundaries.provider_operation,
     canonical_sse_terminal: apiBoundaries.canonical_sse_terminal,
     anthropic_sse_terminal: clientEvents.includes('message_stop')

@@ -39,11 +39,22 @@ function routeTrace(route) {
   ].join(' ');
 }
 
+function routeErrorTrace(statusCode, errorType, suffix = '') {
+  return [
+    'INFO api_server::application_public_api::anthropic:',
+    'anthropic compatible route error boundary',
+    `status_code=${statusCode}`,
+    `error_type="${errorType}"`,
+    suffix,
+  ].filter(Boolean).join(' ');
+}
+
 function receipt({
   stdout = '', apiOutput = '', apiDeltaStatus = 'observed', selectedInstallation = ASSIGNED,
+  transportStatus = 'timed_out',
 } = {}) {
   return buildDiagnosticReceipt({
-    details: { stage: 'followup', turn_index: 1, transport_status: 'timed_out' },
+    details: { stage: 'followup', turn_index: 1, transport_status: transportStatus },
     clientResult: { stdout, stderr: 'raw-stderr-secret' },
     apiLogDelta: { status: apiDeltaStatus, output: apiOutput },
     selectedInstallation,
@@ -234,6 +245,64 @@ test('Root #1556 F19 messages route without provider start stops at owned API re
   assert.equal(result.deepest_observed_boundary, 'owned_api_request');
 });
 
+test('Root #1556 F20 repeated route errors aggregate without retaining response messages', () => {
+  const secret = 'route-error-message-secret';
+  const apiOutput = Array.from({ length: 12 }, () => [
+    routeTrace('messages'),
+    routeErrorTrace(400, 'invalid_request_error', `message="${secret}"`),
+  ]).flat().join('\n');
+  const result = receipt({ apiOutput, transportStatus: 'nonzero_exit' });
+
+  assert.equal(result.boundaries.client_transport.outcome, 'nonzero_exit');
+  assert.deepEqual(result.boundaries.anthropic_route_requests.messages, {
+    status: 'observed', count: 12,
+  });
+  assert.deepEqual(result.boundaries.anthropic_route_error, {
+    status: 'observed',
+    status_code: 400,
+    error_type: 'invalid_request_error',
+    count: 12,
+  });
+  assert.equal(result.boundaries.selected_installation.status, 'not_observed');
+  assert.equal(result.boundaries.provider_operation.start.status, 'not_observed');
+  assert.equal(result.deepest_observed_boundary, 'anthropic_route_error');
+  assert.doesNotMatch(JSON.stringify(result), /route-error-message-secret|message=/u);
+});
+
+test('Root #1556 F20 distinct safe route error pairs make the aggregate unknown', () => {
+  const result = receipt({
+    apiOutput: [
+      routeTrace('messages'),
+      routeErrorTrace(422, 'invalid_request_error'),
+      routeErrorTrace(401, 'not_authenticated'),
+      routeErrorTrace(422, 'invalid_request_error'),
+    ].join('\n'),
+  });
+
+  assert.deepEqual(result.boundaries.anthropic_route_error, {
+    status: 'unknown',
+    observed_pairs: [
+      { status_code: 401, error_type: 'not_authenticated', count: 1 },
+      { status_code: 422, error_type: 'invalid_request_error', count: 2 },
+    ],
+  });
+  assert.equal(result.deepest_observed_boundary, 'owned_api_request');
+});
+
+test('Root #1556 F20 malformed route error anchors are ignored without leaking raw fields', () => {
+  const secret = 'malformed-route-error-secret';
+  const result = receipt({
+    apiOutput: [
+      routeErrorTrace(399, 'invalid_request_error', `message="${secret}"`),
+      routeErrorTrace(500, 'Invalid-Error', `body="${secret}"`),
+      `anthropic compatible route error boundary status_code=nope error_type=bad ${secret}`,
+    ].join('\n'),
+  });
+
+  assert.equal(result.boundaries.anthropic_route_error.status, 'not_observed');
+  assert.doesNotMatch(JSON.stringify(result), /malformed-route-error-secret|Invalid-Error/u);
+});
+
 test('Root #1556 F19 uncertain log suffix makes all API route and provider facts unknown', () => {
   const result = receipt({
     apiDeltaStatus: 'unknown',
@@ -244,6 +313,7 @@ test('Root #1556 F19 uncertain log suffix makes all API route and provider facts
   assert.equal(result.boundaries.anthropic_route_requests.status, 'unknown');
   assert.equal(result.boundaries.anthropic_route_requests.messages.status, 'unknown');
   assert.equal(result.boundaries.owned_api_request.status, 'unknown');
+  assert.equal(result.boundaries.anthropic_route_error.status, 'unknown');
   assert.equal(result.boundaries.selected_installation.status, 'unknown');
   assert.equal(result.boundaries.provider_operation.start.status, 'unknown');
   assert.equal(result.boundaries.provider_operation.end.status, 'unknown');
