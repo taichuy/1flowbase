@@ -5,6 +5,7 @@ pub mod application_repository;
 pub mod auth_repository;
 mod connection;
 pub mod data_source_repository;
+pub mod extension_installation_repository;
 pub mod file_management_repository;
 pub mod flow_repository;
 pub mod frontend_block_catalog_repository;
