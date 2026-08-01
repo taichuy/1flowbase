@@ -117,6 +117,11 @@ const pluginsApi = vi.hoisted(() => ({
   fetchSettingsPluginTask: vi.fn()
 }));
 
+const consoleNavigationApi = vi.hoisted(() => ({
+  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+  fetchSettingsConsoleNavigation: vi.fn()
+}));
+
 const systemRuntimeApi = vi.hoisted(() => ({
   settingsSystemRuntimeQueryKey: ['settings', 'system-runtime'],
   fetchSettingsSystemRuntimeProfile: vi.fn()
@@ -132,20 +137,15 @@ const fileManagementApi = vi.hoisted(() => ({
   updateSettingsFileTableBinding: vi.fn()
 }));
 
-const consoleNavigationApi = vi.hoisted(() => ({
-  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
-  fetchSettingsConsoleNavigation: vi.fn()
-}));
-
 vi.mock('../../api/members', () => membersApi);
 vi.mock('../../api/roles', () => rolesApi);
 vi.mock('../../api/permissions', () => permissionsApi);
 vi.mock('../../api/api-docs', () => docsApi);
 vi.mock('../../api/model-providers', () => modelProvidersApi);
 vi.mock('../../api/plugins', () => pluginsApi);
+vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
-vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
 }));
@@ -204,29 +204,8 @@ function renderApp(pathname: string) {
   );
 }
 
-describe('ModelProvidersPage - official install and upload', () => {
+describe('ModelProvidersPage - catalog and family version', () => {
   beforeEach(() => {
-    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
-      route_definitions: [
-        {
-          route_id: 'settings.model-providers',
-          surface_key: 'model-providers',
-          path: '/settings/model-providers',
-          surface_kind: 'system'
-        }
-      ],
-      navigation_items: [
-        {
-          item_id: 'model-providers',
-          route_id: 'settings.model-providers',
-          parent_item_id: 'settings',
-          label_key: 'auto.model_provider',
-          navigation_slot: 'settings',
-          order: 1
-        }
-      ],
-      permission_bindings: []
-    });
     resetAuthStore();
     useBreakpointSpy.mockReturnValue({
       xs: true,
@@ -243,6 +222,27 @@ describe('ModelProvidersPage - official install and upload', () => {
       permission_codes: []
     });
     permissionsApi.fetchSettingsPermissions.mockResolvedValue([]);
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue({
+      route_definitions: [
+        {
+          route_id: 'settings.model-providers',
+          surface_key: 'model-providers',
+          path: '/settings/model-providers',
+          surface_kind: 'system'
+        }
+      ],
+      navigation_items: [
+        {
+          item_id: 'model-providers',
+          route_id: 'settings.model-providers',
+          parent_item_id: 'settings',
+          label_key: 'auto.model_providers',
+          navigation_slot: 'settings',
+          order: 1
+        }
+      ],
+      permission_bindings: []
+    });
     docsApi.fetchSettingsApiDocsCatalog.mockResolvedValue({
       title: '1flowbase API',
       version: '0.1.0',
@@ -463,286 +463,12 @@ describe('ModelProvidersPage - official install and upload', () => {
     fileManagementApi.fetchSettingsFileTables.mockResolvedValue([]);
   });
 
-  test('renders official install cards beneath the installed provider area', async () => {
+  test('renders provider family rows and upgrades from the lifecycle sidebar', async () => {
     authenticateAsModelProviderManager();
-    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
     pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
       source_kind: 'official_registry',
       source_label: '官方源',
       registry_url: 'https://official.example.com/official-registry.json',
-      entries: [
-        {
-          plugin_id: '1flowbase.openai_compatible',
-          provider_code: 'openai_compatible',
-          display_name: 'OpenAI Compatible',
-          description:
-            '面向 OpenAI 兼容 Chat Completions API 的 provider 插件。',
-          latest_version: '0.1.0',
-          protocol: 'openai_compatible',
-          help_url:
-            'https://github.com/taichuy/1flowbase-official-plugins/tree/main/models/openai_compatible',
-          model_discovery_mode: 'hybrid',
-          install_status: 'not_installed'
-        }
-      ]
-    });
-
-    renderApp('/settings/model-providers');
-
-    await waitFor(
-      () => {
-        expect(
-          pluginsApi.fetchSettingsOfficialPluginCatalog
-        ).toHaveBeenCalled();
-      },
-      { timeout: 10_000 }
-    );
-    expect(
-      (
-        await screen.findAllByRole(
-          'heading',
-          { name: '模型供应商' },
-          { timeout: 10000 }
-        )
-      ).length
-    ).toBeGreaterThan(0);
-    expect(
-      await screen.findByRole(
-        'button',
-        { name: '安装到当前 workspace' },
-        { timeout: 10000 }
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        '面向 OpenAI 兼容 Chat Completions API 的 provider 插件。'
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('协议：openai_compatible')
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('预置模型与运行时发现合并显示')
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText('来源：官方源')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('1flowbase.openai_compatible')
-    ).not.toBeInTheDocument();
-  });
-
-  test('deduplicates official install cards for the same provider and keeps only one latest entry', async () => {
-    authenticateAsModelProviderManager();
-    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
-    pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
-      source_kind: 'official_registry',
-      source_label: '官方源',
-      registry_url: 'https://official.example.com/official-registry.json',
-      entries: [
-        {
-          plugin_id: '1flowbase.openai_compatible@0.1.0',
-          provider_code: 'openai_compatible',
-          display_name: 'OpenAI Compatible',
-          latest_version: '0.1.0',
-          protocol: 'openai_compatible',
-          help_url: 'https://example.com/openai-010',
-          model_discovery_mode: 'hybrid',
-          install_status: 'installed'
-        },
-        {
-          plugin_id: '1flowbase.openai_compatible@0.2.0',
-          provider_code: 'openai_compatible',
-          display_name: 'OpenAI Compatible',
-          latest_version: '0.2.0',
-          protocol: 'openai_compatible',
-          help_url: 'https://example.com/openai-020',
-          model_discovery_mode: 'hybrid',
-          install_status: 'not_installed'
-        }
-      ]
-    });
-
-    renderApp('/settings/model-providers');
-
-    await waitFor(() => {
-      expect(pluginsApi.fetchSettingsOfficialPluginCatalog).toHaveBeenCalled();
-    });
-
-    expect(await screen.findByText('0.2.0')).toBeInTheDocument();
-    expect(screen.getByText('latest')).toBeInTheDocument();
-    expect(screen.getByText('hybrid')).toBeInTheDocument();
-    expect(screen.queryByText('0.1.0')).not.toBeInTheDocument();
-  });
-
-  test('polls install task until the official plugin finishes installing', async () => {
-    authenticateAsModelProviderManager();
-    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
-    pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
-      source_kind: 'official_registry',
-      source_label: '官方源',
-      registry_url: 'https://official.example.com/official-registry.json',
-      entries: [
-        {
-          plugin_id: '1flowbase.openai_compatible',
-          provider_code: 'openai_compatible',
-          display_name: 'OpenAI Compatible',
-          latest_version: '0.1.0',
-          protocol: 'openai_compatible',
-          help_url:
-            'https://github.com/taichuy/1flowbase-official-plugins/tree/main/models/openai_compatible',
-          model_discovery_mode: 'hybrid',
-          install_status: 'not_installed'
-        }
-      ]
-    });
-    pluginsApi.installSettingsOfficialPlugin.mockResolvedValue({
-      installation: {
-        id: 'installation-1',
-        provider_code: 'openai_compatible',
-        plugin_id: 'openai_compatible@0.1.0',
-        plugin_version: '0.1.0',
-        contract_version: '1flowbase.provider/v1',
-        protocol: 'openai_compatible',
-        display_name: 'OpenAI Compatible',
-        source_kind: 'official_registry',
-        trust_level: 'verified_official',
-        verification_status: 'valid',
-        enabled: true,
-        install_path: '/tmp/openai-compatible',
-        checksum: 'sha256:abc123',
-        signature_status: 'unsigned',
-        signature_algorithm: null,
-        signing_key_id: null,
-        metadata_json: {},
-        created_at: '2026-04-18T21:00:00Z',
-        updated_at: '2026-04-18T21:00:00Z'
-      },
-      task: {
-        id: 'task-1',
-        installation_id: 'installation-1',
-        workspace_id: 'workspace-1',
-        provider_code: 'openai_compatible',
-        task_kind: 'assign',
-        status: 'running',
-        status_message: null,
-        detail_json: {},
-        created_at: '2026-04-18T21:00:00Z',
-        updated_at: '2026-04-18T21:00:00Z',
-        finished_at: null
-      }
-    });
-    pluginsApi.fetchSettingsPluginTask
-      .mockResolvedValueOnce({
-        id: 'task-1',
-        installation_id: 'installation-1',
-        workspace_id: 'workspace-1',
-        provider_code: 'openai_compatible',
-        task_kind: 'assign',
-        status: 'running',
-        status_message: null,
-        detail_json: {},
-        created_at: '2026-04-18T21:00:00Z',
-        updated_at: '2026-04-18T21:00:00Z',
-        finished_at: null
-      })
-      .mockResolvedValueOnce({
-        id: 'task-1',
-        installation_id: 'installation-1',
-        workspace_id: 'workspace-1',
-        provider_code: 'openai_compatible',
-        task_kind: 'assign',
-        status: 'success',
-        status_message: 'assigned',
-        detail_json: {},
-        created_at: '2026-04-18T21:00:00Z',
-        updated_at: '2026-04-18T21:00:01Z',
-        finished_at: '2026-04-18T21:00:01Z'
-      });
-
-    renderApp('/settings/model-providers');
-    await waitFor(() => {
-      expect(pluginsApi.fetchSettingsOfficialPluginCatalog).toHaveBeenCalled();
-    });
-
-    fireEvent.click(
-      await screen.findByRole(
-        'button',
-        { name: '安装到当前 workspace' },
-        { timeout: 10000 }
-      )
-    );
-
-    const installButtons = await screen.findAllByRole(
-      'button',
-      { name: '安装到当前 workspace' },
-      { timeout: 10000 }
-    );
-    fireEvent.click(installButtons[installButtons.length - 1]!);
-
-    await waitFor(() => {
-      expect(pluginsApi.installSettingsOfficialPlugin).toHaveBeenCalledWith(
-        '1flowbase.openai_compatible',
-        'csrf-123'
-      );
-      expect(screen.getAllByText('安装中').length).toBeGreaterThanOrEqual(1);
-    });
-
-    await waitFor(
-      () => {
-        expect(pluginsApi.fetchSettingsPluginTask).toHaveBeenCalled();
-      },
-      { timeout: 4000 }
-    );
-
-    await waitFor(
-      () => {
-        expect(pluginsApi.fetchSettingsPluginTask).toHaveBeenCalledTimes(2);
-        expect(screen.getByText('已安装到当前 workspace')).toBeInTheDocument();
-      },
-      { timeout: 4000 }
-    );
-  }, 15000);
-
-  test('renders upload entry and removes the version management entry point', async () => {
-    authenticateAsModelProviderManager();
-    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([
-      {
-        provider_code: 'openai_compatible',
-        display_name: 'OpenAI Compatible',
-        protocol: 'openai_compatible',
-        help_url: 'https://platform.openai.com/docs/api-reference',
-        default_base_url: 'https://api.openai.com/v1',
-        model_discovery_mode: 'hybrid',
-        current_installation_id: 'installation-upload-1',
-        current_version: '0.2.0',
-        current_local_artifact: {
-          node_id: 'test-node',
-          installation_id: 'installation-upload-1',
-          local_version: '0.2.0',
-          local_checksum: null,
-          installed_path: '/tmp/plugins/uploaded/0.2.0',
-          artifact_status: 'ready',
-          runtime_status: 'inactive',
-          checked_at: '2026-04-19T10:00:00Z',
-          last_error: null
-        },
-        latest_version: '0.2.0',
-        has_update: false,
-        installed_versions: [
-          {
-            installation_id: 'installation-upload-1',
-            plugin_version: '0.2.0',
-            source_kind: 'uploaded',
-            trust_level: 'verified_official',
-            created_at: '2026-04-19T14:00:00Z',
-            is_current: true
-          }
-        ]
-      }
-    ]);
-    pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
-      source_kind: 'mirror_registry',
-      source_label: '镜像源',
-      registry_url: 'https://mirror.example.com/official-registry.json',
       entries: [
         {
           plugin_id: '1flowbase.openai_compatible',
@@ -759,15 +485,405 @@ describe('ModelProvidersPage - official install and upload', () => {
 
     renderApp('/settings/model-providers');
 
+    await waitFor(
+      () => {
+        expect(pluginsApi.fetchSettingsPluginFamilies).toHaveBeenCalled();
+      },
+      { timeout: 10_000 }
+    );
     expect(
-      await screen.findByRole('button', { name: '上传插件' })
+      screen.queryByText('当前使用 0.1.0，最新版本 0.2.0')
+    ).not.toBeInTheDocument();
+
+    const catalogRow = await screen.findByRole(
+      'row',
+      {
+        name: /OpenAI Compatible/
+      },
+      { timeout: 10_000 }
+    );
+    expect(within(catalogRow).getByText('0.1.0')).toBeInTheDocument();
+
+    expect(
+      within(catalogRow).queryByRole('button', { name: /更\s*新/ })
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByRole('button', { name: '版本管理' })
+    ).not.toBeInTheDocument();
+    expect(within(catalogRow).getByText('可用')).toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText('当前节点可用')
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText(/^期望版本：/)
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText(/^当前节点版本：/)
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole('button', { name: '升级到最新版本' })
+    );
+    const confirmDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(confirmDialog).getByRole('button', { name: '升级到最新版本' })
+    );
+
+    await waitFor(() => {
+      expect(pluginsApi.upgradeSettingsPluginFamilyLatest).toHaveBeenCalledWith(
+        'openai_compatible',
+        'csrf-123'
+      );
+    });
+  }, 20000);
+
+  test('AC-003 keeps official catalog failures local, friendly, and retryable', async () => {
+    authenticateAsModelProviderManager();
+    const gatewayBody =
+      '<html><head><title>504 Gateway Time-out</title></head><body>nginx</body></html>';
+    pluginsApi.fetchSettingsOfficialPluginCatalog.mockRejectedValueOnce(
+      new Error(gatewayBody)
+    );
+
+    const view = renderApp('/settings/model-providers');
+
+    const catalogRow = await screen.findByRole(
+      'row',
+      {
+        name: /OpenAI Compatible/
+      },
+      { timeout: 10_000 }
+    );
+
+    expect(catalogRow).toBeInTheDocument();
+    expect(
+      within(catalogRow).getByRole('button', { name: '管理' })
     ).toBeInTheDocument();
+    expect(
+      view.container.querySelector('.settings-section-surface__status')
+        ?.textContent ?? ''
+    ).not.toContain(gatewayBody);
+    const officialPanel = view.container.querySelector(
+      '.model-provider-panel__official'
+    );
+    expect(officialPanel).toHaveTextContent(
+      '官方供应商目录暂时不可用，请重试。'
+    );
+    expect(officialPanel).not.toHaveTextContent(gatewayBody);
+
+    const callsBeforeRetry =
+      pluginsApi.fetchSettingsOfficialPluginCatalog.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+
+    await waitFor(() => {
+      expect(
+        pluginsApi.fetchSettingsOfficialPluginCatalog.mock.calls.length
+      ).toBeGreaterThan(callsBeforeRetry);
+    });
+  });
+
+  test('does not keep the installed provider table loading while only the local model-provider catalog is pending', async () => {
+    authenticateAsModelProviderManager();
+    modelProvidersApi.fetchSettingsModelProviderCatalog.mockReturnValue(
+      new Promise(() => undefined)
+    );
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([]);
+
+    renderApp('/settings/model-providers');
+
+    expect(
+      await screen.findByText('暂无可用供应商', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('正在加载供应商目录...')).not.toBeInTheDocument();
+    expect(await screen.findByText('可用实例')).toBeInTheDocument();
+  });
+
+  test('disables creating provider instances when the current node artifact is unavailable', async () => {
+    authenticateAsModelProviderManager();
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([
+      {
+        provider_code: 'openai_compatible',
+        display_name: 'OpenAI Compatible',
+        protocol: 'openai_compatible',
+        help_url: 'https://platform.openai.com/docs/api-reference',
+        default_base_url: 'https://api.openai.com/v1',
+        model_discovery_mode: 'hybrid',
+        current_installation_id: 'installation-1',
+        current_version: '0.1.0',
+        current_local_artifact: {
+          node_id: 'test-node',
+          installation_id: 'installation-1',
+          local_version: '0.0.9',
+          local_checksum: null,
+          installed_path: '/tmp/plugins/openai_compatible/0.0.9',
+          artifact_status: 'outdated',
+          runtime_status: 'inactive',
+          checked_at: '2026-04-18T10:00:00Z',
+          last_error: 'local_version_outdated'
+        },
+        latest_version: '0.1.0',
+        has_update: false,
+        installed_versions: [
+          {
+            installation_id: 'installation-1',
+            plugin_version: '0.1.0',
+            source_kind: 'official_registry',
+            trust_level: 'verified_official',
+            created_at: '2026-04-18T09:00:00Z',
+            is_current: true
+          }
+        ]
+      }
+    ]);
+
+    renderApp('/settings/model-providers');
+
+    const catalogRow = await screen.findByRole(
+      'row',
+      {
+        name: /OpenAI Compatible/
+      },
+      { timeout: 10_000 }
+    );
+
+    expect(
+      within(catalogRow).getByRole('button', { name: '新增' })
+    ).toBeDisabled();
+    expect(within(catalogRow).getByText('不可用')).toBeInTheDocument();
+    expect(within(catalogRow).queryByText('可用')).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText('当前节点缺失')
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText(/^期望版本：/)
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).getByText('当前节点版本：0.0.9')
+    ).toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByRole('button', { name: '修复' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).getByRole('button', { name: '管理' })
+    ).toBeInTheDocument();
+  });
+
+  test('switches provider family version and shows a follow-up warning in the instances modal', async () => {
+    authenticateAsModelProviderManager();
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([
+      {
+        provider_code: 'openai_compatible',
+        display_name: 'OpenAI Compatible',
+        protocol: 'openai_compatible',
+        help_url: 'https://platform.openai.com/docs/api-reference',
+        default_base_url: 'https://api.openai.com/v1',
+        model_discovery_mode: 'hybrid',
+        current_installation_id: 'installation-2',
+        current_version: '0.2.0',
+        current_local_artifact: {
+          node_id: 'test-node',
+          installation_id: 'installation-2',
+          local_version: '0.2.0',
+          local_checksum: null,
+          installed_path: '/tmp/plugins/openai_compatible/0.2.0',
+          artifact_status: 'ready',
+          runtime_status: 'inactive',
+          checked_at: '2026-04-19T10:00:00Z',
+          last_error: null
+        },
+        latest_version: '0.2.0',
+        has_update: false,
+        installed_versions: [
+          {
+            installation_id: 'installation-2',
+            plugin_version: '0.2.0',
+            source_kind: 'official_registry',
+            trust_level: 'verified_official',
+            created_at: '2026-04-19T09:00:00Z',
+            is_current: true
+          },
+          {
+            installation_id: 'installation-1',
+            plugin_version: '0.1.0',
+            source_kind: 'official_registry',
+            trust_level: 'verified_official',
+            created_at: '2026-04-18T09:00:00Z',
+            is_current: false
+          }
+        ]
+      }
+    ]);
+
+    renderApp('/settings/model-providers');
+
+    await waitFor(() => {
+      expect(pluginsApi.fetchSettingsPluginFamilies).toHaveBeenCalled();
+    });
+
+    const catalogRow = await screen.findByRole('row', {
+      name: /OpenAI Compatible/
+    });
+    const versionSelect = within(catalogRow).getByRole('combobox', {
+      name: '切换 OpenAI Compatible 版本'
+    });
+    fireEvent.mouseDown(versionSelect);
+    fireEvent.click(await screen.findByText('0.1.0'));
+
+    await waitFor(() => {
+      expect(pluginsApi.switchSettingsPluginFamilyVersion).toHaveBeenCalledWith(
+        'openai_compatible',
+        'installation-1',
+        'csrf-123'
+      );
+    });
+
+    fireEvent.click(within(catalogRow).getByRole('button', { name: '管理' }));
+    expect(
+      await screen.findByText(
+        '该供应商刚完成版本切换，建议刷新模型并验证关键实例。'
+      )
+    ).toBeInTheDocument();
+  }, 20000);
+
+  test('keeps destructive family actions out of the restored catalog row', async () => {
+    authenticateAsModelProviderManager();
+
+    renderApp('/settings/model-providers');
 
     const catalogRow = await screen.findByRole('row', {
       name: /OpenAI Compatible/
     });
     expect(
+      within(catalogRow).queryByRole('button', { name: '删除' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByRole('button', { name: '修复' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow)
+        .getAllByRole('button')
+        .map((button) => button.textContent)
+    ).toEqual(['管理', '新增']);
+  });
+
+  test('renders catalog and instance metadata for view-only users without manage actions', async () => {
+    authenticateWithPermissions(['state_model.view.all']);
+
+    renderApp('/settings/model-providers');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/model-providers');
+    });
+    await waitFor(() => {
+      expect(
+        modelProvidersApi.fetchSettingsModelProviderCatalog
+      ).toHaveBeenCalled();
+      expect(
+        modelProvidersApi.fetchSettingsModelProviderInstances
+      ).toHaveBeenCalled();
+    });
+
+    await screen.findByText('可用实例', {}, { timeout: 10000 });
+    expect(
+      screen.queryByText(
+        '先安装供应商，再配置 API 密钥实例。只有 ready 状态的实例会进入 agentFlow 的模型选项。'
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      (await screen.findAllByText('OpenAI Compatible', {}, { timeout: 10000 }))
+        .length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.queryByRole('heading', { name: '当前实例' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '管理' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('OpenAI Production')).not.toBeInTheDocument();
+  }, 10000);
+
+  test('shows create and row-level manage actions when state_model.manage.all is present', async () => {
+    authenticateAsModelProviderManager();
+
+    renderApp('/settings/model-providers');
+
+    await screen.findByText('可用实例', {}, { timeout: 10000 });
+
+    expect(
+      await screen.findByRole('button', { name: '管理' }, { timeout: 10000 })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: '当前实例' })
+    ).not.toBeInTheDocument();
+
+    const catalogRow = await screen.findByRole(
+      'row',
+      {
+        name: /OpenAI Compatible/
+      },
+      { timeout: 10000 }
+    );
+    expect(
+      within(catalogRow).getByRole('button', { name: '管理' })
+    ).toBeInTheDocument();
+    expect(
+      within(catalogRow).getByRole('button', { name: '新增' })
+    ).toBeInTheDocument();
+    expect(
       within(catalogRow).queryByRole('button', { name: '版本管理' })
     ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByRole('link', { name: '文档' })
+    ).not.toBeInTheDocument();
+  }, 20000);
+
+  test('switches provider version from the catalog version column', async () => {
+    authenticateAsModelProviderManager();
+
+    renderApp('/settings/model-providers');
+
+    await waitFor(
+      () => {
+        expect(pluginsApi.fetchSettingsPluginFamilies).toHaveBeenCalled();
+      },
+      { timeout: 10_000 }
+    );
+
+    const versionSelect = await screen.findByRole(
+      'combobox',
+      {
+        name: '切换 OpenAI Compatible 版本'
+      },
+      { timeout: 10_000 }
+    );
+
+    fireEvent.mouseDown(versionSelect);
+    fireEvent.click(await screen.findByText('0.2.0'));
+
+    await waitFor(() => {
+      expect(pluginsApi.switchSettingsPluginFamilyVersion).toHaveBeenCalledWith(
+        'openai_compatible',
+        'installation-2',
+        'csrf-123'
+      );
+    });
+  }, 20000);
+
+  test('renders provider catalog headers in the expected order', async () => {
+    authenticateAsModelProviderManager();
+
+    renderApp('/settings/model-providers');
+
+    const headers = await screen.findAllByRole('columnheader');
+    const expectedHeaders = ['操作', '名称', '状态', '版本', '说明'];
+    const expectedHeaderSet = new Set(expectedHeaders);
+    const catalogHeaders: string[] = [];
+    for (const header of headers) {
+      const text = header.textContent?.trim() ?? '';
+      if (expectedHeaderSet.has(text)) {
+        catalogHeaders.push(text);
+      }
+    }
+
+    expect(catalogHeaders.slice(0, 5)).toEqual(expectedHeaders);
   }, 10000);
 });

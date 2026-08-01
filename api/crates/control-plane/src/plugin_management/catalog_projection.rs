@@ -98,7 +98,7 @@ where
         .await
 }
 
-fn provider_catalog_snapshot(package: &ProviderPackage) -> Result<Value> {
+pub(super) fn provider_catalog_snapshot(package: &ProviderPackage) -> Result<Value> {
     Ok(json!({
         "manifest": {
             "icon": &package.manifest.icon,

@@ -1,6 +1,7 @@
 use super::catalog::normalize_official_entries;
 use super::catalog_projection::{
-    record_failed_catalog_projection, refresh_provider_package_catalog_projection,
+    provider_catalog_snapshot, record_failed_catalog_projection,
+    refresh_provider_package_catalog_projection,
 };
 use super::*;
 use sha2::{Digest, Sha256};
@@ -401,9 +402,12 @@ where
     let node_contributions = build_node_contribution_sync_input(&installation, manifest);
     let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
     let frontend_blocks = build_frontend_block_sync_input(&installation, manifest);
+    let extension_installation =
+        extension_projection_for_plugin_installation(node_id, &installation, manifest)?;
     repository
         .commit_plugin_installation_projection(&CommitPluginInstallationProjectionInput {
             installation,
+            extension_installation,
             artifact_instance,
             package_catalog,
             node_contributions,
@@ -564,6 +568,7 @@ where
             last_load_error: None,
             metadata_json: json!({
                 "install_kind": "builtin_bootstrap",
+                "plugin_type": "capability_plugin",
                 "selection_mode": manifest.selection_mode,
                 "block_contributions": manifest
                     .block_contributions
@@ -1082,11 +1087,12 @@ where
                 RoutedPluginPackageKind::HostExtension => {
                     ensure_root_actor(&actor)?;
                     ensure_uploaded_host_extensions_enabled(self.allow_uploaded_host_extensions)?;
-                    let mut metadata_json = json!({});
+                    let mut metadata_json = json!({"plugin_type": "host_extension"});
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = self
-                        .repository
-                        .upsert_installation(&UpsertPluginInstallationInput {
+                    let installation = commit_prepared_installation(
+                        &self.repository,
+                        &self.node_id,
+                        UpsertPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: plugin_code.clone(),
                             plugin_id: package_id.clone(),
@@ -1118,8 +1124,11 @@ where
                             last_load_error: None,
                             metadata_json,
                             actor_user_id: command.actor_user_id,
-                        })
-                        .await?;
+                        },
+                        &manifest,
+                        None,
+                    )
+                    .await?;
                     self.repository
                         .append_audit_log(&audit_log(
                             Some(actor.current_workspace_id),
@@ -1132,12 +1141,13 @@ where
                         .await?;
                     Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
                         installation,
-                        false,
+                        true,
                     ))
                 }
                 RoutedPluginPackageKind::ModelProviderRuntime => {
                     let installed_package = load_provider_package(&install_path)?;
                     let mut metadata_json = json!({
+                        "plugin_type": "model_provider",
                         "help_url": installed_package.provider.help_url,
                         "default_base_url": installed_package.provider.default_base_url,
                         "model_discovery_mode": format!("{:?}", installed_package.provider.model_discovery_mode).to_ascii_lowercase(),
@@ -1146,9 +1156,7 @@ where
                         "runtime_capabilities": installed_package.manifest.runtime.capabilities,
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = self
-                        .repository
-                        .upsert_installation(&UpsertPluginInstallationInput {
+                    let installation_input = UpsertPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: installed_package.provider.provider_code.clone(),
                             plugin_id: installed_package.identifier(),
@@ -1180,32 +1188,24 @@ where
                             last_load_error: None,
                             metadata_json,
                             actor_user_id: command.actor_user_id,
-                        })
-                        .await?;
-                    refresh_provider_package_catalog_projection(
+                        };
+                    let package_catalog = UpsertPluginPackageCatalogProjectionInput {
+                        installation_id: installation_input.installation_id,
+                        package_code: installation_input.provider_code.clone(),
+                        package_version: installation_input.plugin_version.clone(),
+                        catalog_snapshot_json: provider_catalog_snapshot(&installed_package)?,
+                        projection_status: domain::PluginPackageCatalogProjectionStatus::Ok,
+                        last_error_message: None,
+                        refreshed_at: Some(OffsetDateTime::now_utc()),
+                    };
+                    let installation = commit_prepared_installation(
                         &self.repository,
-                        &installation,
-                        &installed_package,
+                        &self.node_id,
+                        installation_input,
+                        &manifest,
+                        Some(package_catalog),
                     )
                     .await?;
-                    let manifest = load_plugin_manifest(&install_path)?;
-                    self.repository
-                        .replace_installation_node_contributions(
-                            &build_node_contribution_sync_input(&installation, &manifest),
-                        )
-                        .await?;
-                    self.repository
-                        .replace_installation_js_dependencies(&build_js_dependency_sync_input(
-                            &installation,
-                            &manifest,
-                        ))
-                        .await?;
-                    self.repository
-                        .replace_installation_frontend_blocks(&build_frontend_block_sync_input(
-                            &installation,
-                            &manifest,
-                        ))
-                        .await?;
                     self.repository
                         .append_audit_log(&audit_log(
                             Some(actor.current_workspace_id),
@@ -1218,7 +1218,7 @@ where
                         .await?;
                     Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
                         installation,
-                        false,
+                        true,
                     ))
                 }
                 RoutedPluginPackageKind::DataSourceRuntime => {
@@ -1226,14 +1226,16 @@ where
                         plugin_framework::DataSourcePackage::load_from_dir(&install_path)
                             .map_err(map_framework_error)?;
                     let mut metadata_json = json!({
+                        "plugin_type": "data_source",
                         "supported_resource_kinds": installed_package.definition.resource_kinds,
                         "auth_modes": installed_package.definition.auth_modes,
                         "capabilities": installed_package.definition.capabilities,
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = self
-                        .repository
-                        .upsert_installation(&UpsertPluginInstallationInput {
+                    let installation = commit_prepared_installation(
+                        &self.repository,
+                        &self.node_id,
+                        UpsertPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: installed_package.definition.source_code.clone(),
                             plugin_id: installed_package.identifier(),
@@ -1265,8 +1267,11 @@ where
                             last_load_error: None,
                             metadata_json,
                             actor_user_id: command.actor_user_id,
-                        })
-                        .await?;
+                        },
+                        &manifest,
+                        None,
+                    )
+                    .await?;
                     self.repository
                         .append_audit_log(&audit_log(
                             Some(actor.current_workspace_id),
@@ -1279,12 +1284,13 @@ where
                         .await?;
                     Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
                         installation,
-                        false,
+                        true,
                     ))
                 }
                 RoutedPluginPackageKind::CapabilityPlugin => {
                     let manifest = load_plugin_manifest(&install_path)?;
                     let mut metadata_json = json!({
+                        "plugin_type": "capability_plugin",
                         "node_contributions": manifest
                             .node_contributions
                             .iter()

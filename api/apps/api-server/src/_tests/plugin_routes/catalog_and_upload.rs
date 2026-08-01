@@ -187,6 +187,30 @@ async fn plugin_routes_install_upload_accepts_multipart_package() {
         payload["data"]["installation"]["signature_status"],
         "verified"
     );
+
+    let installed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/extension-center/installed?category=runtime-extensions")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(installed.status(), StatusCode::OK);
+    let installed_payload: Value =
+        serde_json::from_slice(&to_bytes(installed.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert!(installed_payload["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|entry| {
+            entry["artifact_id"] == "openai_compatible" && entry["version"] == "0.2.0"
+        }));
 }
 
 #[tokio::test]
@@ -287,6 +311,30 @@ async fn model_provider_settings_install_upload_accepts_package_larger_than_defa
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+
+    let installed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/extension-center/installed?category=runtime-extensions")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(installed.status(), StatusCode::OK);
+    let installed_payload: Value =
+        serde_json::from_slice(&to_bytes(installed.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert!(installed_payload["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|entry| {
+            entry["artifact_id"] == "openai_compatible" && entry["version"] == "0.2.2"
+        }));
 }
 
 #[tokio::test]

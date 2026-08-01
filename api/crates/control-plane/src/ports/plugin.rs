@@ -31,6 +31,7 @@ pub struct UpsertPluginInstallationInput {
 #[derive(Debug, Clone)]
 pub struct CommitPluginInstallationProjectionInput {
     pub installation: UpsertPluginInstallationInput,
+    pub extension_installation: UpsertExtensionInstallationInput,
     pub artifact_instance: UpsertPluginArtifactInstanceInput,
     pub package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
     pub node_contributions: ReplaceInstallationNodeContributionsInput,

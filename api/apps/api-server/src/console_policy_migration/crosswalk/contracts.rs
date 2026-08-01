@@ -150,6 +150,18 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         ],
     ),
     core_simple_settings(
+        "system.extension-center",
+        &[
+            "extension_center.catalog.detail",
+            "extension_center.catalog.view",
+            "extension_center.install",
+            "extension_center.install.upload",
+            "extension_center.installed.view",
+            "extension_center.update",
+            "extension_center.update_check",
+        ],
+    ),
+    core_simple_settings(
         "system.mcp-management",
         &[
             "mcp.bundles.export",
@@ -273,6 +285,13 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    "extension_center.catalog.detail",
+    "extension_center.catalog.view",
+    "extension_center.install",
+    "extension_center.install.upload",
+    "extension_center.installed.view",
+    "extension_center.update",
+    "extension_center.update_check",
     "i18n_catalog.custom_keys.delete",
     "i18n_catalog.custom_translations.upsert",
     "i18n_catalog.entries.detail",

@@ -51,6 +51,32 @@ where
     R: AuthRepository + PluginRepository,
     H: ProviderRuntimePort,
 {
+    async fn audit_local_artifact_warning(
+        &self,
+        actor: &domain::ActorContext,
+        actor_user_id: Uuid,
+        installation_id: Uuid,
+        warning: Option<&str>,
+    ) -> Result<()> {
+        let Some(warning) = warning else {
+            return Ok(());
+        };
+        self.repository
+            .append_audit_log(&audit_log(
+                Some(actor.current_workspace_id),
+                Some(actor_user_id),
+                "plugin_installation",
+                Some(installation_id),
+                "plugin.local_artifact_warning",
+                json!({
+                    "warning": warning,
+                    "node_id": self.node_id,
+                    "remote_io": false,
+                }),
+            ))
+            .await
+    }
+
     pub async fn rebuild_inventory_from_local_receipts(
         &self,
         actor_user_id: Uuid,
@@ -180,8 +206,17 @@ where
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         self.ensure_model_provider_target(&installation)?;
 
-        self.refresh_current_node_artifact_snapshot(&installation)
-            .await
+        let local_artifact = self
+            .refresh_current_node_artifact_snapshot(&installation)
+            .await?;
+        self.audit_local_artifact_warning(
+            &actor,
+            command.actor_user_id,
+            installation.id,
+            local_artifact.last_error.as_deref(),
+        )
+        .await?;
+        Ok(local_artifact)
     }
 
     pub async fn install_current_node_artifact(
@@ -203,22 +238,13 @@ where
         let local_artifact = self
             .refresh_current_node_artifact_snapshot(&installation)
             .await?;
-        if let Some(warning) = local_artifact.last_error.as_deref() {
-            self.repository
-                .append_audit_log(&audit_log(
-                    Some(actor.current_workspace_id),
-                    Some(command.actor_user_id),
-                    "plugin_installation",
-                    Some(installation.id),
-                    "plugin.local_artifact_warning",
-                    json!({
-                        "warning": warning,
-                        "node_id": self.node_id,
-                        "remote_io": false,
-                    }),
-                ))
-                .await?;
-        }
+        self.audit_local_artifact_warning(
+            &actor,
+            command.actor_user_id,
+            installation.id,
+            local_artifact.last_error.as_deref(),
+        )
+        .await?;
         if local_artifact.installed_path.is_some() && local_artifact.artifact_status.is_ready() {
             return Ok(local_artifact);
         }

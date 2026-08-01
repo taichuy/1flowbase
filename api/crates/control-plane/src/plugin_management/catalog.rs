@@ -144,7 +144,7 @@ pub struct LocalExtensionInventoryPage {
     pub next_cursor: Option<String>,
 }
 
-fn extension_source(source_kind: &str) -> &'static str {
+pub(super) fn extension_source(source_kind: &str) -> &'static str {
     match source_kind {
         "builtin" => "builtin",
         "official_registry" => "official_registry",
@@ -154,13 +154,16 @@ fn extension_source(source_kind: &str) -> &'static str {
     }
 }
 
-fn extension_trust(installation: &domain::PluginInstallationRecord) -> &'static str {
-    if installation.source_kind == "builtin"
-        || (installation.source_kind == "official_registry"
-            && installation.trust_level == "verified_official")
+pub(super) fn extension_trust(installation: &domain::PluginInstallationRecord) -> &'static str {
+    extension_trust_values(&installation.source_kind, &installation.trust_level)
+}
+
+pub(super) fn extension_trust_values(source_kind: &str, trust_level: &str) -> &'static str {
+    if source_kind == "builtin"
+        || (source_kind == "official_registry" && trust_level == "verified_official")
     {
         "official"
-    } else if installation.trust_level == "verified_official" {
+    } else if trust_level == "verified_official" {
         "trusted"
     } else {
         "unknown"

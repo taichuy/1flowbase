@@ -405,7 +405,16 @@ async fn plugin_routes_upgrade_family_to_latest_official_version() {
                 .uri("/api/console/plugins/families/openai_compatible/upgrade-latest")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
-                .body(Body::empty())
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "risk_override": {
+                            "reason": "route fixture accepts unsigned official package",
+                            "acknowledged_warnings": ["signature_missing"]
+                        }
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
